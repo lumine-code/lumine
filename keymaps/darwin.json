@@ -94,10 +94,6 @@
     // Sublime Parity
     "shift-enter": "editor:newline",
     "ctrl-cmd-up": "editor:move-line-up",
-    "ctrl-cmd-down": "editor:move-line-down",
-    // win32 and linux use ctrl-alt-up/down: cursor-leader claims those here,
-    // and macOS takes ctrl-up itself for Mission Control.
-    "ctrl-shift-up": "editor:add-selection-above",
-    "ctrl-shift-down": "editor:add-selection-below"
+    "ctrl-cmd-down": "editor:move-line-down"
   }
 }

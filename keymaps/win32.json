@@ -52,10 +52,6 @@
     "ctrl-alt-shift-[": "editor:fold-selection",
     // Sublime Parity
     "ctrl-up": "editor:move-line-up",
-    "ctrl-down": "editor:move-line-down",
-    // darwin puts these on ctrl-shift-up/down: ctrl-alt-up/down is claimed
-    // there by cursor-leader, and macOS takes ctrl-up for Mission Control.
-    "ctrl-alt-up": "editor:add-selection-above",
-    "ctrl-alt-down": "editor:add-selection-below"
+    "ctrl-down": "editor:move-line-down"
   }
 }
