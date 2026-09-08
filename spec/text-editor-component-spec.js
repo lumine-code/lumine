@@ -6778,6 +6778,118 @@ describe("TextEditorComponent", () => {
           expect(component.getScrollTop()).toBeNear(maxScrollTop);
           expect(component.getScrollLeft()).toBeNear(maxScrollLeft);
         });
+
+        it("reports a diagonal autoscroll when only one axis can move", async () => {
+          const { component } = buildComponent({
+            width: 200,
+            height: 200,
+          });
+          const maxScrollLeft = component.getMaxScrollLeft();
+          await setScrollLeft(component, maxScrollLeft);
+          const initialScrollTop = component.getScrollTop();
+          const updateSync = spyOn(component, "updateSync").and.callThrough();
+          const { bottom, right } = component.refs.scrollContainer.getBoundingClientRect();
+          const dragEvent = { clientX: right + 1, clientY: bottom + 1 };
+
+          expect(component.autoscrollOnMouseDrag(dragEvent)).toBe(true);
+          expect(component.getScrollTop()).toBeGreaterThan(initialScrollTop);
+          expect(component.getScrollLeft()).toBe(maxScrollLeft);
+          expect(updateSync).not.toHaveBeenCalled();
+
+          component.setScrollTop(component.getMaxScrollTop());
+          expect(component.autoscrollOnMouseDrag(dragEvent)).toBe(false);
+          expect(updateSync).not.toHaveBeenCalled();
+        });
+
+        it("maps mouse positions through pending scroll on the physical-pixel grid", () => {
+          const originalPixelRatio = window.devicePixelRatio;
+          try {
+            window.devicePixelRatio = 2;
+            const { component } = buildComponent({
+              width: 200,
+              height: 200,
+            });
+            const { scrollContainer } = component.refs;
+            const { top, left, width, height } = scrollContainer.getBoundingClientRect();
+            const mousePosition = {
+              clientX: left + width / 2,
+              clientY: top + height / 2,
+            };
+            const initialPosition = component.pixelPositionForMouseEvent(mousePosition);
+
+            component.setScrollTop(0.26);
+            component.setScrollLeft(0.26);
+            const pendingPosition = component.pixelPositionForMouseEvent(mousePosition);
+
+            expect(pendingPosition.top - initialPosition.top).toBe(0.5);
+            expect(pendingPosition.left - initialPosition.left).toBe(0.5);
+
+            component.updateContentScrollTransform();
+            const renderedPosition = component.pixelPositionForMouseEvent(mousePosition);
+            expect(renderedPosition.top).toBeCloseTo(pendingPosition.top, 10);
+            expect(renderedPosition.left).toBeCloseTo(pendingPosition.left, 10);
+          } finally {
+            window.devicePixelRatio = originalPixelRatio;
+          }
+        });
+
+        for (const [description, dragOffset, forcesTileMeasurement] of [
+          ["within the rendered tiles", 30, false],
+          ["after measuring a new tile", 200, true],
+        ]) {
+          it(`selects against the new viewport ${description} and updates once`, () => {
+            const { component, editor } = buildComponent({
+              text: `${"0123456789".repeat(30)}\n`.repeat(120),
+              rowsPerTile: 2,
+              width: 200,
+              height: 200,
+            });
+            const scrollContainerRect = component.refs.scrollContainer.getBoundingClientRect();
+            spyOn(component, "handleMouseDragUntilMouseUp");
+            component.didMouseDownOnContent({
+              detail: 1,
+              button: 0,
+              clientX: scrollContainerRect.left + 1,
+              clientY: scrollContainerRect.top + 1,
+            });
+            const { didDrag } = component.handleMouseDragUntilMouseUp.calls.argsFor(0)[0];
+            const dragEvent = {
+              clientX: scrollContainerRect.right + dragOffset,
+              clientY: scrollContainerRect.bottom + dragOffset,
+            };
+            const positionBeforeAutoscroll = component.screenPositionForMouseEvent(dragEvent);
+            const initialRenderedStartRow = component.getRenderedStartRow();
+            const initialRenderedEndRow = component.getRenderedEndRow();
+            const renderedScreenLineForRow = spyOn(
+              component,
+              "renderedScreenLineForRow",
+            ).and.callThrough();
+            const requestLineToMeasure = spyOn(component, "requestLineToMeasure").and.callThrough();
+            const updateSync = spyOn(component, "updateSync").and.callThrough();
+
+            didDrag(dragEvent);
+
+            const headPosition = editor.getLastSelection().getHeadScreenPosition();
+            expect(headPosition).not.toEqual(positionBeforeAutoscroll);
+            expect(
+              headPosition.row >= initialRenderedStartRow &&
+                headPosition.row < initialRenderedEndRow,
+            ).toBe(!forcesTileMeasurement);
+            const firstHeadRowLookup = renderedScreenLineForRow.calls
+              .all()
+              .find(({ args }) => args[0] === headPosition.row);
+            expect(firstHeadRowLookup.returnValue == null).toBe(forcesTileMeasurement);
+            if (forcesTileMeasurement) {
+              expect(
+                requestLineToMeasure.calls
+                  .allArgs()
+                  .some(([screenRow]) => screenRow === headPosition.row),
+              ).toBe(true);
+            }
+            expect(updateSync).toHaveBeenCalledTimes(1);
+            expect(headPosition).toEqual(component.screenPositionForMouseEvent(dragEvent));
+          });
+        }
       });
 
       it("pastes the previously selected text when clicking the middle mouse button on Linux", async () => {

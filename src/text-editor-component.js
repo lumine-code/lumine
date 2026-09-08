@@ -171,6 +171,8 @@ module.exports = class TextEditorComponent {
     this.scrollLeftPending = false;
     this.scrollTop = 0;
     this.scrollLeft = 0;
+    this.renderedScrollTop = 0;
+    this.renderedScrollLeft = 0;
     this.scrollAnchorBeforeReset = null;
     // A viewport anchor captured just before a display-layer reset, to be
     // re-applied on the next update once the spatial index has been repopulated.
@@ -206,6 +208,10 @@ module.exports = class TextEditorComponent {
     this.idsByTileStartRow = new Map();
     this.nextTileId = 0;
     this.renderedTileStartRows = [];
+    this.renderedScreenLines = [];
+    // Keep the array's origin independent of the logical viewport, which can
+    // advance during drag autoscroll before these lines are queried again.
+    this.renderedScreenLinesStartRow = 0;
     // The row range represented by the DOM after the most recent complete
     // update. Smooth scrolling can move within this window without querying
     // and reconciling the same tiles again.
@@ -1000,13 +1006,15 @@ module.exports = class TextEditorComponent {
   updateContentScrollTransform() {
     if (this.hasInitialMeasurements) {
       const cache = this.contentCache;
-      const transform = `translate(${-roundToPhysicalPixelBoundary(
-        this.getScrollLeft(),
-      )}px, ${-roundToPhysicalPixelBoundary(this.getScrollTop())}px)`;
+      const scrollLeft = roundToPhysicalPixelBoundary(this.getScrollLeft());
+      const scrollTop = roundToPhysicalPixelBoundary(this.getScrollTop());
+      const transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
       if (transform !== cache.transform) {
         this.refs.content.style.transform = transform;
         this.contentCache.transform = transform;
       }
+      this.renderedScrollLeft = scrollLeft;
+      this.renderedScrollTop = scrollTop;
     }
   }
 
@@ -1386,11 +1394,12 @@ module.exports = class TextEditorComponent {
 
   queryScreenLinesToRender() {
     const { model } = this.props;
-
+    const startRow = this.getRenderedStartRow();
     this.renderedScreenLines = model.displayLayer.getScreenLines(
-      this.getRenderedStartRow(),
+      startRow,
       this.getRenderedEndRow(),
     );
+    this.renderedScreenLinesStartRow = startRow;
   }
 
   queryLongestLine() {
@@ -1483,7 +1492,7 @@ module.exports = class TextEditorComponent {
 
   renderedScreenLineForRow(row) {
     return (
-      this.renderedScreenLines[row - this.getRenderedStartRow()] ||
+      this.renderedScreenLines[row - this.renderedScreenLinesStartRow] ||
       this.extraRenderedScreenLines.get(row)
     );
   }
@@ -3125,7 +3134,7 @@ module.exports = class TextEditorComponent {
         yDirection === 1
           ? ceilToPhysicalPixelBoundary(scaledDelta)
           : floorToPhysicalPixelBoundary(scaledDelta);
-      scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta);
+      scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta) || scrolled;
     }
 
     if (!verticalOnly && xDelta != null) {
@@ -3137,10 +3146,10 @@ module.exports = class TextEditorComponent {
         xDirection === 1
           ? ceilToPhysicalPixelBoundary(scaledDelta)
           : floorToPhysicalPixelBoundary(scaledDelta);
-      scrolled = this.setScrollLeft(this.getScrollLeft() + scaledDelta);
+      scrolled = this.setScrollLeft(this.getScrollLeft() + scaledDelta) || scrolled;
     }
 
-    if (scrolled) this.updateSync();
+    return scrolled;
   }
 
   screenPositionForMouseEvent(event) {
@@ -3152,9 +3161,16 @@ module.exports = class TextEditorComponent {
     clientX = Math.min(scrollContainerRect.right, Math.max(scrollContainerRect.left, clientX));
     clientY = Math.min(scrollContainerRect.bottom, Math.max(scrollContainerRect.top, clientY));
     const linesRect = this.refs.lineTiles.getBoundingClientRect();
+    // Drag autoscroll mutates the logical viewport before its caller updates
+    // the DOM. Project through that pending movement on the same physical-pixel
+    // grid as the content transform so hit-testing already sees the new viewport.
+    const pendingScrollLeft =
+      roundToPhysicalPixelBoundary(this.getScrollLeft()) - this.renderedScrollLeft;
+    const pendingScrollTop =
+      roundToPhysicalPixelBoundary(this.getScrollTop()) - this.renderedScrollTop;
     return {
-      top: clientY - linesRect.top,
-      left: clientX - linesRect.left,
+      top: clientY - linesRect.top + pendingScrollTop,
+      left: clientX - linesRect.left + pendingScrollLeft,
     };
   }
 
