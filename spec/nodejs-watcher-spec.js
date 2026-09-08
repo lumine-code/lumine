@@ -54,12 +54,42 @@ describe("NodejsWatcher", () => {
       await conditionPromise(() => events.some((e) => e.type === "change"), "change event");
     });
 
+    it("ignores a last-access update caused by reading the file", async () => {
+      watchers[0].close();
+      watchers.length = 0;
+
+      const stat = fs.statSync(file);
+      fs.utimesSync(file, new Date(Date.now() - 48 * 60 * 60 * 1000), stat.mtime);
+      watchFor(file, events);
+
+      fs.readFileSync(file);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(events).toEqual([]);
+    });
+
+    it("coalesces duplicate native notifications for one content change", async () => {
+      fs.writeFileSync(file, "two\n");
+      await conditionPromise(() => events.some((e) => e.type === "change"), "change event");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(events.filter((event) => event.type === "change").length).toBe(1);
+    });
+
     it("reports an atomic save (write-temp + rename) as a change, not a delete", async () => {
       const tmp = `${file}.tmp`;
       fs.writeFileSync(tmp, "three\n");
       fs.renameSync(tmp, file);
       await conditionPromise(() => events.some((e) => e.type === "change"), "change event");
       expect(events.some((e) => e.type === "delete")).toBe(false);
+    });
+
+    it("reports an atomic replacement whose contents and size are unchanged", async () => {
+      const tmp = `${file}.tmp`;
+      fs.writeFileSync(tmp, "one\n");
+      fs.renameSync(tmp, file);
+
+      await conditionPromise(() => events.some((e) => e.type === "change"), "change event");
     });
 
     it("keeps tracking edits after an atomic save", async () => {

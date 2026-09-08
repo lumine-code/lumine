@@ -64,6 +64,19 @@ describe("watchFile", function () {
     await conditionPromise(() => changes.length > 0, "a change on the real path");
   });
 
+  it("does not report a last-access update caused by reading the file", async function () {
+    const file = seed(path.join(root, "target.json"));
+    const stat = fs.statSync(file);
+    fs.utimesSync(file, new Date(Date.now() - 48 * 60 * 60 * 1000), stat.mtime);
+    const { handle, changes } = watching(file);
+    await handle.getStartPromise();
+
+    fs.readFileSync(file);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(changes).toEqual([]);
+  });
+
   // The shape every consumer in the config directory has: `getConfigDirPath()`
   // hands back `LUMINE_HOME` verbatim, so on macOS the subscribed path keeps the
   // `/var` spelling while the worker and the OS both speak `/private/var`.

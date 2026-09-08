@@ -41,6 +41,11 @@ const WATCH_ROOTS = new Map();
 // atomically replaced. VS Code uses ~100ms for the same purpose.
 const RENAME_VERIFY_DELAY = 60;
 
+// A single Windows write commonly produces two `fs.watch` notifications.
+// Reconcile them once after a short quiet period so signature checks see the
+// completed operation and subscribers receive one logical change.
+const CHANGE_VERIFY_DELAY = 20;
+
 // Block until the `fs.watch` handles created so far are actually armed.
 //
 // On Linux and Windows `uv_fs_event_start` arms the OS watch inline
@@ -244,9 +249,13 @@ class NodejsWatcher {
     this.errorCallback = null;
     this.closed = false;
     this.sharedRoot = null;
+    this.changeTimer = null;
     this.verifyTimer = null;
-    // What the target looked like when we last spoke about it, so a rebuild of
-    // the macOS event stream can be reconciled across. See `reconcileAfterRebuild`.
+    // What the target looked like when we last spoke about it. Besides
+    // reconciling macOS event-stream rebuilds, this distinguishes content
+    // changes from metadata-only `fs.watch` notifications. On Windows, merely
+    // reading a file can update its last-access time and report `change` even
+    // though its contents are untouched.
     this.signature = this.readSignature();
 
     ACTIVE.add(this);
@@ -301,13 +310,7 @@ class NodejsWatcher {
       // A content change only matters when it names our file (or the platform
       // omitted the name); ignore edits to siblings in the parent directory.
       if (!nameMatchesOrUnknown) return;
-      if (!this.exists) {
-        // The file appeared (created). Capture its identity and report it.
-        this.captureIdentity();
-        this.emit(this.exists ? "create" : "change", this.path);
-      } else {
-        this.emit("change", this.path);
-      }
+      this.scheduleChange();
       return;
     }
 
@@ -316,29 +319,23 @@ class NodejsWatcher {
     // when our file is *moved away* the event can surface under the file's NEW
     // basename (macOS especially), so we can't rely on the name to decide
     // relevance. Instead, look at whether our path still exists.
-    let existsNow;
-    try {
-      fs.statSync(this.realPath);
-      existsNow = true;
-    } catch {
-      existsNow = false;
-    }
-    if (existsNow) {
+    const current = this.readSignature();
+    if (current.exists) {
       // Still present: an in-place change or a completed atomic save. Report it
       // immediately rather than waiting out the rename-verify delay — but only
       // when the event concerns our file (a named sibling rename doesn't touch
       // our contents).
       if (!nameMatchesOrUnknown) return;
-      const wasAbsent = !this.exists;
-      this.captureIdentity();
-      this.emit(wasAbsent ? "create" : "change", this.path);
+      this.cancelScheduledChange();
+      this.reportPresentFile(current);
       return;
     }
     // Gone from its path. If our file previously existed it was deleted or
     // moved (possibly reported under its new name) — defer to distinguish
     // delete vs. move. If it never existed, an unrelated sibling rename is
     // irrelevant.
-    if (this.exists) {
+    if (this.signature.exists) {
+      this.cancelScheduledChange();
       this.scheduleVerify();
     }
   }
@@ -377,7 +374,13 @@ class NodejsWatcher {
   readSignature() {
     try {
       const stat = fs.statSync(this.realPath);
-      return { exists: true, mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino };
+      return {
+        exists: true,
+        mtimeMs: stat.mtimeMs,
+        atimeMs: stat.atimeMs,
+        size: stat.size,
+        ino: stat.ino,
+      };
     } catch {
       return { exists: false };
     }
@@ -405,20 +408,66 @@ class NodejsWatcher {
       return;
     }
 
-    const wasAbsent = !previous.exists;
-    this.captureIdentity();
-    this.emit(wasAbsent ? "create" : "change", this.path);
+    this.reportPresentFile(current);
   }
 
-  captureIdentity() {
-    try {
-      const stat = fs.statSync(this.realPath);
-      this.ino = stat.ino;
-      this.exists = true;
-    } catch {
-      this.exists = false;
-      this.ino = null;
+  recordSignature(signature) {
+    this.signature = signature;
+    this.exists = signature.exists;
+    this.ino = signature.exists ? signature.ino : null;
+  }
+
+  cancelScheduledChange() {
+    if (!this.changeTimer) return;
+    clearTimeout(this.changeTimer);
+    this.changeTimer = null;
+  }
+
+  scheduleChange() {
+    this.cancelScheduledChange();
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = null;
+      if (this.closed) return;
+
+      const current = this.readSignature();
+      if (!current.exists) {
+        // A raw change may race a removal. Let the usual rename-versus-delete
+        // arbitration decide what happened rather than reporting unreadable
+        // contents as changed.
+        if (this.signature.exists) this.scheduleVerify();
+        return;
+      }
+
+      const contentUnchanged = sameSignature(this.signature, current);
+      if (contentUnchanged && current.atimeMs !== this.signature.atimeMs) {
+        // Windows includes FILE_NOTIFY_CHANGE_LAST_ACCESS in `fs.watch`.
+        // Account for that metadata update without claiming that the file's
+        // contents changed.
+        this.recordSignature(current);
+        return;
+      }
+
+      // If the OS reported a change but every observable timestamp and size is
+      // identical, preserve the notification. NTFS can reuse all of those
+      // values for a same-size rewrite in the tick that created the file.
+      this.reportPresentFile(current, { reportUnchanged: true });
+    }, CHANGE_VERIFY_DELAY);
+  }
+
+  // Report a present target only when its content-bearing signature moved,
+  // unless a reconciled native event leaves no stat field that can explain it.
+  // `ctime` is deliberately absent: on Windows it is NTFS ChangeTime and may
+  // move for metadata-only operations. `ino` keeps an atomic replacement
+  // visible even when its bytes, size, and timestamp happen to match.
+  reportPresentFile(current = this.readSignature(), { reportUnchanged = false } = {}) {
+    if (!current.exists) return false;
+    if (sameSignature(this.signature, current) && !reportUnchanged) {
+      if (current.atimeMs !== this.signature.atimeMs) this.recordSignature(current);
+      return false;
     }
+    const wasAbsent = !this.signature.exists;
+    this.emit(wasAbsent ? "create" : "change", this.path, undefined, current);
+    return true;
   }
 
   scheduleVerify() {
@@ -442,8 +491,6 @@ class NodejsWatcher {
         } else {
           // Present again. On a direct file watch (macOS) an atomic save
           // replaced the inode and left the handle on the old one; re-arm.
-          const wasAbsent = !this.exists;
-          this.captureIdentity();
           if (this.watchDirectly) {
             this.stopHandle();
             try {
@@ -455,7 +502,7 @@ class NodejsWatcher {
               return;
             }
           }
-          this.emit(wasAbsent ? "create" : "change", this.path);
+          this.reportPresentFile();
         }
       });
     }, RENAME_VERIFY_DELAY);
@@ -488,11 +535,11 @@ class NodejsWatcher {
     return null;
   }
 
-  emit(eventType, eventPath, oldPath) {
+  emit(eventType, eventPath, oldPath, signature = this.readSignature()) {
     if (this.closed || !this.callback) return;
-    // Anything reported now is accounted for, so a later rebuild must not
-    // reconcile it a second time.
-    if (process.platform === "darwin") this.signature = this.readSignature();
+    // Anything reported now is accounted for, so a duplicate native event or
+    // a later macOS rebuild must not reconcile it a second time.
+    this.recordSignature(signature);
     this.callback(eventType, eventPath, oldPath);
   }
 
@@ -531,6 +578,7 @@ class NodejsWatcher {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.cancelScheduledChange();
     if (this.verifyTimer) {
       clearTimeout(this.verifyTimer);
       this.verifyTimer = null;
