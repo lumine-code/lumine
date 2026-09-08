@@ -14,6 +14,8 @@ module.exports = class MenuBarView {
     this.activeButton = null;
     this.previousFocus = null;
     this.temporarilyVisible = false;
+    this.altKeyDown = false;
+    this.altPressedAlone = false;
     this.destroyed = false;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
@@ -29,10 +31,13 @@ module.exports = class MenuBarView {
     this.boundKeyUp = (event) => this.onKeyUp(event);
     this.boundWheel = (event) => this.onWheel(event);
     this.boundFocusOut = (event) => this.onFocusOut(event);
+    this.boundWindowBlur = () => this.onWindowBlur();
     this.boundWindowClick = (event) => this.onWindowClick(event);
     document.body.addEventListener("keydown", this.boundKeyDown);
     document.body.addEventListener("keyup", this.boundKeyUp);
-    document.body.addEventListener("wheel", this.boundWheel, { passive: true });
+    // Embedded surfaces may consume wheel events, but Alt-tap state belongs to the whole window.
+    window.addEventListener("wheel", this.boundWheel, { capture: true, passive: true });
+    window.addEventListener("blur", this.boundWindowBlur);
     window.addEventListener("click", this.boundWindowClick);
     this.element.addEventListener("focusout", this.boundFocusOut);
     this.subscriptions.add(menuManager.onDidChange(() => this.scheduleUpdate()));
@@ -208,6 +213,7 @@ module.exports = class MenuBarView {
       button.element.setAttribute("aria-expanded", "false");
     }
     this.activeButton = null;
+    this.altPressedAlone = false;
     this.element.classList.remove("focused", "alt-down");
     this.setTemporarilyVisible(false);
     this.applyPendingUpdate();
@@ -304,24 +310,37 @@ module.exports = class MenuBarView {
   }
 
   onKeyDown(event) {
-    if (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-      this.altPressedAlone = true;
-      this.element.classList.add("alt-down");
-      if (this.altGivesFocus || this.autoHide) event.preventDefault();
+    if (event.key === "Alt") {
+      const isPlainAlt = !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      // A held Alt can repeat. Only its first keydown starts a tap, so wheel
+      // input keeps the whole physical press consumed until keyup.
+      if (!this.altKeyDown) {
+        this.altKeyDown = true;
+        this.altPressedAlone = isPlainAlt && !event.repeat;
+      }
+      if (isPlainAlt) {
+        this.element.classList.add("alt-down");
+        if (this.altGivesFocus || this.autoHide) event.preventDefault();
+      } else {
+        this.altPressedAlone = false;
+        this.element.classList.remove("alt-down");
+      }
       return;
     }
-    if (event.key !== "Alt") this.altPressedAlone = false;
+    this.altPressedAlone = false;
   }
 
   onKeyUp(event) {
     if (event.key !== "Alt") return;
-    this.element.classList.remove("alt-down");
-    if (this.altPressedAlone && this.altGivesFocus) this.focus();
+    const shouldFocus = this.altKeyDown && this.altPressedAlone && this.altGivesFocus;
+    this.altKeyDown = false;
     this.altPressedAlone = false;
+    this.element.classList.remove("alt-down");
+    if (shouldFocus) this.focus();
   }
 
-  onWheel(event) {
-    if (event.altKey) this.altPressedAlone = false;
+  onWheel() {
+    this.altPressedAlone = false;
   }
 
   onFocusOut(event) {
@@ -329,6 +348,12 @@ module.exports = class MenuBarView {
     requestAnimationFrame(() => {
       if (!this.popup && !this.element.contains(document.activeElement)) this.blur();
     });
+  }
+
+  onWindowBlur() {
+    this.altKeyDown = false;
+    this.altPressedAlone = false;
+    this.element.classList.remove("alt-down");
   }
 
   onWindowClick(event) {
@@ -392,7 +417,8 @@ module.exports = class MenuBarView {
     this.subscriptions.dispose();
     document.body.removeEventListener("keydown", this.boundKeyDown);
     document.body.removeEventListener("keyup", this.boundKeyUp);
-    document.body.removeEventListener("wheel", this.boundWheel);
+    window.removeEventListener("wheel", this.boundWheel, { capture: true });
+    window.removeEventListener("blur", this.boundWindowBlur);
     window.removeEventListener("click", this.boundWindowClick);
     this.element.removeEventListener("focusout", this.boundFocusOut);
     this.element.remove();
