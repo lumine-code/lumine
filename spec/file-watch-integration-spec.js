@@ -17,6 +17,7 @@ describe("Application file watcher integration", () => {
   let directory;
   let service;
   let client;
+  let links;
 
   beforeEach(() => {
     jasmine.useRealClock?.();
@@ -25,13 +26,26 @@ describe("Application file watcher integration", () => {
     );
     service = new FileWatchService({ retryDelays: [20, 40, 80], stableDelay: 1000 });
     client = service.createClient("integration");
+    links = new Set();
   });
 
   afterEach(async () => {
     await client.close();
     await service.close();
+    for (const link of [...links].reverse()) {
+      try {
+        fs.unlinkSync(link);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
     fs.rmSync(directory, { recursive: true, force: true });
   });
+
+  function directoryLink(target, alias) {
+    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    links.add(alias);
+  }
 
   it("reports writes and atomic saves through a fixed file handle", async () => {
     const target = path.join(directory, "document.txt");
@@ -113,7 +127,7 @@ describe("Application file watcher integration", () => {
     const alias = path.join(directory, "alias");
     fs.mkdirSync(first);
     fs.mkdirSync(second);
-    fs.symlinkSync(first, alias, process.platform === "win32" ? "junction" : "dir");
+    directoryLink(first, alias);
     const target = path.join(alias, "file");
     const handle = client.watchFile(target);
     const events = [];
@@ -123,7 +137,7 @@ describe("Application file watcher integration", () => {
     await until(() => events.length);
     expect(events[0].path).toBe(target);
     fs.unlinkSync(alias);
-    fs.symlinkSync(second, alias, process.platform === "win32" ? "junction" : "dir");
+    directoryLink(second, alias);
     fs.writeFileSync(path.join(second, "file"), "second content");
     await until(() => events.some((event) => event.action === "updated"));
     expect(events.every((event) => event.path === target)).toBe(true);
@@ -136,7 +150,7 @@ describe("Application file watcher integration", () => {
     fs.mkdirSync(targets);
     const target = path.join(targets, "not-yet", "nested");
     const alias = path.join(aliases, "alias");
-    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    directoryLink(target, alias);
     const requested = path.join(alias, "file");
     const handle = client.watchFile(requested);
     const events = [];
@@ -157,7 +171,7 @@ describe("Application file watcher integration", () => {
     fs.mkdirSync(targets);
     const target = path.join(targets, "not-yet");
     const alias = path.join(aliases, "alias");
-    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    directoryLink(target, alias);
     const handle = client.watchDirectory(alias, { recursive: true });
     const events = [];
     handle.onDidChange((batch) => events.push(...batch));

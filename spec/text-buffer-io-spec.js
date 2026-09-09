@@ -10,6 +10,7 @@ const TextBufferFile = require("../src/text-buffer-file");
 const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
 const fsAdmin = require("@lumine-code/fs-admin");
 const FileState = require("../src/file-state");
+const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 const winattr = require("winattr");
 
@@ -599,7 +600,7 @@ describe("TextBuffer IO", () => {
       expect(buffer.getText()).toBe("a");
 
       fs.writeFileSync(newPath, "does trigger a buffer change");
-      await timeoutPromise(400);
+      await conditionPromise(() => didChangeHandler.calls.any(), "the new path's external change");
 
       expect(didChangeHandler).toHaveBeenCalled();
       expect(buffer.getText()).toBe("does trigger a buffer change");
@@ -792,6 +793,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("returns unmodified for an empty buffer at a path that never existed", async (done) => {
+      buffer.destroy();
       const filePath = path.join(temp.mkdirSync(), "file-to-delete");
       buffer = await TextBuffer.load(filePath);
       expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);

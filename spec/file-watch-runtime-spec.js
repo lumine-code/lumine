@@ -116,6 +116,7 @@ describe("File watch runtime", () => {
   let events;
   let service;
   let children;
+  let links;
 
   beforeEach(() => {
     jasmine.useRealClock?.();
@@ -129,6 +130,7 @@ describe("File watch runtime", () => {
       retryDelay: 10,
     });
     children = [];
+    links = new Set();
     service = new FileWatchService({
       retryDelays: [5, 10, 15],
       stableDelay: 1000,
@@ -143,6 +145,15 @@ describe("File watch runtime", () => {
   afterEach(async () => {
     await service.close();
     await worker.close();
+    // Remove the links themselves before traversing the owned fixture tree.
+    // Electron's Windows fs.rm cannot resolve self-parent junctions or loops.
+    for (const link of [...links].reverse()) {
+      try {
+        fs.unlinkSync(link);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
     fs.rmSync(directory, { recursive: true, force: true });
   });
 
@@ -295,23 +306,31 @@ describe("File watch runtime", () => {
     await until(() => changes(1).some((event) => event.action === "updated"));
   });
 
-  it("keeps directory watches fixed across ancestor rename and recreation", async () => {
-    const parent = path.join(directory, "parent");
-    const target = path.join(parent, "target");
-    fs.mkdirSync(target, { recursive: true });
-    await subscribe(1, "directory", target, true);
-    fs.renameSync(parent, path.join(directory, "moved"));
-    engine.emit({ action: "deleted", path: parent });
-    await until(() => changes(1).some((event) => event.action === "deleted"));
-    fs.mkdirSync(target, { recursive: true });
-    engine.emit({ action: "created", path: parent });
-    await until(() => changes(1).some((event) => event.action === "created"));
-    const file = path.join(target, "new.txt");
-    fs.writeFileSync(file, "new");
-    engine.emit({ action: "created", path: file });
-    await until(() => changes(1).some((event) => event.path === file));
-    expect(changes(1).every((event) => containsPath(target, event.path))).toBe(true);
-  });
+  for (const platform of ["linux", "darwin"]) {
+    it(`keeps directory watches fixed across ancestor rename and recreation with ${platform} signals`, async () => {
+      worker.platform = platform;
+      const parent = path.join(directory, "parent");
+      const target = path.join(parent, "target");
+      fs.mkdirSync(target, { recursive: true });
+      await subscribe(1, "directory", target, true);
+      fs.renameSync(parent, path.join(directory, "moved"));
+      if (platform === "darwin") {
+        const rootSource = [...engine.sources].find((source) => source.directory === target);
+        rootSource.callback({ type: "invalidate", reason: "root-changed" });
+      } else {
+        engine.emit({ action: "deleted", path: parent });
+      }
+      await until(() => changes(1).some((event) => event.action === "deleted"));
+      fs.mkdirSync(target, { recursive: true });
+      engine.emit({ action: "created", path: parent });
+      await until(() => changes(1).some((event) => event.action === "created"));
+      const file = path.join(target, "new.txt");
+      fs.writeFileSync(file, "new");
+      engine.emit({ action: "created", path: file });
+      await until(() => changes(1).some((event) => event.path === file));
+      expect(changes(1).every((event) => containsPath(target, event.path))).toBe(true);
+    });
+  }
 
   it("coalesces atomic saves, ignores access time and reports external rename as deletion", async () => {
     const target = path.join(directory, "document");
@@ -638,6 +657,7 @@ describe("File watch runtime", () => {
 
     function directoryLink(target, alias) {
       fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+      links.add(alias);
     }
 
     it("uses only main sources for ordinary existing macOS files and directories", async () => {
