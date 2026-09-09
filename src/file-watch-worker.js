@@ -25,12 +25,14 @@ class FileWatchWorker {
     engine,
     sendEvent,
     filesystem = fs.promises,
+    platform = process.platform,
     settleDelay = 35,
     retryDelay = 30000,
   }) {
     this.engine = engine;
     this.sendEvent = sendEvent;
     this.fs = filesystem;
+    this.platform = platform;
     this.settleDelay = settleDelay;
     this.retryDelay = retryDelay;
     this.sources = new Map();
@@ -49,27 +51,110 @@ class FileWatchWorker {
     }
   }
 
+  async resolveTarget(targetPath) {
+    const links = [];
+    let current = path.parse(targetPath).root;
+    let components = targetPath.slice(current.length).split(path.sep).filter(Boolean);
+    let followed = 0;
+    while (components.length) {
+      const component = components.shift();
+      if (component === ".") continue;
+      if (component === "..") {
+        current = path.dirname(current);
+        continue;
+      }
+      const entry = path.join(current, component);
+      let stat;
+      try {
+        stat = await this.fs.lstat(entry, { bigint: true });
+      } catch (error) {
+        if (!MISSING_CODES.has(error.code)) throw error;
+        // realpath on the complete target cannot resolve a dangling link.
+        // Keep the missing suffix after the last existing, resolved component.
+        return {
+          path: path.join(await this.fs.realpath(current), component, ...components),
+          stat: null,
+          links,
+        };
+      }
+      if (stat.isSymbolicLink()) {
+        if (++followed > 40) {
+          throw Object.assign(new Error(`Too many symbolic links: ${targetPath}`), {
+            code: "ELOOP",
+            path: targetPath,
+          });
+        }
+        const parent = await this.fs.realpath(current);
+        const target = await this.fs.readlink(entry);
+        links.push({
+          path: path.join(parent, component),
+          parent,
+          target,
+          identity: identity(stat),
+        });
+        const normalizedTarget = path.sep === "\\" ? target.replaceAll("/", "\\") : target;
+        const root = path.parse(normalizedTarget).root;
+        current = root ? path.resolve(parent, root) : parent;
+        // Keep dot segments until traversal: a preceding symbolic component
+        // may change what `..` means, so path.resolve(target) here is unsafe.
+        components = normalizedTarget
+          .slice(root.length)
+          .split(path.sep)
+          .filter(Boolean)
+          .concat(components);
+      } else {
+        current = entry;
+        if (components.length && !stat.isDirectory()) {
+          const blockedPath = await this.fs.realpath(current);
+          return { path: path.join(blockedPath, ...components), stat: null, links, blockedPath };
+        }
+        if (!components.length) {
+          return { path: await this.fs.realpath(current), stat, links };
+        }
+      }
+    }
+    return { path: await this.fs.realpath(current), stat: await this.stat(current), links };
+  }
+
+  async nearestDirectory(targetPath) {
+    let current = targetPath;
+    while (true) {
+      if ((await this.stat(current))?.isDirectory()) return this.fs.realpath(current);
+      const parent = path.dirname(current);
+      if (parent === current) {
+        throw Object.assign(new Error(`No existing directory for ${targetPath}`), {
+          code: "ENOENT",
+          path: targetPath,
+        });
+      }
+      current = parent;
+    }
+  }
+
   async plan(logical) {
-    const targetStat = await this.stat(logical.path);
+    const resolution = await this.resolveTarget(logical.path);
+    const targetStat = resolution.stat;
     if (targetStat && targetStat.isDirectory() !== (logical.kind === "directory")) {
       throw Object.assign(new Error(`Expected a ${logical.kind}: ${logical.path}`), {
         code: logical.kind === "directory" ? "ENOTDIR" : "EISDIR",
         path: logical.path,
       });
     }
-    const canonicalTarget = targetStat ? await this.fs.realpath(logical.path) : null;
+    const canonicalTarget = resolution.path;
+    const guardTarget = resolution.blockedPath || canonicalTarget;
     const descriptors = new Map();
-    const add = async (directoryPath, recursive, guardPath, main = false) => {
+    const add = async (directoryPath, recursive, guardPath, main = false, guard = false) => {
       const stat = await this.stat(directoryPath);
       if (!stat?.isDirectory()) return false;
       const canonical = await this.fs.realpath(directoryPath);
-      const key = `${canonical}\0${recursive ? 1 : 0}`;
+      const key = `${canonical}\0${recursive ? 1 : 0}\0${guard ? 1 : 0}`;
       let descriptor = descriptors.get(key);
       if (!descriptor) {
         descriptor = {
           key,
           directory: canonical,
           recursive,
+          guard,
           identity: identity(stat),
           guardPaths: new Set(),
           main: false,
@@ -88,31 +173,49 @@ class FileWatchWorker {
         if (!(await add(chain[i], false, child))) break;
       }
     };
-    if (logical.kind === "file") {
-      await addGuards(path.dirname(logical.path), logical.path);
-      if (canonicalTarget) {
-        await addGuards(path.dirname(canonicalTarget), canonicalTarget);
-        await add(path.dirname(canonicalTarget), false, null, true);
-      } else {
-        // A missing file is still a file. Its parent may itself be missing;
-        // the ancestor guards already cover that case without recursive scope.
-        await add(path.dirname(logical.path), false, logical.path, true);
+    if (this.platform === "darwin") {
+      // FSEvents WatchRoot detects relocation of an ordinary source. Watching
+      // every ancestor would create a volume-wide FSEvents stream at `/`.
+      // Only symbolic-link entries and missing-target anchors need separate
+      // vnode guards, whose events describe directory membership, not content.
+      for (const link of resolution.links) await add(link.parent, false, link.path, false, true);
+      if (!targetStat) {
+        const anchor = await this.nearestDirectory(path.dirname(guardTarget));
+        const relative = relativePath(anchor, guardTarget);
+        const child = path.join(anchor, relative.split(path.sep)[0]);
+        await add(anchor, false, child, false, true);
       }
     } else {
-      await addGuards(logical.path);
-      if (canonicalTarget) {
-        await addGuards(canonicalTarget);
-        await add(canonicalTarget, logical.recursive, null, true);
-      }
+      // Every traversed link matters, including links in a target chain that
+      // are outside both the original alias and the final resolved target.
+      for (const link of resolution.links) await addGuards(link.parent, link.path);
+      if (logical.kind === "file" || resolution.blockedPath)
+        await addGuards(path.dirname(guardTarget), guardTarget);
+      else await addGuards(guardTarget);
     }
-    const main = [...descriptors.values()].find((descriptor) => descriptor.main);
-    const resolvedTarget =
-      canonicalTarget ||
-      (logical.kind === "file" && main
-        ? path.join(main.directory, path.basename(logical.path))
-        : null);
+    if (logical.kind === "file") {
+      if (targetStat || (this.platform !== "darwin" && !resolution.blockedPath)) {
+        await add(path.dirname(canonicalTarget), false, null, true);
+      }
+    } else if (targetStat) {
+      await add(canonicalTarget, logical.recursive, null, true);
+    }
+    // A main shallow source already observes membership at its own root.
+    // Reuse it for link-entry guards requested by this same subscription.
+    for (const [key, descriptor] of descriptors) {
+      if (!descriptor.guard) continue;
+      const main = [...descriptors.values()].find(
+        (candidate) =>
+          candidate.main && !candidate.recursive && candidate.directory === descriptor.directory,
+      );
+      if (!main) continue;
+      for (const guardedPath of descriptor.guardPaths) main.guardPaths.add(guardedPath);
+      descriptors.delete(key);
+    }
     const topology = [
-      resolvedTarget,
+      canonicalTarget,
+      resolution.blockedPath || null,
+      resolution.links.map(({ path: linkPath, target, identity }) => [linkPath, target, identity]),
       [...descriptors.values()].map((descriptor) => [
         descriptor.key,
         descriptor.identity,
@@ -123,7 +226,7 @@ class FileWatchWorker {
     return {
       descriptors,
       stat: targetStat,
-      canonicalTarget: resolvedTarget,
+      canonicalTarget,
       topology: JSON.stringify(topology),
       signature: JSON.stringify([topology, Boolean(targetStat)]),
     };
@@ -141,7 +244,7 @@ class FileWatchWorker {
       };
       source.handle = this.engine.watchDirectory(
         source.path,
-        { recursive: descriptor.recursive },
+        { recursive: descriptor.recursive, guard: descriptor.guard },
         (message) => this.sourceEvent(source, message),
       );
       this.sources.set(source.key, source);
@@ -178,6 +281,15 @@ class FileWatchWorker {
       }
       return;
     }
+    if (message.type === "guard" && !source.invalid) {
+      for (const logical of source.members.keys()) {
+        if (logical.cancelled) continue;
+        logical.rebind = true;
+        logical.checkFile = true;
+        this.schedule(logical);
+      }
+      return;
+    }
     if (message.type !== "changes" || source.invalid) return;
     for (const [logical, descriptor] of source.members) {
       if (logical.cancelled) continue;
@@ -196,7 +308,10 @@ class FileWatchWorker {
         if (logical.kind === "file") {
           if (event.path === logical.plan?.canonicalTarget) {
             logical.checkFile = true;
-            logical.contentChanged ||= event.contentChanged === true;
+            if (event.contentChanged === true) {
+              logical.contentVersion = (logical.contentVersion || 0) + 1;
+              logical.contentChanged = true;
+            }
             if (event.action !== "updated") logical.rebind = true;
           }
         } else if (containsPath(descriptor.directory, event.path, logical.recursive)) {
@@ -234,7 +349,14 @@ class FileWatchWorker {
   }
 
   schedule(logical, delay = this.settleDelay) {
+    if (logical.timer && delay < logical.timerDelay) {
+      // Fresh topology evidence should not wait out a previous permission or
+      // broken-link retry backoff. Ordinary event coalescing keeps its timer.
+      clearTimeout(logical.timer);
+      logical.timer = null;
+    }
     if (logical.cancelled || logical.timer || logical.initializing || logical.processing) return;
+    logical.timerDelay = delay;
     logical.timer = setTimeout(() => {
       logical.timer = null;
       logical.processing = this.update(logical)
@@ -317,6 +439,7 @@ class FileWatchWorker {
   }
 
   async reconcileFile(logical, initial = false, contentChanged = false) {
+    const contentVersion = logical.contentVersion || 0;
     let stat = await this.stat(logical.path);
     if (!stat && logical.fingerprint !== null && !initial) {
       // Editors commonly replace a file via rename. A short second check keeps
@@ -331,12 +454,27 @@ class FileWatchWorker {
       stat = await this.stat(logical.path);
     }
     const current = fingerprint(stat);
-    if (!initial && (current !== logical.fingerprint || (current !== null && contentChanged))) {
+    const accessTime = stat ? (stat.atimeNs ?? stat.atimeMs) : null;
+    if (initial && contentVersion === (logical.contentVersion || 0)) {
+      // A content hint received before the baseline stat is already covered
+      // by that initial read. Keep hints arriving during the stat operation:
+      // their write may not be represented by its returned metadata.
+      logical.contentChanged = false;
+    }
+    // Some native streams retain an earlier content flag on a later access
+    // notification. An access-only metadata change is not a content update;
+    // an unchanged-stat content hint still covers same-size/mtime rewrites.
+    if (
+      !initial &&
+      (current !== logical.fingerprint ||
+        (current !== null && contentChanged && accessTime === logical.accessTime))
+    ) {
       const action =
         current === null ? "deleted" : logical.fingerprint === null ? "created" : "updated";
       mergeChange(logical.events, { action, path: logical.path });
     }
     logical.fingerprint = current;
+    logical.accessTime = accessTime;
   }
 
   async update(logical) {
@@ -444,6 +582,7 @@ class FileWatchWorker {
         path: source.path,
         subscribers: source.members.size,
         recursive: [...source.members.values()][0]?.recursive || false,
+        guard: [...source.members.values()][0]?.guard || false,
       })),
     };
   }

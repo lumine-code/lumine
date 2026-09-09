@@ -117,7 +117,7 @@ module.exports = class Project extends Model {
     this.subscriptions.dispose();
     this.subscriptions = new CompositeDisposable();
 
-    for (let buffer of this.buffers) {
+    for (let buffer of this.buffers.slice()) {
       if (buffer != null) buffer.destroy();
     }
     this.buffers = [];
@@ -185,7 +185,10 @@ module.exports = class Project extends Model {
         bufferState.fileState === FileState.UNMODIFIED &&
         bufferState.digestWhenLastPersisted !== false;
 
-      return TextBuffer.deserialize(bufferState).catch((_) => {
+      return TextBuffer.deserialize({
+        ...bufferState,
+        fileWatchClient: this.fileWatchClient,
+      }).catch((_) => {
         this.retiredBufferIDs.add(bufferState.id);
         this.retiredBufferPaths.add(bufferState.filePath);
         return null;
@@ -1335,9 +1338,9 @@ module.exports = class Project extends Model {
   buildBufferSync(absoluteFilePath) {
     let buffer;
     if (absoluteFilePath != null) {
-      buffer = TextBuffer.loadSync(absoluteFilePath);
+      buffer = TextBuffer.loadSync(absoluteFilePath, { fileWatchClient: this.fileWatchClient });
     } else {
-      buffer = new TextBuffer();
+      buffer = new TextBuffer({ fileWatchClient: this.fileWatchClient });
     }
     this.addBuffer(buffer);
     return buffer;
@@ -1353,7 +1356,9 @@ module.exports = class Project extends Model {
     let buffer;
     if (absoluteFilePath != null) {
       if (this.loadPromisesByPath[absoluteFilePath] == null) {
-        this.loadPromisesByPath[absoluteFilePath] = TextBuffer.load(absoluteFilePath)
+        this.loadPromisesByPath[absoluteFilePath] = TextBuffer.load(absoluteFilePath, {
+          fileWatchClient: this.fileWatchClient,
+        })
           .then((result) => {
             delete this.loadPromisesByPath[absoluteFilePath];
             return result;
@@ -1365,7 +1370,7 @@ module.exports = class Project extends Model {
       }
       buffer = await this.loadPromisesByPath[absoluteFilePath];
     } else {
-      buffer = new TextBuffer();
+      buffer = new TextBuffer({ fileWatchClient: this.fileWatchClient });
     }
 
     this.grammarRegistry.autoAssignLanguageMode(buffer);

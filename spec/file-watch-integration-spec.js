@@ -129,6 +129,45 @@ describe("Application file watcher integration", () => {
     expect(events.every((event) => event.path === target)).toBe(true);
   });
 
+  it("observes a dangling link whose target and parents are created outside the alias directory", async () => {
+    const aliases = path.join(directory, "aliases");
+    const targets = path.join(directory, "targets");
+    fs.mkdirSync(aliases);
+    fs.mkdirSync(targets);
+    const target = path.join(targets, "not-yet", "nested");
+    const alias = path.join(aliases, "alias");
+    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    const requested = path.join(alias, "file");
+    const handle = client.watchFile(requested);
+    const events = [];
+    handle.onDidChange((batch) => events.push(...batch));
+    await handle.ready;
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, "file"), "created through target");
+    await until(() => events.some((event) => event.action === "created"));
+    expect(events.every((event) => event.path === requested)).toBe(true);
+    fs.writeFileSync(path.join(target, "file"), "updated target contents");
+    await until(() => events.some((event) => event.action === "updated"));
+  });
+
+  it("observes creation of a dangling directory target before recursive child updates", async () => {
+    const aliases = path.join(directory, "aliases");
+    const targets = path.join(directory, "targets");
+    fs.mkdirSync(aliases);
+    fs.mkdirSync(targets);
+    const target = path.join(targets, "not-yet");
+    const alias = path.join(aliases, "alias");
+    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    const handle = client.watchDirectory(alias, { recursive: true });
+    const events = [];
+    handle.onDidChange((batch) => events.push(...batch));
+    await handle.ready;
+    fs.mkdirSync(target);
+    await until(() => events.some((event) => event.action === "created" && event.path === alias));
+    fs.writeFileSync(path.join(target, "child"), "created child");
+    await until(() => events.some((event) => event.path === path.join(alias, "child")));
+  });
+
   it("invalidates surviving owners after repeated worker crashes and rereads changes in the gap", async () => {
     const target = path.join(directory, "file");
     fs.writeFileSync(target, "before");

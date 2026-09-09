@@ -147,6 +147,7 @@ class TextBuffer {
     if (params == null) params = {};
 
     this.refcount = 0;
+    this.fileWatchClient = params.fileWatchClient;
     this.file = null;
     this.fileSubscriptions = null;
     this.oldFileSubscriptions = null;
@@ -3101,7 +3102,9 @@ class TextBuffer {
       }
       this.watchedFilePath = null;
     } else if (typeof this.file.getPath === "function") {
-      const watcher = watchFile(file.getPath());
+      const watcher = this.fileWatchClient
+        ? this.fileWatchClient.watchFile(file.getPath())
+        : watchFile(file.getPath());
       this.fileWatchStartPromise = watcher.ready;
       this.fileSubscriptions.add(
         new Disposable(() => {

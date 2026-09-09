@@ -673,11 +673,12 @@ describe("PackageManager", () => {
         it("defers requiring/activating the main module until a registered opener is called", async () => {
           promise = lumine.packages.activatePackage("package-with-workspace-openers");
           expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-          lumine.workspace.open("lumine://fictitious");
+          const opening = lumine.workspace.open("lumine://fictitious");
 
           await promise;
           expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
           expect(mainModule.openerCount).toBe(1);
+          await opening;
         });
 
         it("activates the package immediately when the events are empty", async () => {

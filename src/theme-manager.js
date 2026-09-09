@@ -5,7 +5,7 @@ const fs = require("@lumine-code/fs-plus");
 
 // Keeping a reference to the entire object so that it can be mocked more
 // easily in the specs.
-const watcher = require("./file-watch");
+const { watchFile } = require("./file-watch");
 
 // The core stylesheets, in loading order (relative to static/). Plain CSS —
 // all theming flows through the custom-property contract at runtime, so the
@@ -96,7 +96,9 @@ module.exports = class ThemeManager {
     notificationManager,
     viewRegistry,
     applicationDelegate,
+    fileWatchClient,
   }) {
+    this.fileWatchClient = fileWatchClient;
     this.packageManager = packageManager;
     this.config = config;
     this.styleManager = styleManager;
@@ -488,7 +490,9 @@ module.exports = class ThemeManager {
     if (!userStylesheetPath) return;
 
     try {
-      const handle = watcher.watchFile(userStylesheetPath);
+      const handle = this.fileWatchClient
+        ? this.fileWatchClient.watchFile(userStylesheetPath)
+        : watchFile(userStylesheetPath);
       this.userStylesheetSubscription = handle;
       handle.onDidChange(() => this.reloadStylesheet());
       handle.onDidInvalidate(() => this.reloadStylesheet());

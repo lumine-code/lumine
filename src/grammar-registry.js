@@ -19,8 +19,9 @@ const PATH_SPLIT_REGEX = new RegExp("[/.]");
  * An instance of this class is always available as the `lumine.grammars` global.
  */
 module.exports = class GrammarRegistry {
-  constructor({ config } = {}) {
+  constructor({ config, fileWatchClient } = {}) {
     this.config = config;
+    this.fileWatchClient = fileWatchClient;
     this.subscriptions = new CompositeDisposable();
     this.emitter = new Emitter();
     this.clear();

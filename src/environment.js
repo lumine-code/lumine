@@ -226,6 +226,7 @@ class Environment {
      * @type {KeymapManager}
      */
     this.keymaps = new KeymapManager({
+      fileWatchClient: this.fileWatchClient,
       notificationManager: this.notifications,
     });
 
@@ -262,7 +263,10 @@ class Environment {
      *
      * @type {GrammarRegistry}
      */
-    this.grammars = new GrammarRegistry({ config: this.config });
+    this.grammars = new GrammarRegistry({
+      config: this.config,
+      fileWatchClient: this.fileWatchClient,
+    });
 
     /**
      * @public
@@ -297,6 +301,7 @@ class Environment {
      * @type {ThemeManager}
      */
     this.themes = new ThemeManager({
+      fileWatchClient: this.fileWatchClient,
       packageManager: this.packages,
       config: this.config,
       styleManager: this.styles,
@@ -418,6 +423,7 @@ class Environment {
      */
     this.textEditors = new TextEditorRegistry();
     this.textEditorFactory = new TextEditorFactory({
+      fileWatchClient: this.fileWatchClient,
       config: this.config,
       assert: this.assert.bind(this),
       packageManager: this.packages,

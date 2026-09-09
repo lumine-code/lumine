@@ -2,11 +2,11 @@ const { ensureNoDeprecatedFunctionCalls, warnIfLeakingPathSubscriptions } = requ
 
 exports.register = (jasmineEnv) => {
   let currentSpec = "";
-  jasmineEnv.addReporter({
+  const reporter = {
     specStarted: (result) => {
       currentSpec = result.fullName;
     },
-  });
+  };
   jasmineEnv.afterEach((done) => {
     ensureNoDeprecatedFunctionCalls();
 
@@ -20,4 +20,5 @@ exports.register = (jasmineEnv) => {
       })
       .then(() => done(), done.fail);
   });
+  return reporter;
 };

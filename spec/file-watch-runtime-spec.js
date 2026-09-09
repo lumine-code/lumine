@@ -23,12 +23,13 @@ class FakeEngine {
     this.holdReady = false;
   }
 
-  watchDirectory(directory, { recursive }, callback) {
+  watchDirectory(directory, { recursive, guard = false }, callback) {
     const ready = deferred();
     const closed = deferred();
     const source = {
       directory,
       recursive,
+      guard,
       callback,
       ready: ready.promise,
       closed: closed.promise,
@@ -48,7 +49,7 @@ class FakeEngine {
   emit(event) {
     for (const source of this.sources) {
       if (containsPath(source.directory, event.path, source.recursive)) {
-        source.callback({ type: "changes", events: [event] });
+        source.callback(source.guard ? { type: "guard" } : { type: "changes", events: [event] });
       }
     }
   }
@@ -569,5 +570,288 @@ describe("File watch runtime", () => {
     await Promise.resolve();
     expect(requests.at(-1)).toEqual({ type: "ack", sequence: 7 });
     await client.close();
+  });
+
+  it("does not replay content hints already covered by the initial file baseline", async () => {
+    const target = path.join(directory, "seeded");
+    fs.writeFileSync(target, "seeded content");
+    const rebind = worker.rebind.bind(worker);
+    worker.rebind = async (logical, initial) => {
+      await rebind(logical, initial);
+      if (initial) engine.emit({ action: "updated", path: target, contentChanged: true });
+    };
+    await subscribe(1, "file", target);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(changes(1)).toEqual([]);
+  });
+
+  it("suppresses a retained content hint when only access time changed after readiness", async () => {
+    const target = path.join(directory, "access-only");
+    const baselineTime = new Date(1600000000000);
+    fs.writeFileSync(target, "unchanged");
+    fs.utimesSync(target, baselineTime, baselineTime);
+    await subscribe(1, "file", target);
+    fs.utimesSync(target, new Date(), baselineTime);
+    engine.emit({ action: "updated", path: target, contentChanged: true });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(changes(1)).toEqual([]);
+  });
+
+  it("preserves content hints that arrive while the initial baseline stat is pending", async () => {
+    const target = path.join(directory, "initial-race");
+    fs.writeFileSync(target, "before");
+    const statStarted = deferred();
+    const finishStat = deferred();
+    let hold = true;
+    worker.fs = {
+      ...fs.promises,
+      async stat(filePath, options) {
+        const value = await fs.promises.stat(filePath, options);
+        if (filePath === target && hold) {
+          hold = false;
+          statStarted.resolve();
+          await finishStat.promise;
+        }
+        return value;
+      },
+    };
+    const ready = subscribe(1, "file", target);
+    await statStarted.promise;
+    fs.writeFileSync(target, "after racing change");
+    engine.emit({ action: "updated", path: target, contentChanged: true });
+    finishStat.resolve();
+    await ready;
+    await until(() => changes(1).length);
+    expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+  });
+
+  describe("platform-aware topology", () => {
+    function usePlatform(platform) {
+      worker = new FileWatchWorker({
+        engine,
+        sendEvent: (event) => events.push(event),
+        settleDelay: 5,
+        retryDelay: 10,
+        platform,
+      });
+    }
+
+    function directoryLink(target, alias) {
+      fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir");
+    }
+
+    it("uses only main sources for ordinary existing macOS files and directories", async () => {
+      usePlatform("darwin");
+      const file = path.join(directory, "file");
+      fs.writeFileSync(file, "present");
+      await subscribe(1, "directory", directory, true);
+      await subscribe(2, "file", file);
+      expect(
+        [...engine.sources].map(({ directory, recursive, guard }) => ({
+          directory,
+          recursive,
+          guard,
+        })),
+      ).toEqual([
+        { directory, recursive: true, guard: false },
+        { directory, recursive: false, guard: false },
+      ]);
+    });
+
+    it("uses cheap macOS guards only at the nearest missing anchor and then arms the target", async () => {
+      usePlatform("darwin");
+      const parent = path.join(directory, "missing", "nested");
+      const target = path.join(parent, "file");
+      await subscribe(1, "file", target);
+      expect([...engine.sources].map(({ directory, guard }) => ({ directory, guard }))).toEqual([
+        { directory, guard: true },
+      ]);
+      fs.mkdirSync(parent, { recursive: true });
+      fs.writeFileSync(target, "created");
+      engine.emit({ action: "created", path: path.join(directory, "missing") });
+      await until(() => changes(1).some((event) => event.action === "created"));
+      expect([...engine.sources].map(({ directory, guard }) => ({ directory, guard }))).toEqual([
+        { directory: parent, guard: false },
+      ]);
+    });
+
+    for (const platform of ["darwin", "linux", "win32"]) {
+      it(`observes dangling symlink targets outside the alias parent on ${platform}`, async () => {
+        usePlatform(platform);
+        const aliases = path.join(directory, "aliases");
+        const targets = path.join(directory, "targets");
+        fs.mkdirSync(aliases);
+        fs.mkdirSync(targets);
+        const missing = path.join(targets, "missing", "child");
+        const alias = path.join(aliases, "linked");
+        directoryLink(missing, alias);
+        const requested = path.join(alias, "file");
+        await subscribe(1, "file", requested);
+        if (platform === "darwin") {
+          expect([...engine.sources].map((source) => source.directory).sort()).toEqual(
+            [aliases, targets].sort(),
+          );
+          expect([...engine.sources].every((source) => source.guard)).toBe(true);
+        }
+        fs.mkdirSync(missing, { recursive: true });
+        fs.writeFileSync(path.join(missing, "file"), "target created");
+        engine.emit({ action: "created", path: path.join(targets, "missing") });
+        await until(() => changes(1).some((event) => event.action === "created"));
+        expect(changes(1)[0].path).toBe(requested);
+        fs.writeFileSync(path.join(missing, "file"), "updated target");
+        engine.emit({ action: "updated", path: path.join(missing, "file"), contentChanged: true });
+        await until(() => changes(1).some((event) => event.action === "updated"));
+      });
+    }
+
+    it("guards every link in a relative chain and rebinds when an intermediate link changes", async () => {
+      usePlatform("darwin");
+      const firstParent = path.join(directory, "first");
+      const secondParent = path.join(directory, "second");
+      const target = path.join(directory, "target");
+      const replacement = path.join(directory, "replacement");
+      for (const item of [firstParent, secondParent, target, replacement]) fs.mkdirSync(item);
+      fs.writeFileSync(path.join(target, "file"), "original");
+      fs.writeFileSync(path.join(replacement, "file"), "replacement");
+      const second = path.join(secondParent, "link");
+      const first = path.join(firstParent, "link");
+      directoryLink(target, second);
+      directoryLink(second, first);
+      // Junctions expose absolute targets on Windows; normalize their returned
+      // representation to relative links to exercise the same resolver there.
+      worker.fs = {
+        ...fs.promises,
+        async readlink(linkPath) {
+          const value = await fs.promises.readlink(linkPath);
+          return path.isAbsolute(value) ? path.relative(path.dirname(linkPath), value) : value;
+        },
+      };
+      const requested = path.join(first, "file");
+      await subscribe(1, "file", requested);
+      expect(
+        [...engine.sources]
+          .filter((source) => source.guard)
+          .map((source) => source.directory)
+          .sort(),
+      ).toEqual([firstParent, secondParent].sort());
+      fs.unlinkSync(second);
+      directoryLink(replacement, second);
+      engine.emit({ action: "created", path: second });
+      await until(() => changes(1).some((event) => event.action === "updated"));
+      expect(worker.subscriptions.get(1).plan.canonicalTarget).toBe(path.join(replacement, "file"));
+      expect(changes(1).every((event) => event.path === requested)).toBe(true);
+    });
+
+    it("reuses a main shallow source for a symlink guard in that same directory", async () => {
+      usePlatform("darwin");
+      const file = path.join(directory, "file");
+      fs.writeFileSync(file, "contents");
+      const alias = path.join(directory, "self");
+      directoryLink(directory, alias);
+      await subscribe(1, "file", path.join(alias, "file"));
+      expect([...engine.sources].map(({ directory, guard }) => ({ directory, guard }))).toEqual([
+        { directory, guard: false },
+      ]);
+    });
+
+    it("rejects symlink loops without leaving native sources behind", async () => {
+      const first = path.join(directory, "loop-a");
+      const second = path.join(directory, "loop-b");
+      directoryLink(second, first);
+      directoryLink(first, second);
+      await expectAsync(subscribe(1, "directory", first, true)).toBeRejectedWith(
+        jasmine.objectContaining({ code: "ELOOP" }),
+      );
+      expect(engine.sources.size).toBe(0);
+      expect(worker.subscriptions.size).toBe(0);
+    });
+
+    it("recovers promptly when a symlink loop is repaired during retry backoff", async () => {
+      usePlatform("darwin");
+      worker.retryDelay = 10000;
+      const target = path.join(directory, "target");
+      const alias = path.join(directory, "alias");
+      fs.mkdirSync(target);
+      fs.writeFileSync(path.join(target, "file"), "contents");
+      directoryLink(target, alias);
+      await subscribe(1, "file", path.join(alias, "file"));
+      fs.unlinkSync(alias);
+      directoryLink(alias, alias);
+      engine.emit({ action: "created", path: alias });
+      await until(() =>
+        events.some((event) => event.type === "error" && event.payload.code === "ELOOP"),
+      );
+      await until(() => worker.subscriptions.get(1).timerDelay === 10000);
+      fs.unlinkSync(alias);
+      directoryLink(target, alias);
+      engine.emit({ action: "created", path: alias });
+      await until(() => events.some((event) => event.type === "invalidate"));
+      expect(worker.subscriptions.get(1).rebind).toBe(false);
+    });
+
+    it("resolves dot segments after traversing symbolic components in a link target", async () => {
+      const target = path.join(directory, "target");
+      const nested = path.join(target, "nested");
+      fs.mkdirSync(nested, { recursive: true });
+      fs.writeFileSync(path.join(target, "file"), "correct target");
+      const hop = path.join(directory, "hop");
+      const alias = path.join(directory, "alias");
+      directoryLink(nested, hop);
+      directoryLink(target, alias);
+      worker.fs = {
+        ...fs.promises,
+        readlink: (linkPath) =>
+          linkPath === alias
+            ? Promise.resolve(["hop", "..", "file"].join(path.sep))
+            : fs.promises.readlink(linkPath),
+      };
+      const resolved = await worker.resolveTarget(alias);
+      expect(resolved.path).toBe(path.join(target, "file"));
+      expect(resolved.stat.isFile()).toBe(true);
+    });
+
+    it("guards a non-directory path component until it is replaced with a directory", async () => {
+      usePlatform("darwin");
+      const blocker = path.join(directory, "blocker");
+      fs.writeFileSync(blocker, "not a directory yet");
+      const requested = path.join(blocker, "file");
+      await subscribe(1, "file", requested);
+      expect([...engine.sources].map(({ directory, guard }) => ({ directory, guard }))).toEqual([
+        { directory, guard: true },
+      ]);
+      fs.unlinkSync(blocker);
+      fs.mkdirSync(blocker);
+      fs.writeFileSync(requested, "now it exists");
+      engine.emit({ action: "created", path: blocker });
+      await until(() => changes(1).some((event) => event.action === "created"));
+      expect(changes(1)[0].path).toBe(requested);
+    });
+
+    it("verifies link targets again after native arming and releases the obsolete source", async () => {
+      usePlatform("darwin");
+      const first = path.join(directory, "first-target");
+      const second = path.join(directory, "second-target");
+      fs.mkdirSync(first);
+      fs.mkdirSync(second);
+      fs.writeFileSync(path.join(first, "file"), "first");
+      fs.writeFileSync(path.join(second, "file"), "second");
+      const alias = path.join(directory, "alias");
+      directoryLink(first, alias);
+      engine.holdReady = true;
+      const requested = path.join(alias, "file");
+      const ready = subscribe(1, "file", requested);
+      await until(() => engine.sources.size > 0);
+      fs.unlinkSync(alias);
+      directoryLink(second, alias);
+      engine.holdReady = false;
+      for (const source of engine.sources) source.arm();
+      await ready;
+      expect(worker.subscriptions.get(1).plan.canonicalTarget).toBe(path.join(second, "file"));
+      expect([...engine.sources].some((source) => source.directory === first)).toBe(false);
+      fs.writeFileSync(path.join(second, "file"), "new contents");
+      engine.emit({ action: "updated", path: path.join(second, "file"), contentChanged: true });
+      await until(() => changes(1).length);
+      expect(changes(1)[0].path).toBe(requested);
+    });
   });
 });

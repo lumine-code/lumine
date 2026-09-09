@@ -14,12 +14,27 @@ const Range = require("../src/range");
 const DisplayLayer = require("../src/display-layer");
 const DefaultHistoryProvider = require("../src/default-history-provider");
 const TextBuffer = require("../src/text-buffer");
+const FileState = require("../src/file-state");
 fs.readFileSync(join(__dirname, "fixtures", "sample.js"), "utf8");
 const { buildRandomLines, getRandomBufferRange } = require("./text-buffer-helpers/random");
 const NullLanguageMode = require("../src/null-language-mode");
 
 describe("TextBuffer", function () {
   let buffer = null;
+  const ownedBuffers = [];
+  function ownBuffer(value) {
+    if (value) ownedBuffers.push(value);
+    return value;
+  }
+  function loadBufferSync(...args) {
+    return ownBuffer(TextBuffer.loadSync(...args));
+  }
+  function loadBuffer(...args) {
+    return TextBuffer.load(...args).then(ownBuffer);
+  }
+  function deserializeBuffer(...args) {
+    return TextBuffer.deserialize(...args).then(ownBuffer);
+  }
 
   beforeEach(function () {
     temp.track();
@@ -29,6 +44,7 @@ describe("TextBuffer", function () {
   });
 
   afterEach(function () {
+    for (const owned of ownedBuffers.splice(0)) owned.destroy();
     buffer?.destroy();
     buffer = null;
   });
@@ -2074,7 +2090,7 @@ three\
       const filePath = join(tempDir, "changed-and-shortened.txt");
       fs.writeFileSync(filePath, "one\ntwo\nthree\nfour\n");
 
-      const bufferA = TextBuffer.loadSync(filePath);
+      const bufferA = loadBufferSync(filePath);
       const displayLayerA = bufferA.addDisplayLayer();
       displayLayerA.foldBufferRange([
         [1, 0],
@@ -2094,7 +2110,7 @@ three\
       bufferA.destroy();
 
       fs.writeFileSync(filePath, "short\n");
-      buffer = await TextBuffer.deserialize(state);
+      buffer = await deserializeBuffer(state);
 
       const displayLayerB = buffer.getDisplayLayer(displayLayerId);
       const selectionsLayerB = buffer.getMarkerLayer(selectionsLayerId);
@@ -2114,7 +2130,7 @@ three\
       const filePath = join(tempDir, "changed-and-expanded.txt");
       fs.writeFileSync(filePath, "alpha\nbeta\ngamma\n");
 
-      const bufferA = TextBuffer.loadSync(filePath);
+      const bufferA = loadBufferSync(filePath);
       const displayLayerA = bufferA.addDisplayLayer();
       displayLayerA.foldBufferRange([
         [0, 1],
@@ -2125,7 +2141,7 @@ three\
       bufferA.destroy();
 
       fs.writeFileSync(filePath, "alpha changed\nbeta\ngamma\ndelta\n");
-      buffer = await TextBuffer.deserialize(state);
+      buffer = await deserializeBuffer(state);
 
       const displayLayerB = buffer.getDisplayLayer(displayLayerId);
       expect(displayLayerB.foldsMarkerLayer.getMarkerCount()).toBe(0);
@@ -2137,7 +2153,7 @@ three\
       const filePath = join(tempDir, "unchanged.txt");
       fs.writeFileSync(filePath, "alpha\nbeta\ngamma\n");
 
-      const bufferA = TextBuffer.loadSync(filePath);
+      const bufferA = loadBufferSync(filePath);
       const displayLayerA = bufferA.addDisplayLayer();
       displayLayerA.foldBufferRange([
         [0, 1],
@@ -2147,7 +2163,7 @@ three\
       const displayLayerId = displayLayerA.id;
       bufferA.destroy();
 
-      buffer = await TextBuffer.deserialize(state);
+      buffer = await deserializeBuffer(state);
 
       const displayLayerB = buffer.getDisplayLayer(displayLayerId);
       expect(displayLayerB.foldsMarkerLayer.getMarkerCount()).toBe(1);
@@ -2172,7 +2188,7 @@ three\
       delete state.markerLayers[displayLayerA.foldsMarkerLayer.id].destroyInvalidatedMarkers;
       bufferA.destroy();
 
-      buffer = await TextBuffer.deserialize(state);
+      buffer = await deserializeBuffer(state);
 
       const displayLayerB = buffer.getDisplayLayer(displayLayerId);
       expect(buffer.getMarkerLayer(customLayerId).destroyInvalidatedMarkers).toBe(true);
@@ -2252,7 +2268,7 @@ three\
       bufferA.undo();
 
       const state = JSON.parse(JSON.stringify(bufferA.serialize()));
-      TextBuffer.deserialize(state).then(function (bufferB) {
+      deserializeBuffer(state).then(function (bufferB) {
         expect(bufferB.getText()).toBe("hello there\ngood friend\r\nhow are you doing??");
         expectSameMarkers(bufferB.getMarkerLayer(layerA.id), layerA);
         expect(
@@ -2345,17 +2361,15 @@ three\
         [0, 8],
       ]);
 
-      TextBuffer.deserialize(JSON.parse(JSON.stringify(bufferA.serialize()))).then(
-        function (bufferB) {
-          const layer1B = bufferB.getMarkerLayer(layer1A.id);
-          const layer2B = bufferB.getMarkerLayer(layer2A.id);
-          expect(layer2B.persistent).toBe(true);
+      deserializeBuffer(JSON.parse(JSON.stringify(bufferA.serialize()))).then(function (bufferB) {
+        const layer1B = bufferB.getMarkerLayer(layer1A.id);
+        const layer2B = bufferB.getMarkerLayer(layer2A.id);
+        expect(layer2B.persistent).toBe(true);
 
-          expect(layer1B).toBe(undefined);
-          expectSameMarkers(layer2A, layer2B);
-          done();
-        },
-      );
+        expect(layer1B).toBe(undefined);
+        expectSameMarkers(layer2A, layer2B);
+        done();
+      });
     });
 
     it("doesn't serialize the default marker layer", function (done) {
@@ -2369,7 +2383,7 @@ three\
         { foo: 1 },
       );
 
-      TextBuffer.deserialize(bufferA.serialize()).then(function (bufferB) {
+      deserializeBuffer(bufferA.serialize()).then(function (bufferB) {
         bufferB.getDefaultMarkerLayer();
         expect(bufferB.getMarker(marker1A.id)).toBeUndefined();
         done();
@@ -2397,7 +2411,7 @@ three\
       });
       bufferA.undo();
 
-      TextBuffer.deserialize(bufferA.serialize({ markerLayers: false })).then(function (bufferB) {
+      deserializeBuffer(bufferA.serialize({ markerLayers: false })).then(function (bufferB) {
         expect(bufferB.getText()).toBe("world");
         expect(bufferB.getMarkerLayer(layerA.id)?.getMarker(markerA.id)).toBeUndefined();
         expect(bufferB.getMarkerLayer(layerA.id)?.getMarker(markerB.id)).toBeUndefined();
@@ -2420,7 +2434,7 @@ three\
       bufferA.append("def");
       bufferA.append("ghi");
 
-      TextBuffer.deserialize(bufferA.serialize({ history: false })).then(function (bufferB) {
+      deserializeBuffer(bufferA.serialize({ history: false })).then(function (bufferB) {
         expect(bufferB.getText()).toBe("abcdefghi");
         expect(bufferB.undo()).toBe(false);
         expect(bufferB.getText()).toBe("abcdefghi");
@@ -2430,12 +2444,10 @@ three\
 
     it("serializes / deserializes the buffer's unique identifier", function (done) {
       const bufferA = new TextBuffer();
-      TextBuffer.deserialize(JSON.parse(JSON.stringify(bufferA.serialize()))).then(
-        function (bufferB) {
-          expect(bufferB.getId()).toEqual(bufferA.getId());
-          done();
-        },
-      );
+      deserializeBuffer(JSON.parse(JSON.stringify(bufferA.serialize()))).then(function (bufferB) {
+        expect(bufferB.getId()).toEqual(bufferA.getId());
+        done();
+      });
     });
 
     it("doesn't deserialize a state that was serialized with a different buffer version", function (done) {
@@ -2443,7 +2455,7 @@ three\
       const serializedBuffer = JSON.parse(JSON.stringify(bufferA.serialize()));
       serializedBuffer.version = 123456789;
 
-      TextBuffer.deserialize(serializedBuffer).then(function (bufferB) {
+      deserializeBuffer(serializedBuffer).then(function (bufferB) {
         expect(bufferB).toBeUndefined();
         done();
       });
@@ -2454,13 +2466,13 @@ three\
       const filePath = join(tempDir, "file.txt");
       fs.writeFileSync(filePath, "something\n");
 
-      const bufferA = TextBuffer.loadSync(filePath);
+      const bufferA = loadBufferSync(filePath);
       const state = bufferA.serialize();
 
       fs.unlinkSync(filePath);
 
       state.mustExist = true;
-      TextBuffer.deserialize(state)
+      deserializeBuffer(state)
         .then(
           () => expect("serialization succeeded with mustExist: true").toBeUndefined(),
           (err) => expect(err.code).toBe("ENOENT"),
@@ -2473,7 +2485,7 @@ three\
         buffer = new TextBuffer();
         buffer.setText("abc");
 
-        TextBuffer.deserialize(buffer.serialize()).then(function (buffer2) {
+        deserializeBuffer(buffer.serialize()).then(function (buffer2) {
           expect(buffer2.getPath()).toBeUndefined();
           expect(buffer2.getText()).toBe("abc");
           done();
@@ -2552,7 +2564,7 @@ three\
       filePath = join(tempDir, "manipulate-me");
       newPath = `${filePath}-i-moved`;
       fs.writeFileSync(filePath, "");
-      bufferToChange = TextBuffer.loadSync(filePath);
+      bufferToChange = loadBufferSync(filePath);
     });
 
     afterEach(function () {
@@ -2569,57 +2581,30 @@ three\
       bufferToChange.saveAs(newPath);
     });
 
-    // Watcher-event round-trips on a loaded CI runner can far exceed the
-    // default spec deadline.
-    const MOVE_NOTIFICATION_DEADLINE = 30000;
-
-    it(
-      "notifies observers when the buffer's file is moved",
-      async function () {
-        // FIXME: This doesn't pass on Linux
-        if (["linux", "win32"].includes(process.platform)) {
-          return;
-        }
-
-        // The file watcher arms asynchronously; wait for it before moving the
-        // file so the rename is observed.
-        await bufferToChange.getFileWatchStartPromise();
-
-        // The arm promise confirms the watch handle exists, but a macOS
-        // FSEvents stream can still drop events delivered in its start-up
-        // window. Prove the watch is delivering before the move: write to the
-        // file (retrying with fresh content) until the buffer reloads.
-        await new Promise((resolve) => {
-          let probeCount = 0;
-          const subscription = bufferToChange.onDidReload(() => {
+    it("keeps the original path when the file is moved externally", async function () {
+      await bufferToChange.getFileWatchStartPromise();
+      const pathChanged = jasmine.createSpy("pathChanged");
+      bufferToChange.onDidChangePath(pathChanged);
+      const deleted = new Promise((resolve) => {
+        const subscription = bufferToChange.onDidChangeFileState((state) => {
+          if (state === FileState.REMOVED) {
             subscription.dispose();
-            clearInterval(probeTimer);
             resolve();
-          });
-          const probe = () => {
-            probeCount++;
-            fs.writeFileSync(filePath, `probe ${probeCount}`);
-          };
-          const probeTimer = setInterval(probe, 500);
-          probe();
+          }
         });
-
-        const renamed = new Promise((resolve) => bufferToChange.onDidChangePath(resolve));
-
-        fs.removeSync(newPath);
-        fs.moveSync(filePath, newPath);
-
-        expect(await renamed).toBe(newPath);
-      },
-      MOVE_NOTIFICATION_DEADLINE,
-    );
+      });
+      fs.moveSync(filePath, newPath);
+      await deleted;
+      expect(bufferToChange.getPath()).toBe(filePath);
+      expect(pathChanged).not.toHaveBeenCalled();
+    });
   });
 
   describe("::getLines()", () =>
     it("returns an array of lines in the text contents", function () {
       const filePath = require.resolve("./fixtures/sample.js");
       const fileContents = fs.readFileSync(filePath, "utf8");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
       expect(buffer.getLines().length).toBe(fileContents.split("\n").length);
       expect(buffer.getLines().join("\n")).toBe(fileContents);
     }));
@@ -2630,7 +2615,7 @@ three\
     beforeEach(function (done) {
       const filePath = require.resolve("./fixtures/sample.js");
       fs.readFileSync(filePath, "utf8");
-      TextBuffer.load(filePath).then(function (result) {
+      loadBuffer(filePath).then(function (result) {
         buffer = result;
         changeHandler = jasmine.createSpy("changeHandler");
         buffer.onDidChange(changeHandler);
@@ -2801,7 +2786,7 @@ three\
   describe("::setText(text) change events", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     describe("when the buffer contains newlines", () =>
@@ -2859,7 +2844,7 @@ three\
   describe("::setTextViaDiff(text)", function () {
     beforeEach(function (done) {
       const filePath = require.resolve("./fixtures/sample.js");
-      TextBuffer.load(filePath).then(function (result) {
+      loadBuffer(filePath).then(function (result) {
         buffer = result;
         done();
       });
@@ -2992,7 +2977,7 @@ three\
   describe("::getTextInRange(range) on a loaded buffer", function () {
     beforeEach(function (done) {
       const filePath = require.resolve("./fixtures/sample.js");
-      TextBuffer.load(filePath).then(function (result) {
+      loadBuffer(filePath).then(function (result) {
         buffer = result;
         done();
       });
@@ -3112,7 +3097,7 @@ three\
       const filePath = temp.openSync("replace").path;
       const originalText = "foo foo tail";
       fs.writeFileSync(filePath, originalText);
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
       const marker = buffer.markRange([
         [0, 8],
         [0, 12],
@@ -3137,7 +3122,7 @@ three\
   });
 
   describe("::scan(regex, fn)", function () {
-    beforeEach(() => (buffer = TextBuffer.loadSync(require.resolve("./fixtures/sample.js"))));
+    beforeEach(() => (buffer = loadBufferSync(require.resolve("./fixtures/sample.js"))));
 
     it("calls the given function with the information about each match", function () {
       const matches = [];
@@ -3245,7 +3230,7 @@ three\
   });
 
   describe("::backwardsScan(regex, fn)", function () {
-    beforeEach(() => (buffer = TextBuffer.loadSync(require.resolve("./fixtures/sample.js"))));
+    beforeEach(() => (buffer = loadBufferSync(require.resolve("./fixtures/sample.js"))));
 
     it("calls the given function with the information about each match in backwards order", function () {
       const matches = [];
@@ -3281,7 +3266,7 @@ three\
   describe("::scanInRange(range, regex, fn)", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     describe("when given a regex with a ignore case flag", () =>
@@ -3904,7 +3889,7 @@ three\
   describe("::backwardsScanInRange(range, regex, fn)", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     describe("when given a regex with no global flag", () =>
@@ -4351,7 +4336,7 @@ three\
   describe("::characterIndexForPosition(position) on a loaded buffer", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     it("returns the total number of characters that precede the given position", function () {
@@ -4376,7 +4361,7 @@ three\
   describe("::positionForCharacterIndex(position)", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     it("returns the position based on character index", function () {
@@ -4400,7 +4385,7 @@ three\
   describe("::isEmpty()", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     it("returns true for an empty buffer", function () {
@@ -4469,7 +4454,7 @@ three\
   describe("::onDidChange(callback)", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     it("notifies observers after a transaction, an undo or a redo", function () {
@@ -4648,7 +4633,7 @@ three\
 
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
       delay = buffer.stoppedChangingDelay;
       didStopChangingCallback = jasmine.createSpy("didStopChangingCallback");
       buffer.onDidStopChanging(didStopChangingCallback);
@@ -4779,7 +4764,7 @@ three\
   describe("::append(text)", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     it("adds text to the end of the buffer", function () {
@@ -4858,7 +4843,7 @@ three\
   describe("line ending support", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
-      buffer = TextBuffer.loadSync(filePath);
+      buffer = loadBufferSync(filePath);
     });
 
     describe(".getText()", () =>
@@ -4923,7 +4908,7 @@ three\
         const bufferA = new TextBuffer();
         bufferA.setPreferredLineEnding("\r\n");
 
-        TextBuffer.deserialize(bufferA.serialize()).then(function (bufferB) {
+        deserializeBuffer(bufferA.serialize()).then(function (bufferB) {
           expect(bufferB.getPreferredLineEnding()).toBe("\r\n");
           done();
         });
@@ -4934,7 +4919,11 @@ three\
 
 describe("when a buffer is already open", () => {
   const filePath = path.join(__dirname, "fixtures", "sample.js");
-  const buffer = new TextBuffer();
+  let buffer;
+  beforeEach(() => {
+    buffer = new TextBuffer();
+  });
+  afterEach(() => buffer.destroy());
 
   it("replaces foo( with bar( using /\bfoo\\(\b/gim", () => {
     buffer.setPath(filePath);

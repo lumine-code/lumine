@@ -97,7 +97,7 @@ module.exports = [
       "src/start.js",
       "src/git-host-worker.js",
       "src/task-bootstrap.js",
-      "src/watcher-task-bootstrap.js",
+      "src/file-watch-worker-bootstrap.js",
     ],
     rules: { "n/no-process-exit": "off" },
   },

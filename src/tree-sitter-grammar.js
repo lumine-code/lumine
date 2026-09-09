@@ -739,7 +739,9 @@ module.exports = class TreeSitterGrammar {
           this.emitter.emit("did-change-query", { filePath, queryType });
         });
       };
-      const handle = watchFile(filePath);
+      const handle = this.registry.fileWatchClient
+        ? this.registry.fileWatchClient.watchFile(filePath)
+        : watchFile(filePath);
       this.subscriptions.add(
         handle,
         handle.onDidChange(onChange),

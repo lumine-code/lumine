@@ -191,6 +191,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getTabLength()).toBe(8);
       expect(editor.getGrammar()).toEqual(NullGrammar);
       expect(languageMode.onDidChangeHighlighting.calls.count()).toBe(1);
+      editor.destroy();
     });
   });
 

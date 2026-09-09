@@ -193,7 +193,7 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     require("../helpers/jasmine-custom-matchers").register(jasmineEnv);
     require("../helpers/jasmine-spies").register(jasmineEnv);
     require("../helpers/jasmine-time").register(jasmineEnv);
-    require("../helpers/jasmine-warnings").register(jasmineEnv);
+    const warningsReporter = require("../helpers/jasmine-warnings").register(jasmineEnv);
 
     // Load specs and set spec type
     for (let testPath of Array.from(testPaths)) {
@@ -208,6 +208,7 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     jasmineEnv.clearReporters();
 
     // Add the reporter and register the promise resolve as a callback
+    jasmineEnv.addReporter(warningsReporter);
     jasmineEnv.addReporter(buildMetadataReporter());
     jasmineEnv.addReporter(buildReporter({ logFile, headless }));
     // A headless run owns a command-line process. Exit only after the output

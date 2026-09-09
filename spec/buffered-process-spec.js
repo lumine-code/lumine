@@ -2,6 +2,7 @@ const ChildProcess = require("child_process");
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const BufferedProcess = require("../src/buffered-process");
+const { EventEmitter } = require("events");
 
 describe("BufferedProcess", function () {
   describe("when a bad command is specified", function () {
@@ -68,22 +69,26 @@ describe("BufferedProcess", function () {
     });
 
     describe("when there is not an error handler specified", () =>
-      it("does throw an exception", async function () {
-        await new Promise((resolve) => {
-          window.onerror.and.callFake(resolve);
-
-          new BufferedProcess({
-            command: "bad-command-nope2",
-            args: ["nothing"],
-            options: { shell: false },
-          });
+      it("throws the normalized exception from an unhandled child error", function () {
+        // Electron platforms route uncaught Node errors to different global
+        // channels. Exercise the child error listener directly; the handled
+        // case above separately covers an actual failed operating-system spawn.
+        const child = new EventEmitter();
+        spyOn(ChildProcess, "spawn").and.returnValue(child);
+        new BufferedProcess({ command: "bad-command-nope2", options: { shell: false } });
+        const error = Object.assign(new Error("missing command"), {
+          code: "ENOENT",
+          syscall: "spawn bad-command-nope2",
+          path: "bad-command-nope2",
         });
-
-        expect(window.onerror).toHaveBeenCalled();
-        expect(window.onerror.calls.mostRecent().args[0]).toContain(
-          "Failed to spawn command `bad-command-nope2`",
-        );
-        expect(window.onerror.calls.mostRecent().args[4].name).toBe("BufferedProcessError");
+        let caught;
+        try {
+          child.emit("error", error);
+        } catch (failure) {
+          caught = failure;
+        }
+        expect(caught?.name).toBe("BufferedProcessError");
+        expect(caught?.message).toContain("Failed to spawn command `bad-command-nope2`");
       }));
   });
 

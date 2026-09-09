@@ -287,7 +287,7 @@ module.exports = class TextEditor {
     if (params.buffer) {
       this.buffer = params.buffer;
     } else {
-      this.buffer = new TextBuffer();
+      this.buffer = new TextBuffer({ fileWatchClient: params.fileWatchClient });
     }
 
     const languageMode = this.buffer.getLanguageMode();

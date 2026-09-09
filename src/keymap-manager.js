@@ -518,7 +518,9 @@ module.exports = KeymapManager = (function () {
      */
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
-        const handle = watchFile(filePath);
+        const handle = this.fileWatchClient
+          ? this.fileWatchClient.watchFile(filePath)
+          : watchFile(filePath);
         const subscription = new Disposable(() => handle.dispose());
         const reload = () => {
           if (this.watchSubscriptions[filePath] === subscription && !subscription.disposed) {

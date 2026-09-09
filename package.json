@@ -42,7 +42,7 @@
     "@lumine-code/superstring": "github:lumine-code/superstring#d16238290cdcceba6875475b56f616e9f96c4c39",
     "@lumine-code/temp": "github:lumine-code/node-temp#bbd9e24a78e835e7421c8acec360731eafa4d3f6",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#fd9c48ac852a303e1fbc2e1ae77dbefa57ba6052",
-    "@lumine-code/watcher": "github:lumine-code/watcher#ed8851d80959ee9d7f46b81f8c1c8c67dceab795",
+    "@lumine-code/watcher": "github:lumine-code/watcher#d88246ab989e78ceb1737dac5b603a1041285a26",
     "@typescript/typescript6": "6.0.2",
     "@vscode/ripgrep": "1.18.0",
     "about": "github:lumine-code/about#5bdad19d20fefe61c775390408f249b150dd1830",
@@ -58,7 +58,7 @@
     "dompurify": "^3.4.14",
     "encoding-selector": "github:lumine-code/encoding-selector#8e5c86d31d16489183053e810f7aa3bc212f4899",
     "focus-trap": "8.2.2",
-    "git-diff": "github:lumine-code/git-diff#abedbe17ba09ee6747019f9591eb2febbc0de01e",
+    "git-diff": "github:lumine-code/git-diff#7f90b07ee197765bb34a2df011e7a41e0aed0cf7",
     "go-to-line": "github:lumine-code/go-to-line#adf9e7c2bf09e88eb24169c2a1c0e5b29a7b501d",
     "grammar-selector": "github:lumine-code/grammar-selector#931ef283122750453d8935146355fdf3b675ba81",
     "gray-matter": "^4.0.3",
@@ -115,7 +115,7 @@
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#c4e25e4b8722f52be5c176625d27a72be1460b18",
     "tree-sitter": "0.25.1",
-    "tree-view": "github:lumine-code/tree-view#aa91d2638d648b752dac2b1108eff43a34178c0c",
+    "tree-view": "github:lumine-code/tree-view#fdf722d4926616d0686788545d82b0671740010e",
     "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#09a577540df428ab7518fbce9649b07535a56490",
     "winattr": "^3.0.0",
@@ -177,6 +177,6 @@
     "github:lumine-code/node-ctags#78b33db397b84c640c67caf7d925045cd6b8305e": true,
     "tree-sitter@0.25.1": true,
     "tree-sitter-python@0.25.0": true,
-    "github:lumine-code/watcher#ed8851d80959ee9d7f46b81f8c1c8c67dceab795": true
+    "github:lumine-code/watcher#d88246ab989e78ceb1737dac5b603a1041285a26": true
   }
 }

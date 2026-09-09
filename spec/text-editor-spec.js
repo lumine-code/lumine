@@ -136,6 +136,7 @@ describe("TextEditor", () => {
       expect(editor2.getEditorWidthInChars()).toBe(editor.getEditorWidthInChars());
       expect(editor2.displayLayer.tabLength).toBe(editor2.getTabLength());
       expect(editor2.displayLayer.softWrapColumn).toBe(editor2.getSoftWrapColumn());
+      editor2.destroy();
     });
 
     it("ignores buffers with retired IDs", () => {

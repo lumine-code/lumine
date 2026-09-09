@@ -1227,7 +1227,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("does not fire duplicate change events when multiple changes happen on disk", async () => {
-      // Drive the file notifications explicitly. The path-watcher integration
+      // Drive the file notifications explicitly. The native file observation integration
       // is covered separately; this spec needs to control exactly when each
       // debounced load begins so it can exercise overlapping loads without
       // depending on an OS watcher delivering three distinct write bursts.

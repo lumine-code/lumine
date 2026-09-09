@@ -32,10 +32,11 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 // Registration is deliberately separate: a detached model can be configured
 // without participating in the window until its owner exposes it.
 module.exports = class TextEditorFactory {
-  constructor({ config, assert, packageManager }) {
+  constructor({ config, assert, packageManager, fileWatchClient }) {
     this.config = config;
     this.assert = assert;
     this.packageManager = packageManager;
+    this.fileWatchClient = fileWatchClient;
     this.destroyed = false;
     this.subscriptions = new CompositeDisposable();
     this.scopesWithConfigSubscriptions = new Set();
@@ -60,7 +61,7 @@ module.exports = class TextEditorFactory {
 
   build(params) {
     if (this.destroyed) throw new Error("Cannot build a TextEditor after its factory is destroyed");
-    params = Object.assign({ assert: this.assert }, params);
+    params = Object.assign({ assert: this.assert, fileWatchClient: this.fileWatchClient }, params);
 
     let scope = null;
     if (params.buffer) {

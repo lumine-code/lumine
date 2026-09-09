@@ -23,8 +23,7 @@ const { normalizeGitOperationError } = require("./git-error");
 // a worker crash rejects all pending requests with a retriable error and the
 // next request lazily re-forks.
 //
-// Modeled on the WorkerProcessWatcher pattern in path-watcher.js, improved with
-// crash-restart and true cancellation.
+// Worker requests are correlated and support explicit cancellation.
 
 function abortError() {
   const error = new Error("The git operation was aborted");
