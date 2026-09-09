@@ -394,6 +394,35 @@ describe("File watch runtime", () => {
     expect(engine.sources.size).toBe(0);
   });
 
+  it("does not lend a closing source to a new owner while the old owner's work drains", async () => {
+    const first = path.join(directory, "old-file");
+    const second = path.join(directory, "new-file");
+    fs.writeFileSync(first, "old contents");
+    fs.writeFileSync(second, "new contents");
+    await subscribe(1, "file", first);
+    const originalSources = new Set(engine.sources);
+    const drain = deferred();
+    worker.subscriptions.get(1).processing = drain.promise;
+    const closing = worker.unsubscribe(1);
+    try {
+      await subscribe(2, "file", second);
+      expect(engine.sources.size).toBeGreaterThan(0);
+      expect([...engine.sources].every((source) => !originalSources.has(source))).toBe(true);
+      fs.writeFileSync(second, "change before old work finishes");
+      engine.emit({ action: "updated", path: second, contentChanged: true });
+      await until(() => changes(2).length === 1, "new source delivering while old work drains");
+    } finally {
+      drain.resolve();
+      await closing;
+    }
+    fs.writeFileSync(second, "change after old work finishes");
+    engine.emit({ action: "updated", path: second, contentChanged: true });
+    await until(() => changes(2).length === 2, "new source surviving old source cleanup");
+    expect(changes(2).every((event) => event.path === second && event.action === "updated")).toBe(
+      true,
+    );
+  });
+
   it("observes a missing directory chain as a file and notices its eventual creation", async () => {
     const parent = path.join(directory, "missing", "child");
     const target = path.join(parent, "file");

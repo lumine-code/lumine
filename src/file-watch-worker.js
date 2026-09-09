@@ -688,7 +688,15 @@ class FileWatchWorker {
     // Cancel pending native arms too; waiting for ready before cancelling
     // would deadlock dispose-before-ready on an unavailable native source.
     for (const source of this.sources.values()) {
-      if (source.members.has(logical) && source.members.size === 1) source.handle.dispose();
+      if (source.members.has(logical) && source.members.size === 1) {
+        // ready stays fulfilled after a running source begins closing. Remove
+        // it from the pool before cancellation so another logical subscriber
+        // cannot borrow that promise and appear armed on the dying source.
+        source.invalid = true;
+        if (this.sources.get(source.key) === source) this.sources.delete(source.key);
+        this.trace?.("source-retired", { id, path: logical.path, sourcePath: source.path });
+        source.handle.dispose();
+      }
     }
     logical.closed = (async () => {
       await logical.ready.catch(() => {});
