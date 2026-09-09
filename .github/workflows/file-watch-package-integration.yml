@@ -1,0 +1,66 @@
+name: File watch package integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LUMINE_JASMINE_REPORTER: list
+
+jobs:
+  integration:
+    name: Package specs on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Enable Git symlinks on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.symlinks true
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install Linux build and headless-display dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
+      - name: Use HTTPS for GitHub git dependencies
+        shell: bash
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+      - name: Install core dependencies
+        shell: bash
+        run: |
+          install() { npm ci --ignore-scripts; }
+          install || install || install
+      - name: Download the Electron binary
+        run: node ./node_modules/electron/install.js
+      - name: Rebuild core native modules for Electron
+        run: npm run build
+      # One core build serves all packages. The runner checks out the recorded
+      # SHAs, installs their own dependencies and runs each spec directory once
+      # in a separate Electron process with its own Lumine home.
+      - name: Run all pinned package specs
+        timeout-minutes: 110
+        run: node script/test-file-watch-packages.js
+        env:
+          FILE_WATCH_PACKAGE_RESULTS: ${{ runner.temp }}/file-watch-package-results
+      - name: Upload package results and logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: file-watch-packages-${{ matrix.os }}
+          path: ${{ runner.temp }}/file-watch-package-results/
+          if-no-files-found: warn
+          retention-days: 14

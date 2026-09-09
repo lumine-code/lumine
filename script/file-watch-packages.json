@@ -1,0 +1,90 @@
+[
+  {
+    "repo": "archive-view",
+    "sha": "3843df6d774451f3a89d35502ff2f46efa37ee8a"
+  },
+  {
+    "repo": "image-editor",
+    "sha": "f85b32ee196d64fd82851b6b9af462030added0c"
+  },
+  {
+    "repo": "jupyter-view",
+    "sha": "704ebc09d6c73ee90e7fa8ab8180e6329b75719e"
+  },
+  {
+    "repo": "markdown-preview",
+    "sha": "a1a08de53979c45d7ae0921d668c85f8c156766c"
+  },
+  {
+    "repo": "pdf-view",
+    "sha": "d4f05f4d6cae90e65e13e733259a92138ae48d6f"
+  },
+  {
+    "repo": "sqlite-view",
+    "sha": "265542f2e2e1696a7c790f9aa1fae608beb21564"
+  },
+  {
+    "repo": "table-editor",
+    "sha": "38f540fa9a4e8fa48d9ef46e233c5c89052e0ee3"
+  },
+  {
+    "repo": "tree-view",
+    "sha": "fdf722d4926616d0686788545d82b0671740010e"
+  },
+  {
+    "repo": "file-operations",
+    "sha": "38b6507bfd00628c9c44a39e321a38889544b7a2"
+  },
+  {
+    "repo": "ide-client",
+    "sha": "3c81e4bd9751b7c6c732f9e22deedffcf2bee307"
+  },
+  {
+    "repo": "native-clip",
+    "sha": "5801a2f85f2d629c8fcb2686ffafe4337fc25214"
+  },
+  {
+    "repo": "dev-live-reload",
+    "sha": "5179685be719097cbdd2211aeec1ecd8e1c4be90"
+  },
+  {
+    "repo": "jupyter-repl",
+    "sha": "9f461a9e5df6d6290184fc2deac8beaa0a4e7431"
+  },
+  {
+    "repo": "latex-tools",
+    "sha": "aaca3decf67b11d87b8d079190c44b026ab6d6d1"
+  },
+  {
+    "repo": "typst-tools",
+    "sha": "ef9de93b9eb5f48dee4784963c94b36c47b65429"
+  },
+  {
+    "repo": "tree-view-favourite",
+    "sha": "4ff99811e2687e06d79a2a3a8e7bd782f983a01f"
+  },
+  {
+    "repo": "project-list",
+    "sha": "bf35f94e7ab8e72163404984111395f343b454da"
+  },
+  {
+    "repo": "snippets",
+    "sha": "7167be6a398a9285f5a959513797a1f49b827f84"
+  },
+  {
+    "repo": "symbol-ctags",
+    "sha": "f9ecec6449977e76901a80c2a217dbfd67ddf064"
+  },
+  {
+    "repo": "git-panel",
+    "sha": "6b04ec8612c28a29fb47c35adf510b2e606402a9"
+  },
+  {
+    "repo": "git-diff",
+    "sha": "7f90b07ee197765bb34a2df011e7a41e0aed0cf7"
+  },
+  {
+    "repo": "graviss",
+    "sha": "294ca8ae2f24b20a9ba3042046844996e775ed7d"
+  }
+]
