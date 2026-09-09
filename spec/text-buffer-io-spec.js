@@ -720,6 +720,8 @@ describe("TextBuffer IO", () => {
 
     describe("when the buffer’s file is deleted", () => {
       it("reports removed regardless of whether it was modified at deletion", async () => {
+        if (process.env.LUMINE_FILE_WATCH_TRACE)
+          console.error("FILE_WATCH_SPEC_DELETE_RECREATE", filePath);
         expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
         const deleted = deletionPromise(buffer);
         fs.unlinkSync(filePath);
@@ -1334,6 +1336,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("resumes watching of the file when it is re-saved", async (done) => {
+      if (process.env.LUMINE_FILE_WATCH_TRACE) console.error("FILE_WATCH_SPEC_RESAVE", filePath);
       const removed = fileStatePromise(buffer, FileState.REMOVED);
       fs.removeSync(filePath);
       await removed;

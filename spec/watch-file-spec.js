@@ -17,6 +17,7 @@ describe("watchFile", function () {
     handles = [];
     unresolvedRoot = temp.mkdirSync("watch-file-spec-");
     root = fs.realpathSync.native(unresolvedRoot);
+    if (process.env.LUMINE_FILE_WATCH_TRACE) console.error("FILE_WATCH_SPEC_ROOT", root);
   });
 
   afterEach(async function () {
