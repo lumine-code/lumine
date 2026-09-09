@@ -560,6 +560,11 @@ describe("WorkspaceElement", () => {
       workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.width = "600px";
       workspaceElement.style.height = "300px";
+      // Hit testing requires viewport coordinates. Keep this fixture inside
+      // the viewport independently of the surrounding test document.
+      workspaceElement.style.position = "fixed";
+      workspaceElement.style.left = "0";
+      workspaceElement.style.top = "0";
       jasmine.attachToDOM(workspaceElement);
 
       // To isolate this test from unintended events happening on the host machine,
