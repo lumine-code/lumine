@@ -489,6 +489,14 @@ class FileWatchWorker {
     if (logical.kind === "file" && (rebind || checkFile))
       await this.reconcileFile(logical, false, contentChanged);
     if (logical.cancelled) return;
+    if (logical.kind === "file" && Boolean(logical.plan?.stat) !== (logical.fingerprint !== null)) {
+      // Creation/deletion can race the verified topology while old sources
+      // are draining. Publish its change only after the matching content or
+      // missing-target source is armed; a second handoff invalidation must
+      // not erase that change while the renderer is acknowledging the first.
+      logical.rebind = true;
+      return;
+    }
     if (logical.invalidation) {
       const invalidation = logical.invalidation;
       logical.invalidation = null;

@@ -10,7 +10,7 @@ const { VERSION, deferred, MAX_QUEUED_EVENTS, mergeChange } = require("../src/fi
 
 async function until(condition, message = "condition") {
   const deadline = Date.now() + 5000;
-  while (!condition()) {
+  while (!(await condition())) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${message}`);
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -34,10 +34,11 @@ class FakeEngine {
       ready: ready.promise,
       closed: closed.promise,
       arm: ready.resolve,
+      release: closed.resolve,
       dispose: () => {
         if (!this.sources.delete(source)) return;
         ready.reject(Object.assign(new Error("cancelled"), { code: "ABORT_ERR" }));
-        closed.resolve();
+        if (!this.holdClose) closed.resolve();
       },
     };
     this.sources.add(source);
@@ -234,6 +235,107 @@ describe("File watch runtime", () => {
     ]);
     expect(service.owners.get("paused").queuedEvents).toBe(0);
     await service.closeOwner("paused");
+  });
+
+  it("does not invalidate away a creation that races a missing-anchor handoff", async () => {
+    const delivered = [];
+    service.spawnWorker = ({ generation }) => {
+      const child = new FakeChild(generation);
+      child.runtime.platform = "darwin";
+      children.push(child);
+      return child;
+    };
+    const parent = path.join(directory, "missing-parent");
+    const target = path.join(parent, "file");
+    await service.dispatch(
+      "handoff",
+      { type: "subscribe", id: 1, kind: "file", path: target, recursive: false },
+      (event) => delivered.push(event),
+    );
+    const child = children[0];
+    const oldGuard = [...child.engine.sources].find((source) => source.directory === directory);
+    child.engine.holdClose = true;
+    fs.mkdirSync(parent);
+    child.engine.emit({ action: "created", path: parent });
+    await until(() =>
+      child.engine.created.some((source) => source.directory === parent && source.guard),
+    );
+    await until(() => !child.engine.sources.has(oldGuard));
+    // The topology was verified with a missing file. It appears while the old
+    // guard is still closing, before the subsequent file stat and delivery.
+    fs.writeFileSync(target, "created during handoff");
+    child.engine.emit({ action: "created", path: target });
+    child.engine.holdClose = false;
+    oldGuard.release();
+    await until(() => child.runtime.subscriptions.get(1).plan.stat !== null);
+    await until(() => delivered.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    for (let index = 0; index < delivered.length; index++) {
+      await service.dispatch("handoff", { type: "ack", sequence: delivered[index].sequence });
+    }
+    expect(
+      delivered.filter((event) => event.type === "changes").flatMap((event) => event.payload),
+    ).toContain({ action: "created", path: target });
+    await service.closeOwner("handoff");
+  });
+
+  it("publishes a raced deletion only after its recreation guard is armed", async () => {
+    const delivered = [];
+    service.spawnWorker = ({ generation }) => {
+      const child = new FakeChild(generation);
+      child.runtime.platform = "darwin";
+      children.push(child);
+      return child;
+    };
+    const target = path.join(directory, "file");
+    fs.writeFileSync(target, "original");
+    await service.dispatch(
+      "deletion-handoff",
+      { type: "subscribe", id: 1, kind: "file", path: target, recursive: false },
+      (event) => delivered.push(event),
+    );
+    const child = children[0];
+    const oldSource = [...child.engine.sources].find((source) => source.directory === directory);
+    child.engine.holdClose = true;
+    oldSource.callback({ type: "invalidate", reason: "source-lost" });
+    await until(
+      () => child.engine.created.filter((source) => source.directory === directory).length === 2,
+    );
+    await until(() => !child.engine.sources.has(oldSource));
+    // The replacement source verified the file as present. Delete it while
+    // the obsolete source's close acknowledgement is still outstanding.
+    fs.unlinkSync(target);
+    child.engine.emit({ action: "deleted", path: target });
+    child.engine.holdClose = false;
+    oldSource.release();
+    await until(() => child.runtime.subscriptions.get(1).plan.stat === null);
+    await until(() => delivered.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    let acknowledged = 0;
+    const acknowledge = async () => {
+      while (acknowledged < delivered.length) {
+        await service.dispatch("deletion-handoff", {
+          type: "ack",
+          sequence: delivered[acknowledged++].sequence,
+        });
+      }
+    };
+    await acknowledge();
+    const changes = () =>
+      delivered.filter((event) => event.type === "changes").flatMap((event) => event.payload);
+    expect(changes()).toEqual([{ action: "deleted", path: target }]);
+    expect([...child.engine.sources].every((source) => source.guard)).toBe(true);
+    fs.writeFileSync(target, "recreated");
+    child.engine.emit({ action: "created", path: target });
+    await until(async () => {
+      await acknowledge();
+      return changes().some((event) => event.action === "created");
+    });
+    expect(changes()).toEqual([
+      { action: "deleted", path: target },
+      { action: "created", path: target },
+    ]);
+    await service.closeOwner("deletion-handoff");
   });
 
   it("pools identical directories without subsuming a nested file under a shallow watch", async () => {
