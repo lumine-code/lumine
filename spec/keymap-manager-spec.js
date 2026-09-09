@@ -62,6 +62,27 @@ describe("KeymapManager", function () {
   afterEach(function () {
     return keymapManager.destroy();
   });
+  it("does not reload a cleared keymap when its readiness callback was already queued", async () => {
+    let resolveReady;
+    const handle = {
+      ready: new Promise((resolve) => {
+        resolveReady = resolve;
+      }),
+      closed: Promise.resolve(),
+      dispose: jasmine.createSpy("dispose"),
+      onDidChange() {},
+      onDidInvalidate() {},
+      onDidError() {},
+    };
+    spyOn(lumine.fileWatchClient, "watchFile").and.returnValue(handle);
+    spyOn(keymapManager, "reloadKeymap");
+    keymapManager.watchKeymap("cleared-keymap.json");
+    resolveReady();
+    keymapManager.clear();
+    await Promise.resolve();
+    expect(handle.dispose).toHaveBeenCalled();
+    expect(keymapManager.reloadKeymap).not.toHaveBeenCalled();
+  });
   describe("::handleKeyboardEvent(event)", function () {
     describe("when the keystroke matches no bindings", function () {
       return it("does not prevent the event's default action", function () {

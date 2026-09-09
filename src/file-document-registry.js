@@ -81,16 +81,16 @@ module.exports = class FileDocumentRegistry {
     });
     const affected = all.filter(({ original }) => movedPath(original, planned) !== original);
     const affectedEntries = new Set(affected.map(({ entry }) => entry));
-    const destinations = new Set();
+    const destinations = new Map();
     for (const { original } of affected) {
       const target = canonicalPath(movedPath(original, planned));
       if (
-        destinations.has(target) ||
+        (destinations.has(target) && destinations.get(target) !== original) ||
         all.some(({ entry, original: other }) => !affectedEntries.has(entry) && other === target)
       ) {
         throw new Error(`Cannot move a document onto another open document: ${target}`);
       }
-      destinations.add(target);
+      destinations.set(target, original);
     }
     const begun = [];
     try {

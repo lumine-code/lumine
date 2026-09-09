@@ -519,7 +519,12 @@ module.exports = KeymapManager = (function () {
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
         const handle = watchFile(filePath);
-        const reload = () => this.reloadKeymap(filePath, options);
+        const subscription = new Disposable(() => handle.dispose());
+        const reload = () => {
+          if (this.watchSubscriptions[filePath] === subscription && !subscription.disposed) {
+            this.reloadKeymap(filePath, options);
+          }
+        };
         handle.onDidChange(reload);
         handle.onDidInvalidate(reload);
         handle.onDidError((error) => {
@@ -529,7 +534,7 @@ module.exports = KeymapManager = (function () {
         this.watchStartPromises ??= {};
         this.watchStartPromises[filePath] = handle.ready;
         handle.ready.then(reload, () => {});
-        this.watchSubscriptions[filePath] = new Disposable(() => handle.dispose());
+        this.watchSubscriptions[filePath] = subscription;
       }
 
       return undefined;

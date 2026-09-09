@@ -109,6 +109,17 @@ describe("FileDocumentRegistry", () => {
     expect(second.suspended).toBe(0);
   });
 
+  it("moves independent views of the same original path together", async () => {
+    const first = document("a.txt");
+    const second = document("a.txt");
+    const effect = move("a.txt", "b.txt");
+    await registry.beginFileMove([effect]).complete([effect]);
+    expect(first.path).toBe(absolute("b.txt"));
+    expect(second.path).toBe(absolute("b.txt"));
+    expect(first.suspended).toBe(0);
+    expect(second.suspended).toBe(0);
+  });
+
   it("allows a chain that vacates an open destination before moving another document there", async () => {
     const first = document("a.txt");
     const second = document("b.txt");
