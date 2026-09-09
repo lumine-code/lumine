@@ -13,6 +13,7 @@ const {
 } = require("./file-watch-protocol");
 
 const RETRY_DELAYS = [250, 1000, 5000, 30000];
+const { createFileWatchTrace, summarizeFileWatchPayload } = require("./file-watch-trace");
 
 /** Application-owned supervisor. The native library is loaded only by its child. */
 class FileWatchService {
@@ -30,6 +31,7 @@ class FileWatchService {
     this.incidents = new Map();
     this.retryAttempt = 0;
     this.closed = false;
+    this.trace = createFileWatchTrace("service");
   }
 
   forkWorker({ generation }) {
@@ -66,6 +68,15 @@ class FileWatchService {
       if (request.type === "diagnostics") return Promise.resolve(this.diagnostics(owner));
       if (request.type === "ack") {
         const state = this.owners.get(owner);
+        this.trace?.("ack", {
+          owner,
+          sequence: request.sequence,
+          inFlight: state?.inFlight,
+          path: state?.inFlightTracePath,
+          matching: state?.inFlight === request.sequence,
+          queuedEvents: state?.queuedEvents,
+          queuedSubscriptions: state?.queue.size,
+        });
         if (state?.inFlight === request.sequence) {
           state.inFlight = null;
           this.flushOwner(state);
@@ -122,6 +133,15 @@ class FileWatchService {
       };
       state.subscriptions.set(record.localId, record);
       this.subscriptions.set(record.id, record);
+      this.trace?.("subscribe", {
+        owner,
+        id: record.id,
+        localId: record.localId,
+        path: record.path,
+        kind: record.kind,
+        recursive: record.recursive,
+        generation: this.generation,
+      });
       this.ensureWorker();
       if (this.workerReady) this.arm(record);
       return record.ready.promise;
@@ -142,6 +162,7 @@ class FileWatchService {
       return;
     }
     this.worker = worker;
+    this.trace?.("worker-spawn", { generation, workerPid: worker.pid });
     this.workerExit = deferred();
     this.startupTimer = setTimeout(() => {
       worker.lastWatchError = Object.assign(new Error("File watcher startup timed out"), {
@@ -173,6 +194,18 @@ class FileWatchService {
   }
 
   handleMessage(worker, generation, message) {
+    this.trace?.("worker-message", {
+      generation,
+      currentGeneration: this.generation,
+      currentWorker: worker === this.worker,
+      type: message?.type,
+      id: message?.id,
+      requestId: message?.requestId,
+      eventType: message?.eventType,
+      path: this.subscriptions.get(message?.id)?.path,
+      payload: summarizeFileWatchPayload(message?.payload),
+      error: message?.error,
+    });
     if (worker !== this.worker || generation !== this.generation) return;
     if (!message || message.version !== VERSION || message.generation !== generation) {
       worker.lastWatchError = Object.assign(new Error("File watcher protocol mismatch"), {
@@ -230,6 +263,7 @@ class FileWatchService {
       );
     }
     const requestId = ++this.nextRequestId;
+    this.trace?.("worker-request", { generation: this.generation, requestId, type, ...payload });
     const pending = deferred();
     this.pending.set(requestId, pending);
     try {
@@ -269,6 +303,14 @@ class FileWatchService {
           });
         }
         record.everReady = true;
+        this.trace?.("ready", {
+          id: record.id,
+          localId: record.localId,
+          owner: record.state.owner,
+          path: record.path,
+          generation,
+          queued: record.state.queue.has(record.id),
+        });
         record.ready.resolve();
         this.flushOwner(record.state);
       },
@@ -292,6 +334,14 @@ class FileWatchService {
 
   unsubscribe(record) {
     if (!record) return Promise.resolve();
+    this.trace?.("unsubscribe", {
+      id: record.id,
+      localId: record.localId,
+      owner: record.state.owner,
+      path: record.path,
+      generation: this.generation,
+      cancelled: record.cancelled,
+    });
     if (record.cancelled) return record.closed.promise;
     record.cancelled = true;
     clearTimeout(record.rearmTimer);
@@ -319,6 +369,12 @@ class FileWatchService {
   }
 
   remove(record) {
+    this.trace?.("remove", {
+      id: record.id,
+      localId: record.localId,
+      owner: record.state.owner,
+      path: record.path,
+    });
     this.dropQueued(record);
     record.state.subscriptions.delete(record.localId);
     this.subscriptions.delete(record.id);
@@ -330,6 +386,7 @@ class FileWatchService {
   }
 
   workerExited(worker, generation, error) {
+    this.trace?.("worker-exited", { generation, workerPid: worker?.pid, error: error?.message });
     if (generation !== this.generation || (worker && worker !== this.worker)) return;
     this.worker = null;
     this.workerReady = false;
@@ -361,6 +418,21 @@ class FileWatchService {
 
   enqueue(record, type, payload) {
     const state = record.state;
+    this.trace?.("enqueue", {
+      id: record.id,
+      localId: record.localId,
+      owner: state.owner,
+      path: record.path,
+      type,
+      payload: summarizeFileWatchPayload(payload),
+      active: record.active,
+      cancelled: record.cancelled,
+      closing: state.closing,
+      inFlight: state.inFlight,
+      queuedEvents: state.queuedEvents,
+      discardedOnInvalidate:
+        type === "invalidate" ? state.queue.get(record.id)?.changes.size || 0 : 0,
+    });
     if (record.cancelled || state.closing) return;
     let entry = state.queue.get(record.id);
     if (!entry) {
@@ -395,11 +467,27 @@ class FileWatchService {
 
   dropQueued(record) {
     const entry = record.state.queue.get(record.id);
+    this.trace?.("drop-queued", {
+      id: record.id,
+      owner: record.state.owner,
+      path: record.path,
+      changes: entry?.changes.size || 0,
+      invalidate: entry?.invalidate,
+      error: entry?.error,
+    });
     if (entry) record.state.queuedEvents -= entry.changes.size;
     record.state.queue.delete(record.id);
   }
 
   flushOwner(state) {
+    this.trace?.("flush", {
+      owner: state.owner,
+      inFlight: state.inFlight,
+      path: state.inFlightTracePath,
+      closing: state.closing,
+      queuedEvents: state.queuedEvents,
+      queuedSubscriptions: state.queue.size,
+    });
     if (state.inFlight !== null || state.closing) return;
     for (const [id, entry] of state.queue) {
       const { record } = entry;
@@ -427,6 +515,16 @@ class FileWatchService {
       if (!entry.error && !entry.invalidate && !entry.changes.size) state.queue.delete(id);
       const sequence = ++state.sequence;
       state.inFlight = sequence;
+      if (this.trace) state.inFlightTracePath = record.path;
+      this.trace?.("deliver", {
+        owner: state.owner,
+        id: record.id,
+        localId: record.localId,
+        path: record.path,
+        sequence,
+        type,
+        payload: summarizeFileWatchPayload(payload),
+      });
       try {
         state.sendEvent({ id: record.localId, type, payload, sequence });
       } catch {
@@ -438,6 +536,12 @@ class FileWatchService {
 
   closeOwner(owner) {
     const state = this.owners.get(owner);
+    this.trace?.("close-owner", {
+      owner,
+      subscriptions: state?.subscriptions.size,
+      inFlight: state?.inFlight,
+      queuedEvents: state?.queuedEvents,
+    });
     if (!state) return Promise.resolve();
     if (state.closed) return state.closed;
     state.closing = true;

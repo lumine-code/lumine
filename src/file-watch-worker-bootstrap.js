@@ -10,6 +10,8 @@ const {
   mergeChange,
 } = require("./file-watch-protocol");
 const FileWatchWorker = require("./file-watch-worker");
+const { createFileWatchTrace, summarizeFileWatchPayload } = require("./file-watch-trace");
+const trace = createFileWatchTrace("bootstrap");
 const generation = Number(process.env.LUMINE_FILE_WATCH_GENERATION);
 const controls = [];
 const events = new Map();
@@ -39,8 +41,27 @@ function sendNext() {
     }
   }
   if (!message) return;
+  trace?.("ipc-send", {
+    generation,
+    id: message.id,
+    requestId: message.requestId,
+    type: message.type,
+    eventType: message.eventType,
+    path: worker?.subscriptions.get(message.id)?.path,
+    payload: summarizeFileWatchPayload(message.payload),
+    controls: controls.length,
+    queuedEvents,
+  });
   sending = true;
   process.send({ version: VERSION, generation, ...message }, (error) => {
+    trace?.("ipc-send-complete", {
+      generation,
+      id: message.id,
+      requestId: message.requestId,
+      type: message.type,
+      eventType: message.eventType,
+      error: error?.message,
+    });
     sending = false;
     if (error) process.exit(1);
     sendNext();
@@ -53,6 +74,16 @@ function sendControl(message) {
 }
 
 function sendEvent({ id, type, payload }) {
+  trace?.("queue-event", {
+    generation,
+    id,
+    type,
+    path: worker?.subscriptions.get(id)?.path,
+    payload: summarizeFileWatchPayload(payload),
+    sending,
+    queuedEvents,
+    discardedOnInvalidate: type === "invalidate" ? events.get(id)?.changes.size || 0 : 0,
+  });
   let entry = events.get(id);
   if (!entry) events.set(id, (entry = { changes: new Map(), invalidate: null, error: null }));
   if (type === "changes") {
@@ -92,6 +123,13 @@ try {
 }
 
 process.on("message", async (message) => {
+  trace?.("ipc-receive", {
+    generation,
+    id: message?.id,
+    requestId: message?.requestId,
+    path: message?.path,
+    type: message?.type,
+  });
   if (!message || message.version !== VERSION || message.generation !== generation) process.exit(1);
   try {
     let payload;

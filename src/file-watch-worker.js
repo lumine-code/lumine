@@ -10,6 +10,7 @@ const {
 } = require("./file-watch-protocol");
 
 const MISSING_CODES = new Set(["ENOENT", "ENOTDIR"]);
+const { createFileWatchTrace, summarizeFileWatchPayload } = require("./file-watch-trace");
 
 function identity(stat) {
   return `${stat.dev}:${stat.ino}`;
@@ -40,6 +41,7 @@ class FileWatchWorker {
     this.nextIncident = 0;
     this.pendingIncidents = new Map();
     this.closed = false;
+    this.trace = createFileWatchTrace("worker");
   }
 
   async stat(targetPath) {
@@ -242,6 +244,7 @@ class FileWatchWorker {
         members: new Map(),
         invalid: false,
       };
+      this.trace?.("source-open", { id: logical.id, path: logical.path, source: descriptor });
       source.handle = this.engine.watchDirectory(
         source.path,
         { recursive: descriptor.recursive, guard: descriptor.guard },
@@ -256,12 +259,41 @@ class FileWatchWorker {
   async release(logical, source) {
     source.members.delete(logical);
     if (source.members.size) return;
+    this.trace?.("source-close-start", {
+      id: logical.id,
+      path: logical.path,
+      sourcePath: source.path,
+    });
     if (this.sources.get(source.key) === source) this.sources.delete(source.key);
     source.handle.dispose();
     await source.handle.closed;
+    this.trace?.("source-close-done", {
+      id: logical.id,
+      path: logical.path,
+      sourcePath: source.path,
+    });
   }
 
   sourceEvent(source, message) {
+    this.trace?.("native-event", {
+      sourcePath: source.path,
+      sourceKey: source.key,
+      invalid: source.invalid,
+      subscriptions: [...source.members].map(([logical, descriptor]) => ({
+        id: logical.id,
+        path: logical.path,
+        canonicalTarget: logical.plan?.canonicalTarget,
+        main: descriptor.main,
+        guard: descriptor.guard,
+        recursive: descriptor.recursive,
+        guardPaths: [...descriptor.guardPaths],
+        cancelled: logical.cancelled,
+      })),
+      type: message.type,
+      reason: message.reason,
+      error: message.error,
+      ...summarizeFileWatchPayload(message.events || []),
+    });
     if (message.type === "invalidate" || message.type === "error") {
       const reason = message.reason || "source-lost";
       const incident =
@@ -333,6 +365,13 @@ class FileWatchWorker {
   }
 
   emit(logical, type, payload) {
+    this.trace?.("emit", {
+      id: logical.id,
+      path: logical.path,
+      type,
+      cancelled: logical.cancelled,
+      payload: summarizeFileWatchPayload(payload),
+    });
     if (!logical.cancelled) this.sendEvent({ id: logical.id, type, payload });
   }
 
@@ -349,11 +388,25 @@ class FileWatchWorker {
   }
 
   schedule(logical, delay = this.settleDelay) {
+    this.trace?.("schedule", {
+      id: logical.id,
+      path: logical.path,
+      delay,
+      existingTimer: Boolean(logical.timer),
+      processing: Boolean(logical.processing),
+      initializing: logical.initializing,
+      rebind: logical.rebind,
+      checkFile: logical.checkFile,
+      contentChanged: logical.contentChanged,
+      invalidation: logical.invalidation,
+      pending: [...logical.events.values()],
+    });
     if (logical.timer && delay < logical.timerDelay) {
       // Fresh topology evidence should not wait out a previous permission or
       // broken-link retry backoff. Ordinary event coalescing keeps its timer.
       clearTimeout(logical.timer);
       logical.timer = null;
+      this.trace?.("timer-fired", { id: logical.id, path: logical.path });
     }
     if (logical.cancelled || logical.timer || logical.initializing || logical.processing) return;
     logical.timerDelay = delay;
@@ -385,6 +438,17 @@ class FileWatchWorker {
       const acquired = new Map();
       try {
         next = await this.plan(logical);
+        this.trace?.("rebind-plan", {
+          id: logical.id,
+          path: logical.path,
+          initial,
+          exists: Boolean(next.stat),
+          canonicalTarget: next.canonicalTarget,
+          sources: [...next.descriptors.values()].map((source) => ({
+            ...source,
+            guardPaths: [...source.guardPaths],
+          })),
+        });
         for (const descriptor of next.descriptors.values()) {
           if (logical.cancelled) throw abortError(logical.path);
           const source = this.acquire(logical, descriptor);
@@ -395,6 +459,15 @@ class FileWatchWorker {
         }
         if (logical.cancelled) throw abortError(logical.path);
         const verified = await this.plan(logical);
+        this.trace?.("rebind-verified", {
+          id: logical.id,
+          path: logical.path,
+          initial,
+          exists: Boolean(verified.stat),
+          canonicalTarget: verified.canonicalTarget,
+          matches: verified.signature === next.signature,
+          topologyChanged: logical.plan?.topology !== verified.topology,
+        });
         if (verified.signature !== next.signature) {
           throw Object.assign(new Error("File watch target changed while arming"), {
             code: "ENOENT",
@@ -423,6 +496,12 @@ class FileWatchWorker {
         );
         return;
       } catch (error) {
+        this.trace?.("rebind-error", {
+          id: logical.id,
+          path: logical.path,
+          initial,
+          error: serializeError(error),
+        });
         await Promise.all(
           [...acquired.values()]
             .filter((source) => logical.sources.get(source.key) !== source)
@@ -455,6 +534,19 @@ class FileWatchWorker {
     }
     const current = fingerprint(stat);
     const accessTime = stat ? (stat.atimeNs ?? stat.atimeMs) : null;
+    this.trace?.("file-stat", {
+      id: logical.id,
+      path: logical.path,
+      initial,
+      before: logical.fingerprint,
+      after: current,
+      accessBefore: logical.accessTime,
+      accessAfter: accessTime,
+      contentChanged,
+      contentVersionBefore: contentVersion,
+      contentVersionAfter: logical.contentVersion,
+      plannedExists: Boolean(logical.plan?.stat),
+    });
     if (initial && contentVersion === (logical.contentVersion || 0)) {
       // A content hint received before the baseline stat is already covered
       // by that initial read. Keep hints arriving during the stat operation:
@@ -478,6 +570,14 @@ class FileWatchWorker {
   }
 
   async update(logical) {
+    this.trace?.("update-start", {
+      id: logical.id,
+      path: logical.path,
+      rebind: logical.rebind,
+      checkFile: logical.checkFile,
+      contentChanged: logical.contentChanged,
+      invalidation: logical.invalidation,
+    });
     const rebind = logical.rebind;
     const checkFile = logical.checkFile;
     const contentChanged = logical.contentChanged;
@@ -495,6 +595,13 @@ class FileWatchWorker {
       // missing-target source is armed; a second handoff invalidation must
       // not erase that change while the renderer is acknowledging the first.
       logical.rebind = true;
+      this.trace?.("handoff-deferred", {
+        id: logical.id,
+        path: logical.path,
+        plannedExists: Boolean(logical.plan?.stat),
+        currentExists: logical.fingerprint !== null,
+        pending: [...logical.events.values()],
+      });
       return;
     }
     if (logical.invalidation) {
@@ -528,12 +635,21 @@ class FileWatchWorker {
       cancel: deferred(),
     };
     this.subscriptions.set(id, logical);
+    this.trace?.("subscribe", { id, path: logical.path, kind, recursive });
     logical.ready = (async () => {
       try {
         await this.rebind(logical, true);
         if (kind === "file") await this.reconcileFile(logical, true);
         if (logical.cancelled) throw abortError(logical.path);
         logical.initializing = false;
+        this.trace?.("ready", {
+          id,
+          path: logical.path,
+          rebind: logical.rebind,
+          checkFile: logical.checkFile,
+          fingerprint: logical.fingerprint,
+          invalidation: logical.invalidation,
+        });
         // Mutations arriving while we armed the last source still need to be
         // reconciled. Never reset these dirty flags at the end of startup.
         if (logical.rebind || logical.checkFile || logical.events.size || logical.invalidation) {
@@ -561,6 +677,7 @@ class FileWatchWorker {
   unsubscribe(id) {
     const logical = this.subscriptions.get(id);
     if (!logical) return Promise.resolve();
+    this.trace?.("unsubscribe", { id, path: logical.path, cancelled: logical.cancelled });
     if (logical.closed) return logical.closed;
     logical.cancelled = true;
     logical.cancel.reject(abortError(logical.path));

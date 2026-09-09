@@ -1,5 +1,6 @@
 const { absolutePath } = require("./file-watch-paths");
 const { deferred, abortError, deserializeError } = require("./file-watch-protocol");
+const { createFileWatchTrace, summarizeFileWatchPayload } = require("./file-watch-trace");
 
 /**
  * @public
@@ -166,18 +167,35 @@ class FileWatchHandle {
 /** A session-scoped client. Neither this module nor its handles load the addon. */
 class FileWatchClient {
   constructor({ request, onEvent, reportError = (error) => console.error(error) }) {
+    this.trace = createFileWatchTrace("client");
     this.request = request;
     this.reportError = reportError;
     this.handles = new Map();
     this.nextId = 0;
     this.disposed = false;
     this.subscription = onEvent((event) => {
+      this.trace?.("receive", {
+        id: event.id,
+        path: this.handles.get(event.id)?.path,
+        type: event.type,
+        sequence: event.sequence,
+        payload: summarizeFileWatchPayload(event.payload),
+        knownHandle: this.handles.has(event.id),
+        closed: this.disposed,
+      });
       try {
         this.handles.get(event.id)?.deliver(event.type, event.payload);
       } finally {
         if (event.sequence !== undefined) {
           Promise.resolve()
-            .then(() => this.request({ type: "ack", sequence: event.sequence }))
+            .then(() => {
+              this.trace?.("ack-send", {
+                id: event.id,
+                path: this.handles.get(event.id)?.path,
+                sequence: event.sequence,
+              });
+              return this.request({ type: "ack", sequence: event.sequence });
+            })
             .catch(() => {});
         }
       }
@@ -198,6 +216,7 @@ class FileWatchClient {
     const id = ++this.nextId;
     const handle = new FileWatchHandle(this, id, absolutePath(targetPath));
     this.handles.set(id, handle);
+    this.trace?.("subscribe", { id, path: handle.path, kind, recursive });
     // Issue subscribe synchronously so a subsequent dispose cannot overtake it.
     let request;
     try {
@@ -206,13 +225,20 @@ class FileWatchClient {
       request = Promise.reject(error);
     }
     Promise.resolve(request).then(
-      () => handle.armed(),
-      (error) => handle.failed(error),
+      () => {
+        this.trace?.("ready", { id, path: handle.path, disposed: handle.isDisposed });
+        handle.armed();
+      },
+      (error) => {
+        this.trace?.("failed", { id, path: handle.path, error: error?.message, code: error?.code });
+        handle.failed(error);
+      },
     );
     return handle;
   }
 
   unsubscribe(id) {
+    this.trace?.("unsubscribe", { id, path: this.handles.get(id)?.path });
     // Keep the handle until its unsubscribe acknowledgement, so close() also
     // waits for handles whose owner already called dispose().
     return Promise.resolve()
