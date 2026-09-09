@@ -1,7 +1,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { Readable } = require("stream");
+const { PassThrough, Readable } = require("stream");
 const TextBuffer = require("../src/text-buffer");
 const FileState = require("../src/file-state");
 const FileDocumentRegistry = require("../src/file-document-registry");
@@ -98,6 +98,41 @@ describe("TextBuffer deferred file observation", () => {
       );
       expect(buffer.getText()).toBe("created after load");
       expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+    });
+  }
+
+  for (const newestFirst of [false, true]) {
+    it(`cancels an obsolete native reload before applying its contents (${newestFirst ? "newest" : "oldest"} finishes first)`, async () => {
+      const custom = source();
+      buffer = await TextBuffer.load(custom);
+      const reads = [];
+      custom.createReadStream = () => {
+        const stream = new PassThrough();
+        reads.push(stream);
+        return stream;
+      };
+      const changes = [];
+      buffer.onDidChange(({ changes: edits }) => changes.push(...edits));
+      const older = buffer.reload();
+      const newer = buffer.reload();
+      if (newestFirst) {
+        reads[1].end("newest");
+        await newer;
+        reads[0].end("obsolete");
+        await older;
+      } else {
+        // Two reads of identical contents must still deliver the first patch.
+        // Applying and then ignoring the obsolete read would leave the latest
+        // read with an empty diff and lose both its event and undo history.
+        reads[0].end("newest");
+        await older;
+        reads[1].end("newest");
+        await newer;
+      }
+      expect(buffer.getText()).toBe("newest");
+      expect(changes.length).toBeGreaterThan(0);
+      buffer.undo();
+      expect(buffer.getText()).toBe("before");
     });
   }
 

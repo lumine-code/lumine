@@ -2711,11 +2711,23 @@ class TextBuffer {
     let checkpoint = null;
     let patch;
     try {
-      patch = await this.buffer.load(source, {
-        encoding: this.getEncoding(),
-        force: options && options.discardChanges,
-        patch: this.loaded,
-      });
+      patch = await this.buffer.load(
+        source,
+        {
+          encoding: this.getEncoding(),
+          force: options && options.discardChanges,
+          patch: this.loaded,
+        },
+        // The native loader calls this once more before applying its patch.
+        // Ignoring an obsolete result only after it resolves is too late: it
+        // would already have changed the base text and invalidated undo and
+        // the diff returned by the next load.
+        () =>
+          this.loadCount === loadCount &&
+          this.fileOperationGeneration === operationGeneration &&
+          this.file === file &&
+          !this.isDestroyed(),
+      );
 
       // If this is not the most recent load of this file, then we should bow
       // out and let the newer call to `load` handle the tasks below.
