@@ -43,7 +43,7 @@ function createFileWatchTrace(component) {
         preview: json.slice(0, 6000),
       });
     }
-    if (!filter || filter.test(json)) console.error(`FILE_WATCH_TRACE ${json}`);
+    if (!filter || filter.test(json)) process.stderr.write(`FILE_WATCH_TRACE ${json}\n`);
   };
 }
 
