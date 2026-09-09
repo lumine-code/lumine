@@ -5,11 +5,11 @@
   },
   {
     "repo": "image-editor",
-    "sha": "f85b32ee196d64fd82851b6b9af462030added0c"
+    "sha": "d4fec67ed873d9e63c765526c0da3571cb4af9cb"
   },
   {
     "repo": "jupyter-view",
-    "sha": "704ebc09d6c73ee90e7fa8ab8180e6329b75719e"
+    "sha": "4f71b8282dbcd2cfa3049b547f3fcfe1774e7a0a"
   },
   {
     "repo": "markdown-preview",
@@ -21,15 +21,15 @@
   },
   {
     "repo": "sqlite-view",
-    "sha": "265542f2e2e1696a7c790f9aa1fae608beb21564"
+    "sha": "212a1f8325c3cd3e47daa54f496a9b59b7467a40"
   },
   {
     "repo": "table-editor",
-    "sha": "38f540fa9a4e8fa48d9ef46e233c5c89052e0ee3"
+    "sha": "52e46973a7b05f295fc1a81eac4abfe218b1cac3"
   },
   {
     "repo": "tree-view",
-    "sha": "fb0e4d130a7f56b2aea10929b9590f830b156403"
+    "sha": "ad7710f0164ddce13236049bf630edba2694090c"
   },
   {
     "repo": "file-operations",
@@ -49,19 +49,19 @@
   },
   {
     "repo": "jupyter-repl",
-    "sha": "9f461a9e5df6d6290184fc2deac8beaa0a4e7431"
+    "sha": "79acadce0d2b24ae2fceffc037fcd002a5b6dc84"
   },
   {
     "repo": "latex-tools",
-    "sha": "aaca3decf67b11d87b8d079190c44b026ab6d6d1"
+    "sha": "51c6faa59961bb680acbc4b8a99c03a84a3f0d0e"
   },
   {
     "repo": "typst-tools",
-    "sha": "ef9de93b9eb5f48dee4784963c94b36c47b65429"
+    "sha": "da97c5e530eb3125f790d3756aa15a0a5c71fcba"
   },
   {
     "repo": "tree-view-favourite",
-    "sha": "4ff99811e2687e06d79a2a3a8e7bd782f983a01f"
+    "sha": "3532df5b1ee608e8379f2b5b5e313c49ba74cbc6"
   },
   {
     "repo": "project-list",
@@ -81,10 +81,10 @@
   },
   {
     "repo": "git-diff",
-    "sha": "7f90b07ee197765bb34a2df011e7a41e0aed0cf7"
+    "sha": "2bc6773cf7bee09f228e9bea3a751218adfa38a5"
   },
   {
     "repo": "graviss",
-    "sha": "294ca8ae2f24b20a9ba3042046844996e775ed7d"
+    "sha": "ddf2cab226cd7f3d19e35edcbb06ed09d88c20f0"
   }
 ]
