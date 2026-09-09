@@ -42,7 +42,7 @@
     "@lumine-code/superstring": "github:lumine-code/superstring#d16238290cdcceba6875475b56f616e9f96c4c39",
     "@lumine-code/temp": "github:lumine-code/node-temp#bbd9e24a78e835e7421c8acec360731eafa4d3f6",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#fd9c48ac852a303e1fbc2e1ae77dbefa57ba6052",
-    "@lumine-code/watcher": "github:lumine-code/watcher#d88246ab989e78ceb1737dac5b603a1041285a26",
+    "@lumine-code/watcher": "github:lumine-code/watcher#22d714dd70e034c74ae6c65d9c5266f3f2dfb4a4",
     "@typescript/typescript6": "6.0.2",
     "@vscode/ripgrep": "1.18.0",
     "about": "github:lumine-code/about#5bdad19d20fefe61c775390408f249b150dd1830",
@@ -177,6 +177,6 @@
     "github:lumine-code/node-ctags#78b33db397b84c640c67caf7d925045cd6b8305e": true,
     "tree-sitter@0.25.1": true,
     "tree-sitter-python@0.25.0": true,
-    "github:lumine-code/watcher#d88246ab989e78ceb1737dac5b603a1041285a26": true
+    "github:lumine-code/watcher#22d714dd70e034c74ae6c65d9c5266f3f2dfb4a4": true
   }
 }
