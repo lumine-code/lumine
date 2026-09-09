@@ -2703,14 +2703,13 @@ class TextBuffer {
     }
 
     const file = this.file;
-    const source = file instanceof File ? file.getPath() : file.createReadStream();
-
     const loadCount = ++this.loadCount;
     const operationGeneration = ++this.fileOperationGeneration;
 
     let checkpoint = null;
     let patch;
     try {
+      const source = file instanceof File ? file.getPath() : file.createReadStream();
       patch = await this.buffer.load(
         source,
         {

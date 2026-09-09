@@ -136,6 +136,21 @@ describe("TextBuffer deferred file observation", () => {
     });
   }
 
+  it("releases the pending load when a custom source cannot create its stream", async () => {
+    const custom = source();
+    buffer = await TextBuffer.load(custom);
+    const error = new Error("Custom source failed");
+    custom.createReadStream = () => {
+      throw error;
+    };
+    await expectAsync(buffer.reload()).toBeRejectedWith(error);
+    expect(buffer.pendingFileLoads).toBe(0);
+    expect(buffer.getText()).toBe("before");
+    custom.createReadStream = () => Readable.from(["recovered"]);
+    await buffer.reload();
+    expect(buffer.getText()).toBe("recovered");
+  });
+
   it("drains a custom source change deferred during a file operation", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);
