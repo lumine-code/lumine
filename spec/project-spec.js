@@ -4,19 +4,21 @@ const Project = require("../src/project");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const ProjectDirectory = require("../src/project-directory");
-const { stopAllWatchers } = require("../src/path-watcher");
 const GitRepository = require("../src/git-repository");
 const RepositoryRegistry = require("../src/repository-registry");
 
 describe("Project", () => {
   const standaloneRegistries = [];
+  const standaloneProjects = [];
   const buildProject = (options) => {
     const repositoryRegistry = new RepositoryRegistry({
       config: lumine.config,
       notificationManager: lumine.notifications,
     });
     standaloneRegistries.push(repositoryRegistry);
-    return new Project({ ...options, repositoryRegistry });
+    const project = new Project({ ...options, repositoryRegistry });
+    standaloneProjects.push(project);
+    return project;
   };
 
   beforeEach(() => {
@@ -26,6 +28,7 @@ describe("Project", () => {
   });
 
   afterEach(() => {
+    for (const project of standaloneProjects.splice(0)) project.destroy();
     for (const registry of standaloneRegistries.splice(0)) registry.destroy();
   });
 
@@ -561,7 +564,7 @@ describe("Project", () => {
 
     it("uses the custom onDidChangeFiles as the watcher if available", async () => {
       // Ensure that all preexisting watchers are stopped
-      await stopAllWatchers();
+      await lumine.fileWatchClient.disposeAll();
 
       const remotePath = "ssh://another-directory:8080/does-exist";
       lumine.project.setPaths([remotePath]);
@@ -1128,7 +1131,7 @@ describe("Project", () => {
         const fileThree = path.join(dirTwo, "file-three.txt");
 
         // Ensure that all preexisting watchers are stopped
-        await stopAllWatchers();
+        await lumine.fileWatchClient.disposeAll();
 
         lumine.project.setPaths([dirOne]);
         await lumine.project.getWatcherPromise(dirOne);
@@ -1156,7 +1159,7 @@ describe("Project", () => {
         });
         events = [];
 
-        expect(lumine.project.watcherPromisesByPath[dirTwo]).toEqual(undefined);
+        expect(lumine.project.watchersByPath.get(dirTwo)).toEqual(undefined);
         fs.writeFileSync(fileThree, "three\n");
         fs.writeFileSync(fileTwo, "two\n");
         fs.writeFileSync(fileOne, "one\n");
@@ -1178,7 +1181,7 @@ describe("Project", () => {
         const previousWatchDiscovery = lumine.config.get("git.watchDiscovery");
         const previousWatchDepth = lumine.config.get("git.watchDepth");
 
-        await stopAllWatchers();
+        await lumine.fileWatchClient.disposeAll();
         lumine.project.setPaths([rootPath]);
         await lumine.project.getWatcherPromise(rootPath);
         const probeFile = path.join(rootPath, "probe.txt");
@@ -1270,7 +1273,7 @@ describe("Project", () => {
           const linkDir = path.join(temp.mkdirSync("lumine-spec-project-link"), "link");
           fs.symlinkSync(realDir, linkDir);
 
-          await stopAllWatchers();
+          await lumine.fileWatchClient.disposeAll();
 
           lumine.project.setPaths([linkDir]);
           await lumine.project.getWatcherPromise(linkDir);

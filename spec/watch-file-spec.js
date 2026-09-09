@@ -1,20 +1,12 @@
 const temp = require("@lumine-code/temp");
 const fs = require("fs");
 const path = require("path");
-const { watchFile, watchPath } = require("../src/path-watcher");
+const { watchFile, watchDirectory } = require("../src/file-watch");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 temp.track();
 
-// `watchFile` and `watchPath(..., { recursive: false })` are served by the
-// worker's non-recursive Node watcher rather than by `@lumine-code/watcher`.
-// `nodejs-watcher-spec.js` covers that watcher directly, in the renderer,
-// against a path it resolves up front — so until now nothing covered the round
-// trip through the worker, and nothing covered the spellings a caller actually
-// subscribes with. Both matter on macOS, where every temp directory (and so the
-// spec harness's own config directory) descends from `/var`, a symlink to
-// `/private/var`: the path the subscriber holds is not the path the OS reports
-// events for, and the filter in `PathWatcher::onNativeEvents` compares the two.
+// Exercise public handles through renderer IPC and the application-owned native worker.
 describe("watchFile", function () {
   let handles;
   let unresolvedRoot;
@@ -29,7 +21,7 @@ describe("watchFile", function () {
 
   afterEach(async function () {
     for (const handle of handles) handle.dispose();
-    await watchPath.reset();
+    await lumine.fileWatchClient.disposeAll();
   });
 
   // Records every notification rather than resolving on the first, so a spec
@@ -37,7 +29,7 @@ describe("watchFile", function () {
   function watching(filePath) {
     const handle = watchFile(filePath);
     const changes = [];
-    handle.onDidChange(() => changes.push(handle.getPath()));
+    handle.onDidChange(() => changes.push(handle.path));
     handles.push(handle);
     return { handle, changes };
   }
@@ -48,16 +40,13 @@ describe("watchFile", function () {
   }
 
   it("rejects a missing path at the API boundary", function () {
-    expect(() => watchFile(undefined)).toThrowError(
-      TypeError,
-      'The "filePath" argument to watchFile must be a non-empty string. Received undefined',
-    );
+    expect(() => watchFile(undefined)).toThrowError(TypeError);
   });
 
   it("reports an external write to a file named by its real path", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.writeFileSync(file, '{"external":true}');
 
@@ -69,7 +58,7 @@ describe("watchFile", function () {
     const stat = fs.statSync(file);
     fs.utimesSync(file, new Date(Date.now() - 48 * 60 * 60 * 1000), stat.mtime);
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.readFileSync(file);
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -83,7 +72,7 @@ describe("watchFile", function () {
   it("reports an external write to a file named through a symlinked parent", async function () {
     const file = seed(path.join(unresolvedRoot, "target.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.writeFileSync(file, '{"external":true}');
 
@@ -98,7 +87,7 @@ describe("watchFile", function () {
     const second = seed(path.join(root, "second.json"));
     const a = watching(first);
     const b = watching(second);
-    await Promise.all([a.handle.getStartPromise(), b.handle.getStartPromise()]);
+    await Promise.all([a.handle.ready, b.handle.ready]);
 
     fs.writeFileSync(first, '{"a":1}');
     fs.writeFileSync(second, '{"b":2}');
@@ -115,11 +104,11 @@ describe("watchFile", function () {
     const file = seed(path.join(root, "target.json"));
 
     const first = watching(file);
-    await first.handle.getStartPromise();
+    await first.handle.ready;
     first.handle.dispose();
 
     const second = watching(file);
-    await second.handle.getStartPromise();
+    await second.handle.ready;
 
     fs.writeFileSync(file, '{"external":true}');
 
@@ -132,7 +121,7 @@ describe("watchFile", function () {
   it("reports a write to a file in the config directory", async function () {
     const file = seed(path.join(lumine.getConfigDirPath(), "watch-file-spec.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.writeFileSync(file, '{"external":true}');
 
@@ -145,11 +134,12 @@ describe("watchFile", function () {
   // Node watches, and on macOS both backends drive FSEvents from one process.
   it("reports a write while a recursive watch is active in the same worker", async function () {
     const projectDir = fs.realpathSync.native(temp.mkdirSync("watch-file-spec-project-"));
-    const recursive = await watchPath(projectDir, {}, () => {});
+    const recursive = watchDirectory(projectDir, { recursive: true });
+    await recursive.ready;
 
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.writeFileSync(file, '{"external":true}');
 
@@ -157,17 +147,11 @@ describe("watchFile", function () {
     recursive.dispose();
   });
 
-  // On macOS every `fs.watch` handle in a process shares one FSEventStream, and
-  // libuv rebuilds it — "since now" — whenever a handle is added or removed. A
-  // rebuild discards whatever the old stream had accepted but not yet delivered,
-  // and nothing replays it, so an unrelated watch arming or being released can
-  // swallow another watcher's only event. `PathWatcher::getStopPromise` names
-  // this hazard for the repoint path; nothing pinned it for watchers that merely
-  // live side by side, which is every package suite's steady state.
+  // Unrelated subscriptions arming or closing must not swallow an active file change.
   it("reports a write while other watches arm and are released around it", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     const churn = [];
     for (let i = 0; i < 4; i++) {
@@ -183,28 +167,56 @@ describe("watchFile", function () {
     await conditionPromise(() => changes.length > 0, "a change that survives concurrent churn");
   });
 
-  // End to end, through the worker: a watch the OS refuses must reach the
-  // subscriber as a rejection. It used to answer `watcher:watch` with success,
-  // so `getStartPromise()` resolved on a watcher that would never emit.
-  it("rejects the start promise when the watch cannot be armed", async function () {
-    const file = path.join(root, "no-such-directory", "target.json");
+  it("observes a file created below initially missing parents", async function () {
+    const file = path.join(root, "missing", "nested", "target.json");
+    const { handle, changes } = watching(file);
+    await handle.ready;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "created");
+    await conditionPromise(() => changes.length > 0, "creation below missing parents");
+  });
+
+  it("keeps its original path after an external rename and observes recreation", async function () {
+    const file = seed(path.join(root, "original.json"));
+    const target = path.join(root, "renamed.json");
     const handle = watchFile(file);
     handles.push(handle);
+    const events = [];
+    handle.onDidChange((batch) => events.push(...batch));
+    await handle.ready;
+    fs.renameSync(file, target);
+    await conditionPromise(
+      () => events.some((event) => event.action === "deleted"),
+      "rename-away deletion",
+    );
+    expect(handle.path).toBe(file);
+    fs.writeFileSync(file, "recreated");
+    await conditionPromise(() => events.some((event) => event.action === "created"), "recreation");
+  });
 
-    let failure = null;
-    try {
-      await handle.getStartPromise();
-    } catch (error) {
-      failure = error;
-    }
-
-    expect(failure).not.toBeNull();
+  it("continues after atomic replacement without reporting deletion", async function () {
+    const file = seed(path.join(root, "atomic.json"));
+    const handle = watchFile(file);
+    handles.push(handle);
+    const events = [];
+    handle.onDidChange((batch) => events.push(...batch));
+    await handle.ready;
+    const replacement = seed(path.join(root, "replacement.tmp"), "replacement");
+    fs.renameSync(replacement, file);
+    await conditionPromise(
+      () => events.some((event) => event.action === "updated"),
+      "atomic replacement",
+    );
+    expect(events.some((event) => event.action === "deleted")).toBe(false);
+    const count = events.length;
+    fs.writeFileSync(file, "later external write");
+    await conditionPromise(() => events.length > count, "post-replacement write");
   });
 
   it("keeps reporting writes after the first one", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);
-    await handle.getStartPromise();
+    await handle.ready;
 
     fs.writeFileSync(file, '{"first":true}');
     await conditionPromise(() => changes.length > 0, "the first change");

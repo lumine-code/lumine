@@ -62,6 +62,7 @@ describe("SecretStore", () => {
     await store.set("a", "1");
     await store.delete("a");
     expect(changed).toEqual(["a", "a"]);
+    store.dispose();
   });
 
   it("keeps secrets in session-only memory and warns once when encryption is unavailable", async () => {

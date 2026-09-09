@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const { Emitter } = require("@lumine-code/event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { watchFile } = require("./file-watch");
 
 /**
  * @public
@@ -33,10 +34,18 @@ const { Emitter } = require("@lumine-code/event-kit");
  * earlier session, and ask again rather than fail.
  */
 class SecretStore {
-  constructor({ safeStorage, applicationDelegate, storagePath, notify, withStorageLock } = {}) {
+  constructor({
+    safeStorage,
+    applicationDelegate,
+    storagePath,
+    notify,
+    withStorageLock,
+    fileWatchClient,
+  } = {}) {
     this._safeStorage = safeStorage;
     this.applicationDelegate = applicationDelegate;
     this.storagePath = storagePath;
+    this.fileWatchClient = fileWatchClient;
     this.notify = notify || null;
     this.withStorageLock =
       withStorageLock ||
@@ -142,7 +151,25 @@ class SecretStore {
   startWatching() {
     if (this.watching) return;
     this.watching = true;
-    fs.watchFile(this.storagePath, { persistent: false, interval: 250 }, this.handleStorageChange);
+    const watcher = this.fileWatchClient
+      ? this.fileWatchClient.watchFile(this.storagePath)
+      : watchFile(this.storagePath);
+    this.watchSubscriptions = new CompositeDisposable(
+      watcher,
+      watcher.onDidChange(this.handleStorageChange),
+      watcher.onDidInvalidate(this.handleStorageChange),
+      watcher.onDidError((error) => {
+        if (this.notify) this.notify(`Unable to observe secret storage: ${error.message}`);
+        else console.error(error);
+      }),
+    );
+    this.watchReady = watcher.ready;
+    watcher.ready.then(
+      () => {
+        if (this.watching) this.handleStorageChange();
+      },
+      () => {},
+    );
   }
 
   handleStorageChange() {
@@ -287,7 +314,7 @@ class SecretStore {
 
   dispose() {
     if (this.watching) {
-      fs.unwatchFile(this.storagePath, this.handleStorageChange);
+      this.watchSubscriptions.dispose();
       this.watching = false;
     }
     this.emitter.dispose();

@@ -449,6 +449,11 @@ module.exports = class IconRegistry {
         if (paths.length > 0) this.invalidate({ paths });
       }),
     );
+    if (project.onDidInvalidateFiles) {
+      this.projectSubscriptions.add(
+        project.onDidInvalidateFiles(() => this.invalidate({ types: ["path"] })),
+      );
+    }
   }
 
   // Repository discovery is asynchronous and changes the semantic identity of

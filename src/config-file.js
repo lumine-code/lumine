@@ -1,33 +1,31 @@
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const dedent = require("dedent");
-const { Disposable, Emitter } = require("@lumine-code/event-kit");
+const { Disposable, Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const CSON = require("@lumine-code/season");
 const Path = require("path");
 const asyncQueue = require("async/queue");
 
-// `ConfigFile` runs in the main process, so it watches directly with the
-// non-recursive Node watcher rather than the renderer's `watchPath` worker.
-const { watch } = require("./nodejs-watcher");
-
 module.exports = class ConfigFile {
-  static at(path) {
+  static at(path, fileWatchClient) {
     if (!this._known) {
       this._known = new Map();
     }
 
     const existing = this._known.get(path);
     if (existing) {
+      if (fileWatchClient) existing.fileWatchClient = fileWatchClient;
       return existing;
     }
 
-    const created = new ConfigFile(path);
+    const created = new ConfigFile(path, fileWatchClient);
     this._known.set(path, created);
     return created;
   }
 
-  constructor(path) {
+  constructor(path, fileWatchClient) {
     this.path = path;
+    this.fileWatchClient = fileWatchClient;
     this.emitter = new Emitter();
     this.value = {};
     this.reloadCallbacks = [];
@@ -70,18 +68,23 @@ module.exports = class ConfigFile {
       CSON.writeFileSync(this.path, {}, { flag: "wx" });
     }
 
-    await this.reload();
-
+    let subscriptions;
     try {
-      // Watched via the parent directory (see nodejs-watcher.js) so atomic
-      // saves are seen reliably. Reload on any event other than a delete.
-      const watcher = watch(this.path, (eventType) => {
-        if (eventType !== "delete") {
-          this.requestLoad();
-        }
-      });
-      return { dispose: () => watcher.close() };
+      const watcher = this.fileWatchClient.watchFile(this.path);
+      subscriptions = new CompositeDisposable(
+        watcher,
+        watcher.onDidChange(() => this.requestLoad()),
+        watcher.onDidInvalidate(() => this.requestLoad()),
+        watcher.onDidError((error) =>
+          this.emitter.emit("did-error", `Unable to watch ${this.path}: ${error.message}`),
+        ),
+      );
+      await watcher.ready;
+      await this.reload();
+      return subscriptions;
     } catch {
+      subscriptions?.dispose();
+      await this.reload();
       //TODO_LUMINE: Find out why the lumine global variable isn't available at this point
       this.emitter.emit(
         "did-error",

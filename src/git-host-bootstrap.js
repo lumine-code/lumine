@@ -1,6 +1,5 @@
 // Child-process bootstrap for the git-host worker, forked by git-host.js under
-// ELECTRON_RUN_AS_NODE. Unlike watcher-task-bootstrap.js this installs NO DOM /
-// window / navigator shims: the git worker requires only `git` and DOM-free
+// ELECTRON_RUN_AS_NODE. It requires no DOM / window / navigator shims: the git worker requires only `git` and DOM-free
 // service modules. It sets up the compile cache (so source modules
 // load identically to the renderer), forwards console output to the renderer
 // for diagnostics, and then loads the worker.

@@ -4,7 +4,7 @@ const Path = require("path");
 // A minimal, watch-free directory value object returned by
 // `DefaultDirectoryProvider` for `lumine.project`. It is the path-helper subset
 // of the old pathwatcher `Directory` — with no filesystem watching (the project
-// watches its roots through `watchPath`) and no public `require('lumine').Directory`
+// watches its roots through `watchDirectory`) and no public `require('lumine').Directory`
 // export. The path semantics match pathwatcher's `Directory` so that project
 // management, `contains`/`relativize`, and repository discovery are unaffected.
 module.exports = class ProjectDirectory {

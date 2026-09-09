@@ -7,7 +7,6 @@ const temp = require("@lumine-code/temp").track();
 const fsPlus = require("@lumine-code/fs-plus");
 const FileIndex = require("../src/file-index");
 const ProjectDirectory = require("../src/project-directory");
-const { stopAllWatchers } = require("../src/path-watcher");
 
 // The index compares paths the way the filesystem does, so a spec that stands in
 // for a symlinked root has to fold its stand-in the same way.
@@ -729,7 +728,7 @@ describe("FileIndex with a real crawl and watcher", () => {
 
   afterEach(async () => {
     lumine.project.setPaths([]);
-    await stopAllWatchers();
+    await lumine.fileWatchClient.disposeAll();
   });
 
   const indexOnce = async () => {
@@ -804,7 +803,7 @@ describe("FileIndex with a real crawl and watcher", () => {
 
   it("follows the filesystem after the first crawl", async () => {
     jasmine.useRealClock();
-    await stopAllWatchers();
+    await lumine.fileWatchClient.disposeAll();
     lumine.config.set("core.ignoredNames", ["node_modules"]);
     await indexOnce();
     await lumine.project.getWatcherPromise(dir);
@@ -841,7 +840,7 @@ describe("FileIndex with a real crawl and watcher", () => {
 
   it("never admits a newly created VCS-ignored file", async () => {
     jasmine.useRealClock();
-    await stopAllWatchers();
+    await lumine.fileWatchClient.disposeAll();
     lumine.config.set("core.ignoredNames", []);
     await indexOnce();
     await lumine.project.getWatcherPromise(dir);

@@ -11,7 +11,9 @@ const dedent = require("dedent");
 const { BrowserWindow, dialog, webContents } = require("electron");
 
 const LumineWindow = require("../../src/lumine-window");
-const { emitterEventPromise } = require("../helpers/async-spec-helpers");
+const LumineApplication = require("../../src/lumine-application");
+const FileWatchService = require("../../src/file-watch-service");
+const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
 describe("LumineWindow", function () {
   let sinon, app, service;
@@ -22,15 +24,18 @@ describe("LumineWindow", function () {
     service = new StubRecoveryService(sinon);
   });
 
-  afterEach(function () {
+  afterEach(async function () {
+    await app.fileWatchService.close();
     sinon.restore();
   });
 
   describe("creating a real window", function () {
     let resourcePath, windowInitializationScript, lumineHome, browserWindow;
-    let original;
+    let original, extraWindows;
 
     beforeEach(async function () {
+      browserWindow = null;
+      extraWindows = new Set();
       original = {
         LUMINE_HOME: process.env.LUMINE_HOME,
         LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT:
@@ -72,10 +77,15 @@ describe("LumineWindow", function () {
       // Destroying the runner's last window is safe: the main-process test
       // bootstrap subscribes `window-all-closed`, so Electron's default
       // quit-on-last-window cannot take the runner down mid-suite.
-      if (browserWindow && !browserWindow.isDestroyed()) {
-        await browserWindow.webContents.executeJavaScript("lumine.prepareToUnloadEditorWindow()");
-        browserWindow.destroy();
+      const testWindows = new Set([browserWindow, ...extraWindows]);
+      for (const testWindow of testWindows) {
+        if (!testWindow || testWindow.isDestroyed()) continue;
+        if (!testWindow.webContents.isCrashed()) {
+          await testWindow.webContents.executeJavaScript("lumine.prepareToUnloadEditorWindow()");
+        }
+        testWindow.destroy();
       }
+      await Promise.all(app.windows.map((window) => app.releaseFileWatchSession(window)));
       process.env.LUMINE_HOME = original.LUMINE_HOME;
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT =
         original.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT;
@@ -124,6 +134,139 @@ describe("LumineWindow", function () {
           slashes: true,
         }),
       );
+    });
+
+    it("shares one watcher worker across main and two renderers through veto, reload, close and crash", async function () {
+      const sharedFile = path.join(lumineHome, "shared-observation.txt");
+      const privateFile = path.join(lumineHome, "second-window-observation.txt");
+      nodeFs.writeFileSync(sharedFile, "initial shared contents");
+      nodeFs.writeFileSync(privateFile, "initial private contents");
+      const mainClient = app.fileWatchService.createClient("main-process-observer");
+      const mainWatch = mainClient.watchFile(sharedFile);
+      const mainEvents = [];
+      mainWatch.onDidChange((events) => mainEvents.push(...events));
+      await mainWatch.ready;
+
+      const createWindow = async () => {
+        const window = new LumineWindow(app, service, {
+          resourcePath,
+          windowInitializationScript,
+          headless: true,
+        });
+        extraWindows.add(window.browserWindow);
+        await window.getLoadedPromise();
+        return window;
+      };
+      const attach = (window, paths) =>
+        window.browserWindow.webContents.executeJavaScript(`
+        (async () => {
+          globalThis.fileWatchProbe = { events: [], handles: [] };
+          for (const filePath of ${JSON.stringify(paths)}) {
+            const handle = require("lumine").watchFile(filePath);
+            fileWatchProbe.handles.push(handle);
+            handle.onDidChange(events => fileWatchProbe.events.push(...events));
+            await handle.ready;
+          }
+        })()
+      `);
+      const count = (window, targetPath) =>
+        window.browserWindow.webContents.executeJavaScript(
+          `fileWatchProbe.events.filter(event => event.path === ${JSON.stringify(targetPath)}).length`,
+        );
+      const expectWrite = async (windows, text) => {
+        const before = await Promise.all(windows.map((window) => count(window, sharedFile)));
+        const mainBefore = mainEvents.length;
+        nodeFs.writeFileSync(sharedFile, text);
+        await conditionPromise(async () => {
+          const after = await Promise.all(windows.map((window) => count(window, sharedFile)));
+          return (
+            mainEvents.length > mainBefore && after.every((value, index) => value > before[index])
+          );
+        }, `all remaining owners observing ${text}`);
+      };
+      const ownsSession = (session) =>
+        [...app.fileWatchService.owners.keys()].some((owner) => owner.startsWith(`${session}:`));
+
+      try {
+        const first = await createWindow();
+        const second = await createWindow();
+        await attach(first, [sharedFile]);
+        await attach(second, [sharedFile, privateFile]);
+        const workerPid = app.fileWatchService.worker.pid;
+        await expectWrite([first, second], "both renderer sessions are watching");
+
+        nodeFs.writeFileSync(privateFile, "only the second window watches this file");
+        await conditionPromise(
+          async () => (await count(second, privateFile)) > 0,
+          "private observation",
+        );
+        assert.strictEqual(await count(first, privateFile), 0);
+        assert.isFalse(mainEvents.some((event) => event.path === privateFile));
+
+        // Exercise the real renderer-to-main unload veto, without displaying a
+        // user dialog or touching windows other than these two test windows.
+        const firstSession = first.fileWatchSession;
+        await first.browserWindow.webContents.executeJavaScript(`
+          globalThis.originalConfirmClose = lumine.workspace.confirmClose;
+          lumine.workspace.confirmClose = () => false;
+          void 0;
+        `);
+        first.close();
+        await conditionPromise(() => Boolean(first.lastPrepareToUnloadPromise), "close handshake");
+        assert.isFalse(await first.lastPrepareToUnloadPromise);
+        assert.isFalse(first.browserWindow.isDestroyed());
+        assert.strictEqual(first.fileWatchSession, firstSession);
+        assert.isTrue(ownsSession(firstSession));
+        await expectWrite([first, second], "watching survives a cancelled close");
+        await first.browserWindow.webContents.executeJavaScript(`
+          lumine.workspace.confirmClose = originalConfirmClose;
+          delete globalThis.originalConfirmClose;
+          void 0;
+        `);
+
+        await first.reload();
+        assert.notStrictEqual(first.fileWatchSession, firstSession);
+        await conditionPromise(() => !ownsSession(firstSession), "old renderer owner cleanup");
+        const staleReply = await first.browserWindow.webContents.executeJavaScript(`
+          require("electron").ipcRenderer.invoke("lumine:file-watch", {
+            session: ${JSON.stringify(firstSession)}, clientId: "stale-session-probe",
+            request: { type: "subscribe", id: 1, kind: "file", recursive: false,
+              path: ${JSON.stringify(sharedFile)} }
+          })
+        `);
+        assert.strictEqual(staleReply.error.code, "ABORT_ERR");
+        await attach(first, [sharedFile]);
+        await expectWrite([first, second], "watching survives another window reloading");
+        assert.strictEqual(app.fileWatchService.worker.pid, workerPid);
+
+        const reloadedSession = first.fileWatchSession;
+        first.close();
+        await first.closedPromise;
+        await conditionPromise(
+          () => !ownsSession(reloadedSession),
+          "closed renderer owner cleanup",
+        );
+        await expectWrite([second], "watching survives another window closing");
+
+        const secondSession = second.fileWatchSession;
+        const crashed = emitterEventPromise(
+          second.browserWindow.webContents,
+          "render-process-gone",
+        );
+        second.browserWindow.webContents.forcefullyCrashRenderer();
+        await crashed;
+        await conditionPromise(() => !ownsSession(secondSession), "crashed renderer owner cleanup");
+        await expectWrite([], "main configuration observation survives the last renderer crash");
+        assert.strictEqual(app.fileWatchService.worker.pid, workerPid);
+        assert.deepEqual([...app.fileWatchService.owners.keys()], ["main-process-observer"]);
+      } finally {
+        await mainClient.close();
+      }
+      assert.strictEqual(app.fileWatchService.owners.size, 0);
+      assert.deepEqual(app.fileWatchService.diagnostics().subscriptions, []);
+      const diagnostics = await app.fileWatchService.requestWorker("diagnostics");
+      assert.deepEqual(diagnostics.sources, []);
+      assert.strictEqual(diagnostics.subscriptions, 0);
     });
   });
 
@@ -696,7 +839,14 @@ describe("LumineWindow", function () {
 });
 
 class StubApplication {
+  createFileWatchSession(window) {
+    return LumineApplication.prototype.createFileWatchSession.call(this, window);
+  }
+  releaseFileWatchSession(window) {
+    return LumineApplication.prototype.releaseFileWatchSession.call(this, window);
+  }
   constructor(sinon) {
+    this.fileWatchService = new FileWatchService();
     this.config = { get: (key) => this.config[key] || null };
     this.configFile = {
       path: "stub-config-path",
@@ -705,7 +855,9 @@ class StubApplication {
       },
     };
 
-    this.removeWindow = sinon.spy();
+    this.removeWindow = sinon.spy((window) => {
+      this.windows = this.windows.filter((candidate) => candidate !== window);
+    });
     this.saveCurrentWindowOptions = sinon.spy();
     this.exit = sinon.spy();
     this.windows = [];
@@ -717,7 +869,10 @@ class StubApplication {
   }
 
   lumineWindowForSender(sender) {
-    const lumineWindow = this.windows.find((window) => window.browserWindow.webContents === sender);
+    const lumineWindow = this.windows.find(
+      (window) =>
+        !window.browserWindow.isDestroyed() && window.browserWindow.webContents === sender,
+    );
     if (!lumineWindow) throw new Error("IPC sender is not a registered Lumine window");
     return lumineWindow;
   }

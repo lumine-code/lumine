@@ -30,9 +30,7 @@ describe("TextBuffer IO", () => {
     if (buffer) buffer.destroy();
     if (buffer2) buffer2.destroy();
 
-    // Destroying a buffer disposes its own file watcher; give the worker a
-    // tick to tear the disposed watchers down.
-    await wait(50);
+    await lumine.fileWatchClient.settlePendingTeardown();
   });
 
   describe(".load", () => {

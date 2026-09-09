@@ -2785,7 +2785,7 @@ describe("KeymapManager", function () {
       return describe("if called with watch: true", function () {
         var keymapFilePath, subscription;
         [keymapFilePath, subscription] = [];
-        // File-watching runs through the async `watchPath` worker on real
+        // File-watching runs through the async `watchDirectory` worker on real
         // timers; the fake clock can't drive it.
         beforeEach(() => useRealClock());
         beforeEach(async function () {

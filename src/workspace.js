@@ -19,6 +19,7 @@ const layoutDrag = require("./layout-drag");
 // window's services.
 const ModalDialogFactory = require("./modal-dialog-factory");
 const FileState = require("./file-state");
+const FileDocumentRegistry = require("./file-document-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 
 function protocolForURI(uri) {
@@ -270,6 +271,9 @@ module.exports = class Workspace extends Model {
     this.packageManager = params.packageManager;
     this.config = params.config;
     this.project = params.project;
+    this.fileDocuments = new FileDocumentRegistry();
+    this.disposables.add(this.fileDocuments);
+    this.observeFileDocuments();
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
     this.modalDialogServices = {
@@ -350,6 +354,20 @@ module.exports = class Workspace extends Model {
     this.incoming = new Map();
   }
 
+  observeFileDocuments() {
+    this.fileDocumentObservation?.dispose();
+    this.fileDocumentObservation = this.project.observeBuffers((buffer) => {
+      const registration = this.registerFileDocument({
+        owner: buffer,
+        getPath: () => buffer.getFileMovePath(),
+        setPath: (target) => buffer.relocateFile(target),
+        beginFileOperation: () => buffer.beginFileOperation(),
+        endFileOperation: () => buffer.endFileOperation(),
+      });
+      buffer.onDidDestroy(() => registration.dispose());
+    });
+  }
+
   getElement() {
     if (!this.element) {
       this.element = createWorkspaceElement().initialize(this, {
@@ -361,6 +379,38 @@ module.exports = class Workspace extends Model {
     }
     this.workspaceDropManager?.rebind(this.element);
     return this.element;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Register a shared document for explicit filesystem moves in this workspace.
+   *
+   * @param {Object} descriptor - The document adapter.
+   * @param {Object} descriptor.owner - The shared document identity.
+   * @param {Function} descriptor.getPath - Return the current path.
+   * @param {Function} descriptor.setPath - Retarget without resetting document state.
+   * @param {Function} descriptor.beginFileOperation - Defer filesystem reactions.
+   * @param {Function} descriptor.endFileOperation - Resume and reconcile reactions.
+   * @returns {Disposable} The document registration.
+   */
+  registerFileDocument(descriptor) {
+    return this.fileDocuments.register(descriptor);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Suspend affected documents before moving files. Complete the returned
+   * transaction with confirmed moves, including partial results on failure.
+   *
+   * @param {Array<Object>} plannedRenames - Entries with oldPath, newPath and isDirectory.
+   * @returns {Object} A transaction with an asynchronous complete(confirmedRenames) method.
+   */
+  beginFileMove(plannedRenames) {
+    return this.fileDocuments.beginFileMove(plannedRenames);
   }
 
   createCenter() {
@@ -2523,6 +2573,8 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    this.fileDocumentObservation?.dispose();
+    this.fileDocuments.dispose();
     this.closeStateStore();
     void this.modalDialogFactory.destroy();
     this.paneContainers.center.destroy();

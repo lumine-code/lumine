@@ -9,6 +9,15 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 
 describe("GrammarRegistry", () => {
   let grammarRegistry;
+  const buffers = [];
+  function createBuffer(...args) {
+    const buffer = new TextBuffer(...args);
+    buffers.push(buffer);
+    return buffer;
+  }
+  afterEach(() => {
+    for (const buffer of buffers.splice(0)) buffer.destroy();
+  });
 
   beforeEach(() => {
     grammarRegistry = new GrammarRegistry({ config: lumine.config });
@@ -22,7 +31,7 @@ describe("GrammarRegistry", () => {
       );
       grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       expect(grammarRegistry.assignLanguageMode(buffer, "source.js")).toBe(true);
       expect(buffer.getLanguageMode().getLanguageId()).toBe("source.js");
       expect(grammarRegistry.getAssignedLanguageId(buffer)).toBe("source.js");
@@ -45,7 +54,7 @@ describe("GrammarRegistry", () => {
       // `applySyntaxHighlighting` assigns a language mode to a throwaway
       // editor for every fenced code block it renders. Retaining those for the
       // lifetime of the window leaked one buffer per rendered block.
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.assignLanguageMode(buffer, "source.css");
       expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(true);
       expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(true);
@@ -60,7 +69,7 @@ describe("GrammarRegistry", () => {
         require.resolve("language-css/grammars/css.json"),
       );
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.assignGrammar(buffer, grammar);
       expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(true);
 
@@ -72,7 +81,7 @@ describe("GrammarRegistry", () => {
     it("registers only one release for a maintained buffer", () => {
       grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.assignLanguageMode(buffer, "source.css");
       const before = grammarRegistry.subscriptions.disposables.size;
       // maintainLanguageMode installs its own destroy handler and calls
@@ -94,7 +103,7 @@ describe("GrammarRegistry", () => {
       );
       grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       const before = grammarRegistry.subscriptions.disposables.size;
       grammarRegistry.assignLanguageMode(buffer, "source.js");
       grammarRegistry.assignLanguageMode(buffer, "source.css");
@@ -106,7 +115,7 @@ describe("GrammarRegistry", () => {
       it("makes the buffer use the null grammar", () => {
         grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
 
-        const buffer = new TextBuffer();
+        const buffer = createBuffer();
         expect(grammarRegistry.assignLanguageMode(buffer, "source.css")).toBe(true);
         expect(buffer.getLanguageMode().getLanguageId()).toBe("source.css");
 
@@ -123,7 +132,7 @@ describe("GrammarRegistry", () => {
         require.resolve("language-javascript/grammars/javascript.json"),
       );
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       expect(grammarRegistry.assignGrammar(buffer, grammar)).toBe(true);
       expect(buffer.getLanguageMode().getGrammar()).toBe(grammar);
     });
@@ -193,7 +202,7 @@ describe("GrammarRegistry", () => {
       );
       grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
 
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       buffer.setPath("foo.js");
       expect(grammarRegistry.assignLanguageMode(buffer, "source.css")).toBe(true);
       expect(buffer.getLanguageMode().getLanguageId()).toBe("source.css");
@@ -205,7 +214,7 @@ describe("GrammarRegistry", () => {
 
   describe(".maintainLanguageMode(buffer)", () => {
     it("assigns a grammar to the buffer based on its path", async () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
 
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
@@ -221,7 +230,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("updates the buffer when a matching Tree-sitter grammar is added or replaced", () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       buffer.setPath("test.js");
       grammarRegistry.maintainLanguageMode(buffer);
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
@@ -238,7 +247,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("can be overridden by calling .assignLanguageMode", () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
 
       buffer.setPath("test.js");
       grammarRegistry.maintainLanguageMode(buffer);
@@ -254,7 +263,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("returns a disposable that can be used to stop the registry from updating the buffer", async () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
       );
@@ -280,7 +289,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("doesn't do anything when called a second time with the same buffer", async () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
       );
@@ -300,7 +309,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("does not retain the buffer after the buffer is destroyed", () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
       );
@@ -320,7 +329,7 @@ describe("GrammarRegistry", () => {
     });
 
     it("does not retain the buffer when the grammar registry is destroyed", () => {
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
       );
@@ -688,7 +697,7 @@ describe("GrammarRegistry", () => {
     it("falls back safely and restores an explicit assignment when the grammar returns", () => {
       const grammarPath = require.resolve("language-css/grammars/css.json");
       const grammar = grammarRegistry.loadGrammarSync(grammarPath);
-      const buffer = new TextBuffer();
+      const buffer = createBuffer();
       expect(grammarRegistry.assignLanguageMode(buffer, "source.css")).toBe(true);
 
       grammarRegistry.removeGrammar(grammar);
@@ -846,8 +855,8 @@ describe("GrammarRegistry", () => {
 
   describe("serialization", () => {
     it("persists editors' grammar overrides", async () => {
-      const buffer1 = new TextBuffer();
-      const buffer2 = new TextBuffer();
+      const buffer1 = createBuffer();
+      const buffer2 = createBuffer();
 
       grammarRegistry.loadGrammarSync(require.resolve("language-c/grammars/c.json"));
       grammarRegistry.loadGrammarSync(require.resolve("language-html/grammars/html.json"));

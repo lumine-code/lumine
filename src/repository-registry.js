@@ -764,6 +764,28 @@ module.exports = class RepositoryRegistry {
       this.project.onDidAddBuffer((buffer) => this.trackBuffer(buffer)),
       this.project.onDidChangeFiles((events) => this.handleProjectFileChanges(events)),
     );
+    if (this.project.onDidInvalidateFiles) {
+      this.projectSubscriptions.add(
+        this.project.onDidInvalidateFiles(() => {
+          this.project.clearRepositoryPathCache({ invalidateProviders: true });
+          if (this.fileWatchRecovery) {
+            this.fileWatchRecoveryPending = true;
+            return;
+          }
+          this.fileWatchRecovery = (async () => {
+            do {
+              this.fileWatchRecoveryPending = false;
+              if (this.destroyed || !this.project) break;
+              await this.update();
+            } while (this.fileWatchRecoveryPending);
+          })()
+            .catch((error) => console.error(error))
+            .finally(() => {
+              this.fileWatchRecovery = null;
+            });
+        }),
+      );
+    }
   }
 
   /**

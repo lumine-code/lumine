@@ -1,6 +1,6 @@
 const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const File = require("./text-buffer-file");
-const { watchPath } = require("./path-watcher");
+const { watchFile } = require("./file-watch");
 const diff = require("diff");
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("fs");
@@ -187,11 +187,9 @@ class TextBuffer {
     // now.
     this.didHaveFileOnDisk = false;
 
-    // The path `subscribeToFile` currently watches through `watchPath`, and
-    // the teardown of the previous subscription's watcher — settles once the
-    // worker has confirmed the release (see `subscribeToFile`).
-    this.watchedFilePath = null;
-    this.fileWatcherTeardownPromise = null;
+    this.fileWatchOperationDepth = 0;
+    this.pendingFileLoads = 0;
+    this.pendingFileReconcile = false;
 
     this.setEncoding(params.encoding);
     this.setPreferredLineEnding(params.preferredLineEnding);
@@ -724,6 +722,42 @@ class TextBuffer {
     return this.setFile(filePath && new File(filePath));
   }
 
+  /** @private */
+  getFileMovePath() {
+    return this.file instanceof File || typeof this.file?.setPath === "function"
+      ? this.getPath()
+      : null;
+  }
+
+  /** @private */
+  async relocateFile(filePath) {
+    const file = this.file;
+    if (!file || this.destroyed || filePath === file.getPath()) return;
+    if (file instanceof File) return this.setPath(filePath);
+    if (typeof file.setPath !== "function") {
+      throw new Error("This data source does not support filesystem relocation");
+    }
+    const previousPath = file.getPath();
+    this.fileOperationGeneration++;
+    this.loadCount++;
+    this.relocatingFile = file;
+    try {
+      await file.setPath(filePath);
+    } finally {
+      try {
+        if (!this.destroyed && this.file === file) {
+          this.subscribeToFile();
+          if (file.getPath() !== previousPath) {
+            this.fileRelocationNotice = { file, path: file.getPath() };
+            this.emitter.emit("did-change-path", file.getPath());
+          }
+        }
+      } finally {
+        if (this.relocatingFile === file) this.relocatingFile = null;
+      }
+    }
+  }
+
   /**
    * @public
    * @status experimental
@@ -732,6 +766,7 @@ class TextBuffer {
    *
    * @param file - An `Object` with the following properties:
    * @param file.getPath - A `Function` that returns the `String` path to the file.
+   * @param [file.setPath] - A `Function` that retargets this same data source, optionally returning a Promise. Supplying it opts into editor-initiated filesystem moves; without it, the provider owns relocation.
    * @param file.createReadStream - A `Function` that returns a `Readable` stream that can be used to load the file's content.
    * @param file.createWriteStream - A `Function` that returns a `Writable` stream that can be used to save content to the file.
    * @param file.existsSync - A `Function` that returns a `Boolean`, true if the file exists, false otherwise.
@@ -746,11 +781,19 @@ class TextBuffer {
     this.fileOperationGeneration++;
     this.loadCount++;
     this.file = file;
-    if (this.file) {
+    this.fileRelocationNotice = null;
+    if (this.file && !this.destroyed) {
       if (typeof this.file.setEncoding === "function") {
         this.file.setEncoding(this.getEncoding());
       }
       this.subscribeToFile();
+    } else {
+      this.fileSubscriptions?.dispose();
+      this.oldFileSubscriptions?.dispose();
+      this.fileSubscriptions = null;
+      this.oldFileSubscriptions = null;
+      this.reconcileWatchedFile = null;
+      this.fileWatchStartPromise = Promise.resolve();
     }
 
     if (!this.file) this.updateFileStateFromBuffer({ resolveStickyState: true });
@@ -2470,6 +2513,7 @@ class TextBuffer {
       }
     } finally {
       this.outstandingSaveCount--;
+      if (this.pendingFileReconcile) queueMicrotask(() => void this.reconcileWatchedFile?.());
     }
 
     this.setFile(file);
@@ -2636,6 +2680,7 @@ class TextBuffer {
       this.finishLoading(checkpoint, patch, options);
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === "ENOENT") {
+        this.loaded = true;
         this.emitter.emit("will-reload");
         if (options && options.discardChanges) this.setText("");
         if (this.didHaveFileOnDisk) this.setFileState(FileState.REMOVED);
@@ -2649,7 +2694,8 @@ class TextBuffer {
   }
 
   async load(options) {
-    if (this.file instanceof File && this.file.existsSync()) {
+    this.pendingFileLoads++;
+    if (this.file?.existsSync()) {
       // The consumer is allowed to set a `File` instance with a path that does
       // not currently exist on disk.
       this.didHaveFileOnDisk = true;
@@ -2712,6 +2758,7 @@ class TextBuffer {
         ) {
           return this;
         }
+        this.loaded = true;
         this.emitter.emit("will-reload");
         if (options && options.discardChanges) this.setText("");
         if (this.didHaveFileOnDisk) this.setFileState(FileState.REMOVED);
@@ -2719,6 +2766,9 @@ class TextBuffer {
       } else {
         throw error;
       }
+    } finally {
+      this.pendingFileLoads--;
+      if (this.pendingFileReconcile) queueMicrotask(() => void this.reconcileWatchedFile?.());
     }
 
     return this;
@@ -2882,7 +2932,23 @@ class TextBuffer {
     return this;
   }
 
+  beginFileOperation() {
+    this.fileWatchOperationDepth++;
+    this.fileOperationGeneration++;
+  }
+
+  async endFileOperation() {
+    this.fileWatchOperationDepth = Math.max(0, this.fileWatchOperationDepth - 1);
+    if (this.fileWatchOperationDepth === 0) {
+      await this.fileWatchStartPromise;
+      await this.reconcileWatchedFile?.();
+    }
+  }
+
   subscribeToFile() {
+    const file = this.file;
+    let disposed = false;
+    this.reconcileWatchedFile = null;
     if (this.fileSubscriptions) {
       // If we were to unsubscribe and immediately resubscribe, we might
       // trigger destruction and recreation of a native file watcher — which is
@@ -2892,17 +2958,27 @@ class TextBuffer {
       this.oldFileSubscriptions = this.fileSubscriptions;
     }
     this.fileSubscriptions = new CompositeDisposable();
+    this.fileSubscriptions.add(
+      new Disposable(() => {
+        disposed = true;
+      }),
+    );
 
     // Reset each time we resubscribe; the default-data-source branch below
     // replaces this with the new watcher's arm promise.
     this.fileWatchStartPromise = Promise.resolve();
 
-    const onDidChange = debounce(async () => {
+    const reconcileChange = async () => {
+      if (disposed || this.destroyed || this.file !== file) return;
+      if (this.fileWatchOperationDepth || this.outstandingSaveCount > 0 || !this.loaded) {
+        this.pendingFileReconcile = true;
+        return;
+      }
+      this.pendingFileReconcile = false;
       // On Linux we get change events when the file is deleted. This yields
       // consistent behavior with Mac/Windows.
       if (!this.file || !this.file.existsSync()) return;
       if (this.outstandingSaveCount > 0) return;
-      const file = this.file;
       const operationGeneration = ++this.fileOperationGeneration;
 
       if (this.fileState !== FileState.UNMODIFIED) {
@@ -2946,19 +3022,69 @@ class TextBuffer {
         // definition, this means there is no conflict if the load succeeds.
         return this.load({ internal: true, reconcileOnCancelledLoad: true });
       }
+    };
+    const reportWatchError = (error) => {
+      if (error.code === "ABORT_ERR" || this.destroyed) return;
+      let handled = false;
+      this.emitter.emit("will-throw-watch-error", {
+        error,
+        handle: () => {
+          handled = true;
+        },
+      });
+      if (!handled) console.error(error);
+    };
+    const onDidChange = debounce(() => {
+      void reconcileChange().catch(reportWatchError);
     }, this.fileChangeDelay);
 
     const onDidDelete = () => {
-      this.fileOperationGeneration++;
+      if (disposed || this.destroyed || this.file !== file) return;
       this.didHaveFileOnDisk = true;
+      if (
+        this.fileWatchOperationDepth ||
+        (this.pendingFileLoads && !this.loaded) ||
+        this.outstandingSaveCount > 0
+      ) {
+        this.pendingFileReconcile = true;
+        return;
+      }
+      this.fileOperationGeneration++;
       // Keep `this.file` so a regular Save recreates the same path. The
       // workspace owns the optional clean-tab auto-close policy.
       return this.setFileState(FileState.REMOVED);
     };
 
     const onDidRename = () => {
+      if (disposed || this.destroyed || this.file !== file) return;
+      if (this.relocatingFile === file) return;
+      if (
+        this.fileRelocationNotice?.file === file &&
+        this.fileRelocationNotice.path === file.getPath()
+      )
+        return;
+      this.fileRelocationNotice = null;
       this.emitter.emit("did-change-path", this.getPath());
     };
+
+    // Both filesystem and custom sources can defer notifications during load,
+    // save or an explicit move. A single reconciliation path drains those
+    // notifications when the operation finishes, including a deferred delete.
+    const reconcile = async () => {
+      if (disposed || this.destroyed || this.file !== file) return;
+      if (this.fileWatchOperationDepth || this.outstandingSaveCount > 0 || !this.loaded) {
+        this.pendingFileReconcile = true;
+        return;
+      }
+      this.pendingFileReconcile = false;
+      if (!file.existsSync()) {
+        if (this.didHaveFileOnDisk) onDidDelete();
+      } else {
+        await reconcileChange();
+      }
+    };
+    const reconcileWatchedFile = () => reconcile().catch(reportWatchError);
+    this.reconcileWatchedFile = reconcileWatchedFile;
 
     if (this.file.onDidChange || this.file.onDidDelete || this.file.onDidRename) {
       // A custom data source (see `setFile`) supplies its own change
@@ -2975,106 +3101,23 @@ class TextBuffer {
       }
       this.watchedFilePath = null;
     } else if (typeof this.file.getPath === "function") {
-      // The default data source does no watching of its own, so lumine core
-      // watches the path through `watchPath` (served by the file-watcher
-      // worker) and drives the same handlers. A single-file watch is reliable
-      // across atomic saves — see `nodejs-watcher.js`.
-      const filePath = this.file.getPath();
-      let disposed = false;
-
-      const onWatcherEvents = (events) => {
-        for (const event of events) {
-          if (event.action === "deleted") {
-            onDidDelete();
-          } else if (event.action === "renamed") {
-            // A single-file watch only ever reports a rename of the watched file
-            // itself, so `event.path` is its new location. Don't compare
-            // `event.oldPath` to `filePath`: event paths are real-path
-            // normalized while `filePath` may be a symlinked form (e.g. macOS
-            // `/var` vs `/private/var`), so the equality would spuriously fail.
-            if (event.path) {
-              // Follow the move (as the original `File` watcher did) by
-              // re-pointing the buffer at the new path, which re-subscribes the
-              // watch and emits `did-change-path`.
-              this.setPath(event.path);
-            } else {
-              // Moved somewhere we can't identify; treat it as a deletion so the
-              // buffer keeps its (now theoretical) file and can be re-saved.
-              onDidDelete();
-            }
-          } else {
-            onDidChange();
-          }
-        }
-      };
-
-      // When the watched path changes (`saveAs`, following a rename), release
-      // the old watch and wait for the worker to confirm it BEFORE arming the
-      // new one. On macOS every released `fs.watch` handle rebuilds the
-      // process-wide FSEventStream "since now"; released after the new watch
-      // has armed, that rebuild permanently discards any event still in the
-      // stream's latency buffer — such as an external change made the moment
-      // the arm promise resolved. A same-path resubscribe keeps the overlapped
-      // switch at the bottom of this method instead, so the registry can reuse
-      // the native watcher and nothing is released at all.
-      let previousTeardown = null;
-      if (this.oldFileSubscriptions && this.watchedFilePath !== filePath) {
-        this.oldFileSubscriptions.dispose();
-        this.oldFileSubscriptions = null;
-        previousTeardown = this.fileWatcherTeardownPromise;
-      }
-      this.watchedFilePath = filePath;
-
-      const startWatching = () => watchPath(filePath, { recursive: false }, onWatcherEvents);
-      const watcherPromise = previousTeardown
-        ? previousTeardown.then(() => {
-            // The buffer may have resubscribed again or been destroyed while
-            // the old watch was shutting down; don't arm a watcher nobody owns.
-            if (disposed || this.destroyed) return null;
-            return startWatching();
-          })
-        : startWatching();
-      // Expose when the watcher is armed so callers (and tests) can wait for it
-      // before relying on external-change detection.
-      this.fileWatchStartPromise = watcherPromise.then(
-        () => {},
-        () => {},
-      );
-
-      // The worker arms the watcher asynchronously. Once it is live, reconcile
-      // the one unambiguous change that could have landed during the arm gap: a
-      // deletion. We deliberately do *not* reconcile content here — comparing
-      // the base text to disk races buffer load/deserialization (which may not
-      // have applied its unsaved state yet), and any real modification is caught
-      // by the live watcher once armed.
-      watcherPromise.then(
-        () => {
-          if (disposed || this.destroyed) return;
-          if (this.outstandingSaveCount > 0) return;
-          // Only report a vanished file if it was previously present, so a buffer
-          // for a not-yet-created path doesn't spuriously report a deletion.
-          if (this.file && !this.file.existsSync() && this.didHaveFileOnDisk) {
-            onDidDelete();
-          }
-        },
-        () => {},
-      );
+      const watcher = watchFile(file.getPath());
+      this.fileWatchStartPromise = watcher.ready;
       this.fileSubscriptions.add(
         new Disposable(() => {
           disposed = true;
-          // Record the teardown so the next subscription can serialize its own
-          // watch behind the confirmed release (see above). Resolves `null`
-          // without ever arming when this subscription was already torn down
-          // mid-chain.
-          this.fileWatcherTeardownPromise = watcherPromise.then(
-            (watcher) => {
-              if (!watcher) return;
-              watcher.dispose();
-              return watcher.getStopPromise();
-            },
-            () => {},
-          );
+          watcher.dispose();
         }),
+        watcher.onDidChange((events) => {
+          if (events.some((event) => event.action === "deleted")) void reconcileWatchedFile();
+          else onDidChange();
+        }),
+        watcher.onDidInvalidate(() => void reconcileWatchedFile()),
+        watcher.onDidError(reportWatchError),
+      );
+      watcher.ready.then(
+        () => reconcileWatchedFile(),
+        () => {},
       );
     }
 

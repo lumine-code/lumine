@@ -3,8 +3,8 @@ const path = require("path");
 const { createRequire } = require("module");
 const NativeTreeSitter = require("tree-sitter");
 const { Language: WebLanguage, Parser: WebParser, Query: WebQuery } = require("web-tree-sitter");
-const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
-const { watchPath } = require("./path-watcher");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
+const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
 
 // Load the runtime Wasm through Node's `fs` rather than letting the emscripten
@@ -739,19 +739,14 @@ module.exports = class TreeSitterGrammar {
           this.emitter.emit("did-change-query", { filePath, queryType });
         });
       };
-      const watcherPromise = watchPath(filePath, { recursive: false }, () => onChange());
-      // A watch that fails to arm (or a watcher-worker death mid-arm) reports
-      // through the watcher's own channels; without this, the rejection would
-      // surface as unhandled and be attributed to unrelated work.
-      watcherPromise.catch(() => {});
+      const handle = watchFile(filePath);
       this.subscriptions.add(
-        new Disposable(() =>
-          watcherPromise.then(
-            (watcher) => watcher.dispose(),
-            () => {},
-          ),
-        ),
+        handle,
+        handle.onDidChange(onChange),
+        handle.onDidInvalidate(onChange),
+        handle.onDidError((error) => this.reportQueryError(error, queryType)),
       );
+      handle.ready.then(onChange, () => {});
     }
   }
 

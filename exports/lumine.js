@@ -7,7 +7,7 @@ const GitRepository = require("../src/git-repository");
 const { GitError, LargeRepoError } = require("../src/git-error");
 const { filterPatch } = require("../src/patch-filter");
 const Notification = require("../src/notification");
-const { watchPath, watchFile } = require("../src/path-watcher");
+const { watchDirectory, watchFile } = require("../src/file-watch");
 const { Icon } = require("../src/icon-descriptor");
 const FileState = require("../src/file-state");
 
@@ -25,7 +25,7 @@ const lumineExport = {
   Emitter,
   Disposable,
   CompositeDisposable,
-  watchPath,
+  watchDirectory,
   watchFile,
   // The factories an `icons.provider` builds its answers with. `Icon.none()` in
   // particular has no hand-written equivalent a provider would guess at: it is

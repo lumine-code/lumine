@@ -12,4 +12,4 @@ The shared `FileIndex` contains the core discovery population only. A package th
 
 `project.crawl()` and `workspace.scan()` treat `ignoredNames` as additions to the core list and accept `useCoreIgnoredNames: false` to omit that list. VCS metadata directories `.git`, `.hg`, and `.svn` remain technical exclusions from bulk discovery regardless of these options.
 
-`PathWatcher` and `project.onDidChangeFiles()` remain raw event sources. They report changes under ignored names, VCS-ignored paths, and VCS metadata so open buffers, repository state, ignore-rule changes, and consumers with different policies stay correct; filtering belongs to the index or the operation consuming those events.
+`watchFile()`, `watchDirectory()` and `project.onDidChangeFiles()` remain raw event sources. They report changes under ignored names, VCS-ignored paths, and VCS metadata so open buffers, repository state, ignore-rule changes, and consumers with different policies stay correct; filtering belongs to the index or the operation consuming those events.

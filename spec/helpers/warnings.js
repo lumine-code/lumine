@@ -1,19 +1,20 @@
-const { watchPath, stopAllWatchers } = require("../../src/path-watcher");
 const _ = require("@lumine-code/underscore-plus");
 const Grim = require("@lumine-code/grim");
 
-exports.warnIfLeakingPathSubscriptions = async function () {
-  // Watcher teardown is asynchronous: owners dispose via
-  // `watcherPromise.then(w => w.dispose())` (see Project.destroyed), and a
-  // watcher that is still arming cannot be disposed until its start settles.
-  // Wait for in-flight transitions so only watchers that are genuinely left
-  // running get reported.
-  await watchPath.settlePendingTeardown();
-  const watchers = watchPath.printWatchers();
-  if (watchers && watchers.trim().length > 0) {
-    console.error("WARNING: Leaking path watchers:\n" + watchers);
+exports.warnIfLeakingPathSubscriptions = async function (specName = "") {
+  const client = globalThis.lumine?.fileWatchClient;
+  if (!client || client.isClosed) return;
+  // Owners suppress callbacks synchronously. Settle their queued releases before
+  // checking only this environment, never another window or main configuration.
+  await client.settlePendingTeardown();
+  const handles = [...client.handles.values()].filter((handle) => !handle.isDisposed);
+  if (handles.length) {
+    console.error(
+      `WARNING: Leaking file watchers${specName ? ` in ${specName}` : ""}:`,
+      handles.map((handle) => handle.path),
+    );
   }
-  return stopAllWatchers();
+  await client.disposeAll();
 };
 
 exports.ensureNoDeprecatedFunctionCalls = function () {

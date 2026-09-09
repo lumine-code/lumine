@@ -5,7 +5,7 @@ const fs = require("@lumine-code/fs-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
 const FileState = require("./file-state");
-const { watchPath } = require("./path-watcher");
+const { watchDirectory } = require("./file-watch");
 
 const DefaultDirectoryProvider = require("./default-directory-provider");
 const Model = require("./model");
@@ -40,9 +40,11 @@ module.exports = class Project extends Model {
     grammarRegistry,
     repositoryRegistry,
     restoreState,
+    fileWatchClient,
   }) {
     super();
     this.notificationManager = notificationManager;
+    this.fileWatchClient = fileWatchClient;
     this.applicationDelegate = applicationDelegate;
     this.grammarRegistry = grammarRegistry;
     this.config = config;
@@ -72,7 +74,7 @@ module.exports = class Project extends Model {
       }),
     ];
     this.loadPromisesByPath = {};
-    this.watcherPromisesByPath = {};
+    this.watchersByPath = new Map();
     this.retiredBufferIDs = new Set();
     this.retiredBufferPaths = new Set();
     this.subscriptions = new CompositeDisposable();
@@ -87,15 +89,13 @@ module.exports = class Project extends Model {
     this.repositoryRegistry.detachProject(this);
     this.clearRepositoryPathCache({ invalidateProviders: true });
     this.destroyFileIndex();
-    for (let path in this.watcherPromisesByPath) {
-      this.watcherPromisesByPath[path].then(
-        (watcher) => {
-          watcher.dispose();
-        },
-        () => {},
-      );
-    }
+    this.disposeFileWatchers();
     this.rootDirectories = [];
+  }
+
+  disposeFileWatchers() {
+    for (const watcher of this.watchersByPath.values()) watcher.dispose();
+    this.watchersByPath.clear();
   }
 
   reset(packageManager) {
@@ -301,13 +301,13 @@ module.exports = class Project extends Model {
    * move as a `"deleted"` followed by a `"created"` — it never emits
    * `"renamed"` and never sets `oldPath`. Handle the move as the two events it
    * arrives as; a `"renamed"` branch written against this method is dead code.
-   * Only the non-recursive watchers behind {@link PathWatcher} report renames.
+   * File and directory subscriptions retain their originally requested paths.
    *
    * Paths are absolute and spelled the way the root was registered, matching
    * {@link #getPaths} and {@link #relativizePath}, so an event path can be
    * compared against a stored one directly.
    *
-   * To watch paths outside of open projects, use the `watchPaths` function instead; see {@link PathWatcher}.
+   * To watch paths outside of open projects, use the `watchDirectory` function instead; see {@link FileWatchHandle}.
    *
    * When writing tests against functionality that uses this method, be sure to wait for the
    * `Promise` returned by {@link #getWatcherPromise} before manipulating the filesystem to ensure that
@@ -321,6 +321,20 @@ module.exports = class Project extends Model {
    */
   onDidChangeFiles(callback) {
     return this.emitter.on("did-change-files", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe restored filesystem observation after a gap. Consumers must reread
+   * the affected roots; changes made during the gap are not replayed.
+   *
+   * @param {Function} callback - Receives rootPaths, reason and generation.
+   * @returns {Disposable} The event subscription.
+   */
+  onDidInvalidateFiles(callback) {
+    return this.emitter.on("did-invalidate-files", callback);
   }
 
   /**
@@ -577,15 +591,8 @@ module.exports = class Project extends Model {
   setPaths(projectPaths, options = {}) {
     this.rootDirectories = [];
 
-    for (let path in this.watcherPromisesByPath) {
-      this.watcherPromisesByPath[path].then(
-        (watcher) => {
-          watcher.dispose();
-        },
-        () => {},
-      );
-    }
-    this.watcherPromisesByPath = {};
+    this.disposeFileWatchers();
+    this.watchersByPath = new Map();
 
     const missingProjectPaths = [];
     for (let projectPath of projectPaths) {
@@ -697,37 +704,55 @@ module.exports = class Project extends Model {
       }
     };
 
-    // We'll use the directory's custom onDidChangeFiles callback, if available.
-    // CustomDirectory::onDidChangeFiles should match the signature of
-    // Project::onDidChangeFiles below (although it may resolve asynchronously)
-    //
-    // `realPaths: false` so events come back spelled the way the root was
-    // registered. A watcher resolves its root with `fs.realpath` and would
-    // otherwise report a symlinked root's files under the link's target, and on
-    // Windows an 8.3 alias under its long name — while `getPaths()`,
-    // `getDirectories()` and `relativizePath()` all speak the registered
-    // spelling. Nothing else reconciles the two, so every consumer comparing an
-    // event path against a path it stored got this subtly wrong.
-    const watcherPromise =
-      directory.onDidChangeFiles != null
-        ? Promise.resolve(directory.onDidChangeFiles(didChangeCallback))
-        : watchPath(directory.getPath(), { realPaths: false }, didChangeCallback);
-    // A watch that fails to arm (root deleted mid-arm, watcher-worker restart)
-    // must not surface as an unhandled rejection attributed to unrelated work;
-    // consumers still observe the failure through getWatcherPromise.
-    watcherPromise.catch(() => {});
-    this.watcherPromisesByPath[directory.getPath()] = watcherPromise;
-
-    for (let watchedPath in this.watcherPromisesByPath) {
-      if (!this.rootDirectories.find((dir) => dir.getPath() === watchedPath)) {
-        this.watcherPromisesByPath[watchedPath].then(
-          (watcher) => {
-            watcher.dispose();
-          },
-          () => {},
-        );
-      }
+    let handle;
+    if (directory.onDidChangeFiles) {
+      let disposed = false;
+      const start = Promise.resolve(directory.onDidChangeFiles(didChangeCallback));
+      handle = {
+        ready: start.then((subscription) => {
+          if (disposed) subscription.dispose();
+        }),
+        dispose() {
+          disposed = true;
+          start.then(
+            (subscription) => subscription.dispose(),
+            () => {},
+          );
+        },
+      };
+    } else {
+      handle = this.fileWatchClient
+        ? this.fileWatchClient.watchDirectory(directory.getPath(), { recursive: true })
+        : watchDirectory(directory.getPath(), { recursive: true });
+      handle.onDidChange(didChangeCallback);
+      handle.onDidInvalidate(({ reason, generation }) => {
+        if (this.rootDirectories.includes(directory)) {
+          this.emitter.emit("did-invalidate-files", {
+            rootPaths: [directory.getPath()],
+            reason,
+            generation,
+          });
+        }
+      });
+      handle.onDidError((error) => {
+        if (this.rootDirectories.includes(directory) && error.code !== "ABORT_ERR") {
+          this.notificationManager.addWarning("Unable to observe project files", {
+            detail: directory.getPath() + ": " + error.message,
+            dismissable: true,
+          });
+        }
+      });
     }
+    handle.ready.then(
+      () => {
+        if (this.rootDirectories.includes(directory)) {
+          // An index may already have scanned while this source was arming.
+          this.fileIndex?.refresh({ rootPaths: [directory.getPath()] });
+        }
+      },
+      () => {},
+    );
+    this.watchersByPath.set(directory.getPath(), handle);
 
     if (options.reconcileRepositories !== false) {
       this.repositoryRegistry.setProjectRoots(this.rootDirectories);
@@ -794,13 +819,13 @@ module.exports = class Project extends Model {
    * ready before manipulating the filesystem to produce events.
    *
    * @param {String} projectPath - One of the project's root directories.
-   * @returns {Promise} that resolves with the {@link PathWatcher} associated with this project root once it has initialized and is ready to start sending events. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
+   * @returns {Promise} that resolves with the {@link FileWatchHandle} associated with this project root once it has initialized and is ready to start sending events. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
    */
   getWatcherPromise(projectPath) {
-    return (
-      this.watcherPromisesByPath[projectPath] ||
-      Promise.reject(new Error(`${projectPath} is not a project root`))
-    );
+    const watcher = this.watchersByPath.get(projectPath);
+    return watcher
+      ? watcher.ready.then(() => watcher)
+      : Promise.reject(new Error(projectPath + " is not a project root"));
   }
 
   /**
@@ -828,13 +853,8 @@ module.exports = class Project extends Model {
 
     if (indexToRemove != null) {
       this.rootDirectories.splice(indexToRemove, 1);
-      if (this.watcherPromisesByPath[projectPath] != null) {
-        this.watcherPromisesByPath[projectPath].then(
-          (w) => w.dispose(),
-          () => {},
-        );
-      }
-      delete this.watcherPromisesByPath[projectPath];
+      this.watchersByPath.get(projectPath)?.dispose();
+      this.watchersByPath.delete(projectPath);
       this.repositoryRegistry.setProjectRoots(this.rootDirectories);
       this.emitter.emit("did-change-paths", this.getPaths());
       return true;

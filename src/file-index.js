@@ -98,6 +98,11 @@ module.exports = class FileIndex {
       project.onDidChangePaths(() => this.reconcileRoots()),
       project.onDidChangeFiles((events) => this.handleFileEvents(events)),
     );
+    if (project.onDidInvalidateFiles) {
+      this.projectSubscriptions.add(
+        project.onDidInvalidateFiles(({ rootPaths }) => this.refresh({ rootPaths })),
+      );
+    }
 
     const config = this.getConfig();
     if (config) {

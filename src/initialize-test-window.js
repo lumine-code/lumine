@@ -1,6 +1,5 @@
 const { requireModule } = require("./module-utils");
 const focusTestWindow = require("./focus-test-window");
-const { stopAllWatchers } = require("./path-watcher");
 const { setTimeout: delay } = require("node:timers/promises");
 
 const HEADLESS_TEARDOWN_TIMEOUT_MS = 5000;
@@ -190,7 +189,7 @@ module.exports = async function ({ blobStore }) {
       // buffers briefly. Stop the shared manager before flushing output and
       // asking Electron to exit, or a macOS watcher worker can keep an
       // otherwise-complete headless suite alive indefinitely.
-      await waitForHeadlessTeardown(stopAllWatchers());
+      await waitForHeadlessTeardown(globalThis.lumine?.fileWatchClient.close());
       await exitWithStatusCode(statusCode);
     }
   } catch (error) {

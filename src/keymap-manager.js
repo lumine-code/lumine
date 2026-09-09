@@ -13,7 +13,7 @@ const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
 const { isSelectorValid } = require("./css-selectors");
 const path = require("path");
-const { watchPath } = require("./path-watcher");
+const { watchFile } = require("./file-watch");
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const { KeyBinding, MATCH_TYPES } = require("./key-binding");
 const CommandEvent = require("./command-event");
@@ -168,6 +168,10 @@ module.exports = KeymapManager = (function () {
      * in tests.
      */
     clear() {
+      this.destroy();
+      this.watchSubscriptions = {};
+      this.watchStartPromises = {};
+      this.emitter?.dispose();
       this.emitter = new Emitter();
       this.keyBindings = [];
       this.queuedKeyboardEvents = [];
@@ -514,24 +518,18 @@ module.exports = KeymapManager = (function () {
      */
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
-        // Watch-only: reload on any filesystem event (create/modify/rename/
-        // delete). A single-file `watchPath` is served non-recursively by the
-        // Node watcher, so atomic saves of the keymap file are seen reliably.
-        const reloadKeymap = () => this.reloadKeymap(filePath, options);
-        const watcherPromise = watchPath(filePath, { recursive: false }, () => reloadKeymap());
-        // Record when the (asynchronously armed) watcher is live so callers can
-        // wait for it before relying on change detection.
-        if (this.watchStartPromises == null) this.watchStartPromises = {};
-        this.watchStartPromises[filePath] = watcherPromise.then(
-          () => {},
-          () => {},
-        );
-        this.watchSubscriptions[filePath] = new Disposable(() =>
-          watcherPromise.then(
-            (watcher) => watcher.dispose(),
-            () => {},
-          ),
-        );
+        const handle = watchFile(filePath);
+        const reload = () => this.reloadKeymap(filePath, options);
+        handle.onDidChange(reload);
+        handle.onDidInvalidate(reload);
+        handle.onDidError((error) => {
+          if (error.code !== "ABORT_ERR")
+            this.emitter.emit("did-fail-to-read-file", { path: filePath, error });
+        });
+        this.watchStartPromises ??= {};
+        this.watchStartPromises[filePath] = handle.ready;
+        handle.ready.then(reload, () => {});
+        this.watchSubscriptions[filePath] = new Disposable(() => handle.dispose());
       }
 
       return undefined;

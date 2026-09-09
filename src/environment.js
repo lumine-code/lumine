@@ -58,7 +58,7 @@ const Tools = require("./tools");
 const IconRegistry = require("./icon-registry");
 const packagejson = require("../package.json");
 
-const { stopAllWatchers } = require("./path-watcher");
+const createFileWatchClient = require("./file-watch-renderer");
 const GitHost = require("./git-host");
 const stat = util.promisify(fs.stat);
 
@@ -120,6 +120,9 @@ class Environment {
     this.updateProcessEnv = params.updateProcessEnv || updateProcessEnv;
     this.enablePersistence = params.enablePersistence;
     this.applicationDelegate = params.applicationDelegate;
+    /** @private Observations owned by this environment alone. */
+    this.fileWatchClient =
+      params.fileWatchClient || createFileWatchClient(this.applicationDelegate);
     /**
      * @public
      * @status public
@@ -375,6 +378,7 @@ class Environment {
      * @type {SecretStore}
      */
     this.secrets = new SecretStore({
+      fileWatchClient: this.fileWatchClient,
       applicationDelegate: this.applicationDelegate,
       storagePath: path.join(this.getConfigDirPath(), "secret-store.json"),
       notify: (message) => this.notifications.addWarning(message, { dismissable: true }),
@@ -386,6 +390,7 @@ class Environment {
      * @type {Project}
      */
     this.project = new Project({
+      fileWatchClient: this.fileWatchClient,
       notificationManager: this.notifications,
       packageManager: this.packages,
       grammarRegistry: this.grammars,
@@ -737,6 +742,7 @@ class Environment {
     // Config::clear replaces its emitter, so observers held by ThemeManager
     // must be disposed before the reset and recreated on the next activation.
     this.themes.stopObservingThemeChanges();
+    await this.themes.unwatchUserStylesheet();
     this.deserializers.clear();
     this.registerDefaultDeserializers();
 
@@ -770,6 +776,7 @@ class Environment {
     this.workspace.reset(this.packages);
     this.registerDefaultOpeners();
     this.project.reset(this.packages);
+    this.workspace.observeFileDocuments();
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
     // The reset recreated the pane containers, so the registry's active-item
     // subscription must be rebuilt against the new center.
@@ -816,6 +823,9 @@ class Environment {
     this.commands.clear();
     if (this.stylesElement) this.stylesElement.remove();
     this.uriHandlers.destroy();
+
+    this.secrets?.dispose();
+    void this.fileWatchClient.close();
 
     this.uninstallWindowEventHandler();
   }
@@ -1132,7 +1142,7 @@ class Environment {
       // configuration directory before the renderer disappears. In
       // particular, Windows keeps the directory undeletable until the watcher
       // worker confirms its handles are closed.
-      await stopAllWatchers();
+      await this.fileWatchClient.close();
       this.stateStore.close();
       this.workspace.closeStateStore();
     }
@@ -1145,7 +1155,7 @@ class Environment {
     // background tasks read this flag to stop starting — and stop settling —
     // work that nothing is left to observe.
     this.unloading = true;
-    stopAllWatchers();
+    void this.fileWatchClient.close();
     this.stateStore.close();
     this.workspace.closeStateStore();
     GitHost.reset();

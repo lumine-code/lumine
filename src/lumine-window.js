@@ -243,6 +243,9 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      void this.lumineApplication
+        .releaseFileWatchSession(this)
+        .catch((error) => console.error(error));
       this.fileRecoveryService.didCloseWindow(this);
       this.lumineApplication.removeWindow(this);
       this.resolveClosedPromise();
@@ -262,6 +265,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.webContents.on("render-process-gone", async (event, details) => {
+      await this.lumineApplication.releaseFileWatchSession(this);
       const { reason, exitCode } = details;
       // Always leave a trace: the dialog below is deliberately not shown for
       // every departure, and a renderer that goes away without one is
@@ -310,6 +314,17 @@ module.exports = class LumineWindow extends EventEmitter {
     this.browserWindow.webContents.on("will-navigate", (event, url) => {
       if (url !== this.browserWindow.webContents.getURL()) event.preventDefault();
     });
+
+    this.browserWindow.webContents.on(
+      "did-start-navigation",
+      (_event, _url, inPlace, isMainFrame) => {
+        if (isMainFrame && !inPlace) {
+          void this.lumineApplication
+            .releaseFileWatchSession(this)
+            .catch((error) => console.error(error));
+        }
+      },
+    );
 
     // Spec window's web view should always have focus
     if (this.isSpec) this.browserWindow.on("blur", () => this.browserWindow.focusOnWebView());

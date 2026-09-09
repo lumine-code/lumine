@@ -14,12 +14,12 @@ describe("ConfigFile", () => {
   });
 
   afterEach(() => {
-    subscription.dispose();
+    subscription?.dispose();
   });
 
   describe("when the file does not exist", () => {
     it("returns an empty object from .get()", async () => {
-      configFile = new ConfigFile(filePath);
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
       subscription = await configFile.watch();
       expect(configFile.get()).toEqual({});
     });
@@ -28,7 +28,7 @@ describe("ConfigFile", () => {
   describe("when the file is empty", () => {
     it("returns an empty object from .get()", async () => {
       writeFileSync(filePath, "");
-      configFile = new ConfigFile(filePath);
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
       subscription = await configFile.watch();
       expect(configFile.get()).toEqual({});
     });
@@ -36,7 +36,7 @@ describe("ConfigFile", () => {
 
   describe("when the file is updated with valid JSONC", () => {
     it("notifies onDidChange observers with the data", async () => {
-      configFile = new ConfigFile(filePath);
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
       subscription = await configFile.watch();
 
       const event = new Promise((resolve) => configFile.onDidChange(resolve));
@@ -66,7 +66,7 @@ describe("ConfigFile", () => {
 
   describe("when the file is updated with invalid JSONC", () => {
     it("notifies onDidError observers", async () => {
-      configFile = new ConfigFile(filePath);
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
       subscription = await configFile.watch();
 
       const message = new Promise((resolve) => configFile.onDidError(resolve));
@@ -108,16 +108,16 @@ describe("ConfigFile", () => {
       path0 = filePath;
       path1 = path.join(fs.realpathSync(temp.mkdirSync()), "the-config.json");
 
-      configFile = ConfigFile.at(path0);
+      configFile = ConfigFile.at(path0, lumine.fileWatchClient);
     });
 
     it("returns an existing ConfigFile", () => {
-      const cf = ConfigFile.at(path0);
+      const cf = ConfigFile.at(path0, lumine.fileWatchClient);
       expect(cf).toEqual(configFile);
     });
 
     it("creates a new ConfigFile for unrecognized paths", () => {
-      const cf = ConfigFile.at(path1);
+      const cf = ConfigFile.at(path1, lumine.fileWatchClient);
       expect(cf).not.toEqual(configFile);
     });
   });

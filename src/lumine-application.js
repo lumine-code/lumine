@@ -5,6 +5,7 @@ const { getAccentColor, onDidChangeAccentColor } = require("./accent-color");
 const StorageFolder = require("./storage-folder");
 const Config = require("./config");
 const ConfigFile = require("./config-file");
+const FileWatchService = require("./file-watch-service");
 const FileRecoveryService = require("./file-recovery-service");
 const XdgShellInvoker = require("./xdg-shell-invoker");
 const StartupTime = require("./startup-time");
@@ -224,11 +225,40 @@ const handleWindowBootstrap = (event) => {
       windowId: lumineWindow.id,
       appPaths: appPaths(),
       appLocale: app.getLocale(),
+      fileWatchSession: currentApplication().createFileWatchSession(lumineWindow),
     }),
     startupMarkers: lumineWindow.consumeStartupMarkers(),
   };
 };
 ipcMain.handle("lumine:window-bootstrap", handleWindowBootstrap);
+
+ipcMain.handle("lumine:file-watch", async (event, { session, clientId, request } = {}) => {
+  try {
+    const application = currentApplication();
+    const window = application.lumineWindowForSender(event.sender);
+    if (!session || session !== window.fileWatchSession) {
+      throw Object.assign(new Error("The file watcher session has ended"), { code: "ABORT_ERR" });
+    }
+    assertString(clientId, "clientId");
+    const owner = `${session}:${clientId}`;
+    if (request?.type === "subscribe") window.fileWatchOwners.add(owner);
+    const value = await application.fileWatchService.dispatch(owner, request, (notification) => {
+      if (window.fileWatchSession === session) {
+        window.sendToRenderer("lumine:file-watch-event", {
+          session,
+          clientId,
+          event: notification,
+        });
+      }
+    });
+    if (request?.type === "close") window.fileWatchOwners.delete(owner);
+    return { value };
+  } catch (error) {
+    return {
+      error: { message: error.message, code: error.code, path: error.path, backend: error.backend },
+    };
+  }
+});
 
 const handleWindowAction = async (event, action, ...args) => {
   let lumineWindow;
@@ -756,9 +786,12 @@ module.exports = class LumineApplication extends EventEmitter {
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
 
+    this.fileWatchService = options.fileWatchService || new FileWatchService();
+    this.mainFileWatchClient = this.fileWatchService.createClient("application-config");
+
     let configFilePath = getConfigFilePath({ returnPlaceholder: true });
 
-    this.configFile = ConfigFile.at(configFilePath);
+    this.configFile = ConfigFile.at(configFilePath, this.mainFileWatchClient);
     this.config = new Config({
       saveCallback: (settings) => {
         if (!this.quitting) {
@@ -826,6 +859,21 @@ module.exports = class LumineApplication extends EventEmitter {
     });
     await Promise.all(windowsClosePromises);
     this.disposable.dispose();
+    await this.fileWatchService.close();
+  }
+
+  createFileWatchSession(window) {
+    void this.releaseFileWatchSession(window).catch((error) => console.error(error));
+    window.fileWatchSession = crypto.randomUUID();
+    window.fileWatchOwners = new Set();
+    return window.fileWatchSession;
+  }
+
+  async releaseFileWatchSession(window) {
+    const owners = window.fileWatchOwners || [];
+    window.fileWatchSession = null;
+    window.fileWatchOwners = new Set();
+    await Promise.all([...owners].map((owner) => this.fileWatchService.closeOwner(owner)));
   }
 
   async launch(options) {
@@ -1244,6 +1292,7 @@ module.exports = class LumineApplication extends EventEmitter {
           });
           const windowUnloadedResults = await Promise.all(windowUnloadPromises);
           if (windowUnloadedResults.every(Boolean)) {
+            await this.fileWatchService.close();
             app.quit();
           } else {
             this.quitting = false;
@@ -1256,6 +1305,7 @@ module.exports = class LumineApplication extends EventEmitter {
 
     this.disposable.add(
       ipcHelpers.on(app, "will-quit", () => {
+        void this.fileWatchService.close();
         this.killAllProcesses();
 
         return Promise.all([this.deleteSocketFile(), this.deleteSocketSecretFile()]);
@@ -1395,7 +1445,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.disposable.add(
       ipcHelpers.respondTo("set-user-settings", (window, settings, filePath) => {
         if (!this.quitting) {
-          return ConfigFile.at(filePath || this.configFilePath).update(JSON.parse(settings));
+          return ConfigFile.at(filePath || this.configFilePath, this.mainFileWatchClient).update(
+            JSON.parse(settings),
+          );
         }
       }),
     );

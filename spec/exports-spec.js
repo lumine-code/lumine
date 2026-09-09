@@ -1,5 +1,5 @@
 const fs = require("fs");
-const lumineExports = require("lumine");
+const { watchDirectory, watchFile, ripgrepPath } = require("lumine");
 
 describe("the lumine module", () => {
   it("does not expose the removed Atom module", () => {
@@ -7,13 +7,13 @@ describe("the lumine module", () => {
   });
 
   it("exposes the bundled ripgrep binary path", () => {
-    const { ripgrepPath } = lumineExports;
     expect(typeof ripgrepPath).toBe("string");
     expect(fs.existsSync(ripgrepPath)).toBe(true);
   });
 
   it("exposes the path watchers", () => {
-    expect(typeof lumineExports.watchPath).toBe("function");
-    expect(typeof lumineExports.watchFile).toBe("function");
+    expect(typeof watchDirectory).toBe("function");
+    expect(require("lumine").watchPath).toBeUndefined();
+    expect(typeof watchFile).toBe("function");
   });
 });

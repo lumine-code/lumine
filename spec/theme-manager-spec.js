@@ -527,8 +527,8 @@ describe("lumine.themes", () => {
 
       beforeEach(() => {
         addErrorHandler = jasmine.createSpy();
-        const watcher = require("../src/path-watcher");
-        spyOn(watcher, "watchPath").and.callFake(() => {
+        const watcher = require("../src/file-watch");
+        spyOn(watcher, "watchFile").and.callFake(() => {
           throw new Error("Unable to watch path");
         });
         spyOn(lumine.themes, "loadStylesheet").and.returnValue("");

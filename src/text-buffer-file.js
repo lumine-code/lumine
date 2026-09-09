@@ -5,7 +5,7 @@ const path = require("path");
 // of the old pathwatcher `File` surface that the buffer actually uses — path,
 // base name, encoding, existence, and streams — and deliberately does **no**
 // filesystem watching. Watching is owned by the buffer's host through
-// `watchPath` (see `TextBuffer::subscribeToFile`).
+// `watchFile` (see `TextBuffer::subscribeToFile`).
 //
 // It is kept as its own class so that `TextBuffer`'s `instanceof File` fast
 // paths (native `buffer.load(path)` / `buffer.save(path)`) still apply; a

@@ -5,7 +5,7 @@ const fs = require("@lumine-code/fs-plus");
 
 // Keeping a reference to the entire object so that it can be mocked more
 // easily in the specs.
-const watcher = require("./path-watcher");
+const watcher = require("./file-watch");
 
 // The core stylesheets, in loading order (relative to static/). Plain CSS —
 // all theming flows through the custom-property contract at runtime, so the
@@ -78,10 +78,6 @@ function buildAccentStylesheet(accentColor) {
   --accent-bg-text-color: lch(from var(--accent-bg-color) calc((49.44 - l) * infinity) 0 0);
 }
 `;
-}
-
-async function wait(ms) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
@@ -465,11 +461,11 @@ module.exports = class ThemeManager {
   }
 
   async unwatchUserStylesheet() {
-    this.userStylesheetSubscription?.dispose();
+    this.stylesheetWatchGeneration = (this.stylesheetWatchGeneration || 0) + 1;
+    const previous = this.userStylesheetSubscription;
     this.userStylesheetSubscription = null;
-
-    // Pause a moment for file-watcher cleanup.
-    await wait(10);
+    previous?.dispose();
+    await previous?.closed;
   }
 
   removeUserStylesheet() {
@@ -483,26 +479,27 @@ module.exports = class ThemeManager {
   }
 
   async watchUserStylesheet() {
-    await this.unwatchUserStylesheet();
+    const closing = this.unwatchUserStylesheet();
+    const generation = this.stylesheetWatchGeneration;
+    await closing;
+    if (generation !== this.stylesheetWatchGeneration) return;
 
     const userStylesheetPath = this.styleManager.getUserStyleSheetPath();
-    if (!fs.isFileSync(userStylesheetPath)) {
-      return;
-    }
+    if (!userStylesheetPath) return;
 
     try {
-      // A single-file `watchPath` is served non-recursively by the Node
-      // watcher, which reports the file's real path. Resolve symlinks up front
-      // so our subscription and the reported paths line up.
-      let realStylesheetPath = fs.realpathSync(userStylesheetPath);
-
-      this.userStylesheetSubscription = await watcher.watchPath(
-        realStylesheetPath,
-        { recursive: false },
-        () => {
-          this.reloadStylesheet();
-        },
-      );
+      const handle = watcher.watchFile(userStylesheetPath);
+      this.userStylesheetSubscription = handle;
+      handle.onDidChange(() => this.reloadStylesheet());
+      handle.onDidInvalidate(() => this.reloadStylesheet());
+      handle.onDidError((error) => {
+        if (error.code !== "ABORT_ERR")
+          this.notificationManager.addError("Unable to watch user stylesheet", {
+            detail: error.message,
+            dismissable: true,
+          });
+      });
+      await handle.ready;
     } catch {
       let message = `
 Unable to watch path: \`${path.basename(userStylesheetPath)}\`. Make sure
@@ -722,14 +719,14 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
 
   destroy() {
     this.stopObservingThemeChanges();
-    this.userStylesheetSubscription?.dispose();
-    this.userStylesheetSubscription = null;
+    void this.unwatchUserStylesheet();
     this.removeUserStylesheet();
     this.emitter.dispose();
     this.workspace = null;
   }
 
   stopObservingThemeChanges() {
+    this.themeOperationGeneration = (this.themeOperationGeneration || 0) + 1;
     this.themeObservationSubscriptions?.dispose();
     this.themeObservationSubscriptions = null;
   }
@@ -741,6 +738,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   async switchThemes() {
+    const generation = this.themeOperationGeneration || 0;
     this.warnForNonExistentThemes();
 
     // The old themes' style sheets stay in the DOM while the new themes load
@@ -818,7 +816,9 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       await this.packageManager.activatePackage(pack.name);
     }
 
+    if (generation !== (this.themeOperationGeneration || 0)) return;
     await this.watchUserStylesheet();
+    if (generation !== (this.themeOperationGeneration || 0)) return;
     this.initialLoadComplete = true;
     this.emitter.emit("did-change-active-themes");
   }
