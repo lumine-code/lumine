@@ -58,6 +58,16 @@ async function flushMicrotasks() {
   for (let index = 0; index < 8; index++) await Promise.resolve();
 }
 
+async function waitForBufferOwner(registry, buffer, repository) {
+  // A foreground lookup can finish while the buffer's independent discovery
+  // is still doing I/O. Wait for the lease that actually routes buffer events.
+  await conditionPromise(() => {
+    const owner = registry.bufferOwners.get(buffer);
+    return owner && owner.resolvingGeneration === null && owner.refreshGeneration === null;
+  }, "the buffer's repository ownership");
+  expect(registry.bufferOwners.get(buffer).entry?.repository || null).toBe(repository);
+}
+
 function snapshotRefRecord(fields) {
   return [...fields, ...Array(21 - fields.length).fill("")].join("\0");
 }
@@ -955,7 +965,7 @@ describe("GitRepository", () => {
       lumine.project.setPaths([copyRepository()]);
       editor = await lumine.workspace.open("other.txt");
       repository = await lumine.repositories.resolveForPath(editor.getPath());
-      await flushMicrotasks();
+      await waitForBufferOwner(lumine.repositories, editor.getBuffer(), repository);
     });
 
     it("schedules a status snapshot refresh when a buffer is saved", async () => {
@@ -992,6 +1002,7 @@ describe("GitRepository", () => {
       const outsidePath = path.join(temp.mkdirSync("outside-any-repo"), "stray.txt");
       fs.writeFileSync(outsidePath, "elsewhere");
       const outsideEditor = await lumine.workspace.open(outsidePath);
+      await waitForBufferOwner(lumine.repositories, outsideEditor.getBuffer(), null);
 
       outsideEditor.insertNewline();
       const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
@@ -1036,7 +1047,7 @@ describe("GitRepository", () => {
       buffer.append("changes");
 
       const repository = await repositoryRegistry2.resolveForPath(buffer.getPath());
-      await flushMicrotasks();
+      await waitForBufferOwner(repositoryRegistry2, buffer, repository);
       const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
       await buffer.save();
 
