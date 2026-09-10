@@ -189,6 +189,7 @@ class TextBuffer {
     this.didHaveFileOnDisk = false;
 
     this.fileWatchOperationDepth = 0;
+    this.explicitReloadDepth = 0;
     this.pendingFileLoads = 0;
     this.pendingFileReconcile = false;
 
@@ -2534,8 +2535,16 @@ class TextBuffer {
    *
    * @returns {Promise} that resolves when the load is complete.
    */
-  reload() {
-    return this.load({ discardChanges: true, internal: true });
+  async reload() {
+    this.explicitReloadDepth++;
+    try {
+      return await this.load({ discardChanges: true, internal: true });
+    } finally {
+      this.explicitReloadDepth--;
+      if (this.explicitReloadDepth === 0 && this.pendingFileReconcile) {
+        await this.reconcileWatchedFile?.();
+      }
+    }
   }
 
   /**
@@ -2982,7 +2991,12 @@ class TextBuffer {
 
     const reconcileChange = async () => {
       if (disposed || this.destroyed || this.file !== file) return;
-      if (this.fileWatchOperationDepth || this.outstandingSaveCount > 0 || !this.loaded) {
+      if (
+        this.fileWatchOperationDepth ||
+        this.explicitReloadDepth > 0 ||
+        this.outstandingSaveCount > 0 ||
+        !this.loaded
+      ) {
         this.pendingFileReconcile = true;
         return;
       }
@@ -3055,7 +3069,8 @@ class TextBuffer {
       this.didHaveFileOnDisk = true;
       if (
         this.fileWatchOperationDepth ||
-        (this.pendingFileLoads && !this.loaded) ||
+        this.explicitReloadDepth > 0 ||
+        (this.pendingFileLoads > 0 && !this.loaded) ||
         this.outstandingSaveCount > 0
       ) {
         this.pendingFileReconcile = true;
@@ -3084,7 +3099,12 @@ class TextBuffer {
     // notifications when the operation finishes, including a deferred delete.
     const reconcile = async () => {
       if (disposed || this.destroyed || this.file !== file) return;
-      if (this.fileWatchOperationDepth || this.outstandingSaveCount > 0 || !this.loaded) {
+      if (
+        this.fileWatchOperationDepth ||
+        this.explicitReloadDepth > 0 ||
+        this.outstandingSaveCount > 0 ||
+        !this.loaded
+      ) {
         this.pendingFileReconcile = true;
         return;
       }

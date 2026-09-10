@@ -136,6 +136,37 @@ describe("TextBuffer deferred file observation", () => {
     });
   }
 
+  it("defers watcher reconciliation until an explicit reload finishes", async () => {
+    const custom = source();
+    buffer = await TextBuffer.load(custom);
+    buffer.delete([
+      [0, 0],
+      [0, 2],
+    ]);
+
+    const reads = [];
+    custom.createReadStream = () => {
+      const stream = new PassThrough();
+      reads.push(stream);
+      return stream;
+    };
+    const events = [];
+    buffer.onWillReload(() => events.push("will-reload"));
+    buffer.onDidReload(() => events.push("did-reload"));
+
+    const reload = buffer.reload();
+    expect(reads.length).toBe(1);
+    await buffer.reconcileWatchedFile();
+    expect(reads.length).toBe(1);
+
+    reads[0].end("after");
+    await conditionPromise(() => reads.length === 2, "deferred reconciliation started");
+    reads[1].end("after");
+    await reload;
+    expect(buffer.getText()).toBe("after");
+    expect(events).toEqual(["will-reload", "did-reload"]);
+  });
+
   it("releases the pending load when a custom source cannot create its stream", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);

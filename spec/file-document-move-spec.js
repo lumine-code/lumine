@@ -118,6 +118,7 @@ describe("file document moves", () => {
   });
 
   it("releases every document watch after repeated open and close", async () => {
+    await lumine.fileWatchClient.settlePendingTeardown();
     const before = lumine.fileWatchClient.handles.size;
     for (let i = 0; i < 12; i++) {
       const editor = await open(`file-${i}.txt`);
