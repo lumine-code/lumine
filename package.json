@@ -127,6 +127,8 @@
     "benchmark:git": "npm run test:only -- benchmark/git-renderer-boundary-spec.js",
     "benchmark:git-refs": "node benchmark/git-refs-provider-benchmark.js",
     "benchmark:icons": "node script/benchmark-icons.js",
+    "benchmark:text-editor-scroll": "npm run test:only -- benchmark/text-editor-scroll-spec.js",
+    "benchmark:grammar-query-locality": "npm run test:only -- benchmark/tree-sitter-query-locality-spec.js",
     "benchmark:tree-sitter": "npm run test:only -- benchmark/tree-sitter-spec.js",
     "start": "electron --no-sandbox --enable-logging . -f --dev",
     "dist": "node script/electron-builder.js",

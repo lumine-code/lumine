@@ -406,6 +406,56 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("highlighting", () => {
+    it("honors an explicit highlight query end row of zero", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      buffer.setText("first\nsecond");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+
+      const rootLayer = languageMode.rootLanguageLayer;
+      const buildLayerHighlightIterator = rootLayer.buildHighlightIterator.bind(rootLayer);
+      const endRows = [];
+      spyOn(rootLayer, "buildHighlightIterator").and.callFake(() => {
+        const iterator = buildLayerHighlightIterator();
+        const seek = iterator.seek.bind(iterator);
+        iterator.seek = (start, endRow) => {
+          endRows.push(endRow);
+          return seek(start, endRow);
+        };
+        return iterator;
+      });
+
+      languageMode.buildHighlightIterator().seek(Point(0, 0), 0);
+      expect(endRows).toEqual([0]);
+    });
+
+    it("queries a comment-heavy CRLF viewport once", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, pythonGrammarPath, pythonConfig);
+      await grammar.setQueryForTest("highlightsQuery", "(comment) @comment");
+      buffer.setText(
+        Array.from({ length: 72 }, (_, row) => `value_${row} = 1 # comment`).join("\r\n"),
+      );
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+
+      const buildHighlightIterator = languageMode.buildHighlightIterator.bind(languageMode);
+      const seekCalls = [];
+      spyOn(languageMode, "buildHighlightIterator").and.callFake(() => {
+        const iterator = buildHighlightIterator();
+        const seek = iterator.seek.bind(iterator);
+        iterator.seek = (start, endRow) => {
+          seekCalls.push({ start: Point(start.row, start.column), endRow });
+          return seek(start, endRow);
+        };
+        return iterator;
+      });
+
+      expect(editor.displayLayer.getScreenLines(0, 72).length).toBe(72);
+      expect(seekCalls).toEqual([{ start: Point(0, 0), endRow: 71 }]);
+    });
+
     it("reuses a scope descriptor at the same point until highlighting changes", async () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       buffer.setText("const value = 1;");
@@ -2653,6 +2703,44 @@ describe("TreeSitterLanguageMode", () => {
             { text: ";", scopes: [] },
           ],
         ]);
+      });
+
+      it("preserves injection scopes when rebuilding one uncached row", async () => {
+        jasmine.useRealClock();
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
+        buffer.setText('node.x = html `\na ${b}<img src="d">\n`;');
+
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+        await new Promise(process.nextTick);
+
+        const initialScreenLines = editor.displayLayer.getScreenLines(0, 3);
+        const expectedTags = initialScreenLines[1].tags;
+        editor.displayLayer.cachedScreenLines[1] = undefined;
+
+        const buildHighlightIterator = languageMode.buildHighlightIterator.bind(languageMode);
+        const seekCalls = [];
+        spyOn(languageMode, "buildHighlightIterator").and.callFake(() => {
+          const iterator = buildHighlightIterator();
+          const seek = iterator.seek.bind(iterator);
+          iterator.seek = (start, endRow) => {
+            seekCalls.push({ start: Point(start.row, start.column), endRow });
+            return seek(start, endRow);
+          };
+          return iterator;
+        });
+
+        const rebuiltScreenLines = editor.displayLayer.getScreenLines(0, 3);
+        expect(rebuiltScreenLines[1].lineText).toBe('a ${b}<img src="d">');
+        expect(rebuiltScreenLines[1].tags).toEqual(expectedTags);
+        expect(seekCalls).toEqual([{ start: Point(1, 0), endRow: 1 }]);
       });
 
       it("highlights the content after injections", async () => {

@@ -2711,7 +2711,7 @@ class HighlightIterator {
       return [];
     }
 
-    if (!endRow) {
+    if (endRow == null) {
       // If `endRow` isn’t specified, assume the caller wants to go to the
       // end of the buffer. This is why `endRow` defaults to `Infinity`. It
       // will get clipped to the end of the buffer or the end of the language

@@ -179,6 +179,56 @@ describe("ScopeResolver", () => {
     expect(scopeResolver.boundaries.size).toBe(prevBoundaries);
   });
 
+  it("clips renderer boundaries without changing the capture range", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abc\r\ndef");
+    await languageMode.ready;
+
+    const scopeResolver = makeScopeResolver(languageMode);
+    const node = {
+      startPosition: { row: 0, column: 0 },
+      startIndex: 0,
+      endPosition: { row: 0, column: 4 },
+      endIndex: 4,
+    };
+
+    expect(scopeResolver.store({ name: "comment", node })).toBe(node);
+    expect([...scopeResolver].map(([point]) => point)).toEqual([Point(0, 0), Point(0, 3)]);
+    expect(node.endPosition).toEqual({ row: 0, column: 4 });
+    expect(node.endIndex).toBe(4);
+  });
+
+  it("does not emit boundaries when clipping collapses a capture", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abc\r\ndef");
+    await languageMode.ready;
+
+    const scopeResolver = makeScopeResolver(languageMode);
+    const node = {
+      startPosition: { row: 0, column: 3 },
+      startIndex: 3,
+      endPosition: { row: 0, column: 4 },
+      endIndex: 4,
+    };
+
+    expect(scopeResolver.store({ name: "comment", node })).toBe(node);
+    expect(scopeResolver.boundaries.size).toBe(0);
+  });
+
+  it("clips boundaries stored directly by language layers", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abc\r\ndef");
+    await languageMode.ready;
+
+    const scopeResolver = makeScopeResolver(languageMode);
+    scopeResolver.setBoundary({ row: 0, column: 4 }, 1, "close", { root: true });
+
+    expect([...scopeResolver].map(([point]) => point)).toEqual([Point(0, 3)]);
+  });
+
   it("does not apply any scopes when @_IGNORE_ is used", async () => {
     await grammar.setQueryForTest(
       "highlightsQuery",
@@ -705,6 +755,44 @@ describe("ScopeResolver", () => {
       expect(matched.length).toBe(1);
       expect(matched[0].name).toBe("target-argument");
       expect(matched[0].node.text).toBe("one");
+    });
+
+    it("supports test.matchAt with a relative node descriptor and cached regex", async () => {
+      await grammar.setQueryForTest(
+        "highlightsQuery",
+        `
+        ((identifier) @target-argument
+          (#is? test.typeAt "parent arguments")
+          (#is? test.matchAt "parent.previousNamedSibling ^target(?:Async)?$"))
+      `,
+      );
+
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      buffer.setText("target(one); other(two); targetAsync(three);");
+      await languageMode.ready;
+
+      const matched = await getAllMatches(grammar, languageMode);
+      expect(matched.map((capture) => capture.node.text)).toEqual(["one", "three"]);
+      expect(languageMode.rootLanguageLayer.scopeResolver.patternCache.size).toBe(1);
+    });
+
+    it("supports test.field from a field value rooted capture", async () => {
+      await grammar.setQueryForTest(
+        "highlightsQuery",
+        `
+        ((identifier) @function-name
+          (#is? test.field function))
+      `,
+      );
+
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      buffer.setText("target(one); other(two);");
+      await languageMode.ready;
+
+      const matched = await getAllMatches(grammar, languageMode);
+      expect(matched.map((capture) => capture.node.text)).toEqual(["target", "other"]);
     });
 
     it("supports test.ancestorOfType", async () => {

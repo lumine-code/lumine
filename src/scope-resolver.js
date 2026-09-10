@@ -547,11 +547,12 @@ class ScopeResolver {
       return range;
     }
 
-    // We should not store any boundaries for an empty capture — one whose
-    // starting and ending positions are the same. This would not do the right
-    // thing anyway; at a given position, we close scopes _before_ opening
-    // them, so this would just create a scope that would incorrectly never get
-    // closed.
+    // Tree-sitter nodes can include line-ending characters that aren't part of
+    // the buffer's logical line. Clip only the renderer-facing boundaries and
+    // leave the range and its character indices unchanged for other consumers.
+    // We should not store boundaries when clipping collapses the range. At a
+    // given position, we close scopes _before_ opening them, so an empty scope
+    // would incorrectly never get closed.
     //
     // But some consumers use this method to test whether a capture is _valid_,
     // and do not care about its impact on the set of boundaries. We are happy
@@ -561,21 +562,23 @@ class ScopeResolver {
     //
     // Or, for short: empty ranges “pass” this test, but are otherwise silently
     // ignored.
-    let isEmpty = comparePoints(range.startPosition, range.endPosition) === 0;
+    let { startPosition, endPosition } = range;
+    let boundaryStart = this.buffer.clipPosition(startPosition);
+    let boundaryEnd = this.buffer.clipPosition(endPosition);
 
-    let id = this.idForScope(name);
-
-    let { startPosition: start, endPosition: end } = range;
-
-    if (!isEmpty) {
-      this.setBoundary(start, id, "open");
-      this.setBoundary(end, id, "close");
+    if (comparePoints(boundaryStart, boundaryEnd) < 0) {
+      let id = this.idForScope(name);
+      this.setBoundary(boundaryStart, id, "open");
+      this.setBoundary(boundaryEnd, id, "close");
     }
 
     return range;
   }
 
   setBoundary(point, id, which, { root = false } = {}) {
+    // Language-layer root scopes use this method directly, so enforce the
+    // renderer's position invariant here as well as in `store`.
+    point = this.buffer.clipPosition(point);
     const key = `${point.row},${point.column}`;
     let bundle = this.boundaries.get(key);
     if (!bundle) {
@@ -840,6 +843,18 @@ ScopeResolver.TESTS = {
     return multiple ? target.includes(node.parent.type) : node.parent.type === type;
   },
 
+  // Passes when this node occupies one of the given named fields on its
+  // parent. Unlike a parent-rooted query with a field constraint, this keeps
+  // the query rooted on the field value itself and avoids scanning all of a
+  // large field value's children to rediscover that relationship.
+  field(node, fieldNames) {
+    if (!node.parent || typeof fieldNames !== "string") return false;
+    for (const fieldName of fieldNames.split(/\s+/)) {
+      if (node.parent.childForFieldName(fieldName)?.id === node.id) return true;
+    }
+    return false;
+  },
+
   // Passes when the node at a relative descriptor has one of the given types.
   // This keeps queries rooted on the captured leaf while still letting them
   // describe nearby structural context without traversing a large container.
@@ -856,6 +871,18 @@ ScopeResolver.TESTS = {
     if (!descriptor || text.length === 0) return false;
     let target = resolveNodeDescriptor(node, descriptor);
     return target ? target.text === text.join(" ") : false;
+  },
+
+  // Passes when the text of the node at a relative descriptor matches a
+  // regular expression. This keeps queries rooted on a local capture while
+  // still allowing them to classify it from a nearby sibling or ancestor.
+  matchAt(node, rawValue, _existingData, instance) {
+    let [descriptor, pattern] = interpretPossibleKeyValuePair(rawValue, false);
+    if (!descriptor || pattern === null) return false;
+    let target = resolveNodeDescriptor(node, descriptor);
+    if (!target) return false;
+    let regex = instance.getOrCompilePattern(pattern);
+    return regex ? regex.test(target.text) : false;
   },
 
   // Takes at least two node types (separated by spaces) and starts traversing

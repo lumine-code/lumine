@@ -33,12 +33,15 @@ module.exports = class ScreenLineBuilder {
       Point(this.bufferPosition.row, 0),
     ).row;
 
-    const endBufferRow = this.displayLayer.translateScreenPositionWithSpatialIndex(
-      Point(endScreenRow, Infinity),
-    ).row;
-
-    let didSeekDecorationIterator = false;
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator();
+    const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
+      this.screenRow,
+      endScreenRow,
+    );
+    let uncachedScreenLineRangeIndex = 0;
+    let uncachedScreenLineRange = uncachedScreenLineRanges[uncachedScreenLineRangeIndex];
+    let decorationIteratorNeedsSeek = true;
+    let decorationIteratorEndBufferRow = null;
     const hunks = this.displayLayer.spatialIndex.getChangesInNewRange(
       Point(this.screenRow, 0),
       Point(endScreenRow, 0),
@@ -58,6 +61,7 @@ module.exports = class ScreenLineBuilder {
       var cachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow];
       if (cachedScreenLine) {
         this.pushScreenLine(cachedScreenLine);
+        decorationIteratorNeedsSeek = true;
 
         let nextHunk = hunks[hunkIndex];
         while (nextHunk && nextHunk.newStart.row <= this.screenRow) {
@@ -84,6 +88,14 @@ module.exports = class ScreenLineBuilder {
         continue;
       }
 
+      while (uncachedScreenLineRange && this.screenRow >= uncachedScreenLineRange.endScreenRow) {
+        uncachedScreenLineRange = uncachedScreenLineRanges[++uncachedScreenLineRangeIndex];
+      }
+      if (uncachedScreenLineRange && this.screenRow === uncachedScreenLineRange.startScreenRow) {
+        decorationIteratorEndBufferRow = uncachedScreenLineRange.endBufferRow;
+        decorationIteratorNeedsSeek = true;
+      }
+
       this.currentBuiltInClassNameFlags = 0;
       this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row);
 
@@ -95,11 +107,12 @@ module.exports = class ScreenLineBuilder {
       this.inTrailingWhitespace = false;
 
       if (
-        !didSeekDecorationIterator ||
+        decorationIteratorNeedsSeek ||
         this.compareBufferPosition(decorationIterator.getPosition()) > 0
       ) {
-        didSeekDecorationIterator = true;
-        this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow) || [];
+        decorationIteratorNeedsSeek = false;
+        this.scopeIdsToReopen =
+          decorationIterator.seek(this.bufferPosition, decorationIteratorEndBufferRow) || [];
       }
 
       var prevCachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow - 1];
@@ -119,17 +132,22 @@ module.exports = class ScreenLineBuilder {
           nextHunk.oldStart.row === this.bufferPosition.row &&
           nextHunk.oldStart.column === this.bufferPosition.column
         ) {
+          let reachedEndOfUncachedRange = false;
           if (this.displayLayer.isSoftWrapHunk(nextHunk)) {
             this.emitSoftWrap(nextHunk);
             if (this.screenRow === endScreenRow) {
               break screenRowLoop;
             }
+            reachedEndOfUncachedRange = this.screenRow === uncachedScreenLineRange.endScreenRow;
           } else {
-            this.emitFold(nextHunk, decorationIterator, endBufferRow);
+            this.emitFold(nextHunk, decorationIterator, decorationIteratorEndBufferRow);
           }
 
           hunkIndex++;
           nextHunk = hunks[hunkIndex];
+          if (reachedEndOfUncachedRange) {
+            continue screenRowLoop;
+          }
         }
 
         var nextCharacter = this.displayLayer.buffer.getCharacterAtPosition(this.bufferPosition);
@@ -179,6 +197,40 @@ module.exports = class ScreenLineBuilder {
     }
 
     return this.screenLines;
+  }
+
+  findUncachedScreenLineRanges(startScreenRow, endScreenRow) {
+    const ranges = [];
+    const cachedScreenLines = this.displayLayer.cachedScreenLines;
+    const screenLineLengths = this.displayLayer.screenLineLengths;
+    endScreenRow = Math.min(endScreenRow, screenLineLengths.length);
+
+    let screenRow = startScreenRow;
+    while (screenRow < endScreenRow) {
+      if (cachedScreenLines[screenRow]) {
+        screenRow++;
+        continue;
+      }
+
+      const rangeStartScreenRow = screenRow;
+      while (screenRow < endScreenRow && !cachedScreenLines[screenRow]) {
+        screenRow++;
+      }
+
+      const lastScreenRow = screenRow - 1;
+      const endOfLastScreenLine = Point(lastScreenRow, screenLineLengths[lastScreenRow]);
+      ranges.push({
+        startScreenRow: rangeStartScreenRow,
+        endScreenRow: screenRow,
+        endBufferRow: this.displayLayer.translateScreenPositionWithSpatialIndex(
+          endOfLastScreenLine,
+          "forward",
+          false,
+        ).row,
+      });
+    }
+
+    return ranges;
   }
 
   getBuiltInScopeId(flags) {

@@ -2204,6 +2204,7 @@ describe("DisplayLayer", () => {
         const buffer = new TextBuffer({
           text: "abc\ndefg",
         });
+        const seekCalls = [];
 
         buffer.setLanguageMode({
           emitter: new Emitter(),
@@ -2225,7 +2226,8 @@ describe("DisplayLayer", () => {
             }
 
             return {
-              seek() {
+              seek(position, endRow) {
+                seekCalls.push({ start: Point(position.row, position.column), endRow });
                 return [];
               },
               getOpenScopeIds() {
@@ -2245,8 +2247,12 @@ describe("DisplayLayer", () => {
         displayLayer.getScreenLines();
 
         buffer.insert([1, 4], "h");
+        seekCalls.length = 0;
         const screenLineIds1 = displayLayer.getScreenLines().map((l) => l.id);
+        expect(seekCalls).toEqual([{ start: Point(0, 0), endRow: 1 }]);
+        seekCalls.length = 0;
         const screenLineIds2 = displayLayer.getScreenLines().map((l) => l.id);
+        expect(seekCalls).toEqual([]);
         expect(screenLineIds2).toEqual(screenLineIds1);
       });
     });
@@ -2866,6 +2872,138 @@ describe("DisplayLayer", () => {
       const displayLayer = buffer.addDisplayLayer({});
       expect(displayLayer.getScreenLines(1, 2)).toEqual([]);
     });
+
+    it("queries only the uncached tile when scrolling down or up", () => {
+      const buffer = new TextBuffer({
+        text: buildNumberedLines(30),
+      });
+      const { languageMode, seekCalls } = buildCountingLanguageMode();
+      buffer.setLanguageMode(languageMode);
+
+      const downwardDisplayLayer = buffer.addDisplayLayer();
+      downwardDisplayLayer.getScreenLines(0, 12);
+      seekCalls.length = 0;
+      downwardDisplayLayer.getScreenLines(6, 18);
+      expect(seekCalls).toEqual([{ start: Point(12, 0), endRow: 17 }]);
+
+      seekCalls.length = 0;
+      const upwardDisplayLayer = buffer.addDisplayLayer();
+      upwardDisplayLayer.getScreenLines(6, 18);
+      seekCalls.length = 0;
+      upwardDisplayLayer.getScreenLines(0, 12);
+      expect(seekCalls).toEqual([{ start: Point(0, 0), endRow: 5 }]);
+    });
+
+    it("performs one bounded query for each maximal uncached range", () => {
+      const buffer = new TextBuffer({
+        text: buildNumberedLines(18),
+      });
+      const { languageMode, seekCalls } = buildCountingLanguageMode();
+      buffer.setLanguageMode(languageMode);
+      const displayLayer = buffer.addDisplayLayer();
+      const initialLines = displayLayer.getScreenLines(0, 15);
+
+      for (const row of [3, 4, 5, 9, 10, 11]) {
+        displayLayer.cachedScreenLines[row] = undefined;
+      }
+      seekCalls.length = 0;
+
+      const rebuiltLines = displayLayer.getScreenLines(0, 15);
+      expect(seekCalls).toEqual([
+        { start: Point(3, 0), endRow: 5 },
+        { start: Point(9, 0), endRow: 11 },
+      ]);
+      for (const row of [0, 1, 2, 6, 7, 8, 12, 13, 14]) {
+        expect(rebuiltLines[row].id).toBe(initialLines[row].id);
+      }
+
+      seekCalls.length = 0;
+      displayLayer.getScreenLines(0, 15);
+      expect(seekCalls).toEqual([]);
+    });
+
+    it("bounds a query to uncached soft-wrapped screen lines", () => {
+      const buffer = new TextBuffer({
+        text: "abcdefghijkl\nmnopqrstuvwx",
+      });
+      const { languageMode, seekCalls } = buildCountingLanguageMode();
+      buffer.setLanguageMode(languageMode);
+      const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 4 });
+      const initialText = displayLayer.getText();
+      const cachedSuffixId = displayLayer.cachedScreenLines[2].id;
+
+      displayLayer.cachedScreenLines[1] = undefined;
+      seekCalls.length = 0;
+
+      expect(displayLayer.getText()).toBe(initialText);
+      expect(seekCalls).toEqual([{ start: Point(0, 4), endRow: 0 }]);
+      expect(displayLayer.cachedScreenLines[2].id).toBe(cachedSuffixId);
+    });
+
+    it("uses the uncached range's buffer end for queries that cross a fold", () => {
+      const buffer = new TextBuffer({
+        text: "zero\none two\nthree\nfour five\nsix",
+      });
+      const { languageMode, seekCalls } = buildCountingLanguageMode([
+        [
+          "surrounding-fold",
+          [
+            [1, 0],
+            [3, 9],
+          ],
+        ],
+      ]);
+      buffer.setLanguageMode(languageMode);
+      const displayLayer = buffer.addDisplayLayer({ foldCharacter: "…" });
+      displayLayer.foldBufferRange([
+        [1, 4],
+        [3, 4],
+      ]);
+
+      const screenLines = displayLayer.getScreenLines(1, 2);
+      expect(screenLines.map((line) => line.lineText)).toEqual(["one … five"]);
+      expect(seekCalls.length).toBeGreaterThan(0);
+      expect(seekCalls.every((call) => call.endRow === 3)).toBe(true);
+    });
+
+    it("re-seeks when an external iterator remains behind the rendered position", () => {
+      const buffer = new TextBuffer({ text: buildNumberedLines(3) });
+      const seekCalls = [];
+      let position = Point.INFINITY;
+      buffer.setLanguageMode({
+        buildHighlightIterator() {
+          return {
+            seek(start, endRow) {
+              seekCalls.push({ start: Point(start.row, start.column), endRow });
+              position = Point(start.row, buffer.lineLengthForRow(start.row) + 1);
+              return [];
+            },
+            getPosition() {
+              return position;
+            },
+            getOpenScopeIds() {
+              return [];
+            },
+            getCloseScopeIds() {
+              return [];
+            },
+            moveToSuccessor() {
+              position = Point.INFINITY;
+            },
+          };
+        },
+        onDidChangeHighlighting() {
+          return { dispose() {} };
+        },
+      });
+
+      buffer.addDisplayLayer().getScreenLines(0, 3);
+      expect(seekCalls).toEqual([
+        { start: Point(0, 0), endRow: 2 },
+        { start: Point(1, 0), endRow: 2 },
+        { start: Point(2, 0), endRow: 2 },
+      ]);
+    });
   });
 
   it("updates the displayed text correctly when the underlying buffer changes", () => {
@@ -2964,6 +3102,31 @@ describe("DisplayLayer", () => {
     }
   });
 });
+
+function buildNumberedLines(count) {
+  return Array.from({ length: count }, (_, row) => `line ${row}`).join("\n");
+}
+
+function buildCountingLanguageMode(decorations = []) {
+  const languageMode = new TestLanguageMode(decorations);
+  const buildHighlightIterator = languageMode.buildHighlightIterator.bind(languageMode);
+  const seekCalls = [];
+
+  languageMode.buildHighlightIterator = () => {
+    const iterator = buildHighlightIterator();
+    const seek = iterator.seek.bind(iterator);
+    iterator.seek = (position, endRow) => {
+      seekCalls.push({
+        start: Point(position.row, position.column),
+        endRow,
+      });
+      return seek(position, endRow);
+    };
+    return iterator;
+  };
+
+  return { languageMode, seekCalls };
+}
 
 function performRandomChange(random, displayLayer) {
   const text = buildRandomLines(random, 4);
