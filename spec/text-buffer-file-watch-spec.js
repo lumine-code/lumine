@@ -167,6 +167,29 @@ describe("TextBuffer deferred file observation", () => {
     expect(events).toEqual(["will-reload", "did-reload"]);
   });
 
+  it("waits for active native loads before preparing a file operation", async () => {
+    const custom = source();
+    buffer = await TextBuffer.load(custom);
+    const stream = new PassThrough();
+    custom.createReadStream = () => stream;
+
+    const load = buffer.load({ internal: true });
+    let prepared = false;
+    const prepare = buffer.beginFileOperation().then(() => {
+      prepared = true;
+    });
+    await Promise.resolve();
+    expect(prepared).toBe(false);
+
+    stream.end("obsolete");
+    await Promise.all([load, prepare]);
+    expect(prepared).toBe(true);
+    expect(buffer.getText()).toBe("before");
+
+    custom.createReadStream = () => Readable.from([custom.text]);
+    await buffer.endFileOperation();
+  });
+
   it("releases the pending load when a custom source cannot create its stream", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);

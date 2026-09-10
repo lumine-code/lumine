@@ -191,6 +191,7 @@ class TextBuffer {
     this.fileWatchOperationDepth = 0;
     this.explicitReloadDepth = 0;
     this.pendingFileLoads = 0;
+    this.fileLoadWaiters = [];
     this.pendingFileReconcile = false;
 
     this.setEncoding(params.encoding);
@@ -2789,6 +2790,9 @@ class TextBuffer {
       }
     } finally {
       this.pendingFileLoads--;
+      if (this.pendingFileLoads === 0) {
+        for (const resolve of this.fileLoadWaiters.splice(0)) resolve();
+      }
       if (this.pendingFileReconcile) queueMicrotask(() => void this.reconcileWatchedFile?.());
     }
 
@@ -2953,9 +2957,12 @@ class TextBuffer {
     return this;
   }
 
-  beginFileOperation() {
+  async beginFileOperation() {
     this.fileWatchOperationDepth++;
     this.fileOperationGeneration++;
+    while (this.pendingFileLoads > 0) {
+      await new Promise((resolve) => this.fileLoadWaiters.push(resolve));
+    }
   }
 
   async endFileOperation() {

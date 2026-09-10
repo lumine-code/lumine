@@ -407,7 +407,7 @@ module.exports = class Workspace extends Model {
    * transaction with confirmed moves, including partial results on failure.
    *
    * @param {Array<Object>} plannedRenames - Entries with oldPath, newPath and isDirectory.
-   * @returns {Object} A transaction with an asynchronous complete(confirmedRenames) method.
+   * @returns {Object} A transaction with a ready promise and an asynchronous complete(confirmedRenames) method.
    */
   beginFileMove(plannedRenames) {
     return this.fileDocuments.beginFileMove(plannedRenames);

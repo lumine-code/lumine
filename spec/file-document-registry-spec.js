@@ -86,6 +86,42 @@ describe("FileDocumentRegistry", () => {
     expect(doc.suspended).toBe(0);
   });
 
+  it("does not become ready until every affected document is prepared", async () => {
+    let release;
+    const prepared = new Promise((resolve) => {
+      release = resolve;
+    });
+    const doc = document("a.txt");
+    doc.registration.dispose();
+    doc.registration = registry.register({
+      owner: doc,
+      getPath: () => doc.path,
+      setPath: (target) => {
+        doc.path = target;
+      },
+      beginFileOperation: () => {
+        doc.suspended++;
+        return prepared;
+      },
+      endFileOperation: () => {
+        doc.suspended--;
+      },
+    });
+    const operation = registry.beginFileMove([move("a.txt", "b.txt")]);
+    let ready = false;
+    operation.ready.then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    expect(ready).toBe(false);
+    expect(doc.suspended).toBe(1);
+    release();
+    await operation.ready;
+    expect(ready).toBe(true);
+    await operation.complete([]);
+    expect(doc.suspended).toBe(0);
+  });
+
   it("rejects a destination already owned by another open document before suspension", () => {
     const source = document("a.txt");
     document("b.txt");

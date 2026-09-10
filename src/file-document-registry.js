@@ -93,22 +93,54 @@ module.exports = class FileDocumentRegistry {
       destinations.set(target, original);
     }
     const begun = [];
+    const beginnings = [];
+    let releasePromise;
+    const releaseBegun = () => {
+      if (releasePromise) return releasePromise;
+      releasePromise = (async () => {
+        const failures = [];
+        for (const { entry } of begun) {
+          if (this.documents.get(entry.descriptor.owner) !== entry) continue;
+          try {
+            await entry.descriptor.endFileOperation?.();
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+        return failures;
+      })();
+      return releasePromise;
+    };
     try {
       for (const record of affected) {
-        record.entry.descriptor.beginFileOperation?.();
         begun.push(record);
+        beginnings.push(Promise.resolve(record.entry.descriptor.beginFileOperation?.()));
       }
     } catch (error) {
-      for (const { entry } of begun)
-        void Promise.resolve(entry.descriptor.endFileOperation?.()).catch(() => {});
+      void releaseBegun();
       throw error;
     }
+    const ready = Promise.all(beginnings).then(
+      () => {},
+      async (error) => {
+        const releaseFailures = await releaseBegun();
+        if (releaseFailures.length) {
+          throw new AggregateError(
+            [error, ...releaseFailures],
+            "Unable to prepare moved documents",
+          );
+        }
+        throw error;
+      },
+    );
     let completion;
     return {
+      ready,
       complete: (confirmedRenames = []) => {
         if (completion) return completion;
         completion = (async () => {
           const failures = [];
+          await ready;
           try {
             const confirmed = normalizeMoves(confirmedRenames).map((move) => {
               // The source may no longer exist. Resolve its spelling using the
@@ -139,14 +171,7 @@ module.exports = class FileDocumentRegistry {
               }
             }
           } finally {
-            for (const { entry } of begun) {
-              if (this.documents.get(entry.descriptor.owner) !== entry) continue;
-              try {
-                await entry.descriptor.endFileOperation?.();
-              } catch (error) {
-                failures.push(error);
-              }
-            }
+            failures.push(...(await releaseBegun()));
           }
           if (failures.length)
             throw new AggregateError(failures, "Unable to update moved documents");

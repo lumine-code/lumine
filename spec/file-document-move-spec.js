@@ -34,6 +34,7 @@ describe("file document moves", () => {
       isDirectory: false,
     };
     const transaction = lumine.workspace.beginFileMove([effect]);
+    await transaction.ready;
     fs.renameSync(effect.oldPath, effect.newPath);
     await transaction.complete([effect]);
     expect(editor.getBuffer()).toBe(buffer);
@@ -53,6 +54,7 @@ describe("file document moves", () => {
       isDirectory: false,
     };
     const transaction = lumine.workspace.beginFileMove([effect]);
+    await transaction.ready;
     fs.renameSync(effect.oldPath, effect.newPath);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(editor.isDestroyed()).toBe(false);
@@ -70,6 +72,7 @@ describe("file document moves", () => {
       isDirectory: true,
     };
     const transaction = lumine.workspace.beginFileMove([effect]);
+    await transaction.ready;
     fs.renameSync(effect.oldPath, effect.newPath);
     await transaction.complete([effect]);
     expect(moved.getPath()).toBe(path.join(root, "renamed", "a.txt"));
