@@ -1216,7 +1216,16 @@ class Environment {
     // window already had them open. Where it came from has to be read back out
     // of the stack, since a rejection carries no position of its own.
     this.previousWindowRejectionHandler = this.domWindow.onunhandledrejection;
-    this.domWindow.onunhandledrejection = ({ reason }) => {
+    this.domWindow.onunhandledrejection = (event) => {
+      const { reason } = event;
+      if (isAbortError(reason)) {
+        // AbortError is the completion signal for work deliberately cancelled
+        // during teardown or superseded by newer work. It is not a fault, and
+        // preventing the browser's default handling keeps that expected
+        // cancellation out of both the notification system and the console.
+        event.preventDefault?.();
+        return;
+      }
       const originalError = asError(reason);
       const origin = firstStackFrame(originalError.stack);
       const { source, line, column } = origin
@@ -1840,6 +1849,10 @@ class Environment {
 function asError(reason) {
   if (reason instanceof Error) return reason;
   return untraceableError(`Promise rejected with ${util.inspect(reason)}`);
+}
+
+function isAbortError(reason) {
+  return reason?.name === "AbortError" || reason?.code === "ABORT_ERR";
 }
 
 // The two notifications a browser raises when a ResizeObserver still had

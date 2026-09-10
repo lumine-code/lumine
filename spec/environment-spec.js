@@ -393,6 +393,19 @@ describe("Environment", () => {
         expect(willThrowSpy.calls.mostRecent().args[0].message).toContain("undefined");
       });
 
+      it("ignores a deliberately aborted operation", () => {
+        const preventDefault = jasmine.createSpy("preventDefault");
+        const error = new Error("The git operation was aborted");
+        error.name = "AbortError";
+        error.code = "ABORT_ERR";
+
+        window.onunhandledrejection({ reason: error, preventDefault });
+
+        expect(preventDefault).toHaveBeenCalled();
+        expect(willThrowSpy).not.toHaveBeenCalled();
+        expect(lumine.window.openDevTools).not.toHaveBeenCalled();
+      });
+
       // The reporter opens the dev tools through a promise. Left unhandled,
       // that promise's own rejection arrives back here and opens them again.
       it("does not feed itself when opening the dev tools fails", async () => {
