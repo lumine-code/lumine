@@ -849,6 +849,71 @@ module.exports = class TextEditor {
     };
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Capture the cursor, selection, and viewport state without references to
+   * this editor's buffer or marker layers. The returned object can be passed
+   * through JSON and restored on another editor for the same text.
+   *
+   * @returns {Object}
+   */
+  serializeViewState() {
+    const state = {
+      selections: this.getSelections().map((selection) => ({
+        range: selection.getBufferRange().serialize(),
+        reversed: selection.isReversed(),
+      })),
+      scrollTopRow: this.getScrollTopRow(),
+      scrollLeftColumn: this.getScrollLeftColumn(),
+    };
+    const scrollAnchor = normalizeSerializedScrollAnchor(this.component?.captureScrollAnchor());
+    if (scrollAnchor) state.scrollAnchor = scrollAnchor;
+    return state;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Restore state produced by {@link #serializeViewState}. Invalid portions
+   * of the state are ignored.
+   *
+   * @param state - A portable editor view-state object.
+   */
+  restoreViewState(state) {
+    if (!state || typeof state !== "object") return;
+
+    if (Array.isArray(state.selections) && state.selections.length > 0) {
+      const selections = state.selections.map((selection) => {
+        const range = normalizeSerializedRange(selection?.range);
+        return range ? { range, reversed: selection?.reversed === true } : null;
+      });
+      if (selections.every(Boolean)) {
+        const options = (selection) => ({
+          reversed: selection.reversed,
+          preserveFolds: true,
+          autoscroll: false,
+        });
+        this.setSelectedBufferRange(selections[0].range, options(selections[0]));
+        for (const selection of selections.slice(1)) {
+          this.addSelectionForBufferRange(selection.range, options(selection));
+        }
+      }
+    }
+
+    const scrollAnchor = normalizeSerializedScrollAnchor(state.scrollAnchor);
+    if (scrollAnchor) {
+      this.getElement().component.setScrollAnchor(scrollAnchor);
+    } else if (isNonNegativeFiniteNumber(state.scrollTopRow)) {
+      this.setScrollTopRow(state.scrollTopRow);
+    }
+    if (isNonNegativeFiniteNumber(state.scrollLeftColumn)) {
+      this.setScrollLeftColumn(state.scrollLeftColumn);
+    }
+  }
+
   subscribeToBuffer() {
     this.buffer.retain();
     this.disposables.add(
@@ -7252,6 +7317,37 @@ function compactInPlace(array, doomed) {
     if (!doomed.has(element)) array[write++] = element;
   }
   array.length = write;
+}
+
+function isNonNegativeFiniteNumber(value) {
+  return Number.isFinite(value) && value >= 0;
+}
+
+function normalizeSerializedPoint(point) {
+  if (typeof point?.serialize === "function") point = point.serialize();
+  if (!Array.isArray(point) || point.length !== 2) return null;
+  if (!point.every((value) => Number.isInteger(value) && value >= 0)) return null;
+  return point.slice();
+}
+
+function normalizeSerializedRange(range) {
+  if (typeof range?.serialize === "function") range = range.serialize();
+  if (!Array.isArray(range) || range.length !== 2) return null;
+  const start = normalizeSerializedPoint(range[0]);
+  const end = normalizeSerializedPoint(range[1]);
+  return start && end ? [start, end] : null;
+}
+
+function normalizeSerializedScrollAnchor(anchor) {
+  if (!anchor || typeof anchor !== "object") return null;
+  if (anchor.type === "bottom" && isNonNegativeFiniteNumber(anchor.bottomOffset)) {
+    return { type: "bottom", bottomOffset: anchor.bottomOffset };
+  }
+  if (anchor.type === "row" && Number.isFinite(anchor.offset)) {
+    const bufferPosition = normalizeSerializedPoint(anchor.bufferPosition);
+    if (bufferPosition) return { type: "row", bufferPosition, offset: anchor.offset };
+  }
+  return null;
 }
 
 function columnForIndentLevel(line, indentLevel, tabLength) {

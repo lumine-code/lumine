@@ -8278,6 +8278,52 @@ describe("TextEditorComponent", () => {
       expect(Math.abs(offsetAfter - offsetBefore)).toBeLessThan(2 * copyComponent.getLineHeight());
     });
 
+    it("restores a portable view state in a pane with a different width", async () => {
+      const { component, editor } = buildComponent({
+        softWrapped: true,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+
+      editor.setCursorBufferPosition([12, 0]);
+      await component.getNextUpdatePromise();
+      const anchorBufferPosition = editor.getCursorBufferPosition();
+      const offsetBefore =
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+        component.getScrollTop();
+      const state = JSON.parse(JSON.stringify(editor.serializeViewState()));
+      expect(state.scrollAnchor.type).toBe("row");
+      component.element.remove();
+
+      const restoredEditor = buildEditor({
+        text: editor.getText(),
+        softWrapped: true,
+        autoHeight: false,
+      });
+      const restoredElement = restoredEditor.getElement();
+      const restoredComponent = restoredEditor.component;
+      restoredEditor.restoreViewState(state);
+      restoredElement.style.height = component.getLineHeight() * 10 + "px";
+      restoredElement.style.width =
+        component.getGutterContainerWidth() +
+        25 * component.measurements.baseCharacterWidth +
+        verticalScrollbarWidth +
+        "px";
+      jasmine.attachToDOM(restoredElement);
+      await conditionPromise(() => restoredComponent.hasInitialMeasurements);
+
+      const restoredScreenRow =
+        restoredEditor.screenPositionForBufferPosition(anchorBufferPosition).row;
+      const offsetAfter =
+        restoredComponent.pixelPositionBeforeBlocksForRow(restoredScreenRow) -
+        restoredComponent.getScrollTop();
+      expect(restoredEditor.getCursorBufferPosition()).toEqual(anchorBufferPosition);
+      expect(Math.abs(offsetAfter - offsetBefore)).toBeLessThan(
+        2 * restoredComponent.getLineHeight(),
+      );
+    });
+
     it("preserves the past-end scroll position when copied into a pane with a different width", async () => {
       const { component, editor } = buildComponent({
         softWrapped: true,

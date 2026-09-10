@@ -4237,6 +4237,20 @@ module.exports = class TextEditorComponent {
     };
   }
 
+  // Queue an externally supplied buffer-based anchor for restoration once the
+  // editor's current layout has been measured. It stays authoritative through
+  // the reflows of a newly attached or resized pane, just like an anchor
+  // inherited by TextEditor::copy.
+  setScrollAnchor(anchor) {
+    this.pendingScrollAnchor = anchor;
+    this.pendingScrollTopRow = null;
+    this.pendingReflowScrollAnchor = null;
+    this.scrollAnchorBeforeReset = null;
+    this.settlingScrollAnchor = null;
+    this.pendingAutoscroll = null;
+    this.scheduleUpdate();
+  }
+
   // Returns whether the scroll position changed.
   restoreScrollAnchor(anchor) {
     if (!anchor || !this.hasInitialMeasurements) return false;

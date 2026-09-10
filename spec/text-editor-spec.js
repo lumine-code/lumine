@@ -167,6 +167,50 @@ describe("TextEditor", () => {
     });
   });
 
+  describe(".serializeViewState()", () => {
+    it("round-trips multiple selections and their direction through JSON", () => {
+      editor.setSelectedBufferRange(
+        [
+          [1, 2],
+          [3, 4],
+        ],
+        { reversed: true, autoscroll: false },
+      );
+      editor.addSelectionForBufferRange(
+        [
+          [5, 6],
+          [5, 6],
+        ],
+        { autoscroll: false },
+      );
+      const state = JSON.parse(JSON.stringify(editor.serializeViewState()));
+
+      editor.setSelectedBufferRange(
+        [
+          [0, 0],
+          [0, 0],
+        ],
+        { autoscroll: false },
+      );
+      editor.restoreViewState(state);
+
+      expect(editor.getSelectedBufferRanges().map((range) => range.serialize())).toEqual([
+        [
+          [1, 2],
+          [3, 4],
+        ],
+        [
+          [5, 6],
+          [5, 6],
+        ],
+      ]);
+      expect(editor.getSelections().map((selection) => selection.isReversed())).toEqual([
+        true,
+        false,
+      ]);
+    });
+  });
+
   describe(".copy()", () => {
     it("returns a different editor with the same initial state", async () => {
       expect(editor.getAutoHeight()).toBeFalsy();
