@@ -262,4 +262,10 @@ module.exports = class Decoration {
     this.decorationManager.emitDidUpdateDecorations();
     return this.emitter.emit("did-flash");
   }
+
+  cancelPendingFlash() {
+    if (!this.properties.flashRequested) return false;
+    this.properties.flashRequested = false;
+    return true;
+  }
 };

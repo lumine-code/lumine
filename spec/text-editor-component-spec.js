@@ -3279,6 +3279,112 @@ describe("TextEditorComponent", () => {
       await conditionPromise(() => !highlights[0].classList.contains("e"));
     });
 
+    it("does not carry a pending selection flash to a manually selected range", async () => {
+      const { component, element, editor } = buildComponent({
+        rowsPerTile: 3,
+        height: 200,
+      });
+
+      editor.setSelectedBufferRange(
+        [
+          [2, 0],
+          [2, 4],
+        ],
+        { flash: true, autoscroll: false },
+      );
+
+      // Equivalent to a click and drag arriving before the next render.
+      editor.setCursorScreenPosition([3, 0], { autoscroll: false });
+      editor.selectToScreenPosition([3, 4], { autoscroll: false });
+
+      await component.getNextUpdatePromise();
+
+      expect(editor.getSelectedScreenRange()).toEqual([
+        [3, 0],
+        [3, 4],
+      ]);
+      const selection = element.querySelector(".highlight.selection");
+      expect(selection).not.toBeNull();
+      expect(selection.classList.contains("flash")).toBe(false);
+    });
+
+    it("keeps a pending selection flash when an edit moves the selected text", async () => {
+      const { component, element, editor } = buildComponent({
+        rowsPerTile: 3,
+        height: 200,
+      });
+
+      editor.setSelectedBufferRange(
+        [
+          [2, 0],
+          [2, 4],
+        ],
+        { flash: true, autoscroll: false },
+      );
+      editor.getBuffer().insert([0, 0], "new row\n");
+
+      await component.getNextUpdatePromise();
+
+      expect(editor.getSelectedBufferRange()).toEqual([
+        [3, 0],
+        [3, 4],
+      ]);
+      expect(element.querySelector(".highlight.selection").classList.contains("flash")).toBe(true);
+    });
+
+    it("stops an active selection flash when the range changes", async () => {
+      const { component, element, editor } = buildComponent({
+        rowsPerTile: 3,
+        height: 200,
+      });
+
+      editor.setSelectedBufferRange(
+        [
+          [2, 0],
+          [2, 4],
+        ],
+        { flash: true, autoscroll: false },
+      );
+      await component.getNextUpdatePromise();
+
+      const selection = element.querySelector(".highlight.selection");
+      expect(selection.classList.contains("flash")).toBe(true);
+
+      editor.selectToScreenPosition([3, 4], { autoscroll: false });
+      await component.getNextUpdatePromise();
+
+      expect(selection.classList.contains("flash")).toBe(false);
+    });
+
+    it("does not resume a selection flash after its range changes", async () => {
+      const { component, element, editor } = buildComponent({
+        rowsPerTile: 3,
+        height: 200,
+      });
+      const range = [
+        [2, 0],
+        [2, 4],
+      ];
+
+      editor.setSelectedBufferRange(range, { flash: true, autoscroll: false });
+      await component.getNextUpdatePromise();
+      const selection = element.querySelector(".highlight.selection");
+      expect(selection.classList.contains("flash")).toBe(true);
+
+      // Repeating the same flash removes the class until the next animation
+      // frame so that its CSS animation restarts.
+      editor.setSelectedBufferRange(range, { flash: true, autoscroll: false });
+      await component.getNextUpdatePromise();
+      expect(selection.classList.contains("flash")).toBe(false);
+
+      // A synchronous drag update must also cancel that queued restart.
+      editor.selectToScreenPosition([3, 4], { autoscroll: false });
+      component.updateSync();
+      await wait(50);
+
+      expect(selection.classList.contains("flash")).toBe(false);
+    });
+
     it("flashing a highlight decoration doesn't unflash other highlight decorations", async () => {
       jasmine.useRealClock();
       const { component, element, editor } = buildComponent({

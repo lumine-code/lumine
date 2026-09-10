@@ -94,17 +94,15 @@ class HighlightComponent {
   }
 
   destroy() {
-    if (this.timeoutsByClassName) {
-      this.timeoutsByClassName.forEach((timeout) => {
-        window.clearTimeout(timeout);
-      });
-      this.timeoutsByClassName.clear();
-    }
-
+    this.cancelFlashes();
     this.element.remove();
   }
 
   update(newProps) {
+    const rangeChanged =
+      this.props.screenRange && !this.props.screenRange.isEqual(newProps.screenRange);
+    if (rangeChanged) this.cancelFlashes();
+
     this.props = newProps;
     this.renderRegions();
     if (newProps.flashRequested) this.performFlash();
@@ -112,24 +110,48 @@ class HighlightComponent {
 
   performFlash() {
     const { flashClass, flashDuration } = this.props;
-    if (!this.timeoutsByClassName) this.timeoutsByClassName = new Map();
+    if (!this.flashStatesByClassName) this.flashStatesByClassName = new Map();
 
-    // If a flash of this class is already in progress, clear it early and
-    // flash again on the next frame to ensure CSS transitions apply to the
-    // second flash.
-    if (this.timeoutsByClassName.has(flashClass)) {
-      window.clearTimeout(this.timeoutsByClassName.get(flashClass));
-      this.timeoutsByClassName.delete(flashClass);
-      this.element.classList.remove(flashClass);
-      requestAnimationFrame(() => this.performFlash());
-    } else {
+    const restart = this.element.classList.contains(flashClass);
+    this.cancelFlash(flashClass);
+
+    const state = { animationFrame: null, timeout: null };
+    this.flashStatesByClassName.set(flashClass, state);
+    const start = () => {
+      if (this.flashStatesByClassName.get(flashClass) !== state) return;
+      state.animationFrame = null;
       this.element.classList.add(flashClass);
-      this.timeoutsByClassName.set(
-        flashClass,
-        window.setTimeout(() => {
-          this.element.classList.remove(flashClass);
-        }, flashDuration),
-      );
+      state.timeout = window.setTimeout(() => {
+        if (this.flashStatesByClassName.get(flashClass) !== state) return;
+        this.flashStatesByClassName.delete(flashClass);
+        this.element.classList.remove(flashClass);
+      }, flashDuration);
+    };
+
+    // Leave one frame without the class when restarting the same flash so its
+    // CSS animation starts again. Keep the request so a range change can cancel
+    // it before that frame arrives.
+    if (restart) {
+      state.animationFrame = window.requestAnimationFrame(start);
+    } else {
+      start();
+    }
+  }
+
+  cancelFlash(className) {
+    const state = this.flashStatesByClassName?.get(className);
+    if (state) {
+      if (state.animationFrame != null) window.cancelAnimationFrame(state.animationFrame);
+      if (state.timeout != null) window.clearTimeout(state.timeout);
+      this.flashStatesByClassName.delete(className);
+    }
+    this.element.classList.remove(className);
+  }
+
+  cancelFlashes() {
+    if (!this.flashStatesByClassName) return;
+    for (const className of Array.from(this.flashStatesByClassName.keys())) {
+      this.cancelFlash(className);
     }
   }
 

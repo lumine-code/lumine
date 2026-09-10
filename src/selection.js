@@ -1445,9 +1445,24 @@ module.exports = class Selection {
   }
 
   markerDidChange(e) {
-    const { oldHeadBufferPosition, oldTailBufferPosition, newHeadBufferPosition } = e;
+    const {
+      oldHeadBufferPosition,
+      oldTailBufferPosition,
+      newHeadBufferPosition,
+      newTailBufferPosition,
+    } = e;
     const { oldHeadScreenPosition, oldTailScreenPosition, newHeadScreenPosition } = e;
     const { textChanged } = e;
+
+    // Do not let a search-result flash land on a range selected before the
+    // renderer consumes it. A text edit may move the same logical selection.
+    if (
+      !textChanged &&
+      (!oldHeadBufferPosition.isEqual(newHeadBufferPosition) ||
+        !oldTailBufferPosition.isEqual(newTailBufferPosition))
+    ) {
+      this.decoration.cancelPendingFlash();
+    }
 
     if (!oldHeadScreenPosition.isEqual(newHeadScreenPosition)) {
       this.cursor.goalColumn = null;
