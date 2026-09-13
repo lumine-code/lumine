@@ -724,7 +724,11 @@ module.exports = class TextEditorComponent {
     style = scrollContainer.style;
     style.position = "absolute";
     style.contain = "strict";
-    style.overflow = "hidden";
+    // This viewport only clips; logical scrolling is applied to `content` with
+    // a transform. `hidden` would still make it a programmatically scrollable
+    // box, so Chromium could give it a native offset while revealing the
+    // focused hidden input and shear the text away from its separate gutter.
+    style.overflow = "clip";
     style.top = 0;
     style.bottom = 0;
     style.backgroundColor = "inherit";
@@ -2439,12 +2443,10 @@ module.exports = class TextEditorComponent {
   }
 
   didFocusHiddenInput() {
-    // Focusing the hidden input while it sits outside the viewport can make
-    // the browser scroll the scroll container to reveal it. Our own focus()
-    // calls pass preventScroll, but browser-initiated focus (window refocus,
-    // IME, execCommand) does not, and since scrolling here is synthetic and
-    // transform-based, any native scroll offset shears the rendered lines
-    // ("half screen" bug). Always reset it.
+    // The clipping viewport prevents Chromium from scrolling to reveal this
+    // input, but retain the reset as a defense against browser-initiated focus
+    // paths (window refocus, IME, execCommand). Any native offset would shear
+    // the transform-scrolled lines away from their separate gutter.
     this.refs.scrollContainer.scrollTop = 0;
     this.refs.scrollContainer.scrollLeft = 0;
 

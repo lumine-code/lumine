@@ -73,10 +73,45 @@ describe("TextEditorComponent hidden input", () => {
     editor.destroy();
   });
 
+  it("keeps the synthetic scroll container from acquiring a native scroll offset", async () => {
+    const editor = new TextEditor({ autoHeight: false });
+    editor.setText(Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n"));
+
+    const component = new TextEditorComponent({
+      model: editor,
+      updatedSynchronously: true,
+    });
+    const element = component.element;
+    element.style.height = "200px";
+    element.style.width = "400px";
+    element.style.font = "14px monospace";
+    jasmine.attachToDOM(element);
+
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    for (let i = 0; i < 10; i++) await frame();
+    component.updateSync();
+
+    const { scrollContainer } = component.refs;
+    const firstLine = element.querySelector('.line[data-screen-row="0"]');
+    const firstLineNumber = element.querySelector('.line-number[data-screen-row="0"]');
+    const lineNumberTop = firstLineNumber.getBoundingClientRect().top;
+    expect(firstLine.getBoundingClientRect().top).toBe(lineNumberTop);
+
+    // Chromium can perform this same native scroll while revealing the
+    // focused hidden input. The editor scrolls synthetically with transforms,
+    // so any native offset shears the text away from its gutter.
+    scrollContainer.scrollTop = 100;
+
+    expect(scrollContainer.scrollTop).toBe(0);
+    expect(firstLine.getBoundingClientRect().top).toBe(lineNumberTop);
+
+    editor.destroy();
+  });
+
   // The scroll shear this guards against is triggered by the browser's own focus
   // handling, which does nothing unless the document owns the focus.
   jasmine.itWithDocumentFocus(
-    "resets a browser-forced scroll offset when the hidden input regains focus",
+    "prevents a browser-forced scroll offset when the hidden input regains focus",
     async () => {
       const editor = new TextEditor({ autoHeight: false });
       editor.setText(Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n"));
@@ -109,9 +144,9 @@ describe("TextEditorComponent hidden input", () => {
       expect(hiddenInput.getBoundingClientRect().top).toBeGreaterThan(containerRect.bottom);
 
       // Browser-initiated focus (window refocus, IME, execCommand) bypasses the
-      // preventScroll option our own focus() calls pass, and natively scrolls
-      // the overflow:hidden scroll container to reveal the off-screen input,
-      // shearing the transform-scrolled lines ("half screen" bug).
+      // preventScroll option our own focus() calls pass. The clipping viewport
+      // must reject Chromium's attempt to reveal the off-screen input rather
+      // than natively scroll and shear the transform-scrolled lines.
       hiddenInput.focus();
       for (let i = 0; i < 5; i++) await frame();
 
