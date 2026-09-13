@@ -530,6 +530,27 @@ describe("WorkspaceElement", () => {
             });
             expect(workspace.paneForItem(item)).toBe(startingPane);
           });
+
+          it("treats the default location as the implicit allowed location", function () {
+            const item = {
+              element: document.createElement("div"),
+              getDefaultLocation: () => "center",
+              copy: jasmine.createSpy("copy"),
+            };
+
+            workspace.getBottomDock().show();
+            startingPane.activate();
+            startingPane.activateItem(item);
+            workspaceElement.moveActiveItemToNearestPaneInDirection("below", {
+              keepOriginal: false,
+            });
+            workspaceElement.moveActiveItemToNearestPaneInDirection("below", {
+              keepOriginal: true,
+            });
+
+            expect(workspace.paneForItem(item)).toBe(startingPane);
+            expect(item.copy).not.toHaveBeenCalled();
+          });
         });
 
         describe("when the item doesn't implement a `copy` function", () => {

@@ -245,6 +245,7 @@ describe("Workspace", () => {
             const item = {
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
+              getAllowedLocations: () => ["left", "right"],
               getElement: () => document.createElement("div"),
             };
             dock.getActivePane().addItem(item);
@@ -255,6 +256,34 @@ describe("Workspace", () => {
             expect(lumine.workspace.getPaneItems()).toHaveLength(1);
             expect(dock.getPaneItems()).toHaveLength(1);
             expect(dock.getPaneItems()[0]).toBe(item);
+          });
+
+          it("rejects a saved location outside an item's implicit default", async () => {
+            const ITEM_URI = "lumine://implicit-location-test";
+            const item = {
+              getURI: () => ITEM_URI,
+              getDefaultLocation: () => "left",
+              getElement: () => document.createElement("div"),
+            };
+            const opener = (uri) => (uri === ITEM_URI ? item : null);
+            spyOn(lumine.workspace.itemLocationStore, "load").and.returnValue(
+              Promise.resolve("right"),
+            );
+            spyOn(lumine.workspace, "getOpeners").and.returnValue([opener]);
+
+            await lumine.workspace.open(ITEM_URI);
+
+            expect(lumine.workspace.getLeftDock().getPaneItems()).toContain(item);
+            expect(lumine.workspace.getRightDock().getPaneItems()).not.toContain(item);
+          });
+
+          it("keeps an item without location hooks in the center", async () => {
+            const item = document.createElement("div");
+
+            await lumine.workspace.open(item, { location: "bottom" });
+
+            expect(lumine.workspace.getCenter().getPaneItems()).toContain(item);
+            expect(lumine.workspace.getBottomDock().getPaneItems()).not.toContain(item);
           });
         });
 
@@ -331,6 +360,7 @@ describe("Workspace", () => {
             const item = {
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
+              getAllowedLocations: () => ["left", "right"],
               getElement: () => document.createElement("div"),
             };
             const opener = (uri) => (uri === ITEM_URI ? item : null);

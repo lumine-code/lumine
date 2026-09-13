@@ -3,6 +3,7 @@ const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneContainer = require("./pane-container");
 const { beginLayoutDrag } = require("./layout-drag");
+const { isItemAllowedInLocation } = require("./pane-item-locations");
 
 const $ = etch.dom;
 const MINIMUM_SIZE = 100;
@@ -976,6 +977,5 @@ function rectContainsPoint(rect, point) {
 
 // Is the item allowed in the given location?
 function isItemAllowed(item, location) {
-  if (typeof item.getAllowedLocations !== "function") return true;
-  return item.getAllowedLocations().includes(location);
+  return isItemAllowedInLocation(item, location);
 }

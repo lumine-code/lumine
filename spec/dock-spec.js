@@ -549,6 +549,28 @@ describe("Dock", () => {
       expect(maskOf().style.width).toBe("0px");
     });
 
+    it("does not offer a dock outside an item's implicit default location", async () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const leftDock = lumine.workspace.getLeftDock();
+      const rightDock = lumine.workspace.getRightDock();
+      const element = document.createElement("div");
+      element.setAttribute("is", "tabs-tab");
+      element.item = {
+        element,
+        getDefaultLocation: () => "left",
+      };
+      const dragEvent = new DragEvent("dragstart");
+      Object.defineProperty(dragEvent, "target", { value: element });
+
+      lumine.workspace.getElement().handleDragStart(dragEvent);
+      await getNextUpdatePromise();
+
+      expect(leftDock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
+      expect(rightDock.refs.toggleButton.element).not.toHaveClass(
+        "lumine-dock-toggle-button-visible",
+      );
+    });
+
     it("clears an empty dock's drop target when the drop finishes without dragend", async () => {
       const workspaceElement = lumine.workspace.getElement();
       jasmine.attachToDOM(workspaceElement);

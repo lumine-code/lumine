@@ -3,6 +3,7 @@ const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
 const FileState = require("./file-state");
+const { isItemAllowedInLocation } = require("./pane-item-locations");
 
 let nextInstanceId = 1;
 
@@ -172,11 +173,7 @@ module.exports = class Pane {
    * @private
    */
   isItemAllowed(item) {
-    if (typeof item.getAllowedLocations !== "function") {
-      return true;
-    } else {
-      return item.getAllowedLocations().includes(this.getContainer().getLocation());
-    }
+    return isItemAllowedInLocation(item, this.getContainer().getLocation());
   }
 
   setFlexScale(flexScale) {

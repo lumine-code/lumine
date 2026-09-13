@@ -21,6 +21,7 @@ const ModalDialogFactory = require("./modal-dialog-factory");
 const FileState = require("./file-state");
 const FileDocumentRegistry = require("./file-document-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
+const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 
 function protocolForURI(uri) {
   try {
@@ -181,7 +182,9 @@ const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
  *
  * Tells the workspace where this item can be moved. Returns an `Array` of one
  * or more of the following values: `'center'`, `'left'`, `'right'`, or
- * `'bottom'`.
+ * `'bottom'`. If this method is not defined, the item is allowed only in the
+ * location returned by `getDefaultLocation()`, or in `'center'` when that
+ * method is not defined either.
  *
  * #### `isPersistentDockItem()`
  *
@@ -920,11 +923,7 @@ module.exports = class Workspace extends Model {
             const uri = item.getURI();
             if (uri) {
               const location = paneContainer.getLocation();
-              let defaultLocation;
-              if (typeof item.getDefaultLocation === "function") {
-                defaultLocation = item.getDefaultLocation();
-              }
-              defaultLocation = defaultLocation || "center";
+              const defaultLocation = defaultLocationForItem(item);
               if (location === defaultLocation) {
                 this.itemLocationStore.delete(item.getURI());
               } else {
@@ -1469,14 +1468,10 @@ module.exports = class Workspace extends Model {
           if (!location && !options.split && uri && this.enablePersistence) {
             location = await this.itemLocationStore.load(uri);
           }
-          if (!location && typeof item.getDefaultLocation === "function") {
-            location = item.getDefaultLocation();
-          }
+          const defaultLocation = defaultLocationForItem(item);
+          if (!location) location = defaultLocation;
 
-          const allowedLocations =
-            typeof item.getAllowedLocations === "function"
-              ? item.getAllowedLocations()
-              : ALL_LOCATIONS;
+          const allowedLocations = allowedLocationsForItem(item);
           location = allowedLocations.includes(location) ? location : allowedLocations[0];
 
           const container = this.paneContainers[location] || this.getCenter();
