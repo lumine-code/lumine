@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const url = require("url");
 const { EventEmitter } = require("events");
+const crypto = require("crypto");
 const StartupTime = require("./startup-time");
 
 // Packaged builds ship the icon under resourcesPath; a source checkout falls
@@ -26,6 +27,7 @@ function iconFileNameForMode(safeMode, devMode) {
 
 let includeShellLoadTime = true;
 let nextId = 0;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 module.exports = class LumineWindow extends EventEmitter {
   constructor(lumineApplication, fileRecoveryService, settings = {}) {
@@ -34,6 +36,9 @@ module.exports = class LumineWindow extends EventEmitter {
     super();
 
     this.id = nextId++;
+    this.windowStateId = UUID_PATTERN.test(settings.windowStateId)
+      ? settings.windowStateId
+      : crypto.randomUUID();
     this.lumineApplication = lumineApplication;
     this.fileRecoveryService = fileRecoveryService;
     this.isSpec = settings.isSpec;
@@ -117,6 +122,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.handleEvents();
 
     this.loadSettings = Object.assign({}, settings);
+    this.loadSettings.windowStateId = this.windowStateId;
     this.loadSettings.appVersion = app.getVersion();
     this.loadSettings.appName = getAppName();
     this.loadSettings.resourcePath = this.resourcePath;
@@ -591,6 +597,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.projectRoots = projectRootPaths;
     this.projectRoots.sort();
     this.loadSettings.initialProjectRoots = this.projectRoots;
+    this.lumineApplication.projectStateCoordinator?.commit(this, this.projectRoots);
     return this.lumineApplication.saveCurrentWindowOptions();
   }
 

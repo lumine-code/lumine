@@ -630,6 +630,28 @@ describe("LumineWindow", function () {
     });
   });
 
+  describe("persistent state identity", function () {
+    it("generates a UUID and exposes it to the renderer", function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+
+      assert.match(w.windowStateId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-/);
+      assert.strictEqual(w.loadSettings.windowStateId, w.windowStateId);
+    });
+
+    it("preserves a restored state identity", function () {
+      const windowStateId = "11111111-1111-4111-8111-111111111111";
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        windowStateId,
+      });
+
+      assert.strictEqual(w.windowStateId, windowStateId);
+      assert.strictEqual(w.getLoadSettingsForRenderer().windowStateId, windowStateId);
+    });
+  });
+
   describe("project root tracking", function () {
     it("knows when it has no roots", function () {
       const w = new LumineWindow(app, service, {

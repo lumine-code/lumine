@@ -1,6 +1,7 @@
 /* globals assert */
 
 const path = require("path");
+const crypto = require("crypto");
 const { EventEmitter } = require("events");
 const temp = require("@lumine-code/temp").track();
 const fs = require("@lumine-code/fs-plus");
@@ -270,6 +271,19 @@ describe("LumineApplication", function () {
       it("reuses the empty window for a directory with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a"]));
         await scenario.assert("[a _]");
+      });
+
+      it("does not reuse an empty window when restoring a persistent window identity", async function () {
+        const windowStateId = crypto.randomUUID();
+
+        const restored = await scenario.open({
+          foldersToOpen: [scenario.convertRootPath("a")],
+          newWindow: true,
+          windowStateId,
+        });
+
+        await scenario.assert("[_ _] [a _]");
+        assert.strictEqual(restored.windowStateId, windowStateId);
       });
     });
 
@@ -942,12 +956,46 @@ describe("LumineApplication", function () {
       });
 
       assert.strictEqual(result.loadSettings.windowId, w1.id);
+      assert.strictEqual(result.loadSettings.windowStateId, w1.windowStateId);
       assert.isFalse(result.loadSettings.isSpec);
       assert.isFalse(Object.hasOwn(result.loadSettings, "callbackThatMustNotCrossIPC"));
       assert.strictEqual(typeof result.loadSettings.appLocale, "string");
       assert.strictEqual(typeof result.loadSettings.appPaths, "object");
       assert.deepEqual(result.startupMarkers, { start: 1, ready: 2 });
       assert.isTrue(w1.consumeStartupMarkers.calledOnce);
+    });
+
+    it("coordinates project-state adoption through the originating window", async function () {
+      const projectPath = scenario.convertRootPath("c");
+      const firstEvent = { sender: w1.browserWindow.webContents };
+      const secondEvent = { sender: w2.browserWindow.webContents };
+
+      const first = await LumineApplication.handleWindowAction(
+        firstEvent,
+        "reserveProjectStateAdoption",
+        [projectPath],
+      );
+      assert.isTrue(first.allowed);
+      assert.strictEqual(typeof first.reservationId, "string");
+      assert.deepEqual(
+        await LumineApplication.handleWindowAction(secondEvent, "reserveProjectStateAdoption", [
+          projectPath,
+        ]),
+        { allowed: false, reservationId: null },
+      );
+
+      await LumineApplication.handleWindowAction(
+        firstEvent,
+        "releaseProjectStateAdoption",
+        first.reservationId,
+      );
+      assert.isTrue(
+        (
+          await LumineApplication.handleWindowAction(secondEvent, "reserveProjectStateAdoption", [
+            projectPath,
+          ])
+        ).allowed,
+      );
     });
 
     it("handles allowlisted window state and lifecycle operations for the originating window", async function () {
@@ -1189,8 +1237,16 @@ describe("LumineApplication", function () {
     it('"open" opens a fixed path by the standard opening rules', async function () {
       sinon.stub(app, "lumineWindowForEvent").callsFake(() => w1);
 
-      electron.ipcMain.emit("open", {}, { pathsToOpen: [scenario.convertEditorPath("a/1.md")] });
+      electron.ipcMain.emit(
+        "open",
+        {},
+        {
+          pathsToOpen: [scenario.convertEditorPath("a/1.md")],
+          windowStateId: crypto.randomUUID(),
+        },
+      );
       await app.openPaths.lastCall.returnValue;
+      assert.isFalse(Object.hasOwn(app.openPaths.lastCall.args[0], "windowStateId"));
       await scenario.assert("[a 1.md] [_ _] [b _]");
 
       electron.ipcMain.emit("open", {}, { pathsToOpen: [scenario.convertRootPath("c")] });
@@ -1305,19 +1361,23 @@ describe("LumineApplication", function () {
 
   describe("window state serialization", function () {
     it("occurs immediately when adding a window", async function () {
-      await scenario.launch(parseCommandLine(["a"]));
+      const [firstWindow] = await scenario.launch(parseCommandLine(["a"]));
 
       const promise = emitterEventPromise(scenario.getApplication(0), "application:did-save-state");
-      await scenario.open(parseCommandLine(["c", "b"]));
+      const secondWindow = await scenario.open(parseCommandLine(["c", "b"]));
       await promise;
 
       assert.isTrue(
         scenario.getApplication(0).storageFolder.store.calledWith("application.json", {
           version: "1",
           windows: [
-            { projectRoots: [scenario.convertRootPath("a")] },
+            {
+              projectRoots: [scenario.convertRootPath("a")],
+              windowStateId: firstWindow.windowStateId,
+            },
             {
               projectRoots: [scenario.convertRootPath("b"), scenario.convertRootPath("c")],
+              windowStateId: secondWindow.windowStateId,
             },
           ],
         }),
@@ -1325,7 +1385,7 @@ describe("LumineApplication", function () {
     });
 
     it("occurs immediately when removing a window", async function () {
-      await scenario.launch(parseCommandLine(["a"]));
+      const [remainingWindow] = await scenario.launch(parseCommandLine(["a"]));
       const w = await scenario.open(parseCommandLine(["b"]));
 
       const promise = emitterEventPromise(scenario.getApplication(0), "application:did-save-state");
@@ -1335,9 +1395,55 @@ describe("LumineApplication", function () {
       assert.isTrue(
         scenario.getApplication(0).storageFolder.store.calledWith("application.json", {
           version: "1",
-          windows: [{ projectRoots: [scenario.convertRootPath("a")] }],
+          windows: [
+            {
+              projectRoots: [scenario.convertRootPath("a")],
+              windowStateId: remainingWindow.windowStateId,
+            },
+          ],
         }),
       );
+    });
+
+    it("restores the persistent identities of previous windows", async function () {
+      const firstId = crypto.randomUUID();
+      const secondId = crypto.randomUUID();
+      const app = scenario.addApplication({
+        applicationJson: {
+          version: "1",
+          windows: [
+            { projectRoots: [scenario.convertRootPath("a")], windowStateId: firstId },
+            { projectRoots: [scenario.convertRootPath("a")], windowStateId: secondId },
+          ],
+        },
+      });
+      app.config.set("core.restorePreviousState", "always");
+
+      const windows = await scenario.launch({ app });
+
+      assert.deepEqual(
+        windows.map((window) => window.windowStateId),
+        [firstId, secondId],
+      );
+    });
+
+    it("serializes only the replacement while a state identity is transferred", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      sourceWindow.windowStateTransferPending = true;
+
+      const replacementWindow = await scenario.open({
+        foldersToOpen: [scenario.convertRootPath("b")],
+        newWindow: true,
+        windowStateId: sourceWindow.windowStateId,
+      });
+
+      const saved = scenario.getApplication(0).storageFolder.store.lastCall.args[1];
+      assert.deepEqual(saved.windows, [
+        {
+          projectRoots: [scenario.convertRootPath("b")],
+          windowStateId: replacementWindow.windowStateId,
+        },
+      ]);
     });
 
     it("occurs when the window is blurred", async function () {
@@ -1407,6 +1513,7 @@ describe("LumineApplication", function () {
           newWindow: true,
           devMode: true,
           safeMode: false,
+          windowStateId: sourceWindow.windowStateId,
         }),
       );
     });
@@ -1719,6 +1826,9 @@ class StubWindow extends EventEmitter {
     super();
 
     this.loadSettings = loadSettings;
+    this.windowStateId = loadSettings.windowStateId || crypto.randomUUID();
+    this.loadSettings.windowStateId = this.windowStateId;
+    this.windowStateTransferPending = false;
 
     this._dimensions = Object.assign({}, loadSettings.windowDimensions) || {
       x: 100,
@@ -1806,6 +1916,12 @@ class StubWindow extends EventEmitter {
     this.projectRoots.sort();
 
     this.emit("window:locations-opened");
+  }
+
+  setProjectRoots(projectRoots) {
+    this._rootPaths = new Set(projectRoots);
+    this.projectRoots = Array.from(this._rootPaths).sort();
+    return Promise.resolve();
   }
 
   setSize(x, y) {

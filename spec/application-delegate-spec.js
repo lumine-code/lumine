@@ -24,4 +24,19 @@ describe("ApplicationDelegate", function () {
       expect(applicationDelegate.invokeWindow).toHaveBeenCalledWith("setSheetOffset", 28);
     });
   });
+
+  describe("project state adoption", function () {
+    it("routes reservations and releases through fixed window actions", async function () {
+      const applicationDelegate = new ApplicationDelegate();
+      spyOn(applicationDelegate, "invokeWindow").and.returnValue(Promise.resolve());
+
+      await applicationDelegate.reserveProjectStateAdoption(["/project"]);
+      await applicationDelegate.releaseProjectStateAdoption("reservation-id");
+
+      expect(applicationDelegate.invokeWindow.calls.allArgs()).toEqual([
+        ["reserveProjectStateAdoption", ["/project"]],
+        ["releaseProjectStateAdoption", "reservation-id"],
+      ]);
+    });
+  });
 });

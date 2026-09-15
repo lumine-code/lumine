@@ -8,6 +8,7 @@ const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("source-map-support");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
+const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
 const registerDefaultCommands = require("./register-default-commands");
 const { updateProcessEnv } = require("./update-process-env");
 const ConfigSchema = require("./config-schema");
@@ -120,6 +121,15 @@ class Environment {
     this.updateProcessEnv = params.updateProcessEnv || updateProcessEnv;
     this.enablePersistence = params.enablePersistence;
     this.applicationDelegate = params.applicationDelegate;
+    let windowStateId = params.windowStateId;
+    if (!windowStateId) {
+      try {
+        windowStateId = this.#getLoadSettings().windowStateId;
+      } catch {
+        // Standalone environments in specs have no bootstrapped window.
+      }
+    }
+    this.windowStateId = windowStateId || crypto.randomUUID();
     /** @private Observations owned by this environment alone. */
     this.fileWatchClient =
       params.fileWatchClient || createFileWatchClient(this.applicationDelegate);
@@ -218,6 +228,8 @@ class Environment {
     /** @private Window-state persistence. `TextEditor` consults it before
      * prompting to save, and specs stub it; not a package-facing namespace. */
     this.stateStore = new StateStore("Environments", 1);
+    /** @private Maps a project identity to its most recently saved private state. */
+    this.projectStateIndex = new StateStore("ProjectStateIndex", 1);
 
     /**
      * @public
@@ -551,6 +563,9 @@ class Environment {
     this.stateStore.initialize({
       configDirPath: this.getConfigDirPath(),
     });
+    this.projectStateIndex.initialize({
+      configDirPath: this.getConfigDirPath(),
+    });
 
     this.config.initialize({
       mainSource:
@@ -832,6 +847,8 @@ class Environment {
 
     this.secrets?.dispose();
     void this.fileWatchClient.close();
+    this.stateStore.close();
+    this.projectStateIndex.close();
 
     this.uninstallWindowEventHandler();
   }
@@ -974,7 +991,7 @@ class Environment {
     StartupTime.addMarker("window:environment:start-editor-window:start");
 
     if (this.#getLoadSettings().clearWindowState) {
-      await this.stateStore.clear();
+      await Promise.all([this.stateStore.clear(), this.projectStateIndex.clear()]);
     }
 
     this.unloading = false;
@@ -1150,6 +1167,7 @@ class Environment {
       // worker confirms its handles are closed.
       await this.fileWatchClient.close();
       this.stateStore.close();
+      this.projectStateIndex.close();
       this.workspace.closeStateStore();
     }
     return closing;
@@ -1163,6 +1181,7 @@ class Environment {
     this.unloading = true;
     void this.fileWatchClient.close();
     this.stateStore.close();
+    this.projectStateIndex.close();
     this.workspace.closeStateStore();
     GitHost.reset();
     if (this.#gitAuthBroker) this.#gitAuthBroker.terminate();
@@ -1354,11 +1373,15 @@ class Environment {
   }
 
   async addToProject(projectPaths) {
-    const state = await this.loadState(this.getStateKey(projectPaths));
-    if (state && this.project.getPaths().length === 0) {
-      this.attemptRestoreProjectStateForPaths(state, projectPaths);
-    } else {
-      this.project.addPaths(projectPaths);
+    const loaded = await this.loadProjectState(projectPaths);
+    try {
+      if (loaded.state && this.project.getPaths().length === 0) {
+        return await this.attemptRestoreProjectStateForPaths(loaded.state, projectPaths);
+      } else {
+        return this.project.addPaths(projectPaths);
+      }
+    } finally {
+      await this.releaseUnusedProjectStateReservation(loaded.reservationId, projectPaths);
     }
   }
 
@@ -1432,7 +1455,7 @@ class Environment {
     if (folders.length === 0) return false;
 
     const currentPaths = this.project.getPaths();
-    if (this.getStateKey(folders) === this.getStateKey(currentPaths)) return false;
+    if (getProjectStateKey(folders) === getProjectStateKey(currentPaths)) return false;
 
     // Flush the outgoing session before anything is torn down. `isUnloading`
     // carries marker layers and undo history with it, so coming back lands on
@@ -1449,50 +1472,101 @@ class Environment {
     });
     if (!closing) return false;
 
-    const state = await this.loadState(this.getStateKey(folders));
-    const locations = PROJECT_STATE_LOCATIONS;
+    const loaded = await this.loadProjectState(folders);
+    try {
+      const locations = PROJECT_STATE_LOCATIONS;
 
-    await this.workspace.clear({ locations });
-    this.project.destroyUnretainedBuffers();
-    // Settings from a project file are resolved when a window launches, so
-    // they cannot be resolved again here. Clearing them is the honest
-    // direction: better none than the outgoing project's.
-    this.config.clearProjectSettings();
+      await this.workspace.clear({ locations });
+      this.project.destroyUnretainedBuffers();
+      // Settings from a project file are resolved when a window launches, so
+      // they cannot be resolved again here. Clearing them is the honest
+      // direction: better none than the outgoing project's.
+      this.config.clearProjectSettings();
 
-    if (state) {
-      await this.restoreStateIntoThisEnvironment(state, { locations });
-    } else {
-      this.project.setPaths(folders, { mustExist: true, exact: true });
-      if (this.config.get("core.openEmptyEditorOnStart")) {
-        await this.workspace.open(null, { pending: true });
+      if (loaded.state) {
+        await this.restoreStateIntoThisEnvironment(loaded.state, { locations });
+      } else {
+        this.project.setPaths(folders, { mustExist: true, exact: true });
+        if (this.config.get("core.openEmptyEditorOnStart")) {
+          await this.workspace.open(null, { pending: true });
+        }
       }
+    } finally {
+      await this.releaseUnusedProjectStateReservation(loaded.reservationId, folders);
     }
 
     return true;
   }
 
-  async saveState(options, storageKey) {
+  async saveState(options) {
     if (this.enablePersistence && this.project) {
       const state = this.serialize(options);
-      if (!storageKey) storageKey = this.getStateKey(this.project && this.project.getPaths());
-      if (storageKey) {
-        await this.stateStore.save(storageKey, state);
+      const projectPaths = this.project.getPaths();
+      const projectKey = getProjectStateKey(projectPaths);
+      const windowProjectKey = getWindowProjectStateKey(this.windowStateId, projectPaths);
+      if (windowProjectKey) {
+        const saved = await this.stateStore.save(windowProjectKey, state);
+        if (saved != null) await this.projectStateIndex.save(projectKey, windowProjectKey);
       } else {
         await this.applicationDelegate.setTemporaryWindowState(state);
       }
     }
   }
 
-  loadState(stateKey) {
-    if (this.enablePersistence) {
-      if (!stateKey) stateKey = this.getStateKey(this.#getLoadSettings().initialProjectRoots);
-      if (stateKey) {
-        return this.stateStore.load(stateKey);
-      } else {
-        return this.applicationDelegate.getTemporaryWindowState();
+  async loadState(projectPaths = this.#getLoadSettings().initialProjectRoots) {
+    return (await this.loadProjectState(projectPaths)).state;
+  }
+
+  async loadProjectState(projectPaths) {
+    if (!this.enablePersistence) return { state: null, reservationId: null };
+
+    const projectKey = getProjectStateKey(projectPaths);
+    if (!projectKey) {
+      return {
+        state: await this.applicationDelegate.getTemporaryWindowState(),
+        reservationId: null,
+      };
+    }
+
+    const windowProjectKey = getWindowProjectStateKey(this.windowStateId, projectPaths);
+    const privateState = await this.stateStore.load(windowProjectKey);
+    if (privateState != null) return { state: privateState, reservationId: null };
+
+    const access = this.applicationDelegate.reserveProjectStateAdoption
+      ? await this.applicationDelegate.reserveProjectStateAdoption(projectPaths)
+      : { allowed: true, reservationId: null };
+    if (!access.allowed) return { state: null, reservationId: null };
+
+    try {
+      const indexedStateKey = await this.projectStateIndex.load(projectKey);
+      if (indexedStateKey == null) {
+        return { state: null, reservationId: access.reservationId };
       }
-    } else {
-      return Promise.resolve(null);
+      if (typeof indexedStateKey !== "string") {
+        await this.projectStateIndex.delete(projectKey);
+        return { state: null, reservationId: access.reservationId };
+      }
+
+      const state = await this.stateStore.load(indexedStateKey);
+      if (state == null) {
+        await this.projectStateIndex.delete(projectKey);
+        return { state: null, reservationId: access.reservationId };
+      }
+
+      await this.stateStore.save(windowProjectKey, state);
+      return { state, reservationId: access.reservationId };
+    } catch (error) {
+      if (access.reservationId && this.applicationDelegate.releaseProjectStateAdoption) {
+        await this.applicationDelegate.releaseProjectStateAdoption(access.reservationId);
+      }
+      throw error;
+    }
+  }
+
+  async releaseUnusedProjectStateReservation(reservationId, projectPaths) {
+    if (!reservationId || !this.applicationDelegate.releaseProjectStateAdoption) return;
+    if (getProjectStateKey(this.project?.getPaths()) !== getProjectStateKey(projectPaths)) {
+      await this.applicationDelegate.releaseProjectStateAdoption(reservationId);
     }
   }
 
@@ -1551,15 +1625,6 @@ class Environment {
       this.notifications.addError(`Unable to open ${count}project ${noun}`, {
         description: `Project ${noun} ${group} ${toBe} no longer on disk.`,
       });
-    }
-  }
-
-  getStateKey(paths) {
-    if (paths && paths.length > 0) {
-      const sha1 = crypto.createHash("sha1").update(paths.slice().sort().join("\n")).digest("hex");
-      return `editor-${sha1}`;
-    } else {
-      return null;
     }
   }
 
@@ -1751,19 +1816,23 @@ class Environment {
       const foldersForStateKey = Array.from(foldersToAddToProject).concat(
         missingFolders.map((location) => location.pathToOpen),
       );
-      const state = await this.loadState(this.getStateKey(Array.from(foldersForStateKey)));
-
-      // only restore state if this is the first path added to the project
-      if (state && needsProjectPaths) {
-        const files = fileLocationsToOpen.map((location) => location.pathToOpen);
-        await this.attemptRestoreProjectStateForPaths(
-          state,
-          Array.from(foldersToAddToProject),
-          files,
-        );
-        restoredState = true;
-      } else {
-        this.project.addPaths(foldersToAddToProject);
+      const projectPaths = Array.from(foldersForStateKey);
+      const loaded = await this.loadProjectState(projectPaths);
+      try {
+        // only restore state if this is the first path added to the project
+        if (loaded.state && needsProjectPaths) {
+          const files = fileLocationsToOpen.map((location) => location.pathToOpen);
+          await this.attemptRestoreProjectStateForPaths(
+            loaded.state,
+            Array.from(foldersToAddToProject),
+            files,
+          );
+          restoredState = true;
+        } else {
+          this.project.addPaths(foldersToAddToProject);
+        }
+      } finally {
+        await this.releaseUnusedProjectStateReservation(loaded.reservationId, projectPaths);
       }
     }
 

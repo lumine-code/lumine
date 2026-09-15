@@ -5,6 +5,7 @@ const temp = require("@lumine-code/temp").track();
 const Environment = require("../src/environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const FileState = require("../src/file-state");
+const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");
 
 describe("Environment", () => {
   it("is exposed only through the Lumine renderer global", () => {
@@ -493,6 +494,26 @@ describe("Environment", () => {
   });
 
   describe("saving and loading", () => {
+    const extraEnvironments = [];
+
+    const buildPersistentEnvironment = (windowStateId, { adoptionAllowed = true } = {}) => {
+      const delegate = Object.create(lumine.applicationDelegate);
+      delegate.reserveProjectStateAdoption = jasmine
+        .createSpy("reserveProjectStateAdoption")
+        .and.returnValue(Promise.resolve({ allowed: adoptionAllowed, reservationId: null }));
+      delegate.releaseProjectStateAdoption = jasmine.createSpy("releaseProjectStateAdoption");
+      const environment = new Environment({
+        applicationDelegate: delegate,
+        enablePersistence: true,
+        windowStateId,
+      });
+      const configDirPath = lumine.getConfigDirPath();
+      environment.stateStore.initialize({ configDirPath });
+      environment.projectStateIndex.initialize({ configDirPath });
+      extraEnvironments.push(environment);
+      return environment;
+    };
+
     beforeEach(() => {
       jasmine.useRealClock();
       lumine.enablePersistence = true;
@@ -500,6 +521,7 @@ describe("Environment", () => {
 
     afterEach(() => {
       lumine.enablePersistence = false;
+      for (const environment of extraEnvironments.splice(0)) environment.destroy();
     });
 
     it("selects the state based on the current project paths", async () => {
@@ -525,6 +547,66 @@ describe("Environment", () => {
 
       loadSettings.initialProjectRoots = [dir2, dir1];
       expect(await lumine.loadState()).toEqual({ stuff: "cool" });
+    });
+
+    it("keeps independent states for two windows with the same project", async () => {
+      const projectPath = temp.mkdirSync("shared-project-");
+      const first = buildPersistentEnvironment("11111111-1111-4111-8111-111111111111");
+      const second = buildPersistentEnvironment("22222222-2222-4222-8222-222222222222", {
+        adoptionAllowed: false,
+      });
+      first.project.setPaths([projectPath]);
+      second.project.setPaths([projectPath]);
+      spyOn(first, "serialize").and.returnValue({ window: "first" });
+      spyOn(second, "serialize").and.returnValue({ window: "second" });
+
+      await first.saveState();
+      await second.saveState();
+
+      expect((await first.loadProjectState([projectPath])).state).toEqual({ window: "first" });
+      expect((await second.loadProjectState([projectPath])).state).toEqual({ window: "second" });
+      expect(await first.projectStateIndex.load(getProjectStateKey([projectPath]))).toBe(
+        getWindowProjectStateKey(second.windowStateId, [projectPath]),
+      );
+    });
+
+    it("adopts the latest project state into a window with no private history", async () => {
+      const projectPath = temp.mkdirSync("adopted-project-");
+      const source = buildPersistentEnvironment("33333333-3333-4333-8333-333333333333");
+      const target = buildPersistentEnvironment("44444444-4444-4444-8444-444444444444");
+      source.project.setPaths([projectPath]);
+      spyOn(source, "serialize").and.returnValue({ source: true });
+      await source.saveState();
+
+      const loaded = await target.loadProjectState([projectPath]);
+
+      expect(loaded.state).toEqual({ source: true });
+      expect(
+        await target.stateStore.load(getWindowProjectStateKey(target.windowStateId, [projectPath])),
+      ).toEqual({ source: true });
+    });
+
+    it("does not adopt another window's state when coordination refuses it", async () => {
+      const projectPath = temp.mkdirSync("active-project-");
+      const source = buildPersistentEnvironment("55555555-5555-4555-8555-555555555555");
+      const target = buildPersistentEnvironment("66666666-6666-4666-8666-666666666666", {
+        adoptionAllowed: false,
+      });
+      source.project.setPaths([projectPath]);
+      spyOn(source, "serialize").and.returnValue({ source: true });
+      await source.saveState();
+
+      expect((await target.loadProjectState([projectPath])).state).toBeNull();
+    });
+
+    it("removes an index entry that points at missing state", async () => {
+      const projectPath = temp.mkdirSync("missing-project-state-");
+      const environment = buildPersistentEnvironment("77777777-7777-4777-8777-777777777777");
+      const projectKey = getProjectStateKey([projectPath]);
+      await environment.projectStateIndex.save(projectKey, "missing-private-state");
+
+      expect((await environment.loadProjectState([projectPath])).state).toBeNull();
+      expect(await environment.projectStateIndex.load(projectKey)).toBeNull();
     });
 
     it("saves state when the CPU is idle after a keydown or mousedown event", async () => {
@@ -621,6 +703,7 @@ describe("Environment", () => {
       spyOn(lumineEnv, "saveState");
       spyOn(lumineEnv.packages, "deactivatePackages").and.returnValue(Promise.resolve());
       spyOn(lumineEnv.stateStore, "close");
+      spyOn(lumineEnv.projectStateIndex, "close");
       spyOn(lumineEnv.workspace, "closeStateStore");
 
       const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow();
@@ -632,6 +715,7 @@ describe("Environment", () => {
       expect(typeof timeout).toBe("number");
       expect(timeout).toBeGreaterThan(0);
       expect(lumineEnv.stateStore.close).toHaveBeenCalled();
+      expect(lumineEnv.projectStateIndex.close).toHaveBeenCalled();
       expect(lumineEnv.workspace.closeStateStore).toHaveBeenCalled();
 
       lumineEnv.destroy();
@@ -762,7 +846,9 @@ describe("Environment", () => {
 
     describe("when there is no saved state for the added folders", () => {
       beforeEach(() => {
-        spyOn(lumine, "loadState").and.returnValue(Promise.resolve(null));
+        spyOn(lumine, "loadProjectState").and.returnValue(
+          Promise.resolve({ state: null, reservationId: null }),
+        );
         spyOn(lumine, "attemptRestoreProjectStateForPaths");
       });
 
@@ -780,8 +866,12 @@ describe("Environment", () => {
       const state = Symbol("savedState");
 
       beforeEach(() => {
-        spyOn(lumine, "getStateKey").and.callFake((dirs) => dirs.join(":"));
-        spyOn(lumine, "loadState").and.callFake((key) => (key === __dirname ? state : null));
+        spyOn(lumine, "loadProjectState").and.callFake((dirs) =>
+          Promise.resolve({
+            state: dirs.join(":") === __dirname ? state : null,
+            reservationId: null,
+          }),
+        );
         spyOn(lumine, "attemptRestoreProjectStateForPaths");
         spyOn(lumine.window, "pickFolder").and.returnValue(Promise.resolve([__dirname]));
         lumine.project.setPaths([]);
@@ -963,6 +1053,7 @@ describe("Environment", () => {
       });
       const configDirPath = lumine.getConfigDirPath();
       built.stateStore.initialize({ configDirPath });
+      built.projectStateIndex.initialize({ configDirPath });
       // The workspace keeps a store of its own for remembered item locations,
       // which ::open consults whenever persistence is on.
       built.workspace.initialize({ configDirPath });
@@ -1117,12 +1208,14 @@ describe("Environment", () => {
         document,
       });
       spyOn(lumineEnvironment.stateStore, "close");
+      spyOn(lumineEnvironment.projectStateIndex, "close");
       spyOn(lumineEnvironment.workspace, "closeStateStore");
 
       lumineEnvironment.unloadEditorWindow();
 
       expect(fakeBlobStore.save).toHaveBeenCalled();
       expect(lumineEnvironment.stateStore.close).toHaveBeenCalled();
+      expect(lumineEnvironment.projectStateIndex.close).toHaveBeenCalled();
       expect(lumineEnvironment.workspace.closeStateStore).toHaveBeenCalled();
 
       lumineEnvironment.destroy();
@@ -1132,11 +1225,12 @@ describe("Environment", () => {
   describe("::startEditorWindow()", () => {
     let environment;
 
-    const buildEnvironment = ({ initialProjectRoots, state = null }) => {
+    const buildEnvironment = ({ initialProjectRoots, state = null, clearWindowState = false }) => {
       const loadSettings = {
         ...lumine.applicationDelegate.getWindowLoadSettings(),
         initialProjectRoots,
         safeMode: true,
+        clearWindowState,
       };
       spyOn(lumine.applicationDelegate, "getWindowLoadSettings").and.returnValue(loadSettings);
 
@@ -1214,6 +1308,17 @@ describe("Environment", () => {
 
       expect(env.packages.activate).toHaveBeenCalled();
       expect(env.project.getPaths()).toEqual([]);
+    });
+
+    it("clears private states and the project index together", async () => {
+      const env = buildEnvironment({ initialProjectRoots: [], clearWindowState: true });
+      spyOn(env.stateStore, "clear").and.returnValue(Promise.resolve());
+      spyOn(env.projectStateIndex, "clear").and.returnValue(Promise.resolve());
+
+      await env.startEditorWindow();
+
+      expect(env.stateStore.clear).toHaveBeenCalled();
+      expect(env.projectStateIndex.clear).toHaveBeenCalled();
     });
   });
 
@@ -1312,7 +1417,9 @@ describe("Environment", () => {
 
     describe("when there is no saved state", () => {
       beforeEach(() => {
-        spyOn(lumine, "loadState").and.returnValue(Promise.resolve(null));
+        spyOn(lumine, "loadProjectState").and.returnValue(
+          Promise.resolve({ state: null, reservationId: null }),
+        );
       });
 
       describe("when the opened path exists", () => {
@@ -1497,13 +1604,11 @@ describe("Environment", () => {
       const state = Symbol("savedState");
 
       beforeEach(() => {
-        spyOn(lumine, "getStateKey").and.callFake((dirs) => dirs.join(":"));
-        spyOn(lumine, "loadState").and.callFake(function (key) {
-          if (key === __dirname) {
-            return Promise.resolve(state);
-          } else {
-            return Promise.resolve(null);
-          }
+        spyOn(lumine, "loadProjectState").and.callFake(function (dirs) {
+          return Promise.resolve({
+            state: dirs.join(":") === __dirname ? state : null,
+            reservationId: null,
+          });
         });
         spyOn(lumine, "attemptRestoreProjectStateForPaths");
       });
@@ -1524,12 +1629,11 @@ describe("Environment", () => {
           const existingDir = path.join(__dirname, "fixtures");
           const missingDir = path.join(__dirname, "no");
 
-          lumine.loadState.and.callFake(function (key) {
-            if (key === `${existingDir}:${missingDir}`) {
-              return Promise.resolve(state);
-            } else {
-              return Promise.resolve(null);
-            }
+          lumine.loadProjectState.and.callFake(function (dirs) {
+            return Promise.resolve({
+              state: dirs.join(":") === `${existingDir}:${missingDir}` ? state : null,
+              reservationId: null,
+            });
           });
 
           await lumine.openLocations([

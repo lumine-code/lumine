@@ -7,6 +7,7 @@ const Config = require("./config");
 const ConfigFile = require("./config-file");
 const FileWatchService = require("./file-watch-service");
 const FileRecoveryService = require("./file-recovery-service");
+const ProjectStateCoordinator = require("./project-state-coordinator");
 const XdgShellInvoker = require("./xdg-shell-invoker");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
@@ -223,6 +224,7 @@ const handleWindowBootstrap = (event) => {
   return {
     loadSettings: Object.assign(loadSettings, {
       windowId: lumineWindow.id,
+      windowStateId: lumineWindow.windowStateId,
       appPaths: appPaths(),
       appLocale: app.getLocale(),
       fileWatchSession: currentApplication().createFileWatchSession(lumineWindow),
@@ -435,6 +437,15 @@ const handleWindowAction = async (event, action, ...args) => {
         throw new TypeError("Project roots must be an array of strings");
       }
       await lumineWindow.setProjectRoots(args[0]);
+      return;
+    case "reserveProjectStateAdoption":
+      if (!Array.isArray(args[0]) || !args[0].every((item) => typeof item === "string")) {
+        throw new TypeError("Project roots must be an array of strings");
+      }
+      return currentApplication().projectStateCoordinator.reserve(lumineWindow, args[0]);
+    case "releaseProjectStateAdoption":
+      assertString(args[0], "reservationId");
+      currentApplication().projectStateCoordinator.release(lumineWindow, args[0]);
       return;
     case "loaded":
       window.emit("window:loaded");
@@ -785,6 +796,7 @@ module.exports = class LumineApplication extends EventEmitter {
     this.waitSessionsByWindow = new Map();
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
+    this.projectStateCoordinator = new ProjectStateCoordinator(this.getAllWindows);
 
     this.fileWatchService = options.fileWatchService || new FileWatchService();
     this.mainFileWatchClient = this.fileWatchService.createClient("application-config");
@@ -925,6 +937,7 @@ module.exports = class LumineApplication extends EventEmitter {
   openWithOptions(options) {
     const {
       pathsToOpen,
+      windowStateId,
       executedFrom,
       foldersToOpen,
       urlsToOpen,
@@ -949,6 +962,7 @@ module.exports = class LumineApplication extends EventEmitter {
         resourcePath: this.resourcePath,
         executedFrom,
         pathsToOpen,
+        windowStateId,
         logFile,
         timeout,
         env,
@@ -960,6 +974,7 @@ module.exports = class LumineApplication extends EventEmitter {
       return this.openPaths({
         pathsToOpen,
         foldersToOpen,
+        windowStateId,
         executedFrom,
         pidToKillWhenClosed,
         newWindow,
@@ -979,6 +994,7 @@ module.exports = class LumineApplication extends EventEmitter {
       // Always open an editor window if this is the first instance of Lumine.
       return this.openPath({
         pathToOpen: null,
+        windowStateId,
         pidToKillWhenClosed,
         newWindow,
         devMode,
@@ -1009,6 +1025,7 @@ module.exports = class LumineApplication extends EventEmitter {
    * Removes the `LumineWindow` from the global window list.
    */
   removeWindow(window) {
+    this.projectStateCoordinator.releaseWindow(window);
     this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
@@ -1376,6 +1393,10 @@ module.exports = class LumineApplication extends EventEmitter {
     this.disposable.add(
       ipcHelpers.on(ipcMain, "open", (event, options) => {
         if (options) {
+          options = { ...options };
+          // Persistent identities belong to restored or explicitly replaced
+          // main-process windows; renderer callers always open a new identity.
+          delete options.windowStateId;
           if (typeof options.pathsToOpen === "string") {
             options.pathsToOpen = [options.pathsToOpen];
           }
@@ -1700,16 +1721,19 @@ module.exports = class LumineApplication extends EventEmitter {
       return;
     }
     sourceWindow.unloading = true;
+    sourceWindow.windowStateTransferPending = true;
     let canUnload;
     try {
       canUnload = await sourceWindow.prepareToUnload();
     } catch (error) {
       sourceWindow.unloading = false;
+      sourceWindow.windowStateTransferPending = false;
       console.error("Failed to prepare the window for development mode", error);
       return;
     }
     if (!canUnload) {
       sourceWindow.unloading = false;
+      sourceWindow.windowStateTransferPending = false;
       return;
     }
 
@@ -1720,6 +1744,7 @@ module.exports = class LumineApplication extends EventEmitter {
         newWindow: true,
         devMode: true,
         safeMode: false,
+        windowStateId: sourceWindow.windowStateId,
       };
       if (projectRoots.length > 0) {
         openOptions.foldersToOpen = projectRoots;
@@ -1739,6 +1764,7 @@ module.exports = class LumineApplication extends EventEmitter {
         }
       }
       sourceWindow.unloading = false;
+      sourceWindow.windowStateTransferPending = false;
       try {
         await sourceWindow.reload({ skipPrepareToUnload: true });
       } catch (reloadError) {
@@ -1793,6 +1819,7 @@ module.exports = class LumineApplication extends EventEmitter {
    */
   openPath({
     pathToOpen,
+    windowStateId,
     pidToKillWhenClosed,
     newWindow,
     devMode,
@@ -1805,6 +1832,7 @@ module.exports = class LumineApplication extends EventEmitter {
   } = {}) {
     return this.openPaths({
       pathsToOpen: [pathToOpen],
+      windowStateId,
       pidToKillWhenClosed,
       newWindow,
       devMode,
@@ -1837,6 +1865,7 @@ module.exports = class LumineApplication extends EventEmitter {
   async openPaths({
     pathsToOpen,
     foldersToOpen,
+    windowStateId,
     executedFrom,
     pidToKillWhenClosed,
     newWindow,
@@ -1886,17 +1915,19 @@ module.exports = class LumineApplication extends EventEmitter {
     let existingWindow;
 
     if (hasNonEmptyPath && newWindow) {
-      // `newWindow` keeps the request out of windows that already own a
-      // project, but a compatible project-less window is equivalent to a new
-      // one and can be claimed without paying for another renderer.
-      existingWindow = this.getLastFocusedWindow((win) => {
-        return (
-          !win.isSpec &&
-          !win.hasProjectPaths() &&
-          win.devMode === devMode &&
-          win.safeMode === safeMode
-        );
-      });
+      if (!windowStateId) {
+        // `newWindow` keeps the request out of windows that already own a
+        // project, but a compatible project-less window is equivalent to a new
+        // one and can be claimed without paying for another renderer.
+        existingWindow = this.getLastFocusedWindow((win) => {
+          return (
+            !win.isSpec &&
+            !win.hasProjectPaths() &&
+            win.devMode === devMode &&
+            win.safeMode === safeMode
+          );
+        });
+      }
     } else if (hasNonEmptyPath) {
       // An explicitly provided LumineWindow has precedence.
       existingWindow = window;
@@ -1972,6 +2003,7 @@ module.exports = class LumineApplication extends EventEmitter {
       StartupTime.addMarker("main-process:lumine-application:create-window");
       openedWindow = this.createWindow({
         locationsToOpen,
+        windowStateId,
         windowInitializationScript,
         resourcePath,
         devMode,
@@ -2053,11 +2085,20 @@ module.exports = class LumineApplication extends EventEmitter {
 
     if (windows.length === 1 && hasASpecWindow) return;
 
+    const windowsByStateId = new Map();
+    for (const window of windows.filter((candidate) => !candidate.isSpec)) {
+      const previous = windowsByStateId.get(window.windowStateId);
+      if (!previous || previous.windowStateTransferPending) {
+        windowsByStateId.set(window.windowStateId, window);
+      }
+    }
+
     const state = {
       version: APPLICATION_STATE_VERSION,
-      windows: windows
-        .filter((window) => !window.isSpec)
-        .map((window) => ({ projectRoots: window.projectRoots })),
+      windows: Array.from(windowsByStateId.values()).map((window) => ({
+        projectRoots: window.projectRoots,
+        windowStateId: window.windowStateId,
+      })),
     };
     state.windows.reverse();
 
@@ -2075,9 +2116,10 @@ module.exports = class LumineApplication extends EventEmitter {
 
     if (state.version === APPLICATION_STATE_VERSION) {
       // Lumine >=1.36.1
-      // Schema: {version: '1', windows: [{projectRoots: ['<root-dir>', ...]}, ...]}
+      // Schema: {version: '1', windows: [{projectRoots: ['<root-dir>', ...], windowStateId: '<uuid>'}, ...]}
       return state.windows.map((each) => ({
         foldersToOpen: each.projectRoots,
+        windowStateId: each.windowStateId,
         devMode: this.devMode,
         safeMode: this.safeMode,
         newWindow: true,

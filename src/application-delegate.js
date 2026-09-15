@@ -82,6 +82,14 @@ module.exports = class ApplicationDelegate {
     return this.invokeWindow("setProjectRoots", paths);
   }
 
+  reserveProjectStateAdoption(paths) {
+    return this.invokeWindow("reserveProjectStateAdoption", paths);
+  }
+
+  releaseProjectStateAdoption(reservationId) {
+    return this.invokeWindow("releaseProjectStateAdoption", reservationId);
+  }
+
   performWebContentsAction(action) {
     return this.invokeWindow(action);
   }

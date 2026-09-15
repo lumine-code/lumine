@@ -647,9 +647,9 @@ module.exports = class Project extends Model {
    *
    * * Development and safe mode belong to the window, so they cannot change
    *   here. Use `Environment.open` with `newWindow` for those.
-   * * State is keyed by the set of folders, so a project already open in
-   *   another window shares one saved state with it and the last window to
-   *   save wins.
+   * * Each window keeps its own state for a set of folders. If this window has
+   *   never opened them, it can adopt the most recently saved state only while
+   *   no other window has that project open.
    * * Package state is not re-applied. A package that follows the project
    *   observes {@link #onDidChangePaths} and rebuilds itself.
    *
