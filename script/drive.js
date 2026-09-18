@@ -365,7 +365,7 @@ function median(values) {
 
 function summarizeStartup(samples) {
   return Object.fromEntries(
-    ["wall", ...STARTUP_STAGES.map(({ name }) => name)].map((name) => {
+    ["wall", "windowLoadTime", ...STARTUP_STAGES.map(({ name }) => name)].map((name) => {
       const values = samples.map((sample) => sample[name]).filter(Number.isFinite);
       if (values.length === 0) return [name, null];
       return [
@@ -451,6 +451,7 @@ async function benchmark({ positional, options }) {
       await waitForReady(client);
       const snapshot = await client.evaluate(
         `lumine.window.whenLoaded().then(() => ({
+          windowLoadTime: lumine.window.getLoadTime(),
           markers: lumine.window.getStartupMarkers(),
           packages: lumine.packages.getActivePackages().map(pack => ({
             name: pack.name,
@@ -466,6 +467,7 @@ async function benchmark({ positional, options }) {
         run,
         kind: run === 1 ? "cold" : "warm",
         wall: performance.now() - started,
+        windowLoadTime: snapshot.windowLoadTime,
         ...startupDurations(snapshot.markers),
         packages: snapshot.packages,
       };
@@ -507,7 +509,8 @@ async function benchmark({ positional, options }) {
   for (const sample of samples) {
     console.log(
       `${String(sample.run).padStart(2)} ${sample.kind.padEnd(4)}  ` +
-        `wall ${sample.wall.toFixed(1)}  total ${sample.totalToEditorReady?.toFixed(1)}  ` +
+        `wall ${sample.wall.toFixed(1)}  window ${sample.windowLoadTime?.toFixed(1)}  ` +
+        `total ${sample.totalToEditorReady?.toFixed(1)}  ` +
         `require ${sample.mainRequire?.toFixed(1)}  load ${sample.packageLoad?.toFixed(1)}  ` +
         `activate ${sample.packageActivation?.toFixed(1)} ms`,
     );

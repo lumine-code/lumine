@@ -427,7 +427,9 @@ describe("PackageManager", () => {
             workspaceCommandListener,
           );
 
-          promise = lumine.packages.activatePackage("package-with-activation-commands");
+          promise = lumine.packages.activatePackage("package-with-activation-commands", {
+            defer: true,
+          });
         });
 
         afterEach(() => {
@@ -566,6 +568,7 @@ describe("PackageManager", () => {
 
           promise = lumine.packages.activatePackage(
             "package-with-activation-commands-and-deserializers",
+            { defer: true },
           );
         });
 
@@ -611,8 +614,42 @@ describe("PackageManager", () => {
           spyOn(mainModule, "activate").and.callThrough();
         });
 
+        it("treats a direct activation request as an instruction to activate now", async () => {
+          await lumine.packages.activatePackage("package-with-activation-hooks");
+
+          expect(mainModule.activate.calls.count()).toBe(1);
+          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
+        });
+
+        it("can force an activation that is already waiting on a deferred trigger", async () => {
+          const deferred = lumine.packages.activatePackage("package-with-activation-hooks", {
+            defer: true,
+          });
+          const forced = lumine.packages.activatePackage("package-with-activation-hooks");
+
+          await Promise.all([deferred, forced]);
+          expect(mainModule.activate.calls.count()).toBe(1);
+        });
+
+        it("dispatches each activation hook only once per window", () => {
+          const callback = jasmine.createSpy("activation hook");
+          lumine.packages.onDidTriggerActivationHook("language-fictitious:grammar-used", callback);
+
+          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
+          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
+          expect(callback).not.toHaveBeenCalled();
+
+          lumine.packages.triggerDeferredActivationHooks();
+          expect(callback.calls.count()).toBe(1);
+
+          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
+          expect(callback.calls.count()).toBe(1);
+        });
+
         it("defers requiring/activating the main module until an triggering of an activation hook occurs", async () => {
-          promise = lumine.packages.activatePackage("package-with-activation-hooks");
+          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
+            defer: true,
+          });
           expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
           lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
           lumine.packages.triggerDeferredActivationHooks();
@@ -622,7 +659,9 @@ describe("PackageManager", () => {
         });
 
         it("does not double register activation hooks when deactivating and reactivating", async () => {
-          promise = lumine.packages.activatePackage("package-with-activation-hooks");
+          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
+            defer: true,
+          });
           expect(mainModule.activate.calls.count()).toBe(0);
           lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
           lumine.packages.triggerDeferredActivationHooks();
@@ -632,7 +671,9 @@ describe("PackageManager", () => {
 
           await lumine.packages.deactivatePackage("package-with-activation-hooks");
 
-          promise = lumine.packages.activatePackage("package-with-activation-hooks");
+          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
+            defer: true,
+          });
           lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
           lumine.packages.triggerDeferredActivationHooks();
 
@@ -656,7 +697,7 @@ describe("PackageManager", () => {
           lumine.packages.triggerDeferredActivationHooks();
           expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
 
-          await lumine.packages.activatePackage("package-with-activation-hooks");
+          await lumine.packages.activatePackage("package-with-activation-hooks", { defer: true });
           expect(mainModule.activate.calls.count()).toBe(1);
           expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
         });
@@ -667,11 +708,15 @@ describe("PackageManager", () => {
 
         beforeEach(() => {
           mainModule = require("./fixtures/packages/package-with-workspace-openers/index");
+          mainModule.activateCallCount = 0;
+          mainModule.openerCount = 0;
           spyOn(mainModule, "activate").and.callThrough();
         });
 
         it("defers requiring/activating the main module until a registered opener is called", async () => {
-          promise = lumine.packages.activatePackage("package-with-workspace-openers");
+          promise = lumine.packages.activatePackage("package-with-workspace-openers", {
+            defer: true,
+          });
           expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
           const opening = lumine.workspace.open("lumine://fictitious");
 
@@ -681,6 +726,40 @@ describe("PackageManager", () => {
           await opening;
         });
 
+        it("matches URI prefixes and retries the requested URI after activation", async () => {
+          promise = lumine.packages.activatePackage("package-with-workspace-openers", {
+            defer: true,
+          });
+
+          const item = await lumine.workspace.createItemForURI("fictitious-prefix://one/two");
+
+          await promise;
+          expect(item.dataset.filePath).toBe("fictitious-prefix://one/two");
+          expect(mainModule.openerCount).toBe(1);
+        });
+
+        it("normalizes configured and literal path suffixes on every match", () => {
+          const pack = lumine.packages.loadPackage("package-with-workspace-openers");
+          const opener = pack.getWorkspaceOpeners()[2];
+
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.FIXED", opener)).toBe(true);
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.mixed", opener)).toBe(true);
+          expect(pack.matchesWorkspaceOpener("file:///work/table.FIXED?download=1", opener)).toBe(
+            true,
+          );
+          expect(pack.matchesWorkspaceOpener("file:///work/table.mixed#sheet=1", opener)).toBe(
+            true,
+          );
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.configured", opener)).toBe(false);
+
+          lumine.config.set("package-with-workspace-openers.additionalSuffixes", ["configured"]);
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.CONFIGURED", opener)).toBe(true);
+
+          lumine.config.set("package-with-workspace-openers.additionalSuffixes", ["replacement"]);
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.configured", opener)).toBe(false);
+          expect(pack.matchesWorkspaceOpener("C:\\work\\table.replacement", opener)).toBe(true);
+        });
+
         it("activates the package immediately when the events are empty", async () => {
           mainModule = require("./fixtures/packages/package-with-empty-workspace-openers/index");
           spyOn(mainModule, "activate").and.callThrough();
@@ -688,6 +767,70 @@ describe("PackageManager", () => {
           lumine.packages.activatePackage("package-with-empty-workspace-openers");
 
           expect(mainModule.activate.calls.count()).toBe(1);
+        });
+      });
+
+      describe("when a provided service uses `activateOnConsume`", () => {
+        let mainModule;
+
+        beforeEach(() => {
+          mainModule = require("./fixtures/packages/package-with-activate-on-consume");
+          mainModule.activateCallCount = 0;
+        });
+
+        it("replays demand registered before packages finish loading", async () => {
+          let service;
+          lumine.packages.initialPackagesLoaded = false;
+          const subscription = lumine.packages.serviceHub.consume(
+            "lazy-service",
+            "^2.0.0",
+            (value) => (service = value),
+          );
+          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
+          expect(pack.mainModule).toBeNull();
+
+          lumine.packages.rebuildActivateOnConsumeProviders();
+          lumine.packages.initialPackagesLoaded = true;
+          lumine.packages.replayServiceDemands();
+          await Promise.resolve();
+
+          expect(service).toEqual({ source: "package-with-activate-on-consume" });
+          expect(mainModule.activateCallCount).toBe(1);
+          subscription.dispose();
+        });
+
+        it("does not activate a provider whose versions cannot satisfy the consumer", () => {
+          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
+          lumine.packages.rebuildActivateOnConsumeProviders();
+          lumine.packages.initialPackagesLoaded = true;
+
+          const subscription = lumine.packages.serviceHub.consume(
+            "lazy-service",
+            "^1.0.0",
+            () => {},
+          );
+
+          expect(pack.mainModule).toBeNull();
+          expect(mainModule.activateCallCount).toBe(0);
+          subscription.dispose();
+        });
+
+        it("does not replay demand that was disposed before package loading completed", () => {
+          lumine.packages.initialPackagesLoaded = false;
+          const subscription = lumine.packages.serviceHub.consume(
+            "lazy-service",
+            "^2.0.0",
+            () => {},
+          );
+          subscription.dispose();
+          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
+
+          lumine.packages.rebuildActivateOnConsumeProviders();
+          lumine.packages.initialPackagesLoaded = true;
+          lumine.packages.replayServiceDemands();
+
+          expect(pack.mainModule).toBeNull();
+          expect(mainModule.activateCallCount).toBe(0);
         });
       });
     });
@@ -1159,7 +1302,9 @@ describe("PackageManager", () => {
         const mod = require("./fixtures/packages/package-with-uri-handler");
         spyOn(mod, "handleURI");
         spyOn(lumine.packages, "hasLoadedInitialPackages").and.returnValue(true);
-        const activationPromise = lumine.packages.activatePackage("package-with-uri-handler");
+        const activationPromise = lumine.packages.activatePackage("package-with-uri-handler", {
+          defer: true,
+        });
         lumine.dispatchURIMessage(uri);
         await activationPromise;
         expect(mod.handleURI).toHaveBeenCalledWith(

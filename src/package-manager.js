@@ -2,9 +2,10 @@ const path = require("path");
 let normalizePackageData = null;
 
 const _ = require("@lumine-code/underscore-plus");
-const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
+const { Range } = require("semver");
 
 const ServiceHub = require("./service-hub");
 const Package = require("./package");
@@ -82,7 +83,12 @@ module.exports = class PackageManager {
     this.activatingPackages = {};
     this.packageStates = {};
     this.themePackRegistrationsByPackageName = new Map();
-    this.serviceHub = new ServiceHub();
+    this.activateOnConsumeProviders = new Map();
+    this.serviceDemands = new Set();
+    this.serviceActivationPackages = new Set();
+    this.serviceHub = new ServiceHub({
+      onConsume: (keyPath, versionRange) => this.registerServiceDemand(keyPath, versionRange),
+    });
 
     this.packageActivators = [];
     this.registerPackageActivator(this, ["lumine"]);
@@ -119,6 +125,8 @@ module.exports = class PackageManager {
   async reset() {
     this.serviceHub.clear();
     await this.deactivatePackages();
+    this.activationHookEmitter.dispose();
+    this.activationHookEmitter = new Emitter();
     this.packageManifestCache.clear();
     this.packageRootEntriesCache.clear();
     this.availablePackagesByNameDuringLoad = null;
@@ -128,6 +136,9 @@ module.exports = class PackageManager {
     this.packagesCache = packageJSON._luminePackages != null ? packageJSON._luminePackages : {};
     this.bundledPackageNames = null;
     this.triggeredActivationHooks.clear();
+    this.activateOnConsumeProviders.clear();
+    this.serviceDemands.clear();
+    this.serviceActivationPackages.clear();
     this.activatePromise = null;
   }
 
@@ -754,6 +765,7 @@ module.exports = class PackageManager {
           if (this.getActivePackage(name)) this.deactivatePackage(name);
         });
         packagesToEnable.forEach((name) => this.activatePackage(name));
+        if (packagesToEnable.length > 0) this.replayServiceDemands();
         return null;
       },
     );
@@ -819,7 +831,9 @@ module.exports = class PackageManager {
     } finally {
       this.availablePackagesByNameDuringLoad = null;
     }
+    this.rebuildActivateOnConsumeProviders();
     this.initialPackagesLoaded = true;
+    this.replayServiceDemands();
     this.emitter.emit("did-load-initial-packages");
   }
 
@@ -882,8 +896,6 @@ module.exports = class PackageManager {
 
     const shouldActivate = options.activate != null ? options.activate : wasActive;
     if (shouldActivate && !this.isPackageDisabled(name)) {
-      // Deferred-activation packages resolve this promise only once their hook
-      // fires, so callers are never made to wait on it.
       this.activatePackage(name).catch((error) => {
         console.warn(`Failed to activate the '${name}' package: ${error.message}`);
       });
@@ -941,6 +953,10 @@ module.exports = class PackageManager {
     pack.load();
     this.loadedPackages[pack.name] = pack;
     this.registerThemePacksFromPackage(pack);
+    if (this.initialPackagesLoaded) {
+      this.rebuildActivateOnConsumeProviders();
+      this.replayServiceDemands();
+    }
     this.emitter.emit("did-load-package", pack);
     return pack;
   }
@@ -1119,6 +1135,7 @@ module.exports = class PackageManager {
     if (pack) {
       this.unregisterThemePacksForPackage(pack.name);
       delete this.loadedPackages[pack.name];
+      this.rebuildActivateOnConsumeProviders();
       this.emitter.emit("did-unload-package", pack);
     } else {
       throw new Error(`No loaded package for name '${name}'`);
@@ -1145,6 +1162,79 @@ module.exports = class PackageManager {
     return this.uriHandlerRegistry.registerHostHandler(packageName, handler);
   }
 
+  registerServiceDemand(keyPath, versionRange) {
+    const demand = { keyPath, versionRange };
+    this.serviceDemands.add(demand);
+    if (this.initialPackagesLoaded) this.activateProvidersForDemand(demand);
+    return new Disposable(() => this.serviceDemands.delete(demand));
+  }
+
+  rebuildActivateOnConsumeProviders() {
+    this.activateOnConsumeProviders.clear();
+    for (const pack of this.getLoadedPackages()) {
+      if (pack.getType() !== "lumine") continue;
+      const providedServices = pack.metadata && pack.metadata.providedServices;
+      if (!providedServices || typeof providedServices !== "object") continue;
+      for (const [keyPath, descriptor] of Object.entries(providedServices)) {
+        if (!descriptor || descriptor.activateOnConsume !== true) continue;
+        const versions = Object.keys(descriptor.versions || {});
+        if (!this.activateOnConsumeProviders.has(keyPath)) {
+          this.activateOnConsumeProviders.set(keyPath, []);
+        }
+        this.activateOnConsumeProviders.get(keyPath).push({ pack, versions });
+      }
+    }
+  }
+
+  replayServiceDemands() {
+    for (const demand of [...this.serviceDemands]) {
+      this.activateProvidersForDemand(demand);
+    }
+  }
+
+  activateProvidersForDemand({ keyPath, versionRange }) {
+    const providers = this.activateOnConsumeProviders.get(keyPath) || [];
+    const range = new Range(versionRange);
+    for (const { pack, versions } of providers) {
+      if (
+        this.isPackageDisabled(pack.name) ||
+        this.isPackageActive(pack.name) ||
+        pack.mainActivated ||
+        this.serviceActivationPackages.has(pack.name)
+      ) {
+        continue;
+      }
+      let versionMatches = false;
+      for (const version of versions) {
+        try {
+          if (range.test(version)) {
+            versionMatches = true;
+            break;
+          }
+        } catch {
+          // ServiceHub will report malformed provided versions if the package
+          // is explicitly activated. They cannot satisfy this demand.
+        }
+      }
+      if (!versionMatches) continue;
+
+      this.serviceActivationPackages.add(pack.name);
+      try {
+        this.activatePackage(pack.name).catch((error) => {
+          console.warn(
+            `Failed to activate service provider '${pack.name}' for ${keyPath}@${versionRange}: ${error.message}`,
+          );
+        });
+      } catch (error) {
+        console.warn(
+          `Failed to activate service provider '${pack.name}' for ${keyPath}@${versionRange}: ${error.message}`,
+        );
+      } finally {
+        this.serviceActivationPackages.delete(pack.name);
+      }
+    }
+  }
+
   // another type of package manager can handle other package types.
   // See ThemeManager
   registerPackageActivator(activator, types) {
@@ -1155,7 +1245,7 @@ module.exports = class PackageManager {
     const promises = [];
     this.config.transactAsync(() => {
       for (const pack of packages) {
-        const promise = this.activatePackage(pack.name);
+        const promise = this.activatePackage(pack.name, { defer: true });
         if (!pack.activationShouldBeDeferred()) {
           promises.push(promise);
         }
@@ -1167,8 +1257,9 @@ module.exports = class PackageManager {
     return promises;
   }
 
-  // Activate a single package by name
-  activatePackage(name) {
+  // Activate a single package by name. Direct requests activate immediately;
+  // the initial batch alone opts into waiting for declarative triggers.
+  activatePackage(name, { defer = false } = {}) {
     let pack = this.getActivePackage(name);
     if (pack) {
       return Promise.resolve(pack);
@@ -1182,6 +1273,14 @@ module.exports = class PackageManager {
       return Promise.reject(new Error(`Cannot activate disabled package '${name}'`));
     }
 
+    pack = this.activatingPackages[name];
+    if (pack) {
+      if (!defer && pack.activationShouldBeDeferred() && !pack.mainActivated) {
+        pack.activateNow();
+      }
+      return pack.activate().then(() => pack);
+    }
+
     pack = this.loadPackage(name);
     if (!pack) {
       return Promise.reject(new Error(`Failed to load package '${name}'`));
@@ -1189,7 +1288,12 @@ module.exports = class PackageManager {
 
     this.registerThemePacksFromPackage(pack);
     this.activatingPackages[pack.name] = pack;
-    const activationPromise = pack.activate().then(() => {
+    const shouldDefer = pack.activationShouldBeDeferred();
+    const packageActivationPromise = pack.activate();
+    if (!defer && shouldDefer && !pack.mainActivated) {
+      pack.activateNow();
+    }
+    const activationPromise = packageActivationPromise.then(() => {
       if (this.activatingPackages[pack.name] != null) {
         delete this.activatingPackages[pack.name];
         this.activePackages[pack.name] = pack;
@@ -1197,10 +1301,6 @@ module.exports = class PackageManager {
       }
       return pack;
     });
-
-    if (this.deferredActivationHooks == null) {
-      this.triggeredActivationHooks.forEach((hook) => this.activationHookEmitter.emit(hook));
-    }
 
     return activationPromise;
   }
@@ -1222,6 +1322,13 @@ module.exports = class PackageManager {
       return new Error("Cannot trigger an empty activation hook");
     }
 
+    // Hooks describe facts about this window, rather than a stream of repeated
+    // occurrences. Retain the first occurrence for replay when a package is
+    // explicitly activated later, but never dispatch the same fact twice.
+    if (this.triggeredActivationHooks.has(hook)) {
+      return;
+    }
+
     this.triggeredActivationHooks.add(hook);
     if (this.deferredActivationHooks != null) {
       this.deferredActivationHooks.push(hook);
@@ -1235,6 +1342,10 @@ module.exports = class PackageManager {
       return;
     }
     return this.activationHookEmitter.on(hook, callback);
+  }
+
+  shouldReplayActivationHook(hook) {
+    return this.deferredActivationHooks == null && this.triggeredActivationHooks.has(hook);
   }
 
   serialize() {

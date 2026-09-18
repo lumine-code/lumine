@@ -8,6 +8,7 @@ const Dock = require("./dock");
 const Model = require("./model");
 const StateStore = require("./state-store");
 const TextEditor = require("./text-editor");
+const NullGrammar = require("./null-grammar");
 const Panel = require("./panel");
 const PanelContainer = require("./panel-container");
 const ModalFlow = require("./modal-flow");
@@ -305,6 +306,11 @@ module.exports = class Workspace extends Model {
     this.destroyedItemURIs = [];
     this.longTitles = null;
     this.stoppedChangingActivePaneItemTimeout = null;
+    this.grammarUsageEntries = new Map();
+    this.registeredGrammarUsageLeases = new Map();
+    this.activeItemGrammarUsageLeases = new Map();
+    this.paneDocumentsAwaitingGrammarObservation = new WeakSet();
+    this.registeredTextEditorGrammarSubscription = null;
 
     this.ripgrepDirectorySearcher = new RipgrepDirectorySearcher();
     this.consumeServices(this.packageManager);
@@ -452,10 +458,17 @@ module.exports = class Workspace extends Model {
     this.emitter.dispose();
     this.emitter = new Emitter();
 
+    this.registeredTextEditorGrammarSubscription?.dispose();
+    this.registeredTextEditorGrammarSubscription = null;
+    for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
+    this.registeredGrammarUsageLeases.clear();
+
     if (this.activeItemTextEditorsSubscription) {
       this.activeItemTextEditorsSubscription.dispose();
       this.activeItemTextEditorsSubscription = null;
     }
+    for (const lease of this.activeItemGrammarUsageLeases.values()) lease.dispose();
+    this.activeItemGrammarUsageLeases.clear();
 
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
@@ -528,6 +541,7 @@ module.exports = class Workspace extends Model {
     this.itemLocationStore.initialize({ configDirPath });
 
     this.subscribeToAddedItems();
+    this.subscribeToRegisteredTextEditorGrammarUsage();
     this.subscribeToMovedItems();
     this.subscribeToDockToggling();
   }
@@ -808,6 +822,8 @@ module.exports = class Workspace extends Model {
       this.previousActiveEmbeddedTextEditor = embeddedTextEditor;
       this.emitter.emit("did-change-active-embedded-text-editor", embeddedTextEditor);
     }
+
+    this.updateActiveItemGrammarUsage(fileTextEditor, embeddedTextEditor);
   }
 
   didChangeActivePaneItem(item) {
@@ -870,8 +886,18 @@ module.exports = class Workspace extends Model {
       }
 
       if (item instanceof TextEditor) {
+        this.paneDocumentsAwaitingGrammarObservation.add(item);
+        let textEditorRegistration;
+        try {
+          textEditorRegistration = this.textEditorRegistry.add(item, { role: "document" });
+        } finally {
+          // TextEditorRegistry emits synchronously, so its observer has now
+          // skipped this pane-owned document. Workspace attaches below, after
+          // its own did-add event has reached package observers.
+          this.paneDocumentsAwaitingGrammarObservation.delete(item);
+        }
         const subscriptions = new CompositeDisposable(
-          this.textEditorRegistry.add(item, { role: "document" }),
+          textEditorRegistration,
           this.textEditorFactory.maintainConfig(item),
           // Both of this editor's contributions to every long title: that it
           // is open at all, and which directory it sits in.
@@ -895,10 +921,127 @@ module.exports = class Workspace extends Model {
         // the package may receive the editor twice from `observeTextEditors`.
         // (Note that the item can be destroyed by an `observeTextEditors` handler.)
         if (!item.isDestroyed()) {
-          subscriptions.add(item.observeGrammar(this.handleGrammarUsed.bind(this)));
+          subscriptions.add(this.acquireGrammarUsageObservation(item));
         }
       }
     });
+  }
+
+  subscribeToRegisteredTextEditorGrammarUsage() {
+    if (this.registeredTextEditorGrammarSubscription) return;
+
+    this.registeredTextEditorGrammarSubscription = new CompositeDisposable(
+      this.textEditorRegistry.observe((editor) => {
+        const role = this.textEditorRegistry.roleFor(editor);
+        // Pane documents attach only after Workspace::onDidAddTextEditor has
+        // fired (see subscribeToAddedItems above). That ordering prevents a
+        // newly activated package from observing the same pane editor twice.
+        if (role === "input" || this.paneDocumentsAwaitingGrammarObservation.has(editor)) return;
+        if (role !== "document" && role !== "fragment" && role !== "viewer") return;
+        if (this.registeredGrammarUsageLeases.has(editor)) return;
+        this.registeredGrammarUsageLeases.set(editor, this.acquireGrammarUsageObservation(editor));
+      }),
+      this.textEditorRegistry.onDidRemoveEditor((editor) => {
+        const lease = this.registeredGrammarUsageLeases.get(editor);
+        if (!lease) return;
+        this.registeredGrammarUsageLeases.delete(editor);
+        lease.dispose();
+      }),
+    );
+  }
+
+  acquireGrammarUsageObservation(editor) {
+    if (!(editor instanceof TextEditor) || editor.isDestroyed()) {
+      return new Disposable();
+    }
+
+    let entry = this.grammarUsageEntries.get(editor);
+    if (!entry) {
+      entry = {
+        leases: 0,
+        disposed: false,
+        grammarSubscription: null,
+        injectionSubscription: null,
+        destroySubscription: null,
+      };
+      this.grammarUsageEntries.set(editor, entry);
+
+      const disposeEntry = () => {
+        if (entry.disposed) return;
+        entry.disposed = true;
+        if (this.grammarUsageEntries.get(editor) === entry) {
+          this.grammarUsageEntries.delete(editor);
+        }
+        entry.grammarSubscription?.dispose();
+        entry.injectionSubscription?.dispose();
+        entry.destroySubscription?.dispose();
+      };
+      entry.dispose = disposeEntry;
+      entry.destroySubscription = editor.onDidDestroy(disposeEntry);
+      entry.grammarSubscription = editor.observeGrammar((grammar) => {
+        entry.injectionSubscription?.dispose();
+        entry.injectionSubscription = null;
+
+        const languageMode = editor.getBuffer().getLanguageMode();
+        if (typeof languageMode.onDidUseInjectionGrammar === "function") {
+          entry.injectionSubscription = languageMode.onDidUseInjectionGrammar((injectionGrammar) =>
+            this.handleGrammarUsed(injectionGrammar, { root: false }),
+          );
+        }
+
+        this.handleGrammarUsed(grammar, { root: true });
+
+        // A surface may register after its buffer has already tokenized (for
+        // example a restored viewer). Replay only the injection grammars that
+        // have materialized in that mode; PackageManager deduplicates the
+        // resulting window facts.
+        if (typeof languageMode.getAllInjectionLayers === "function") {
+          for (const layer of languageMode.getAllInjectionLayers()) {
+            if (layer?.grammar) this.handleGrammarUsed(layer.grammar, { root: false });
+          }
+        }
+      });
+
+      if (entry.disposed) {
+        entry.grammarSubscription?.dispose();
+      }
+    }
+
+    entry.leases++;
+    let disposed = false;
+    return new Disposable(() => {
+      if (disposed) return;
+      disposed = true;
+      if (entry.disposed) return;
+      entry.leases--;
+      if (entry.leases === 0) entry.dispose();
+    });
+  }
+
+  updateActiveItemGrammarUsage(fileTextEditor, embeddedTextEditor) {
+    const activeItem = this.getCenter().getActivePaneItem();
+    const desiredEditors = new Set();
+
+    // Ordinary pane TextEditors already own a document-role lease. Composite
+    // items such as notebooks expose their backing document and active cell
+    // through this protocol without necessarily registering those editors.
+    if (!(activeItem instanceof TextEditor)) {
+      for (const editor of [fileTextEditor, embeddedTextEditor]) {
+        if (!(editor instanceof TextEditor) || editor.isDestroyed() || editor.isMini()) continue;
+        if (this.textEditorRegistry.roleFor(editor) === "input") continue;
+        desiredEditors.add(editor);
+      }
+    }
+
+    for (const [editor, lease] of this.activeItemGrammarUsageLeases) {
+      if (desiredEditors.has(editor)) continue;
+      this.activeItemGrammarUsageLeases.delete(editor);
+      lease.dispose();
+    }
+    for (const editor of desiredEditors) {
+      if (this.activeItemGrammarUsageLeases.has(editor)) continue;
+      this.activeItemGrammarUsageLeases.set(editor, this.acquireGrammarUsageObservation(editor));
+    }
   }
 
   subscribeToDockToggling() {
@@ -1827,12 +1970,20 @@ module.exports = class Workspace extends Model {
     return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
   }
 
-  handleGrammarUsed(grammar) {
+  handleGrammarUsed(grammar, { root = true } = {}) {
     if (grammar == null) {
       return;
     }
-    this.packageManager.triggerActivationHook(`${grammar.scopeName}:root-scope-used`);
-    this.packageManager.triggerActivationHook(`${grammar.packageName}:grammar-used`);
+
+    this.packageManager.triggerActivationHook("core:grammar-used");
+    if (grammar === NullGrammar) return;
+
+    if (root && typeof grammar.scopeName === "string" && grammar.scopeName.length > 0) {
+      this.packageManager.triggerActivationHook(`${grammar.scopeName}:root-scope-used`);
+    }
+    if (typeof grammar.packageName === "string" && grammar.packageName.length > 0) {
+      this.packageManager.triggerActivationHook(`${grammar.packageName}:grammar-used`);
+    }
   }
 
   /**
@@ -2105,8 +2256,9 @@ module.exports = class Workspace extends Model {
    * can check the protocol for quux-preview and only handle those URIs that match.
    *
    * To defer your package's activation until a specific URL is opened, add a
-   * `workspaceOpeners` field to your `package.json` containing an array of URL
-   * strings.
+   * `workspaceOpeners` field to your `package.json`. Entries may be exact URI
+   * strings or objects with a `uriPrefix`, `pathSuffixes`, and/or a
+   * `pathSuffixesConfig` key path whose current value supplies more suffixes.
    *
    * @param opener - A `Function` to be called when a path is being opened.
    * @returns {Disposable} on which `.dispose()` can be called to remove the opener.
@@ -2568,6 +2720,12 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    this.registeredTextEditorGrammarSubscription?.dispose();
+    this.registeredTextEditorGrammarSubscription = null;
+    for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
+    this.registeredGrammarUsageLeases.clear();
+    for (const lease of this.activeItemGrammarUsageLeases.values()) lease.dispose();
+    this.activeItemGrammarUsageLeases.clear();
     this.fileDocumentObservation?.dispose();
     this.fileDocuments.dispose();
     this.closeStateStore();
@@ -2581,6 +2739,8 @@ module.exports = class Workspace extends Model {
       this.activeItemSubscriptions.dispose();
     }
     if (this.element) this.element.destroy();
+    for (const entry of [...this.grammarUsageEntries.values()]) entry.dispose();
+    this.grammarUsageEntries.clear();
   }
 
   /**

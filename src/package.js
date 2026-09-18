@@ -895,6 +895,7 @@ module.exports = class Package {
       (this.hasActivationCommands() ||
         this.hasActivationHooks() ||
         this.hasWorkspaceOpeners() ||
+        this.hasActivateOnConsumeServices() ||
         this.hasDeferredURIHandler())
     );
   }
@@ -907,6 +908,14 @@ module.exports = class Package {
   hasWorkspaceOpeners() {
     const openers = this.getWorkspaceOpeners();
     return openers && openers.length > 0;
+  }
+
+  hasActivateOnConsumeServices() {
+    const providedServices = this.metadata && this.metadata.providedServices;
+    if (!providedServices || typeof providedServices !== "object") return false;
+    return Object.values(providedServices).some(
+      (descriptor) => descriptor && descriptor.activateOnConsume === true,
+    );
   }
 
   hasActivationCommands() {
@@ -992,13 +1001,16 @@ module.exports = class Package {
 
   subscribeToActivationHooks() {
     this.activationHookSubscriptions = new CompositeDisposable();
+    let shouldActivate = false;
     for (let hook of this.getActivationHooks()) {
       if (typeof hook === "string" && hook.trim().length > 0) {
         this.activationHookSubscriptions.add(
           this.packageManager.onDidTriggerActivationHook(hook, () => this.activateNow()),
         );
+        shouldActivate ||= this.packageManager.shouldReplayActivationHook(hook);
       }
     }
+    if (shouldActivate) this.activateNow();
   }
 
   getActivationHooks() {
@@ -1024,14 +1036,51 @@ module.exports = class Package {
     for (let opener of this.getWorkspaceOpeners()) {
       this.workspaceOpenerSubscriptions.add(
         lumine.workspace.addOpener((filePath) => {
-          if (filePath === opener) {
+          if (this.matchesWorkspaceOpener(filePath, opener)) {
             this.activateNow();
             this.workspaceOpenerSubscriptions.dispose();
-            return lumine.workspace.createItemForURI(opener);
+            return lumine.workspace.createItemForURI(filePath);
           }
         }),
       );
     }
+  }
+
+  matchesWorkspaceOpener(filePath, opener) {
+    if (typeof filePath !== "string") return false;
+    if (typeof opener === "string") return filePath === opener;
+    if (!opener || typeof opener !== "object") return false;
+
+    if (typeof opener.uriPrefix === "string" && filePath.startsWith(opener.uriPrefix)) {
+      return true;
+    }
+
+    const suffixes = [];
+    const addSuffixes = (values) => {
+      for (const value of Array.isArray(values) ? values : [values]) {
+        if (typeof value !== "string") continue;
+        let suffix = value.trim().toLowerCase();
+        if (suffix.length === 0) continue;
+        if (!suffix.startsWith(".")) suffix = `.${suffix}`;
+        suffixes.push(suffix);
+      }
+    };
+
+    addSuffixes(opener.pathSuffixes);
+    const configKeyPaths = Array.isArray(opener.pathSuffixesConfig)
+      ? opener.pathSuffixesConfig
+      : [opener.pathSuffixesConfig];
+    for (const keyPath of configKeyPaths) {
+      if (typeof keyPath === "string" && keyPath.length > 0) {
+        addSuffixes(this.config.get(keyPath));
+      }
+    }
+
+    const queryOrFragmentIndex = filePath.search(/[?#]/);
+    const normalizedPath = (
+      queryOrFragmentIndex === -1 ? filePath : filePath.slice(0, queryOrFragmentIndex)
+    ).toLowerCase();
+    return suffixes.some((suffix) => normalizedPath.endsWith(suffix));
   }
 
   getWorkspaceOpeners() {

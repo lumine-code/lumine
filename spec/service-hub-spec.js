@@ -7,6 +7,32 @@ describe("ServiceHub", () => {
     hub = new ServiceHub();
   });
 
+  describe("lazy provider demand", () => {
+    it("lets a provider register synchronously without delivering it twice", () => {
+      const consume = jasmine.createSpy("consume");
+      hub = new ServiceHub({
+        onConsume(keyPath) {
+          hub.provide(keyPath, "1.0.0", { source: "lazy" });
+        },
+      });
+
+      hub.consume("lazy-service", "^1.0.0", consume);
+
+      expect(consume.calls.count()).toBe(1);
+      expect(consume).toHaveBeenCalledWith({ source: "lazy" });
+    });
+
+    it("disposes demand registration with the consumer", () => {
+      const dispose = jasmine.createSpy("dispose");
+      hub = new ServiceHub({ onConsume: () => ({ dispose }) });
+
+      const subscription = hub.consume("lazy-service", "^1.0.0", () => {});
+      subscription.dispose();
+
+      expect(dispose.calls.count()).toBe(1);
+    });
+  });
+
   describe("name matching", () => {
     it("delivers a service to a consumer of the same name", () => {
       const service = { name: "the-service" };

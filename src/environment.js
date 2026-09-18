@@ -798,7 +798,6 @@ class Environment {
     this.registerDefaultOpeners();
     this.project.reset(this.packages);
     this.workspace.observeFileDocuments();
-    this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
     // The reset recreated the pane containers, so the registry's active-item
     // subscription must be rebuilt against the new center.
     this.repositories.attachWorkspace(this.workspace);
@@ -808,6 +807,10 @@ class Environment {
     this.grammars.clear();
     this.textEditorFactory.clear();
     this.textEditors.clear();
+    // TextEditorRegistry::clear replaces its emitter. Reattach workspace
+    // observers only after that reset so fragment and viewer registrations
+    // remain visible for the duration of the next window lifecycle.
+    this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
     this.pasteProviders.clear();
     this.views.clear();
     this.pathsWithWaitSessions.clear();

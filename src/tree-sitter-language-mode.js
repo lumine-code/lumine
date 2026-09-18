@@ -933,6 +933,18 @@ class TreeSitterLanguageMode {
     return this.emitter.on("did-tokenize", callback);
   }
 
+  // An injection grammar becomes used as soon as an injection point has
+  // resolved it and supplied non-empty content. This deliberately fires before
+  // its child LanguageLayer is constructed: deferred grammar packages must be
+  // able to activate before that layer performs its first tokenization.
+  onDidUseInjectionGrammar(callback) {
+    return this.emitter.on("did-use-injection-grammar", callback);
+  }
+
+  emitInjectionGrammarUsed(grammar) {
+    this.emitter.emit("did-use-injection-grammar", grammar);
+  }
+
   onDidChangeHighlighting(callback) {
     return this.emitter.on("did-change-highlighting", callback);
   }
@@ -4855,6 +4867,11 @@ class LanguageLayer {
               if (contentNodes) {
                 const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
                 if (injectionNodes.length > 0) {
+                  this.languageMode.emitInjectionGrammarUsed(grammar);
+                  if (!isCurrent()) {
+                    plan.stale = true;
+                    return true;
+                  }
                   plan.candidates.push({
                     grammar,
                     injectionPoint,

@@ -77,11 +77,20 @@ class Consumer {
     // Whether any provider ever satisfied this consumer. A consumer that never
     // was is a feature that silently does not exist -- see `unmatchedConsumers`.
     this.isSatisfied = false;
+    this.demandRegistration = null;
   }
 
   destroy() {
+    if (this.isDestroyed) {
+      return;
+    }
     this.isDestroyed = true;
-    disposeRegistrations(this.registrations);
+    try {
+      disposeRegistrations(this.registrations);
+    } finally {
+      this.demandRegistration?.dispose();
+      this.demandRegistration = null;
+    }
   }
 }
 
@@ -149,9 +158,10 @@ class Provider {
 }
 
 module.exports = class ServiceHub {
-  constructor() {
+  constructor({ onConsume } = {}) {
     this.consumers = [];
     this.providers = [];
+    this.onConsume = onConsume;
   }
 
   /**
@@ -231,7 +241,12 @@ module.exports = class ServiceHub {
    * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
    */
   consume(keyPath, versionRange, callback) {
+    // Constructing the consumer validates the range before a lazy provider is
+    // touched. The provider hook runs before the consumer is registered: a
+    // synchronously activated provider is then delivered exactly once by the
+    // ordinary loop below, rather than once from provide() and once here.
     const consumer = new Consumer(keyPath, versionRange, callback);
+    consumer.demandRegistration = this.onConsume?.(keyPath, consumer.versionRange.raw);
     this.consumers.push(consumer);
     // The mirror of `provide`: a callback that throws on the third of five
     // existing providers has already taken two services it can no longer be

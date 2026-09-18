@@ -65,11 +65,7 @@
       if (getWindowLoadSettings().profileStartup) {
         profileStartup(Date.now() - startTime);
       } else {
-        const loadTime = Date.now() - startTime;
-        StartupTime.addMarker("window:setup-window:start");
-        await setupWindow();
-        StartupTime.addMarker("window:setup-window:end");
-        setLoadTime(loadTime);
+        await setupWindowAndRecordLoadTime(startTime);
       }
     } catch (error) {
       handleSetupError(error);
@@ -118,13 +114,23 @@
     });
   }
 
+  async function setupWindowAndRecordLoadTime(startTime) {
+    StartupTime.addMarker("window:setup-window:start");
+    await setupWindow();
+    const endTime = Date.now();
+    StartupTime.addMarker("window:setup-window:end", endTime);
+    setLoadTime(endTime - startTime);
+  }
+
   function profileStartup(initialTime) {
     function profile() {
       console.profile("startup");
-      const startTime = Date.now();
-      setupWindow()
+      // The profiler is deliberately armed one second after window load. Fold
+      // the work done before that wait back into the result, but not the wait
+      // itself, so profiled and ordinary load times retain the same meaning.
+      const startTime = Date.now() - initialTime;
+      setupWindowAndRecordLoadTime(startTime)
         .then(function () {
-          setLoadTime(Date.now() - startTime + initialTime);
           console.profileEnd("startup");
           console.log("Switch to the Profiles tab to view the created startup profile");
         })
