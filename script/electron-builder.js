@@ -58,16 +58,10 @@ async function modifyMainPackageJson(
 const builder = require("electron-builder");
 
 const ARGS = yargs(hideBin(process.argv))
-  .command("[platform]", "build for a given platform", (command) => {
-    return command.positional("platform", {
-      describe: 'One of "mac", "linux", or "win".',
-    });
-  })
   .option("target", {
     alias: "t",
     type: "string",
-    description:
-      "Limit to one target of the specified platform; otherwise all targets for that platform are built.",
+    description: "Build only the comma-separated targets named for the current platform.",
   })
   .parse();
 
@@ -380,10 +374,18 @@ let options = {
   ],
 };
 
+const PLATFORMS = {
+  darwin: "mac",
+  win32: "win",
+  linux: "linux",
+};
+
 function whatToBuild() {
-  if (!ARGS.target) return options;
-  if (!(ARGS.platform in options)) return options;
-  options[ARGS.platform] = options[ARGS.platform].filter((e) => e.target === ARGS.target);
+  const platform = PLATFORMS[process.platform];
+  if (!platform) throw new Error(`Unrecognized platform: ${process.platform}`);
+  if (ARGS.target) {
+    options[platform].target = ARGS.target.split(",").map((target) => ({ target }));
+  }
   return options;
 }
 
