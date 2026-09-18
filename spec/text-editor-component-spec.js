@@ -1194,6 +1194,38 @@ describe("TextEditorComponent", () => {
       await conditionPromise(() => component.getClientContainerWidth() === initialWidth);
     });
 
+    it("re-measures the final size after a pane layout changes again while resize observation is paused", async () => {
+      const text = Array.from({ length: 200 }, (_, index) => `line ${index + 1}`).join("\n");
+      const { component, element, editor } = buildComponent({
+        autoHeight: false,
+        rowsPerTile: 3,
+        text,
+      });
+
+      setEditorHeightInLines(component, 6);
+      const intermediateHeight = component.getClientContainerHeight();
+      const intermediateLineCount = queryOnScreenLineElements(element).length;
+
+      // didResize temporarily disconnects ResizeObserver. Simulate a pane tree
+      // completing another layout step in that blind interval, and suppress
+      // the observer's normal reconnection so this exercises the component's
+      // post-layout verification rather than a browser notification.
+      component.resizeObserver.disconnect();
+      spyOn(component, "observeResizeTargets");
+      element.style.height = 30 * component.getLineHeight() + "px";
+
+      await conditionPromise(
+        () => component.getClientContainerHeight() === component.refs.clientContainer.offsetHeight,
+      );
+
+      expect(component.getClientContainerHeight()).toBeGreaterThan(intermediateHeight);
+      expect(queryOnScreenLineElements(element).length).toBeGreaterThan(intermediateLineCount);
+      const lastVisibleRow = component.getLastVisibleRow();
+      expect(lineNodeForScreenRow(component, lastVisibleRow).textContent).toBe(
+        editor.lineTextForScreenRow(lastVisibleRow),
+      );
+    });
+
     it("leaves the client container of auto-sized editors unobserved", async () => {
       // The component sizes that container itself on every update when the
       // editor is auto-sized, so observing it would measure back the size the

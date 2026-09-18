@@ -146,6 +146,7 @@ module.exports = class TextEditorComponent {
     };
     this.derivedDimensionsCache = {};
     this.observingClientContainer = false;
+    this.resizeVerificationScheduled = false;
     this.visible = false;
     this.cursorsBlinking = false;
     this.cursorsBlinkedOff = false;
@@ -2554,11 +2555,28 @@ module.exports = class TextEditorComponent {
         // anchor) without flashing a stale frame — a scheduled update would
         // run at the next frame's rAF, after this frame painted.
         this.updateSync();
+        // Pane trees can change shape several times in one layout operation.
+        // We temporarily disconnect the observer above to avoid a synchronous
+        // resize loop, so a later step in that same operation can otherwise
+        // leave the component holding an intermediate size indefinitely. Check
+        // once more on the next document frame, after the whole pane layout has
+        // settled. A changed size schedules one further check; an unchanged one
+        // stops the chain.
+        this.scheduleResizeVerification();
         process.nextTick(() => {
           if (this.attached) this.observeResizeTargets();
         });
       }
     }
+  }
+
+  scheduleResizeVerification() {
+    if (this.resizeVerificationScheduled) return;
+    this.resizeVerificationScheduled = true;
+    getScheduler().updateDocument(() => {
+      this.resizeVerificationScheduled = false;
+      if (this.attached) this.didResize();
+    });
   }
 
   // Releasing the divider answers the question the debounce timer was waiting
