@@ -222,11 +222,11 @@ describe("TextBuffer IO", () => {
       await buffer.reload();
       expect(events).toEqual(["will-reload", "did-reload"]);
       expect(buffer.getText()).toBe("");
-      expect(buffer.getFileState()).toBe(FileState.REMOVED);
+      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
 
       buffer.undo();
       expect(buffer.getText()).toBe("cdefg");
-      expect(buffer.getFileState()).toBe(FileState.REMOVED);
+      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
       done();
     });
 
@@ -742,6 +742,19 @@ describe("TextBuffer IO", () => {
         fs.unlinkSync(filePath);
         await deletedAgain;
         expect(buffer.getFileState()).toBe(FileState.REMOVED);
+      });
+
+      it("clears the removed state when retargeted to a path that never existed", async () => {
+        const deleted = deletionPromise(buffer);
+        fs.unlinkSync(filePath);
+        await deleted;
+        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+
+        const newPath = path.join(temp.mkdirSync("lumine"), "does-not-exist.txt");
+        buffer.setPath(newPath);
+
+        expect(buffer.didHaveFileOnDisk).toBe(false);
+        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
       });
     });
 

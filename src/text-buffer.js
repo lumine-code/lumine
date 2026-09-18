@@ -781,9 +781,14 @@ class TextBuffer {
     if (!this.file && !file) return;
     if (file === this.file) return;
 
+    const hadFile = Boolean(this.file);
     this.fileOperationGeneration++;
     this.loadCount++;
     this.file = file;
+    // A new File object represents a new backing path. Do not carry the old
+    // path's deletion history into it, even when the new path does not exist.
+    this.didHaveFileOnDisk = false;
+    this.updateDidHaveFileOnDisk();
     this.fileRelocationNotice = null;
     if (this.file && !this.destroyed) {
       if (typeof this.file.setEncoding === "function") {
@@ -799,7 +804,17 @@ class TextBuffer {
       this.fileWatchStartPromise = Promise.resolve();
     }
 
-    if (!this.file) this.updateFileStateFromBuffer({ resolveStickyState: true });
+    if (!this.file) {
+      this.updateFileStateFromBuffer({ resolveStickyState: true });
+    } else if (hadFile) {
+      if (this.didHaveFileOnDisk) {
+        this.updateFileStateFromBuffer({ resolveStickyState: true });
+      } else {
+        // A buffer retargeted to a path that has never existed is an unsaved
+        // document, not a removed instance of its previous backing file.
+        this.setFileState(FileState.MODIFIED);
+      }
+    }
 
     this.emitter.emit("did-change-path", this.getPath());
   }
@@ -2668,13 +2683,18 @@ class TextBuffer {
     return this.setFileState(this.deriveFileStateFromBuffer());
   }
 
+  updateDidHaveFileOnDisk() {
+    if (this.didHaveFileOnDisk || !this.file) return;
+    this.didHaveFileOnDisk = this.file.existsSync();
+  }
+
   registerSelectionsMarkerLayer(markerLayer) {
     return this.selectionsMarkerLayerIds.add(markerLayer.id);
   }
 
   loadSync(options) {
     this.fileOperationGeneration++;
-    if (this.file?.existsSync()) this.didHaveFileOnDisk = true;
+    this.updateDidHaveFileOnDisk();
     let patch;
     let checkpoint = null;
     try {
@@ -2706,11 +2726,7 @@ class TextBuffer {
 
   async load(options) {
     this.pendingFileLoads++;
-    if (this.file?.existsSync()) {
-      // The consumer is allowed to set a `File` instance with a path that does
-      // not currently exist on disk.
-      this.didHaveFileOnDisk = true;
-    }
+    this.updateDidHaveFileOnDisk();
 
     const file = this.file;
     const loadCount = ++this.loadCount;
