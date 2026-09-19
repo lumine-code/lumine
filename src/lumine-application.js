@@ -32,6 +32,7 @@ const path = require("path");
 const os = require("os");
 const net = require("net");
 const parseUri = require("./parse-uri");
+const { normalizeExternalUrl } = require("./external-url");
 const { promisify } = require("util");
 const { EventEmitter } = require("events");
 const _ = require("@lumine-code/underscore-plus");
@@ -622,8 +623,14 @@ const handleAppAction = async (event, action, ...args) => {
     case "openPath":
     case "openExternal":
       try {
-        assertString(args[0], action === "openExternal" ? "url" : "path");
-        const result = await shellInvoker.invoke(action, args[0]);
+        let target;
+        if (action === "openExternal") {
+          target = normalizeExternalUrl(args[0]);
+        } else {
+          assertString(args[0], "path");
+          target = args[0];
+        }
+        const result = await shellInvoker.invoke(action, target);
         return { outcome: "success", result };
       } catch (error) {
         return { outcome: "failure", error: { message: error.message, code: error.code } };

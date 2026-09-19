@@ -1213,7 +1213,41 @@ describe("LumineApplication", function () {
         },
       );
       assert.isTrue(openPath.calledWithExactly("C:\\a.txt"));
-      assert.isTrue(openExternal.calledWithExactly("https://example.test"));
+      assert.isTrue(openExternal.calledWithExactly("https://example.test/"));
+    });
+
+    it("allows only canonical HTTP, HTTPS, and mailto external URLs", async function () {
+      const event = { sender: w1.browserWindow.webContents };
+      const openExternal = sinon.stub(electron.shell, "openExternal").resolves();
+
+      for (const [input, expected] of [
+        ["http://example.test", "http://example.test/"],
+        ["HTTPS://example.test/path", "https://example.test/path"],
+        ["mailto:issues@example.com", "mailto:issues@example.com"],
+      ]) {
+        assert.deepEqual(await LumineApplication.handleAppAction(event, "openExternal", input), {
+          outcome: "success",
+          result: undefined,
+        });
+        assert.isTrue(openExternal.calledWithExactly(expected));
+        openExternal.resetHistory();
+      }
+
+      for (const [input, code] of [
+        ["not a URL", "ERR_INVALID_EXTERNAL_URL"],
+        ["", "ERR_INVALID_EXTERNAL_URL"],
+        ["error: Please specify a URL", "ERR_UNSUPPORTED_EXTERNAL_PROTOCOL"],
+        ["javascript:alert(1)", "ERR_UNSUPPORTED_EXTERNAL_PROTOCOL"],
+        ["data:text/plain,hello", "ERR_UNSUPPORTED_EXTERNAL_PROTOCOL"],
+        ["file:///tmp/report.txt", "ERR_UNSUPPORTED_EXTERNAL_PROTOCOL"],
+        ["lumine://config", "ERR_UNSUPPORTED_EXTERNAL_PROTOCOL"],
+      ]) {
+        const result = await LumineApplication.handleAppAction(event, "openExternal", input);
+        assert.strictEqual(result.outcome, "failure");
+        assert.strictEqual(result.error.code, code);
+        if (input) assert.strictEqual(result.error.message.includes(input), false);
+        assert.isFalse(openExternal.called);
+      }
     });
 
     it("rejects unknown application and safe-storage operations", async function () {

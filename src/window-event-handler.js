@@ -277,8 +277,13 @@ module.exports = class WindowEventHandler {
     event.preventDefault();
     const uri = event.currentTarget && event.currentTarget.getAttribute("href");
     if (uri && uri[0] !== "#") {
-      if (/^https?:\/\//.test(uri)) {
-        this.applicationDelegate.openExternal(uri);
+      if (/^(?:https?:\/\/|mailto:)/i.test(uri)) {
+        void this.lumineEnvironment.shell.openExternal(uri).catch((error) => {
+          this.lumineEnvironment.notifications.addWarning("Unable to open external link", {
+            detail: error.message,
+            dismissable: true,
+          });
+        });
       } else if (uri.startsWith("lumine://")) {
         this.lumineEnvironment.uriHandlers.handleURI(uri);
       }

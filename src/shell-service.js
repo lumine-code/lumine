@@ -1,3 +1,5 @@
+const { normalizeExternalUrl } = require("./external-url");
+
 /**
  * @public
  * @status public
@@ -49,12 +51,19 @@ class ShellService {
    * @public
    * @status public
    *
-   * Open a URL with its operating system default handler.
+   * Open an HTTP, HTTPS, or mailto URL with its operating system default handler.
+   *
+   * Relative, malformed, and other-scheme URLs are rejected before they reach
+   * the operating system.
    *
    * @returns {Promise} that resolves when the request completes.
    */
   openExternal(url) {
-    return this.applicationDelegate.openExternalDirect(url);
+    try {
+      return this.applicationDelegate.openExternalDirect(normalizeExternalUrl(url));
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 }
 

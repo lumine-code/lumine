@@ -95,6 +95,27 @@ describe("Environment", () => {
       expect(callback).toHaveBeenCalled();
       subscription.dispose();
     });
+
+    it("validates external URLs before renderer IPC", async () => {
+      spyOn(lumine.applicationDelegate, "openExternalDirect").and.resolveTo();
+
+      await lumine.shell.openExternal("https://example.com");
+      await lumine.shell.openExternal("mailto:issues@example.com");
+      expect(lumine.applicationDelegate.openExternalDirect.calls.allArgs()).toEqual([
+        ["https://example.com/"],
+        ["mailto:issues@example.com"],
+      ]);
+
+      let error;
+      try {
+        await lumine.shell.openExternal("error: Please specify a URL");
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toEqual(jasmine.any(TypeError));
+      expect(error.code).toBe("ERR_UNSUPPORTED_EXTERNAL_PROTOCOL");
+      expect(lumine.applicationDelegate.openExternalDirect.calls.count()).toBe(2);
+    });
   });
 
   describe("window sizing methods", () => {

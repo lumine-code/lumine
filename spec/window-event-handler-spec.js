@@ -75,8 +75,8 @@ describe("WindowEventHandler", () => {
     }));
 
   describe("when a link is clicked", () => {
-    it("opens the http/https links in an external application", () => {
-      spyOn(lumine.applicationDelegate, "openExternal");
+    it("opens the http, https, and mailto links in an external application", () => {
+      spyOn(lumine.shell, "openExternal").and.returnValue(Promise.resolve());
 
       const link = document.createElement("a");
       const linkChild = document.createElement("span");
@@ -90,26 +90,45 @@ describe("WindowEventHandler", () => {
       };
 
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(lumine.applicationDelegate.openExternal).toHaveBeenCalled();
-      expect(lumine.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe("http://github.com");
-      lumine.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.shell.openExternal).toHaveBeenCalled();
+      expect(lumine.shell.openExternal.calls.argsFor(0)[0]).toBe("http://github.com");
+      lumine.shell.openExternal.calls.reset();
 
       link.href = "https://github.com";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(lumine.applicationDelegate.openExternal).toHaveBeenCalled();
-      expect(lumine.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe(
-        "https://github.com",
-      );
-      lumine.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.shell.openExternal).toHaveBeenCalled();
+      expect(lumine.shell.openExternal.calls.argsFor(0)[0]).toBe("https://github.com");
+      lumine.shell.openExternal.calls.reset();
+
+      link.href = "mailto:issues@example.com";
+      windowEventHandler.handleLinkClick(fakeEvent);
+      expect(lumine.shell.openExternal).toHaveBeenCalledWith("mailto:issues@example.com");
+      lumine.shell.openExternal.calls.reset();
 
       link.href = "";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(lumine.applicationDelegate.openExternal).not.toHaveBeenCalled();
-      lumine.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.shell.openExternal).not.toHaveBeenCalled();
+      lumine.shell.openExternal.calls.reset();
 
       link.href = "#scroll-me";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(lumine.applicationDelegate.openExternal).not.toHaveBeenCalled();
+      expect(lumine.shell.openExternal).not.toHaveBeenCalled();
+    });
+
+    it("warns when the operating system cannot open an external link", async () => {
+      const error = new Error("No browser is available");
+      spyOn(lumine.shell, "openExternal").and.returnValue(Promise.reject(error));
+      spyOn(lumine.notifications, "addWarning");
+      const link = document.createElement("a");
+      link.href = "https://example.com";
+
+      windowEventHandler.handleLinkClick({ currentTarget: link, preventDefault() {} });
+      await Promise.resolve();
+
+      expect(lumine.notifications.addWarning).toHaveBeenCalledWith("Unable to open external link", {
+        detail: error.message,
+        dismissable: true,
+      });
     });
 
     it('opens the "lumine://" links with URL handler', () => {
