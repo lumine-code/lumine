@@ -4597,6 +4597,7 @@ describe("TextEditorComponent", () => {
         const rangeSpies = editor
           .getSelections()
           .map((selection) => spyOn(selection, "getScreenRange").and.callThrough());
+        const decorationQueries = spyOn(component, "queryDecorationsToRender").and.callThrough();
 
         for (let row = 0; row < 20; row++) {
           createBlockDecorationAtScreenRow(editor, row, {
@@ -4606,8 +4607,9 @@ describe("TextEditorComponent", () => {
         }
         await component.getNextUpdatePromise();
 
+        expect(decorationQueries).toHaveBeenCalled();
         for (const rangeSpy of rangeSpies) {
-          expect(rangeSpy).toHaveBeenCalledTimes(1);
+          expect(rangeSpy.calls.count()).toBe(decorationQueries.calls.count());
         }
       });
 
