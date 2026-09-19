@@ -1346,6 +1346,7 @@ describe("PackageManager", () => {
 
       it("registers the package's provided and consumed services", async () => {
         const consumerModule = require("./fixtures/packages/package-with-consumed-services");
+        const consume = spyOn(lumine.packages.serviceHub, "consume").and.callThrough();
 
         let firstServiceV3Disposed = false;
         let firstServiceV4Disposed = false;
@@ -1372,6 +1373,9 @@ describe("PackageManager", () => {
         expect(consumerModule.consumeFirstServiceV3).toHaveBeenCalledWith("first-service-v3");
         expect(consumerModule.consumeFirstServiceV4).toHaveBeenCalledWith("first-service-v4");
         expect(consumerModule.consumeSecondService).toHaveBeenCalledWith("second-service");
+        expect(consume.calls.allArgs().find(([name]) => name === "service-2")[3]).toEqual({
+          activateProviders: false,
+        });
 
         consumerModule.consumeFirstServiceV3.calls.reset();
         consumerModule.consumeFirstServiceV4.calls.reset();

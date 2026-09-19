@@ -238,15 +238,21 @@ module.exports = class ServiceHub {
    * @param keyPath - A `String` naming the service. Names are matched exactly; see {@link #provide}.
    * @param versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
    * @param callback - A `Function` to be called with current and future matching service objects.
+   * @param options - Optional activation behavior for this consumer.
+   * @param options.activateProviders - Whether consuming the service may activate a deferred
+   *   provider. Pass `false` for a passive subscription that receives an already active or later
+   *   provider without waking one merely because the consumer activated. Defaults to `true`.
    * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
    */
-  consume(keyPath, versionRange, callback) {
+  consume(keyPath, versionRange, callback, { activateProviders = true } = {}) {
     // Constructing the consumer validates the range before a lazy provider is
     // touched. The provider hook runs before the consumer is registered: a
     // synchronously activated provider is then delivered exactly once by the
     // ordinary loop below, rather than once from provide() and once here.
     const consumer = new Consumer(keyPath, versionRange, callback);
-    consumer.demandRegistration = this.onConsume?.(keyPath, consumer.versionRange.raw);
+    if (activateProviders) {
+      consumer.demandRegistration = this.onConsume?.(keyPath, consumer.versionRange.raw);
+    }
     this.consumers.push(consumer);
     // The mirror of `provide`: a callback that throws on the third of five
     // existing providers has already taken two services it can no longer be

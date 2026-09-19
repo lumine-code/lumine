@@ -31,6 +31,36 @@ describe("ServiceHub", () => {
 
       expect(dispose.calls.count()).toBe(1);
     });
+
+    it("lets a passive consumer receive providers without activating one", () => {
+      const onConsume = jasmine.createSpy("onConsume");
+      const consume = jasmine.createSpy("consume");
+      hub = new ServiceHub({ onConsume });
+
+      const subscription = hub.consume("lazy-service", "^1.0.0", consume, {
+        activateProviders: false,
+      });
+
+      expect(onConsume).not.toHaveBeenCalled();
+      expect(consume).not.toHaveBeenCalled();
+
+      hub.provide("lazy-service", "1.0.0", { source: "later" });
+
+      expect(consume).toHaveBeenCalledWith({ source: "later" });
+      subscription.dispose();
+    });
+
+    it("delivers an existing provider to a passive consumer", () => {
+      const onConsume = jasmine.createSpy("onConsume");
+      const consume = jasmine.createSpy("consume");
+      hub = new ServiceHub({ onConsume });
+      hub.provide("lazy-service", "1.0.0", { source: "existing" });
+
+      hub.consume("lazy-service", "^1.0.0", consume, { activateProviders: false });
+
+      expect(onConsume).not.toHaveBeenCalled();
+      expect(consume).toHaveBeenCalledWith({ source: "existing" });
+    });
   });
 
   describe("name matching", () => {

@@ -399,12 +399,12 @@ module.exports = class Package {
   }
 
   activateServices() {
-    let methodName, name, version, versions;
+    let activateProviders, methodName, name, version, versions;
     // Connect a package's dependencies before publishing anything that may use
     // them. Providing is synchronous and can immediately invoke consumers in
     // other packages, so doing it first exposes a half-wired main module.
     for (name in this.metadata.consumedServices) {
-      ({ versions } = this.metadata.consumedServices[name]);
+      ({ activateProviders = true, versions } = this.metadata.consumedServices[name]);
       for (version in versions) {
         methodName = versions[version];
         if (typeof this.mainModule[methodName] === "function") {
@@ -413,6 +413,7 @@ module.exports = class Package {
               name,
               version,
               this.mainModule[methodName].bind(this.mainModule),
+              { activateProviders: activateProviders !== false },
             ),
           );
         } else {
