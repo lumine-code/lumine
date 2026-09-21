@@ -1,4 +1,5 @@
 const FindParentDir = require("../../src/find-parent-dir");
+const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
 const TextEditorElement = require("../../src/text-editor-element");
@@ -8,6 +9,16 @@ const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
 const { testPaths } = getWindowLoadSettings();
 let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
+
+// CI provisions packages that a spec activates into a private LUMINE_HOME.
+// Older specs still spell those dependencies as sibling checkout paths (for
+// example, `../../language-javascript`). In a single-package checkout that
+// path does not exist, even though the package is available by name through
+// the test home. Keep the compatibility seam in the spec helper rather than
+// making PackageManager reinterpret arbitrary missing production paths.
+const testPackageNames = new Set(
+  (process.env.LUMINE_TEST_PACKAGES || "").split(/\s+/).filter(Boolean),
+);
 
 let specPackageName;
 if (specPackagePath) {
@@ -42,10 +53,18 @@ exports.register = (jasmineEnv) => {
     // it, so faking anything shallower leaves `activatePackage` unfixed.
     const resolveAvailablePackage = lumine.packages.resolveAvailablePackage.bind(lumine.packages);
     spyOn(lumine.packages, "resolveAvailablePackage").and.callFake(function (nameOrPath) {
-      if (specPackageName && nameOrPath === specPackageName) {
+      let resolvedNameOrPath = nameOrPath;
+      if (typeof nameOrPath === "string" && !fs.isDirectorySync(nameOrPath)) {
+        const packageName = path.basename(nameOrPath);
+        const isProvisioned = testPackageNames.has(packageName);
+        const isBundled = lumine.packages.isBundledPackage?.(packageName) === true;
+        if (isProvisioned || isBundled) resolvedNameOrPath = packageName;
+      }
+
+      if (specPackageName && resolvedNameOrPath === specPackageName) {
         return resolveAvailablePackage(specPackagePath);
       }
-      return resolveAvailablePackage(nameOrPath);
+      return resolveAvailablePackage(resolvedNameOrPath);
     });
 
     // Prevent specs from modifying Lumine's menus.

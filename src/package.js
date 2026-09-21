@@ -749,13 +749,22 @@ module.exports = class Package {
               this.requireMainModule();
               this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
               this.initializeForExternalUse("deserialization");
-              this.packageManager
-                .activatePackageInstance(this, null, { type: "deserializer", methodName })
-                .catch((error) => {
-                  if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
-                    console.error(`Failed to activate '${this.name}' for deserialization`, error);
-                  }
-                });
+              // Workspace state is restored before the initial package batch is
+              // activated.  Deserialization must be able to construct a
+              // lightweight item during that phase without running the
+              // package's live `activate()` hook against a half-built DOM.
+              // The normal initial activation will pick the package up later;
+              // an explicit activation is only needed for deserialization that
+              // happens after the initial batch has completed.
+              if (this.packageManager.hasActivatedInitialPackages()) {
+                this.packageManager
+                  .activatePackageInstance(this, null, { type: "deserializer", methodName })
+                  .catch((error) => {
+                    if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
+                      console.error(`Failed to activate '${this.name}' for deserialization`, error);
+                    }
+                  });
+              }
               return this.mainModule[methodName](state, lumineEnvironment);
             },
           }),
@@ -796,13 +805,20 @@ module.exports = class Package {
             this.requireMainModule();
             this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
             this.initializeForExternalUse("a view provider");
-            this.packageManager
-              .activatePackageInstance(this, null, { type: "view-provider", methodName })
-              .catch((error) => {
-                if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
-                  console.error(`Failed to activate '${this.name}' for a view provider`, error);
-                }
-              });
+            // A view provider is also used while workspace state is restored,
+            // before the initial package batch has run.  Keep that path a
+            // facade-only load; the regular initial activation owns the live
+            // package transition.  Once startup is complete, a provider call
+            // is an explicit use and may activate its owner immediately.
+            if (this.packageManager.hasActivatedInitialPackages()) {
+              this.packageManager
+                .activatePackageInstance(this, null, { type: "view-provider", methodName })
+                .catch((error) => {
+                  if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
+                    console.error(`Failed to activate '${this.name}' for a view provider`, error);
+                  }
+                });
+            }
             return this.mainModule[methodName](model);
           }),
         );
