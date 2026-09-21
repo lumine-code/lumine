@@ -384,6 +384,18 @@ ${JSON.stringify(manifest, null, 2)}
     expect(fs.existsSync(keep)).toBe(true);
   });
 
+  it("preserves an interrupted backup when no installed copy can replace it", async () => {
+    const backup = path.join(root, ".lumine-backup-orphaned-package-1-2");
+    fs.mkdirSync(backup);
+    fs.writeFileSync(
+      path.join(backup, "package.json"),
+      JSON.stringify({ name: "orphaned-package", engines: { lumine: "*" } }),
+    );
+
+    expect(await PackageInstallationService.sweep(root)).not.toContain(backup);
+    expect(fs.existsSync(backup)).toBe(true);
+  });
+
   it("does not reload an existing package when preparation fails before unloading", async () => {
     const originalRun = service.run;
     service.run = async (command, args, options) => {
@@ -483,5 +495,91 @@ ${JSON.stringify(manifest, null, 2)}
         expect(restored.apmInstallSource.sha).toBe("b".repeat(40));
       },
     );
+  });
+
+  it("preserves the backup and reports every failure when rollback cannot restore it", async () => {
+    const target = path.join(root, "sample-package");
+    fs.mkdirSync(target);
+    fs.writeFileSync(
+      path.join(target, "package.json"),
+      JSON.stringify({
+        name: "sample-package",
+        version: "0.9.0",
+        repository: "owner/repo",
+        engines: { lumine: "*" },
+      }),
+    );
+    fs.writeFileSync(path.join(target, "old-marker"), "old");
+    service.afterSwap = async () => {
+      throw new Error("new generation failed");
+    };
+    service.afterRollback = async () => {
+      throw new Error("lifecycle restore failed");
+    };
+    spyOn(service, "afterRollback").and.callThrough();
+
+    const originalRename = fs.promises.rename;
+    let renameCalls = 0;
+    let backupPath;
+    spyOn(fs.promises, "rename").and.callFake((from, to) => {
+      renameCalls++;
+      if (renameCalls === 1) backupPath = to;
+      if (renameCalls === 3) return Promise.reject(new Error("backup restore failed"));
+      return originalRename(from, to);
+    });
+
+    let failure;
+    try {
+      await service.install(pack());
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure instanceof AggregateError).toBe(true);
+    expect(failure.errors.map((error) => error.message)).toEqual([
+      "new generation failed",
+      "backup restore failed",
+    ]);
+    expect(service.afterRollback).not.toHaveBeenCalled();
+    expect(fs.existsSync(target)).toBe(false);
+    expect(fs.existsSync(backupPath)).toBe(true);
+    expect(fs.readFileSync(path.join(backupPath, "old-marker"), "utf8")).toBe("old");
+    expect(await PackageInstallationService.sweep(root)).not.toContain(backupPath);
+    expect(fs.existsSync(backupPath)).toBe(true);
+  });
+
+  it("reports a lifecycle restoration failure after the old files were restored", async () => {
+    const target = path.join(root, "sample-package");
+    fs.mkdirSync(target);
+    fs.writeFileSync(
+      path.join(target, "package.json"),
+      JSON.stringify({
+        name: "sample-package",
+        version: "0.9.0",
+        repository: "owner/repo",
+        engines: { lumine: "*" },
+      }),
+    );
+    fs.writeFileSync(path.join(target, "old-marker"), "old");
+    service.afterSwap = async () => {
+      throw new Error("new generation failed");
+    };
+    service.afterRollback = async () => {
+      throw new Error("lifecycle restore failed");
+    };
+
+    let failure;
+    try {
+      await service.install(pack());
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure instanceof AggregateError).toBe(true);
+    expect(failure.errors.map((error) => error.message)).toEqual([
+      "new generation failed",
+      "lifecycle restore failed",
+    ]);
+    expect(fs.readFileSync(path.join(target, "old-marker"), "utf8")).toBe("old");
   });
 });

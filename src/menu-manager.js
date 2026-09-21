@@ -90,9 +90,9 @@ module.exports = class MenuManager {
       this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems()),
       this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu()),
     );
-    // A package activated after startup — installed, re-enabled, or deferred
-    // behind `activationCommands` — has already contributed its menus by the
-    // time this fires, so the Packages menu can be put back in order.
+    // A package activated after startup — for example after being installed or
+    // re-enabled — has already contributed its menus by the time this fires,
+    // so the Packages menu can be put back in order.
     this.disposables.add(this.packageManager.onDidActivatePackage(() => this.sortPackagesMenu()));
   }
 

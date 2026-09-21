@@ -76,6 +76,25 @@ module.exports = class ThemePackage extends Package {
     return stylesheetPaths;
   }
 
+  loadStylesheets() {
+    super.loadStylesheets();
+    // ThemeManager may prepare a complete pair before the lifecycle switch.
+    // Mark that preparation so activation does not read the same files twice;
+    // a direct package activation prepares them here instead.
+    this.stylesheetsPreparedForActivation = true;
+  }
+
+  activateMain(options) {
+    if (!this.stylesheetsPreparedForActivation) this.loadStylesheets();
+    this.stylesheetsPreparedForActivation = false;
+    return super.activateMain(options);
+  }
+
+  deactivateStylesheets() {
+    super.deactivateStylesheets();
+    this.stylesheetsPreparedForActivation = false;
+  }
+
   // Use this theme in the mode currently in effect, replacing any existing
   // theme of the same type (ui/syntax) in that mode's pair.
   enable() {
@@ -106,24 +125,5 @@ module.exports = class ThemePackage extends Package {
     this.loadTime = 0;
     this.configSchemaRegisteredOnLoad = this.registerConfigSchemaFromMetadata();
     return this;
-  }
-
-  activate() {
-    if (this.activationPromise == null) {
-      this.activationPromise = new Promise((resolve, reject) => {
-        this.resolveActivationPromise = resolve;
-        this.rejectActivationPromise = reject;
-        this.measure("activateTime", () => {
-          try {
-            this.loadStylesheets();
-            this.activateNow();
-          } catch (error) {
-            this.handleError(`Failed to activate the ${this.name} theme`, error);
-          }
-        });
-      });
-    }
-
-    return this.activationPromise;
   }
 };

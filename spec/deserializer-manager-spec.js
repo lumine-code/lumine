@@ -23,6 +23,43 @@ describe("DeserializerManager", function () {
       expect(manager.deserialize({ deserializer: "Foo", name: "Bar" })).toBeUndefined();
     }));
 
+  it("keeps the newest owner when an older registration is disposed", () => {
+    const oldDeserializer = {
+      name: "Shared",
+      deserialize: () => "old",
+    };
+    const newDeserializer = {
+      name: "Shared",
+      deserialize: () => "new",
+    };
+    const oldRegistration = manager.add(oldDeserializer);
+    const newRegistration = manager.add(newDeserializer);
+
+    oldRegistration.dispose();
+    expect(manager.deserialize({ deserializer: "Shared" })).toBe("new");
+
+    newRegistration.dispose();
+    spyOn(console, "warn");
+    expect(manager.deserialize({ deserializer: "Shared" })).toBeUndefined();
+  });
+
+  it("restores the previous owner when the newest registration is disposed", () => {
+    const oldDeserializer = {
+      name: "Shared",
+      deserialize: () => "old",
+    };
+    const newDeserializer = {
+      name: "Shared",
+      deserialize: () => "new",
+    };
+    manager.add(oldDeserializer);
+    const newRegistration = manager.add(newDeserializer);
+
+    newRegistration.dispose();
+
+    expect(manager.deserialize({ deserializer: "Shared" })).toBe("old");
+  });
+
   describe("::deserialize(state)", function () {
     beforeEach(() => manager.add(Foo));
 

@@ -1163,6 +1163,41 @@ class Config {
     });
   }
 
+  unsetSchema(keyPath) {
+    const keys = splitKeyPath(keyPath);
+    if (keys.length === 0) throw new Error("Cannot remove the root configuration schema");
+    let parent = this.schema;
+    for (const key of keys.slice(0, -1)) {
+      parent = parent.properties?.[key];
+      if (!parent) return false;
+    }
+    const leaf = keys.at(-1);
+    if (!parent.properties || !Object.hasOwn(parent.properties, leaf)) return false;
+
+    delete parent.properties[leaf];
+    deleteValueAtKeyPath(this.defaultSettings, keyPath);
+
+    const scopedDefaults = this.scopedSettingsStore.propertiesForSource("schema-default");
+    this.scopedSettingsStore.removePropertiesForSource("schema-default");
+    for (const [selector, settings] of Object.entries(scopedDefaults)) {
+      deleteValueAtKeyPath(settings, keyPath);
+      const remaining = withoutEmptyObjects(settings);
+      if (remaining != null) {
+        this.scopedSettingsStore.addProperties(
+          "schema-default",
+          { [selector]: remaining },
+          {
+            priority: this.priorityForSource("schema-default"),
+          },
+        );
+      }
+    }
+
+    this.resetSettingsForSchemaChange();
+    this.emitChangeEvent({ keyPath, scopeSelector: null, source: "schema-default" });
+    return true;
+  }
+
   save() {
     if (this.saveCallback) {
       let allSettings = { "*": this.settings };

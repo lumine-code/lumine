@@ -168,17 +168,54 @@ class PackageInstallationService {
       }
       return { metadata, packageName, target, originKey, resolvedSha: sha };
     } catch (error) {
-      if (swapped && target) await this.remove(target).catch(() => {});
-      if (backup && target && fs.existsSync(backup)) {
-        await fs.promises.rename(backup, target).catch(() => {});
+      const rollbackErrors = [];
+      if (swapped && target) {
+        try {
+          await this.remove(target);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
       }
-      if (packageName && lifecycleStarted) {
-        await this.afterRollback(packageName, lifecycleState).catch(() => {});
+      if (backup && target && fs.existsSync(backup)) {
+        try {
+          await fs.promises.rename(backup, target);
+          // A null backup is the proof that restoration succeeded. If rename
+          // fails, keep the only known-good copy on disk for manual recovery.
+          backup = null;
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (backup && fs.existsSync(backup)) {
+        try {
+          await fs.promises.writeFile(
+            path.join(backup, ".lumine-rollback-failed"),
+            `${JSON.stringify({ target }, null, 2)}\n`,
+          );
+        } catch (markerError) {
+          rollbackErrors.push(markerError);
+        }
+      }
+      if (packageName && lifecycleStarted && !backup) {
+        try {
+          await this.afterRollback(packageName, lifecycleState);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        const recoveryLocation = backup ? `; previous copy retained at '${backup}'` : "";
+        throw new AggregateError(
+          [error, ...rollbackErrors],
+          `Installing '${packageName || "package"}' failed and rollback did not complete${recoveryLocation}`,
+          { cause: error },
+        );
       }
       throw error;
     } finally {
       await this.remove(stage).catch(() => {});
-      if (backup) await this.remove(backup).catch(() => {});
+      // A remaining backup means restoration failed. Never destroy the last
+      // good copy merely to tidy an interrupted update.
     }
   }
 
@@ -316,10 +353,11 @@ class PackageInstallationService {
     await this.remove(archivePath);
   }
 
-  // Delete the staging and backup directories an interrupted install left
-  // behind. A backup holding a native module cannot be deleted while the
-  // process that loaded it runs, so the sweep belongs at startup, before
-  // anything has been loaded.
+  // Delete the staging and ordinary backup directories an interrupted install
+  // left behind. A backup explicitly marked after a failed rollback is the only
+  // known-good copy and is retained for recovery. A backup holding a native
+  // module cannot be deleted while the process that loaded it runs, so the
+  // sweep belongs at startup, before anything has been loaded.
   static async sweep(packagesDirectory) {
     let entries;
     try {
@@ -328,10 +366,40 @@ class PackageInstallationService {
       return [];
     }
 
+    const availablePackageNames = new Set();
+    for (const entry of entries) {
+      if (entry.name.startsWith(".lumine-") || (!entry.isDirectory() && !entry.isSymbolicLink())) {
+        continue;
+      }
+      const directory = path.join(packagesDirectory, entry.name);
+      const manifestPath = resolveManifestPath(directory);
+      if (!manifestPath) continue;
+      try {
+        const metadata = CSON.readFileSync(manifestPath) || {};
+        availablePackageNames.add(metadata.name || entry.name);
+      } catch {
+        // An unreadable installed copy cannot prove that deleting its backup is
+        // safe, but a marked rollback backup is still retained below.
+      }
+    }
+
     const swept = [];
     for (const entry of entries) {
       if (!/^\.lumine-(stage|backup)-/.test(entry.name)) continue;
       const target = path.join(packagesDirectory, entry.name);
+      if (entry.name.startsWith(".lumine-backup-")) {
+        if (fs.existsSync(path.join(target, ".lumine-rollback-failed"))) continue;
+        const manifestPath = resolveManifestPath(target);
+        if (manifestPath) {
+          try {
+            const metadata = CSON.readFileSync(manifestPath) || {};
+            if (metadata.name && !availablePackageNames.has(metadata.name)) continue;
+          } catch {
+            // Without a readable receipt there is no package identity to match;
+            // fall back to the ordinary stale-backup sweep.
+          }
+        }
+      }
       try {
         await PackageInstallationService.removePath(target);
         swept.push(target);

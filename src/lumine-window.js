@@ -59,6 +59,10 @@ module.exports = class LumineWindow extends EventEmitter {
 
     const options = {
       frame: false,
+      // Keep the native mouse pointer visible while typing on platforms where
+      // Electron exposes the window-level auto-hide control. Windows uses the
+      // Chromium feature switch configured in start.js instead.
+      disableAutoHideCursor: true,
       show: false,
       title: getAppName(),
       tabbingIdentifier: "lumine",

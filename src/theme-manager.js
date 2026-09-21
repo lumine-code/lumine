@@ -675,38 +675,32 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
         this.systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
       }
 
-      // Serialize switches so a rapid re-toggle can't interleave with the
-      // previous switch's package bookkeeping. The active pair is derived from
-      // `theme.mode` + `theme.light`/`theme.dark`, so we switch whenever any of
-      // those (or the system preference, under `mode: system`) changes.
-      const queueSwitch = (onSettled) => {
-        this.themeSwitchPromise = this.themeSwitchPromise
-          .then(() => this.switchThemes())
-          .then(
-            () => onSettled?.(),
-            (error) => {
-              console.error(`Failed to switch themes: ${error?.stack ?? error}`);
-              onSettled?.();
-            },
-          );
+      const observeSwitch = (onSettled) => {
+        this.queueThemeSwitch().then(
+          () => onSettled?.(),
+          (error) => {
+            console.error(`Failed to switch themes: ${error?.stack ?? error}`);
+            onSettled?.();
+          },
+        );
       };
 
       // The initial activation resolves the returned promise.
-      queueSwitch(resolve);
+      observeSwitch(resolve);
 
       if (!this.themeObservationSubscriptions) {
         this.themeObservationSubscriptions = new CompositeDisposable();
         this.themeObservationSubscriptions.add(
-          this.config.onDidChange("theme.mode", () => queueSwitch()),
+          this.config.onDidChange("theme.mode", () => observeSwitch()),
           this.config.onDidChange("theme.light", () => {
-            if (!this.isDarkThemeMode()) queueSwitch();
+            if (!this.isDarkThemeMode()) observeSwitch();
           }),
           this.config.onDidChange("theme.dark", () => {
-            if (this.isDarkThemeMode()) queueSwitch();
+            if (this.isDarkThemeMode()) observeSwitch();
           }),
         );
         const systemThemeChange = () => {
-          if (this.config.get("theme.mode") === "system") queueSwitch();
+          if (this.config.get("theme.mode") === "system") observeSwitch();
         };
         const systemThemeQuery = this.systemThemeQuery;
         systemThemeQuery.addEventListener("change", systemThemeChange);
@@ -719,6 +713,26 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
         this.observeSystemAccentColor();
       }
     });
+  }
+
+  // Serialize switches so rapid config changes, package replacement, and
+  // rollback cannot interleave their lifecycle or stylesheet bookkeeping.
+  queueThemeSwitch() {
+    const operation = this.themeSwitchPromise.catch(() => {}).then(() => this.switchThemes());
+    operation.catch(() => {});
+    this.themeSwitchPromise = operation;
+    return operation;
+  }
+
+  whenThemesSettled() {
+    return this.themeSwitchPromise;
+  }
+
+  reconcilePackage(name, lifecycleState) {
+    if (lifecycleState !== "active" && lifecycleState !== "activating") {
+      return Promise.resolve(this.packageManager.getLoadedPackage(name));
+    }
+    return this.queueThemeSwitch().then(() => this.packageManager.getLoadedPackage(name));
   }
 
   destroy() {
@@ -799,6 +813,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     };
 
     await this.applyWithCrossFade(applyStyles);
+    if (generation !== (this.themeOperationGeneration || 0)) return;
 
     // Complete the package lifecycle switch. Themes present in both sets stay
     // active; their recompiled styles were already re-attached above, and
@@ -809,16 +824,13 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     await Promise.all(
       themesToDeactivate.map((pack) => this.packageManager.deactivatePackage(pack.name)),
     );
-    // Re-register sequentially so the active-package order — which
-    // `getActiveThemes` reflects — matches the enabled order. Continuing
-    // themes are dropped from the registry first (their style sheets stay
-    // attached) and re-added at the right position.
-    for (const pack of newThemes) {
-      delete this.packageManager.activePackages[pack.name];
-    }
+    // Activate sequentially, then explicitly set their position in the
+    // manager-owned active ordering. Lifecycle state is never mutated merely
+    // to reorder themes.
     for (const pack of newThemes) {
       await this.packageManager.activatePackage(pack.name);
     }
+    this.packageManager.reorderActivePackages(newThemes.map((pack) => pack.name));
 
     if (generation !== (this.themeOperationGeneration || 0)) return;
     await this.watchUserStylesheet();
@@ -912,6 +924,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
 
   removeActiveThemeClasses(themes = this.getActiveThemes()) {
     const workspaceElement = this.viewRegistry.getView(this.workspace);
+    if (!workspaceElement) return;
     for (const pack of themes) {
       workspaceElement.classList.remove(`theme-${pack.name}`);
     }

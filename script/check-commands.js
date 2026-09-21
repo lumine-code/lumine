@@ -37,20 +37,13 @@
 // than a defect, and a check that demanded one everywhere would buy a fleet of
 // lines restating their own titles.
 //
-// The inventory is static: command names come from menus/, keymaps/ and
-// activationCommands, plus the `"<pkg>:<name>":` keys registered in lib/ and
-// src/. A name built at runtime from a variable is invisible here, and so is a
-// description a helper forwards rather than one written beside its command —
-// which is why a table-driven registration keys by the full command name and
-// puts the description next to it.
+// The inventory is static: command names come from menus/, keymaps/ and the
+// `"<pkg>:<name>":` keys registered in lib/ and src/. A name built at runtime
+// from a variable is invisible here, and so is metadata a helper forwards
+// rather than writing literally.
 //
-// One name shape defeats the pattern rather than merely hiding from it: a
-// command with a quote character *in* its name, as super-select's
-// `string-'-'` family has. The quote ends the literal the scan is reading, so
-// the command is reported under a truncated name and never credited with the
-// description written beside it. Spelling a delimiter into a command name is
-// rare enough to leave alone; the alternative is a pattern that cannot tell a
-// command name from the code around it.
+// Command names are lowercase dash-separated words, so the literal pattern can
+// end at the closing quote without mistaking punctuation for part of a name.
 //
 // Scope defaults to the bundled fleet. That reads the *pinned* copies out of
 // node_modules, so a
@@ -61,6 +54,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { parse } = require("@babel/parser");
 
 const ROOT = path.join(__dirname, "..");
 const CSON = require("@lumine-code/season");
@@ -73,9 +67,8 @@ const _ = require("@lumine-code/underscore-plus");
 // The half after the colon is matched case-insensitively because a few commands
 // spell an acronym in the name itself — `bacadra-tools:open-CALC`. Lowercasing
 // the class here hid those from the description scan entirely: they were counted
-// from `activationCommands`, which does not go through this pattern, and then
-// never visited in the source, so a description written beside one read as
-// missing.
+// from a manifest trigger list. Command metadata now lives beside the runtime
+// registration, so every command is visited through this source pattern.
 const commandPattern = (packageName) =>
   new RegExp(`["'\`]${_.escapeRegExp(packageName)}:([A-Za-z0-9-]+)["'\`]`, "g");
 
@@ -84,7 +77,8 @@ const commandPattern = (packageName) =>
 // credited to the wrong command.
 const DISPLAY_NAME = /displayName\s*:\s*["'`]([^"'`]*)["'`]/;
 
-// `description: "…"` as the *first* key of the descriptor a command name opens.
+// For a non-cold command, `description: "…"` as the *first* key of the
+// descriptor a command name opens.
 // The window is one literal rather than the span to the next command, because
 // `description` is also the options key for a notification and for a
 // configSchema entry, and both appear in the same files in quantity. Anchoring
@@ -126,6 +120,270 @@ const EDITOR_NAMESPACES = ["core", "editor", "pane", "window", "application", "m
 
 const namespacesFor = (packageName) =>
   packageName === "lumine" ? EDITOR_NAMESPACES : [packageName];
+
+const STATIC_UNKNOWN = Symbol("static-unknown");
+const FUNCTION_NODES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionExpression",
+  "FunctionDeclaration",
+  "ObjectMethod",
+  "ClassMethod",
+  "ClassPrivateMethod",
+]);
+
+function walkAst(node, visit, owner = null) {
+  if (!node || typeof node !== "object") return;
+  const currentOwner = FUNCTION_NODES.has(node.type) ? node : owner;
+  visit(node, currentOwner);
+  for (const [key, value] of Object.entries(node)) {
+    if (["loc", "start", "end", "extra"].includes(key)) continue;
+    if (Array.isArray(value)) value.forEach((child) => walkAst(child, visit, currentOwner));
+    else if (value && typeof value.type === "string") walkAst(value, visit, currentOwner);
+  }
+}
+
+function staticPropertyName(node, environment) {
+  if (!node.computed && node.property?.type === "Identifier") return node.property.name;
+  return staticValue(node.property, environment);
+}
+
+function staticValue(node, environment) {
+  if (!node) return STATIC_UNKNOWN;
+  if (
+    node.type === "StringLiteral" ||
+    node.type === "NumericLiteral" ||
+    node.type === "BooleanLiteral"
+  ) {
+    return node.value;
+  }
+  if (node.type === "NullLiteral") return null;
+  if (node.type === "Identifier") return environment.get(node.name) ?? STATIC_UNKNOWN;
+  if (node.type === "TemplateLiteral") {
+    let value = node.quasis[0]?.value?.cooked ?? "";
+    for (let index = 0; index < node.expressions.length; index++) {
+      const expression = staticValue(node.expressions[index], environment);
+      if (expression === STATIC_UNKNOWN) return STATIC_UNKNOWN;
+      value += String(expression) + (node.quasis[index + 1]?.value?.cooked ?? "");
+    }
+    return value;
+  }
+  if (node.type === "BinaryExpression" && node.operator === "+") {
+    const left = staticValue(node.left, environment);
+    const right = staticValue(node.right, environment);
+    return left === STATIC_UNKNOWN || right === STATIC_UNKNOWN ? STATIC_UNKNOWN : left + right;
+  }
+  if (node.type === "ArrayExpression") {
+    const values = node.elements.map((element) => staticValue(element, environment));
+    return values.includes(STATIC_UNKNOWN) ? STATIC_UNKNOWN : values;
+  }
+  if (node.type === "ObjectExpression") {
+    const value = {};
+    for (const property of node.properties) {
+      if (property.type !== "ObjectProperty") continue;
+      const key = property.computed
+        ? staticValue(property.key, environment)
+        : (property.key.name ?? property.key.value);
+      if (typeof key !== "string") continue;
+      value[key] = staticValue(property.value, environment);
+    }
+    return value;
+  }
+  if (node.type === "MemberExpression" || node.type === "OptionalMemberExpression") {
+    const object = staticValue(node.object, environment);
+    const property = staticPropertyName(node, environment);
+    if (object === STATIC_UNKNOWN || object == null || typeof property !== "string") {
+      return STATIC_UNKNOWN;
+    }
+    return Object.hasOwn(object, property) ? object[property] : STATIC_UNKNOWN;
+  }
+  if (node.type === "TSAsExpression" || node.type === "TSSatisfiesExpression") {
+    return staticValue(node.expression, environment);
+  }
+  return STATIC_UNKNOWN;
+}
+
+function bindStaticPattern(pattern, value, environment) {
+  if (pattern?.type === "Identifier") {
+    environment.set(pattern.name, value);
+    return;
+  }
+  if (pattern?.type !== "ObjectPattern" || value === STATIC_UNKNOWN || value == null) return;
+  for (const property of pattern.properties) {
+    if (property.type !== "ObjectProperty") continue;
+    const key = property.key.name ?? property.key.value;
+    bindStaticPattern(
+      property.value,
+      typeof key === "string" && Object.hasOwn(value, key) ? value[key] : STATIC_UNKNOWN,
+      environment,
+    );
+  }
+}
+
+function localModulePath(fromFile, request) {
+  if (typeof request !== "string" || !request.startsWith(".")) return null;
+  const base = path.resolve(path.dirname(fromFile), request);
+  for (const candidate of [
+    base,
+    `${base}.js`,
+    `${base}.jsx`,
+    `${base}.cjs`,
+    `${base}.mjs`,
+    path.join(base, "index.js"),
+  ]) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+function staticModule(file, cache = new Map()) {
+  const resolved = path.resolve(file);
+  if (cache.has(resolved)) return cache.get(resolved);
+  const model = { ast: null, environment: new Map(), exports: {} };
+  cache.set(resolved, model);
+  try {
+    model.ast = parse(fs.readFileSync(resolved, "utf8"), {
+      sourceType: "unambiguous",
+      errorRecovery: true,
+      plugins: ["jsx", "typescript"],
+    });
+  } catch {
+    return model;
+  }
+
+  for (const statement of model.ast.program.body) {
+    if (statement.type === "ImportDeclaration") {
+      const importedPath = localModulePath(resolved, statement.source.value);
+      const imported = importedPath ? staticModule(importedPath, cache).exports : {};
+      for (const specifier of statement.specifiers) {
+        if (specifier.type === "ImportSpecifier") {
+          model.environment.set(
+            specifier.local.name,
+            imported[specifier.imported.name ?? specifier.imported.value] ?? STATIC_UNKNOWN,
+          );
+        } else if (specifier.type === "ImportDefaultSpecifier") {
+          model.environment.set(specifier.local.name, imported.default ?? STATIC_UNKNOWN);
+        } else if (specifier.type === "ImportNamespaceSpecifier") {
+          model.environment.set(specifier.local.name, imported);
+        }
+      }
+      continue;
+    }
+    const declaration =
+      statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    if (declaration?.type === "VariableDeclaration") {
+      for (const item of declaration.declarations) {
+        let value = STATIC_UNKNOWN;
+        if (
+          item.init?.type === "CallExpression" &&
+          item.init.callee?.type === "Identifier" &&
+          item.init.callee.name === "require"
+        ) {
+          const request = staticValue(item.init.arguments[0], model.environment);
+          const importedPath = localModulePath(resolved, request);
+          if (importedPath) value = staticModule(importedPath, cache).exports;
+        } else {
+          value = staticValue(item.init, model.environment);
+        }
+        bindStaticPattern(item.id, value, model.environment);
+      }
+    }
+    if (statement.type === "ExportNamedDeclaration" && statement.declaration) {
+      for (const item of statement.declaration.declarations || []) {
+        if (item.id.type === "Identifier") {
+          model.exports[item.id.name] = model.environment.get(item.id.name) ?? STATIC_UNKNOWN;
+        }
+      }
+    }
+    if (statement.type !== "ExpressionStatement") continue;
+    const expression = statement.expression;
+    if (expression.type !== "AssignmentExpression") continue;
+    const left = expression.left;
+    if (
+      left.type === "MemberExpression" &&
+      left.object?.type === "Identifier" &&
+      left.object.name === "module" &&
+      staticPropertyName(left, model.environment) === "exports"
+    ) {
+      const exported = staticValue(expression.right, model.environment);
+      if (exported !== STATIC_UNKNOWN) model.exports = exported;
+    } else if (
+      left.type === "MemberExpression" &&
+      left.object?.type === "Identifier" &&
+      left.object.name === "exports"
+    ) {
+      const key = staticPropertyName(left, model.environment);
+      const exported = staticValue(expression.right, model.environment);
+      if (typeof key === "string" && exported !== STATIC_UNKNOWN) model.exports[key] = exported;
+    }
+  }
+  return model;
+}
+
+function memberPath(node) {
+  if (node?.type === "Identifier") return node.name;
+  if (node?.type !== "MemberExpression" && node?.type !== "OptionalMemberExpression") return "";
+  const property = node.computed ? node.property?.value : node.property?.name;
+  return `${memberPath(node.object)}.${property ?? ""}`;
+}
+
+// Resolve table-driven registrations whose command names and descriptors are
+// assembled from a literal array imported by the package entrypoint. This is
+// the same authoring shape as writing each descriptor inline; the loop merely
+// removes repetition, so the coverage audit must not make authors duplicate it.
+function tableDrivenCommandMetadata(dir) {
+  const metadata = new Map();
+  const moduleCache = new Map();
+  for (const file of sourceFiles(dir)) {
+    const model = staticModule(file, moduleCache);
+    if (!model.ast) continue;
+    const commandMaps = [];
+    const loops = [];
+    walkAst(model.ast.program, (node, owner) => {
+      if (
+        node.type === "CallExpression" &&
+        /(?:^|\.)commands\.add$/.test(memberPath(node.callee)) &&
+        node.arguments[1]?.type === "Identifier"
+      ) {
+        commandMaps.push({ name: node.arguments[1].name, owner });
+      }
+      if (node.type === "ForOfStatement") loops.push({ node, owner });
+    });
+
+    for (const { name: mapName, owner } of commandMaps) {
+      for (const { node: loop, owner: loopOwner } of loops) {
+        if (loopOwner !== owner) continue;
+        const values = staticValue(loop.right, model.environment);
+        if (!Array.isArray(values)) continue;
+        for (const value of values) {
+          const environment = new Map(model.environment);
+          const pattern =
+            loop.left.type === "VariableDeclaration" ? loop.left.declarations[0]?.id : loop.left;
+          bindStaticPattern(pattern, value, environment);
+          walkAst(
+            loop.body,
+            (candidate, nestedOwner) => {
+              if (nestedOwner !== owner || candidate.type !== "AssignmentExpression") return;
+              const target = candidate.left;
+              if (
+                target.type !== "MemberExpression" ||
+                target.object?.type !== "Identifier" ||
+                target.object.name !== mapName
+              ) {
+                return;
+              }
+              const command = staticPropertyName(target, environment);
+              const descriptor = staticValue(candidate.right, environment);
+              if (typeof command !== "string" || descriptor === STATIC_UNKNOWN) return;
+              metadata.set(command, descriptor);
+            },
+            owner,
+          );
+        }
+      }
+    }
+  }
+  return metadata;
+}
 
 function bundledPackages() {
   const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
@@ -169,11 +427,28 @@ function declaredFiles(dir) {
 function inventory(name, dir) {
   const commands = new Map();
   const note = (command) => {
-    if (!commands.has(command)) commands.set(command, { displayName: null, description: null });
+    if (!commands.has(command)) {
+      commands.set(command, {
+        displayName: null,
+        description: null,
+        runtimeDescription: null,
+      });
+    }
     return commands.get(command);
   };
   const namespaces = namespacesFor(name);
   const patterns = namespaces.map((namespace) => commandPattern(namespace));
+  const recordRuntimeMetadata = (command, metadata) => {
+    if (!namespaces.some((namespace) => command.startsWith(`${namespace}:`))) return;
+    const entry = note(command);
+    if (typeof metadata.displayName === "string") entry.displayName = metadata.displayName;
+    if (typeof metadata.description !== "string") return;
+    if (entry.runtimeDescription != null && entry.runtimeDescription !== metadata.description) {
+      entry.conflict = metadata.description;
+    }
+    entry.runtimeDescription = metadata.description;
+    entry.description = metadata.description;
+  };
 
   for (const file of declaredFiles(dir)) {
     const text = fs.readFileSync(file, "utf8");
@@ -182,14 +457,8 @@ function inventory(name, dir) {
     }
   }
 
-  const manifest = path.join(dir, "package.json");
-  if (fs.existsSync(manifest)) {
-    const activation = CSON.readFileSync(manifest).activationCommands ?? {};
-    for (const list of Object.values(activation)) {
-      for (const command of list) {
-        if (namespaces.some((namespace) => command.startsWith(`${namespace}:`))) note(command);
-      }
-    }
+  for (const [command, metadata] of tableDrivenCommandMetadata(dir)) {
+    recordRuntimeMetadata(command, metadata);
   }
 
   for (const file of sourceFiles(dir)) {
@@ -213,10 +482,7 @@ function inventory(name, dir) {
       const jsx = text.slice(Math.max(0, match.index - 16)).match(jsxDescriptionPattern(command));
       const found = described && described.index === 0 ? described[2] : jsx ? jsx[3] : null;
       if (found != null) {
-        if (entry.description != null && entry.description !== found) {
-          entry.conflict = found;
-        }
-        entry.description = found;
+        recordRuntimeMetadata(command, { description: found });
       }
     });
   }
@@ -389,6 +655,6 @@ function main() {
   process.exitCode = errors.length > 0 ? 1 : 0;
 }
 
-main();
+if (require.main === module) main();
 
-module.exports = { comparable, inventory };
+module.exports = { comparable, inventory, tableDrivenCommandMetadata };

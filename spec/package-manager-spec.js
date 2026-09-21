@@ -59,7 +59,7 @@ describe("PackageManager", () => {
 
     afterEach(async () => {
       await lumine.packages.deactivatePackages();
-      lumine.packages.unloadPackages();
+      await lumine.packages.unloadPackages();
     });
 
     it("sets hasLoadedInitialPackages", () => {
@@ -187,7 +187,7 @@ describe("PackageManager", () => {
       });
     });
 
-    it("early-activates any project.directory-provider or project.repository-provider services that the package provide", () => {
+    it("owns early project directory providers in the package load scope", async () => {
       jasmine.useRealClock();
 
       const providers = [];
@@ -199,6 +199,14 @@ describe("PackageManager", () => {
       expect(providers.map((p) => p.name)).toEqual([
         "directory provider from package-with-directory-provider",
       ]);
+      expect(lumine.packages.serviceHub.hasProvider("project.directory-provider", "^1.0.0")).toBe(
+        true,
+      );
+
+      await lumine.packages.unloadPackage("package-with-directory-provider");
+      expect(lumine.packages.serviceHub.hasProvider("project.directory-provider", "^1.0.0")).toBe(
+        false,
+      );
     });
 
     describe("when there are view providers specified in the package's package.json", () => {
@@ -206,16 +214,22 @@ describe("PackageManager", () => {
       const model2 = { worksWithViewProvider2: true };
 
       afterEach(async () => {
-        await lumine.packages.deactivatePackage("package-with-view-providers");
-        lumine.packages.unloadPackage("package-with-view-providers");
+        if (lumine.packages.isPackageLoaded("package-with-view-providers")) {
+          await lumine.packages.deactivatePackage("package-with-view-providers");
+          await lumine.packages.unloadPackage("package-with-view-providers");
+        }
       });
 
-      it("does not load the view providers immediately", () => {
+      it("registers lazy owner-aware view-provider proxies at load", async () => {
+        const providerCount = lumine.views.getViewProviderCount();
         const pack = lumine.packages.loadPackage("package-with-view-providers");
         expect(pack.mainModule).toBeNull();
+        expect(lumine.views.getViewProviderCount()).toBe(providerCount + 2);
 
-        expect(() => lumine.views.getView(model1)).toThrow();
-        expect(() => lumine.views.getView(model2)).toThrow();
+        const element1 = lumine.views.getView(model1);
+        expect(element1.dataset.createdBy).toBe("view-provider-1");
+        await lumine.packages.activatePackage(pack.name);
+        expect(lumine.packages.isPackageActive(pack.name)).toBe(true);
       });
 
       it("registers the view providers when the package is activated", async () => {
@@ -232,6 +246,19 @@ describe("PackageManager", () => {
         expect(element2.dataset.createdBy).toBe("view-provider-2");
       });
 
+      it("shares readiness with a view-provider request that re-enters synchronous activation", async () => {
+        const mainModule = require("./fixtures/packages/package-with-view-providers");
+        mainModule.createViewDuringActivation = true;
+        mainModule.viewCreatedDuringActivation = null;
+        lumine.packages.loadPackage("package-with-view-providers");
+
+        await lumine.packages.activatePackage("package-with-view-providers");
+
+        expect(mainModule.viewCreatedDuringActivation.dataset.createdBy).toBe("view-provider-1");
+        expect(lumine.packages.isPackageActive("package-with-view-providers")).toBe(true);
+        mainModule.createViewDuringActivation = false;
+      });
+
       it("registers the view providers when any of the package's deserializers are used", () => {
         lumine.packages.loadPackage("package-with-view-providers");
 
@@ -240,13 +267,13 @@ describe("PackageManager", () => {
           deserializer: "DeserializerFromPackageWithViewProviders",
           a: "b",
         });
-        expect(lumine.views.addViewProvider.calls.count()).toBe(2);
+        expect(lumine.views.addViewProvider.calls.count()).toBe(0);
 
         lumine.deserializers.deserialize({
           deserializer: "DeserializerFromPackageWithViewProviders",
           a: "b",
         });
-        expect(lumine.views.addViewProvider.calls.count()).toBe(2);
+        expect(lumine.views.addViewProvider.calls.count()).toBe(0);
 
         const element1 = lumine.views.getView(model1);
         expect(element1 instanceof HTMLDivElement).toBe(true);
@@ -256,9 +283,32 @@ describe("PackageManager", () => {
         expect(element2 instanceof HTMLDivElement).toBe(true);
         expect(element2.dataset.createdBy).toBe("view-provider-2");
       });
+
+      it("keeps proxies across deactivation, blocks them while disabled, and removes them on unload", async () => {
+        const providerCount = lumine.views.getViewProviderCount();
+        const pack = lumine.packages.loadPackage("package-with-view-providers");
+        await lumine.packages.activatePackage(pack.name);
+        await lumine.packages.deactivatePackage(pack.name);
+
+        const reactivatedView = lumine.views.getView({ worksWithViewProvider2: true });
+        expect(reactivatedView.dataset.createdBy).toBe("view-provider-2");
+        await lumine.packages.activatePackage(pack.name);
+        spyOn(pack.mainModule, "theDeserializerMethod").and.callThrough();
+
+        await lumine.packages.disablePackage(pack.name);
+        expect(() => lumine.views.getView({ worksWithViewProvider1: true })).toThrow();
+        lumine.deserializers.deserialize({
+          deserializer: "DeserializerFromPackageWithViewProviders",
+        });
+        expect(pack.mainModule.theDeserializerMethod).not.toHaveBeenCalled();
+        expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+
+        await lumine.packages.unloadPackage(pack.name);
+        expect(lumine.views.getViewProviderCount()).toBe(providerCount);
+      });
     });
 
-    it("registers the config schema in the package's metadata, if present", () => {
+    it("registers the config schema in the package's metadata, if present", async () => {
       let pack = lumine.packages.loadPackage("package-with-json-config-schema");
       expect(lumine.config.getSchema("package-with-json-config-schema")).toEqual({
         type: "object",
@@ -270,7 +320,7 @@ describe("PackageManager", () => {
 
       expect(pack.mainModule).toBeNull();
 
-      lumine.packages.unloadPackage("package-with-json-config-schema");
+      await lumine.packages.unloadPackage("package-with-json-config-schema");
       lumine.config.clear();
 
       lumine.packages.loadPackage("package-with-json-config-schema");
@@ -283,27 +333,32 @@ describe("PackageManager", () => {
       });
     });
 
-    describe("when a package does not have deserializers, view providers or a config schema in its package.json", () => {
+    it("loads main-module config at explicit initialization", () => {
+      mockLocalStorage();
+
+      const pack = lumine.packages.loadPackage("package-with-config-schema");
+
+      expect(pack.mainModule).toBeNull();
+      pack.initializeForExternalUse("spec");
+      expect(lumine.config.getSchema("package-with-config-schema.numbers.one")).toEqual(
+        jasmine.objectContaining({ type: "integer", default: 1 }),
+      );
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+    });
+
+    describe("when a package has no load-time registrations", () => {
       beforeEach(() => mockLocalStorage());
 
-      it("defers loading the package's main module if the package previously used no Lumine APIs when its main module was required", () => {
-        const pack1 = lumine.packages.loadPackage("package-with-main");
-        expect(pack1.mainModule).toBeDefined();
-
-        lumine.packages.unloadPackage("package-with-main");
-
-        const pack2 = lumine.packages.loadPackage("package-with-main");
-        expect(pack2.mainModule).toBeNull();
+      it("keeps the main module out of the metadata load", () => {
+        const pack = lumine.packages.loadPackage("package-with-main");
+        expect(pack.mainModule).toBeNull();
       });
 
-      it("does not defer loading the package's main module if the package previously used Lumine APIs when its main module was required", () => {
-        const pack1 = lumine.packages.loadPackage("package-with-eval-time-api-calls");
-        expect(pack1.mainModule).toBeDefined();
-
-        lumine.packages.unloadPackage("package-with-eval-time-api-calls");
-
-        const pack2 = lumine.packages.loadPackage("package-with-eval-time-api-calls");
-        expect(pack2.mainModule).not.toBeNull();
+      it("requires and initializes the main module at the explicit bootstrap boundary", () => {
+        const pack = lumine.packages.loadPackage("package-with-main");
+        pack.initializeForExternalUse("spec");
+        expect(pack.mainModule).not.toBeNull();
+        expect(pack.mainInitialized).toBe(true);
       });
     });
   });
@@ -322,41 +377,121 @@ describe("PackageManager", () => {
 
   describe("::unloadPackage(name)", () => {
     describe("when the package is active", () => {
-      it("throws an error", async () => {
+      it("deactivates and unloads it atomically", async () => {
         const pack = await lumine.packages.activatePackage("package-with-main");
         expect(lumine.packages.isPackageLoaded(pack.name)).toBeTruthy();
         expect(lumine.packages.isPackageActive(pack.name)).toBeTruthy();
 
-        expect(() => lumine.packages.unloadPackage(pack.name)).toThrow();
-        expect(lumine.packages.isPackageLoaded(pack.name)).toBeTruthy();
-        expect(lumine.packages.isPackageActive(pack.name)).toBeTruthy();
+        await lumine.packages.unloadPackage(pack.name);
+        expect(lumine.packages.isPackageLoaded(pack.name)).toBeFalsy();
+        expect(lumine.packages.isPackageActive(pack.name)).toBeFalsy();
+        expect(pack.lifecycleState).toBe("unloaded");
       });
     });
 
     describe("when the package is not loaded", () => {
-      it("throws an error", () => {
+      it("rejects with an error", async () => {
         expect(lumine.packages.isPackageLoaded("unloaded")).toBeFalsy();
-        expect(() => lumine.packages.unloadPackage("unloaded")).toThrow();
+        await expectAsync(lumine.packages.unloadPackage("unloaded")).toBeRejected();
         expect(lumine.packages.isPackageLoaded("unloaded")).toBeFalsy();
       });
     });
 
     describe("when the package is loaded", () => {
-      it("no longers reports it as being loaded", () => {
+      it("no longer reports it as being loaded", async () => {
         const pack = lumine.packages.loadPackage("package-with-main");
         expect(lumine.packages.isPackageLoaded(pack.name)).toBeTruthy();
-        lumine.packages.unloadPackage(pack.name);
+        await lumine.packages.unloadPackage(pack.name);
         expect(lumine.packages.isPackageLoaded(pack.name)).toBeFalsy();
+      });
+
+      it("shares concurrent unload requests", async () => {
+        const pack = lumine.packages.loadPackage("package-with-main");
+
+        const first = lumine.packages.unloadPackage(pack.name);
+        const second = lumine.packages.unloadPackage(pack.name);
+
+        expect(second).toBe(first);
+        await first;
+        expect(pack.lifecycleState).toBe("unloaded");
+      });
+
+      it("cancels and awaits load-scope resource work before discarding the instance", async () => {
+        const pack = lumine.packages.loadPackage("package-with-main");
+        const settingsLoad = { generation: 99, cancelled: false };
+        let finishSettingsLoad;
+        pack.settingsLoad = settingsLoad;
+        pack.settingsPromise = new Promise((resolve) => (finishSettingsLoad = resolve));
+        let unloaded = false;
+
+        const unload = lumine.packages.unloadPackage(pack.name).then(() => (unloaded = true));
+        await Promise.resolve();
+
+        expect(settingsLoad.cancelled).toBe(true);
+        expect(unloaded).toBe(false);
+        expect(lumine.packages.isPackageLoaded(pack.name)).toBe(true);
+
+        finishSettingsLoad();
+        await unload;
+        expect(unloaded).toBe(true);
+        expect(lumine.packages.isPackageLoaded(pack.name)).toBe(false);
+      });
+
+      it("removes its configuration schema", async () => {
+        const pack = lumine.packages.loadPackage("package-with-json-config-schema");
+        expect(lumine.config.getSchema(pack.name)).toBeDefined();
+
+        await lumine.packages.unloadPackage(pack.name);
+
+        expect(Object.hasOwn(lumine.config.schema.properties, pack.name)).toBe(false);
+        expect(lumine.config.getSchema(pack.name)).toEqual({ type: "any" });
+      });
+
+      it("reloads code swapped in place at the same path", async () => {
+        const packagePath = temp.mkdirSync("in-place-package");
+        fs.writeFileSync(
+          path.join(packagePath, "package.json"),
+          JSON.stringify({ name: "in-place-package", main: "./index.js" }),
+        );
+        const mainPath = path.join(packagePath, "index.js");
+        fs.writeFileSync(mainPath, "module.exports = { value: 1 }");
+        let pack = await lumine.packages.activatePackage(packagePath);
+        expect(pack.mainModule.value).toBe(1);
+        await lumine.packages.unloadPackage(pack.name);
+
+        fs.writeFileSync(mainPath, "module.exports = { value: 2 }");
+        pack = await lumine.packages.activatePackage(packagePath);
+
+        expect(pack.mainModule.value).toBe(2);
+      });
+
+      it("can preserve module identities for a restart-required replacement rollback", async () => {
+        const packagePath = temp.mkdirSync("persistent-element-package");
+        fs.writeFileSync(
+          path.join(packagePath, "package.json"),
+          JSON.stringify({ name: "persistent-element-package", main: "./index.js" }),
+        );
+        const mainPath = path.join(packagePath, "index.js");
+        fs.writeFileSync(mainPath, "module.exports = { value: 1 }");
+        let pack = await lumine.packages.activatePackage(packagePath);
+        const originalMainModule = pack.mainModule;
+        await lumine.packages.unloadPackage(pack.name, { preserveModuleCache: true });
+
+        fs.writeFileSync(mainPath, "module.exports = { value: 2 }");
+        pack = await lumine.packages.activatePackage(packagePath);
+
+        expect(pack.mainModule).toBe(originalMainModule);
+        expect(pack.mainModule.value).toBe(1);
       });
     });
 
-    it("invokes ::onDidUnloadPackage listeners with the unloaded package", () => {
+    it("invokes ::onDidUnloadPackage listeners with the unloaded package", async () => {
       lumine.packages.loadPackage("package-with-main");
       let unloadedPackage;
       lumine.packages.onDidUnloadPackage((pack) => {
         unloadedPackage = pack;
       });
-      lumine.packages.unloadPackage("package-with-main");
+      await lumine.packages.unloadPackage("package-with-main");
       expect(unloadedPackage.name).toBe("package-with-main");
     });
   });
@@ -364,12 +499,12 @@ describe("PackageManager", () => {
   describe("::activatePackage(id)", () => {
     describe("when called multiple times", () => {
       it("it only calls activate on the package once", async () => {
-        spyOn(Package.prototype, "activateNow").and.callThrough();
+        spyOn(Package.prototype, "activateMain").and.callThrough();
         await lumine.packages.activatePackage("package-with-index");
         await lumine.packages.activatePackage("package-with-index");
         await lumine.packages.activatePackage("package-with-index");
 
-        expect(Package.prototype.activateNow.calls.count()).toBe(1);
+        expect(Package.prototype.activateMain.calls.count()).toBe(1);
       });
     });
 
@@ -411,97 +546,28 @@ describe("PackageManager", () => {
         expect(lumine.config.get("package-with-config-schema.numbers.one")).toBe(10);
       });
 
-      describe("when the package metadata includes `activationCommands`", () => {
-        let mainModule, promise, workspaceCommandListener, registration;
+      it("keeps main-module config in load scope and removes it on unload", async () => {
+        await lumine.packages.activatePackage("package-with-config-schema");
+        await lumine.packages.deactivatePackage("package-with-config-schema");
+        expect(lumine.config.getSchema("package-with-config-schema.numbers.one")).toEqual(
+          jasmine.objectContaining({ type: "integer" }),
+        );
 
-        beforeEach(() => {
-          jasmine.attachToDOM(lumine.workspace.getElement());
-          mainModule = require("./fixtures/packages/package-with-activation-commands/index");
-          mainModule.activationCommandCallCount = 0;
-          spyOn(mainModule, "activate").and.callThrough();
+        await lumine.packages.unloadPackage("package-with-config-schema");
 
-          workspaceCommandListener = jasmine.createSpy("workspaceCommandListener");
-          registration = lumine.commands.add(
-            "lumine-workspace",
-            "activation-command",
-            workspaceCommandListener,
-          );
+        expect(Object.hasOwn(lumine.config.schema.properties, "package-with-config-schema")).toBe(
+          false,
+        );
+      });
 
-          promise = lumine.packages.activatePackage("package-with-activation-commands", {
-            defer: true,
-          });
-        });
-
-        afterEach(() => {
-          if (registration) {
-            registration.dispose();
-          }
-          mainModule = null;
-        });
-
-        it("defers requiring/activating the main module until an activation event bubbles to the root view", async () => {
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-
-          lumine.workspace
-            .getElement()
-            .dispatchEvent(new CustomEvent("activation-command", { bubbles: true }));
-
-          await promise;
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-
-        it("triggers the activation event on all handlers registered during activation", async () => {
-          await lumine.workspace.open();
-
-          const editorElement = lumine.workspace.getActiveTextEditor().getElement();
-          const editorCommandListener = jasmine.createSpy("editorCommandListener");
-          lumine.commands.add("lumine-text-editor", "activation-command", editorCommandListener);
-
-          lumine.commands.dispatch(editorElement, "activation-command");
-          expect(mainModule.activate.calls.count()).toBe(1);
-          expect(mainModule.activationCommandCallCount).toBe(1);
-          expect(editorCommandListener.calls.count()).toBe(1);
-          expect(workspaceCommandListener.calls.count()).toBe(1);
-
-          lumine.commands.dispatch(editorElement, "activation-command");
-          expect(mainModule.activationCommandCallCount).toBe(2);
-          expect(editorCommandListener.calls.count()).toBe(2);
-          expect(workspaceCommandListener.calls.count()).toBe(2);
-          expect(mainModule.activate.calls.count()).toBe(1);
-        });
-
-        it("activates the package immediately when the events are empty", async () => {
-          mainModule = require("./fixtures/packages/package-with-empty-activation-commands/index");
-          spyOn(mainModule, "activate").and.callThrough();
-
-          lumine.packages.activatePackage("package-with-empty-activation-commands");
-
-          expect(mainModule.activate.calls.count()).toBe(1);
-        });
-
-        it("adds a notification when the activation commands are invalid", () => {
+      describe("activation error reporting", () => {
+        it("adds a notification when the context menu is invalid", async () => {
           spyOn(lumine.window, "isSpecMode").and.returnValue(false);
           const addErrorHandler = jasmine.createSpy();
           lumine.notifications.onDidAddNotification(addErrorHandler);
-          expect(() =>
-            lumine.packages.activatePackage("package-with-invalid-activation-commands"),
-          ).not.toThrow();
-          expect(addErrorHandler.calls.count()).toBe(1);
-          expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
-            "Failed to activate the package-with-invalid-activation-commands package",
-          );
-          expect(addErrorHandler.calls.argsFor(0)[0].options.packageName).toEqual(
-            "package-with-invalid-activation-commands",
-          );
-        });
-
-        it("adds a notification when the context menu is invalid", () => {
-          spyOn(lumine.window, "isSpecMode").and.returnValue(false);
-          const addErrorHandler = jasmine.createSpy();
-          lumine.notifications.onDidAddNotification(addErrorHandler);
-          expect(() =>
+          await expectAsync(
             lumine.packages.activatePackage("package-with-invalid-context-menu"),
-          ).not.toThrow();
+          ).toBeRejected();
           expect(addErrorHandler.calls.count()).toBe(1);
           expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
             "Failed to activate the package-with-invalid-context-menu package",
@@ -550,296 +616,20 @@ describe("PackageManager", () => {
         });
       });
 
-      describe("when the package metadata includes both activation commands and deserializers", () => {
-        let mainModule, promise, workspaceCommandListener, registration;
-
-        beforeEach(() => {
-          jasmine.attachToDOM(lumine.workspace.getElement());
-          spyOn(lumine.packages, "hasActivatedInitialPackages").and.returnValue(true);
-          mainModule = require("./fixtures/packages/package-with-activation-commands-and-deserializers/index");
-          mainModule.activationCommandCallCount = 0;
-          spyOn(mainModule, "activate").and.callThrough();
-          workspaceCommandListener = jasmine.createSpy("workspaceCommandListener");
-          registration = lumine.commands.add(
-            ".workspace",
-            "activation-command-2",
-            workspaceCommandListener,
-          );
-
-          promise = lumine.packages.activatePackage(
-            "package-with-activation-commands-and-deserializers",
-            { defer: true },
-          );
-        });
-
-        afterEach(() => {
-          if (registration) {
-            registration.dispose();
-          }
-          mainModule = null;
-        });
-
-        it("activates the package when a deserializer is called", async () => {
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-
-          const state1 = { deserializer: "Deserializer1", a: "b" };
-          expect(lumine.deserializers.deserialize(state1, lumine)).toEqual({
-            wasDeserializedBy: "deserializeMethod1",
-            state: state1,
-          });
-
-          await promise;
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-
-        it("defers requiring/activating the main module until an activation event bubbles to the root view", async () => {
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-
-          lumine.workspace
-            .getElement()
-            .dispatchEvent(new CustomEvent("activation-command-2", { bubbles: true }));
-
-          await promise;
-          expect(mainModule.activate.calls.count()).toBe(1);
-          expect(mainModule.activationCommandCallCount).toBe(1);
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-      });
-
-      describe("when the package metadata includes `activationHooks`", () => {
-        let mainModule, promise;
-
-        beforeEach(() => {
-          mainModule = require("./fixtures/packages/package-with-activation-hooks/index");
-          spyOn(mainModule, "activate").and.callThrough();
-        });
-
-        it("treats a direct activation request as an instruction to activate now", async () => {
-          await lumine.packages.activatePackage("package-with-activation-hooks");
-
-          expect(mainModule.activate.calls.count()).toBe(1);
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-
-        it("can force an activation that is already waiting on a deferred trigger", async () => {
-          const deferred = lumine.packages.activatePackage("package-with-activation-hooks", {
-            defer: true,
-          });
-          const forced = lumine.packages.activatePackage("package-with-activation-hooks");
-
-          await Promise.all([deferred, forced]);
-          expect(mainModule.activate.calls.count()).toBe(1);
-        });
-
-        it("dispatches each activation hook only once per window", () => {
-          const callback = jasmine.createSpy("activation hook");
-          lumine.packages.onDidTriggerActivationHook("language-fictitious:grammar-used", callback);
-
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          expect(callback).not.toHaveBeenCalled();
-
-          lumine.packages.triggerDeferredActivationHooks();
-          expect(callback.calls.count()).toBe(1);
-
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          expect(callback.calls.count()).toBe(1);
-        });
-
-        it("defers requiring/activating the main module until an triggering of an activation hook occurs", async () => {
-          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
-            defer: true,
-          });
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          lumine.packages.triggerDeferredActivationHooks();
-
-          await promise;
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-
-        it("does not double register activation hooks when deactivating and reactivating", async () => {
-          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
-            defer: true,
-          });
-          expect(mainModule.activate.calls.count()).toBe(0);
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          lumine.packages.triggerDeferredActivationHooks();
-
-          await promise;
-          expect(mainModule.activate.calls.count()).toBe(1);
-
-          await lumine.packages.deactivatePackage("package-with-activation-hooks");
-
-          promise = lumine.packages.activatePackage("package-with-activation-hooks", {
-            defer: true,
-          });
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          lumine.packages.triggerDeferredActivationHooks();
-
-          await promise;
-          expect(mainModule.activate.calls.count()).toBe(2);
-        });
-
-        it("activates the package immediately when activationHooks is empty", async () => {
-          mainModule = require("./fixtures/packages/package-with-empty-activation-hooks/index");
-          spyOn(mainModule, "activate").and.callThrough();
-
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-
-          await lumine.packages.activatePackage("package-with-empty-activation-hooks");
-          expect(mainModule.activate.calls.count()).toBe(1);
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-
-        it("activates the package immediately if the activation hook had already been triggered", async () => {
-          lumine.packages.triggerActivationHook("language-fictitious:grammar-used");
-          lumine.packages.triggerDeferredActivationHooks();
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-
-          await lumine.packages.activatePackage("package-with-activation-hooks", { defer: true });
-          expect(mainModule.activate.calls.count()).toBe(1);
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-        });
-      });
-
-      describe("when the package metadata includes `workspaceOpeners`", () => {
-        let mainModule, promise;
-
-        beforeEach(() => {
-          mainModule = require("./fixtures/packages/package-with-workspace-openers/index");
-          mainModule.activateCallCount = 0;
-          mainModule.openerCount = 0;
-          spyOn(mainModule, "activate").and.callThrough();
-        });
-
-        it("defers requiring/activating the main module until a registered opener is called", async () => {
-          promise = lumine.packages.activatePackage("package-with-workspace-openers", {
-            defer: true,
-          });
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-          const opening = lumine.workspace.open("lumine://fictitious");
-
-          await promise;
-          expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
-          expect(mainModule.openerCount).toBe(1);
-          await opening;
-        });
-
-        it("matches URI prefixes and retries the requested URI after activation", async () => {
-          promise = lumine.packages.activatePackage("package-with-workspace-openers", {
-            defer: true,
-          });
-
-          const item = await lumine.workspace.createItemForURI("fictitious-prefix://one/two");
-
-          await promise;
-          expect(item.dataset.filePath).toBe("fictitious-prefix://one/two");
-          expect(mainModule.openerCount).toBe(1);
-        });
-
-        it("normalizes configured and literal path suffixes on every match", () => {
-          const pack = lumine.packages.loadPackage("package-with-workspace-openers");
-          const opener = pack.getWorkspaceOpeners()[2];
-
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.FIXED", opener)).toBe(true);
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.mixed", opener)).toBe(true);
-          expect(pack.matchesWorkspaceOpener("file:///work/table.FIXED?download=1", opener)).toBe(
-            true,
-          );
-          expect(pack.matchesWorkspaceOpener("file:///work/table.mixed#sheet=1", opener)).toBe(
-            true,
-          );
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.configured", opener)).toBe(false);
-
-          lumine.config.set("package-with-workspace-openers.additionalSuffixes", ["configured"]);
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.CONFIGURED", opener)).toBe(true);
-
-          lumine.config.set("package-with-workspace-openers.additionalSuffixes", ["replacement"]);
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.configured", opener)).toBe(false);
-          expect(pack.matchesWorkspaceOpener("C:\\work\\table.replacement", opener)).toBe(true);
-        });
-
-        it("activates the package immediately when the events are empty", async () => {
-          mainModule = require("./fixtures/packages/package-with-empty-workspace-openers/index");
-          spyOn(mainModule, "activate").and.callThrough();
-
-          lumine.packages.activatePackage("package-with-empty-workspace-openers");
-
-          expect(mainModule.activate.calls.count()).toBe(1);
-        });
-      });
-
-      describe("when a provided service uses `activateOnConsume`", () => {
-        let mainModule;
-
-        beforeEach(() => {
-          mainModule = require("./fixtures/packages/package-with-activate-on-consume");
-          mainModule.activateCallCount = 0;
-        });
-
-        it("replays demand registered before packages finish loading", async () => {
-          let service;
-          lumine.packages.initialPackagesLoaded = false;
-          const subscription = lumine.packages.serviceHub.consume(
-            "lazy-service",
-            "^2.0.0",
-            (value) => (service = value),
-          );
-          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
-          expect(pack.mainModule).toBeNull();
-
-          lumine.packages.rebuildActivateOnConsumeProviders();
-          lumine.packages.initialPackagesLoaded = true;
-          lumine.packages.replayServiceDemands();
-          await Promise.resolve();
-
-          expect(service).toEqual({ source: "package-with-activate-on-consume" });
-          expect(mainModule.activateCallCount).toBe(1);
-          subscription.dispose();
-        });
-
-        it("does not activate a provider whose versions cannot satisfy the consumer", () => {
-          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
-          lumine.packages.rebuildActivateOnConsumeProviders();
-          lumine.packages.initialPackagesLoaded = true;
-
-          const subscription = lumine.packages.serviceHub.consume(
-            "lazy-service",
-            "^1.0.0",
-            () => {},
-          );
-
-          expect(pack.mainModule).toBeNull();
-          expect(mainModule.activateCallCount).toBe(0);
-          subscription.dispose();
-        });
-
-        it("does not replay demand that was disposed before package loading completed", () => {
-          lumine.packages.initialPackagesLoaded = false;
-          const subscription = lumine.packages.serviceHub.consume(
-            "lazy-service",
-            "^2.0.0",
-            () => {},
-          );
-          subscription.dispose();
-          const pack = lumine.packages.loadPackage("package-with-activate-on-consume");
-
-          lumine.packages.rebuildActivateOnConsumeProviders();
-          lumine.packages.initialPackagesLoaded = true;
-          lumine.packages.replayServiceDemands();
-
-          expect(pack.mainModule).toBeNull();
-          expect(mainModule.activateCallCount).toBe(0);
+      describe("direct lifecycle", () => {
+        it("starts a package without an intermediate lifecycle state", async () => {
+          const pack = await lumine.packages.startPackage("package-with-main");
+          expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("active");
+          expect(pack.mainInitialized).toBe(true);
+          expect(pack.mainActivated).toBe(true);
         });
       });
     });
-
     describe("when the package has no main module", () => {
-      it("does not throw an exception", () => {
+      it("does not throw an exception", async () => {
         spyOn(console, "error");
         spyOn(console, "warn").and.callThrough();
-        expect(() => lumine.packages.activatePackage("package-without-module")).not.toThrow();
+        await expectAsync(lumine.packages.activatePackage("package-without-module")).toBeResolved();
         expect(console.error).not.toHaveBeenCalled();
         expect(console.warn).not.toHaveBeenCalled();
       });
@@ -862,7 +652,8 @@ describe("PackageManager", () => {
 
       spyOn(pack.mainModule, "activate").and.callThrough();
       await lumine.packages.activatePackage("package-with-serialization");
-      expect(pack.mainModule.activate).toHaveBeenCalledWith({ someNumber: 77 });
+      expect(pack.mainModule.activate.calls.mostRecent().args[0]).toEqual({ someNumber: 77 });
+      expect(pack.mainModule.activate.calls.mostRecent().args[1].signal.aborted).toBe(false);
     });
 
     it("invokes ::onDidActivatePackage listeners with the activated package", async () => {
@@ -876,29 +667,45 @@ describe("PackageManager", () => {
     });
 
     describe("when the package's main module throws an error on load", () => {
-      it("adds a notification instead of throwing an exception", () => {
+      it("adds a notification and rejects activation", async () => {
         spyOn(lumine.window, "isSpecMode").and.returnValue(false);
         lumine.config.set("core.disabledPackages", []);
         const addErrorHandler = jasmine.createSpy();
         lumine.notifications.onDidAddNotification(addErrorHandler);
-        expect(() =>
+        await expectAsync(
           lumine.packages.activatePackage("package-that-throws-an-exception"),
-        ).not.toThrow();
+        ).toBeRejected();
         expect(addErrorHandler.calls.count()).toBe(1);
         expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
-          "Failed to load the package-that-throws-an-exception package",
+          "Failed to activate the package-that-throws-an-exception package",
         );
         expect(addErrorHandler.calls.argsFor(0)[0].options.packageName).toEqual(
           "package-that-throws-an-exception",
         );
       });
 
-      it("re-throws the exception in test mode", () => {
+      it("rejects with the exception in test mode", async () => {
         lumine.config.set("core.disabledPackages", []);
-        expect(() =>
+        await expectAsync(
           lumine.packages.activatePackage("package-that-throws-an-exception"),
-        ).toThrowError("This package throws an exception");
+        ).toBeRejectedWithError("This package throws an exception");
       });
+    });
+
+    it("rolls initialization failure back instead of publishing the package", async () => {
+      spyOn(lumine.window, "isSpecMode").and.returnValue(false);
+      const notifications = jasmine.createSpy("notifications");
+      lumine.notifications.onDidAddNotification(notifications);
+
+      await expectAsync(
+        lumine.packages.activatePackage("package-that-throws-on-initialize"),
+      ).toBeRejectedWithError("Initialization failed");
+
+      expect(lumine.packages.getPackageLifecycleState("package-that-throws-on-initialize")).toBe(
+        "loaded",
+      );
+      expect(lumine.packages.isPackageActive("package-that-throws-on-initialize")).toBe(false);
+      expect(notifications.calls.count()).toBe(1);
     });
 
     describe("when the package is not found", () => {
@@ -1073,11 +880,15 @@ describe("PackageManager", () => {
       describe("when the package's keymaps are disabled and re-enabled after it is activated", () => {
         it("removes and re-adds the keymaps", async () => {
           const element1 = createTestElement("test-1");
+          lumine.config.set("core.packagesWithKeymapsDisabled", []);
           lumine.packages.observePackagesWithKeymapsDisabled();
+          expect(lumine.config.transactDepth).toBe(0);
 
-          await lumine.packages.activatePackage("package-with-keymaps-manifest");
+          const pack = await lumine.packages.activatePackage("package-with-keymaps-manifest");
+          spyOn(pack, "deactivateKeymaps").and.callThrough();
 
           lumine.config.set("core.packagesWithKeymapsDisabled", ["package-with-keymaps-manifest"]);
+          expect(pack.deactivateKeymaps).toHaveBeenCalled();
           expect(
             lumine.keymaps.findKeyBindings({
               keystrokes: "ctrl-z",
@@ -1261,13 +1072,15 @@ describe("PackageManager", () => {
 
     describe("grammar loading", () => {
       it("loads the package's grammars", async () => {
-        await lumine.packages.activatePackage("package-with-grammars");
+        const pack = await lumine.packages.activatePackage("package-with-grammars");
+        await pack.grammarsPromise;
         expect(lumine.grammars.selectGrammar("a.alot").name).toBe("Alot");
         expect(lumine.grammars.selectGrammar("a.alittle").name).toBe("Alittle");
       });
 
       it("loads any tree-sitter grammars defined in the package", async () => {
-        await lumine.packages.activatePackage("package-with-tree-sitter-grammar");
+        const pack = await lumine.packages.activatePackage("package-with-tree-sitter-grammar");
+        await pack.grammarsPromise;
         const grammar = lumine.grammars.selectGrammar("test.somelang");
         expect(grammar.name).toBe("Some Language");
         await grammar.getQuery("highlightsQuery");
@@ -1277,7 +1090,8 @@ describe("PackageManager", () => {
 
     describe("scoped-property loading", () => {
       it("loads the scoped properties", async () => {
-        await lumine.packages.activatePackage("package-with-settings");
+        const pack = await lumine.packages.activatePackage("package-with-settings");
+        await pack.settingsPromise;
         expect(
           lumine.config.get("editor.commentStart", {
             scope: [".source.omg"],
@@ -1302,11 +1116,8 @@ describe("PackageManager", () => {
         const mod = require("./fixtures/packages/package-with-uri-handler");
         spyOn(mod, "handleURI");
         spyOn(lumine.packages, "hasLoadedInitialPackages").and.returnValue(true);
-        const activationPromise = lumine.packages.activatePackage("package-with-uri-handler", {
-          defer: true,
-        });
-        lumine.dispatchURIMessage(uri);
-        await activationPromise;
+        await lumine.packages.startPackage("package-with-uri-handler");
+        await lumine.uriHandlers.handleURI(uri);
         expect(mod.handleURI).toHaveBeenCalledWith(
           {
             protocol: "lumine:",
@@ -1325,6 +1136,22 @@ describe("PackageManager", () => {
           },
           uri,
         );
+      });
+
+      it("re-registers the URI proxy after deactivate and direct reactivation", async () => {
+        const uri = "lumine://package-with-uri-handler/again";
+        const mod = require("./fixtures/packages/package-with-uri-handler");
+        spyOn(mod, "handleURI");
+
+        await lumine.packages.startPackage("package-with-uri-handler");
+        await lumine.uriHandlers.handleURI(uri);
+        await lumine.packages.deactivatePackage("package-with-uri-handler");
+        expect(lumine.uriHandlers.registrations.has("package-with-uri-handler")).toBe(false);
+
+        await lumine.packages.startPackage("package-with-uri-handler");
+        expect(lumine.uriHandlers.registrations.has("package-with-uri-handler")).toBe(true);
+        await lumine.uriHandlers.handleURI(uri);
+        expect(mod.handleURI.calls.count()).toBe(2);
       });
     });
 
@@ -1373,9 +1200,8 @@ describe("PackageManager", () => {
         expect(consumerModule.consumeFirstServiceV3).toHaveBeenCalledWith("first-service-v3");
         expect(consumerModule.consumeFirstServiceV4).toHaveBeenCalledWith("first-service-v4");
         expect(consumerModule.consumeSecondService).toHaveBeenCalledWith("second-service");
-        expect(consume.calls.allArgs().find(([name]) => name === "service-2")[3]).toEqual({
-          activateProviders: false,
-        });
+        const service2Call = consume.calls.allArgs().find(([name]) => name === "service-2");
+        expect(service2Call.length).toBe(3);
 
         consumerModule.consumeFirstServiceV3.calls.reset();
         consumerModule.consumeFirstServiceV4.calls.reset();
@@ -1442,7 +1268,10 @@ describe("PackageManager", () => {
       spyOn(lumine.window, "isSpecMode").and.returnValue(false);
       spyOn(console, "warn");
 
-      const badPack = await lumine.packages.activatePackage("package-that-throws-on-activate");
+      const badPack = lumine.packages.loadPackage("package-that-throws-on-activate");
+      await expectAsync(
+        lumine.packages.activatePackage("package-that-throws-on-activate"),
+      ).toBeRejected();
       spyOn(badPack.mainModule, "serialize").and.callThrough();
 
       lumine.packages.serialize();
@@ -1493,8 +1322,12 @@ describe("PackageManager", () => {
       await deactivation;
 
       expect(console.warn.calls.argsFor(0)[0]).toContain("package-with-deactivate");
-      // Abandoned mid-flight rather than awaited, while everything else went.
-      expect(lumine.packages.isPackageActive("package-with-deactivate")).toBe(true);
+      // It stops being publicly active immediately even though its cleanup is
+      // still running in the background.
+      expect(lumine.packages.isPackageActive("package-with-deactivate")).toBe(false);
+      expect(lumine.packages.getPackageLifecycleState("package-with-deactivate")).toBe(
+        "deactivating",
+      );
       expect(lumine.packages.isPackageActive(other.name)).toBe(false);
 
       // Let it finish before the suite moves on: `unloadPackage` refuses a
@@ -1504,10 +1337,15 @@ describe("PackageManager", () => {
       // module's promise, then `Package#deactivate`, then the manager — so it
       // is flushed rather than awaited once.
       advanceClock(10000);
-      for (let i = 0; i < 20 && lumine.packages.isPackageActive("package-with-deactivate"); i++) {
+      for (
+        let i = 0;
+        i < 20 &&
+        lumine.packages.getPackageLifecycleState("package-with-deactivate") === "deactivating";
+        i++
+      ) {
         await Promise.resolve();
       }
-      expect(lumine.packages.isPackageActive("package-with-deactivate")).toBe(false);
+      expect(lumine.packages.getPackageLifecycleState("package-with-deactivate")).toBe("loaded");
     });
 
     // One package refusing to deactivate must not answer for the rest: the
@@ -1529,8 +1367,19 @@ describe("PackageManager", () => {
     });
   });
 
+  describe("::deactivatePackage() serialization", () => {
+    it("honors the public serialize option", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-serialization");
+      spyOn(pack.mainModule, "serialize").and.callThrough();
+
+      await lumine.packages.deactivatePackage(pack.name, { serialize: false });
+
+      expect(pack.mainModule.serialize).not.toHaveBeenCalled();
+    });
+  });
+
   describe("::deactivatePackage(id)", () => {
-    afterEach(() => lumine.packages.unloadPackages());
+    afterEach(async () => lumine.packages.unloadPackages());
 
     it("calls `deactivate` on the package's main module if activate was successful", async () => {
       spyOn(lumine.window, "isSpecMode").and.returnValue(false);
@@ -1542,15 +1391,13 @@ describe("PackageManager", () => {
       await lumine.packages.deactivatePackage("package-with-deactivate");
       expect(pack.mainModule.deactivate).toHaveBeenCalled();
       expect(lumine.packages.isPackageActive("package-with-module")).toBeFalsy();
+    });
 
-      spyOn(console, "warn");
-      const badPack = await lumine.packages.activatePackage("package-that-throws-on-activate");
-      expect(lumine.packages.isPackageActive("package-that-throws-on-activate")).toBeTruthy();
-      spyOn(badPack.mainModule, "deactivate").and.callThrough();
-
-      await lumine.packages.deactivatePackage("package-that-throws-on-activate");
-      expect(badPack.mainModule.deactivate).not.toHaveBeenCalled();
-      expect(lumine.packages.isPackageActive("package-that-throws-on-activate")).toBeFalsy();
+    it("rolls a failed activation back to loaded", async () => {
+      const pack = lumine.packages.loadPackage("package-that-throws-on-activate");
+      await expectAsync(lumine.packages.activatePackage(pack.name)).toBeRejected();
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
     });
 
     it("absorbs exceptions that are thrown by the package module's deactivate method", async () => {
@@ -1576,7 +1423,7 @@ describe("PackageManager", () => {
       expect(deactivated).toContain(pack.name);
       subscription.dispose();
       // No longer refused, which is the state this is really about.
-      lumine.packages.unloadPackage(pack.name);
+      await lumine.packages.unloadPackage(pack.name);
     });
 
     it("removes the package's grammars", async () => {
@@ -1619,7 +1466,8 @@ describe("PackageManager", () => {
     });
 
     it("removes the package's scoped-properties", async () => {
-      await lumine.packages.activatePackage("package-with-settings");
+      const pack = await lumine.packages.activatePackage("package-with-settings");
+      await pack.settingsPromise;
       expect(
         lumine.config.get("editor.commentStart", {
           scope: [".source.omg"],
@@ -1660,7 +1508,7 @@ describe("PackageManager", () => {
 
     afterEach(async () => {
       await lumine.packages.deactivatePackages();
-      lumine.packages.unloadPackages();
+      await lumine.packages.unloadPackages();
       jasmine.restoreDeprecationsSnapshot();
     });
 
@@ -1696,7 +1544,7 @@ describe("PackageManager", () => {
       jasmine.useRealClock();
       const package1 = lumine.packages.loadPackage("package-with-main");
       const package2 = lumine.packages.loadPackage("package-with-index");
-      const package3 = lumine.packages.loadPackage("package-with-activation-commands");
+      const package3 = lumine.packages.loadPackage("package-with-main");
       spyOn(lumine.packages, "getLoadedPackages").and.returnValue([package1, package2, package3]);
       spyOn(lumine.themes, "activatePackages");
 
@@ -1705,7 +1553,19 @@ describe("PackageManager", () => {
       jasmine.unspy(lumine.packages, "getLoadedPackages");
       expect(lumine.packages.getActivePackages().includes(package1)).toBe(true);
       expect(lumine.packages.getActivePackages().includes(package2)).toBe(true);
-      expect(lumine.packages.getActivePackages().includes(package3)).toBe(false);
+      expect(lumine.packages.getActivePackages().includes(package3)).toBe(true);
+    });
+  });
+
+  describe("::reorderActivePackages()", () => {
+    it("resolves the current lifecycle generation instead of retaining a stale object", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-main");
+      lumine.packages.activePackages[pack.name] = { name: pack.name, stale: true };
+
+      lumine.packages.reorderActivePackages([pack.name]);
+
+      expect(lumine.packages.getActivePackages()).toContain(pack);
+      expect(lumine.packages.activePackages[pack.name].stale).toBeUndefined();
     });
   });
 
@@ -1715,10 +1575,10 @@ describe("PackageManager", () => {
         const packageName = "package-with-main";
         lumine.config.pushAtKeyPath("core.disabledPackages", packageName);
         lumine.packages.observeDisabledPackages();
+        expect(lumine.config.transactDepth).toBe(0);
         expect(lumine.config.get("core.disabledPackages")).toContain(packageName);
 
-        const pack = lumine.packages.enablePackage(packageName);
-        await new Promise((resolve) => lumine.packages.onDidActivatePackage(resolve));
+        const pack = await lumine.packages.enablePackage(packageName);
 
         expect(lumine.packages.getLoadedPackages()).toContain(pack);
         expect(lumine.packages.getActivePackages()).toContain(pack);
@@ -1731,28 +1591,25 @@ describe("PackageManager", () => {
 
         lumine.packages.observeDisabledPackages();
         expect(lumine.config.get("core.disabledPackages")).not.toContain(packageName);
-        await new Promise((resolve) => {
-          lumine.packages.onDidDeactivatePackage(resolve);
-          lumine.packages.disablePackage(packageName);
-        });
+        await lumine.packages.disablePackage(packageName);
 
         expect(lumine.packages.getActivePackages()).not.toContain(pack);
         expect(lumine.config.get("core.disabledPackages")).toContain(packageName);
       });
 
-      it("returns null if the package cannot be loaded", () => {
+      it("returns null if the package cannot be loaded", async () => {
         spyOn(console, "warn");
-        expect(lumine.packages.enablePackage("this-doesnt-exist")).toBeNull();
+        expect(await lumine.packages.enablePackage("this-doesnt-exist")).toBeNull();
         expect(console.warn.calls.count()).toBe(1);
       });
 
-      it("does not disable an already disabled package", () => {
+      it("does not disable an already disabled package", async () => {
         const packageName = "package-with-main";
         lumine.config.pushAtKeyPath("core.disabledPackages", packageName);
         lumine.packages.observeDisabledPackages();
         expect(lumine.config.get("core.disabledPackages")).toContain(packageName);
 
-        lumine.packages.disablePackage(packageName);
+        await lumine.packages.disablePackage(packageName);
         const packagesDisabled = lumine.config
           .get("core.disabledPackages")
           .filter((pack) => pack === packageName);
@@ -1778,24 +1635,12 @@ describe("PackageManager", () => {
         );
         expect(lumine.config.get("core.disabledPackages")).not.toContain(packageName);
 
-        // enabling of theme
-        let promise = new Promise((resolve) =>
-          lumine.packages.onDidActivatePackage((p) => {
-            if (p.name === packageName) resolve();
-          }),
-        );
-        const pack = lumine.packages.enablePackage(packageName);
-        await promise;
+        const pack = await lumine.packages.enablePackage(packageName);
         expect(lumine.packages.isPackageActive(packageName)).toBe(true);
         expect(lumine.config.get(lumine.themes.getActiveThemesKeyPath())).toContain(packageName);
         expect(lumine.config.get("core.disabledPackages")).not.toContain(packageName);
 
-        await new Promise((resolve) => {
-          lumine.packages.onDidDeactivatePackage((p) => {
-            if (p.name === packageName) resolve();
-          });
-          lumine.packages.disablePackage(packageName);
-        });
+        await lumine.packages.disablePackage(packageName);
 
         expect(lumine.packages.getActivePackages()).not.toContain(pack);
         expect(lumine.config.get(lumine.themes.getActiveThemesKeyPath())).not.toContain(
@@ -1868,7 +1713,7 @@ describe("PackageManager", () => {
       return packagePath;
     }
 
-    it("identifies a package by its manifest name, not by its directory", () => {
+    it("identifies a package by its manifest name, not by its directory", async () => {
       const packagePath = writePackage("some-checkout", { name: "renamed-package" });
 
       expect(lumine.packages.getAvailablePackageNames()).toContain("renamed-package");
@@ -1879,7 +1724,7 @@ describe("PackageManager", () => {
       const pack = lumine.packages.loadPackage("renamed-package");
       expect(pack.name).toBe("renamed-package");
       expect(pack.path).toBe(packagePath);
-      lumine.packages.unloadPackage("renamed-package");
+      await lumine.packages.unloadPackage("renamed-package");
     });
 
     it("falls back to the directory name when the manifest declares none", () => {
@@ -1890,7 +1735,7 @@ describe("PackageManager", () => {
       expect(available.nameSource).toBe("dirname");
     });
 
-    it("loads only the first directory providing a name, and reports the rest", () => {
+    it("loads only the first directory providing a name, and reports the rest", async () => {
       const winnerPath = writePackage("aaa-copy", { name: "duplicated-package" });
       const loserPath = writePackage("zzz-copy", { name: "duplicated-package" });
 
@@ -1907,7 +1752,7 @@ describe("PackageManager", () => {
       expect(everyCopy[1].shadowedBy.path).toBe(winnerPath);
 
       expect(lumine.packages.loadPackage("duplicated-package").path).toBe(winnerPath);
-      lumine.packages.unloadPackage("duplicated-package");
+      await lumine.packages.unloadPackage("duplicated-package");
     });
 
     it("prefers a package directory that comes earlier in the search path", () => {
@@ -1939,7 +1784,7 @@ describe("PackageManager", () => {
 
         expect(pack.path).toBe(loserPath);
         expect(lumine.packages.getLoadedPackage("duplicated-package").path).toBe(loserPath);
-        lumine.packages.unloadPackage("duplicated-package");
+        await lumine.packages.unloadPackage("duplicated-package");
       });
 
       it("unloads the package when nothing on disk provides its name any more", async () => {
@@ -1957,7 +1802,7 @@ describe("PackageManager", () => {
 
         expect(await lumine.packages.reconcilePackage("solo-package")).toBe(loaded);
         expect(lumine.packages.getLoadedPackage("solo-package").path).toBe(packagePath);
-        lumine.packages.unloadPackage("solo-package");
+        await lumine.packages.unloadPackage("solo-package");
       });
     });
   });

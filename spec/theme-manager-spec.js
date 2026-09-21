@@ -50,6 +50,7 @@ describe("lumine.themes", () => {
         expect(names.length).toBeGreaterThan(0);
         const themes = lumine.themes.getActiveThemes();
         expect(themes).toHaveLength(names.length);
+        expect(themes.every((theme) => Number.isFinite(theme.activateTime))).toBe(true);
       }));
   });
 
@@ -543,19 +544,26 @@ describe("lumine.themes", () => {
       });
     });
 
-    it("adds a notification when a theme's stylesheet cannot be read", () => {
+    it("adds a notification when a theme's stylesheet cannot be read", async () => {
+      spyOn(lumine.window, "isSpecMode").and.returnValue(false);
       const addErrorHandler = jasmine.createSpy();
       lumine.notifications.onDidAddNotification(addErrorHandler);
-      expect(() =>
-        lumine.packages.activatePackage("theme-with-invalid-styles").then(
-          () => {},
-          () => {},
-        ),
-      ).not.toThrow();
+      await lumine.packages.activatePackage("theme-with-invalid-styles").catch(() => {});
       expect(addErrorHandler.calls.count()).toBe(1);
       expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
         "Failed to activate the theme-with-invalid-styles theme",
       );
+    });
+
+    it("reloads a theme's stylesheets when its package is reactivated", async () => {
+      const pack = lumine.packages.loadPackage("theme-with-ui-variables");
+      spyOn(pack, "loadStylesheets").and.callThrough();
+
+      await lumine.packages.activatePackage(pack.name);
+      await lumine.packages.deactivatePackage(pack.name);
+      await lumine.packages.activatePackage(pack.name);
+
+      expect(pack.loadStylesheets.calls.count()).toBe(2);
     });
   });
 
@@ -655,8 +663,14 @@ describe("lumine.themes", () => {
       await lumine.packages.deactivatePackage("multi-theme-package");
       expect(
         lumine.themes.getThemePacks().find(({ name }) => name === "Multi Alpha"),
+      ).toBeDefined();
+
+      await lumine.packages.unloadPackage("multi-theme-package");
+      expect(
+        lumine.themes.getThemePacks().find(({ name }) => name === "Multi Alpha"),
       ).toBeUndefined();
 
+      lumine.packages.loadPackage("multi-theme-package");
       await lumine.packages.activatePackage("multi-theme-package");
       themePack = lumine.themes.getThemePacks().find(({ name }) => name === "Multi Alpha");
       expect(themePack).toBeDefined();
@@ -681,6 +695,42 @@ describe("lumine.themes", () => {
       expect(syntaxTheme.getType()).toBe("theme");
       expect(uiTheme.metadata.theme).toBe("ui");
       expect(syntaxTheme.metadata.theme).toBe("syntax");
+    });
+
+    it("unloads virtual themes with their owning package", async () => {
+      lumine.packages.loadPackage("multi-theme-package");
+      const oldUiTheme = lumine.packages.getLoadedPackage("multi-alpha-ui");
+      const oldSyntaxTheme = lumine.packages.getLoadedPackage("multi-alpha-syntax");
+
+      await lumine.packages.unloadPackage("multi-theme-package");
+
+      expect(lumine.packages.getLoadedPackage("multi-alpha-ui")).toBeUndefined();
+      expect(lumine.packages.getLoadedPackage("multi-alpha-syntax")).toBeUndefined();
+      expect(oldUiTheme.lifecycleState).toBe("unloaded");
+      expect(oldSyntaxTheme.lifecycleState).toBe("unloaded");
+    });
+
+    it("recreates and reactivates configured virtual themes after replacement", async () => {
+      lumine.packages.loadPackage("multi-theme-package");
+      setActiveThemes(["multi-alpha-ui", "multi-alpha-syntax"]);
+      await lumine.themes.activateThemes();
+      const oldUiTheme = lumine.packages.getLoadedPackage("multi-alpha-ui");
+      const oldSyntaxTheme = lumine.packages.getLoadedPackage("multi-alpha-syntax");
+
+      await lumine.packages.unloadPackage("multi-theme-package");
+      await lumine.packages.reconcilePackage("multi-theme-package", {
+        lifecycleState: "loaded",
+      });
+
+      const newUiTheme = lumine.packages.getLoadedPackage("multi-alpha-ui");
+      const newSyntaxTheme = lumine.packages.getLoadedPackage("multi-alpha-syntax");
+      expect(newUiTheme).not.toBe(oldUiTheme);
+      expect(newSyntaxTheme).not.toBe(oldSyntaxTheme);
+      expect(lumine.packages.isPackageActive("multi-alpha-ui")).toBe(true);
+      expect(lumine.packages.isPackageActive("multi-alpha-syntax")).toBe(true);
+      expect(Number.isFinite(newUiTheme.activateTime)).toBe(true);
+      expect(Number.isFinite(newSyntaxTheme.activateTime)).toBe(true);
+      expect(document.querySelectorAll('style[priority="1"]')).not.toHaveLength(0);
     });
 
     it("loads extended styles before the theme's own override styles", () => {

@@ -289,7 +289,10 @@ module.exports = class CommandRegistry {
         keystrokes.push(binding.keystrokes);
       }
     }
-    return Object.freeze({ ...descriptor, keystrokes: Object.freeze(keystrokes) });
+    return Object.freeze({
+      ...descriptor,
+      keystrokes: Object.freeze(keystrokes),
+    });
   }
 
   /**
@@ -308,7 +311,9 @@ module.exports = class CommandRegistry {
   getCommandPresentations({ target, bindingTarget = target }) {
     const keystrokesByCommand = new Map();
     if (this.keymapManager) {
-      for (const binding of this.keymapManager.findKeyBindings({ target: bindingTarget })) {
+      for (const binding of this.keymapManager.findKeyBindings({
+        target: bindingTarget,
+      })) {
         let state = keystrokesByCommand.get(binding.command);
         if (!state) {
           state = { seen: new Set(), keystrokes: [] };
@@ -452,43 +457,54 @@ module.exports = class CommandRegistry {
       }
     }
 
-    this.emitter.emit("will-dispatch", dispatchedEvent);
+    const dispatchToListeners = () => {
+      this.emitter.emit("will-dispatch", dispatchedEvent);
 
-    while (true) {
-      const commandInlineListeners = this.inlineListenersByCommandName[event.type]
-        ? this.inlineListenersByCommandName[event.type].get(currentTarget)
-        : null;
-      let listeners = commandInlineListeners || [];
-      if (currentTarget.webkitMatchesSelector != null) {
-        const selectorBasedListeners = (this.selectorBasedListenersByCommandName[event.type] || [])
-          .filter((listener) => listener.matchesTarget(currentTarget))
-          .sort((a, b) => a.compare(b));
-        listeners = selectorBasedListeners.concat(listeners);
-      }
+      while (true) {
+        const commandInlineListeners = this.inlineListenersByCommandName[event.type]
+          ? this.inlineListenersByCommandName[event.type].get(currentTarget)
+          : null;
+        let listeners = commandInlineListeners || [];
+        if (currentTarget.webkitMatchesSelector != null) {
+          const selectorBasedListeners = (
+            this.selectorBasedListenersByCommandName[event.type] || []
+          )
+            .filter((listener) => listener.matchesTarget(currentTarget))
+            .sort((a, b) => a.compare(b));
+          listeners = selectorBasedListeners.concat(listeners);
+        }
 
-      // Call inline listeners first in reverse registration order,
-      // and selector-based listeners by specificity and reverse
-      // registration order.
-      for (let i = listeners.length - 1; i >= 0; i--) {
-        const listener = listeners[i];
-        if (immediatePropagationStopped) {
+        // Call inline listeners first in reverse registration order,
+        // and selector-based listeners by specificity and reverse
+        // registration order.
+        for (let i = listeners.length - 1; i >= 0; i--) {
+          const listener = listeners[i];
+          if (immediatePropagationStopped) {
+            break;
+          }
+          matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
+        }
+
+        if (currentTarget === window) {
           break;
         }
-        matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
+        if (propagationStopped) {
+          break;
+        }
+        currentTarget = currentTarget.parentNode || window;
       }
 
-      if (currentTarget === window) {
-        break;
-      }
-      if (propagationStopped) {
-        break;
-      }
-      currentTarget = currentTarget.parentNode || window;
-    }
+      this.emitter.emit("did-dispatch", dispatchedEvent);
+      if (matched.length === 0) return null;
+      const result = Promise.all(matched);
+      // Native DOM dispatch ignores a listener's return value. Observe the
+      // rejection here while returning the original Promise to programmatic
+      // callers, which can still await and handle the same failure.
+      result.catch(() => {});
+      return result;
+    };
 
-    this.emitter.emit("did-dispatch", dispatchedEvent);
-
-    return matched.length > 0 ? Promise.all(matched) : null;
+    return dispatchToListeners();
   }
 
   commandRegistered(commandName) {
@@ -509,7 +525,8 @@ class SelectorBasedListener {
   constructor(selector, commandName, listener) {
     this.selector = selector;
     this.didDispatch = extractDidDispatch(listener);
-    this.descriptor = extractDescriptor(commandName, listener);
+    this.metadata = extractMetadata(listener);
+    this.descriptor = descriptorFromMetadata(commandName, this.metadata);
     this.specificity = calculateSpecificity(this.selector);
     this.sequenceNumber = SequenceCount++;
   }
@@ -535,10 +552,18 @@ class InlineListener {
 //   displayName: string,
 // };
 function extractDescriptor(name, listener) {
-  return Object.assign(_.omit(listener, "didDispatch"), {
+  return descriptorFromMetadata(name, extractMetadata(listener));
+}
+
+function descriptorFromMetadata(name, metadata) {
+  return Object.assign({}, metadata, {
     name,
-    displayName: listener.displayName ? listener.displayName : _.humanizeEventName(name),
+    displayName: metadata.displayName ? metadata.displayName : _.humanizeEventName(name),
   });
+}
+
+function extractMetadata(listener) {
+  return _.omit(listener, "didDispatch", "name");
 }
 
 function extractDidDispatch(listener) {

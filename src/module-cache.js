@@ -37,6 +37,7 @@ const cache = {
   resourcePath: null,
   resourcePathWithTrailingSlash: null,
 };
+const packageMetadata = new Map();
 
 // isAbsolute is inlined from fs-plus so that fs-plus itself can be required
 // from this cache.
@@ -147,7 +148,7 @@ exports.register = function ({ resourcePath, devMode } = {}) {
   registerBuiltins(devMode);
 };
 
-exports.add = function (directoryPath, metadata) {
+function addPackageMetadata(directoryPath, metadata) {
   // path.join isn't used in this function for speed since path.join calls
   // path.normalize and all the paths are already normalized here.
 
@@ -155,12 +156,12 @@ exports.add = function (directoryPath, metadata) {
     try {
       metadata = require(`${directoryPath}${path.sep}package.json`);
     } catch {
-      return;
+      return false;
     }
   }
 
   const cacheToAdd = metadata && metadata._lumineModuleCache;
-  if (!cacheToAdd) return;
+  if (!cacheToAdd) return false;
 
   for (const dependency of cacheToAdd.dependencies || []) {
     if (!cache.dependencies[dependency.name]) {
@@ -190,6 +191,24 @@ exports.add = function (directoryPath, metadata) {
     for (let filePath of paths) {
       cache.extensions[extension].add(`${directoryPath}${path.sep}${filePath}`);
     }
+  }
+  return metadata;
+}
+
+exports.add = function (directoryPath, metadata) {
+  const registeredMetadata = addPackageMetadata(directoryPath, metadata);
+  if (registeredMetadata) {
+    packageMetadata.set(directoryPath, registeredMetadata);
+  }
+};
+
+exports.remove = function (directoryPath) {
+  packageMetadata.delete(directoryPath);
+  cache.dependencies = {};
+  cache.extensions = {};
+  cache.folders = {};
+  for (const [packagePath, metadata] of packageMetadata) {
+    addPackageMetadata(packagePath, metadata);
   }
 };
 

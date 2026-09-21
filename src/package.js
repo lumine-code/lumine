@@ -9,7 +9,6 @@ const CompileCache = require("./compile-cache");
 const ModuleCache = require("./module-cache");
 const BufferedProcess = require("./buffered-process");
 const { requireModule } = require("./module-utils");
-
 // Lists a directory, carrying each entry's type with it. The native-module walk
 // below asks "what is in here, and which of those are directories" for every
 // module in every package's dependency tree, and answers it here in one syscall
@@ -85,11 +84,17 @@ module.exports = class Package {
    */
 
   enable() {
-    return this.config.removeAtKeyPath("core.disabledPackages", this.name);
+    const disabledPackages = this.config.get("core.disabledPackages") || [];
+    return this.config.set(
+      "core.disabledPackages",
+      disabledPackages.filter((name) => name !== this.name),
+    );
   }
 
   disable() {
-    return this.config.pushAtKeyPath("core.disabledPackages", this.name);
+    const disabledPackages = this.config.get("core.disabledPackages") || [];
+    if (disabledPackages.includes(this.name)) return false;
+    return this.config.set("core.disabledPackages", [...disabledPackages, this.name]);
   }
 
   isTheme() {
@@ -133,35 +138,147 @@ module.exports = class Package {
   load() {
     this.measure("loadTime", () => {
       try {
+        this.loadScopeActive = true;
+        this.validateActivationMetadata();
         ModuleCache.add(this.path, this.metadata);
+        this.moduleCacheRegistered = true;
 
         this.loadKeymaps();
         this.loadMenus();
         this.loadStylesheets();
         this.registerDeserializerMethods();
+        this.registerViewProviders();
         this.activateCoreStartupServices();
-        this.registerURIHandler();
         this.configSchemaRegisteredOnLoad = this.registerConfigSchemaFromMetadata();
-        this.settingsPromise = this.measureAsync("settingsLoadTime", () => this.loadSettings());
+        const settingsLoad = {
+          generation: ++this.settingsLoadGeneration,
+          cancelled: false,
+        };
+        this.settingsLoad = settingsLoad;
+        this.settingsPromise = this.measureAsync("settingsLoadTime", () =>
+          this.loadSettings(settingsLoad),
+        ).finally(() => {
+          if (this.settingsLoad === settingsLoad) this.settingsLoad = null;
+        });
         if (this.shouldRequireMainModuleOnLoad() && this.mainModule == null) {
           this.requireMainModule();
+          this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
         }
       } catch (error) {
+        this.loadScopeActive = false;
+        this.loadError = error;
+        error.packageLoadReported = true;
         this.handleError(`Failed to load the ${this.name} package`, error);
       }
     });
     return this;
   }
 
-  unload() {}
+  validateActivationMetadata() {
+    if (
+      this.metadata.requiresRestartOnUpdate != null &&
+      typeof this.metadata.requiresRestartOnUpdate !== "boolean"
+    ) {
+      this.throwManifestError("requiresRestartOnUpdate must be a boolean");
+    }
+    if (
+      this.metadata.providedServices != null &&
+      (typeof this.metadata.providedServices !== "object" ||
+        Array.isArray(this.metadata.providedServices))
+    ) {
+      this.throwManifestError("providedServices must be an object");
+    }
+    for (const [name, descriptor] of Object.entries(this.metadata.providedServices || {})) {
+      if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) {
+        this.throwManifestError(`providedServices[${JSON.stringify(name)}] must be an object`);
+      }
+    }
+
+    if (
+      this.metadata.consumedServices != null &&
+      (typeof this.metadata.consumedServices !== "object" ||
+        Array.isArray(this.metadata.consumedServices))
+    ) {
+      this.throwManifestError("consumedServices must be an object");
+    }
+    for (const [name, descriptor] of Object.entries(this.metadata.consumedServices || {})) {
+      if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) {
+        this.throwManifestError(`consumedServices[${JSON.stringify(name)}] must be an object`);
+      }
+    }
+
+    const uriHandler = this.metadata.uriHandler;
+    if (uriHandler != null) {
+      if (!uriHandler || typeof uriHandler !== "object" || Array.isArray(uriHandler)) {
+        this.throwManifestError("uriHandler must be an object");
+      }
+      if (typeof uriHandler.method !== "string" || uriHandler.method.length === 0) {
+        this.throwManifestError("uriHandler.method must be a non-empty string");
+      }
+    }
+  }
+
+  throwManifestError(message) {
+    const metadataPath = path.join(this.path, "package.json");
+    const error = new TypeError(`${message} in ${metadataPath}`);
+    error.stack += `\n  at ${metadataPath}:1:1`;
+    throw error;
+  }
+
+  unload({ preserveModuleCache = false } = {}) {
+    this.loadScopeActive = false;
+    this.disposeActivationEntryPoints();
+    this.deactivateResources();
+    this.disposeInitializationScope();
+    this.deactivateKeymaps();
+    this.unregisterURIHandler();
+    this.deserializerDisposables?.dispose();
+    this.deserializerDisposables = null;
+    this.viewProviderDisposables?.dispose();
+    this.viewProviderDisposables = null;
+    this.coreStartupServiceDisposables?.dispose();
+    this.coreStartupServiceDisposables = null;
+    this.registeredViewProviders = false;
+    if (this.configSchemaRegisteredOnLoad || this.configSchemaRegisteredOnActivate) {
+      this.config.unsetSchema(this.name);
+      this.configSchemaRegisteredOnLoad = false;
+      this.configSchemaRegisteredOnActivate = false;
+    }
+    if (this.moduleCacheRegistered) {
+      ModuleCache.remove(this.path);
+      this.moduleCacheRegistered = false;
+      if (!preserveModuleCache) this.clearRequireCache();
+    }
+  }
+
+  clearRequireCache() {
+    if (typeof this.path !== "string" || this.path.length === 0) return;
+    const roots = new Set([path.resolve(this.path)]);
+    try {
+      roots.add(fs.realpathSync(this.path));
+    } catch {
+      // An uninstall can remove the directory before final teardown. The
+      // configured package path still identifies cache entries in that case.
+    }
+    for (const modulePath of Object.keys(require.cache)) {
+      if (
+        [...roots].some(
+          (root) => modulePath === root || modulePath.startsWith(`${root}${path.sep}`),
+        )
+      ) {
+        delete require.cache[modulePath];
+      }
+    }
+  }
 
   shouldRequireMainModuleOnLoad() {
-    return !(
-      this.metadata.deserializers ||
-      this.metadata.viewProviders ||
-      this.metadata.configSchema ||
-      this.activationShouldBeDeferred() ||
-      localStorage.getItem(this.getCanDeferMainModuleRequireStorageKey()) === "true"
+    // Main modules are required by PackageManager's explicit initialize phase
+    // after every package has been loaded. The sole exception is the core
+    // directory-provider service, which Project needs while package metadata is
+    // still being wired during load.
+    return Boolean(
+      this.metadata.providedServices?.["project.directory-provider"] &&
+      this.metadata.providedServices["project.directory-provider"].versions,
     );
   }
 
@@ -173,83 +290,178 @@ module.exports = class Package {
     this.settings = [];
     this.mainInitialized = false;
     this.mainActivated = false;
-    this.deserialized = false;
+    this.mainActivationStarted = false;
+    this.settingsLoadGeneration = 0;
+    this.settingsLoad = null;
+    this.settingsPromise = null;
+    this.resourceLoadPromise = null;
+    this.initializationDisposables = null;
+    this.hooks = null;
+    this.lifecycleState = "loaded";
   }
 
-  initializeIfNeeded() {
+  prepareToUnload() {
+    this.loadScopeActive = false;
+    if (this.settingsLoad) this.settingsLoad.cancelled = true;
+    return Promise.allSettled([this.settingsPromise, this.resourceLoadPromise]).then(() => {});
+  }
+
+  initializeIfNeeded(context = {}) {
     if (this.mainInitialized) return;
-    this.measure("initializeTime", () => {
-      try {
+    const initializationDisposables = new CompositeDisposable();
+    this.initializationDisposables = initializationDisposables;
+    const hooks = {
+      on: (...args) => {
+        const disposable = this.packageManager.hooks.on(...args);
+        initializationDisposables.add(disposable);
+        return disposable;
+      },
+      when: (...args) => this.packageManager.hooks.when(...args),
+      hasOccurred: (...args) => this.packageManager.hooks.hasOccurred(...args),
+      value: (...args) => this.packageManager.hooks.value(...args),
+    };
+    this.hooks = hooks;
+    try {
+      this.measure("initializeTime", () => {
         // The main module's `initialize()` method is guaranteed to be called
-        // before its `activate()`. This gives you a chance to handle the
-        // serialized package state before the package's derserializers and view
-        // providers are used.
+        // before its `activate()`. Initialization failure is activation failure;
+        // it must propagate to PackageManager instead of publishing a half-ready
+        // package after handleError merely displayed a notification.
         if (!this.mainModule) this.requireMainModule();
-        if (typeof this.mainModule.initialize === "function") {
-          this.mainModule.initialize(this.packageManager.getPackageState(this.name) || {});
+        this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
+        if (this.mainModule && typeof this.mainModule.initialize === "function") {
+          const result = this.mainModule.initialize(
+            this.packageManager.getPackageState(this.name) || {},
+            {
+              package: this,
+              packageManager: this.packageManager,
+              hooks,
+              services: this.packageManager.serviceHub,
+              subscriptions: initializationDisposables,
+              ...context,
+            },
+          );
+          if (result && typeof result.then === "function") {
+            result.catch(() => {});
+            throw new TypeError(
+              `The ${this.name} package initialize() hook must be synchronous; ` +
+                "move asynchronous work behind an ensure method",
+            );
+          }
         }
         this.mainInitialized = true;
-      } catch (error) {
-        this.handleError(`Failed to initialize the ${this.name} package`, error);
-      }
-    });
+      });
+    } catch (error) {
+      initializationDisposables.dispose();
+      this.initializationDisposables = null;
+      this.hooks = null;
+      throw error;
+    }
   }
 
-  activate() {
+  initializeForExternalUse(context) {
+    const initializationContext =
+      context && typeof context === "object" ? context : { reason: context };
+    const reason = initializationContext.reason || "external use";
+    try {
+      return this.initializeIfNeeded(initializationContext);
+    } catch (error) {
+      error.packageActivationReported = true;
+      try {
+        this.handleError(`Failed to initialize the ${this.name} package for ${reason}`, error);
+      } catch {
+        // Test mode throws the same failure; the caller below still receives it.
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Invoke the package main module's synchronous activation contract. Main
+   * modules receive their serialized state first and `{signal, cause}` second.
+   * Activation is the lightweight public bootstrap: commands, openers,
+   * services and resource registrations must be ready before this method
+   * returns. Expensive work belongs behind a package-owned `ensure` method.
+   *
+   * Grammar and settings discovery may continue in the background; they are
+   * package resources, not activation gates.
+   *
+   * @private
+   */
+  activateMain({ signal, cause } = {}) {
+    if (this.loadError) throw this.loadError;
     if (!this.grammarsPromise) {
       this.grammarsPromise = this.measureAsync("grammarLoadTime", () => this.loadGrammars());
     }
-    if (!this.activationPromise) {
-      this.activationPromise = new Promise((resolve, _reject) => {
-        this.resolveActivationPromise = resolve;
-        this.measure("activateTime", () => {
-          try {
-            this.activateResources();
-            if (this.activationShouldBeDeferred()) {
-              return this.subscribeToDeferredActivation();
-            } else {
-              return this.activateNow();
-            }
-          } catch (error) {
-            return this.handleError(`Failed to activate the ${this.name} package`, error);
-          }
-        });
-      });
-    }
-
-    return Promise.all([this.grammarsPromise, this.settingsPromise, this.activationPromise]);
-  }
-
-  activateNow() {
+    // Grammar and settings discovery runs concurrently with activation, but it
+    // is not package activation itself. Keep it outside this measurement so a
+    // grammar-only package does not report its parser load time as activation
+    // time. Do not put the synchronous prologue in an async callback: doing so
+    // would defer the measurement's completion to a microtask, allowing every
+    // later package in the initial batch to be charged to this package. Only
+    // an actual Promise returned by main.activate() may extend the measurement.
+    const activationStartTime = window.performance.now();
     try {
-      if (!this.mainModule) this.requireMainModule();
-      // {@link #activate} normally does this first, but a package can be forced
-      // active without it — a deserializer that needs its package up before
-      // initial activation runs, say. Everything here is flag-guarded, so the
-      // ordinary path pays nothing for the second call.
       this.activateResources();
-      this.configSchemaRegisteredOnActivate = this.registerConfigSchemaFromMainModule();
+      this.registerURIHandler();
+      if (!this.mainModule) this.requireMainModule();
+      this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
       this.registerViewProviders();
       this.activateStylesheets();
+
       if (this.mainModule && !this.mainActivated) {
         this.initializeIfNeeded();
         if (typeof this.mainModule.activateConfig === "function") {
           this.mainModule.activateConfig();
         }
+
+        this.mainActivationStarted = true;
+        let activationResult;
         if (typeof this.mainModule.activate === "function") {
-          this.mainModule.activate(this.packageManager.getPackageState(this.name) || {});
+          activationResult = this.mainModule.activate(
+            this.packageManager.getPackageState(this.name) || {},
+            {
+              signal,
+              cause,
+              hooks: this.hooks,
+              services: this.packageManager.serviceHub,
+              subscriptions: this.initializationDisposables,
+            },
+          );
+        }
+
+        // Services are connected as part of the synchronous bootstrap. A
+        // provider publishes only its lightweight facade; expensive service
+        // methods remain lazy and may return promises themselves.
+        this.activateConsumedServices();
+        if (activationResult && typeof activationResult.then === "function") {
+          throw new TypeError(
+            `The ${this.name} package activate() hook must be synchronous; ` +
+              "move asynchronous work behind an ensure method",
+          );
         }
         this.mainActivated = true;
-        this.activateServices();
+        this.activateProvidedServices();
       }
-      if (this.activationCommandSubscriptions) this.activationCommandSubscriptions.dispose();
-      if (this.activationHookSubscriptions) this.activationHookSubscriptions.dispose();
-      if (this.workspaceOpenerSubscriptions) this.workspaceOpenerSubscriptions.dispose();
     } catch (error) {
-      this.handleError(`Failed to activate the ${this.name} package`, error);
+      this.activateTime = Math.round(window.performance.now() - activationStartTime);
+      throw error;
     }
+    this.activateTime = Math.round(window.performance.now() - activationStartTime);
 
-    if (typeof this.resolveActivationPromise === "function") this.resolveActivationPromise();
+    const resourceLoads = [this.grammarsPromise, this.settingsPromise].filter(Boolean);
+    if (resourceLoads.length > 0) {
+      this.resourceLoadPromise = Promise.all(resourceLoads);
+      this.resourceLoadPromise.catch((error) => {
+        if (error?.packageLoadReported) return;
+        try {
+          this.handleError(`Failed to finish loading the ${this.name} package resources`, error);
+        } catch (reportedError) {
+          console.error(reportedError);
+        }
+      });
+    }
+    return this;
   }
 
   registerConfigSchemaFromMetadata() {
@@ -266,7 +478,11 @@ module.exports = class Package {
   }
 
   registerConfigSchemaFromMainModule() {
-    if (this.mainModule && !this.configSchemaRegisteredOnLoad) {
+    if (
+      this.mainModule &&
+      !this.configSchemaRegisteredOnLoad &&
+      !this.configSchemaRegisteredOnActivate
+    ) {
       if (typeof this.mainModule.config === "object") {
         this.config.setSchema(this.name, {
           type: "object",
@@ -276,13 +492,6 @@ module.exports = class Package {
       }
     }
     return false;
-  }
-
-  // TODO: Remove. Settings view calls this method currently.
-  activateConfig() {
-    if (this.configSchemaRegisteredOnLoad) return;
-    this.requireMainModule();
-    this.registerConfigSchemaFromMainModule();
   }
 
   activateStylesheets() {
@@ -398,13 +607,13 @@ module.exports = class Package {
     this.menusActivated = true;
   }
 
-  activateServices() {
-    let activateProviders, methodName, name, version, versions;
+  activateConsumedServices() {
+    let methodName, name, version, versions;
     // Connect a package's dependencies before publishing anything that may use
     // them. Providing is synchronous and can immediately invoke consumers in
     // other packages, so doing it first exposes a half-wired main module.
-    for (name in this.metadata.consumedServices) {
-      ({ activateProviders = true, versions } = this.metadata.consumedServices[name]);
+    for (name in this.metadata.consumedServices || {}) {
+      ({ versions } = this.metadata.consumedServices[name]);
       for (version in versions) {
         methodName = versions[version];
         if (typeof this.mainModule[methodName] === "function") {
@@ -413,7 +622,6 @@ module.exports = class Package {
               name,
               version,
               this.mainModule[methodName].bind(this.mainModule),
-              { activateProviders: activateProviders !== false },
             ),
           );
         } else {
@@ -423,8 +631,11 @@ module.exports = class Package {
         }
       }
     }
+  }
 
-    for (name in this.metadata.providedServices) {
+  activateProvidedServices() {
+    let methodName, name, version, versions;
+    for (name in this.metadata.providedServices || {}) {
       ({ versions } = this.metadata.providedServices[name]);
       const servicesByVersion = {};
       for (version in versions) {
@@ -444,25 +655,23 @@ module.exports = class Package {
   }
 
   registerURIHandler() {
+    if (this.uriHandlerSubscription) return;
     const handlerConfig = this.getURIHandler();
     const methodName = handlerConfig && handlerConfig.method;
     if (methodName) {
       this.uriHandlerSubscription = this.packageManager.registerURIHandlerForPackage(
         this.name,
-        (...args) => this.handleURI(methodName, args),
+        (...args) =>
+          typeof this.mainModule?.[methodName] === "function"
+            ? this.mainModule[methodName](...args)
+            : undefined,
       );
     }
   }
 
   unregisterURIHandler() {
-    if (this.uriHandlerSubscription) this.uriHandlerSubscription.dispose();
-  }
-
-  handleURI(methodName, args) {
-    this.activate().then(() => {
-      if (this.mainModule[methodName]) this.mainModule[methodName].apply(this.mainModule, args);
-    });
-    if (!this.mainActivated) this.activateNow();
+    this.uriHandlerSubscription?.dispose();
+    this.uriHandlerSubscription = null;
   }
 
   loadKeymaps() {
@@ -528,30 +737,29 @@ module.exports = class Package {
 
   registerDeserializerMethods() {
     if (this.metadata.deserializers) {
+      if (!this.deserializerDisposables) this.deserializerDisposables = new CompositeDisposable();
       Object.keys(this.metadata.deserializers).forEach((deserializerName) => {
         const methodName = this.metadata.deserializers[deserializerName];
-        this.deserializerManager.add({
-          name: deserializerName,
-          deserialize: (state, lumineEnvironment) => {
-            this.registerViewProviders();
-            this.requireMainModule();
-            this.initializeIfNeeded();
-            if (lumineEnvironment.packages.hasActivatedInitialPackages()) {
-              // Only explicitly activate the package if initial packages
-              // have finished activating. This is because deserialization
-              // generally occurs at Lumine startup, which happens before the
-              // workspace element is added to the DOM and is inconsistent with
-              // with when initial package activation occurs. Triggering activation
-              // immediately may cause problems with packages that expect to
-              // always have access to the workspace element.
-              // Otherwise, we just set the deserialized flag and package-manager
-              // will activate this package as normal during initial package activation.
-              this.activateNow();
-            }
-            this.deserialized = true;
-            return this.mainModule[methodName](state, lumineEnvironment);
-          },
-        });
+        this.deserializerDisposables.add(
+          this.deserializerManager.add({
+            name: deserializerName,
+            deserialize: (state, lumineEnvironment) => {
+              if (!this.canUseLoadScopeProxy()) return;
+              this.registerViewProviders();
+              this.requireMainModule();
+              this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
+              this.initializeForExternalUse("deserialization");
+              this.packageManager
+                .activatePackageInstance(this, null, { type: "deserializer", methodName })
+                .catch((error) => {
+                  if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
+                    console.error(`Failed to activate '${this.name}' for deserialization`, error);
+                  }
+                });
+              return this.mainModule[methodName](state, lumineEnvironment);
+            },
+          }),
+        );
       });
     }
   }
@@ -569,21 +777,50 @@ module.exports = class Package {
           servicesByVersion[version] = this.mainModule[methodName]();
         }
       }
-      this.packageManager.serviceHub.provide("project.directory-provider", servicesByVersion);
+      if (!this.coreStartupServiceDisposables) {
+        this.coreStartupServiceDisposables = new CompositeDisposable();
+      }
+      this.coreStartupServiceDisposables.add(
+        this.packageManager.serviceHub.provide("project.directory-provider", servicesByVersion),
+      );
     }
   }
 
   registerViewProviders() {
     if (this.metadata.viewProviders && !this.registeredViewProviders) {
-      this.requireMainModule();
+      this.viewProviderDisposables = new CompositeDisposable();
       this.metadata.viewProviders.forEach((methodName) => {
-        this.viewRegistry.addViewProvider((model) => {
-          this.initializeIfNeeded();
-          return this.mainModule[methodName](model);
-        });
+        this.viewProviderDisposables.add(
+          this.viewRegistry.addViewProvider((model) => {
+            if (!this.canUseLoadScopeProxy()) return;
+            this.requireMainModule();
+            this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
+            this.initializeForExternalUse("a view provider");
+            this.packageManager
+              .activatePackageInstance(this, null, { type: "view-provider", methodName })
+              .catch((error) => {
+                if (error?.code !== "PACKAGE_ACTIVATION_CANCELLED") {
+                  console.error(`Failed to activate '${this.name}' for a view provider`, error);
+                }
+              });
+            return this.mainModule[methodName](model);
+          }),
+        );
       });
       this.registeredViewProviders = true;
     }
+  }
+
+  canUseLoadScopeProxy() {
+    const lifecycleState = this.packageManager.getPackageLifecycleState(this.name);
+    const currentPackage = this.packageManager.getLoadedPackage(this.name);
+    return (
+      this.loadScopeActive &&
+      (currentPackage == null || currentPackage === this) &&
+      !this.packageManager.isPackageDisabled(this.name) &&
+      lifecycleState !== "deactivating" &&
+      lifecycleState !== "unloaded"
+    );
   }
 
   getStylesheetsPath() {
@@ -682,13 +919,19 @@ module.exports = class Package {
     });
   }
 
-  loadSettings() {
+  loadSettings(settingsLoad = this.settingsLoad) {
     this.settings = [];
     if (this.hasPackageRootEntry("settings") === false) return Promise.resolve();
 
+    const isCurrentLoad = () =>
+      settingsLoad == null ||
+      (this.loadScopeActive && this.settingsLoad === settingsLoad && !settingsLoad.cancelled);
+
     const loadSettingsFile = (settingsPath, callback) => {
       return SettingsFile.load(settingsPath, (error, settingsFile) => {
-        if (error) {
+        if (!isCurrentLoad()) {
+          return callback();
+        } else if (error) {
           const detail = `${error.message} in ${settingsPath}`;
           const stack = `${error.stack}\n  at ${settingsPath}:1:1`;
           this.notificationManager.addFatalError(
@@ -747,21 +990,17 @@ module.exports = class Package {
   }
 
   async deactivate() {
-    this.activationPromise = null;
-    this.resolveActivationPromise = null;
-    if (this.activationCommandSubscriptions) this.activationCommandSubscriptions.dispose();
-    if (this.activationHookSubscriptions) this.activationHookSubscriptions.dispose();
-    this.configSchemaRegisteredOnActivate = false;
-    this.unregisterURIHandler();
+    this.disposeActivationEntryPoints();
     this.deactivateResources();
     this.deactivateKeymaps();
 
-    if (!this.mainActivated) {
+    if (!this.mainActivationStarted && !this.mainInitialized) {
+      this.disposeInitializationScope();
       this.emitter.emit("did-deactivate");
       return;
     }
 
-    if (typeof this.mainModule.deactivate === "function") {
+    if (typeof this.mainModule?.deactivate === "function") {
       try {
         const deactivationResult = this.mainModule.deactivate();
         if (deactivationResult && typeof deactivationResult.then === "function") {
@@ -772,7 +1011,7 @@ module.exports = class Package {
       }
     }
 
-    if (typeof this.mainModule.deactivateConfig === "function") {
+    if (this.mainActivationStarted && typeof this.mainModule?.deactivateConfig === "function") {
       try {
         await this.mainModule.deactivateConfig();
       } catch (error) {
@@ -780,9 +1019,25 @@ module.exports = class Package {
       }
     }
 
-    this.mainActivated = false;
-    this.mainInitialized = false;
+    this.disposeInitializationScope();
+    this.finishDeactivation();
     this.emitter.emit("did-deactivate");
+  }
+
+  finishDeactivation() {
+    this.mainActivated = false;
+    this.mainActivationStarted = false;
+    this.mainInitialized = false;
+  }
+
+  disposeInitializationScope() {
+    this.initializationDisposables?.dispose();
+    this.initializationDisposables = null;
+    this.hooks = null;
+  }
+
+  disposeActivationEntryPoints() {
+    this.unregisterURIHandler();
   }
 
   deactivateResources() {
@@ -848,17 +1103,7 @@ module.exports = class Package {
       if (fs.isFileSync(mainModulePath)) {
         this.mainModuleRequired = true;
 
-        const previousViewProviderCount = this.viewRegistry.getViewProviderCount();
-        const previousDeserializerCount = this.deserializerManager.getDeserializerCount();
         this.mainModule = requireModule(mainModulePath);
-        if (
-          this.viewRegistry.getViewProviderCount() === previousViewProviderCount &&
-          this.deserializerManager.getDeserializerCount() === previousDeserializerCount
-        ) {
-          localStorage.setItem(this.getCanDeferMainModuleRequireStorageKey(), "true");
-        } else {
-          localStorage.removeItem(this.getCanDeferMainModuleRequireStorageKey());
-        }
         return this.mainModule;
       }
     }
@@ -888,218 +1133,6 @@ module.exports = class Package {
       ]);
     }
     return this.mainModulePath;
-  }
-
-  activationShouldBeDeferred() {
-    return (
-      !this.deserialized &&
-      (this.hasActivationCommands() ||
-        this.hasActivationHooks() ||
-        this.hasWorkspaceOpeners() ||
-        this.hasActivateOnConsumeServices() ||
-        this.hasDeferredURIHandler())
-    );
-  }
-
-  hasActivationHooks() {
-    const hooks = this.getActivationHooks();
-    return hooks && hooks.length > 0;
-  }
-
-  hasWorkspaceOpeners() {
-    const openers = this.getWorkspaceOpeners();
-    return openers && openers.length > 0;
-  }
-
-  hasActivateOnConsumeServices() {
-    const providedServices = this.metadata && this.metadata.providedServices;
-    if (!providedServices || typeof providedServices !== "object") return false;
-    return Object.values(providedServices).some(
-      (descriptor) => descriptor && descriptor.activateOnConsume === true,
-    );
-  }
-
-  hasActivationCommands() {
-    const object = this.getActivationCommands();
-    for (let selector in object) {
-      const commands = object[selector];
-      if (commands.length > 0) return true;
-    }
-    return false;
-  }
-
-  hasDeferredURIHandler() {
-    const handler = this.getURIHandler();
-    return handler && handler.deferActivation !== false;
-  }
-
-  subscribeToDeferredActivation() {
-    this.subscribeToActivationCommands();
-    this.subscribeToActivationHooks();
-    this.subscribeToWorkspaceOpeners();
-  }
-
-  subscribeToActivationCommands() {
-    this.activationCommandSubscriptions = new CompositeDisposable();
-    const object = this.getActivationCommands();
-    for (let selector in object) {
-      const commands = object[selector];
-      for (let command of commands) {
-        ((selector, command) => {
-          // Add dummy command so it appears in menu.
-          // The real command will be registered on package activation
-          try {
-            this.activationCommandSubscriptions.add(
-              this.commandRegistry.add(selector, command, function () {}),
-            );
-          } catch (error) {
-            if (error.code === "EBADSELECTOR") {
-              const metadataPath = path.join(this.path, "package.json");
-              error.message += ` in ${metadataPath}`;
-              error.stack += `\n  at ${metadataPath}:1:1`;
-            }
-            throw error;
-          }
-
-          this.activationCommandSubscriptions.add(
-            this.commandRegistry.onWillDispatch((event) => {
-              if (event.type !== command) return;
-              let currentTarget = event.target;
-              while (currentTarget) {
-                if (currentTarget.webkitMatchesSelector(selector)) {
-                  this.activationCommandSubscriptions.dispose();
-                  this.activateNow();
-                  break;
-                }
-                currentTarget = currentTarget.parentElement;
-              }
-            }),
-          );
-        })(selector, command);
-      }
-    }
-  }
-
-  getActivationCommands() {
-    if (this.activationCommands) return this.activationCommands;
-
-    this.activationCommands = {};
-
-    if (this.metadata.activationCommands) {
-      for (let selector in this.metadata.activationCommands) {
-        const commands = this.metadata.activationCommands[selector];
-        if (!this.activationCommands[selector]) this.activationCommands[selector] = [];
-        if (typeof commands === "string") {
-          this.activationCommands[selector].push(commands);
-        } else if (Array.isArray(commands)) {
-          this.activationCommands[selector].push(...commands);
-        }
-      }
-    }
-
-    return this.activationCommands;
-  }
-
-  subscribeToActivationHooks() {
-    this.activationHookSubscriptions = new CompositeDisposable();
-    let shouldActivate = false;
-    for (let hook of this.getActivationHooks()) {
-      if (typeof hook === "string" && hook.trim().length > 0) {
-        this.activationHookSubscriptions.add(
-          this.packageManager.onDidTriggerActivationHook(hook, () => this.activateNow()),
-        );
-        shouldActivate ||= this.packageManager.shouldReplayActivationHook(hook);
-      }
-    }
-    if (shouldActivate) this.activateNow();
-  }
-
-  getActivationHooks() {
-    if (this.metadata && this.activationHooks) return this.activationHooks;
-
-    if (this.metadata.activationHooks) {
-      if (Array.isArray(this.metadata.activationHooks)) {
-        this.activationHooks = Array.from(new Set(this.metadata.activationHooks));
-      } else if (typeof this.metadata.activationHooks === "string") {
-        this.activationHooks = [this.metadata.activationHooks];
-      } else {
-        this.activationHooks = [];
-      }
-    } else {
-      this.activationHooks = [];
-    }
-
-    return this.activationHooks;
-  }
-
-  subscribeToWorkspaceOpeners() {
-    this.workspaceOpenerSubscriptions = new CompositeDisposable();
-    for (let opener of this.getWorkspaceOpeners()) {
-      this.workspaceOpenerSubscriptions.add(
-        lumine.workspace.addOpener((filePath) => {
-          if (this.matchesWorkspaceOpener(filePath, opener)) {
-            this.activateNow();
-            this.workspaceOpenerSubscriptions.dispose();
-            return lumine.workspace.createItemForURI(filePath);
-          }
-        }),
-      );
-    }
-  }
-
-  matchesWorkspaceOpener(filePath, opener) {
-    if (typeof filePath !== "string") return false;
-    if (typeof opener === "string") return filePath === opener;
-    if (!opener || typeof opener !== "object") return false;
-
-    if (typeof opener.uriPrefix === "string" && filePath.startsWith(opener.uriPrefix)) {
-      return true;
-    }
-
-    const suffixes = [];
-    const addSuffixes = (values) => {
-      for (const value of Array.isArray(values) ? values : [values]) {
-        if (typeof value !== "string") continue;
-        let suffix = value.trim().toLowerCase();
-        if (suffix.length === 0) continue;
-        if (!suffix.startsWith(".")) suffix = `.${suffix}`;
-        suffixes.push(suffix);
-      }
-    };
-
-    addSuffixes(opener.pathSuffixes);
-    const configKeyPaths = Array.isArray(opener.pathSuffixesConfig)
-      ? opener.pathSuffixesConfig
-      : [opener.pathSuffixesConfig];
-    for (const keyPath of configKeyPaths) {
-      if (typeof keyPath === "string" && keyPath.length > 0) {
-        addSuffixes(this.config.get(keyPath));
-      }
-    }
-
-    const queryOrFragmentIndex = filePath.search(/[?#]/);
-    const normalizedPath = (
-      queryOrFragmentIndex === -1 ? filePath : filePath.slice(0, queryOrFragmentIndex)
-    ).toLowerCase();
-    return suffixes.some((suffix) => normalizedPath.endsWith(suffix));
-  }
-
-  getWorkspaceOpeners() {
-    if (this.workspaceOpeners) return this.workspaceOpeners;
-
-    if (this.metadata.workspaceOpeners) {
-      if (Array.isArray(this.metadata.workspaceOpeners)) {
-        this.workspaceOpeners = Array.from(new Set(this.metadata.workspaceOpeners));
-      } else if (typeof this.metadata.workspaceOpeners === "string") {
-        this.workspaceOpeners = [this.metadata.workspaceOpeners];
-      } else {
-        this.workspaceOpeners = [];
-      }
-    } else {
-      this.workspaceOpeners = [];
-    }
-
-    return this.workspaceOpeners;
   }
 
   getURIHandler() {
@@ -1283,10 +1316,6 @@ module.exports = class Package {
 
   getBuildFailureOutputStorageKey() {
     return `${this.getStorageKeyPrefix()}:build-error`;
-  }
-
-  getCanDeferMainModuleRequireStorageKey() {
-    return `${this.getStorageKeyPrefix()}:can-defer-main-module-require`;
   }
 
   // A `.node` file is compatible with an ABI rather than with a Lumine version,

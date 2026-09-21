@@ -140,4 +140,18 @@ exports.load = function() { require('@lumine-code/underscore-plus'); };\
     expect(() => packageMain.load()).toThrow();
     expect(Module._findPath.calls.count()).toBe(1);
   });
+
+  it("removes a package's resolution metadata on unload", () => {
+    const packagePath = fs.realpathSync(temp.mkdirSync("removable-package"));
+    ModuleCache.add(packagePath, {
+      _lumineModuleCache: {
+        folders: [{ paths: [""], dependencies: { example: "^1.0.0" } }],
+      },
+    });
+    expect(ModuleCache.cache.folders[packagePath]).toEqual({ example: "^1.0.0" });
+
+    ModuleCache.remove(packagePath);
+
+    expect(ModuleCache.cache.folders[packagePath]).toBeUndefined();
+  });
 });

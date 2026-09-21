@@ -26,6 +26,16 @@ describe("Package", function () {
 
   const buildThemePackage = (themePath) => build(ThemePackage, themePath);
 
+  const activatePackageObject = async (pack) => {
+    // PackageManager loads resource metadata before invoking the direct
+    // activation path. Keep this helper aligned with that lifecycle rather
+    // than reaching into the removed intermediate activation phase.
+    pack.load();
+    if (pack instanceof ThemePackage) pack.loadStylesheets();
+    await pack.activateMain({ signal: new AbortController().signal });
+    return pack;
+  };
+
   describe("::getCachedResourcePaths()", function () {
     it("resolves baked resource paths for bundled packages", function () {
       const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-index");
@@ -114,7 +124,7 @@ describe("Package", function () {
       expect(pack.isCompatible()).toBe(false);
     });
 
-    it("logs an error to the console describing the problem", function () {
+    it("logs an error to the console describing the problem", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module");
@@ -122,7 +132,7 @@ describe("Package", function () {
       spyOn(console, "warn");
       spyOn(lumine.notifications, "addFatalError");
 
-      buildPackage(packagePath).activateNow();
+      await activatePackageObject(buildPackage(packagePath));
 
       expect(lumine.notifications.addFatalError).not.toHaveBeenCalled();
       expect(console.warn.calls.count()).toBe(1);
@@ -132,11 +142,39 @@ describe("Package", function () {
     });
   });
 
-  describe("::activateNow()", function () {
-    // A deserializer may need its own package active before initial package
-    // activation has run, so it forces the issue by calling `activateNow()`
-    // without `activate()` ever having prepared the package's resources.
-    it("activates the package's resources when ::activate() has not run", function () {
+  describe("::activateMain()", function () {
+    it("does not count asynchronous resource loading as activation time", async function () {
+      const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-main");
+      const pack = buildPackage(packagePath);
+      pack.load();
+
+      let resolveGrammar;
+      spyOn(pack, "loadGrammars").and.returnValue(
+        new Promise((resolve) => (resolveGrammar = resolve)),
+      );
+
+      const activation = pack.activateMain({
+        generation: 1,
+        signal: new AbortController().signal,
+      });
+
+      // A synchronous main module must finish its own timing before another
+      // package gets a chance to run in the same initial activation batch.
+      expect(Number.isFinite(pack.activateTime)).toBe(true);
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The package activation prologue has completed while grammar discovery
+      // is still pending, so its timing must already be available.
+      expect(Number.isFinite(pack.activateTime)).toBe(true);
+
+      resolveGrammar();
+      await activation;
+      await pack.deactivate();
+    });
+
+    it("activates the package's resources through the direct lifecycle", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-provided-services");
@@ -145,7 +183,7 @@ describe("Package", function () {
 
       expect(pack.activationDisposables).toBeUndefined();
 
-      pack.activateNow();
+      await activatePackageObject(pack);
 
       expect(pack.mainActivated).toBe(true);
       expect(pack.activationDisposables).not.toBeUndefined();
@@ -154,7 +192,7 @@ describe("Package", function () {
       lumine.packages.serviceHub.consume("service-2", "^0.2.0", (value) => (service = value));
       expect(service).toBe("second-service");
 
-      pack.deactivate();
+      await pack.deactivate();
     });
   });
 
@@ -355,29 +393,29 @@ describe("Package", function () {
     });
 
     describe("when the theme contains a single style file", function () {
-      it("loads and applies css", function () {
+      it("loads and applies css", async function () {
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("1234px");
         const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-index-css");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
         expect(getComputedStyle(editorElement).paddingTop).toBe("1234px");
       });
 
-      it("loads and applies a stylesheet at the theme root", function () {
+      it("loads and applies a stylesheet at the theme root", async function () {
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("1234px");
         const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-index-at-root");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
         expect(getComputedStyle(editorElement).paddingTop).toBe("4321px");
       });
     });
 
     describe("when the theme contains a package.json file", () =>
-      it("loads and applies stylesheets from package.json in the correct order", function () {
+      it("loads and applies stylesheets from package.json in the correct order", async function () {
         expect(getComputedStyle(editorElement).paddingTop).not.toBe("101px");
         expect(getComputedStyle(editorElement).paddingRight).not.toBe("102px");
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("103px");
@@ -386,14 +424,14 @@ describe("Package", function () {
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
         expect(getComputedStyle(editorElement).paddingTop).toBe("101px");
         expect(getComputedStyle(editorElement).paddingRight).toBe("102px");
         expect(getComputedStyle(editorElement).paddingBottom).toBe("103px");
       }));
 
     describe("when the theme does not contain a package.json file and is a directory", () =>
-      it("loads all stylesheet files in the directory", function () {
+      it("loads all stylesheet files in the directory", async function () {
         expect(getComputedStyle(editorElement).paddingTop).not.toBe("10px");
         expect(getComputedStyle(editorElement).paddingRight).not.toBe("20px");
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("30px");
@@ -402,19 +440,19 @@ describe("Package", function () {
           .getDirectories()[0]
           ?.resolve("packages/theme-without-package-file");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
         expect(getComputedStyle(editorElement).paddingTop).toBe("10px");
         expect(getComputedStyle(editorElement).paddingRight).toBe("20px");
         expect(getComputedStyle(editorElement).paddingBottom).toBe("30px");
       }));
 
     describe("reloading a theme", function () {
-      beforeEach(function () {
+      beforeEach(async function () {
         const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
       });
 
       it("reloads without readding to the stylesheets list", function () {
@@ -425,12 +463,12 @@ describe("Package", function () {
     });
 
     describe("events", function () {
-      beforeEach(function () {
+      beforeEach(async function () {
         const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
-        theme.activate();
+        await activatePackageObject(theme);
       });
 
       it("deactivated event fires on .deactivate()", async function () {
@@ -457,7 +495,7 @@ describe("Package", function () {
   });
 
   describe("the initialize() hook", function () {
-    it("gets called when the package is activated", function () {
+    it("gets called when the package is activated", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-deserializers");
@@ -466,7 +504,7 @@ describe("Package", function () {
       const { mainModule } = pack;
       spyOn(mainModule, "initialize");
       expect(mainModule.initialize).not.toHaveBeenCalled();
-      pack.activate();
+      await activatePackageObject(pack);
       expect(mainModule.initialize).toHaveBeenCalled();
       expect(mainModule.initialize.calls.count()).toBe(1);
     });
@@ -479,10 +517,15 @@ describe("Package", function () {
       pack.requireMainModule();
       const { mainModule } = pack;
       spyOn(mainModule, "initialize");
+      mainModule.config = {
+        restoredFlag: { type: "boolean", default: true },
+      };
       pack.load();
       expect(mainModule.initialize).not.toHaveBeenCalled();
       lumine.deserializers.deserialize({ deserializer: "Deserializer1", a: "b" });
       expect(mainModule.initialize).toHaveBeenCalled();
+      expect(lumine.config.get("package-with-deserializers.restoredFlag")).toBe(true);
+      delete mainModule.config;
     });
   });
 });

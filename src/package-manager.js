@@ -2,12 +2,11 @@ const path = require("path");
 let normalizePackageData = null;
 
 const _ = require("@lumine-code/underscore-plus");
-const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
-const { Range } = require("semver");
-
 const ServiceHub = require("./service-hub");
+const ActivationHooks = require("./activation-hooks");
 const Package = require("./package");
 const ThemePackage = require("./theme-package");
 const { scanBundledPackageNames } = require("./bundled-packages");
@@ -30,6 +29,15 @@ function settlesWithin(promise, ms) {
     clearTimeout(timer);
     return settled;
   });
+}
+
+class PackageActivationCancelledError extends Error {
+  constructor(packageName) {
+    super(`Activation of package '${packageName}' was cancelled`);
+    this.name = "PackageActivationCancelledError";
+    this.code = "PACKAGE_ACTIVATION_CANCELLED";
+    this.packageName = packageName;
+  }
 }
 
 /**
@@ -67,28 +75,30 @@ module.exports = class PackageManager {
     } = params);
 
     this.emitter = new Emitter();
-    this.activationHookEmitter = new Emitter();
     this.packageDirPaths = [];
     this.packageManifestCache = new Map();
     this.packageRootEntriesCache = new Map();
     this.availablePackagesByNameDuringLoad = null;
-    this.deferredActivationHooks = [];
-    this.triggeredActivationHooks = new Set();
     this.packagesCache = packageJSON._luminePackages != null ? packageJSON._luminePackages : {};
     this.bundledPackageNames = null;
     this.initialPackagesLoaded = false;
+    this.initialPackagesInitializing = false;
+    this.initialPackagesInitialized = false;
     this.initialPackagesActivated = false;
+    this.initialPackagesActivationTime = null;
     this.loadedPackages = {};
     this.activePackages = {};
-    this.activatingPackages = {};
+    this.packageLifecycles = new Map();
     this.packageStates = {};
     this.themePackRegistrationsByPackageName = new Map();
-    this.activateOnConsumeProviders = new Map();
-    this.serviceDemands = new Set();
-    this.serviceActivationPackages = new Set();
-    this.serviceHub = new ServiceHub({
-      onConsume: (keyPath, versionRange) => this.registerServiceDemand(keyPath, versionRange),
-    });
+    this.virtualThemeNamesByPackageName = new Map();
+    this.virtualThemeOwnerByName = new Map();
+    this.serviceProviders = new Map();
+    this.serviceHub = new ServiceHub();
+    // Public, sticky window hooks used by package-owned lazy features. This
+    // registry is independent of package activation and is populated only by
+    // core code; package manifests do not participate in hook delivery.
+    this.hooks = new ActivationHooks();
 
     this.packageActivators = [];
     this.registerPackageActivator(this, ["lumine"]);
@@ -124,22 +134,31 @@ module.exports = class PackageManager {
 
   async reset() {
     this.serviceHub.clear();
-    await this.deactivatePackages();
-    this.activationHookEmitter.dispose();
-    this.activationHookEmitter = new Emitter();
+    await this.unloadPackages({ serialize: false });
+    this.unobserveDisabledPackages();
+    this.unobservePackagesWithKeymapsDisabled();
     this.packageManifestCache.clear();
     this.packageRootEntriesCache.clear();
     this.availablePackagesByNameDuringLoad = null;
     this.loadedPackages = {};
+    this.activePackages = {};
+    this.packageLifecycles.clear();
+    this.initialPackagesLoaded = false;
+    this.initialPackagesInitializing = false;
+    this.initialPackagesInitialized = false;
+    this.initialPackagesActivated = false;
+    this.initialPackagesActivationTime = null;
     this.packageStates = {};
     this.themePackRegistrationsByPackageName.clear();
+    this.virtualThemeNamesByPackageName.clear();
+    this.virtualThemeOwnerByName.clear();
     this.packagesCache = packageJSON._luminePackages != null ? packageJSON._luminePackages : {};
     this.bundledPackageNames = null;
-    this.triggeredActivationHooks.clear();
-    this.activateOnConsumeProviders.clear();
-    this.serviceDemands.clear();
-    this.serviceActivationPackages.clear();
+    this.hooks.clear();
+    this.serviceProviders.clear();
     this.activatePromise = null;
+    this.emitter.dispose();
+    this.emitter = new Emitter();
   }
 
   /**
@@ -170,6 +189,17 @@ module.exports = class PackageManager {
    */
   onDidActivateInitialPackages(callback) {
     return this.emitter.on("did-activate-initial-packages", callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the given callback after all initial package facades have been
+   * initialized, before workspace restore begins.
+   */
+  onDidInitializeInitialPackages(callback) {
+    return this.emitter.on("did-initialize-initial-packages", callback);
   }
 
   getActivatePromise() {
@@ -341,12 +371,16 @@ module.exports = class PackageManager {
    * Enable the package with the given name.
    *
    * @param name - The `String` package name.
-   * @returns {Package} that was enabled or null if it isn't loaded.
+   * @returns {Promise<Package|null>} Resolves when the enabled package is initialized or active.
    */
-  enablePackage(name) {
+  async enablePackage(name) {
     const pack = this.loadPackage(name);
-    if (pack != null) {
-      pack.enable();
+    if (pack == null) return null;
+    pack.enable();
+    if (pack.isTheme()) {
+      await this.themeManager?.whenThemesSettled();
+    } else {
+      await this.startPackage(name);
     }
     return pack;
   }
@@ -358,12 +392,16 @@ module.exports = class PackageManager {
    * Disable the package with the given name.
    *
    * @param name - The `String` package name.
-   * @returns {Package} that was disabled or null if it isn't loaded.
+   * @returns {Promise<Package|null>} Resolves after the package is fully deactivated.
    */
-  disablePackage(name) {
+  async disablePackage(name) {
     const pack = this.loadPackage(name);
-    if (!this.isPackageDisabled(name) && pack != null) {
-      pack.disable();
+    if (pack == null) return null;
+    if (!this.isPackageDisabled(name)) pack.disable();
+    if (pack.isTheme()) {
+      await this.themeManager?.whenThemesSettled();
+    } else {
+      await this.deactivatePackage(name);
     }
     return pack;
   }
@@ -395,6 +433,22 @@ module.exports = class PackageManager {
     return _.values(this.activePackages);
   }
 
+  // Move already-active package names to the end of the active ordering in the
+  // supplied order. ThemeManager uses this to keep stylesheet precedence
+  // explicit without mutating PackageManager's lifecycle index directly.
+  reorderActivePackages(packageNames) {
+    for (const name of packageNames) delete this.activePackages[name];
+    for (const name of packageNames) {
+      const record = this.packageLifecycles.get(name);
+      if (record?.state === "active") {
+        // Resolve the current generation only after any asynchronous theme
+        // transition. A ThemePackage object captured before reconciliation must
+        // never be reinserted into the manager-owned active index.
+        this.activePackages[name] = record.pack;
+      }
+    }
+  }
+
   /**
    * @public
    * @status public
@@ -405,7 +459,8 @@ module.exports = class PackageManager {
    * @returns {Package} or undefined.
    */
   getActivePackage(name) {
-    return this.activePackages[name];
+    const record = this.packageLifecycles.get(name);
+    return record?.state === "active" ? record.pack : undefined;
   }
 
   /**
@@ -419,6 +474,47 @@ module.exports = class PackageManager {
    */
   isPackageActive(name) {
     return this.getActivePackage(name) != null;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Return the package's explicit lifecycle state.
+   *
+   * @param name - Package name.
+   * @returns {String|undefined} One of `loaded`, `activating`, `active`, or
+   * `deactivating`. An unloaded or unknown package has no current lifecycle record.
+   */
+  getPackageLifecycleState(name) {
+    return this.packageLifecycles.get(name)?.state;
+  }
+
+  getPackageLifecycleRecord(name) {
+    return this.packageLifecycles.get(name);
+  }
+
+  registerPackageLifecycle(pack) {
+    const record = {
+      pack,
+      state: "loaded",
+      generation: 0,
+      abortController: null,
+      activationPromise: null,
+      activationTask: null,
+      rawActivationPromise: null,
+      rejectCancellation: null,
+      deactivationPromise: null,
+      unloadRequested: false,
+    };
+    pack.lifecycleState = "loaded";
+    this.packageLifecycles.set(pack.name, record);
+    return record;
+  }
+
+  setPackageLifecycleState(record, state) {
+    record.state = state;
+    record.pack.lifecycleState = state;
   }
 
   /**
@@ -486,6 +582,17 @@ module.exports = class PackageManager {
    */
   hasLoadedInitialPackages() {
     return this.initialPackagesLoaded;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * @returns {Boolean} indicating whether the initial package bootstrap has
+   * completed.
+   */
+  hasInitializedInitialPackages() {
+    return this.initialPackagesInitialized;
   }
 
   /**
@@ -762,10 +869,15 @@ module.exports = class PackageManager {
         const packagesToEnable = _.difference(oldValue, newValue);
         const packagesToDisable = _.difference(newValue, oldValue);
         packagesToDisable.forEach((name) => {
-          if (this.getActivePackage(name)) this.deactivatePackage(name);
+          this.deactivatePackage(name).catch((error) => {
+            console.error(`Failed to deactivate disabled package '${name}'`, error);
+          });
         });
-        packagesToEnable.forEach((name) => this.activatePackage(name));
-        if (packagesToEnable.length > 0) this.replayServiceDemands();
+        packagesToEnable.forEach((name) => {
+          this.startPackage(name).catch((error) => {
+            console.error(`Failed to start enabled package '${name}'`, error);
+          });
+        });
         return null;
       },
     );
@@ -812,7 +924,7 @@ module.exports = class PackageManager {
     );
   }
 
-  loadPackages() {
+  loadPackages({ initialize = false } = {}) {
     // Ensure lumine exports is already in the require cache so the load time
     // of the first package isn't skewed by being the first to require lumine
     require("../exports/lumine");
@@ -831,10 +943,52 @@ module.exports = class PackageManager {
     } finally {
       this.availablePackagesByNameDuringLoad = null;
     }
-    this.rebuildActivateOnConsumeProviders();
+    this.rebuildServiceProviders();
     this.initialPackagesLoaded = true;
-    this.replayServiceDemands();
+    // Bootstrap before announcing the load when the real window requests the
+    // new lifecycle. Unit callers can still load metadata/resources alone and
+    // explicitly initialize later.
+    if (initialize) this.initializePackages();
     this.emitter.emit("did-load-initial-packages");
+  }
+
+  /**
+   * Initialize every enabled package before workspace state is restored.
+   *
+   * Initialization is deliberately synchronous and is the package-facing
+   * bootstrap phase: packages may register deserializers, openers, commands,
+   * lightweight UI hosts, and service facades here. Expensive work belongs in
+   * an explicit package-owned ensure method and must not be started from this
+   * phase. Keeping this separate from activation lets workspace restoration
+   * use those registrations without making `activate()` responsible for
+   * deserialization ordering.
+   *
+   * @public
+   * @status extended
+   */
+  initializePackages() {
+    if (!this.initialPackagesLoaded || this.initialPackagesInitialized) return;
+    if (this.initialPackagesInitializing) return;
+
+    this.initialPackagesInitializing = true;
+    try {
+      const packages = this.getLoadedPackagesForTypes(["lumine"]).filter(
+        (pack) => !this.isPackageDisabled(pack.name) && !pack.loadError,
+      );
+      // Require every entrypoint before invoking any package initializer so a
+      // bootstrap never depends on directory/activation order. Initializers
+      // themselves remain the only phase allowed to publish package state.
+      for (const pack of packages) pack.requireMainModule();
+      this.config.transact(() => {
+        for (const pack of packages) {
+          pack.initializeForExternalUse("initial package bootstrap");
+        }
+      });
+      this.initialPackagesInitialized = true;
+      this.emitter.emit("did-initialize-initial-packages");
+    } finally {
+      this.initialPackagesInitializing = false;
+    }
   }
 
   loadPackage(nameOrPath) {
@@ -865,8 +1019,8 @@ module.exports = class PackageManager {
   //
   // * `name` - The `String` package name.
   // * `options` (optional) `Object`
-  //   * `activate` Whether the new copy should be activated. Defaults to
-  //     activating whenever the copy being replaced was active.
+  //   * `lifecycleState` State to restore when the old copy was already
+  //     unloaded by an atomic file swap.
   //
   // Returns a `Promise` that resolves with the loaded {@link Package}, or null when
   // no copy of the name is left on disk.
@@ -883,10 +1037,13 @@ module.exports = class PackageManager {
       return loadedPackage;
     }
 
-    const wasActive = loadedPackage != null && this.isPackageActive(name);
+    const previousState = Object.hasOwn(options, "lifecycleState")
+      ? options.lifecycleState
+      : loadedPackage != null
+        ? this.getPackageLifecycleState(name)
+        : "loaded";
     if (loadedPackage != null) {
-      await this.deactivatePackage(name);
-      this.unloadPackage(name);
+      await this.unloadPackage(name);
     }
 
     if (availablePackage == null) return null;
@@ -894,13 +1051,28 @@ module.exports = class PackageManager {
     const pack = this.loadAvailablePackage(availablePackage);
     if (pack == null) return null;
 
-    const shouldActivate = options.activate != null ? options.activate : wasActive;
-    if (shouldActivate && !this.isPackageDisabled(name)) {
-      this.activatePackage(name).catch((error) => {
-        console.warn(`Failed to activate the '${name}' package: ${error.message}`);
-      });
-    }
+    return this.restorePackageLifecycle(pack, previousState);
+  }
 
+  async restorePackageLifecycle(pack, lifecycleState) {
+    if (pack == null || this.isPackageDisabled(pack.name)) return pack;
+    if (lifecycleState === "active" || lifecycleState === "activating") {
+      if (pack.isTheme() && this.themeManager) {
+        await this.themeManager.reconcilePackage(pack.name, lifecycleState);
+      } else {
+        await this.activatePackageInstance(pack, null, { type: "reconcile" });
+      }
+    }
+    const virtualThemeNames = this.virtualThemeNamesByPackageName.get(pack.name);
+    if (virtualThemeNames?.size > 0 && this.themeManager) {
+      const configuredThemes = this.config.get(this.themeManager.getActiveThemesKeyPath());
+      if (
+        Array.isArray(configuredThemes) &&
+        configuredThemes.some((name) => virtualThemeNames.has(name))
+      ) {
+        await this.themeManager.queueThemeSwitch();
+      }
+    }
     return pack;
   }
 
@@ -952,10 +1124,10 @@ module.exports = class PackageManager {
     const pack = metadata.theme ? new ThemePackage(options) : new Package(options);
     pack.load();
     this.loadedPackages[pack.name] = pack;
+    this.registerPackageLifecycle(pack);
     this.registerThemePacksFromPackage(pack);
     if (this.initialPackagesLoaded) {
-      this.rebuildActivateOnConsumeProviders();
-      this.replayServiceDemands();
+      this.rebuildServiceProviders();
     }
     this.emitter.emit("did-load-package", pack);
     return pack;
@@ -1009,6 +1181,7 @@ module.exports = class PackageManager {
   // containing package is loaded separately as a normal package (see
   // loadAvailablePackage).
   registerThemesFromPackage(availablePackage, metadata) {
+    const virtualThemeNames = new Set();
     for (const entry of metadata.themes) {
       if (!entry || typeof entry.name !== "string" || !entry.theme) {
         console.warn(
@@ -1061,7 +1234,13 @@ module.exports = class PackageManager {
       });
       pack.load();
       this.loadedPackages[pack.name] = pack;
+      this.registerPackageLifecycle(pack);
+      virtualThemeNames.add(pack.name);
+      this.virtualThemeOwnerByName.set(pack.name, availablePackage.name);
       this.emitter.emit("did-load-package", pack);
+    }
+    if (virtualThemeNames.size > 0) {
+      this.virtualThemeNamesByPackageName.set(availablePackage.name, virtualThemeNames);
     }
   }
 
@@ -1122,35 +1301,142 @@ module.exports = class PackageManager {
     return path.join(packagePath, ...staticSegments);
   }
 
-  unloadPackages() {
-    _.keys(this.loadedPackages).forEach((name) => this.unloadPackage(name));
+  unloadPackages({ serialize = true } = {}) {
+    return Promise.all(
+      _.keys(this.loadedPackages).map((name) =>
+        this.unloadPackage(name, { serialize }).catch((error) => {
+          console.error(`Error unloading package '${name}'`, error);
+        }),
+      ),
+    );
   }
 
-  unloadPackage(name) {
-    if (this.isPackageActive(name)) {
-      throw new Error(`Tried to unload active package '${name}'`);
+  /**
+   * @public
+   * @status public
+   *
+   * Atomically deactivate and unload a package in any lifecycle state. The
+   * current generation is stopped before the loaded instance is removed.
+   *
+   * @param name - Package name.
+   * @param options
+   * @param options.serialize - Serialize an active package before teardown. Defaults to true.
+   * @returns {Promise<Package>} Resolves with the unloaded package after teardown.
+   */
+  unloadPackage(name, { serialize = true, preserveModuleCache = false } = {}) {
+    const pack = this.getLoadedPackage(name);
+    if (!pack) return Promise.reject(new Error(`No loaded package for name '${name}'`));
+    const record = this.packageLifecycles.get(pack.name);
+    if (!record || record.pack !== pack) {
+      return Promise.reject(new Error(`No lifecycle record for loaded package '${name}'`));
+    }
+    if (record.unloadPromise) return record.unloadPromise;
+
+    record.unloadRequested = true;
+    record.generation++;
+    // Block load-scope proxies immediately and wait for asynchronous resource
+    // discovery before discarding this generation. Its callbacks check the
+    // cancelled token and can no longer publish settings or notifications.
+    const loadScopePromise = pack.prepareToUnload();
+    loadScopePromise.catch(() => {});
+    const finish = async () => {
+      await loadScopePromise;
+      return this.finishUnloadPackageTree(record, { serialize, preserveModuleCache });
+    };
+
+    const unloadPromise = this.deactivatePackage(name, { serialize }).then(
+      finish,
+      async (error) => {
+        // A lifecycle error cannot be allowed to leave the old package reachable
+        // after an update/uninstall requested an unload. Finish ownership cleanup
+        // and then surface the original error.
+        try {
+          await finish();
+        } catch (finishError) {
+          throw new AggregateError(
+            [error, finishError],
+            `Package '${name}' failed to deactivate and unload cleanly`,
+            { cause: finishError },
+          );
+        }
+        throw error;
+      },
+    );
+    unloadPromise.catch(() => {});
+    record.unloadPromise = unloadPromise;
+    return unloadPromise;
+  }
+
+  async finishUnloadPackageTree(record, { serialize, preserveModuleCache }) {
+    const ownedThemeNames = [...(this.virtualThemeNamesByPackageName.get(record.pack.name) || [])];
+    const errors = [];
+    const results = await Promise.allSettled(
+      ownedThemeNames.map((name) => {
+        if (!this.isPackageLoaded(name)) return null;
+        return this.unloadPackage(name, { serialize, preserveModuleCache });
+      }),
+    );
+    for (const result of results) {
+      if (result.status === "rejected") errors.push(result.reason);
     }
 
-    const pack = this.getLoadedPackage(name);
-    if (pack) {
-      this.unregisterThemePacksForPackage(pack.name);
-      delete this.loadedPackages[pack.name];
-      this.rebuildActivateOnConsumeProviders();
-      this.emitter.emit("did-unload-package", pack);
-    } else {
-      throw new Error(`No loaded package for name '${name}'`);
+    let pack;
+    try {
+      pack = this.finishUnloadPackage(record, { preserveModuleCache });
+    } catch (error) {
+      errors.push(error);
     }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Package '${record.pack.name}' failed to unload cleanly`);
+    }
+    return pack;
+  }
+
+  finishUnloadPackage(record, { preserveModuleCache = false } = {}) {
+    const { pack } = record;
+    if (this.packageLifecycles.get(pack.name) !== record) return pack;
+    let unloadError;
+    try {
+      if (pack.isTheme()) this.themeManager?.removeActiveThemeClasses([pack]);
+      this.unregisterThemePacksForPackage(pack.name);
+      pack.unload({ preserveModuleCache });
+    } catch (error) {
+      unloadError = error;
+    } finally {
+      const ownerName = this.virtualThemeOwnerByName.get(pack.name);
+      if (ownerName) {
+        this.virtualThemeOwnerByName.delete(pack.name);
+        const names = this.virtualThemeNamesByPackageName.get(ownerName);
+        names?.delete(pack.name);
+        if (names?.size === 0) this.virtualThemeNamesByPackageName.delete(ownerName);
+      }
+      this.virtualThemeNamesByPackageName.delete(pack.name);
+      delete this.activePackages[pack.name];
+      if (this.loadedPackages[pack.name] === pack) delete this.loadedPackages[pack.name];
+      this.packageLifecycles.delete(pack.name);
+      record.generation++;
+      this.setPackageLifecycleState(record, "unloaded");
+      this.rebuildServiceProviders();
+      this.emitter.emit("did-unload-package", pack);
+    }
+    if (unloadError) throw unloadError;
+    return pack;
   }
 
   // Activate all the packages that should be activated.
   activate() {
+    const activationStartTime = window.performance.now();
+    this.initialPackagesActivationTime = null;
     let promises = [];
     for (let [activator, types] of this.packageActivators) {
       const packages = this.getLoadedPackagesForTypes(types);
       promises = promises.concat(activator.activatePackages(packages));
     }
-    this.activatePromise = Promise.all(promises).then(() => {
-      this.triggerDeferredActivationHooks();
+    this.activatePromise = Promise.all(promises).then(async () => {
+      this.initialPackagesActivationTime = Math.round(
+        window.performance.now() - activationStartTime,
+      );
       this.initialPackagesActivated = true;
       this.emitter.emit("did-activate-initial-packages");
       this.activatePromise = null;
@@ -1162,77 +1448,37 @@ module.exports = class PackageManager {
     return this.uriHandlerRegistry.registerHostHandler(packageName, handler);
   }
 
-  registerServiceDemand(keyPath, versionRange) {
-    const demand = { keyPath, versionRange };
-    this.serviceDemands.add(demand);
-    if (this.initialPackagesLoaded) this.activateProvidersForDemand(demand);
-    return new Disposable(() => this.serviceDemands.delete(demand));
-  }
-
-  rebuildActivateOnConsumeProviders() {
-    this.activateOnConsumeProviders.clear();
+  rebuildServiceProviders() {
+    this.serviceProviders.clear();
     for (const pack of this.getLoadedPackages()) {
       if (pack.getType() !== "lumine") continue;
       const providedServices = pack.metadata && pack.metadata.providedServices;
       if (!providedServices || typeof providedServices !== "object") continue;
       for (const [keyPath, descriptor] of Object.entries(providedServices)) {
-        if (!descriptor || descriptor.activateOnConsume !== true) continue;
+        if (!descriptor) continue;
         const versions = Object.keys(descriptor.versions || {});
-        if (!this.activateOnConsumeProviders.has(keyPath)) {
-          this.activateOnConsumeProviders.set(keyPath, []);
+        const provider = { pack, versions };
+        if (!this.serviceProviders.has(keyPath)) {
+          this.serviceProviders.set(keyPath, []);
         }
-        this.activateOnConsumeProviders.get(keyPath).push({ pack, versions });
+        this.serviceProviders.get(keyPath).push(provider);
       }
     }
   }
 
-  replayServiceDemands() {
-    for (const demand of [...this.serviceDemands]) {
-      this.activateProvidersForDemand(demand);
-    }
-  }
-
-  activateProvidersForDemand({ keyPath, versionRange }) {
-    const providers = this.activateOnConsumeProviders.get(keyPath) || [];
-    const range = new Range(versionRange);
-    for (const { pack, versions } of providers) {
-      if (
-        this.isPackageDisabled(pack.name) ||
-        this.isPackageActive(pack.name) ||
-        pack.mainActivated ||
-        this.serviceActivationPackages.has(pack.name)
-      ) {
-        continue;
-      }
-      let versionMatches = false;
-      for (const version of versions) {
-        try {
-          if (range.test(version)) {
-            versionMatches = true;
-            break;
-          }
-        } catch {
-          // ServiceHub will report malformed provided versions if the package
-          // is explicitly activated. They cannot satisfy this demand.
-        }
-      }
-      if (!versionMatches) continue;
-
-      this.serviceActivationPackages.add(pack.name);
-      try {
-        this.activatePackage(pack.name).catch((error) => {
-          console.warn(
-            `Failed to activate service provider '${pack.name}' for ${keyPath}@${versionRange}: ${error.message}`,
-          );
-        });
-      } catch (error) {
-        console.warn(
-          `Failed to activate service provider '${pack.name}' for ${keyPath}@${versionRange}: ${error.message}`,
-        );
-      } finally {
-        this.serviceActivationPackages.delete(pack.name);
-      }
-    }
+  /**
+   * @public
+   * @status public
+   *
+   * Check whether a compatible service has already been published. Service
+   * lookup never activates a provider; providers are ordinary active packages.
+   *
+   * @param keyPath - Exact service name.
+   * @param versionRange - Semantic version range required by the caller.
+   * @returns {Promise<Boolean>} Whether a compatible non-null service is published.
+   */
+  async requestService(keyPath, versionRange) {
+    return this.serviceHub.hasProvider(keyPath, versionRange);
   }
 
   // another type of package manager can handle other package types.
@@ -1242,110 +1488,248 @@ module.exports = class PackageManager {
   }
 
   activatePackages(packages) {
-    const promises = [];
-    this.config.transactAsync(() => {
-      for (const pack of packages) {
-        const promise = this.activatePackage(pack.name, { defer: true });
-        if (!pack.activationShouldBeDeferred()) {
-          promises.push(promise);
-        }
-      }
-      return Promise.all(promises);
-    });
+    const transaction = this.config.transactAsync(() =>
+      Promise.all(packages.map((pack) => this.startPackage(pack.name))),
+    );
     this.observeDisabledPackages();
     this.observePackagesWithKeymapsDisabled();
-    return promises;
+    // Package activators return an array because PackageManager#activate
+    // concatenates several activators' work. Returning the transaction itself
+    // ensures did-activate-initial-packages cannot beat Config#endTransaction.
+    return [transaction];
   }
 
-  // Activate a single package by name. Direct requests activate immediately;
-  // the initial batch alone opts into waiting for declarative triggers.
-  activatePackage(name, { defer = false } = {}) {
-    let pack = this.getActivePackage(name);
-    if (pack) {
-      return Promise.resolve(pack);
-    }
-
-    // Respect the user's `core.disabledPackages` choice. The batch load path
-    // (loadPackages) filters disabled packages out before they can be
-    // activated, but a direct activatePackage() call routes through the
-    // singular loadPackage(), which does not, so guard it here.
+  /**
+   * @public
+   * @status public
+   *
+   * Start a package according to its manifest. The synchronous facade is
+   * published during the call; the returned promise also settles after core
+   * grammar/settings resources finish loading. Expensive feature work remains
+   * package-owned and lazy.
+   *
+   * @param name - Package name or path.
+   * @returns {Promise<Package>} The started package. This never waits for a future trigger.
+   */
+  startPackage(name) {
     if (this.isPackageDisabled(name)) {
-      return Promise.reject(new Error(`Cannot activate disabled package '${name}'`));
+      return Promise.reject(new Error(`Cannot start disabled package '${name}'`));
     }
 
-    pack = this.activatingPackages[name];
-    if (pack) {
-      if (!defer && pack.activationShouldBeDeferred() && !pack.mainActivated) {
-        pack.activateNow();
-      }
-      return pack.activate().then(() => pack);
+    let pack;
+    try {
+      pack = this.loadPackage(name);
+    } catch (error) {
+      return Promise.reject(error);
     }
-
-    pack = this.loadPackage(name);
     if (!pack) {
       return Promise.reject(new Error(`Failed to load package '${name}'`));
     }
-
+    if (pack.loadError) return Promise.reject(pack.loadError);
     this.registerThemePacksFromPackage(pack);
-    this.activatingPackages[pack.name] = pack;
-    const shouldDefer = pack.activationShouldBeDeferred();
-    const packageActivationPromise = pack.activate();
-    if (!defer && shouldDefer && !pack.mainActivated) {
-      pack.activateNow();
+
+    return this.activatePackageInstance(pack, null, { type: "start" });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Fully activate a package and wait for its main module and services to be ready.
+   * Concurrent requests share one activation. Deactivation while activating
+   * rejects with an error whose code is `PACKAGE_ACTIVATION_CANCELLED`.
+   *
+   * @param name - Package name or path.
+   * @returns {Promise<Package>} The active package.
+   */
+  activatePackage(name) {
+    if (this.isPackageDisabled(name)) {
+      return Promise.reject(new Error(`Cannot activate disabled package '${name}'`));
     }
-    const activationPromise = packageActivationPromise.then(() => {
-      if (this.activatingPackages[pack.name] != null) {
-        delete this.activatingPackages[pack.name];
-        this.activePackages[pack.name] = pack;
-        this.emitter.emit("did-activate-package", pack);
-      }
-      return pack;
+    let pack;
+    try {
+      pack = this.loadPackage(name);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (!pack) return Promise.reject(new Error(`Failed to load package '${name}'`));
+    this.registerThemePacksFromPackage(pack);
+    return this.activatePackageInstance(pack, null, { type: "explicit" });
+  }
+
+  activatePackageInstance(pack, generation = null, cause = { type: "internal" }) {
+    const record = this.packageLifecycles.get(pack.name);
+    if (
+      !record ||
+      record.pack !== pack ||
+      record.state === "unloaded" ||
+      record.unloadRequested ||
+      (generation != null && generation !== record.generation)
+    ) {
+      return Promise.reject(new PackageActivationCancelledError(pack.name));
+    }
+    if (this.isPackageDisabled(pack.name)) {
+      return Promise.reject(new Error(`Cannot activate disabled package '${pack.name}'`));
+    }
+    if (record.state === "active") return Promise.resolve(pack);
+    if (record.state === "activating") return record.activationPromise;
+    if (record.state === "deactivating") {
+      if (generation != null) return Promise.reject(new PackageActivationCancelledError(pack.name));
+      return (record.deactivationPromise || Promise.resolve()).then(() =>
+        this.activatePackageInstance(pack, null, cause),
+      );
+    }
+
+    if (record.state !== "loaded") {
+      return Promise.reject(new PackageActivationCancelledError(pack.name));
+    }
+
+    const activationGeneration = ++record.generation;
+    const abortController = new AbortController();
+    record.abortController = abortController;
+    this.setPackageLifecycleState(record, "activating");
+
+    // Publish the completion-shaped promise before invoking package code. A
+    // view provider, deserializer, or service callback can re-enter the
+    // manager while the synchronous bootstrap is still on the stack.
+    let resolveActivation;
+    let rejectActivation;
+    const readiness = new Promise((resolve, reject) => {
+      resolveActivation = resolve;
+      rejectActivation = reject;
     });
+    readiness.catch(() => {});
+    record.activationPromise = readiness;
+    record.activationTask = readiness;
+    record.rejectCancellation = rejectActivation;
 
-    return activationPromise;
-  }
-
-  triggerDeferredActivationHooks() {
-    if (this.deferredActivationHooks == null) {
-      return;
+    // Package activation is intentionally synchronous. Invoke the package
+    // immediately so commands, openers, deserializers and service facades are
+    // visible before this method returns. The Promise returned to existing
+    // lifecycle callers is only a completion-shaped wrapper; it no longer
+    // gates the bootstrap on asynchronous feature work.
+    try {
+      pack.activateMain({
+        signal: abortController.signal,
+        cause,
+        generation: activationGeneration,
+      });
+    } catch (error) {
+      const rollbackPromise = this.rollbackFailedActivation(record, error);
+      record.deactivationPromise = rollbackPromise;
+      const failed = rollbackPromise.then(
+        () => rejectActivation(error),
+        () => rejectActivation(error),
+      );
+      failed.catch(() => {});
+      // Keep the published promise stable for re-entrant callers; the
+      // rollback continuation rejects it with the original activation error.
+      record.rawActivationPromise = null;
+      return readiness;
     }
 
-    for (const hook of this.deferredActivationHooks) {
-      this.activationHookEmitter.emit(hook);
+    const current = this.packageLifecycles.get(pack.name);
+    if (
+      current !== record ||
+      record.state !== "activating" ||
+      record.generation !== activationGeneration ||
+      record.unloadRequested ||
+      this.isPackageDisabled(pack.name)
+    ) {
+      record.rejectCancellation = null;
+      rejectActivation(new PackageActivationCancelledError(pack.name));
+      return readiness;
     }
 
-    this.deferredActivationHooks = null;
-  }
+    this.setPackageLifecycleState(record, "active");
+    this.activePackages[pack.name] = pack;
+    record.abortController = null;
+    record.rawActivationPromise = null;
+    this.emitter.emit("did-activate-package", pack);
 
-  triggerActivationHook(hook) {
-    if (hook == null || !_.isString(hook) || hook.length <= 0) {
-      return new Error("Cannot trigger an empty activation hook");
-    }
-
-    // Hooks describe facts about this window, rather than a stream of repeated
-    // occurrences. Retain the first occurrence for replay when a package is
-    // explicitly activated later, but never dispatch the same fact twice.
-    if (this.triggeredActivationHooks.has(hook)) {
-      return;
-    }
-
-    this.triggeredActivationHooks.add(hook);
-    if (this.deferredActivationHooks != null) {
-      this.deferredActivationHooks.push(hook);
+    // The package hook itself is synchronous, but grammar/settings discovery
+    // started by the bootstrap still forms the lifecycle completion boundary.
+    // Callers that await `activatePackage()` therefore retain a fully usable
+    // grammar registry, while `activate()` has already published commands,
+    // openers and services synchronously.
+    const resourceLoad = pack.resourceLoadPromise;
+    if (resourceLoad) {
+      resourceLoad.then(
+        () => {
+          record.rejectCancellation = null;
+          resolveActivation(pack);
+        },
+        (error) => {
+          if (
+            this.packageLifecycles.get(pack.name) !== record ||
+            record.state !== "active" ||
+            record.generation !== activationGeneration
+          ) {
+            rejectActivation(error);
+            return;
+          }
+          const rollbackPromise = this.rollbackFailedActivation(record, error);
+          record.deactivationPromise = rollbackPromise;
+          rollbackPromise.then(
+            () => {
+              record.rejectCancellation = null;
+              rejectActivation(error);
+            },
+            () => {
+              record.rejectCancellation = null;
+              rejectActivation(error);
+            },
+          );
+        },
+      );
     } else {
-      this.activationHookEmitter.emit(hook);
+      record.rejectCancellation = null;
+      resolveActivation(pack);
     }
+    return readiness;
   }
 
-  onDidTriggerActivationHook(hook, callback) {
-    if (hook == null || !_.isString(hook) || hook.length <= 0) {
+  async rollbackFailedActivation(record, error) {
+    const { pack } = record;
+    this.setPackageLifecycleState(record, "deactivating");
+    record.generation++;
+    pack.disposeActivationEntryPoints();
+    record.abortController?.abort();
+    try {
+      await pack.deactivate();
+    } finally {
+      pack.finishDeactivation();
+      if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
+        this.setPackageLifecycleState(record, "loaded");
+      }
+      delete this.activePackages[pack.name];
+      record.abortController = null;
+      record.activationPromise = null;
+      record.activationTask = null;
+      record.rawActivationPromise = null;
+      record.rejectCancellation = null;
+      record.deactivationPromise = null;
+      this.emitter.emit("did-deactivate-package", pack);
+    }
+
+    this.reportPackageActivationError(pack, error);
+  }
+
+  reportPackageActivationError(pack, error) {
+    if (
+      error?.code === "PACKAGE_ACTIVATION_CANCELLED" ||
+      error?.packageLoadReported ||
+      error?.packageActivationReported
+    ) {
       return;
     }
-    return this.activationHookEmitter.on(hook, callback);
-  }
-
-  shouldReplayActivationHook(hook) {
-    return this.deferredActivationHooks == null && this.triggeredActivationHooks.has(hook);
+    try {
+      const kind = pack.getType() === "theme" ? "theme" : "package";
+      pack.handleError(`Failed to activate the ${pack.name} ${kind}`, error);
+    } catch {
+      // Spec mode intentionally throws from handleError; activation still
+      // rejects with the original failure after lifecycle rollback.
+    }
   }
 
   serialize() {
@@ -1378,9 +1762,11 @@ module.exports = class PackageManager {
     await this.config.transactAsync(() =>
       Promise.all(
         this.getLoadedPackages().map(async (pack) => {
-          const deactivation = this.deactivatePackage(pack.name, true).catch((error) => {
-            console.error(`Error deactivating package '${pack.name}'`, error);
-          });
+          const deactivation = this.deactivatePackage(pack.name, { serialize: false }).catch(
+            (error) => {
+              console.error(`Error deactivating package '${pack.name}'`, error);
+            },
+          );
           if (timeout == null) return deactivation;
           if (!(await settlesWithin(deactivation, timeout))) abandoned.push(pack.name);
         }),
@@ -1393,33 +1779,91 @@ module.exports = class PackageManager {
     this.unobservePackagesWithKeymapsDisabled();
   }
 
-  // Deactivate the package with the given name
-  async deactivatePackage(name, suppressSerialization) {
+  /**
+   * @public
+   * @status public
+   *
+   * Deactivate a loaded package and await its teardown before it reaches the
+   * loaded state again.
+   *
+   * @param name - Package name.
+   * @param options
+   * @param options.serialize - Serialize an active package before teardown. Defaults to true.
+   * @returns {Promise<void>} Resolves when the package reaches `loaded`.
+   */
+  async deactivatePackage(name, { serialize = true } = {}) {
     const pack = this.getLoadedPackage(name);
-    if (pack == null) {
+    if (pack == null) return;
+    const record = this.packageLifecycles.get(pack.name);
+    if (
+      !record ||
+      record.pack !== pack ||
+      (record.state === "loaded" && !pack.mainInitialized) ||
+      record.state === "unloaded"
+    ) {
       return;
     }
+    if (record.state === "deactivating") return record.deactivationPromise;
 
-    if (!suppressSerialization && this.isPackageActive(pack.name)) {
+    if (serialize && record.state === "active") {
       this.serializePackage(pack);
     }
 
-    try {
-      this.unregisterThemePacksForPackage(pack.name);
-      const deactivationResult = pack.deactivate();
-      if (deactivationResult && typeof deactivationResult.then === "function") {
-        await deactivationResult;
+    const wasActivating = record.state === "activating";
+    this.setPackageLifecycleState(record, "deactivating");
+    record.generation++;
+    // Remove URI registrations immediately; arbitrary package code is then
+    // allowed to finish/abort before teardown.
+    pack.disposeActivationEntryPoints();
+    record.abortController?.abort();
+    if (wasActivating) {
+      record.rejectCancellation?.(new PackageActivationCancelledError(pack.name));
+    }
+    delete this.activePackages[pack.name];
+
+    const deactivationPromise = (async () => {
+      let deactivationError;
+      try {
+        if (record.rawActivationPromise) {
+          try {
+            await record.rawActivationPromise;
+          } catch {
+            // Activation failures are reported on the activation path. Teardown
+            // must still run and reach a stable state.
+          }
+        }
+        if (record.activationPromise) {
+          try {
+            await record.activationPromise;
+          } catch {
+            // Activation/resource failures are reported on their own path;
+            // teardown still has to reach a stable loaded state.
+          }
+        }
+        this.unregisterThemePacksForPackage(pack.name);
+        await pack.deactivate();
+      } catch (error) {
+        deactivationError = error;
+      } finally {
+        pack.finishDeactivation();
+        if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
+          this.setPackageLifecycleState(record, "loaded");
+        }
+        record.abortController = null;
+        record.activationPromise = null;
+        record.activationTask = null;
+        record.rawActivationPromise = null;
+        record.rejectCancellation = null;
+        record.deactivationPromise = null;
+        this.emitter.emit("did-deactivate-package", pack);
       }
+      if (deactivationError) throw deactivationError;
+    })();
+    record.deactivationPromise = deactivationPromise;
+    try {
+      await deactivationPromise;
     } finally {
-      // Nothing ever retries a deactivation, so a package that failed half way
-      // through one is not going to become active again — and left listed as
-      // active it is one `unloadPackage` refuses for the rest of the session,
-      // `isPackageActive` lies about, and `activatePackage` hands back without
-      // activating. Record it as deactivated either way; the error still
-      // reaches the caller, which is what decides how loudly to say so.
       delete this.activePackages[pack.name];
-      delete this.activatingPackages[pack.name];
-      this.emitter.emit("did-deactivate-package", pack);
     }
   }
 

@@ -308,6 +308,18 @@ class Environment {
 
     /**
      * @public
+     * @status extended
+     *
+     * Sticky hooks emitted by core and consumed by package-owned lazy
+     * features. Hooks are independent of package lifecycle and last for this
+     * environment generation only.
+     *
+     * @type {Object}
+     */
+    this.hooks = this.packages.hooks;
+
+    /**
+     * @public
      * @status public
      *
      * @type {ThemeManager}
@@ -794,6 +806,7 @@ class Environment {
     this.notifications.clear();
 
     await this.packages.reset();
+    this.hooks.clear();
     this.workspace.reset(this.packages);
     this.registerDefaultOpeners();
     this.project.reset(this.packages);
@@ -824,6 +837,7 @@ class Environment {
     // reset it because another environment will be created.
     this.isDestroying = true;
     this.emitter.emit("will-destroy");
+    this.hooks.clear();
 
     this.menu.destroy();
     this.tooltips.destroy();
@@ -1045,18 +1059,18 @@ class Environment {
       this.sweepInterruptedInstalls();
 
       StartupTime.addMarker("window:environment:start-editor-window:load-packages");
-      this.packages.loadPackages();
+      // Package initialization is deliberately before restore, so its
+      // synchronous bootstrap can register deserializers/openers and consume
+      // the package's own persisted state. `deserialize()` repeats this
+      // assignment for callers that use it directly.
+      this.packages.packageStates = state?.packageStates || {};
+      this.packages.loadPackages({ initialize: true });
       StartupTime.addMarker("window:environment:start-editor-window:load-packages:end");
-
-      const startTime = Date.now();
-      StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
-      await this.deserialize(state);
-      this.deserializeTimings.lumine = Date.now() - startTime;
 
       // The main process already classified the folders supplied at launch,
       // but open-locations is delivered only after the renderer reports that
-      // it has loaded. Seed those roots now so packages see the real project
-      // during activation instead of briefly initializing against no roots.
+      // it has loaded. Seed those roots before activation so every package's
+      // synchronous facade sees the real project instead of an empty one.
       this.project.addPaths(this.#getLoadSettings().initialProjectRoots ?? [], { exact: true });
 
       this.document.body.appendChild(this.workspace.getElement());
@@ -1086,6 +1100,12 @@ class Environment {
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
       await this.packages.activate();
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
+
+      const startTime = Date.now();
+      StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
+      await this.deserialize(state);
+      this.deserializeTimings.lumine = Date.now() - startTime;
+
       this.keymaps.loadUserKeymap();
       if (!this.window.isSafeMode()) this.requireUserInitScript();
 
@@ -1322,7 +1342,7 @@ class Environment {
     await this.updateProcessEnv(this.#getLoadSettings().env);
     this.shellEnvironmentLoaded = true;
     this.emitter.emit("loaded-shell-environment");
-    this.packages.triggerActivationHook("core:loaded-shell-environment");
+    await this.hooks.trigger("core:loaded-shell-environment");
   }
 
   /**
@@ -1583,6 +1603,9 @@ class Environment {
     const missingProjectPaths = [];
 
     this.packages.packageStates = state.packageStates || {};
+    if (this.packages.hasLoadedInitialPackages()) {
+      this.packages.initializePackages();
+    }
     this.uriHandlers.deserialize(state.uriHistory);
 
     let startTime = Date.now();

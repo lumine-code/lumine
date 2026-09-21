@@ -1,7 +1,13 @@
 'use strict'
 
 module.exports = {
-  activate () {},
+  initialize () {},
+
+  activate () {
+    if (this.createViewDuringActivation) {
+      this.viewCreatedDuringActivation = lumine.views.getView({worksWithViewProvider1: true})
+    }
+  },
 
   theDeserializerMethod (state) {
     return {state: state}
@@ -21,5 +27,7 @@ module.exports = {
       element.dataset['createdBy'] = 'view-provider-2'
       return element
     }
-  }
+  },
+
+  deactivate () {}
 }

@@ -935,8 +935,8 @@ class TreeSitterLanguageMode {
 
   // An injection grammar becomes used as soon as an injection point has
   // resolved it and supplied non-empty content. This deliberately fires before
-  // its child LanguageLayer is constructed: deferred grammar packages must be
-  // able to activate before that layer performs its first tokenization.
+  // its child LanguageLayer is constructed: listeners can prepare any
+  // package-owned lazy grammar work before that layer performs tokenization.
   onDidUseInjectionGrammar(callback) {
     return this.emitter.on("did-use-injection-grammar", callback);
   }

@@ -13,6 +13,7 @@ const { BrowserWindow, dialog, webContents } = require("electron");
 const LumineWindow = require("../../src/lumine-window");
 const LumineApplication = require("../../src/lumine-application");
 const FileWatchService = require("../../src/file-watch-service");
+const { scanBundledPackageNames } = require("../../src/bundled-packages");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
 describe("LumineWindow", function () {
@@ -31,11 +32,12 @@ describe("LumineWindow", function () {
 
   describe("creating a real window", function () {
     let resourcePath, windowInitializationScript, lumineHome, browserWindow;
-    let original, extraWindows;
+    let original, extraWindows, devPackageLinks;
 
     beforeEach(async function () {
       browserWindow = null;
       extraWindows = new Set();
+      devPackageLinks = [];
       original = {
         LUMINE_HOME: process.env.LUMINE_HOME,
         LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT:
@@ -49,6 +51,20 @@ describe("LumineWindow", function () {
       );
 
       lumineHome = await nodeFs.promises.mkdtemp(path.join(os.tmpdir(), "launch-"));
+      const packagesDevPath = path.join(lumineHome, "packages-dev");
+      nodeFs.mkdirSync(packagesDevPath);
+      for (const packageName of scanBundledPackageNames(resourcePath)) {
+        const workspacePackagePath = path.resolve(resourcePath, "..", packageName);
+        if (!nodeFs.existsSync(path.join(workspacePackagePath, "package.json"))) continue;
+
+        const linkPath = path.join(packagesDevPath, packageName);
+        nodeFs.symlinkSync(
+          workspacePackagePath,
+          linkPath,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        devPackageLinks.push(linkPath);
+      }
 
       await new Promise((resolve, reject) => {
         const config = dedent`
@@ -90,6 +106,9 @@ describe("LumineWindow", function () {
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT =
         original.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT;
       if (lumineHome) {
+        // Never let a recursive cleanup traverse a package-dev junction into
+        // its working tree. Remove every reparse point explicitly first.
+        for (const linkPath of devPackageLinks) removeDirectoryLink(linkPath);
         // The renderer is gone, but the OS releases a dead process's handles
         // asynchronously — on Windows especially — so retry rather than wait
         // a fixed grace.
@@ -106,6 +125,7 @@ describe("LumineWindow", function () {
       const w = new LumineWindow(app, service, {
         resourcePath,
         windowInitializationScript,
+        devMode: true,
         headless: true,
         extra: "extra-load-setting",
       });
@@ -119,7 +139,7 @@ describe("LumineWindow", function () {
       assert.strictEqual(settings.extra, "extra-load-setting");
       assert.strictEqual(settings.resourcePath, resourcePath);
       assert.strictEqual(settings.lumineHome, lumineHome);
-      assert.isFalse(settings.devMode);
+      assert.isTrue(settings.devMode);
       assert.isFalse(settings.safeMode);
       assert.isFalse(settings.clearWindowState);
 
@@ -151,6 +171,7 @@ describe("LumineWindow", function () {
         const window = new LumineWindow(app, service, {
           resourcePath,
           windowInitializationScript,
+          devMode: true,
           headless: true,
         });
         extraWindows.add(window.browserWindow);
@@ -287,12 +308,14 @@ describe("LumineWindow", function () {
         browserWindowConstructor: StubBrowserWindow,
       });
       assert.isFalse(w0.options.frame);
+      assert.isTrue(w0.options.disableAutoHideCursor);
 
       const { browserWindow: w1 } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         isSpec: true,
       });
       assert.isFalse(w1.options.frame);
+      assert.isTrue(w1.options.disableAutoHideCursor);
     });
 
     it("drives offscreen spec windows at a normal animation frame rate", function () {
@@ -859,6 +882,16 @@ describe("LumineWindow", function () {
     });
   });
 });
+
+function removeDirectoryLink(linkPath) {
+  try {
+    nodeFs.unlinkSync(linkPath);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    if (error.code !== "EPERM" && error.code !== "EISDIR") throw error;
+    nodeFs.rmdirSync(linkPath);
+  }
+}
 
 class StubApplication {
   createFileWatchSession(window) {

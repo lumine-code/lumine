@@ -37,6 +37,13 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
 
   app.commandLine.appendSwitch("enable-experimental-web-platform-features");
 
+  // Chromium's Windows implementation can hide the native mouse pointer when
+  // text is entered into an editable element. The editor has its own text
+  // caret, so keep the mouse pointer visible while typing instead.
+  if (process.platform === "win32") {
+    app.commandLine.appendSwitch("disable-features", "HideCursorWhileTyping");
+  }
+
   // Without this feature a page that is not cross-origin isolated gets legacy
   // SharedArrayBuffer treatment: the global is hidden and `postMessage`
   // refuses to transfer one, even though Node modules like `worker_threads`

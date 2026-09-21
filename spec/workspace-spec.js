@@ -1497,19 +1497,59 @@ describe("Workspace", () => {
     });
   });
 
+  describe("the pane-item-used and text-editor-used hooks", () => {
+    it("emits the pane-item hook for a non-text pane item", () => {
+      Promise.resolve();
+      const paneItemUsed = jasmine.createSpy("pane item used");
+      const textEditorUsed = jasmine.createSpy("text editor used");
+      lumine.hooks.on("core:pane-item-used", paneItemUsed);
+      lumine.hooks.on("core:text-editor-used", textEditorUsed);
+
+      lumine.workspace.getActivePane().addItem(document.createElement("div"));
+
+      expect(paneItemUsed.calls.count()).toBe(1);
+      expect(textEditorUsed).not.toHaveBeenCalled();
+    });
+
+    it("emits both hooks for NullGrammar without calling it a real grammar", async () => {
+      Promise.resolve();
+      const paneItemUsed = jasmine.createSpy("pane item used");
+      const textEditorUsed = jasmine.createSpy("text editor used");
+      const grammarUsed = jasmine.createSpy("grammar used");
+      lumine.hooks.on("core:pane-item-used", paneItemUsed);
+      lumine.hooks.on("core:text-editor-used", textEditorUsed);
+      lumine.hooks.on("core:grammar-used", grammarUsed);
+
+      await lumine.workspace.open(null, { autoIndent: false });
+
+      expect(paneItemUsed.calls.count()).toBe(1);
+      expect(textEditorUsed.calls.count()).toBe(1);
+      expect(grammarUsed).not.toHaveBeenCalled();
+    });
+
+    it("does not treat a mini editor registered with a document role as a text surface", () => {
+      Promise.resolve();
+      const textEditorUsed = jasmine.createSpy("text editor used");
+      lumine.hooks.on("core:text-editor-used", textEditorUsed);
+      const mini = lumine.workspace.buildTextEditor({ mini: true });
+
+      const registration = lumine.textEditors.add(mini, { role: "viewer" });
+
+      expect(textEditorUsed).not.toHaveBeenCalled();
+      registration.dispose();
+      mini.destroy();
+    });
+  });
+
   describe("the grammar-used hook", () => {
     it("emits the core, root-scope, and package hooks in order and only once", async () => {
       await lumine.packages.activatePackage("language-javascript");
 
-      lumine.packages.triggerDeferredActivationHooks();
+      Promise.resolve();
       const hooks = [];
-      lumine.packages.onDidTriggerActivationHook("core:grammar-used", () => hooks.push("core"));
-      lumine.packages.onDidTriggerActivationHook("source.js:root-scope-used", () =>
-        hooks.push("root"),
-      );
-      lumine.packages.onDidTriggerActivationHook("language-javascript:grammar-used", () =>
-        hooks.push("package"),
-      );
+      lumine.hooks.on("core:grammar-used", () => hooks.push("core"));
+      lumine.hooks.on("source.js:root-scope-used", () => hooks.push("root"));
+      lumine.hooks.on("language-javascript:grammar-used", () => hooks.push("package"));
 
       const editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       expect(hooks).toEqual(["core", "root", "package"]);
@@ -1518,21 +1558,18 @@ describe("Workspace", () => {
       expect(hooks).toEqual(["core", "root", "package"]);
     });
 
-    it("emits only the core hook for NullGrammar", async () => {
-      lumine.packages.triggerDeferredActivationHooks();
+    it("does not emit grammar hooks for NullGrammar", async () => {
+      Promise.resolve();
       const coreGrammarUsed = jasmine.createSpy("core grammar used");
       const nullRootScopeUsed = jasmine.createSpy("null root scope used");
       const missingPackageUsed = jasmine.createSpy("missing package used");
-      lumine.packages.onDidTriggerActivationHook("core:grammar-used", coreGrammarUsed);
-      lumine.packages.onDidTriggerActivationHook(
-        "text.plain.null-grammar:root-scope-used",
-        nullRootScopeUsed,
-      );
-      lumine.packages.onDidTriggerActivationHook("undefined:grammar-used", missingPackageUsed);
+      lumine.hooks.on("core:grammar-used", coreGrammarUsed);
+      lumine.hooks.on("text.plain.null-grammar:root-scope-used", nullRootScopeUsed);
+      lumine.hooks.on("undefined:grammar-used", missingPackageUsed);
 
       await lumine.workspace.open(null, { autoIndent: false });
 
-      expect(coreGrammarUsed.calls.count()).toBe(1);
+      expect(coreGrammarUsed).not.toHaveBeenCalled();
       expect(nullRootScopeUsed).not.toHaveBeenCalled();
       expect(missingPackageUsed).not.toHaveBeenCalled();
     });
@@ -1545,12 +1582,12 @@ describe("Workspace", () => {
       const javascriptGrammarUsed = jasmine.createSpy("javascript");
       const pythonGrammarUsed = jasmine.createSpy("python");
 
-      lumine.packages.triggerDeferredActivationHooks();
-      lumine.packages.onDidTriggerActivationHook("language-javascript:grammar-used", () => {
+      Promise.resolve();
+      lumine.hooks.on("language-javascript:grammar-used", () => {
         lumine.workspace.observeTextEditors(observeTextEditorsSpy);
         javascriptGrammarUsed();
       });
-      lumine.packages.onDidTriggerActivationHook("language-python:grammar-used", pythonGrammarUsed);
+      lumine.hooks.on("language-python:grammar-used", pythonGrammarUsed);
 
       expect(javascriptGrammarUsed).not.toHaveBeenCalled();
       expect(observeTextEditorsSpy).not.toHaveBeenCalled();
@@ -1573,18 +1610,15 @@ describe("Workspace", () => {
         lumine.packages.activatePackage("language-css"),
       ]);
 
-      lumine.packages.triggerDeferredActivationHooks();
+      Promise.resolve();
       const documentGrammarUsed = jasmine.createSpy("document grammar used");
       const fragmentGrammarUsed = jasmine.createSpy("fragment grammar used");
       const viewerGrammarUsed = jasmine.createSpy("viewer grammar used");
       const inputGrammarUsed = jasmine.createSpy("input grammar used");
-      lumine.packages.onDidTriggerActivationHook("language-c:grammar-used", documentGrammarUsed);
-      lumine.packages.onDidTriggerActivationHook(
-        "language-javascript:grammar-used",
-        fragmentGrammarUsed,
-      );
-      lumine.packages.onDidTriggerActivationHook("language-python:grammar-used", viewerGrammarUsed);
-      lumine.packages.onDidTriggerActivationHook("language-css:grammar-used", inputGrammarUsed);
+      lumine.hooks.on("language-c:grammar-used", documentGrammarUsed);
+      lumine.hooks.on("language-javascript:grammar-used", fragmentGrammarUsed);
+      lumine.hooks.on("language-python:grammar-used", viewerGrammarUsed);
+      lumine.hooks.on("language-css:grammar-used", inputGrammarUsed);
 
       const documentEditor = workspace.buildTextEditor();
       const fragment = workspace.buildTextEditor();
@@ -1621,21 +1655,18 @@ describe("Workspace", () => {
         lumine.packages.activatePackage("language-javascript"),
       ]);
 
-      lumine.packages.triggerDeferredActivationHooks();
+      Promise.resolve();
       const javascriptGrammarUsed = jasmine.createSpy("javascript injection");
       const javascriptRootScopeUsed = jasmine.createSpy("javascript root scope");
       let editor;
-      lumine.packages.onDidTriggerActivationHook("language-javascript:grammar-used", () => {
+      lumine.hooks.on("language-javascript:grammar-used", () => {
         javascriptGrammarUsed();
         const layers = editor.getBuffer().getLanguageMode().getAllInjectionLayers();
         expect(layers.some((layer) => layer.grammar.packageName === "language-javascript")).toBe(
           false,
         );
       });
-      lumine.packages.onDidTriggerActivationHook(
-        "source.js:root-scope-used",
-        javascriptRootScopeUsed,
-      );
+      lumine.hooks.on("source.js:root-scope-used", javascriptRootScopeUsed);
 
       editor = await lumine.workspace.open(null, { autoIndent: false });
       editor.setText("<script>const answer = 42;</script>");
@@ -1663,15 +1694,12 @@ describe("Workspace", () => {
       const javascriptGrammarUsed = jasmine.createSpy("javascript");
       const pythonGrammarUsed = jasmine.createSpy("python");
 
-      lumine.packages.triggerDeferredActivationHooks();
-      lumine.packages.onDidTriggerActivationHook("source.js:root-scope-used", () => {
+      Promise.resolve();
+      lumine.hooks.on("source.js:root-scope-used", () => {
         lumine.workspace.observeTextEditors(observeTextEditorsSpy);
         javascriptGrammarUsed();
       });
-      lumine.packages.onDidTriggerActivationHook(
-        "source.python:root-scope-used",
-        pythonGrammarUsed,
-      );
+      lumine.hooks.on("source.python:root-scope-used", pythonGrammarUsed);
 
       expect(javascriptGrammarUsed).not.toHaveBeenCalled();
       expect(observeTextEditorsSpy).not.toHaveBeenCalled();
@@ -1691,8 +1719,8 @@ describe("Workspace", () => {
     it("fires when opening a file", async () => {
       const packageUsed = jasmine.createSpy("my-fake-package");
 
-      lumine.packages.triggerDeferredActivationHooks();
-      lumine.packages.onDidTriggerActivationHook("sample.js:file-name-opened", packageUsed);
+      Promise.resolve();
+      lumine.hooks.on("sample.js:file-name-opened", packageUsed);
 
       expect(packageUsed).not.toHaveBeenCalled();
       await lumine.workspace.open("sample.js", {
@@ -2085,11 +2113,11 @@ describe("Workspace", () => {
       lumine.grammars.assignLanguageMode(fileEditor, "source.json");
       lumine.grammars.assignLanguageMode(cellEditorA, "source.python");
 
-      lumine.packages.triggerDeferredActivationHooks();
+      Promise.resolve();
       const sourceGrammarUsed = jasmine.createSpy("notebook source grammar");
       const cellGrammarUsed = jasmine.createSpy("notebook cell grammar");
-      lumine.packages.onDidTriggerActivationHook("language-json:grammar-used", sourceGrammarUsed);
-      lumine.packages.onDidTriggerActivationHook("language-python:grammar-used", cellGrammarUsed);
+      lumine.hooks.on("language-json:grammar-used", sourceGrammarUsed);
+      lumine.hooks.on("language-python:grammar-used", cellGrammarUsed);
 
       pane.activateItem(item);
 
@@ -2160,10 +2188,12 @@ describe("Workspace", () => {
   });
 
   it("stores the active grammars used by all the open editors", async () => {
+    const workspaceTodo = path.resolve(__dirname, "..", "..", "language-todo");
+    const todoPackage = fs.existsSync(workspaceTodo) ? workspaceTodo : "language-todo";
     await Promise.all([
       lumine.packages.activatePackage("language-javascript"),
       lumine.packages.activatePackage("language-python"),
-      lumine.packages.activatePackage("language-todo"),
+      lumine.packages.activatePackage(todoPackage),
     ]);
 
     const sourceEditor = await lumine.workspace.open("sample.py");
@@ -2186,7 +2216,7 @@ describe("Workspace", () => {
 
     lumine2.packages.loadPackage("language-javascript");
     lumine2.packages.loadPackage("language-python");
-    lumine2.packages.loadPackage("language-todo");
+    lumine2.packages.loadPackage(todoPackage);
     await lumine2.project.deserialize(lumine.project.serialize());
     lumine2.workspace.deserialize(lumine.workspace.serialize(), lumine2.deserializers);
 
@@ -4453,18 +4483,15 @@ describe("Workspace", () => {
 
   describe("grammar activation", () => {
     it("notifies the workspace of which grammar is used", async () => {
-      lumine.packages.triggerDeferredActivationHooks();
+      Promise.resolve();
 
       const javascriptGrammarUsed = jasmine.createSpy("js grammar used");
       const pythonGrammarUsed = jasmine.createSpy("python grammar used");
       const cGrammarUsed = jasmine.createSpy("c grammar used");
 
-      lumine.packages.onDidTriggerActivationHook(
-        "language-javascript:grammar-used",
-        javascriptGrammarUsed,
-      );
-      lumine.packages.onDidTriggerActivationHook("language-python:grammar-used", pythonGrammarUsed);
-      lumine.packages.onDidTriggerActivationHook("language-c:grammar-used", cGrammarUsed);
+      lumine.hooks.on("language-javascript:grammar-used", javascriptGrammarUsed);
+      lumine.hooks.on("language-python:grammar-used", pythonGrammarUsed);
+      lumine.hooks.on("language-c:grammar-used", cGrammarUsed);
 
       await lumine.packages.activatePackage("language-python");
       await lumine.packages.activatePackage("language-javascript");

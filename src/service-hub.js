@@ -77,7 +77,6 @@ class Consumer {
     // Whether any provider ever satisfied this consumer. A consumer that never
     // was is a feature that silently does not exist -- see `unmatchedConsumers`.
     this.isSatisfied = false;
-    this.demandRegistration = null;
   }
 
   destroy() {
@@ -85,12 +84,7 @@ class Consumer {
       return;
     }
     this.isDestroyed = true;
-    try {
-      disposeRegistrations(this.registrations);
-    } finally {
-      this.demandRegistration?.dispose();
-      this.demandRegistration = null;
-    }
+    disposeRegistrations(this.registrations);
   }
 }
 
@@ -158,10 +152,9 @@ class Provider {
 }
 
 module.exports = class ServiceHub {
-  constructor({ onConsume } = {}) {
+  constructor() {
     this.consumers = [];
     this.providers = [];
-    this.onConsume = onConsume;
   }
 
   /**
@@ -238,21 +231,18 @@ module.exports = class ServiceHub {
    * @param keyPath - A `String` naming the service. Names are matched exactly; see {@link #provide}.
    * @param versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
    * @param callback - A `Function` to be called with current and future matching service objects.
-   * @param options - Optional activation behavior for this consumer.
-   * @param options.activateProviders - Whether consuming the service may activate a deferred
-   *   provider. Pass `false` for a passive subscription that receives an already active or later
-   *   provider without waking one merely because the consumer activated. Defaults to `true`.
    * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
    */
-  consume(keyPath, versionRange, callback, { activateProviders = true } = {}) {
+  consume(keyPath, versionRange, callback) {
     // Constructing the consumer validates the range before a lazy provider is
     // touched. The provider hook runs before the consumer is registered: a
     // synchronously activated provider is then delivered exactly once by the
     // ordinary loop below, rather than once from provide() and once here.
     const consumer = new Consumer(keyPath, versionRange, callback);
-    if (activateProviders) {
-      consumer.demandRegistration = this.onConsume?.(keyPath, consumer.versionRange.raw);
-    }
+    // Service exchange is passive: consuming a service never activates or
+    // wakes another package. Providers publish their lightweight facade during
+    // their own ordinary package activation; expensive implementation work is
+    // lazy inside the service methods.
     this.consumers.push(consumer);
     // The mirror of `provide`: a callback that throws on the third of five
     // existing providers has already taken two services it can no longer be
@@ -286,17 +276,28 @@ module.exports = class ServiceHub {
     });
   }
 
+  hasProvider(keyPath, versionRange) {
+    const range = new Range(versionRange);
+    return this.providers.some(
+      (provider) =>
+        provider.keyPath === keyPath &&
+        provider.versions.some(
+          (version) =>
+            range.test(version) && provider.servicesByVersion[version.toString()] != null,
+        ),
+    );
+  }
+
   /**
    * @public
    * @status public
    *
    * Names consumed by someone and provided by no one.
    *
-   * Deliberately not reported on its own: packages activate lazily, so a
-   * consumer with no provider *yet* is ordinary. It is a question to ask at a
-   * moment the caller chooses -- a diagnostic command, `timecop` -- rather than
-   * a warning this class can time correctly. Nothing makes the check statically
-   * either, so this is the only place the question is answered at all.
+   * Deliberately not reported on its own: a consumer with no provider is
+   * ordinary when an optional package is disabled. It is a question to ask at
+   * a moment the caller chooses -- a diagnostic command, `timecop` -- rather
+   * than a warning this class can time correctly.
    *
    * @returns {Array} of `{keyPath, versionRange}`.
    */

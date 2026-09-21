@@ -753,7 +753,8 @@ describe("Environment", () => {
     });
 
     it("serializes assigned language modes", async () => {
-      await lumine.packages.activatePackage("language-javascript");
+      const languagePackage = await lumine.packages.activatePackage("language-javascript");
+      await languagePackage.resourceLoadPromise;
       const editor = await lumine.workspace.open("sample.js");
       expect(lumine.grammars.assignLanguageMode(editor, "source.js")).toBe(true);
 
@@ -767,8 +768,9 @@ describe("Environment", () => {
       });
       lumine2.initialize({ document, window });
 
+      const languagePackage2 = await lumine2.packages.activatePackage("language-javascript");
+      await languagePackage2.resourceLoadPromise;
       await lumine2.deserialize(lumine.serialize());
-      await lumine2.packages.activatePackage("language-javascript");
       const editor2 = lumine2.workspace.getActiveTextEditor();
       expect(editor2.getBuffer().getLanguageMode().getLanguageId()).toBe("source.js");
       lumine2.destroy();
@@ -1277,9 +1279,9 @@ describe("Environment", () => {
     it("adds launch roots before packages activate and does not announce them twice", async () => {
       const projectRoot = temp.mkdirSync("startup-project-");
       const env = buildEnvironment({ initialProjectRoots: [projectRoot] });
-      spyOn(env.packages, "activate").and.callFake(() => {
+      spyOn(env.packages, "activate").and.callFake(async () => {
         expect(env.project.getPaths()).toEqual([projectRoot]);
-        return Promise.resolve();
+        await Promise.resolve();
       });
 
       await env.startEditorWindow();
@@ -1293,7 +1295,7 @@ describe("Environment", () => {
       expect(didChangePaths).not.toHaveBeenCalled();
     });
 
-    it("preserves deserialized root order and appends launch roots missing from state", async () => {
+    it("exposes launch roots to activation before restoring saved project order", async () => {
       const firstRestoredRoot = temp.mkdirSync("startup-restored-first-");
       const secondRestoredRoot = temp.mkdirSync("startup-restored-second-");
       const addedRoot = temp.mkdirSync("startup-added-");
@@ -1306,9 +1308,9 @@ describe("Environment", () => {
           },
         },
       });
-      spyOn(env.packages, "activate").and.callFake(() => {
-        expect(env.project.getPaths()).toEqual([firstRestoredRoot, secondRestoredRoot, addedRoot]);
-        return Promise.resolve();
+      spyOn(env.packages, "activate").and.callFake(async () => {
+        expect(env.project.getPaths()).toEqual([secondRestoredRoot, addedRoot, firstRestoredRoot]);
+        await Promise.resolve();
       });
 
       await env.startEditorWindow();
@@ -1320,9 +1322,9 @@ describe("Environment", () => {
       const parent = temp.mkdirSync("startup-missing-parent-");
       const missingRoot = path.join(parent, "missing");
       const env = buildEnvironment({ initialProjectRoots: [missingRoot] });
-      spyOn(env.packages, "activate").and.callFake(() => {
+      spyOn(env.packages, "activate").and.callFake(async () => {
         expect(env.project.getPaths()).toEqual([]);
-        return Promise.resolve();
+        await Promise.resolve();
       });
 
       await env.startEditorWindow();
@@ -1357,7 +1359,7 @@ describe("Environment", () => {
       });
       lumineEnvironment.initialize({ window, document: fakeDocument });
       spyOn(lumineEnvironment.packages, "loadPackages").and.returnValue(Promise.resolve());
-      spyOn(lumineEnvironment.packages, "activate").and.returnValue(Promise.resolve());
+      spyOn(lumineEnvironment.packages, "activate").and.callFake(() => Promise.resolve());
       spyOn(lumineEnvironment, "displayWindow").and.returnValue(Promise.resolve());
       await lumineEnvironment.startEditorWindow();
       const themeManager = lumineEnvironment.themes;
@@ -1403,6 +1405,24 @@ describe("Environment", () => {
       lumineEnvironment.updateProcessEnvAndTriggerHooks();
       await envLoaded();
       await lumineEnvironment.runtime.whenShellEnvironmentLoaded();
+    });
+
+    it("does not report shell-hook readiness before activated packages are ready", async () => {
+      let resolveActivation;
+      const activation = new Promise((resolve) => (resolveActivation = resolve));
+      spyOn(lumineEnvironment.hooks, "trigger").and.returnValue(activation);
+      let ready = false;
+
+      const update = lumineEnvironment.updateProcessEnvAndTriggerHooks().then(() => (ready = true));
+      await envLoaded();
+      await Promise.resolve();
+
+      expect(lumineEnvironment.hooks.trigger).toHaveBeenCalledWith("core:loaded-shell-environment");
+      expect(ready).toBe(false);
+
+      resolveActivation();
+      await update;
+      expect(ready).toBe(true);
     });
   });
 

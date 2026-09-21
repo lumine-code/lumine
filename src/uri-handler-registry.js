@@ -32,11 +32,9 @@ const SerializationVersion = 1;
  * object with the same shape as the output of Node's legacy `url.parse(uri, true)`,
  * including a `query` object) and the raw URI string as the second argument.
  *
- * By default, Lumine will defer activation of your package until a URI it needs to handle
- * is triggered. If you need your package to activate right away, you can add
- * `"deferActivation": false` to your "uriHandler" configuration object. When activation
- * is deferred, once Lumine receives a request for a URI in your package's namespace, it will
- * activate your package and then call `methodName` on it as before.
+ * URI handlers are registered by the package's synchronous bootstrap. The
+ * package is therefore already active when a URI is delivered; expensive
+ * handler work may still be loaded lazily by the package itself.
  *
  * If your package specifies a deprecated `urlMain` property, you cannot register URI handlers
  * via the `uriHandler` key.
@@ -52,9 +50,7 @@ const SerializationVersion = 1;
  * {
  *   "name": "my-package",
  *   "main": "./lib/my-package.js",
- *   "uriHandler": {
- *     "method": "handleURI"
- *   }
+ *   "uriHandler": { "method": "handleURI" }
  * }
  * ```
  *

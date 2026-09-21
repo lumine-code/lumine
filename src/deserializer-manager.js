@@ -37,6 +37,7 @@ module.exports = class DeserializerManager {
   constructor(lumineEnvironment) {
     this.lumineEnvironment = lumineEnvironment;
     this.deserializers = {};
+    this.registrationsByName = new Map();
   }
 
   /**
@@ -48,15 +49,33 @@ module.exports = class DeserializerManager {
    * @param deserializers - One or more deserializers to register. A deserializer can be any object with a `.name` property and a `.deserialize()` method. A common approach is to register a *constructor* as the deserializer for its instances by adding a `.deserialize()` class method. When your method is called, it will be passed serialized state as the first argument and the {@link Environment} object as the second argument, which is useful if you wish to avoid referencing the `lumine` global.
    */
   add(...deserializers) {
+    const registrations = [];
     for (let i = 0; i < deserializers.length; i++) {
-      let deserializer = deserializers[i];
+      const deserializer = deserializers[i];
+      const registration = { deserializer };
+      let stack = this.registrationsByName.get(deserializer.name);
+      if (!stack) {
+        stack = [];
+        this.registrationsByName.set(deserializer.name, stack);
+      }
+      stack.push(registration);
+      registrations.push(registration);
       this.deserializers[deserializer.name] = deserializer;
     }
 
     return new Disposable(() => {
-      for (let j = 0; j < deserializers.length; j++) {
-        let deserializer = deserializers[j];
-        delete this.deserializers[deserializer.name];
+      for (const registration of registrations) {
+        const { deserializer } = registration;
+        const stack = this.registrationsByName.get(deserializer.name);
+        if (!stack) continue;
+        const index = stack.indexOf(registration);
+        if (index !== -1) stack.splice(index, 1);
+        if (stack.length === 0) {
+          this.registrationsByName.delete(deserializer.name);
+          delete this.deserializers[deserializer.name];
+        } else {
+          this.deserializers[deserializer.name] = stack.at(-1).deserializer;
+        }
       }
     });
   }
@@ -107,5 +126,6 @@ module.exports = class DeserializerManager {
 
   clear() {
     this.deserializers = {};
+    this.registrationsByName.clear();
   }
 };

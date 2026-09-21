@@ -7,59 +7,35 @@ describe("ServiceHub", () => {
     hub = new ServiceHub();
   });
 
-  describe("lazy provider demand", () => {
-    it("lets a provider register synchronously without delivering it twice", () => {
+  describe("passive provider exchange", () => {
+    it("does not activate or wake a provider while consuming it", () => {
       const consume = jasmine.createSpy("consume");
-      hub = new ServiceHub({
-        onConsume(keyPath) {
-          hub.provide(keyPath, "1.0.0", { source: "lazy" });
-        },
-      });
+      const subscription = hub.consume("lazy-service", "^1.0.0", consume);
 
-      hub.consume("lazy-service", "^1.0.0", consume);
-
-      expect(consume.calls.count()).toBe(1);
-      expect(consume).toHaveBeenCalledWith({ source: "lazy" });
-    });
-
-    it("disposes demand registration with the consumer", () => {
-      const dispose = jasmine.createSpy("dispose");
-      hub = new ServiceHub({ onConsume: () => ({ dispose }) });
-
-      const subscription = hub.consume("lazy-service", "^1.0.0", () => {});
-      subscription.dispose();
-
-      expect(dispose.calls.count()).toBe(1);
-    });
-
-    it("lets a passive consumer receive providers without activating one", () => {
-      const onConsume = jasmine.createSpy("onConsume");
-      const consume = jasmine.createSpy("consume");
-      hub = new ServiceHub({ onConsume });
-
-      const subscription = hub.consume("lazy-service", "^1.0.0", consume, {
-        activateProviders: false,
-      });
-
-      expect(onConsume).not.toHaveBeenCalled();
       expect(consume).not.toHaveBeenCalled();
-
       hub.provide("lazy-service", "1.0.0", { source: "later" });
-
-      expect(consume).toHaveBeenCalledWith({ source: "later" });
+      expect(consume).toHaveBeenCalledOnceWith({ source: "later" });
       subscription.dispose();
     });
 
-    it("delivers an existing provider to a passive consumer", () => {
-      const onConsume = jasmine.createSpy("onConsume");
+    it("delivers an already-published provider synchronously", () => {
       const consume = jasmine.createSpy("consume");
-      hub = new ServiceHub({ onConsume });
       hub.provide("lazy-service", "1.0.0", { source: "existing" });
 
-      hub.consume("lazy-service", "^1.0.0", consume, { activateProviders: false });
+      const subscription = hub.consume("lazy-service", "^1.0.0", consume);
 
-      expect(onConsume).not.toHaveBeenCalled();
-      expect(consume).toHaveBeenCalledWith({ source: "existing" });
+      expect(consume).toHaveBeenCalledOnceWith({ source: "existing" });
+      subscription.dispose();
+    });
+  });
+
+  describe("::hasProvider", () => {
+    it("requires a matching non-null service version", () => {
+      hub.provide("example", { "1.0.0": null, "2.0.0": { version: 2 } });
+
+      expect(hub.hasProvider("example", "^1.0.0")).toBe(false);
+      expect(hub.hasProvider("example", "^2.0.0")).toBe(true);
+      expect(hub.hasProvider("other", "^2.0.0")).toBe(false);
     });
   });
 

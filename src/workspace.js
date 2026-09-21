@@ -862,6 +862,8 @@ module.exports = class Workspace extends Model {
 
   subscribeToAddedItems() {
     this.onDidAddPaneItem(({ item, pane, index }) => {
+      this.packageManager.hooks.trigger("core:pane-item-used");
+
       if (
         typeof item.getFileState === "function" &&
         typeof item.onDidChangeFileState === "function"
@@ -916,9 +918,10 @@ module.exports = class Workspace extends Model {
           pane,
           index,
         });
-        // It's important to call handleGrammarUsed after emitting the did-add event:
-        // if we activate a package between adding the editor to the registry and emitting
-        // the package may receive the editor twice from `observeTextEditors`.
+        // Attach activation observations after emitting the did-add event. The
+        // first observation triggers core:text-editor-used, and a package
+        // activated between registry insertion and this event could otherwise
+        // receive the editor twice from `observeTextEditors`.
         // (Note that the item can be destroyed by an `observeTextEditors` handler.)
         if (!item.isDestroyed()) {
           subscriptions.add(this.acquireGrammarUsageObservation(item));
@@ -951,9 +954,11 @@ module.exports = class Workspace extends Model {
   }
 
   acquireGrammarUsageObservation(editor) {
-    if (!(editor instanceof TextEditor) || editor.isDestroyed()) {
+    if (!(editor instanceof TextEditor) || editor.isDestroyed() || editor.isMini()) {
       return new Disposable();
     }
+
+    this.packageManager.hooks.trigger("core:text-editor-used");
 
     let entry = this.grammarUsageEntries.get(editor);
     if (!entry) {
@@ -1696,29 +1701,29 @@ module.exports = class Workspace extends Model {
         this.incoming.delete(uri);
       }
 
-      // After emitting the open event, lets trigger any packages activation commands
-      let activationHookItem;
-      let activationHookText;
+      // After emitting the open event, notify package-owned lazy features.
+      let hookItem;
+      let hookName;
 
       if (item instanceof TextEditor) {
         // This is a TextEditor opening, meaning a file
-        activationHookItem = item.getTitle();
-        activationHookText = "file-name-opened";
+        hookItem = item.getTitle();
+        hookName = "file-name-opened";
       } else {
-        activationHookText = "uri-opened";
+        hookName = "uri-opened";
         if (typeof item.getURI === "function") {
-          activationHookItem = item.getURI();
+          hookItem = item.getURI();
         } else if (typeof item.getUri === "function") {
-          activationHookItem = item.getUri();
+          hookItem = item.getUri();
         } else {
-          activationHookItem = "";
-          activationHookText = "";
-          // We are purposefully redeclaring the text here, to fail gracefully
+          hookItem = "";
+          hookName = "";
+          // Some pane items do not expose an address; there is no hook to emit.
         }
       }
 
-      if (activationHookText?.length > 1 && activationHookItem?.length > 1) {
-        this.packageManager.triggerActivationHook(`${activationHookItem}:${activationHookText}`);
+      if (hookName?.length > 1 && hookItem?.length > 1) {
+        this.packageManager.hooks.trigger(`${hookItem}:${hookName}`);
       }
     } finally {
       resolveItem();
@@ -1975,14 +1980,15 @@ module.exports = class Workspace extends Model {
       return;
     }
 
-    this.packageManager.triggerActivationHook("core:grammar-used");
     if (grammar === NullGrammar) return;
 
+    this.packageManager.hooks.trigger("core:grammar-used");
+
     if (root && typeof grammar.scopeName === "string" && grammar.scopeName.length > 0) {
-      this.packageManager.triggerActivationHook(`${grammar.scopeName}:root-scope-used`);
+      this.packageManager.hooks.trigger(`${grammar.scopeName}:root-scope-used`);
     }
     if (typeof grammar.packageName === "string" && grammar.packageName.length > 0) {
-      this.packageManager.triggerActivationHook(`${grammar.packageName}:grammar-used`);
+      this.packageManager.hooks.trigger(`${grammar.packageName}:grammar-used`);
     }
   }
 
@@ -2254,11 +2260,6 @@ module.exports = class Workspace extends Model {
    * that is already open in a text editor view. You could signal this by calling
    * {@link Workspace#open} on the URI `quux-preview://foo/bar/baz.quux`. Then your opener
    * can check the protocol for quux-preview and only handle those URIs that match.
-   *
-   * To defer your package's activation until a specific URL is opened, add a
-   * `workspaceOpeners` field to your `package.json`. Entries may be exact URI
-   * strings or objects with a `uriPrefix`, `pathSuffixes`, and/or a
-   * `pathSuffixesConfig` key path whose current value supplies more suffixes.
    *
    * @param opener - A `Function` to be called when a path is being opened.
    * @returns {Disposable} on which `.dispose()` can be called to remove the opener.

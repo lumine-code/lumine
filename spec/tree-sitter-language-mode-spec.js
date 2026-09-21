@@ -6057,7 +6057,10 @@ describe("TreeSitterLanguageMode", () => {
 
   describe("indentation", () => {
     beforeEach(async () => {
-      await lumine.packages.activatePackage("whitespace");
+      const workspaceWhitespace = path.resolve(__dirname, "..", "..", "whitespace");
+      await lumine.packages.activatePackage(
+        fs.existsSync(workspaceWhitespace) ? workspaceWhitespace : "whitespace",
+      );
       lumine.config.set("whitespace.removeTrailingWhitespace", false);
     });
 
