@@ -430,16 +430,22 @@ module.exports = class Package {
           );
         }
 
-        // Services are connected as part of the synchronous bootstrap. A
-        // provider publishes only its lightweight facade; expensive service
-        // methods remain lazy and may return promises themselves.
-        this.activateConsumedServices();
         if (activationResult && typeof activationResult.then === "function") {
+          // The package hook is a synchronous bootstrap contract. Attach a
+          // rejection handler before throwing so a rejected async hook cannot
+          // become an unhandled renderer rejection after the synchronous error
+          // has already rolled the package back. Do this before wiring
+          // consumed services: an async hook must not publish a half-bootstrap.
+          activationResult.catch?.(() => {});
           throw new TypeError(
             `The ${this.name} package activate() hook must be synchronous; ` +
               "move asynchronous work behind an ensure method",
           );
         }
+        // Services are connected as part of the synchronous bootstrap. A
+        // provider publishes only its lightweight facade; expensive service
+        // methods remain lazy and may return promises themselves.
+        this.activateConsumedServices();
         this.mainActivated = true;
         this.activateProvidedServices();
       }
