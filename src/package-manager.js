@@ -953,6 +953,9 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Initialize every enabled package before workspace state is restored.
    *
    * Initialization is deliberately synchronous and is the package-facing
@@ -963,8 +966,6 @@ module.exports = class PackageManager {
    * use those registrations without making `activate()` responsible for
    * deserialization ordering.
    *
-   * @public
-   * @status extended
    */
   initializePackages() {
     if (!this.initialPackagesLoaded || this.initialPackagesInitialized) return;
