@@ -154,6 +154,10 @@ class Provider {
 module.exports = class ServiceHub {
   constructor() {
     this.consumers = [];
+    // Providers are published one package at a time during startup. Index
+    // consumers by exact key path so a provider only visits callbacks that can
+    // actually receive it; keep the global array for diagnostics.
+    this.consumersByKeyPath = new Map();
     this.providers = [];
   }
 
@@ -186,7 +190,8 @@ module.exports = class ServiceHub {
     const priorConsumerSatisfaction = new Map();
     this.providers.push(provider);
     try {
-      for (const consumer of this.consumers.slice()) {
+      const matchingConsumers = this.consumersByKeyPath.get(keyPath) || [];
+      for (const consumer of matchingConsumers.slice()) {
         if (consumer.isDestroyed) {
           continue;
         }
@@ -244,6 +249,12 @@ module.exports = class ServiceHub {
     // their own ordinary package activation; expensive implementation work is
     // lazy inside the service methods.
     this.consumers.push(consumer);
+    let consumersForKey = this.consumersByKeyPath.get(keyPath);
+    if (!consumersForKey) {
+      consumersForKey = [];
+      this.consumersByKeyPath.set(keyPath, consumersForKey);
+    }
+    consumersForKey.push(consumer);
     // The mirror of `provide`: a callback that throws on the third of five
     // existing providers has already taken two services it can no longer be
     // trusted to release, so the consumer is torn down and unregistered before
@@ -264,6 +275,9 @@ module.exports = class ServiceHub {
       if (index >= 0) {
         this.consumers.splice(index, 1);
       }
+      const keyIndex = consumersForKey.indexOf(consumer);
+      if (keyIndex >= 0) consumersForKey.splice(keyIndex, 1);
+      if (consumersForKey.length === 0) this.consumersByKeyPath.delete(keyPath);
       rethrowAfterRollback(error, rollbackError);
     }
 
@@ -273,6 +287,9 @@ module.exports = class ServiceHub {
       if (index >= 0) {
         this.consumers.splice(index, 1);
       }
+      const keyIndex = consumersForKey.indexOf(consumer);
+      if (keyIndex >= 0) consumersForKey.splice(keyIndex, 1);
+      if (consumersForKey.length === 0) this.consumersByKeyPath.delete(keyPath);
     });
   }
 
@@ -326,5 +343,6 @@ module.exports = class ServiceHub {
     }
     this.providers = [];
     this.consumers = [];
+    this.consumersByKeyPath.clear();
   }
 };
