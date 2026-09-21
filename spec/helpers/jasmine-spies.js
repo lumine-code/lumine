@@ -14,8 +14,9 @@ let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
 // Older specs still spell those dependencies as sibling checkout paths (for
 // example, `../../language-javascript`). In a single-package checkout that
 // path does not exist, even though the package is available by name through
-// the test home. Keep the compatibility seam in the spec helper rather than
-// making PackageManager reinterpret arbitrary missing production paths.
+// the test home (or as one of the editor's bundled packages). Keep the
+// compatibility seam in the spec helper rather than making PackageManager
+// reinterpret arbitrary missing production paths.
 const testPackageNames = new Set(
   (process.env.LUMINE_TEST_PACKAGES || "").split(/\s+/).filter(Boolean),
 );
