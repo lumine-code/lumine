@@ -1326,6 +1326,11 @@ module.exports = class PackageManager {
   unloadPackage(name, { serialize = true, preserveModuleCache = false } = {}) {
     const pack = this.getLoadedPackage(name);
     if (!pack) return Promise.reject(new Error(`No loaded package for name '${name}'`));
+    // Packages that register browser custom elements cannot safely swap their
+    // constructors in a live document. Keep their module identities across an
+    // unload; Settings View already requests this explicitly for updates, and
+    // the manifest flag must protect every other unload path as well.
+    preserveModuleCache ||= pack.metadata?.requiresRestartOnUpdate === true;
     const record = this.packageLifecycles.get(pack.name);
     if (!record || record.pack !== pack) {
       return Promise.reject(new Error(`No lifecycle record for loaded package '${name}'`));

@@ -469,13 +469,17 @@ describe("PackageManager", () => {
         const packagePath = temp.mkdirSync("persistent-element-package");
         fs.writeFileSync(
           path.join(packagePath, "package.json"),
-          JSON.stringify({ name: "persistent-element-package", main: "./index.js" }),
+          JSON.stringify({
+            name: "persistent-element-package",
+            main: "./index.js",
+            requiresRestartOnUpdate: true,
+          }),
         );
         const mainPath = path.join(packagePath, "index.js");
         fs.writeFileSync(mainPath, "module.exports = { value: 1 }");
         let pack = await lumine.packages.activatePackage(packagePath);
         const originalMainModule = pack.mainModule;
-        await lumine.packages.unloadPackage(pack.name, { preserveModuleCache: true });
+        await lumine.packages.unloadPackage(pack.name);
 
         fs.writeFileSync(mainPath, "module.exports = { value: 2 }");
         pack = await lumine.packages.activatePackage(packagePath);
