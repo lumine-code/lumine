@@ -246,6 +246,27 @@ describe("GrammarRegistry", () => {
       expect(buffer.getLanguageMode().grammar).toBe(replacementGrammar);
     });
 
+    it("uses plain text for an unmatched buffer when that grammar becomes available", () => {
+      const buffer = createBuffer();
+      grammarRegistry.maintainLanguageMode(buffer);
+      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
+      expect(buffer.getLanguageMode().grammar).toBe(plainText);
+
+      grammarRegistry.removeGrammar(plainText);
+      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+    });
+
+    it("keeps an explicitly assigned null grammar when plain text is added", () => {
+      const buffer = createBuffer();
+      grammarRegistry.assignLanguageMode(buffer, null);
+      grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
+      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+    });
+
     it("can be overridden by calling .assignLanguageMode", () => {
       const buffer = createBuffer();
 
@@ -355,6 +376,13 @@ describe("GrammarRegistry", () => {
     it("selects the text.plain grammar over the null grammar once it is available", () => {
       grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
       expect(grammarRegistry.selectGrammar("test.txt").scopeName).toBe("text.plain");
+      expect(grammarRegistry.selectGrammar("notes.unknown").scopeName).toBe("text.plain");
+      expect(grammarRegistry.selectGrammar().scopeName).toBe("text.plain");
+
+      grammarRegistry.loadGrammarSync(
+        require.resolve("language-javascript/grammars/javascript.json"),
+      );
+      expect(grammarRegistry.selectGrammar("test.js").scopeName).toBe("source.js");
     });
 
     it("selects a grammar based on the file path case insensitively", async () => {

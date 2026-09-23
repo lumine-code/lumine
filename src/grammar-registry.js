@@ -256,13 +256,24 @@ module.exports = class GrammarRegistry {
   selectGrammarWithScore(filePath, fileContents) {
     let bestMatch = null;
     let highestScore = -Infinity;
+    let plainTextGrammar = null;
+    let plainTextScore = -Infinity;
     this.forEachGrammar((grammar) => {
       const score = this.getGrammarScore(grammar, filePath, fileContents);
+      if (grammar.scopeName === "text.plain") {
+        plainTextGrammar = grammar;
+        plainTextScore = score;
+      }
       if (score > highestScore || bestMatch == null) {
         bestMatch = grammar;
         highestScore = score;
       }
     });
+    // The null grammar wins unmatched ties because it is first. Prefer the
+    // registered plain-text grammar when no more specific grammar matched.
+    if (bestMatch === NullGrammar && plainTextGrammar) {
+      return { grammar: plainTextGrammar, score: plainTextScore };
+    }
     return { grammar: bestMatch, score: highestScore };
   }
 
@@ -419,14 +430,21 @@ module.exports = class GrammarRegistry {
       ) {
         buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
         return;
-      } else if (!languageOverride) {
+      } else if (!this.languageOverridesByBufferId.has(buffer.id)) {
         const score = this.getGrammarScore(
           grammar,
           buffer.getPath(),
           getGrammarSelectionContent(buffer),
         );
         const currentScore = this.grammarScoresByBuffer.get(buffer);
-        if (currentScore == null || score > currentScore) {
+        // A newly loaded plain-text grammar ties with the null fallback.
+        const isPlainTextFallback =
+          grammar.scopeName === "text.plain" && currentGrammar === NullGrammar;
+        if (
+          currentScore == null ||
+          score > currentScore ||
+          (score === currentScore && isPlainTextFallback)
+        ) {
           buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
           this.grammarScoresByBuffer.set(buffer, score);
           return;
