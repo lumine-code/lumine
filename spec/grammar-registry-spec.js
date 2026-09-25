@@ -112,16 +112,17 @@ describe("GrammarRegistry", () => {
     });
 
     describe("when no languageId is passed", () => {
-      it("makes the buffer use the null grammar", () => {
+      it("removes the override and restores automatic plain-text selection", () => {
         grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
+        grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
 
         const buffer = createBuffer();
         expect(grammarRegistry.assignLanguageMode(buffer, "source.css")).toBe(true);
         expect(buffer.getLanguageMode().getLanguageId()).toBe("source.css");
 
         expect(grammarRegistry.assignLanguageMode(buffer, null)).toBe(true);
-        expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
-        expect(grammarRegistry.getAssignedLanguageId(buffer)).toBe(null);
+        expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain");
+        expect(grammarRegistry.getAssignedLanguageId(buffer)).toBeUndefined();
       });
     });
   });
@@ -260,9 +261,21 @@ describe("GrammarRegistry", () => {
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
     });
 
-    it("keeps an explicitly assigned null grammar when plain text is added", () => {
+    it("upgrades an automatically assigned null fallback when plain text is added", () => {
       const buffer = createBuffer();
       grammarRegistry.assignLanguageMode(buffer, null);
+      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
+      expect(buffer.getLanguageMode().grammar).toBe(plainText);
+      expect(grammarRegistry.getAssignedLanguageId(buffer)).toBeUndefined();
+    });
+
+    it("keeps the null grammar available for an explicit emergency assignment", () => {
+      const buffer = createBuffer();
+      grammarRegistry.assignLanguageMode(buffer, "text.plain.null-grammar");
       grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
     });

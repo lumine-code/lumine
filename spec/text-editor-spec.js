@@ -5966,7 +5966,7 @@ describe("TextEditor", () => {
         });
 
         it("keeps the current indent with the parserless null grammar", () => {
-          lumine.grammars.assignLanguageMode(editor, null);
+          lumine.grammars.assignLanguageMode(editor, "text.plain.null-grammar");
           editor.update({ autoIndent: true });
           editor.setText("  if true");
           editor.setCursorBufferPosition([0, 8]);
@@ -11246,7 +11246,7 @@ describe("TextEditor advanced behavior", () => {
     });
 
     it("does nothing for empty lines and null grammar", () => {
-      lumine.grammars.assignLanguageMode(editor, null);
+      lumine.grammars.assignLanguageMode(editor, "text.plain.null-grammar");
       editor.setCursorBufferPosition([10, 0]);
       editor.toggleLineCommentsInSelection();
       expect(editor.lineTextForBufferRow(10)).toBe("");

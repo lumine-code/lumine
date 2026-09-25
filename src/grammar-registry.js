@@ -119,21 +119,22 @@ module.exports = class GrammarRegistry {
    * one that would otherwise be selected for it.
    *
    * @param buffer - The {@link TextBuffer} whose grammar will be set.
-   * @param languageId - The `String` id of the desired language.
+   * @param languageId - The `String` id of the desired language. Pass `null`
+   * to remove an override and restore automatic selection.
    * @returns {Boolean} that indicates whether the language was successfully found.
    */
   assignLanguageMode(buffer, languageId) {
     if (buffer.getBuffer) buffer = buffer.getBuffer();
 
-    let grammar;
-    if (languageId != null) {
-      grammar = this.grammarForId(languageId);
-      if (!grammar || !grammar.scopeName) return false;
-      this.languageOverridesByBufferId.set(buffer.id, languageId);
-    } else {
-      this.languageOverridesByBufferId.set(buffer.id, null);
-      grammar = NullGrammar;
+    if (languageId == null) {
+      this.autoAssignLanguageMode(buffer);
+      this.releaseBufferOnDestroy(buffer);
+      return true;
     }
+
+    const grammar = this.grammarForId(languageId);
+    if (!grammar || !grammar.scopeName) return false;
+    this.languageOverridesByBufferId.set(buffer.id, languageId);
 
     this.grammarScoresByBuffer.set(buffer, null);
     this.releaseBufferOnDestroy(buffer);
