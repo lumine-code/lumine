@@ -60,7 +60,7 @@
     "focus-trap": "8.2.2",
     "git-diff": "github:lumine-code/git-diff#1688bf5cd9408a7d918e794bbf7a51177e22e489",
     "go-to-line": "github:lumine-code/go-to-line#82666ecff839f1978095b89e4648bd5eeffab1ba",
-    "grammar-selector": "github:lumine-code/grammar-selector#2e8458530075ea1ebc21380ed9bbb72c3673a5f9",
+    "grammar-selector": "github:lumine-code/grammar-selector#e9195b70e55e297013fc98f1ba4efce1ef5e84c6",
     "gray-matter": "^4.0.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#3bb67fc634397aa47bae89f4ddab8a7dddb0a9e4",
     "jasmine": "7.0.0",
