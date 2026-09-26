@@ -111,15 +111,14 @@ let options = {
     // out of app.asar on every platform. resources/app-icons/ must stay -- that
     // one IS read from inside the asar, by src/lumine-window.js.
     "!resources/win/",
-    // The raw mark and the square badges are brand art, not app art: the raw
-    // mark is the GitHub organisation's avatar and the square badges are
-    // alternate-format tiles, and nothing in the editor ever loads either, so
-    // they have no business riding along in every shipped build. They live
-    // beside lumine.svg regardless, because that is where
+    // The raw SVG is runtime art: the empty editor pane uses it as a mask. Its
+    // PNG sibling and the square badges are alternate-format brand assets that
+    // nothing in the editor loads, so they have no business riding along in
+    // every shipped build. They live beside lumine.svg because that is where
     // script/generate-branding.js derives them from and where anyone looking
     // for the logo will look. lumine-safe.png/lumine-dev.png are NOT excluded
     // here -- those are real runtime app art, read by src/lumine-window.js.
-    "!resources/app-icons/lumine-raw.*",
+    "!resources/app-icons/lumine-raw.png",
     "!resources/app-icons/lumine-square*.*",
     // resources/brand/ is README/marketing art (wallpaper, banner, install
     // loader) -- nothing in the editor loads any of it at runtime, so it has

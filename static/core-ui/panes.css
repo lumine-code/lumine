@@ -87,6 +87,35 @@ lumine-pane-container {
       }
     }
   }
+
+  /* Keep the empty editor surface identifiable without turning it into a
+     pane item. The raw mark is a mask so every UI theme supplies its ink, and
+     dock panes are excluded because their empty state is a drop target rather
+     than the editor canvas. */
+  lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(15rem, 45%);
+    height: min(15rem, 40%);
+    pointer-events: none;
+    background-color: var(--text-color-faded);
+    opacity: 0.5;
+    -webkit-mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
+    mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
+    transform: translate(-50%, -50%);
+    transition: transform 0.3s ease-in-out;
+  }
+
+  /* Background tips own the centre line. Lift the mark above it while their
+     overlay exists, then let it settle back to centre when the tips disappear. */
+  lumine-pane:not(lumine-dock lumine-pane):has(> background-tips) > .item-views:empty::after {
+    transform: translate(
+      -50%,
+      calc(-100% - var(--component-padding) - var(--component-padding) - var(--component-padding))
+    );
+  }
 }
 
 /* Windows doesn't have row- and col-resize cursors */

@@ -185,14 +185,14 @@ function appArt({ gradient, disc, mark }) {
   return svg("0 0 128 128", `<defs>${gradient}</defs>${disc}<g fill="#fff">${mark}</g>`);
 }
 
-// The raw mark: the same mark, grown to fill the square and painted flat
-// black now that the disc (and the gold with it) is gone. Nothing in the
-// editor loads it — it is the avatar art, for the GitHub organisation and
-// anywhere else the logo needs to sit in a square, in one plain ink color,
-// rather than float as a colored badge. Black rather than the brand gold
-// because this is the mark at its most reusable: it prints, it stencils, it
-// reads on any light background without a gradient renderer or a color
-// carrying meaning it doesn't have here.
+// The raw mark: the same mark, grown to fill the square and painted flat black
+// now that the disc (and the gold with it) is gone. The editor uses the SVG as
+// a theme-coloured mask in an empty pane; it is also the avatar art for the
+// GitHub organisation and anywhere else the logo needs to sit in a square, in
+// one plain ink color, rather than float as a colored badge. Black rather than
+// the brand gold because this is the mark at its most reusable: it prints, it
+// stencils, it reads on any light background without a gradient renderer or a
+// color carrying meaning it doesn't have here.
 function rawBody({ mark }) {
   return `<g fill="#000" transform="translate(64 64) scale(${RAW_SCALE}) translate(-64 -64)">${mark}</g>`;
 }

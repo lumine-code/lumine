@@ -40,6 +40,54 @@ describe("PaneElement", function () {
     });
   });
 
+  describe("when the pane is empty", function () {
+    const watermarkStyle = () => getComputedStyle(paneElement.itemViews, "::after");
+
+    beforeEach(function () {
+      const styles = document.createElement("style");
+      styles.textContent =
+        "lumine-pane > .item-views:empty::after { transition: none !important; }";
+      jasmine.attachToDOM(styles);
+      containerElement.style.setProperty("--text-color-faded", "rgb(1, 2, 3)");
+      jasmine.attachToDOM(containerElement);
+    });
+
+    it("shows the Lumine mark until an item is added", async function () {
+      expect(watermarkStyle().content).toBe('""');
+      expect(watermarkStyle().backgroundColor).toBe("rgb(1, 2, 3)");
+      expect(watermarkStyle().webkitMaskImage).toContain("lumine-raw.svg");
+
+      const item = document.createElement("div");
+      pane.addItem(item);
+      expect(watermarkStyle().content).toBe("none");
+
+      await pane.destroyItem(item);
+      expect(watermarkStyle().content).toBe('""');
+    });
+
+    it("does not show the mark in a dock pane", function () {
+      const dock = document.createElement("lumine-dock");
+      containerElement.remove();
+      dock.appendChild(containerElement);
+      jasmine.attachToDOM(dock);
+
+      expect(watermarkStyle().content).toBe("none");
+    });
+
+    it("moves the mark above background tips and restores it when they leave", function () {
+      const centeredTransform = watermarkStyle().transform;
+      expect(centeredTransform).not.toBe("none");
+
+      const backgroundTips = document.createElement("background-tips");
+      paneElement.appendChild(backgroundTips);
+      expect(watermarkStyle().transform).not.toBe("none");
+      expect(watermarkStyle().transform).not.toBe(centeredTransform);
+
+      backgroundTips.remove();
+      expect(watermarkStyle().transform).toBe(centeredTransform);
+    });
+  });
+
   describe("when the active item changes", function () {
     it("hides all item elements except the active one", function () {
       const item1 = document.createElement("div");
