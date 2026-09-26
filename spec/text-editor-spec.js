@@ -10333,6 +10333,25 @@ describe("TextEditor", () => {
       editor.update({ mini: true });
       expect(editor.lineTextForScreenRow(0)).toBe("var quicksort = function () {");
     });
+
+    it("lets auto-width content determine its width instead of wrapping to the viewport", () => {
+      const fullLine = editor.lineTextForBufferRow(0);
+      editor.update({
+        editorWidthInChars: 10,
+        softWrapped: true,
+        softWrapAtPreferredLineLength: true,
+        preferredLineLength: 20,
+      });
+      expect(editor.lineTextForScreenRow(0)).not.toBe(fullLine);
+
+      editor.update({ autoWidth: true });
+      expect(editor.displayLayer.softWrapColumn).toBe(editor.maxScreenLineLength);
+      expect(editor.lineTextForScreenRow(0)).toBe(fullLine);
+
+      editor.update({ autoWidth: false });
+      expect(editor.displayLayer.softWrapColumn).toBe(10);
+      expect(editor.lineTextForScreenRow(0)).not.toBe(fullLine);
+    });
   });
 
   describe("softWrapHangingIndentLength", () => {

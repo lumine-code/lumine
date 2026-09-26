@@ -4504,8 +4504,9 @@ module.exports = class TextEditorComponent {
     if (this.props.model.getAutoWidth()) {
       // The container is sized to the content, plus the vertical scrollbar
       // only when one shows — either way the content's share is the scroll
-      // width itself.
-      return this.getScrollWidth();
+      // width itself. Resolve that share directly so this getter cannot form a
+      // cycle with getScrollWidth when soft wrap is enabled.
+      return this.getContentWidth();
     }
     return this.getScrollContainerWidth() - this.getVerticalScrollbarWidth();
   }
@@ -4557,10 +4558,13 @@ module.exports = class TextEditorComponent {
   getScrollWidth() {
     const { model } = this.props;
 
-    if (model.isSoftWrapped()) {
-      return this.getScrollContainerClientWidth();
-    } else if (model.getAutoWidth()) {
+    // Auto-width has no external client width to wrap against: the client is
+    // defined by the rendered content itself. Give it precedence over soft
+    // wrap and keep the two width getters independent.
+    if (model.getAutoWidth()) {
       return this.getContentWidth();
+    } else if (model.isSoftWrapped()) {
+      return this.getScrollContainerClientWidth();
     } else {
       return Math.max(this.getContentWidth(), this.getScrollContainerClientWidth());
     }

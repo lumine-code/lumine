@@ -542,7 +542,7 @@ module.exports = class TextEditor {
           break;
 
         case "autoWidth":
-          this.updateAutoWidth(value, false);
+          this.updateAutoWidth(value, false, displayLayerParams);
           break;
 
         default:
@@ -804,11 +804,12 @@ module.exports = class TextEditor {
     if (finish) this.finishUpdate();
   }
 
-  updateAutoWidth(value, finish) {
+  updateAutoWidth(value, finish, displayLayerParams = {}) {
     if (value !== this.autoWidth) {
       this.autoWidth = value;
+      displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
     }
-    if (finish) this.finishUpdate();
+    if (finish) this.finishUpdate(displayLayerParams);
   }
 
   scheduleComponentUpdate() {
@@ -5332,7 +5333,11 @@ module.exports = class TextEditor {
    * Gets the column at which column will soft wrap
    */
   getSoftWrapColumn() {
-    if (this.isSoftWrapped() && !this.mini) {
+    // An auto-width editor derives its viewport from its content, so wrapping
+    // that content to the current viewport creates a self-reinforcing narrow
+    // width. Treat auto-width like a mini editor here: retain the configured
+    // soft-wrap preference, but use only the large-line safety limit.
+    if (this.isSoftWrapped() && !this.mini && !this.getAutoWidth()) {
       if (this.softWrapAtPreferredLineLength) {
         return Math.min(this.getEditorWidthInChars(), this.preferredLineLength);
       } else {

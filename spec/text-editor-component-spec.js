@@ -867,6 +867,24 @@ describe("TextEditorComponent", () => {
       expect(element.offsetHeight).toBeGreaterThan(initialHeight);
     });
 
+    it("sizes a soft-wrapped auto-width editor without recursing", async () => {
+      const { component, editor, element } = buildComponent({
+        autoHeight: true,
+        autoWidth: true,
+        softWrapped: true,
+        text: "alpha beta gamma delta epsilon",
+      });
+      await component.getNextUpdatePromise();
+
+      expect(editor.displayLayer.softWrapColumn).toBe(editor.maxScreenLineLength);
+      expect(editor.getScreenLineCount()).toBe(1);
+      expect(component.getScrollWidth()).toBe(component.getContentWidth());
+      expect(component.getScrollContainerClientWidth()).toBe(component.getContentWidth());
+      expect(element.offsetWidth).toBe(
+        component.getGutterContainerWidth() + component.getContentWidth(),
+      );
+    });
+
     it("does not render the line number gutter at all if the isLineNumberGutterVisible parameter is false", () => {
       const { element } = buildComponent({
         lineNumberGutterVisible: false,
