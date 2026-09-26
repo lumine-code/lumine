@@ -6,6 +6,7 @@ const TRAILING_WHITESPACE = 1 << 3;
 const INVISIBLE_CHARACTER = 1 << 4;
 const LINE_ENDING = 1 << 6;
 const FOLD = 1 << 7;
+const SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE = 1 << 0;
 
 let nextScreenLineId = 1;
 
@@ -24,49 +25,30 @@ module.exports = class ScreenLineBuilder {
       endScreenRow,
     );
 
-    // A screen-row boundary is already a checkpoint in the spatial index. Use
-    // it directly instead of replaying a potentially enormous soft-wrapped
-    // buffer row from column zero. A fold before the checkpoint can make the
-    // visible leading-whitespace state depend on text from another buffer row,
-    // so retain the established replay path for that uncommon case.
+    // A screen-row boundary is a complete checkpoint in the spatial index and
+    // `screenLineStartFlags`. Start there directly instead of replaying a
+    // potentially enormous folded or soft-wrapped buffer row from column zero.
     const startScreenPosition = Point(startScreenRow, 0);
     const startBufferPosition = this.displayLayer.translateScreenPositionWithSpatialIndex(
       startScreenPosition,
       "forward",
       true,
     );
-    const precedingBoundaryRow = this.displayLayer.findBoundaryPrecedingBufferRow(
-      startBufferPosition.row,
-    );
-    const hasPrecedingFold = this.displayLayer.foldsMarkerLayer
-      .findMarkers({
-        intersectsRange: [Point(precedingBoundaryRow, 0), startBufferPosition],
-      })
-      .some((marker) => marker.getStartPosition().compare(startBufferPosition) < 0);
-    const startsAtCheckpoint = !hasPrecedingFold;
     let initialSoftWrapHunk = null;
-
-    if (startsAtCheckpoint) {
-      const hunkAtStart = this.displayLayer.spatialIndex.changeForNewPosition(startScreenPosition);
-      if (
-        hunkAtStart &&
-        this.displayLayer.isSoftWrapHunk(hunkAtStart) &&
-        hunkAtStart.newStart.row < startScreenRow &&
-        hunkAtStart.newEnd.row === startScreenRow
-      ) {
-        initialSoftWrapHunk = hunkAtStart;
-      }
-      this.bufferPosition = {
-        row: startBufferPosition.row,
-        column: startBufferPosition.column,
-      };
-      this.screenRow = startScreenRow;
-    } else {
-      this.bufferPosition = { row: precedingBoundaryRow, column: 0 };
-      this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(
-        Point(precedingBoundaryRow, 0),
-      ).row;
+    const hunkAtStart = this.displayLayer.spatialIndex.changeForNewPosition(startScreenPosition);
+    if (
+      hunkAtStart &&
+      this.displayLayer.isSoftWrapHunk(hunkAtStart) &&
+      hunkAtStart.newStart.row < startScreenRow &&
+      hunkAtStart.newEnd.row === startScreenRow
+    ) {
+      initialSoftWrapHunk = hunkAtStart;
     }
+    this.bufferPosition = {
+      row: startBufferPosition.row,
+      column: startBufferPosition.column,
+    };
+    this.screenRow = startScreenRow;
 
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator();
     const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
@@ -148,7 +130,10 @@ module.exports = class ScreenLineBuilder {
       this.currentBuiltInClassNameFlags = 0;
       if (this.bufferPosition.row > this.displayLayer.buffer.getLastRow()) break;
       this.loadBufferLine();
-      this.inLeadingWhitespace = true;
+      this.inLeadingWhitespace =
+        (this.displayLayer.screenLineStartFlags[this.screenRow] &
+          SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE) !==
+        0;
       this.inTrailingWhitespace = false;
 
       if (
@@ -162,16 +147,10 @@ module.exports = class ScreenLineBuilder {
 
       var prevCachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow - 1];
       if (prevCachedScreenLine && prevCachedScreenLine.softWrapIndent >= 0) {
-        this.inLeadingWhitespace = false;
         if (prevCachedScreenLine.softWrapIndent > 0) {
           this.emitIndentWhitespace(prevCachedScreenLine.softWrapIndent);
         }
       } else if (this.screenRow === this.requestedStartScreenRow && initialSoftWrapHunk) {
-        // A wrap can occur inside real leading whitespace. Reconstruct this
-        // single state bit from the prefix instead of replaying every code unit.
-        const firstNonWhitespaceColumn = this.bufferLine.search(/[^ \t]/);
-        this.inLeadingWhitespace =
-          firstNonWhitespaceColumn < 0 || firstNonWhitespaceColumn >= this.bufferPosition.column;
         const softWrapIndent = initialSoftWrapHunk.newEnd.column;
         if (softWrapIndent > 0) this.emitIndentWhitespace(softWrapIndent);
       }

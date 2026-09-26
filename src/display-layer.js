@@ -18,6 +18,7 @@ const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
 const ASCII_WRAP_BOUNDARY_NONE = 0;
 const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
 const ASCII_WRAP_BOUNDARY_STANDARD = 2;
+const SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE = 1 << 0;
 const WHITESPACE_WRAP_BOUNDARY_CHARACTERS = [" "];
 const STANDARD_WRAP_BOUNDARY_CHARACTERS = [" ", "-", "/"];
 // eslint-disable-next-line no-control-regex
@@ -37,6 +38,7 @@ class DisplayLayer {
         ? {
             spatialIndex: params.spatialIndex,
             tabCounts: params.tabCounts,
+            screenLineStartFlags: params.screenLineStartFlags || [],
             screenLineLengths: params.screenLineLengths,
             screenLineBlocks: params.screenLineBlocks,
             rightmostScreenPosition: params.rightmostScreenPosition,
@@ -114,6 +116,14 @@ class DisplayLayer {
 
   set tabCounts(value) {
     this.layoutState.tabCounts = value;
+  }
+
+  get screenLineStartFlags() {
+    return this.layoutState.screenLineStartFlags;
+  }
+
+  set screenLineStartFlags(value) {
+    this.layoutState.screenLineStartFlags = value;
   }
 
   get screenLineLengths() {
@@ -1107,6 +1117,7 @@ class DisplayLayer {
 
     const insertedScreenLineLengths = [];
     const insertedTabCounts = [];
+    const insertedScreenLineStartFlags = [];
     const currentScreenLineTabColumns = [];
     let rightmostInsertedScreenPosition = Point(0, -1);
     let bufferRow = startBufferRow;
@@ -1122,6 +1133,8 @@ class DisplayLayer {
       let bufferLine = this.buffer.lineForRow(bufferRow);
       if (bufferLine == null) break;
       let bufferLineLength = bufferLine.length;
+      let screenLineBuilderInLeadingWhitespace = true;
+      let currentScreenLineStartFlags = SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
 
       const foldEndsByColumn = folds[bufferRow];
 
@@ -1155,6 +1168,7 @@ class DisplayLayer {
 
         insertedScreenLineLengths.push(expandedLineLength);
         insertedTabCounts.push(tabCount);
+        insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
         if (expandedLineLength > rightmostInsertedScreenPosition.column) {
           rightmostInsertedScreenPosition.row = screenRow;
           rightmostInsertedScreenPosition.column = expandedLineLength;
@@ -1183,16 +1197,19 @@ class DisplayLayer {
           queueSpatialSplice(pendingSpatialSplices, screenRow, this.softWrapColumn, 0, 0, 1, 0);
           insertedScreenLineLengths.push(this.softWrapColumn);
           insertedTabCounts.push(0);
+          insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
           if (this.softWrapColumn > rightmostInsertedScreenPosition.column) {
             rightmostInsertedScreenPosition.row = screenRow;
             rightmostInsertedScreenPosition.column = this.softWrapColumn;
           }
           screenRow++;
           remainingLength -= this.softWrapColumn;
+          currentScreenLineStartFlags = 0;
         }
 
         insertedScreenLineLengths.push(remainingLength);
         insertedTabCounts.push(0);
+        insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
         if (remainingLength > rightmostInsertedScreenPosition.column) {
           rightmostInsertedScreenPosition.row = screenRow;
           rightmostInsertedScreenPosition.column = remainingLength;
@@ -1215,6 +1232,7 @@ class DisplayLayer {
           pendingSpatialSplices,
           insertedScreenLineLengths,
           insertedTabCounts,
+          insertedScreenLineStartFlags,
           rightmostInsertedScreenPosition,
         );
         bufferRow++;
@@ -1330,11 +1348,15 @@ class DisplayLayer {
           );
 
           insertedScreenLineLengths.push(expandedWrapColumn);
+          insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
           if (expandedWrapColumn > rightmostInsertedScreenPosition.column) {
             rightmostInsertedScreenPosition.row = screenRow;
             rightmostInsertedScreenPosition.column = expandedWrapColumn;
           }
           screenRow++;
+          currentScreenLineStartFlags = screenLineBuilderInLeadingWhitespace
+            ? SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE
+            : 0;
 
           // To determine the expanded screen column following the wrap, we need
           // to re-expand each tab following the wrap boundary, because tabs may
@@ -1374,6 +1396,10 @@ class DisplayLayer {
           lastWrapBoundaryUnexpandedScreenColumn = 0;
           lastWrapBoundaryExpandedScreenColumn = 0;
           lastWrapBoundaryScreenLineWidth = 0;
+        }
+
+        if (!foldEnd && character && character !== " " && character !== "\t") {
+          screenLineBuilderInLeadingWhitespace = false;
         }
 
         // If there is a fold at this position, splice it into the spatial index
@@ -1430,6 +1456,7 @@ class DisplayLayer {
       expandedScreenColumn--;
       insertedScreenLineLengths.push(expandedScreenColumn);
       insertedTabCounts.push(currentScreenLineTabColumns.length);
+      insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
       if (expandedScreenColumn > rightmostInsertedScreenPosition.column) {
         rightmostInsertedScreenPosition.row = screenRow;
         rightmostInsertedScreenPosition.column = expandedScreenColumn;
@@ -1455,6 +1482,12 @@ class DisplayLayer {
     const oldScreenRowCount = oldEndScreenRow - startScreenRow;
     this.spliceScreenLineLengths(startScreenRow, oldScreenRowCount, insertedScreenLineLengths);
     spliceArray(this.tabCounts, startScreenRow, oldScreenRowCount, insertedTabCounts);
+    spliceArray(
+      this.screenLineStartFlags,
+      startScreenRow,
+      oldScreenRowCount,
+      insertedScreenLineStartFlags,
+    );
 
     const lastRemovedScreenRow = startScreenRow + oldScreenRowCount;
     if (rightmostInsertedScreenPosition.column > this.rightmostScreenPosition.column) {
@@ -1746,6 +1779,7 @@ function createEmptyLayoutState() {
       mergeAdjacentChanges: false,
     }),
     tabCounts: [],
+    screenLineStartFlags: [],
     screenLineLengths: [],
     screenLineBlocks: [],
     rightmostScreenPosition: Point(0, 0),
@@ -1757,6 +1791,7 @@ function copyLayoutState(state) {
   return {
     spatialIndex: state.spatialIndex.copy(),
     tabCounts: state.tabCounts.slice(),
+    screenLineStartFlags: state.screenLineStartFlags.slice(),
     screenLineLengths: state.screenLineLengths.slice(),
     screenLineBlocks: state.screenLineBlocks.map(({ rowCount, max }) => ({ rowCount, max })),
     rightmostScreenPosition: state.rightmostScreenPosition.copy(),
@@ -1892,6 +1927,7 @@ function populateSpatialIndexForAsciiBoundaryLine(
   pendingSpatialSplices,
   insertedScreenLineLengths,
   insertedTabCounts,
+  insertedScreenLineStartFlags,
   rightmostInsertedScreenPosition,
 ) {
   const boundaryCharacters =
@@ -1902,6 +1938,7 @@ function populateSpatialIndexForAsciiBoundaryLine(
   const softWrapColumn = displayLayer.softWrapColumn;
   let bufferLineStartColumn = 0;
   let lastBoundaryColumn = 0;
+  let currentScreenLineStartFlags = SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
 
   while (line.length - bufferLineStartColumn > softWrapColumn) {
     const targetColumn = bufferLineStartColumn + softWrapColumn;
@@ -1935,6 +1972,7 @@ function populateSpatialIndexForAsciiBoundaryLine(
     queueSpatialSplice(pendingSpatialSplices, screenRow, screenLineLength, 0, 0, 1, 0);
     insertedScreenLineLengths.push(screenLineLength);
     insertedTabCounts.push(0);
+    insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
     if (screenLineLength > rightmostInsertedScreenPosition.column) {
       rightmostInsertedScreenPosition.row = screenRow;
       rightmostInsertedScreenPosition.column = screenLineLength;
@@ -1943,11 +1981,13 @@ function populateSpatialIndexForAsciiBoundaryLine(
     screenRow++;
     bufferLineStartColumn = wrapColumn;
     lastBoundaryColumn = 0;
+    currentScreenLineStartFlags = 0;
   }
 
   const finalScreenLineLength = line.length - bufferLineStartColumn;
   insertedScreenLineLengths.push(finalScreenLineLength);
   insertedTabCounts.push(0);
+  insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
   if (finalScreenLineLength > rightmostInsertedScreenPosition.column) {
     rightmostInsertedScreenPosition.row = screenRow;
     rightmostInsertedScreenPosition.column = finalScreenLineLength;
