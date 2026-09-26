@@ -1097,6 +1097,7 @@ class DisplayLayer {
       { row: oldEndBufferRow - startBufferRow, column: 0 },
       { row: newEndBufferRow - startBufferRow, column: 0 },
     );
+    const pendingSpatialSplices = [];
 
     const folds = this.computeFoldsInBufferRowRange(startBufferRow, newEndBufferRow);
 
@@ -1176,7 +1177,7 @@ class DisplayLayer {
       ) {
         let remainingLength = bufferLineLength;
         while (remainingLength > this.softWrapColumn) {
-          this.spatialIndex.splice(Point(screenRow, this.softWrapColumn), Point.ZERO, Point(1, 0));
+          queueSpatialSplice(pendingSpatialSplices, screenRow, this.softWrapColumn, 0, 0, 1, 0);
           insertedScreenLineLengths.push(this.softWrapColumn);
           insertedTabCounts.push(0);
           if (this.softWrapColumn > rightmostInsertedScreenPosition.column) {
@@ -1205,6 +1206,7 @@ class DisplayLayer {
           bufferLine,
           screenRow,
           asciiWrapBoundaryMode,
+          pendingSpatialSplices,
           insertedScreenLineLengths,
           insertedTabCounts,
           rightmostInsertedScreenPosition,
@@ -1295,10 +1297,14 @@ class DisplayLayer {
             lastWrapBoundaryUnexpandedScreenColumn || unexpandedScreenColumn;
           const expandedWrapColumn = lastWrapBoundaryExpandedScreenColumn || expandedScreenColumn;
           const wrapWidth = lastWrapBoundaryScreenLineWidth || screenLineWidth;
-          this.spatialIndex.splice(
-            Point(screenRow, unexpandedWrapColumn),
-            Point.ZERO,
-            Point(1, indentLength),
+          queueSpatialSplice(
+            pendingSpatialSplices,
+            screenRow,
+            unexpandedWrapColumn,
+            0,
+            0,
+            1,
+            indentLength,
           );
 
           insertedScreenLineLengths.push(expandedWrapColumn);
@@ -1351,10 +1357,15 @@ class DisplayLayer {
         // If there is a fold at this position, splice it into the spatial index
         // and jump to the end of the fold.
         if (foldEnd) {
-          this.spatialIndex.splice(
-            { row: screenRow, column: unexpandedScreenColumn },
-            traversal(foldEnd, { row: bufferRow, column: bufferColumn }),
-            { row: 0, column: 1 },
+          const foldExtent = traversal(foldEnd, { row: bufferRow, column: bufferColumn });
+          queueSpatialSplice(
+            pendingSpatialSplices,
+            screenRow,
+            unexpandedScreenColumn,
+            foldExtent.row,
+            foldExtent.column,
+            0,
+            1,
           );
           unexpandedScreenColumn++;
           expandedScreenColumn++;
@@ -1399,6 +1410,8 @@ class DisplayLayer {
       unexpandedScreenColumn = 0;
       expandedScreenColumn = 0;
     }
+
+    applyGeometrySplices(this.spatialIndex, pendingSpatialSplices);
 
     if (bufferRow > this.indexedBufferRowCount) {
       this.indexedBufferRowCount = bufferRow;
@@ -1780,11 +1793,53 @@ function canUseAsciiBoundaryFastPath(displayLayer, line, asciiWrapBoundaryMode) 
   );
 }
 
+function queueSpatialSplice(
+  splices,
+  startRow,
+  startColumn,
+  deletedRows,
+  deletedColumns,
+  insertedRows,
+  insertedColumns,
+) {
+  splices.push(startRow, startColumn, deletedRows, deletedColumns, insertedRows, insertedColumns);
+}
+
+function applyGeometrySplices(patch, splices) {
+  if (splices.length === 0) return;
+
+  const packed = new Uint32Array(splices.length);
+  for (let i = 0; i < splices.length; i++) {
+    packed[i] = Number.isFinite(splices[i]) ? splices[i] : 0xffffffff;
+  }
+  if (typeof patch.spliceMany === "function") {
+    patch.spliceMany(packed);
+    return;
+  }
+
+  // Older superstring pins retain the exact behavior through a sequential
+  // fallback. Reuse the point objects so the fallback pays only the unavoidable
+  // native call per hunk, not three allocations as well.
+  const start = { row: 0, column: 0 };
+  const deletedExtent = { row: 0, column: 0 };
+  const insertedExtent = { row: 0, column: 0 };
+  for (let i = 0; i < packed.length; i += 6) {
+    start.row = packed[i];
+    start.column = packed[i + 1];
+    deletedExtent.row = packed[i + 2];
+    deletedExtent.column = packed[i + 3];
+    insertedExtent.row = packed[i + 4];
+    insertedExtent.column = packed[i + 5];
+    patch.splice(start, deletedExtent, insertedExtent);
+  }
+}
+
 function populateSpatialIndexForAsciiBoundaryLine(
   displayLayer,
   line,
   screenRow,
   asciiWrapBoundaryMode,
+  pendingSpatialSplices,
   insertedScreenLineLengths,
   insertedTabCounts,
   rightmostInsertedScreenPosition,
@@ -1827,7 +1882,7 @@ function populateSpatialIndexForAsciiBoundaryLine(
     const wrapColumn =
       lastBoundaryColumn > bufferLineStartColumn ? lastBoundaryColumn : targetColumn;
     const screenLineLength = wrapColumn - bufferLineStartColumn;
-    displayLayer.spatialIndex.splice(Point(screenRow, screenLineLength), Point.ZERO, Point(1, 0));
+    queueSpatialSplice(pendingSpatialSplices, screenRow, screenLineLength, 0, 0, 1, 0);
     insertedScreenLineLengths.push(screenLineLength);
     insertedTabCounts.push(0);
     if (screenLineLength > rightmostInsertedScreenPosition.column) {
