@@ -8,11 +8,20 @@ const isCharacterPair = require("./is-character-pair");
 const ScreenLineBuilder = require("./screen-line-builder");
 const { spliceArray } = require("./helpers");
 const { MAX_BUILT_IN_SCOPE_ID } = require("./constants");
+const { isWrapBoundary: defaultIsWrapBoundary } = require("./text-utils");
 
 // Row count per entry of `screenLineBlocks`, the coarse per-block maxima of
 // `screenLineLengths` that lets `findRightmostScreenPosition` avoid a full
 // scan of every screen row.
 const SCREEN_LINE_BLOCK_SIZE = 1024;
+const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
+const ASCII_WRAP_BOUNDARY_NONE = 0;
+const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
+const ASCII_WRAP_BOUNDARY_STANDARD = 2;
+// eslint-disable-next-line no-control-regex
+const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
+const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
+const ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP = /^[^\t \x2d\x2f\u0080-\uffff]*$/;
 
 class DisplayLayer {
   constructor(id, buffer, params = {}) {
@@ -877,18 +886,19 @@ class DisplayLayer {
   }
 
   findTrailingWhitespaceStartColumn(bufferRow) {
-    let position;
-    for (
-      position = { row: bufferRow, column: this.buffer.lineLengthForRow(bufferRow) - 1 };
-      position.column >= 0;
-      position.column--
-    ) {
-      const previousCharacter = this.buffer.getCharacterAtPosition(position);
-      if (previousCharacter !== " " && previousCharacter !== "\t") {
-        break;
-      }
+    const line = this.buffer.lineForRow(bufferRow);
+    if (line == null) return 0;
+
+    // Crossing the native TextBuffer boundary once per trailing character is
+    // especially expensive for generated files whose lines end in a long run
+    // of padding. Materialize the line once and scan its JavaScript string.
+    let column = line.length;
+    while (column > 0) {
+      const character = line[column - 1];
+      if (character !== " " && character !== "\t") break;
+      column--;
     }
-    return position.column + 1;
+    return column;
   }
 
   registerBuiltInScope(flags, className) {
@@ -1042,6 +1052,88 @@ class DisplayLayer {
       let bufferLine = this.buffer.lineForRow(bufferRow);
       if (bufferLine == null) break;
       let bufferLineLength = bufferLine.length;
+
+      const foldEndsByColumn = folds[bufferRow];
+
+      // With wrapping disabled and no fold beginning on this row, display and
+      // buffer columns differ only at hard tabs. The general character loop
+      // still asks the width and wrap-boundary callbacks about every code unit,
+      // even though neither answer can affect the result. Long generated lines
+      // turn that constant overhead into a visible input stall, so derive the
+      // row metrics directly and let String#indexOf scan tab-free runs in
+      // native code.
+      if (
+        !foldEndsByColumn &&
+        this.softWrapColumn === Infinity &&
+        canUseUnwrappedLineFastPath(this, bufferLine, bufferLineLength)
+      ) {
+        let tabCount = 0;
+        let expandedLineLength = bufferLineLength;
+        let tabColumn = bufferLine.indexOf("\t");
+        if (tabColumn >= 0) {
+          expandedLineLength = 0;
+          let sourceColumn = 0;
+          do {
+            expandedLineLength += tabColumn - sourceColumn;
+            expandedLineLength += this.tabLength - (expandedLineLength % this.tabLength);
+            sourceColumn = tabColumn + 1;
+            tabCount++;
+            tabColumn = bufferLine.indexOf("\t", sourceColumn);
+          } while (tabColumn >= 0);
+          expandedLineLength += bufferLineLength - sourceColumn;
+        }
+
+        insertedScreenLineLengths.push(expandedLineLength);
+        insertedTabCounts.push(tabCount);
+        if (expandedLineLength > rightmostInsertedScreenPosition.column) {
+          rightmostInsertedScreenPosition.row = screenRow;
+          rightmostInsertedScreenPosition.column = expandedLineLength;
+        }
+
+        bufferRow++;
+        screenRow++;
+        continue;
+      }
+
+      // The editor's maximum-screen-line guard commonly splits huge ASCII
+      // tokens at a fixed column even when user-facing soft wrap is disabled.
+      // If every source character is one column wide and neither supported
+      // boundary predicate can find a preferred word boundary, those splits
+      // are regular. Emit them a screen row at a time instead of interpreting
+      // every character. Unknown callbacks, tabs, folds, indentation and
+      // non-ASCII text retain the fully general path below.
+      const asciiWrapBoundaryMode = foldEndsByColumn
+        ? ASCII_WRAP_BOUNDARY_NONE
+        : asciiWrapBoundaryModeForLine(this, bufferLine, bufferLineLength);
+      if (
+        asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE &&
+        canUseSimpleLineFastPath(this, bufferLine, asciiWrapBoundaryMode)
+      ) {
+        let remainingLength = bufferLineLength;
+        while (remainingLength > this.softWrapColumn) {
+          this.spatialIndex.splice(Point(screenRow, this.softWrapColumn), Point.ZERO, Point(1, 0));
+          insertedScreenLineLengths.push(this.softWrapColumn);
+          insertedTabCounts.push(0);
+          if (this.softWrapColumn > rightmostInsertedScreenPosition.column) {
+            rightmostInsertedScreenPosition.row = screenRow;
+            rightmostInsertedScreenPosition.column = this.softWrapColumn;
+          }
+          screenRow++;
+          remainingLength -= this.softWrapColumn;
+        }
+
+        insertedScreenLineLengths.push(remainingLength);
+        insertedTabCounts.push(0);
+        if (remainingLength > rightmostInsertedScreenPosition.column) {
+          rightmostInsertedScreenPosition.row = screenRow;
+          rightmostInsertedScreenPosition.column = remainingLength;
+        }
+
+        bufferRow++;
+        screenRow++;
+        continue;
+      }
+
       currentScreenLineTabColumns.length = 0;
       let screenLineWidth = 0;
       let lastWrapBoundaryUnexpandedScreenColumn = 0;
@@ -1062,7 +1154,23 @@ class DisplayLayer {
             firstNonWhitespaceScreenColumn = expandedScreenColumn;
           }
         } else {
-          if (previousCharacter && character && this.isWrapBoundary(previousCharacter, character)) {
+          let atWrapBoundary = false;
+          if (previousCharacter && character) {
+            atWrapBoundary =
+              asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE
+                ? (previousCharacter === " " || previousCharacter === "\t") &&
+                  character !== " " &&
+                  character !== "\t"
+                : asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD
+                  ? (previousCharacter === " " ||
+                      previousCharacter === "\t" ||
+                      previousCharacter === "-" ||
+                      previousCharacter === "/") &&
+                    character !== " " &&
+                    character !== "\t"
+                  : this.isWrapBoundary(previousCharacter, character);
+          }
+          if (atWrapBoundary) {
             lastWrapBoundaryUnexpandedScreenColumn = unexpandedScreenColumn;
             lastWrapBoundaryExpandedScreenColumn = expandedScreenColumn;
             lastWrapBoundaryScreenLineWidth = screenLineWidth;
@@ -1073,9 +1181,14 @@ class DisplayLayer {
         let characterWidth;
         if (character === "\t") {
           const distanceToNextTabStop = this.tabLength - (expandedScreenColumn % this.tabLength);
-          characterWidth = this.ratioForCharacter(" ") * distanceToNextTabStop;
+          characterWidth =
+            (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE ? this.ratioForCharacter(" ") : 1) *
+            distanceToNextTabStop;
         } else if (character) {
-          characterWidth = this.ratioForCharacter(character);
+          characterWidth =
+            asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE
+              ? this.ratioForCharacter(character)
+              : 1;
         } else {
           characterWidth = 0;
         }
@@ -1086,7 +1199,8 @@ class DisplayLayer {
           screenLineWidth + characterWidth > this.softWrapColumn &&
           previousCharacter &&
           character &&
-          !isCharacterPair(previousCharacter, character);
+          (asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE ||
+            !isCharacterPair(previousCharacter, character));
 
         if (insertSoftLineBreak) {
           let indentLength =
@@ -1143,7 +1257,11 @@ class DisplayLayer {
             unexpandedScreenColumn -
             unexpandedScreenColumnAfterLastTab;
           screenLineWidth =
-            indentLength * this.ratioForCharacter(" ") + (screenLineWidth - wrapWidth);
+            indentLength *
+              (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE
+                ? this.ratioForCharacter(" ")
+                : 1) +
+            (screenLineWidth - wrapWidth);
 
           lastWrapBoundaryUnexpandedScreenColumn = 0;
           lastWrapBoundaryExpandedScreenColumn = 0;
@@ -1172,7 +1290,11 @@ class DisplayLayer {
             currentScreenLineTabColumns.push(unexpandedScreenColumn);
             const distanceToNextTabStop = this.tabLength - (expandedScreenColumn % this.tabLength);
             expandedScreenColumn += distanceToNextTabStop;
-            screenLineWidth += distanceToNextTabStop * this.ratioForCharacter(" ");
+            screenLineWidth +=
+              distanceToNextTabStop *
+              (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE
+                ? this.ratioForCharacter(" ")
+                : 1);
           } else {
             expandedScreenColumn++;
             screenLineWidth += characterWidth;
@@ -1510,6 +1632,52 @@ function isWordStart(previousCharacter, character) {
 
 function unitRatio() {
   return 1;
+}
+
+function asciiWrapBoundaryModeForLine(displayLayer, line, lineLength) {
+  if (lineLength < SIMPLE_LINE_FAST_PATH_MIN_LENGTH) return ASCII_WRAP_BOUNDARY_NONE;
+  if (!ASCII_ONLY_REGEXP.test(line)) return ASCII_WRAP_BOUNDARY_NONE;
+  if (
+    displayLayer.ratioForCharacter !== unitRatio &&
+    !asciiCharactersHaveUnitWidth(displayLayer.ratioForCharacter)
+  ) {
+    return ASCII_WRAP_BOUNDARY_NONE;
+  }
+
+  if (displayLayer.isWrapBoundary === isWordStart) return ASCII_WRAP_BOUNDARY_WHITESPACE;
+  if (displayLayer.isWrapBoundary === defaultIsWrapBoundary) return ASCII_WRAP_BOUNDARY_STANDARD;
+  return ASCII_WRAP_BOUNDARY_NONE;
+}
+
+function canUseSimpleLineFastPath(displayLayer, line, asciiWrapBoundaryMode) {
+  if (!Number.isInteger(displayLayer.softWrapColumn)) return false;
+  if (displayLayer.softWrapColumn < 1 || displayLayer.softWrapHangingIndent !== 0) return false;
+
+  if (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE) {
+    if (!ASCII_WITHOUT_WHITESPACE_REGEXP.test(line)) return false;
+  } else if (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD) {
+    if (!ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP.test(line)) return false;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+function canUseUnwrappedLineFastPath(displayLayer, line, lineLength) {
+  if (displayLayer.ratioForCharacter === unitRatio) return true;
+  if (lineLength < SIMPLE_LINE_FAST_PATH_MIN_LENGTH || !ASCII_ONLY_REGEXP.test(line)) return false;
+  return asciiCharactersHaveUnitWidth(displayLayer.ratioForCharacter);
+}
+
+function asciiCharactersHaveUnitWidth(ratioForCharacter) {
+  // A fixed 128 callbacks is cheaper and more predictable than searching a
+  // multi-megabyte line once per possible character. This also makes the fast
+  // path independent of the line's alphabet.
+  for (let code = 0; code < 128; code++) {
+    const character = String.fromCharCode(code);
+    if (ratioForCharacter(character) !== 1) return false;
+  }
+  return true;
 }
 
 // The span of buffer rows covered by the folds that are in one set and not the

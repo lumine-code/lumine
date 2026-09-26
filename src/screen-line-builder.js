@@ -17,21 +17,56 @@ module.exports = class ScreenLineBuilder {
   buildScreenLines(startScreenRow, endScreenRow) {
     this.requestedStartScreenRow = startScreenRow;
     this.requestedEndScreenRow = endScreenRow;
+    this.bufferLine = null;
+    this.bufferLineRow = null;
     this.displayLayer.populateSpatialIndexIfNeeded(
       this.displayLayer.buffer.getLineCount(),
       endScreenRow,
     );
 
-    this.bufferPosition = {
-      row: this.displayLayer.findBoundaryPrecedingBufferRow(
-        this.displayLayer.translateScreenPositionWithSpatialIndex(Point(startScreenRow, 0)).row,
-      ),
-      column: 0,
-    };
+    // A screen-row boundary is already a checkpoint in the spatial index. Use
+    // it directly instead of replaying a potentially enormous soft-wrapped
+    // buffer row from column zero. A fold before the checkpoint can make the
+    // visible leading-whitespace state depend on text from another buffer row,
+    // so retain the established replay path for that uncommon case.
+    const startScreenPosition = Point(startScreenRow, 0);
+    const startBufferPosition = this.displayLayer.translateScreenPositionWithSpatialIndex(
+      startScreenPosition,
+      "forward",
+      true,
+    );
+    const precedingBoundaryRow = this.displayLayer.findBoundaryPrecedingBufferRow(
+      startBufferPosition.row,
+    );
+    const hasPrecedingFold = this.displayLayer.foldsMarkerLayer
+      .findMarkers({
+        intersectsRange: [Point(precedingBoundaryRow, 0), startBufferPosition],
+      })
+      .some((marker) => marker.getStartPosition().compare(startBufferPosition) < 0);
+    const startsAtCheckpoint = !hasPrecedingFold;
+    let initialSoftWrapHunk = null;
 
-    this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(
-      Point(this.bufferPosition.row, 0),
-    ).row;
+    if (startsAtCheckpoint) {
+      const hunkAtStart = this.displayLayer.spatialIndex.changeForNewPosition(startScreenPosition);
+      if (
+        hunkAtStart &&
+        this.displayLayer.isSoftWrapHunk(hunkAtStart) &&
+        hunkAtStart.newStart.row < startScreenRow &&
+        hunkAtStart.newEnd.row === startScreenRow
+      ) {
+        initialSoftWrapHunk = hunkAtStart;
+      }
+      this.bufferPosition = {
+        row: startBufferPosition.row,
+        column: startBufferPosition.column,
+      };
+      this.screenRow = startScreenRow;
+    } else {
+      this.bufferPosition = { row: precedingBoundaryRow, column: 0 };
+      this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(
+        Point(precedingBoundaryRow, 0),
+      ).row;
+    }
 
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator();
     const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
@@ -47,11 +82,25 @@ module.exports = class ScreenLineBuilder {
       Point(endScreenRow, 0),
     );
     let hunkIndex = 0;
+    // A non-zero continuation indent makes the range query include the hunk
+    // that enters the requested row. Its mapping and indent were consumed
+    // above; consuming it again would skip the row we were asked to build.
+    const firstHunk = hunks[0];
+    if (
+      initialSoftWrapHunk &&
+      firstHunk &&
+      this.displayLayer.isSoftWrapHunk(firstHunk) &&
+      firstHunk.oldStart.row === initialSoftWrapHunk.oldStart.row &&
+      firstHunk.oldStart.column === initialSoftWrapHunk.oldStart.column &&
+      firstHunk.newEnd.row === initialSoftWrapHunk.newEnd.row &&
+      firstHunk.newEnd.column === initialSoftWrapHunk.newEnd.column
+    ) {
+      hunkIndex++;
+    }
 
     this.containingScopeIds = [];
     this.scopeIdsToReopen = [];
     this.screenLines = [];
-    this.bufferPosition.column = 0;
     this.beginLine();
 
     // Loop through all characters spanning the given screen row range, building
@@ -97,12 +146,8 @@ module.exports = class ScreenLineBuilder {
       }
 
       this.currentBuiltInClassNameFlags = 0;
-      this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row);
-
       if (this.bufferPosition.row > this.displayLayer.buffer.getLastRow()) break;
-      this.trailingWhitespaceStartColumn = this.displayLayer.findTrailingWhitespaceStartColumn(
-        this.bufferPosition.row,
-      );
+      this.loadBufferLine();
       this.inLeadingWhitespace = true;
       this.inTrailingWhitespace = false;
 
@@ -118,8 +163,17 @@ module.exports = class ScreenLineBuilder {
       var prevCachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow - 1];
       if (prevCachedScreenLine && prevCachedScreenLine.softWrapIndent >= 0) {
         this.inLeadingWhitespace = false;
-        if (prevCachedScreenLine.softWrapIndent > 0)
+        if (prevCachedScreenLine.softWrapIndent > 0) {
           this.emitIndentWhitespace(prevCachedScreenLine.softWrapIndent);
+        }
+      } else if (this.screenRow === this.requestedStartScreenRow && initialSoftWrapHunk) {
+        // A wrap can occur inside real leading whitespace. Reconstruct this
+        // single state bit from the prefix instead of replaying every code unit.
+        const firstNonWhitespaceColumn = this.bufferLine.search(/[^ \t]/);
+        this.inLeadingWhitespace =
+          firstNonWhitespaceColumn < 0 || firstNonWhitespaceColumn >= this.bufferPosition.column;
+        const softWrapIndent = initialSoftWrapHunk.newEnd.column;
+        if (softWrapIndent > 0) this.emitIndentWhitespace(softWrapIndent);
       }
 
       // This loop may visit multiple buffer rows if there are folds and
@@ -150,7 +204,7 @@ module.exports = class ScreenLineBuilder {
           }
         }
 
-        var nextCharacter = this.displayLayer.buffer.getCharacterAtPosition(this.bufferPosition);
+        var nextCharacter = this.bufferLine[this.bufferPosition.column];
         if (this.bufferPosition.column >= this.trailingWhitespaceStartColumn) {
           this.inTrailingWhitespace = true;
           this.inLeadingWhitespace = false;
@@ -179,6 +233,22 @@ module.exports = class ScreenLineBuilder {
           this.emitOpenTag(this.getBuiltInScopeId(this.currentBuiltInClassNameFlags));
         }
 
+        // Emit ordinary text in runs bounded by anything that needs
+        // character-level handling. Besides avoiding a native buffer call per
+        // UTF-16 code unit, this keeps the common case to one substring and one
+        // append per syntax segment or soft-wrapped screen line.
+        if (
+          this.currentBuiltInClassNameFlags === 0 &&
+          !this.inLeadingWhitespace &&
+          !this.inTrailingWhitespace &&
+          nextCharacter !== "\t"
+        ) {
+          const endColumn = this.findNextTextBoundary(nextHunk, decorationIterator);
+          this.emitText(this.bufferLine.slice(this.bufferPosition.column, endColumn));
+          this.bufferPosition.column = endColumn;
+          continue;
+        }
+
         // Emit the next character, handling hard tabs whitespace invisibles
         // specially.
         if (nextCharacter === "\t") {
@@ -197,6 +267,51 @@ module.exports = class ScreenLineBuilder {
     }
 
     return this.screenLines;
+  }
+
+  loadBufferLine() {
+    const bufferRow = this.bufferPosition.row;
+    if (this.bufferLineRow !== bufferRow) {
+      this.bufferLineRow = bufferRow;
+      this.bufferLine = this.displayLayer.buffer.lineForRow(bufferRow);
+      this.bufferLineLength = this.bufferLine.length;
+      this.trailingWhitespaceStartColumn = this.findTrailingWhitespaceStartColumn();
+      this.nextTabColumn = this.bufferLine.indexOf("\t", this.bufferPosition.column);
+    }
+  }
+
+  findTrailingWhitespaceStartColumn() {
+    let column = this.bufferLineLength;
+    while (column > 0) {
+      const character = this.bufferLine[column - 1];
+      if (character !== " " && character !== "\t") break;
+      column--;
+    }
+    return column;
+  }
+
+  findNextTextBoundary(nextHunk, decorationIterator) {
+    const { row, column } = this.bufferPosition;
+    let endColumn = this.bufferLineLength;
+
+    if (nextHunk && nextHunk.oldStart.row === row && nextHunk.oldStart.column > column) {
+      endColumn = Math.min(endColumn, nextHunk.oldStart.column);
+    }
+
+    const decorationPosition = decorationIterator.getPosition();
+    if (decorationPosition.row === row && decorationPosition.column > column) {
+      endColumn = Math.min(endColumn, decorationPosition.column);
+    }
+
+    if (this.nextTabColumn >= 0 && this.nextTabColumn < column) {
+      this.nextTabColumn = this.bufferLine.indexOf("\t", column);
+    }
+    if (this.nextTabColumn >= 0) endColumn = Math.min(endColumn, this.nextTabColumn);
+    if (this.trailingWhitespaceStartColumn > column) {
+      endColumn = Math.min(endColumn, this.trailingWhitespaceStartColumn);
+    }
+
+    return endColumn;
   }
 
   findUncachedScreenLineRanges(startScreenRow, endScreenRow) {
@@ -321,10 +436,7 @@ module.exports = class ScreenLineBuilder {
 
     this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow);
 
-    this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row);
-    this.trailingWhitespaceStartColumn = this.displayLayer.findTrailingWhitespaceStartColumn(
-      this.bufferPosition.row,
-    );
+    this.loadBufferLine();
   }
 
   emitSoftWrap(nextHunk) {
