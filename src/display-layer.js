@@ -1100,6 +1100,10 @@ class DisplayLayer {
     const pendingSpatialSplices = [];
 
     const folds = this.computeFoldsInBufferRowRange(startBufferRow, newEndBufferRow);
+    const foldEvents = sortedFoldEvents(folds);
+    let foldEventIndex = 0;
+    while (foldEvents[foldEventIndex]?.bufferRow < startBufferRow) foldEventIndex++;
+    let nextFoldEvent = foldEvents[foldEventIndex];
 
     const insertedScreenLineLengths = [];
     const insertedTabCounts = [];
@@ -1224,7 +1228,15 @@ class DisplayLayer {
       let firstNonWhitespaceScreenColumn = -1;
 
       while (bufferColumn <= bufferLineLength) {
-        const foldEnd = folds[bufferRow] && folds[bufferRow][bufferColumn];
+        let foldEnd = null;
+        if (
+          nextFoldEvent &&
+          nextFoldEvent.bufferRow === bufferRow &&
+          nextFoldEvent.bufferColumn === bufferColumn
+        ) {
+          foldEnd = nextFoldEvent.end;
+          nextFoldEvent = foldEvents[++foldEventIndex];
+        }
         const previousCharacter = bufferLine[bufferColumn - 1];
         const character = foldEnd ? this.foldCharacter : bufferLine[bufferColumn];
 
@@ -1752,6 +1764,24 @@ function isWordStart(previousCharacter, character) {
 
 function unitRatio() {
   return 1;
+}
+
+function sortedFoldEvents(folds) {
+  const events = [];
+  for (const row of Object.keys(folds)) {
+    const bufferRow = Number(row);
+    for (const column of Object.keys(folds[row])) {
+      events.push({
+        bufferRow,
+        bufferColumn: Number(column),
+        end: folds[row][column],
+      });
+    }
+  }
+  events.sort(
+    (left, right) => left.bufferRow - right.bufferRow || left.bufferColumn - right.bufferColumn,
+  );
+  return events;
 }
 
 function asciiWrapBoundaryModeForLine(displayLayer, line, lineLength) {
