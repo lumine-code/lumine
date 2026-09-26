@@ -18,6 +18,8 @@ const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
 const ASCII_WRAP_BOUNDARY_NONE = 0;
 const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
 const ASCII_WRAP_BOUNDARY_STANDARD = 2;
+const WHITESPACE_WRAP_BOUNDARY_CHARACTERS = [" "];
+const STANDARD_WRAP_BOUNDARY_CHARACTERS = [" ", "-", "/"];
 // eslint-disable-next-line no-control-regex
 const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
 const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
@@ -1197,6 +1199,21 @@ class DisplayLayer {
         continue;
       }
 
+      if (canUseAsciiBoundaryFastPath(this, bufferLine, asciiWrapBoundaryMode)) {
+        screenRow = populateSpatialIndexForAsciiBoundaryLine(
+          this,
+          bufferLine,
+          screenRow,
+          asciiWrapBoundaryMode,
+          insertedScreenLineLengths,
+          insertedTabCounts,
+          rightmostInsertedScreenPosition,
+        );
+        bufferRow++;
+        screenRow++;
+        continue;
+      }
+
       currentScreenLineTabColumns.length = 0;
       let screenLineWidth = 0;
       let lastWrapBoundaryUnexpandedScreenColumn = 0;
@@ -1751,6 +1768,87 @@ function canUseSimpleLineFastPath(displayLayer, line, asciiWrapBoundaryMode) {
     return false;
   }
   return true;
+}
+
+function canUseAsciiBoundaryFastPath(displayLayer, line, asciiWrapBoundaryMode) {
+  if (!Number.isInteger(displayLayer.softWrapColumn)) return false;
+  if (displayLayer.softWrapColumn < 1 || displayLayer.softWrapHangingIndent !== 0) return false;
+  if (line[0] === " " || line.indexOf("\t") >= 0) return false;
+  return (
+    asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE ||
+    asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD
+  );
+}
+
+function populateSpatialIndexForAsciiBoundaryLine(
+  displayLayer,
+  line,
+  screenRow,
+  asciiWrapBoundaryMode,
+  insertedScreenLineLengths,
+  insertedTabCounts,
+  rightmostInsertedScreenPosition,
+) {
+  const boundaryCharacters =
+    asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE
+      ? WHITESPACE_WRAP_BOUNDARY_CHARACTERS
+      : STANDARD_WRAP_BOUNDARY_CHARACTERS;
+  const nextBoundaryColumns = boundaryCharacters.map((character) => line.indexOf(character));
+  const softWrapColumn = displayLayer.softWrapColumn;
+  let bufferLineStartColumn = 0;
+  let lastBoundaryColumn = 0;
+
+  while (line.length - bufferLineStartColumn > softWrapColumn) {
+    const targetColumn = bufferLineStartColumn + softWrapColumn;
+
+    while (true) {
+      let boundaryCharacterIndex = -1;
+      let delimiterColumn = Infinity;
+      for (let i = 0; i < nextBoundaryColumns.length; i++) {
+        const candidateColumn = nextBoundaryColumns[i];
+        if (candidateColumn >= 0 && candidateColumn < delimiterColumn) {
+          boundaryCharacterIndex = i;
+          delimiterColumn = candidateColumn;
+        }
+      }
+
+      if (boundaryCharacterIndex < 0 || delimiterColumn + 1 > targetColumn) break;
+
+      const boundaryColumn = delimiterColumn + 1;
+      if (boundaryColumn > bufferLineStartColumn && line[boundaryColumn] !== " ") {
+        lastBoundaryColumn = boundaryColumn;
+      }
+      nextBoundaryColumns[boundaryCharacterIndex] = line.indexOf(
+        boundaryCharacters[boundaryCharacterIndex],
+        boundaryColumn,
+      );
+    }
+
+    const wrapColumn =
+      lastBoundaryColumn > bufferLineStartColumn ? lastBoundaryColumn : targetColumn;
+    const screenLineLength = wrapColumn - bufferLineStartColumn;
+    displayLayer.spatialIndex.splice(Point(screenRow, screenLineLength), Point.ZERO, Point(1, 0));
+    insertedScreenLineLengths.push(screenLineLength);
+    insertedTabCounts.push(0);
+    if (screenLineLength > rightmostInsertedScreenPosition.column) {
+      rightmostInsertedScreenPosition.row = screenRow;
+      rightmostInsertedScreenPosition.column = screenLineLength;
+    }
+
+    screenRow++;
+    bufferLineStartColumn = wrapColumn;
+    lastBoundaryColumn = 0;
+  }
+
+  const finalScreenLineLength = line.length - bufferLineStartColumn;
+  insertedScreenLineLengths.push(finalScreenLineLength);
+  insertedTabCounts.push(0);
+  if (finalScreenLineLength > rightmostInsertedScreenPosition.column) {
+    rightmostInsertedScreenPosition.row = screenRow;
+    rightmostInsertedScreenPosition.column = finalScreenLineLength;
+  }
+
+  return screenRow;
 }
 
 function canUseUnwrappedLineFastPath(displayLayer, line, lineLength) {
