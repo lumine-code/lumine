@@ -771,7 +771,10 @@ describe("DisplayLayer", () => {
           expect(displayLayerCopy.indexedBufferRowCount).toBe(buffer.getLineCount());
           displayLayerCopy.foldBufferRange(randomRange);
 
-          // In displayLayer, we'll create a fold before poulating the spatial index.
+          // Copies share their geometry until one diverges. Clear the original
+          // to detach it, then create the same fold before populating its new
+          // independent spatial index.
+          displayLayer.clearSpatialIndex();
           expect(displayLayer.indexedBufferRowCount).toBe(0);
           displayLayer.foldBufferRange(randomRange);
 

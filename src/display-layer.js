@@ -22,11 +22,25 @@ const ASCII_WRAP_BOUNDARY_STANDARD = 2;
 const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
 const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
 const ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP = /^[^\t \x2d\x2f\u0080-\uffff]*$/;
+let nextLayoutGroupId = 1;
 
 class DisplayLayer {
   constructor(id, buffer, params = {}) {
     this.id = id;
     this.buffer = buffer;
+    this.layoutGroupId = params.layoutGroupId ?? nextLayoutGroupId++;
+    this.layoutState =
+      params.layoutState ||
+      (params.spatialIndex
+        ? {
+            spatialIndex: params.spatialIndex,
+            tabCounts: params.tabCounts,
+            screenLineLengths: params.screenLineLengths,
+            screenLineBlocks: params.screenLineBlocks,
+            rightmostScreenPosition: params.rightmostScreenPosition,
+            indexedBufferRowCount: params.indexedBufferRowCount,
+          }
+        : createEmptyLayoutState());
     this.emitter = new Emitter();
     this.screenLineBuilder = new ScreenLineBuilder(this);
     this.cachedScreenLines = [];
@@ -81,30 +95,55 @@ class DisplayLayer {
     this.foldsMarkerLayer.enableHistorySnapshots();
     this.foldIdCounter = params.foldIdCounter || 1;
 
-    if (params.spatialIndex) {
-      this.spatialIndex = params.spatialIndex;
-      this.tabCounts = params.tabCounts;
-      this.screenLineLengths = params.screenLineLengths;
-      this.screenLineBlocks = params.screenLineBlocks;
-      this.rightmostScreenPosition = params.rightmostScreenPosition;
-      this.indexedBufferRowCount = params.indexedBufferRowCount;
-    } else {
-      this.spatialIndex = new Patch({
-        // The `mergeAdjacentHunks` option in `superstring` was renamed to
-        // `mergeAdjacentChanges` at a certain point. In order to remain
-        // compatible with the broadest possible range of `superstring`
-        // dependencies, we pass both options here.
-        mergeAdjacentHunks: false,
-        mergeAdjacentChanges: false,
-      });
-      this.tabCounts = [];
-      this.screenLineLengths = [];
-      this.screenLineBlocks = [];
-      this.rightmostScreenPosition = Point(0, 0);
-      this.indexedBufferRowCount = 0;
-    }
-
     this.bufferDidChangeLanguageMode();
+  }
+
+  get spatialIndex() {
+    return this.layoutState.spatialIndex;
+  }
+
+  set spatialIndex(value) {
+    this.layoutState.spatialIndex = value;
+  }
+
+  get tabCounts() {
+    return this.layoutState.tabCounts;
+  }
+
+  set tabCounts(value) {
+    this.layoutState.tabCounts = value;
+  }
+
+  get screenLineLengths() {
+    return this.layoutState.screenLineLengths;
+  }
+
+  set screenLineLengths(value) {
+    this.layoutState.screenLineLengths = value;
+  }
+
+  get screenLineBlocks() {
+    return this.layoutState.screenLineBlocks;
+  }
+
+  set screenLineBlocks(value) {
+    this.layoutState.screenLineBlocks = value;
+  }
+
+  get rightmostScreenPosition() {
+    return this.layoutState.rightmostScreenPosition;
+  }
+
+  set rightmostScreenPosition(value) {
+    this.layoutState.rightmostScreenPosition = value;
+  }
+
+  get indexedBufferRowCount() {
+    return this.layoutState.indexedBufferRowCount;
+  }
+
+  set indexedBufferRowCount(value) {
+    this.layoutState.indexedBufferRowCount = value;
   }
 
   static deserialize(buffer, params) {
@@ -134,12 +173,7 @@ class DisplayLayer {
     const copy = new DisplayLayer(copyId, this.buffer, {
       foldsMarkerLayer: this.foldsMarkerLayer.copy(),
       foldIdCounter: this.foldIdCounter,
-      spatialIndex: this.spatialIndex.copy(),
-      tabCounts: this.tabCounts.slice(),
-      screenLineLengths: this.screenLineLengths.slice(),
-      screenLineBlocks: this.screenLineBlocks.map(({ rowCount, max }) => ({ rowCount, max })),
-      rightmostScreenPosition: this.rightmostScreenPosition.copy(),
-      indexedBufferRowCount: this.indexedBufferRowCount,
+      layoutState: this.layoutState,
       invisibles: this.invisibles,
       tabLength: this.tabLength,
       softWrapColumn: this.softWrapColumn,
@@ -148,6 +182,7 @@ class DisplayLayer {
       isWrapBoundary: this.isWrapBoundary,
       foldCharacter: this.foldCharacter,
       atomicSoftTabs: this.atomicSoftTabs,
+      layoutGroupId: this.layoutGroupId,
     });
     this.buffer.displayLayers[copyId] = copy;
     return copy;
@@ -156,7 +191,7 @@ class DisplayLayer {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.clearSpatialIndex();
+    this.cachedScreenLines.length = 0;
     this.foldsMarkerLayer.destroy();
     this.displayMarkerLayersById.forEach((layer) => layer.destroy());
     if (this.languageModeDisposable) this.languageModeDisposable.dispose();
@@ -167,14 +202,16 @@ class DisplayLayer {
     return this.destroyed;
   }
 
+  separateLayoutGroup(preserveSpatialState = true) {
+    this.layoutGroupId = nextLayoutGroupId++;
+    this.layoutState = preserveSpatialState
+      ? copyLayoutState(this.layoutState)
+      : createEmptyLayoutState();
+  }
+
   clearSpatialIndex() {
-    this.indexedBufferRowCount = 0;
-    this.spatialIndex.spliceOld(Point.ZERO, Point.INFINITY, Point.INFINITY);
+    this.separateLayoutGroup(false);
     this.cachedScreenLines.length = 0;
-    this.screenLineLengths.length = 0;
-    this.screenLineBlocks.length = 0;
-    this.tabCounts.length = 0;
-    this.rightmostScreenPosition = Point(0, 0);
   }
 
   doBackgroundWork(deadline) {
@@ -251,6 +288,7 @@ class DisplayLayer {
     if (containingFoldMarkers.length === 0) {
       this.populateSpatialIndexIfNeeded(bufferRange.end.row + 1, Infinity);
     }
+    this.separateLayoutGroup();
     const foldId = this.foldsMarkerLayer.markRange(bufferRange, {
       invalidate: "overlap",
       exclusive: true,
@@ -318,6 +356,7 @@ class DisplayLayer {
     const changedRows = differingRowSpan(previousRanges, currentRanges);
     if (changedRows == null) return;
 
+    this.separateLayoutGroup();
     const { startRow, endRow } = changedRows;
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
     this.markMarkerScreenPositionsDirty();
@@ -329,6 +368,7 @@ class DisplayLayer {
     const foldedRanges = [];
     if (foldMarkers.length === 0) return foldedRanges;
 
+    this.separateLayoutGroup();
     const combinedRangeStart = foldMarkers[0].getStartPosition();
     let combinedRangeEnd = combinedRangeStart;
     for (const foldMarker of foldMarkers) {
@@ -974,7 +1014,30 @@ class DisplayLayer {
 
     this.indexedBufferRowCount += newEndRow - oldEndRow;
     this.markMarkerScreenPositionsDirty();
-    this.didChange(this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity));
+    const layoutChange = this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity);
+    this.didChange(layoutChange);
+    return layoutChange;
+  }
+
+  adoptSpatialStateFrom(source, layoutChange = null) {
+    this.layoutState = source.layoutState;
+
+    if (layoutChange == null) return;
+
+    if (layoutChange.start.row <= this.cachedScreenLines.length) {
+      spliceArray(
+        this.cachedScreenLines,
+        layoutChange.start.row,
+        layoutChange.oldExtent.row,
+        new Array(layoutChange.newExtent.row),
+      );
+    }
+    // A sibling can be farther through background indexing than this layer.
+    // Keep the sparse cache's coordinate space aligned with the adopted row
+    // summaries even when the changed range starts beyond its old length.
+    this.cachedScreenLines.length = this.screenLineLengths.length;
+    this.markMarkerScreenPositionsDirty();
+    this.didChange(layoutChange);
   }
 
   didChange({ start, oldExtent, newExtent }) {
@@ -1610,6 +1673,33 @@ class DisplayLayer {
   isSoftWrapHunk(hunk) {
     return isEqual(hunk.oldStart, hunk.oldEnd);
   }
+}
+
+function createEmptyLayoutState() {
+  return {
+    spatialIndex: new Patch({
+      // Superstring renamed this option; pass both spellings so either side of
+      // that transition keeps adjacent display hunks separate.
+      mergeAdjacentHunks: false,
+      mergeAdjacentChanges: false,
+    }),
+    tabCounts: [],
+    screenLineLengths: [],
+    screenLineBlocks: [],
+    rightmostScreenPosition: Point(0, 0),
+    indexedBufferRowCount: 0,
+  };
+}
+
+function copyLayoutState(state) {
+  return {
+    spatialIndex: state.spatialIndex.copy(),
+    tabCounts: state.tabCounts.slice(),
+    screenLineLengths: state.screenLineLengths.slice(),
+    screenLineBlocks: state.screenLineBlocks.map(({ rowCount, max }) => ({ rowCount, max })),
+    rightmostScreenPosition: state.rightmostScreenPosition.copy(),
+    indexedBufferRowCount: state.indexedBufferRowCount,
+  };
 }
 
 function invisiblesEqual(left, right) {

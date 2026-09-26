@@ -1269,10 +1269,7 @@ class TextBuffer {
     }
 
     const changeEvent = { oldRange, newRange, oldText, newText };
-    for (const id in this.displayLayers) {
-      const displayLayer = this.displayLayers[id];
-      displayLayer.bufferWillChange(changeEvent);
-    }
+    this.prepareDisplayLayersForChange(changeEvent);
 
     this.emitWillChangeEvent();
     let replacesEntireBuffer = false;
@@ -1310,10 +1307,52 @@ class TextBuffer {
   emitDidChangeEvent(changeEvent) {
     if (!changeEvent.oldRange.isEmpty() || !changeEvent.newRange.isEmpty()) {
       this.languageMode.bufferDidChange(changeEvent);
-      for (const id in this.displayLayers) {
-        this.displayLayers[id].bufferDidChange(changeEvent);
+      this.updateDisplayLayersForChange(changeEvent);
+    }
+  }
+
+  updateDisplayLayersForChange(changeEvent) {
+    for (const group of this.groupDisplayLayersByLayout()) {
+      const source = this.mostCompletelyIndexedDisplayLayer(group);
+      const layoutChange = source.bufferDidChange(changeEvent);
+      for (const displayLayer of group) {
+        if (displayLayer !== source) displayLayer.adoptSpatialStateFrom(source, layoutChange);
       }
     }
+  }
+
+  prepareDisplayLayersForChange(changeEvent) {
+    for (const group of this.groupDisplayLayersByLayout()) {
+      const source = this.mostCompletelyIndexedDisplayLayer(group);
+      source.bufferWillChange(changeEvent);
+      for (const displayLayer of group) {
+        if (
+          displayLayer !== source &&
+          displayLayer.indexedBufferRowCount < source.indexedBufferRowCount
+        ) {
+          displayLayer.adoptSpatialStateFrom(source);
+        }
+      }
+    }
+  }
+
+  groupDisplayLayersByLayout() {
+    const groups = new Map();
+    for (const id in this.displayLayers) {
+      const displayLayer = this.displayLayers[id];
+      let group = groups.get(displayLayer.layoutGroupId);
+      if (!group) groups.set(displayLayer.layoutGroupId, (group = []));
+      group.push(displayLayer);
+    }
+    return groups.values();
+  }
+
+  mostCompletelyIndexedDisplayLayer(group) {
+    let source = group[0];
+    for (let i = 1; i < group.length; i++) {
+      if (group[i].indexedBufferRowCount > source.indexedBufferRowCount) source = group[i];
+    }
+    return source;
   }
 
   /**

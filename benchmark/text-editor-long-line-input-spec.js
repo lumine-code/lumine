@@ -11,6 +11,7 @@ const DISPLAY_LAYER_COUNTS = (process.env.LUMINE_LONG_LINE_BENCHMARK_LAYERS || "
   .map(Number)
   .filter((count) => Number.isInteger(count) && count > 0);
 const SAMPLE_COUNT = Number(process.env.LUMINE_LONG_LINE_BENCHMARK_SAMPLES || 5);
+const LAYER_MODE = process.env.LUMINE_LONG_LINE_BENCHMARK_LAYER_MODE || "copies";
 const EDITOR_WIDTH = 1000;
 const EDITOR_HEIGHT = 800;
 
@@ -78,7 +79,9 @@ function measureCase({ lineLength, displayLayerCount, location }) {
     editor = buildEditor(buffer);
     for (let i = 1; i < displayLayerCount; i++) {
       additionalDisplayLayers.push(
-        buffer.addDisplayLayer({ softWrapColumn: 500, tabLength: editor.getTabLength() }),
+        LAYER_MODE === "independent"
+          ? buffer.addDisplayLayer({ softWrapColumn: 500, tabLength: editor.getTabLength() })
+          : editor.displayLayer.copy(),
       );
     }
     component = new TextEditorComponent({ model: editor, updatedSynchronously: false });
@@ -171,6 +174,7 @@ describe("Text editor long-line input benchmark", () => {
           editorWidth: EDITOR_WIDTH,
           editorHeight: EDITOR_HEIGHT,
           maxScreenLineLength: 500,
+          layerMode: LAYER_MODE,
           operation: "alternating one-character insert/delete",
         },
         results,
