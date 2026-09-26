@@ -89,6 +89,16 @@ describe("TextEditorElement", () => {
     expect(element.getModel().getText()).toBe("testing");
   });
 
+  it("uses automatic plain text for an element-created model", async () => {
+    await lumine.packages.activatePackage("language-text");
+    const element = buildTextEditorElement({ attach: false });
+    const editor = element.getModel();
+
+    expect(editor.getGrammar().scopeName).toBe("text.plain");
+
+    editor.destroy();
+  });
+
   describe("tabIndex", () => {
     it("uses a default value of -1", () => {
       jasmineContent.innerHTML = "<lumine-text-editor />";

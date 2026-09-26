@@ -280,6 +280,27 @@ describe("GrammarRegistry", () => {
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
     });
 
+    it("uses plain text while a restored override is unavailable and restores it when added", () => {
+      const buffer = createBuffer();
+      grammarRegistry.deserialize({
+        languageOverridesByBufferId: { [buffer.id]: "source.css" },
+      });
+
+      grammarRegistry.maintainLanguageMode(buffer);
+      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
+      expect(buffer.getLanguageMode().grammar).toBe(plainText);
+      expect(grammarRegistry.getAssignedLanguageId(buffer)).toBe("source.css");
+
+      const css = grammarRegistry.loadGrammarSync(
+        require.resolve("language-css/grammars/css.json"),
+      );
+      expect(buffer.getLanguageMode().grammar).toBe(css);
+    });
+
     it("can be overridden by calling .assignLanguageMode", () => {
       const buffer = createBuffer();
 
@@ -328,16 +349,22 @@ describe("GrammarRegistry", () => {
         require.resolve("language-javascript/grammars/javascript.json"),
       );
       const disposable1 = grammarRegistry.maintainLanguageMode(buffer);
+      const registrySubscriptionCount = subscriptionCount(grammarRegistry);
+      const bufferListenerCount = buffer.emitter.getTotalListenerCount();
       const disposable2 = grammarRegistry.maintainLanguageMode(buffer);
+      expect(subscriptionCount(grammarRegistry)).toBe(registrySubscriptionCount);
+      expect(buffer.emitter.getTotalListenerCount()).toBe(bufferListenerCount);
 
       buffer.setPath("test.js");
       expect(buffer.getLanguageMode().getLanguageId()).toBe("source.js");
 
       disposable2.dispose();
+      expect(subscriptionCount(grammarRegistry)).toBe(registrySubscriptionCount);
       buffer.setPath("test.txt");
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
 
       disposable1.dispose();
+      expect(subscriptionCount(grammarRegistry)).toBe(0);
       buffer.setPath("test.js");
       expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
     });
@@ -594,6 +621,15 @@ describe("GrammarRegistry", () => {
           "source.python",
         );
       });
+
+      it("does not allow a custom file type to select the null fallback", () => {
+        grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
+        lumine.config.set("core.customFileTypes", {
+          "text.plain.null-grammar": ["emergency"],
+        });
+
+        expect(grammarRegistry.selectGrammar("example.emergency").scopeName).toBe("text.plain");
+      });
     });
 
     it("favors a grammar with a matching file type over one with m matching first line pattern", async () => {
@@ -736,13 +772,16 @@ describe("GrammarRegistry", () => {
     });
 
     it("falls back safely and restores an explicit assignment when the grammar returns", () => {
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
       const grammarPath = require.resolve("language-css/grammars/css.json");
       const grammar = grammarRegistry.loadGrammarSync(grammarPath);
       const buffer = createBuffer();
       expect(grammarRegistry.assignLanguageMode(buffer, "source.css")).toBe(true);
 
       grammarRegistry.removeGrammar(grammar);
-      expect(buffer.getLanguageMode().getLanguageId()).toBe("text.plain.null-grammar");
+      expect(buffer.getLanguageMode().grammar).toBe(plainText);
       expect(grammarRegistry.getAssignedLanguageId(buffer)).toBe("source.css");
 
       const replacement = grammarRegistry.loadGrammarSync(grammarPath);
@@ -933,6 +972,21 @@ describe("GrammarRegistry", () => {
       expect(buffer1Copy.getLanguageMode().getLanguageId()).toBe("source.c");
       expect(buffer2Copy.getLanguageMode().getLanguageId()).toBe("source.js");
     });
+
+    it("does not persist the emergency null override", () => {
+      const buffer = createBuffer();
+      expect(grammarRegistry.assignLanguageMode(buffer, "text.plain.null-grammar")).toBe(true);
+
+      expect(grammarRegistry.serialize().languageOverridesByBufferId[buffer.id]).toBeUndefined();
+
+      const copy = new GrammarRegistry({ config: lumine.config });
+      copy.deserialize({
+        languageOverridesByBufferId: {
+          [buffer.id]: "text.plain.null-grammar",
+        },
+      });
+      expect(copy.getAssignedLanguageId(buffer)).toBeUndefined();
+    });
   });
 
   describe("when working with grammars", () => {
@@ -940,11 +994,11 @@ describe("GrammarRegistry", () => {
       await lumine.packages.activatePackage("language-javascript");
     });
 
-    it("returns the null sentinel and registered Tree-sitter grammars", () => {
+    it("returns only registered Tree-sitter grammars", () => {
       const grammars = lumine.grammars.getGrammars();
-      expect(grammars[0]).toBe(lumine.grammars.nullGrammar);
       expect(grammars.some((grammar) => grammar.scopeName === "source.js")).toBe(true);
-      expect(grammars.slice(1).every((grammar) => grammar instanceof TreeSitterGrammar)).toBe(true);
+      expect(grammars).not.toContain(lumine.grammars.nullGrammar);
+      expect(grammars.every((grammar) => grammar instanceof TreeSitterGrammar)).toBe(true);
     });
 
     it("executes the foreach callback for every registered grammar", () => {

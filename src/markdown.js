@@ -2,7 +2,6 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const MarkdownIt = require("markdown-it");
-const { TextEditor } = require("lumine");
 
 // Helper Markdown Components
 const mdComponents = {
@@ -518,11 +517,10 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     const className = codeBlock.getAttribute("class");
     const fenceName = className != null ? className.replace(/^language-/, "") : defaultLanguage;
 
-    const editor = new TextEditor({
+    const editor = lumine.workspace.buildTextEditor({
       readOnly: true,
       keyboardInputEnabled: false,
       autoWidth: opts.autoWidth,
-      maxScreenLineLength: renderAsEditor ? undefined : Infinity,
     });
 
     preElement.classList.add("editor-colors", `lang-${fenceName}`);
@@ -600,6 +598,7 @@ function convertLumineEditorToStandardElement(editor, preElement) {
           // Build from the display model rather than the editor DOM. A public
           // HTMLFragment may still be detached, in which case the component
           // deliberately does not render.
+          editor.update({ maxScreenLineLength: Infinity });
           editor.displayLayer.clearSpatialIndex();
           const replacement = document.createDocumentFragment();
           for (let row = 0; row < editor.getScreenLineCount(); row++) {

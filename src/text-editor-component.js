@@ -85,10 +85,13 @@ module.exports = class TextEditorComponent {
     this.props = props;
 
     if (!props.model) {
-      props.model = new TextEditor({
+      const editorParams = {
         mini: props.mini,
         readOnly: props.readOnly,
-      });
+      };
+      props.model = globalThis.lumine?.workspace?.buildTextEditor
+        ? globalThis.lumine.workspace.buildTextEditor(editorParams)
+        : new TextEditor(editorParams);
     }
     this.props.model.component = this;
 

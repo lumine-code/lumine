@@ -1850,6 +1850,42 @@ describe("Workspace", () => {
     });
   });
 
+  describe("::buildTextEditor()", () => {
+    it("maintains automatic plain text for normal, mini, and supplied-buffer editors", async () => {
+      await lumine.packages.activatePackage("language-text");
+      const suppliedBuffer = new TextBuffer();
+      const editors = [
+        workspace.buildTextEditor(),
+        workspace.buildTextEditor({ mini: true }),
+        workspace.buildTextEditor({ buffer: suppliedBuffer }),
+      ];
+
+      for (const editor of editors) {
+        expect(editor.getGrammar().scopeName).toBe("text.plain");
+      }
+
+      for (const editor of editors) editor.destroy();
+    });
+
+    it("shares maintenance for a supplied buffer and releases each editor's lease", async () => {
+      await lumine.packages.activatePackage("language-text");
+      const buffer = new TextBuffer();
+      buffer.retain();
+      const first = workspace.buildTextEditor({ buffer });
+      const second = workspace.buildTextEditor({ buffer });
+
+      first.destroy();
+      expect(buffer.isDestroyed()).toBe(false);
+      expect(lumine.grammars.grammarScoresByBuffer.has(buffer)).toBe(true);
+
+      second.destroy();
+      expect(buffer.isDestroyed()).toBe(false);
+      expect(lumine.grammars.grammarScoresByBuffer.has(buffer)).toBe(false);
+
+      buffer.release();
+    });
+  });
+
   describe("::getActiveTextEditor()", () => {
     describe("when the workspace center's active pane item is a text editor", () => {
       describe("when the workspace center has focus", () => {
@@ -2229,7 +2265,7 @@ describe("Workspace", () => {
     // its loaded packages could provide. JavaScript contributes nothing here
     // because no open editor references source.js; the FIXME comment activates
     // the TODO injection.
-    expect(grammarScopes).toEqual(["source.python", "text.plain.null-grammar", "text.todo"]);
+    expect(grammarScopes).toEqual(["source.python", "text.todo"]);
 
     lumine2.destroy();
   });

@@ -229,6 +229,15 @@ describe("Highlights markdown code blocks", () => {
     expect(getComputedStyle(element.querySelector(".cursors")).display).toBe("none");
   });
 
+  it("uses automatic plain text when a fence does not resolve to a grammar", async () => {
+    await lumine.packages.activatePackage("language-text");
+    const element = await render("```unknown-language\nplain content\n```", {
+      syntaxScopeNameFunc: () => "source.unknown-language",
+    });
+
+    expect(element.getModel().getGrammar().scopeName).toBe("text.plain");
+  });
+
   it("sizes a code block to its longest line when asked to", async () => {
     const element = await render("```js\nconst theAnswerToEverything = 42;\n```", {
       autoWidth: true,

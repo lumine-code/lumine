@@ -32,11 +32,12 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 // Registration is deliberately separate: a detached model can be configured
 // without participating in the window until its owner exposes it.
 module.exports = class TextEditorFactory {
-  constructor({ config, assert, packageManager, fileWatchClient }) {
+  constructor({ config, assert, packageManager, fileWatchClient, grammarRegistry }) {
     this.config = config;
     this.assert = assert;
     this.packageManager = packageManager;
     this.fileWatchClient = fileWatchClient;
+    this.grammarRegistry = grammarRegistry;
     this.destroyed = false;
     this.subscriptions = new CompositeDisposable();
     this.scopesWithConfigSubscriptions = new Set();
@@ -69,7 +70,15 @@ module.exports = class TextEditorFactory {
       if (grammar) scope = new ScopeDescriptor({ scopes: [grammar.scopeName] });
     }
     Object.assign(params, this.textEditorParamsForScope(scope));
-    return new TextEditor(params);
+    const editor = new TextEditor(params);
+    if (this.grammarRegistry) {
+      const grammarMaintenance = this.grammarRegistry.maintainLanguageMode(editor.getBuffer());
+      const destroySubscription = editor.onDidDestroy(() => {
+        destroySubscription.dispose();
+        grammarMaintenance.dispose();
+      });
+    }
+    return editor;
   }
 
   maintainConfig(editor) {

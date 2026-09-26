@@ -36,6 +36,7 @@ module.exports = class GrammarRegistry {
 
     this.languageOverridesByBufferId = new Map();
     this.grammarScoresByBuffer = new Map();
+    this.languageModeMaintenanceByBuffer = new WeakMap();
     // Buffers already wired to release themselves, so a repeated assignment
     // does not stack subscriptions.
     this.releasedBuffers = new WeakSet();
@@ -44,14 +45,19 @@ module.exports = class GrammarRegistry {
   serialize() {
     const languageOverridesByBufferId = {};
     this.languageOverridesByBufferId.forEach((languageId, bufferId) => {
-      languageOverridesByBufferId[bufferId] = languageId;
+      if (languageId !== NullGrammar.scopeName) {
+        languageOverridesByBufferId[bufferId] = languageId;
+      }
     });
     return { languageOverridesByBufferId };
   }
 
   deserialize(params) {
     for (const bufferId in params.languageOverridesByBufferId || {}) {
-      this.languageOverridesByBufferId.set(bufferId, params.languageOverridesByBufferId[bufferId]);
+      const languageId = params.languageOverridesByBufferId[bufferId];
+      if (languageId !== NullGrammar.scopeName) {
+        this.languageOverridesByBufferId.set(bufferId, languageId);
+      }
     }
   }
 
@@ -61,12 +67,28 @@ module.exports = class GrammarRegistry {
    *
    * set a {@link TextBuffer}'s language mode based on its path and content,
    * and continue to update its language mode as grammars are added or updated, or
-   * the buffer's file path changes.
+   * the buffer's file path changes. Repeated calls share one maintenance setup;
+   * each returned disposable releases one lease.
    *
    * @param buffer - The {@link TextBuffer} whose language mode will be maintained.
    * @returns {Disposable} that can be used to stop updating the buffer's language mode.
    */
   maintainLanguageMode(buffer) {
+    const maintenanceToken = {};
+    let maintenance = this.languageModeMaintenanceByBuffer.get(buffer);
+    if (maintenance) {
+      maintenance.tokens.add(maintenanceToken);
+      return new Disposable(() =>
+        this.releaseLanguageModeMaintenance(buffer, maintenance, maintenanceToken),
+      );
+    }
+
+    maintenance = {
+      tokens: new Set([maintenanceToken]),
+      pathChangeSubscription: null,
+      destroySubscription: null,
+    };
+    this.languageModeMaintenanceByBuffer.set(buffer, maintenance);
     this.grammarScoresByBuffer.set(buffer, null);
 
     // This method installs its own destroy handler below, so claim the buffer
@@ -76,39 +98,53 @@ module.exports = class GrammarRegistry {
 
     const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
     if (languageOverride) {
-      this.assignLanguageMode(buffer, languageOverride);
+      if (!this.assignLanguageMode(buffer, languageOverride)) {
+        this.assignFallbackLanguageMode(buffer);
+      }
     } else {
       this.autoAssignLanguageMode(buffer);
     }
 
-    const pathChangeSubscription = buffer.onDidChangePath(() => {
+    maintenance.pathChangeSubscription = buffer.onDidChangePath(() => {
       this.grammarScoresByBuffer.delete(buffer);
       if (!this.languageOverridesByBufferId.has(buffer.id)) {
         this.autoAssignLanguageMode(buffer);
       }
     });
 
-    const destroySubscription = buffer.onDidDestroy(() => {
+    maintenance.destroySubscription = buffer.onDidDestroy(() => {
+      if (this.languageModeMaintenanceByBuffer.get(buffer) !== maintenance) return;
       this.grammarScoresByBuffer.delete(buffer);
       this.languageOverridesByBufferId.delete(buffer.id);
       this.releasedBuffers.delete(buffer);
-      this.subscriptions.remove(destroySubscription);
-      this.subscriptions.remove(pathChangeSubscription);
+      this.languageModeMaintenanceByBuffer.delete(buffer);
+      maintenance.tokens.clear();
+      this.subscriptions.remove(maintenance.destroySubscription);
+      this.subscriptions.remove(maintenance.pathChangeSubscription);
     });
 
-    this.subscriptions.add(pathChangeSubscription, destroySubscription);
+    this.subscriptions.add(maintenance.pathChangeSubscription, maintenance.destroySubscription);
 
-    return new Disposable(() => {
-      destroySubscription.dispose();
-      pathChangeSubscription.dispose();
-      this.subscriptions.remove(pathChangeSubscription);
-      this.subscriptions.remove(destroySubscription);
-      this.grammarScoresByBuffer.delete(buffer);
-      this.languageOverridesByBufferId.delete(buffer.id);
-      // No longer claimed: a later assignment must be free to register its own
-      // one-shot release for a buffer that outlives being maintained.
-      this.releasedBuffers.delete(buffer);
-    });
+    return new Disposable(() =>
+      this.releaseLanguageModeMaintenance(buffer, maintenance, maintenanceToken),
+    );
+  }
+
+  releaseLanguageModeMaintenance(buffer, maintenance, maintenanceToken) {
+    if (this.languageModeMaintenanceByBuffer.get(buffer) !== maintenance) return;
+    maintenance.tokens.delete(maintenanceToken);
+    if (maintenance.tokens.size > 0) return;
+
+    maintenance.destroySubscription.dispose();
+    maintenance.pathChangeSubscription.dispose();
+    this.subscriptions.remove(maintenance.pathChangeSubscription);
+    this.subscriptions.remove(maintenance.destroySubscription);
+    this.languageModeMaintenanceByBuffer.delete(buffer);
+    this.grammarScoresByBuffer.delete(buffer);
+    this.languageOverridesByBufferId.delete(buffer.id);
+    // No longer claimed: a later assignment must be free to register its own
+    // one-shot release for a buffer that outlives being maintained.
+    this.releasedBuffers.delete(buffer);
   }
 
   /**
@@ -222,6 +258,18 @@ module.exports = class GrammarRegistry {
     }
   }
 
+  fallbackGrammar() {
+    return this.grammarForId("text.plain") ?? NullGrammar;
+  }
+
+  assignFallbackLanguageMode(buffer) {
+    const grammar = this.fallbackGrammar();
+    this.grammarScoresByBuffer.set(buffer, null);
+    if (grammar !== buffer.getLanguageMode().grammar) {
+      buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
+    }
+  }
+
   languageModeForGrammarAndBuffer(grammar, buffer) {
     if (grammar === NullGrammar) {
       return new NullLanguageMode({ grammar, buffer });
@@ -255,8 +303,8 @@ module.exports = class GrammarRegistry {
   }
 
   selectGrammarWithScore(filePath, fileContents) {
-    let bestMatch = null;
-    let highestScore = -Infinity;
+    let bestMatch = NullGrammar;
+    let highestScore = this.getGrammarScore(NullGrammar, filePath, fileContents);
     let plainTextGrammar = null;
     let plainTextScore = -Infinity;
     this.forEachGrammar((grammar) => {
@@ -265,13 +313,13 @@ module.exports = class GrammarRegistry {
         plainTextGrammar = grammar;
         plainTextScore = score;
       }
-      if (score > highestScore || bestMatch == null) {
+      if (score > highestScore) {
         bestMatch = grammar;
         highestScore = score;
       }
     });
-    // The null grammar wins unmatched ties because it is first. Prefer the
-    // registered plain-text grammar when no more specific grammar matched.
+    // The null sentinel is the unmatched baseline. Prefer the registered
+    // plain-text grammar when no more specific grammar matched.
     if (bestMatch === NullGrammar && plainTextGrammar) {
       return { grammar: plainTextGrammar, score: plainTextScore };
     }
@@ -297,6 +345,11 @@ module.exports = class GrammarRegistry {
    * @returns {Number}
    */
   getGrammarScore(grammar, filePath, contents) {
+    // The null grammar is a last-resort sentinel, not a configurable language.
+    // Keep its score fixed so a custom file-type entry cannot make it win over
+    // a registered grammar.
+    if (grammar === NullGrammar) return filePath ? 0 : -1;
+
     if (contents == null && fs.isFileSync(filePath)) {
       contents = fs.readFileSync(filePath, "utf8");
     }
@@ -422,14 +475,23 @@ module.exports = class GrammarRegistry {
     this.grammarScoresByBuffer.forEach((score, buffer) => {
       const languageMode = buffer.getLanguageMode();
       const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
+      const overriddenGrammar = this.grammarForId(languageOverride);
       const currentGrammar = languageMode.grammar;
 
       if (
         grammar === currentGrammar ||
         grammar.scopeName === currentGrammar?.scopeName ||
-        grammar === this.grammarForId(languageOverride)
+        grammar === overriddenGrammar
       ) {
         buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
+        return;
+      } else if (
+        this.languageOverridesByBufferId.has(buffer.id) &&
+        !overriddenGrammar &&
+        grammar.scopeName === "text.plain" &&
+        currentGrammar === NullGrammar
+      ) {
+        this.assignFallbackLanguageMode(buffer);
         return;
       } else if (!this.languageOverridesByBufferId.has(buffer.id)) {
         const score = this.getGrammarScore(
@@ -600,13 +662,7 @@ module.exports = class GrammarRegistry {
       const languageMode = buffer.getLanguageMode();
       if (languageMode.grammar === grammar) {
         if (this.languageOverridesByBufferId.has(buffer.id)) {
-          this.grammarScoresByBuffer.set(buffer, null);
-          buffer.setLanguageMode(
-            this.languageModeForGrammarAndBuffer(
-              this.grammarForId(this.languageOverridesByBufferId.get(buffer.id)) ?? NullGrammar,
-              buffer,
-            ),
-          );
+          this.assignFallbackLanguageMode(buffer);
         } else {
           this.autoAssignLanguageMode(buffer);
         }
@@ -707,15 +763,12 @@ module.exports = class GrammarRegistry {
    *
    * Get all the grammars in this registry.
    *
-   * @returns {Array} non-empty `Array` containing the null grammar sentinel followed by registered {@link TreeSitterGrammar} instances.
+   * @returns {Array} registered {@link TreeSitterGrammar} instances.
    */
   getGrammars() {
-    return [
-      NullGrammar,
-      ...Object.values(this.treeSitterGrammarsById).filter(
-        (grammar) => grammar instanceof TreeSitterGrammar,
-      ),
-    ];
+    return Object.values(this.treeSitterGrammarsById).filter(
+      (grammar) => grammar instanceof TreeSitterGrammar,
+    );
   }
 
   validateTreeSitterInjectionNames(grammar, replacedGrammar = null) {

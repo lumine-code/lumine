@@ -451,6 +451,7 @@ class Environment {
       config: this.config,
       assert: this.assert.bind(this),
       packageManager: this.packages,
+      grammarRegistry: this.grammars,
     });
     /**
      * @public
