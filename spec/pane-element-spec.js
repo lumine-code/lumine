@@ -88,19 +88,35 @@ describe("PaneElement", function () {
       expect(watermarkStyle().content).toBe('""');
     });
 
-    it("keeps the mark fixed when background tips enter and leave", function () {
-      const fixedTransform = watermarkStyle().transform;
-      expect(fixedTransform).not.toBe("none");
-      const transform = new DOMMatrixReadOnly(fixedTransform);
+    it("moves the mark above background tips and restores it when they leave", function () {
+      const styles = document.createElement("style");
+      styles.textContent =
+        "lumine-pane > .item-views:empty::after { transition: none !important; }";
+      jasmine.attachToDOM(styles);
+      const centeredTransform = watermarkStyle().transform;
+      expect(centeredTransform).not.toBe("none");
+      const transform = new DOMMatrixReadOnly(centeredTransform);
       expect(transform.m41).toBeCloseTo(-parseFloat(watermarkStyle().width) / 2, 1);
       expect(transform.m42).toBeCloseTo(-parseFloat(watermarkStyle().height) / 2, 1);
 
       const backgroundTips = document.createElement("background-tips");
       paneElement.appendChild(backgroundTips);
-      expect(watermarkStyle().transform).toBe(fixedTransform);
+      expect(watermarkStyle().transform).not.toBe("none");
+      expect(watermarkStyle().transform).not.toBe(centeredTransform);
 
       backgroundTips.remove();
-      expect(watermarkStyle().transform).toBe(fixedTransform);
+      expect(watermarkStyle().transform).toBe(centeredTransform);
+    });
+
+    it("animates toward background tips but returns to centre immediately", function () {
+      expect(watermarkStyle().transitionDuration).toBe("0s");
+
+      const backgroundTips = document.createElement("background-tips");
+      paneElement.appendChild(backgroundTips);
+      expect(watermarkStyle().transitionDuration).toBe("0.3s");
+
+      backgroundTips.remove();
+      expect(watermarkStyle().transitionDuration).toBe("0s");
     });
 
     it("keeps background tips after the item views when the pane reconnects", function () {
