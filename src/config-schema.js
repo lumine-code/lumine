@@ -114,6 +114,12 @@ const configSchema = {
         type: "boolean",
         default: true,
       },
+      showEmptyPaneLogo: {
+        title: "Show Empty Pane Logo",
+        description: "Show the Lumine logo in empty editor panes.",
+        type: "boolean",
+        default: true,
+      },
       restorePreviousState: {
         title: "Restore Previous Windows On Start",
         description:

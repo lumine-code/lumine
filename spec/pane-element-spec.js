@@ -52,6 +52,10 @@ describe("PaneElement", function () {
       jasmine.attachToDOM(containerElement);
     });
 
+    afterEach(function () {
+      lumine.config.unset("core.showEmptyPaneLogo");
+    });
+
     it("shows the Lumine mark until an item is added", async function () {
       expect(watermarkStyle().content).toBe('""');
       expect(watermarkStyle().backgroundColor).toBe("rgb(1, 2, 3)");
@@ -74,6 +78,20 @@ describe("PaneElement", function () {
       expect(watermarkStyle().content).toBe("none");
     });
 
+    it("follows the empty-pane logo setting live", function () {
+      expect(lumine.config.get("core.showEmptyPaneLogo")).toBe(true);
+      expect(paneElement).toHaveClass("empty-pane-logo-visible");
+      expect(watermarkStyle().content).toBe('""');
+
+      lumine.config.set("core.showEmptyPaneLogo", false);
+      expect(paneElement).not.toHaveClass("empty-pane-logo-visible");
+      expect(watermarkStyle().content).toBe("none");
+
+      lumine.config.set("core.showEmptyPaneLogo", true);
+      expect(paneElement).toHaveClass("empty-pane-logo-visible");
+      expect(watermarkStyle().content).toBe('""');
+    });
+
     it("moves the mark above background tips and restores it when they leave", function () {
       const centeredTransform = watermarkStyle().transform;
       expect(centeredTransform).not.toBe("none");
@@ -85,6 +103,17 @@ describe("PaneElement", function () {
 
       backgroundTips.remove();
       expect(watermarkStyle().transform).toBe(centeredTransform);
+    });
+
+    it("keeps background tips after the item views when the pane reconnects", function () {
+      const backgroundTips = document.createElement("background-tips");
+      paneElement.appendChild(backgroundTips);
+      expect(paneElement.itemViews.nextElementSibling).toBe(backgroundTips);
+
+      containerElement.remove();
+      jasmine.attachToDOM(containerElement);
+
+      expect(paneElement.itemViews.nextElementSibling).toBe(backgroundTips);
     });
   });
 

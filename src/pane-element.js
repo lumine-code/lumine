@@ -39,7 +39,9 @@ class PaneElement extends HTMLElement {
     // not lose its focused-tab styling when it enters the DOM.
     this.classList.add("pane");
     this.setAttribute("tabindex", -1);
-    this.appendChild(this.itemViews);
+    // Reconnecting a pane during split/layout changes must not move itemViews
+    // past package overlays appended after it or break the tab bar's adjacency.
+    if (this.itemViews.parentNode !== this) this.appendChild(this.itemViews);
     this.itemViews.setAttribute("class", "item-views");
   }
 
@@ -88,6 +90,11 @@ class PaneElement extends HTMLElement {
     this.subscriptions.add(this.model.onDidRemoveItem(this.itemRemoved.bind(this)));
     this.subscriptions.add(this.model.onDidDestroy(this.paneDestroyed.bind(this)));
     this.subscriptions.add(this.model.observeFlexScale(this.flexScaleChanged.bind(this)));
+    this.subscriptions.add(
+      this.model.config.observe("core.showEmptyPaneLogo", (visible) => {
+        this.classList.toggle("empty-pane-logo-visible", visible);
+      }),
+    );
     return this;
   }
 
