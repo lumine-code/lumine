@@ -1,6 +1,7 @@
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
 const TextEditorComponent = require("../src/text-editor-component");
+const { isWrapBoundary } = require("../src/text-utils");
 
 const LINE_LENGTHS = (process.env.LUMINE_LONG_LINE_BENCHMARK_LENGTHS || "10000,250000")
   .split(",")
@@ -12,6 +13,9 @@ const DISPLAY_LAYER_COUNTS = (process.env.LUMINE_LONG_LINE_BENCHMARK_LAYERS || "
   .filter((count) => Number.isInteger(count) && count > 0);
 const SAMPLE_COUNT = Number(process.env.LUMINE_LONG_LINE_BENCHMARK_SAMPLES || 5);
 const LAYER_MODE = process.env.LUMINE_LONG_LINE_BENCHMARK_LAYER_MODE || "copies";
+const PATTERNS = (process.env.LUMINE_LONG_LINE_BENCHMARK_PATTERNS || "token,words,tabs,fold")
+  .split(",")
+  .filter((pattern) => ["token", "words", "tabs", "fold"].includes(pattern));
 const EDITOR_WIDTH = 1000;
 const EDITOR_HEIGHT = 800;
 
@@ -68,8 +72,33 @@ function targetColumnFor(location, lineLength) {
   }
 }
 
-function measureCase({ lineLength, displayLayerCount, location }) {
-  const buffer = new TextBuffer({ text: "x".repeat(lineLength) });
+function textForPattern(pattern, lineLength) {
+  let fragment;
+  switch (pattern) {
+    case "words":
+    case "fold":
+      fragment = "alpha beta-gamma/delta ";
+      break;
+    case "tabs":
+      fragment = "alpha\tbeta gamma/delta ";
+      break;
+    default:
+      fragment = "x";
+  }
+  return fragment.repeat(Math.ceil(lineLength / fragment.length)).slice(0, lineLength);
+}
+
+function configureLayerForPattern(displayLayer, pattern, lineLength) {
+  if (pattern !== "fold") return;
+  const startColumn = Math.floor(lineLength / 3);
+  displayLayer.foldBufferRange([
+    [0, startColumn],
+    [0, Math.min(lineLength, startColumn + 1000)],
+  ]);
+}
+
+function measureCase({ lineLength, displayLayerCount, location, pattern }) {
+  const buffer = new TextBuffer({ text: textForPattern(pattern, lineLength) });
   const additionalDisplayLayers = [];
   const restores = [];
   let editor;
@@ -77,12 +106,21 @@ function measureCase({ lineLength, displayLayerCount, location }) {
 
   try {
     editor = buildEditor(buffer);
+    configureLayerForPattern(editor.displayLayer, pattern, lineLength);
     for (let i = 1; i < displayLayerCount; i++) {
-      additionalDisplayLayers.push(
+      const displayLayer =
         LAYER_MODE === "independent"
-          ? buffer.addDisplayLayer({ softWrapColumn: 500, tabLength: editor.getTabLength() })
-          : editor.displayLayer.copy(),
-      );
+          ? buffer.addDisplayLayer({
+              softWrapColumn: 500,
+              tabLength: editor.getTabLength(),
+              ratioForCharacter: () => 1,
+              isWrapBoundary,
+            })
+          : editor.displayLayer.copy();
+      if (LAYER_MODE === "independent") {
+        configureLayerForPattern(displayLayer, pattern, lineLength);
+      }
+      additionalDisplayLayers.push(displayLayer);
     }
     component = new TextEditorComponent({ model: editor, updatedSynchronously: false });
     component.element.style.width = `${EDITOR_WIDTH}px`;
@@ -134,6 +172,7 @@ function measureCase({ lineLength, displayLayerCount, location }) {
       lineLength,
       displayLayerCount,
       location,
+      pattern,
       targetScreenRow,
       total: summarize(totalDurations),
       updateSpatialIndex: summarize(indexDurations),
@@ -154,9 +193,11 @@ describe("Text editor long-line input benchmark", () => {
     jasmine.useRealClock();
     const results = [];
     for (const lineLength of LINE_LENGTHS) {
-      for (const displayLayerCount of DISPLAY_LAYER_COUNTS) {
-        for (const location of ["start", "middle", "end"]) {
-          results.push(measureCase({ lineLength, displayLayerCount, location }));
+      for (const pattern of PATTERNS) {
+        for (const displayLayerCount of DISPLAY_LAYER_COUNTS) {
+          for (const location of ["start", "middle", "end"]) {
+            results.push(measureCase({ lineLength, displayLayerCount, location, pattern }));
+          }
         }
       }
     }
@@ -169,6 +210,7 @@ describe("Text editor long-line input benchmark", () => {
         },
         input: {
           lineLengths: LINE_LENGTHS,
+          patterns: PATTERNS,
           displayLayerCounts: DISPLAY_LAYER_COUNTS,
           sampleCount: SAMPLE_COUNT,
           editorWidth: EDITOR_WIDTH,
