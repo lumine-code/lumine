@@ -97,25 +97,14 @@ lumine-pane-container {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: min(22rem, 55%);
-    height: min(22rem, 40%);
+    width: min(20rem, 50%);
+    height: min(20rem, 40%);
     pointer-events: none;
     background-color: var(--text-color-faded);
     opacity: 0.5;
     -webkit-mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
     mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
     transform: translate(-50%, -50%);
-    transition: transform 0.3s ease-in-out;
-  }
-
-  /* Background tips own the centre line. Lift the mark above it while their
-     overlay exists, then let it settle back to centre when the tips disappear. */
-  lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane):has(> background-tips)
-    > .item-views:empty::after {
-    transform: translate(
-      -50%,
-      calc(-100% - var(--component-padding) - var(--component-padding) - var(--component-padding))
-    );
   }
 }
 

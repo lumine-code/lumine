@@ -44,10 +44,6 @@ describe("PaneElement", function () {
     const watermarkStyle = () => getComputedStyle(paneElement.itemViews, "::after");
 
     beforeEach(function () {
-      const styles = document.createElement("style");
-      styles.textContent =
-        "lumine-pane > .item-views:empty::after { transition: none !important; }";
-      jasmine.attachToDOM(styles);
       containerElement.style.setProperty("--text-color-faded", "rgb(1, 2, 3)");
       jasmine.attachToDOM(containerElement);
     });
@@ -92,17 +88,19 @@ describe("PaneElement", function () {
       expect(watermarkStyle().content).toBe('""');
     });
 
-    it("moves the mark above background tips and restores it when they leave", function () {
-      const centeredTransform = watermarkStyle().transform;
-      expect(centeredTransform).not.toBe("none");
+    it("keeps the mark fixed when background tips enter and leave", function () {
+      const fixedTransform = watermarkStyle().transform;
+      expect(fixedTransform).not.toBe("none");
+      const transform = new DOMMatrixReadOnly(fixedTransform);
+      expect(transform.m41).toBeCloseTo(-parseFloat(watermarkStyle().width) / 2, 1);
+      expect(transform.m42).toBeCloseTo(-parseFloat(watermarkStyle().height) / 2, 1);
 
       const backgroundTips = document.createElement("background-tips");
       paneElement.appendChild(backgroundTips);
-      expect(watermarkStyle().transform).not.toBe("none");
-      expect(watermarkStyle().transform).not.toBe(centeredTransform);
+      expect(watermarkStyle().transform).toBe(fixedTransform);
 
       backgroundTips.remove();
-      expect(watermarkStyle().transform).toBe(centeredTransform);
+      expect(watermarkStyle().transform).toBe(fixedTransform);
     });
 
     it("keeps background tips after the item views when the pane reconnects", function () {
