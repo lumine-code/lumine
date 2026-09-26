@@ -1172,10 +1172,9 @@ class DisplayLayer {
       // are regular. Emit them a screen row at a time instead of interpreting
       // every character. Unknown callbacks, tabs, folds, indentation and
       // non-ASCII text retain the fully general path below.
-      const asciiWrapBoundaryMode = foldEndsByColumn
-        ? ASCII_WRAP_BOUNDARY_NONE
-        : asciiWrapBoundaryModeForLine(this, bufferLine, bufferLineLength);
+      let asciiWrapBoundaryMode = asciiWrapBoundaryModeForLine(this, bufferLine, bufferLineLength);
       if (
+        !foldEndsByColumn &&
         asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE &&
         canUseSimpleLineFastPath(this, bufferLine, asciiWrapBoundaryMode)
       ) {
@@ -1204,7 +1203,10 @@ class DisplayLayer {
         continue;
       }
 
-      if (canUseAsciiBoundaryFastPath(this, bufferLine, asciiWrapBoundaryMode)) {
+      if (
+        !foldEndsByColumn &&
+        canUseAsciiBoundaryFastPath(this, bufferLine, asciiWrapBoundaryMode)
+      ) {
         screenRow = populateSpatialIndexForAsciiBoundaryLine(
           this,
           bufferLine,
@@ -1250,19 +1252,27 @@ class DisplayLayer {
         } else {
           let atWrapBoundary = false;
           if (previousCharacter && character) {
-            atWrapBoundary =
-              asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE
-                ? (previousCharacter === " " || previousCharacter === "\t") &&
-                  character !== " " &&
-                  character !== "\t"
-                : asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD
-                  ? (previousCharacter === " " ||
-                      previousCharacter === "\t" ||
-                      previousCharacter === "-" ||
-                      previousCharacter === "/") &&
+            if (foldEnd) {
+              // The fold marker need not be ASCII. Preserve custom widths,
+              // combining-character protection and the standard predicate's
+              // special handling of CJK while retaining the cheap known mode
+              // for ordinary characters on either side of it.
+              atWrapBoundary = this.isWrapBoundary(previousCharacter, character);
+            } else {
+              atWrapBoundary =
+                asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE
+                  ? (previousCharacter === " " || previousCharacter === "\t") &&
                     character !== " " &&
                     character !== "\t"
-                  : this.isWrapBoundary(previousCharacter, character);
+                  : asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD
+                    ? (previousCharacter === " " ||
+                        previousCharacter === "\t" ||
+                        previousCharacter === "-" ||
+                        previousCharacter === "/") &&
+                      character !== " " &&
+                      character !== "\t"
+                    : this.isWrapBoundary(previousCharacter, character);
+            }
           }
           if (atWrapBoundary) {
             lastWrapBoundaryUnexpandedScreenColumn = unexpandedScreenColumn;
@@ -1280,7 +1290,7 @@ class DisplayLayer {
             distanceToNextTabStop;
         } else if (character) {
           characterWidth =
-            asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE
+            asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_NONE || foldEnd
               ? this.ratioForCharacter(character)
               : 1;
         } else {
@@ -1293,7 +1303,7 @@ class DisplayLayer {
           screenLineWidth + characterWidth > this.softWrapColumn &&
           previousCharacter &&
           character &&
-          (asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE ||
+          ((asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE && !foldEnd) ||
             !isCharacterPair(previousCharacter, character));
 
         if (insertSoftLineBreak) {
@@ -1369,6 +1379,7 @@ class DisplayLayer {
         // If there is a fold at this position, splice it into the spatial index
         // and jump to the end of the fold.
         if (foldEnd) {
+          const foldCrossesRows = foldEnd.row !== bufferRow;
           const foldExtent = traversal(foldEnd, { row: bufferRow, column: bufferColumn });
           queueSpatialSplice(
             pendingSpatialSplices,
@@ -1386,6 +1397,15 @@ class DisplayLayer {
           bufferColumn = foldEnd.column;
           bufferLine = this.buffer.lineForRow(bufferRow);
           bufferLineLength = bufferLine.length;
+          if (foldCrossesRows) {
+            // A cross-row fold can land in a line with a different alphabet.
+            // Reclassify it before interpreting the visible suffix.
+            asciiWrapBoundaryMode = asciiWrapBoundaryModeForLine(
+              this,
+              bufferLine,
+              bufferLineLength,
+            );
+          }
         } else {
           // If there is no fold at this position, check if we need to handle
           // a hard tab at this position and advance by a single buffer column.
