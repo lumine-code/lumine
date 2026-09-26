@@ -45,6 +45,8 @@ describe("PaneElement", function () {
 
     beforeEach(function () {
       containerElement.style.setProperty("--text-color-faded", "rgb(1, 2, 3)");
+      containerElement.style.width = "800px";
+      containerElement.style.height = "500px";
       jasmine.attachToDOM(containerElement);
     });
 
@@ -94,6 +96,7 @@ describe("PaneElement", function () {
         "lumine-pane > .item-views:empty::after { transition: none !important; }";
       jasmine.attachToDOM(styles);
       const centeredTransform = watermarkStyle().transform;
+      const centeredTop = watermarkStyle().top;
       expect(centeredTransform).not.toBe("none");
       const transform = new DOMMatrixReadOnly(centeredTransform);
       expect(transform.m41).toBeCloseTo(-parseFloat(watermarkStyle().width) / 2, 1);
@@ -103,9 +106,11 @@ describe("PaneElement", function () {
       paneElement.appendChild(backgroundTips);
       expect(watermarkStyle().transform).not.toBe("none");
       expect(watermarkStyle().transform).not.toBe(centeredTransform);
+      expect(watermarkStyle().top).not.toBe(centeredTop);
 
       backgroundTips.remove();
       expect(watermarkStyle().transform).toBe(centeredTransform);
+      expect(watermarkStyle().top).toBe(centeredTop);
     });
 
     it("animates toward background tips but returns to centre immediately", function () {
@@ -113,7 +118,8 @@ describe("PaneElement", function () {
 
       const backgroundTips = document.createElement("background-tips");
       paneElement.appendChild(backgroundTips);
-      expect(watermarkStyle().transitionDuration).toBe("0.3s");
+      expect(watermarkStyle().transitionDuration).toBe("0.3s, 0.3s");
+      expect(watermarkStyle().transitionProperty).toBe("top, transform");
 
       backgroundTips.remove();
       expect(watermarkStyle().transitionDuration).toBe("0s");
