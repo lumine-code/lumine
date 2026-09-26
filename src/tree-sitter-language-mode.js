@@ -3614,7 +3614,15 @@ class LanguageLayer {
     // we can demonstrate that this grammar would not be used even if we _did_
     // rebuild all injections on this layer from scratch, then we'll have
     // proven that this step can be skipped.
-    if (this.injectionPointsMatchGrammar(grammar, cache)) {
+    // An in-flight plan has not published its recognized or unrecognized
+    // language strings yet. If a grammar arrives while that plan is yielded,
+    // consulting only the committed layer state can miss it permanently: the
+    // old plan may resume, cache the earlier failed lookup, and commit the
+    // language string as unrecognized after this notification has passed.
+    // Queueing another full population is cheap here because the drain
+    // coalesces requests, and grammar registrations are rare compared with
+    // buffer edits.
+    if (this.injectionPopulationDrainPromise || this.injectionPointsMatchGrammar(grammar, cache)) {
       this._populateInjections(MAX_RANGE, null);
     }
 

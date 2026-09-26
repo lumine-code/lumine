@@ -2848,6 +2848,55 @@ describe("TreeSitterLanguageMode", () => {
         ]);
       });
 
+      it("retries when an injection grammar is added during a yielded reconciliation", async () => {
+        jasmine.useRealClock();
+        const injectionName = "late-reconciliation-html";
+        htmlGrammar.injectionNames = [injectionName];
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language: () => injectionName,
+          content: (node) => node,
+          includeChildren: true,
+        });
+
+        let resumePlan;
+        const realYield = TreeSitterLanguageMode.prototype._yieldForInjectionReconcile;
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionReconcile").and.callFake(
+          function () {
+            if (!resumePlan) {
+              return new Promise((resolve) => {
+                resumePlan = resolve;
+              });
+            }
+            return realYield.call(this);
+          },
+        );
+
+        lumine.grammars.addGrammar(jsGrammar);
+        buffer.setText("first; second;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionReconcileChunkSize: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+
+        await waitForCondition(() => Boolean(resumePlan));
+        lumine.grammars.addGrammar(htmlGrammar);
+        resumePlan();
+        await languageMode.ready;
+        await languageMode.atGrammarSettlement();
+
+        expect(languageMode.rootLanguageLayer.unrecognizedLanguageStrings).not.toContain(
+          injectionName,
+        );
+        expect(languageMode.getAllInjectionLayers().map((layer) => layer.grammar)).toContain(
+          htmlGrammar,
+        );
+      });
+
       it("removes active injection layers when their target grammar is removed", async () => {
         jasmine.useRealClock();
         lumine.grammars.addGrammar(jsGrammar);
