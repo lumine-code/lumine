@@ -19,8 +19,12 @@ const ASCII_WRAP_BOUNDARY_NONE = 0;
 const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
 const ASCII_WRAP_BOUNDARY_STANDARD = 2;
 const SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE = 1 << 0;
+const ASCII_EVENT_DENSITY_SAMPLE_SIZE = 4096;
+const ASCII_EVENT_DENSITY_LIMIT = 0.25;
 const WHITESPACE_WRAP_BOUNDARY_CHARACTERS = [" "];
 const STANDARD_WRAP_BOUNDARY_CHARACTERS = [" ", "-", "/"];
+const WHITESPACE_EVENT_BOUNDARY_CHARACTERS = [" ", "\t"];
+const STANDARD_EVENT_BOUNDARY_CHARACTERS = [" ", "\t", "-", "/"];
 // eslint-disable-next-line no-control-regex
 const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
 const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
@@ -1240,6 +1244,23 @@ class DisplayLayer {
         continue;
       }
 
+      if (!foldEndsByColumn && canUseAsciiEventFastPath(this, bufferLine, asciiWrapBoundaryMode)) {
+        screenRow = populateSpatialIndexForAsciiEventLine(
+          this,
+          bufferLine,
+          screenRow,
+          asciiWrapBoundaryMode,
+          pendingSpatialSplices,
+          insertedScreenLineLengths,
+          insertedTabCounts,
+          insertedScreenLineStartFlags,
+          rightmostInsertedScreenPosition,
+        );
+        bufferRow++;
+        screenRow++;
+        continue;
+      }
+
       currentScreenLineTabColumns.length = 0;
       let screenLineWidth = 0;
       let lastWrapBoundaryUnexpandedScreenColumn = 0;
@@ -1878,6 +1899,57 @@ function canUseAsciiBoundaryFastPath(displayLayer, line, asciiWrapBoundaryMode) 
   );
 }
 
+function canUseAsciiEventFastPath(displayLayer, line, asciiWrapBoundaryMode) {
+  if (
+    asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_WHITESPACE &&
+    asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_STANDARD
+  ) {
+    return false;
+  }
+  if (!Number.isInteger(displayLayer.softWrapColumn) || displayLayer.softWrapColumn < 1) {
+    return false;
+  }
+  if (!Number.isInteger(displayLayer.tabLength) || displayLayer.tabLength < 1) return false;
+  if (
+    !Number.isInteger(displayLayer.softWrapHangingIndent) ||
+    displayLayer.softWrapHangingIndent < 0
+  ) {
+    return false;
+  }
+
+  // The event scanner wins by jumping over ordinary runs. When delimiters,
+  // tabs and wrap points themselves occupy much of the line, its bookkeeping
+  // costs more than the compact character loop. Probe bounded windows at the
+  // start, middle, and end, and leave dense lines on the general path.
+  const sampleLength = Math.min(line.length, ASCII_EVENT_DENSITY_SAMPLE_SIZE);
+  const windowLength = line.length <= sampleLength ? sampleLength : Math.floor(sampleLength / 3);
+  const windowStarts =
+    line.length <= sampleLength
+      ? [0]
+      : [0, Math.floor((line.length - windowLength) / 2), line.length - windowLength];
+  const sampledCharacterCount = windowLength * windowStarts.length;
+  let eventCount = Math.ceil(sampledCharacterCount / displayLayer.softWrapColumn);
+  const eventLimit = sampledCharacterCount * ASCII_EVENT_DENSITY_LIMIT;
+  for (const windowStart of windowStarts) {
+    const windowEnd = windowStart + windowLength;
+    for (let i = windowStart; i < windowEnd; i++) {
+      const character = line[i];
+      if (character === "\t") {
+        // A tab is both a width-changing event and a possible wrap delimiter.
+        eventCount += 2;
+      } else if (
+        character === " " ||
+        (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD &&
+          (character === "-" || character === "/"))
+      ) {
+        eventCount++;
+      }
+      if (eventCount > eventLimit) return false;
+    }
+  }
+  return true;
+}
+
 function queueSpatialSplice(
   splices,
   startRow,
@@ -1993,6 +2065,209 @@ function populateSpatialIndexForAsciiBoundaryLine(
     rightmostInsertedScreenPosition.column = finalScreenLineLength;
   }
 
+  return screenRow;
+}
+
+function populateSpatialIndexForAsciiEventLine(
+  displayLayer,
+  line,
+  screenRow,
+  asciiWrapBoundaryMode,
+  pendingSpatialSplices,
+  insertedScreenLineLengths,
+  insertedTabCounts,
+  insertedScreenLineStartFlags,
+  rightmostInsertedScreenPosition,
+) {
+  const boundaryCharacters =
+    asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_WHITESPACE
+      ? WHITESPACE_EVENT_BOUNDARY_CHARACTERS
+      : STANDARD_EVENT_BOUNDARY_CHARACTERS;
+  const nextDelimiterColumns = boundaryCharacters.map((character) => line.indexOf(character));
+  const softWrapColumn = displayLayer.softWrapColumn;
+  const tabLength = displayLayer.tabLength;
+  const hangingIndent = displayLayer.softWrapHangingIndent;
+  const firstNonWhitespaceBufferColumn = line.search(/[^ \t]/);
+
+  const nextBoundaryColumnAtOrAfter = (minimumColumn) => {
+    while (true) {
+      let boundaryCharacterIndex = -1;
+      let delimiterColumn = Infinity;
+      for (let i = 0; i < nextDelimiterColumns.length; i++) {
+        const candidateColumn = nextDelimiterColumns[i];
+        if (candidateColumn >= 0 && candidateColumn < delimiterColumn) {
+          boundaryCharacterIndex = i;
+          delimiterColumn = candidateColumn;
+        }
+      }
+      if (boundaryCharacterIndex < 0) return Infinity;
+
+      const boundaryColumn = delimiterColumn + 1;
+      nextDelimiterColumns[boundaryCharacterIndex] = line.indexOf(
+        boundaryCharacters[boundaryCharacterIndex],
+        boundaryColumn,
+      );
+      if (
+        boundaryColumn >= minimumColumn &&
+        boundaryColumn < line.length &&
+        line[boundaryColumn] !== " " &&
+        line[boundaryColumn] !== "\t"
+      ) {
+        return boundaryColumn;
+      }
+    }
+  };
+
+  let nextBoundaryColumn = nextBoundaryColumnAtOrAfter(0);
+  let nextTabColumn = line.indexOf("\t");
+  let bufferColumn = 0;
+  let unexpandedScreenColumn = 0;
+  let expandedScreenColumn = 0;
+  let screenLineWidth = 0;
+  let firstNonWhitespaceScreenColumn = -1;
+  let lastWrapBoundaryUnexpandedScreenColumn = 0;
+  let lastWrapBoundaryExpandedScreenColumn = 0;
+  let lastWrapBoundaryScreenLineWidth = 0;
+  let screenLineBuilderInLeadingWhitespace = true;
+  let currentScreenLineStartFlags = SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
+  const currentScreenLineTabColumns = [];
+
+  const insertSoftLineBreak = () => {
+    let indentLength =
+      firstNonWhitespaceScreenColumn < softWrapColumn
+        ? Math.max(0, firstNonWhitespaceScreenColumn)
+        : 0;
+    if (indentLength + hangingIndent < softWrapColumn) indentLength += hangingIndent;
+
+    const unexpandedWrapColumn = lastWrapBoundaryUnexpandedScreenColumn || unexpandedScreenColumn;
+    const expandedWrapColumn = lastWrapBoundaryExpandedScreenColumn || expandedScreenColumn;
+    const wrapWidth = lastWrapBoundaryScreenLineWidth || screenLineWidth;
+    queueSpatialSplice(
+      pendingSpatialSplices,
+      screenRow,
+      unexpandedWrapColumn,
+      0,
+      0,
+      1,
+      indentLength,
+    );
+    insertedScreenLineLengths.push(expandedWrapColumn);
+    insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
+    if (expandedWrapColumn > rightmostInsertedScreenPosition.column) {
+      rightmostInsertedScreenPosition.row = screenRow;
+      rightmostInsertedScreenPosition.column = expandedWrapColumn;
+    }
+    screenRow++;
+    currentScreenLineStartFlags = screenLineBuilderInLeadingWhitespace
+      ? SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE
+      : 0;
+
+    // A word-boundary wrap can move already-scanned tabs onto the next screen
+    // row. Re-expand those tabs from the new indentation, exactly as the
+    // general loop does.
+    let unexpandedScreenColumnAfterLastTab = indentLength;
+    let expandedScreenColumnAfterLastTab = indentLength;
+    let tabCountPrecedingWrap = 0;
+    for (let i = 0; i < currentScreenLineTabColumns.length; i++) {
+      const tabColumn = currentScreenLineTabColumns[i];
+      if (tabColumn < unexpandedWrapColumn) {
+        tabCountPrecedingWrap++;
+      } else {
+        const tabColumnAfterWrap = indentLength + tabColumn - unexpandedWrapColumn;
+        expandedScreenColumnAfterLastTab += tabColumnAfterWrap - unexpandedScreenColumnAfterLastTab;
+        expandedScreenColumnAfterLastTab +=
+          tabLength - (expandedScreenColumnAfterLastTab % tabLength);
+        unexpandedScreenColumnAfterLastTab = tabColumnAfterWrap + 1;
+        currentScreenLineTabColumns[i - tabCountPrecedingWrap] = tabColumnAfterWrap;
+      }
+    }
+    insertedTabCounts.push(tabCountPrecedingWrap);
+    currentScreenLineTabColumns.length -= tabCountPrecedingWrap;
+
+    unexpandedScreenColumn = unexpandedScreenColumn - unexpandedWrapColumn + indentLength;
+    expandedScreenColumn =
+      expandedScreenColumnAfterLastTab +
+      unexpandedScreenColumn -
+      unexpandedScreenColumnAfterLastTab;
+    screenLineWidth = indentLength + (screenLineWidth - wrapWidth);
+    lastWrapBoundaryUnexpandedScreenColumn = 0;
+    lastWrapBoundaryExpandedScreenColumn = 0;
+    lastWrapBoundaryScreenLineWidth = 0;
+  };
+
+  while (bufferColumn < line.length) {
+    const nextFirstNonWhitespaceColumn =
+      firstNonWhitespaceScreenColumn < 0 && firstNonWhitespaceBufferColumn >= bufferColumn
+        ? firstNonWhitespaceBufferColumn
+        : Infinity;
+    const nextSpecialColumn = Math.min(
+      nextBoundaryColumn,
+      nextTabColumn >= 0 ? nextTabColumn : Infinity,
+      nextFirstNonWhitespaceColumn,
+      line.length,
+    );
+    const fittingCharacterCount = Math.max(0, Math.floor(softWrapColumn - screenLineWidth));
+    const overflowColumn = screenLineWidth > 0 ? bufferColumn + fittingCharacterCount : Infinity;
+    const runEndColumn = Math.min(nextSpecialColumn, overflowColumn, line.length);
+
+    if (runEndColumn > bufferColumn) {
+      const runLength = runEndColumn - bufferColumn;
+      bufferColumn = runEndColumn;
+      unexpandedScreenColumn += runLength;
+      expandedScreenColumn += runLength;
+      screenLineWidth += runLength;
+      continue;
+    }
+
+    const character = line[bufferColumn];
+    const previousCharacter = line[bufferColumn - 1];
+    if (firstNonWhitespaceScreenColumn < 0) {
+      if (character !== " " && character !== "\t") {
+        firstNonWhitespaceScreenColumn = expandedScreenColumn;
+      }
+    } else if (bufferColumn === nextBoundaryColumn) {
+      lastWrapBoundaryUnexpandedScreenColumn = unexpandedScreenColumn;
+      lastWrapBoundaryExpandedScreenColumn = expandedScreenColumn;
+      lastWrapBoundaryScreenLineWidth = screenLineWidth;
+    }
+    if (bufferColumn === nextBoundaryColumn) {
+      nextBoundaryColumn = nextBoundaryColumnAtOrAfter(bufferColumn + 1);
+    }
+
+    const characterWidth = character === "\t" ? tabLength - (expandedScreenColumn % tabLength) : 1;
+    if (
+      screenLineWidth > 0 &&
+      screenLineWidth + characterWidth > softWrapColumn &&
+      previousCharacter &&
+      character
+    ) {
+      insertSoftLineBreak();
+    }
+
+    if (character !== " " && character !== "\t") {
+      screenLineBuilderInLeadingWhitespace = false;
+    }
+    if (character === "\t") {
+      currentScreenLineTabColumns.push(unexpandedScreenColumn);
+      const distanceToNextTabStop = tabLength - (expandedScreenColumn % tabLength);
+      expandedScreenColumn += distanceToNextTabStop;
+      screenLineWidth += distanceToNextTabStop;
+      nextTabColumn = line.indexOf("\t", bufferColumn + 1);
+    } else {
+      expandedScreenColumn++;
+      screenLineWidth++;
+    }
+    unexpandedScreenColumn++;
+    bufferColumn++;
+  }
+
+  insertedScreenLineLengths.push(expandedScreenColumn);
+  insertedTabCounts.push(currentScreenLineTabColumns.length);
+  insertedScreenLineStartFlags.push(currentScreenLineStartFlags);
+  if (expandedScreenColumn > rightmostInsertedScreenPosition.column) {
+    rightmostInsertedScreenPosition.row = screenRow;
+    rightmostInsertedScreenPosition.column = expandedScreenColumn;
+  }
   return screenRow;
 }
 
