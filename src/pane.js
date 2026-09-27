@@ -877,7 +877,10 @@ module.exports = class Pane {
         this.container.didDestroyPaneItem({ item, index, pane: this });
       }
     }
-    if (this.items.length === 0 && this.config.get("core.destroyEmptyPanes")) this.destroy();
+    const shouldDestroyEmptyPanes = this.container
+      ? this.container.shouldDestroyEmptyPanes()
+      : this.config.get("core.destroyEmptyPanes");
+    if (this.items.length === 0 && shouldDestroyEmptyPanes) this.destroy();
   }
 
   // Remove the given item from the itemStack.
@@ -939,8 +942,9 @@ module.exports = class Pane {
    * Destroy the given item.
    *
    * If the item is active, the next item will be activated. If the item is the
-   * last item, the pane will be destroyed if the `core.destroyEmptyPanes` config
-   * setting is `true`.
+   * last item, a pane in the workspace center will be destroyed if the
+   * `core.destroyEmptyPanes` config setting is `true`. A pane in a dock will
+   * always be destroyed when it becomes empty.
    *
    * This action can be prevented by onWillDestroyPaneItem callbacks in which
    * case nothing happens.

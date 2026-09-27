@@ -75,8 +75,9 @@ const configSchema = {
         default: 15,
       },
       destroyEmptyPanes: {
-        title: "Remove Empty Panes",
-        description: "When the last tab of a pane is closed, remove that pane as well.",
+        title: "Remove Empty Center Panes",
+        description:
+          "When the last tab of a pane in the workspace center is closed, remove that pane as well. Empty panes in docks are always removed.",
         type: "boolean",
         default: true,
       },

@@ -55,6 +55,23 @@ describe("Dock", () => {
     });
   });
 
+  describe("when a pane becomes empty", () => {
+    it("removes the pane even when core.destroyEmptyPanes is false", async () => {
+      lumine.config.set("core.destroyEmptyPanes", false);
+      const dock = lumine.workspace.getLeftDock();
+      const occupiedPane = dock.getActivePane();
+      occupiedPane.addItem(document.createElement("div"));
+      const emptiedPane = occupiedPane.splitRight({
+        items: [document.createElement("div")],
+      });
+
+      await emptiedPane.destroyActiveItem();
+
+      expect(emptiedPane.isDestroyed()).toBe(true);
+      expect(dock.getPanes()).toEqual([occupiedPane]);
+    });
+  });
+
   describe("hover-area hit testing", () => {
     it("reports no hover area before the dock has rendered", () => {
       const dock = lumine.workspace.getLeftDock();

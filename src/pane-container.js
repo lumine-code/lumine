@@ -16,7 +16,7 @@ module.exports = class PaneContainer {
       notificationManager,
       deserializerManager,
       viewRegistry: this.viewRegistry,
-      location: this.location,
+      location: this.location = "center",
     } = params);
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
@@ -76,18 +76,14 @@ module.exports = class PaneContainer {
     };
   }
 
-  deserialize(state, deserializerManager, options = {}) {
+  deserialize(state, deserializerManager) {
     if (state.version !== SERIALIZATION_VERSION) return;
     this.itemRegistry = new ItemRegistry();
     this.setRoot(deserializerManager.deserialize(state.root));
     const activePane =
       find(this.getRoot().getPanes(), (pane) => pane.id === state.activePaneId) ||
       this.getPanes()[0];
-    const destroyEmptyPanes =
-      options.destroyEmptyPanes == null
-        ? this.config.get("core.destroyEmptyPanes")
-        : options.destroyEmptyPanes;
-    if (destroyEmptyPanes) this.destroyEmptyPanes();
+    if (this.shouldDestroyEmptyPanes()) this.destroyEmptyPanes();
     const restoredActivePane = activePane.isAlive() ? activePane : this.getPanes()[0];
     if (restoredActivePane !== this.activePane) {
       // Views can subscribe while setRoot() installs the restored panes. Tell
@@ -287,6 +283,12 @@ module.exports = class PaneContainer {
         pane.destroy();
       }
     }
+  }
+
+  shouldDestroyEmptyPanes() {
+    // This preference controls the center layout only. Dock splits should
+    // never remain empty, either at runtime or after deserialization.
+    return this.location !== "center" || this.config.get("core.destroyEmptyPanes");
   }
 
   didAddPane(event) {
