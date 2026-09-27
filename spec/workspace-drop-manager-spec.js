@@ -265,7 +265,10 @@ describe("WorkspaceDropManager", () => {
     ];
     let openedDirectories;
     const directoriesOpened = new Promise((resolve) => (openedDirectories = resolve));
+    let finishOpeningFile;
+    const openingFile = new Promise((resolve) => (finishOpeningFile = resolve));
     spyOn(lumine.workspace, "open").and.callFake(async (_filePath, { pane: targetPane }) => {
+      await openingFile;
       const item = document.createElement("div");
       targetPane.addItem(item);
       return item;
@@ -279,11 +282,16 @@ describe("WorkspaceDropManager", () => {
     expect(manager.overlay.style.left).toBe("60px");
     expect(pane.getContainer().getPanes().length).toBe(1);
     dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
+    await conditionPromise(() => lumine.workspace.open.calls.count() === 1);
+    expect(pane.getContainer().getPanes().length).toBe(1);
+
+    finishOpeningFile();
     const directoryOptions = await directoriesOpened;
 
     expect(directoryOptions).toEqual({ pathsToOpen: [directoryPath], here: true });
     const [openedPath, openOptions] = lumine.workspace.open.calls.mostRecent().args;
     expect(openedPath).toBe(filePath);
+    expect(openOptions.split).toBe("right");
     expect(openOptions.activateItem).toBe(false);
     expect(openOptions.activatePane).toBe(false);
     expect(pane.getContainer().getPanes().length).toBe(2);
@@ -340,6 +348,38 @@ describe("WorkspaceDropManager", () => {
 
     expect(lumine.workspace.open.calls.argsFor(0)[0]).toBe(filePath);
     expect(lumine.applicationDelegate.open).not.toHaveBeenCalled();
+  });
+
+  it("materializes a tree-view split with its first opened item", async () => {
+    pane.addItem(document.createElement("div"));
+    const filePath = path.join(__dirname, "fixtures", "sample.js");
+    const dataTransfer = new TestDataTransfer();
+    manager.write(dataTransfer, {
+      kind: "tree-entries",
+      effect: "copyMove",
+      allowedLocations: ["center"],
+      items: [{ type: "file", path: filePath }],
+    });
+    dataTransfer.mode = "protected";
+    const item = document.createElement("div");
+    let finishOpeningFile;
+    const openingFile = new Promise((resolve) => (finishOpeningFile = () => resolve(item)));
+    const createItem = spyOn(lumine.workspace, "createItemForURI").and.returnValue(openingFile);
+
+    dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
+    dataTransfer.mode = "readonly";
+    dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
+    await conditionPromise(() => createItem.calls.count() === 1);
+
+    expect(pane.getContainer().getPanes()).toEqual([pane]);
+
+    finishOpeningFile();
+    await conditionPromise(() => lumine.workspace.paneForItem(item) != null);
+
+    const openedPane = lumine.workspace.paneForItem(item);
+    expect(openedPane).not.toBe(pane);
+    expect(openedPane.getItems()).toEqual([item]);
+    expect(openedPane.getElement().querySelector(":scope > .item-views").children.length).toBe(1);
   });
 
   it("rolls back a split when none of its dropped files can be opened", async () => {

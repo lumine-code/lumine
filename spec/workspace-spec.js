@@ -521,6 +521,38 @@ describe("Workspace", () => {
     });
 
     describe("when the 'split' option is set", () => {
+      describe("with an explicit pane", () => {
+        it("does not materialize the split until the item is ready", async () => {
+          const anchorPane = workspace.getActivePane();
+          const anchorItem = document.createElement("div");
+          anchorPane.addItem(anchorItem);
+          const item = document.createElement("div");
+          let resolveItem;
+          const itemPromise = new Promise((resolve) => (resolveItem = resolve));
+          const createItem = spyOn(workspace, "createItemForURI").and.returnValue(itemPromise);
+
+          const opening = workspace.open("deferred.txt", {
+            pane: anchorPane,
+            split: "right",
+            activatePane: false,
+          });
+          await conditionPromise(() => createItem.calls.count() === 1);
+
+          expect(workspace.getCenter().getPanes()).toEqual([anchorPane]);
+
+          resolveItem(item);
+          expect(await opening).toBe(item);
+
+          const openedPane = workspace.paneForItem(item);
+          expect(openedPane).not.toBe(anchorPane);
+          expect(openedPane.getItems()).toEqual([item]);
+          expect(workspace.getCenter().paneContainer.root.children).toEqual([
+            anchorPane,
+            openedPane,
+          ]);
+        });
+      });
+
       describe("when the 'split' option is 'left'", () => {
         it("opens the editor in a new pane to the left when the current pane has no row siblings", async () => {
           const pane1 = workspace.getActivePane();

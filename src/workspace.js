@@ -1540,6 +1540,7 @@ module.exports = class Workspace extends Model {
    * @param options.activatePane - A `Boolean` indicating whether to call {@link Pane#activate} on containing pane. Defaults to `true`.
    * @param options.activateItem - A `Boolean` indicating whether to call {@link Pane#activateItem} on containing pane. Defaults to `true`.
    * @param options.pending - A `Boolean` indicating whether or not the item should be opened in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
+   * @param options.pane - A {@link Pane} in which to open the item. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
    * @param options.searchAllPanes - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
    * @param [options.location] - A `String` containing the name of the location in which this item should be opened (one of "left", "right", "bottom", or "center"). If omitted, Lumine will fall back to the last location in which a user has placed an item with the same URI or, if this is a new URI, the default location specified by the item. NOTE: This option should almost always be omitted to honor user preference.
    * @returns {Promise} that resolves to the {@link TextEditor} for the file URI.
@@ -1579,7 +1580,9 @@ module.exports = class Workspace extends Model {
         this.applicationDelegate.addRecentDocument(uri);
       }
 
-      let pane, itemExistsInWorkspace;
+      let pane, itemExistsInWorkspace, pendingSplit;
+      const splitRelativeToPane =
+        options.pane && ["left", "right", "up", "down"].includes(options.split);
 
       // Try to find an existing item in the workspace.
       if (item || uri) {
@@ -1612,7 +1615,10 @@ module.exports = class Workspace extends Model {
           }
         }
 
-        if (pane) {
+        // An explicit pane and split describe a new destination. Do not find
+        // the URI in the anchor pane: doing so would turn a drop at the pane's
+        // edge into a no-op instead of opening a distinct editor in the split.
+        if (pane && !splitRelativeToPane) {
           if (item) {
             itemExistsInWorkspace = pane.getItems().includes(item);
           } else {
@@ -1640,6 +1646,9 @@ module.exports = class Workspace extends Model {
           pane = existingPane;
         } else if (options.pane) {
           pane = options.pane;
+          if (splitRelativeToPane) {
+            pendingSplit = { pane, direction: options.split };
+          }
         } else {
           let location = options.location;
           if (!location && !options.split && uri && this.enablePersistence) {
@@ -1653,19 +1662,34 @@ module.exports = class Workspace extends Model {
 
           const container = this.paneContainers[location] || this.getCenter();
           pane = container.getActivePane();
-          const splitParams = { activate: options.activatePane !== false };
           switch (options.split) {
             case "left":
-              pane = pane.findOrCreateLeftmostSibling(splitParams);
+              {
+                const sibling = pane.findLeftmostSibling();
+                if (sibling === pane) pendingSplit = { pane, direction: "left" };
+                else pane = sibling;
+              }
               break;
             case "right":
-              pane = pane.findOrCreateRightmostSibling(splitParams);
+              {
+                const sibling = pane.findRightmostSibling();
+                if (sibling === pane) pendingSplit = { pane, direction: "right" };
+                else pane = sibling;
+              }
               break;
             case "up":
-              pane = pane.findOrCreateTopmostSibling(splitParams);
+              {
+                const sibling = pane.findTopmostSibling();
+                if (sibling === pane) pendingSplit = { pane, direction: "up" };
+                else pane = sibling;
+              }
               break;
             case "down":
-              pane = pane.findOrCreateBottommostSibling(splitParams);
+              {
+                const sibling = pane.findBottommostSibling();
+                if (sibling === pane) pendingSplit = { pane, direction: "down" };
+                else pane = sibling;
+              }
               break;
           }
         }
@@ -1681,6 +1705,19 @@ module.exports = class Workspace extends Model {
           if (!itemWasProvided) item.destroy?.();
           return;
         }
+      }
+
+      // A split is a presentation detail, so materialize it only after the
+      // opener has produced an item and every refusal path has passed. Passing
+      // the item into Pane's constructor means the pane enters the DOM already
+      // populated; the empty-pane logo can never occupy an intermediate frame.
+      if (pendingSplit) {
+        const method = `split${pendingSplit.direction[0].toUpperCase()}${pendingSplit.direction.slice(1)}`;
+        pane = pendingSplit.pane[method]({
+          items: [item],
+          activate: options.activatePane !== false,
+        });
+        if (options.pending) pane.setPendingItem(item);
       }
 
       if (!options.pending && pane.getPendingItem() === item) {

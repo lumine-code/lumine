@@ -70,18 +70,38 @@ module.exports = class NativePathsDropProvider {
     const openedItems = [];
 
     if (filePaths.length > 0) {
-      pane = context.resolvePane({ allowSplit: prepared.allowSplit });
       let index = context.index == null ? pane.getActiveItemIndex() + 1 : context.index;
       for (const filePath of filePaths) {
+        // Keep the split virtual until an opener has actually produced the
+        // first item. Workspace#open materializes an explicit pane-relative
+        // split with that item already inside it, so the empty-pane state is
+        // never presented while a file buffer is loading.
+        const split = openedItems.length === 0 ? context.candidateSplit : null;
+        const panesBeforeOpen = split ? new Set(pane.getContainer().getPanes()) : null;
         const item = await this.manager.workspace.open(filePath, {
           pane,
+          split,
           activateItem: false,
           activatePane: false,
           pending: false,
         });
         if (!item) continue;
-        const openedPane = this.manager.workspace.paneForItem(item);
+        let openedPane = this.manager.workspace.paneForItem(item);
         if (!openedPane) continue;
+
+        if (split) {
+          if (!panesBeforeOpen.has(openedPane)) {
+            pane = openedPane;
+            context.createdPane = pane;
+            context.resolvedPane = pane;
+          } else {
+            // A URI opener may return a singleton that already lives in the
+            // workspace. The item is ready now, so creating the split and
+            // moving it synchronously still exposes no empty frame.
+            pane = context.resolvePane({ allowSplit: prepared.allowSplit, split });
+          }
+        }
+
         if (openedPane !== pane) {
           index = Math.max(0, Math.min(index, pane.getItems().length));
           openedPane.moveItemToPane(item, pane, index);
