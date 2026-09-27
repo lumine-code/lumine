@@ -4,6 +4,7 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const getWindowLoadSettings = require("./get-window-load-settings");
 
 const WINDOW_EVENT_CHANNEL = "window-event";
+const WEB_CONTENTS_VIEW_EVENT_CHANNEL = "lumine:web-contents-view-event";
 
 module.exports = class ApplicationDelegate {
   constructor() {
@@ -202,6 +203,19 @@ module.exports = class ApplicationDelegate {
 
     ipcRenderer.on(WINDOW_EVENT_CHANNEL, outerCallback);
     return new Disposable(() => ipcRenderer.removeListener(WINDOW_EVENT_CHANNEL, outerCallback));
+  }
+
+  invokeWebContentsView(action, ...args) {
+    return ipcRenderer.invoke("lumine:web-contents-view", action, ...args);
+  }
+
+  onDidReceiveWebContentsViewEvent(callback) {
+    const outerCallback = (_event, payload) => callback(payload);
+
+    ipcRenderer.on(WEB_CONTENTS_VIEW_EVENT_CHANNEL, outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener(WEB_CONTENTS_VIEW_EVENT_CHANNEL, outerCallback),
+    );
   }
 
   openExternal(url) {

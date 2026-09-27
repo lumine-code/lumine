@@ -10,6 +10,7 @@ const FileRecoveryService = require("./file-recovery-service");
 const ProjectStateCoordinator = require("./project-state-coordinator");
 const XdgShellInvoker = require("./xdg-shell-invoker");
 const StartupTime = require("./startup-time");
+const WebContentsViewManager = require("./web-contents-view-manager");
 const ipcHelpers = require("./ipc-helpers");
 const { getConfigFilePath } = require("./get-app-details.js");
 const {
@@ -177,6 +178,16 @@ function currentApplication() {
 function currentLumineWindow(event) {
   return currentApplication().lumineWindowForSender(event.sender);
 }
+
+ipcMain.handle(WebContentsViewManager.IPC_CHANNEL, (event, action, ...args) => {
+  const application = currentApplication();
+  const window = application.lumineWindowForSender(event.sender);
+  return application.webContentsViewManager.dispatch(event, window, action, ...args);
+});
+
+ipcMain.on(WebContentsViewManager.SHORTCUT_CHANNEL, (event, detail) => {
+  currentApplication().webContentsViewManager.handleShortcut(event, detail);
+});
 
 function assertString(value, name) {
   if (typeof value !== "string" || value.length === 0) {
@@ -497,6 +508,9 @@ const handleWindowAction = async (event, action, ...args) => {
     case "redo":
     case "selectAll":
     case "cut":
+      if (currentApplication().webContentsViewManager.performFocusedAction(lumineWindow, action)) {
+        return;
+      }
       window.webContents[action]();
       return;
     default:
@@ -803,6 +817,7 @@ module.exports = class LumineApplication extends EventEmitter {
     this.waitSessionsByWindow = new Map();
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
+    this.webContentsViewManager = new WebContentsViewManager(this);
     this.projectStateCoordinator = new ProjectStateCoordinator(this.getAllWindows);
 
     this.fileWatchService = options.fileWatchService || new FileWatchService();
@@ -877,6 +892,7 @@ module.exports = class LumineApplication extends EventEmitter {
       return window.closedPromise;
     });
     await Promise.all(windowsClosePromises);
+    this.webContentsViewManager.destroy();
     this.disposable.dispose();
     await this.fileWatchService.close();
   }
@@ -1033,6 +1049,7 @@ module.exports = class LumineApplication extends EventEmitter {
    */
   removeWindow(window) {
     this.projectStateCoordinator.releaseWindow(window);
+    this.webContentsViewManager.destroyOwner(window);
     this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
@@ -1406,6 +1423,38 @@ module.exports = class LumineApplication extends EventEmitter {
           delete options.windowStateId;
           if (typeof options.pathsToOpen === "string") {
             options.pathsToOpen = [options.pathsToOpen];
+          }
+          if (typeof options.urlsToOpen === "string") {
+            options.urlsToOpen = [options.urlsToOpen];
+          }
+
+          if (options.urlsToOpen?.length) {
+            const urlsToOpen = options.urlsToOpen.filter((url) => {
+              const parsed = typeof url === "string" ? parseUri(url) : null;
+              return parsed?.protocol === "lumine:";
+            });
+            if (urlsToOpen.length !== options.urlsToOpen.length) {
+              throw new TypeError("urlsToOpen accepts only valid lumine:// URLs");
+            }
+            if (options.newWindow) {
+              const windowOptions = { ...options };
+              delete windowOptions.urlsToOpen;
+              const window = this.createWindow(windowOptions);
+              this.addWindow(window);
+              window.on("window:loaded", () => {
+                for (const url of urlsToOpen) window.sendURIMessage(url);
+              });
+              return;
+            }
+            for (const urlToOpen of urlsToOpen) {
+              this.openUrl({
+                urlToOpen,
+                devMode: options.devMode,
+                safeMode: options.safeMode,
+                env: options.env,
+              });
+            }
+            return;
           }
 
           if (options.here) {

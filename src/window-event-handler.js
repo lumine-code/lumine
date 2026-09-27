@@ -278,7 +278,16 @@ module.exports = class WindowEventHandler {
     const uri = event.currentTarget && event.currentTarget.getAttribute("href");
     if (uri && uri[0] !== "#") {
       if (/^(?:https?:\/\/|mailto:)/i.test(uri)) {
-        void this.lumineEnvironment.shell.openExternal(uri).catch((error) => {
+        const openExternally = () => this.lumineEnvironment.shell.openExternal(uri);
+        let opening;
+        if (/^https?:\/\//i.test(uri) && this.lumineEnvironment.externalURIs?.hasOpeners()) {
+          opening = this.lumineEnvironment.externalURIs
+            .open(uri, { source: "link" })
+            .then((handled) => (handled ? undefined : openExternally()));
+        } else {
+          opening = openExternally();
+        }
+        void Promise.resolve(opening).catch((error) => {
           this.lumineEnvironment.notifications.addWarning("Unable to open external link", {
             detail: error.message,
             dismissable: true,

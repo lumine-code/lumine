@@ -131,6 +131,21 @@ describe("WindowEventHandler", () => {
       });
     });
 
+    it("offers web links to registered external URI openers before the system", async () => {
+      spyOn(lumine.shell, "openExternal").and.returnValue(Promise.resolve());
+      const opener = jasmine.createSpy("opener").and.returnValue(true);
+      const registration = lumine.externalURIs.addOpener(opener, { priority: 100 });
+      const link = document.createElement("a");
+      link.href = "http://localhost:3000";
+
+      windowEventHandler.handleLinkClick({ currentTarget: link, preventDefault() {} });
+      await Promise.resolve();
+
+      expect(opener).toHaveBeenCalledWith("http://localhost:3000", { source: "link" });
+      expect(lumine.shell.openExternal).not.toHaveBeenCalled();
+      registration.dispose();
+    });
+
     it('opens the "lumine://" links with URL handler', () => {
       const uriHandler = windowEventHandler.lumineEnvironment.uriHandlers;
       expect(uriHandler).toBeDefined();

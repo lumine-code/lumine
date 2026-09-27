@@ -309,6 +309,7 @@ describe("LumineWindow", function () {
       });
       assert.isFalse(w0.options.frame);
       assert.isTrue(w0.options.disableAutoHideCursor);
+      assert.isFalse(w0.options.webPreferences.webviewTag);
 
       const { browserWindow: w1 } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
@@ -316,6 +317,7 @@ describe("LumineWindow", function () {
       });
       assert.isFalse(w1.options.frame);
       assert.isTrue(w1.options.disableAutoHideCursor);
+      assert.isFalse(w1.options.webPreferences.webviewTag);
     });
 
     it("drives offscreen spec windows at a normal animation frame rate", function () {
@@ -636,6 +638,20 @@ describe("LumineWindow", function () {
         hostWebContents: w.browserWindow.webContents,
       };
       sinon.stub(webContents, "getFocusedWebContents").returns(focusedWebContents);
+
+      assert.isTrue(w.isWebViewFocused());
+    });
+
+    it("returns true when a native child view owned by this window is focused", function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      const focusedWebContents = {};
+      sinon.stub(webContents, "getFocusedWebContents").returns(focusedWebContents);
+      sinon.stub(BrowserWindow, "fromWebContents").returns(null);
+      app.webContentsViewManager = {
+        ownsFocusedContents: sinon.stub().withArgs(w).returns(true),
+      };
 
       assert.isTrue(w.isWebViewFocused());
     });

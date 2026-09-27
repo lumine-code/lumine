@@ -1,5 +1,7 @@
 const getWindowLoadSettings = require("./get-window-load-settings");
 const StartupTime = require("./startup-time");
+const WebContentsViewHandle = require("./web-contents-view-handle");
+const WebContentsViewOcclusionManager = require("./web-contents-view-occlusion-manager");
 
 /**
  * @public
@@ -14,6 +16,101 @@ class WindowService {
   constructor(applicationDelegate, lumineEnvironment) {
     this.applicationDelegate = applicationDelegate;
     this.lumineEnvironment = lumineEnvironment;
+    this.webContentsViews = new Map();
+    this.focusedWebContentsView = null;
+    this.webContentsViewOcclusionManager = new WebContentsViewOcclusionManager();
+    this.webContentsViewEventSubscription =
+      this.applicationDelegate?.onDidReceiveWebContentsViewEvent?.((event) =>
+        this.handleWebContentsViewEvent(event),
+      ) ?? null;
+    this.destroyed = false;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Create an isolated native browser surface owned by the current window.
+   *
+   * The returned handle never exposes Electron's `WebContentsView` or
+   * `webContents`; it accepts only the fixed, serializable operations supported
+   * by Lumine's main-process bridge.
+   *
+   * @param options - Profile and optional user-agent settings.
+   * @returns {Promise<WebContentsViewHandle>} a renderer-safe surface handle.
+   */
+  async createWebContentsView(options = {}) {
+    if (this.destroyed) throw new Error("Cannot create a web contents view after window teardown");
+    const result = await this.applicationDelegate.invokeWebContentsView("create", options);
+    return this.createWebContentsViewHandle(result);
+  }
+
+  createWebContentsViewHandle(result) {
+    if (!result || (typeof result.id !== "string" && typeof result.id !== "number")) {
+      throw new Error("The web contents view bridge returned an invalid handle");
+    }
+
+    const existing = this.webContentsViews.get(result.id);
+    if (existing) return existing;
+
+    const handle = new WebContentsViewHandle({
+      id: result.id,
+      state: result.state,
+      applicationDelegate: this.applicationDelegate,
+      occlusionManager: this.webContentsViewOcclusionManager,
+      onDidDestroy: (destroyedHandle) => {
+        if (this.webContentsViews.get(destroyedHandle.id) === destroyedHandle) {
+          this.webContentsViews.delete(destroyedHandle.id);
+        }
+        if (this.focusedWebContentsView === destroyedHandle) {
+          this.focusedWebContentsView = null;
+        }
+      },
+    });
+    this.webContentsViews.set(handle.id, handle);
+    if (result.state?.focused === true) this.focusedWebContentsView = handle;
+    return handle;
+  }
+
+  handleWebContentsViewEvent(event) {
+    if (this.destroyed || !event || typeof event !== "object") return;
+    const handle = this.webContentsViews.get(event.id);
+    if (!handle) return;
+
+    let detail = event.detail;
+    if (event.type === "state" && detail && typeof detail === "object") {
+      if (detail.focused === true) this.focusedWebContentsView = handle;
+      else if (detail.focused === false && this.focusedWebContentsView === handle) {
+        this.focusedWebContentsView = null;
+      }
+    }
+    if (event.type === "popup" && detail && typeof detail === "object") {
+      const popupResult =
+        detail.surface ??
+        (detail.surfaceId != null ? { id: detail.surfaceId, state: detail.state } : null);
+      if (popupResult && typeof popupResult === "object" && popupResult.id != null) {
+        detail = { ...detail, surface: this.createWebContentsViewHandle(popupResult) };
+      }
+    }
+    handle._acceptEvent({ type: event.type, detail });
+  }
+
+  /** @private */
+  getFocusedWebContentsViewElement() {
+    const element = this.focusedWebContentsView?.anchorElement;
+    return element?.isConnected ? element : null;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Mark a DOM overlay which must cover native browser surfaces.
+   *
+   * @returns {Disposable} which removes the overlay registration.
+   */
+  registerWebContentsViewOverlay(element) {
+    return this.webContentsViewOcclusionManager.registerOverlay(element);
   }
 
   /**
@@ -592,6 +689,20 @@ class WindowService {
    */
   onDidBlur(callback) {
     return this.applicationDelegate.onDidBlurWindow(callback);
+  }
+
+  /** @private */
+  destroy() {
+    if (this.destroyed) return Promise.resolve();
+    this.destroyed = true;
+    this.focusedWebContentsView = null;
+    this.webContentsViewEventSubscription?.dispose();
+    this.webContentsViewEventSubscription = null;
+
+    const handles = Array.from(this.webContentsViews.values());
+    this.webContentsViews.clear();
+    this.webContentsViewOcclusionManager.destroy();
+    return Promise.allSettled(handles.map((handle) => handle.destroy()));
   }
 }
 

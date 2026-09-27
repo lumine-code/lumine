@@ -83,7 +83,7 @@ module.exports = class LumineWindow extends EventEmitter {
         disableBlinkFeatures: "Auxclick,ObservableAPI",
         nodeIntegration: true,
         contextIsolation: false,
-        webviewTag: true,
+        webviewTag: false,
 
         // node support in threads
         nodeIntegrationInWorker: true,
@@ -253,6 +253,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      this.lumineApplication.webContentsViewManager?.destroyOwner(this);
       void this.lumineApplication
         .releaseFileWatchSession(this)
         .catch((error) => console.error(error));
@@ -275,6 +276,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.webContents.on("render-process-gone", async (event, details) => {
+      this.lumineApplication.webContentsViewManager?.destroyOwner(this);
       await this.lumineApplication.releaseFileWatchSession(this);
       const { reason, exitCode } = details;
       // Always leave a trace: the dialog below is deliberately not shown for
@@ -329,6 +331,7 @@ module.exports = class LumineWindow extends EventEmitter {
       "did-start-navigation",
       (_event, _url, inPlace, isMainFrame) => {
         if (isMainFrame && !inPlace) {
+          this.lumineApplication.webContentsViewManager?.destroyOwner(this);
           void this.lumineApplication
             .releaseFileWatchSession(this)
             .catch((error) => console.error(error));
@@ -538,7 +541,8 @@ module.exports = class LumineWindow extends EventEmitter {
     return (
       focusedWebContents === this.browserWindow.webContents ||
       focusedWebContents.hostWebContents === this.browserWindow.webContents ||
-      BrowserWindow.fromWebContents(focusedWebContents) === this.browserWindow
+      BrowserWindow.fromWebContents(focusedWebContents) === this.browserWindow ||
+      this.lumineApplication.webContentsViewManager?.ownsFocusedContents(this) === true
     );
   }
 
