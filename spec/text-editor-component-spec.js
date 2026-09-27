@@ -349,7 +349,7 @@ describe("TextEditorComponent", () => {
       component.setScrollTop(component.getScrollTop());
     });
 
-    it("gives the line number tiles an explicit width and height so their layout can be strictly contained", async () => {
+    it("gives the line number tiles an explicit width and height", async () => {
       const { component, editor } = buildComponent({ rowsPerTile: 3 });
 
       const lineNumberGutterElement = component.refs.gutterContainer.refs.lineNumberGutter.element;
@@ -374,6 +374,24 @@ describe("TextEditorComponent", () => {
             expect(lineNumberElement.offsetWidth).toBe(lineNumberGutterElement.offsetWidth);
           }
         }
+      }
+    });
+
+    it("keeps adjacent row tiles in one pixel-snapping space", () => {
+      const { component } = buildComponent({ rowsPerTile: 3 });
+
+      const linesTile = lineNodeForScreenRow(component, 0).parentElement;
+      const lineNumbersTile = lineNumberNodeForScreenRow(component, 0).parentElement;
+
+      // Layout or paint containment on an individual tile makes Chromium
+      // rasterize a fractional shared edge twice. A translucent full-line
+      // decoration then shows a one-pixel dark seam at every affected tile
+      // boundary. The complete lines and gutter layers own containment; each
+      // row tile must retain only style containment.
+      for (const tile of [linesTile, lineNumbersTile]) {
+        const containment = tile.style.contain.split(/\s+/);
+        expect(containment).not.toContain("layout");
+        expect(containment).not.toContain("paint");
       }
     });
 

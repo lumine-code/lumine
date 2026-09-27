@@ -308,7 +308,11 @@ class LineNumberGutterComponent {
         if (!tile) {
           const tileElement = document.createElement("div");
           const style = tileElement.style;
-          style.contain = "layout style";
+          // The gutter owns containment for the complete set of tiles. Per-
+          // tile layout or paint containment independently snaps fractional
+          // boundaries and double-blends translucent line-number decorations
+          // in the shared physical pixel. See LinesTileComponent.
+          style.contain = "style";
           style.position = "absolute";
           tile = {
             element: tileElement,

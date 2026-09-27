@@ -10,16 +10,20 @@ module.exports = class LinesTileComponent {
     // for efficiency.
     this.element = document.createElement("div");
     const style = this.element.style;
-    style.contain = "layout style";
+    // The .lines parent already supplies strict containment, and an absolutely
+    // positioned tile establishes its own formatting context. Keep only style
+    // containment here: layout or paint containment makes Chromium rasterize
+    // each tile in an independent pixel-snapping space, so adjacent lines at a
+    // fractional tile boundary both paint the same physical pixel and double-
+    // blend translucent line decorations.
+    style.contain = "style";
     style.position = "absolute";
     style.height = props.height + "px";
     style.width = props.width + "px";
     // Position with layout `margin-top`, not `transform`: a fractional
-    // translateY gives the tile its own pixel-snapping space, painting a
-    // hairline seam between adjacent tiles whenever the line height is
-    // fractional. A margin offsets the box during layout instead, keeping all
-    // tiles in one snapping space, while the absent `top` keeps the tile
-    // anchored at its static position so padding/margins on the lines
+    // translateY also gives the tile its own pixel-snapping space. A margin
+    // offsets the box during layout instead, while the absent `top` keeps the
+    // tile anchored at its static position so padding/margins on the lines
     // container still shift the text as they always have.
     style.marginTop = props.top + "px";
 
