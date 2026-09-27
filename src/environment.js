@@ -1180,6 +1180,10 @@ class Environment {
 
     if (closing) {
       this.unloading = true;
+      // Package deactivation runs while the window is still visible. Mark the
+      // document first so package-owned empty-workspace UI can disappear
+      // without briefly leaving core's empty-pane mark behind on its own.
+      this.document.body.classList.add("is-unloading");
       // Every orderly unload deactivates, reload included. Skipping it there
       // used to be how a package that would not finish deactivating was kept
       // from hanging the reload; `timeout` is that guarantee now, and it holds

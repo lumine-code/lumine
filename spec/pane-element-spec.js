@@ -51,6 +51,7 @@ describe("PaneElement", function () {
     });
 
     afterEach(function () {
+      document.body.classList.remove("is-unloading");
       lumine.config.unset("core.showEmptyPaneLogo");
     });
 
@@ -88,6 +89,14 @@ describe("PaneElement", function () {
       lumine.config.set("core.showEmptyPaneLogo", true);
       expect(paneElement).toHaveClass("empty-pane-logo-visible");
       expect(watermarkStyle().content).toBe('""');
+    });
+
+    it("hides the mark while the editor window unloads", function () {
+      expect(watermarkStyle().content).toBe('""');
+
+      document.body.classList.add("is-unloading");
+
+      expect(watermarkStyle().content).toBe("none");
     });
 
     it("moves the mark above background tips and restores it when they leave", function () {

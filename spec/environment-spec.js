@@ -722,7 +722,12 @@ describe("Environment", () => {
       });
 
       spyOn(lumineEnv, "saveState");
-      spyOn(lumineEnv.packages, "deactivatePackages").and.returnValue(Promise.resolve());
+      let unloadingClassWasSetBeforeDeactivation = false;
+      spyOn(lumineEnv.packages, "deactivatePackages").and.callFake(() => {
+        unloadingClassWasSetBeforeDeactivation =
+          lumineEnv.document.body.classList.contains("is-unloading");
+        return Promise.resolve();
+      });
       spyOn(lumineEnv.stateStore, "close");
       spyOn(lumineEnv.projectStateIndex, "close");
       spyOn(lumineEnv.workspace, "closeStateStore");
@@ -732,6 +737,7 @@ describe("Environment", () => {
       expect(shouldUnload).toBe(true);
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: true });
       expect(lumineEnv.packages.deactivatePackages).toHaveBeenCalled();
+      expect(unloadingClassWasSetBeforeDeactivation).toBe(true);
       const [{ timeout }] = lumineEnv.packages.deactivatePackages.calls.argsFor(0);
       expect(typeof timeout).toBe("number");
       expect(timeout).toBeGreaterThan(0);

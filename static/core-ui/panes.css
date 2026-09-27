@@ -126,6 +126,17 @@ lumine-pane-container {
   }
 }
 
+/* Packages deactivate before the renderer closes. Hide the core mark for
+   that interval so removing package-owned empty-workspace UI cannot expose
+   the mark by itself for the last visible frame. */
+body.is-unloading {
+  lumine-pane-container
+    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane)
+    > .item-views:empty::after {
+    content: none;
+  }
+}
+
 /* Windows doesn't have row- and col-resize cursors */
 .platform-win32 {
   lumine-pane-container {
