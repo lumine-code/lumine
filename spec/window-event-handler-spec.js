@@ -274,13 +274,27 @@ describe("WindowEventHandler", () => {
     }));
 
   describe("native key bindings", () =>
-    it("correctly dispatches them to active elements with the '.native-key-bindings' class", () => {
+    it("dispatches them to native controls and WebContentsView anchors", () => {
       spyOn(lumine.applicationDelegate, "performWebContentsAction");
 
       const nativeKeyBindingsInput = document.createElement("input");
       nativeKeyBindingsInput.classList.add("native-key-bindings");
       jasmine.attachToDOM(nativeKeyBindingsInput);
       nativeKeyBindingsInput.focus();
+
+      lumine.dispatchApplicationMenuCommand("core:copy");
+      lumine.dispatchApplicationMenuCommand("core:paste");
+
+      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("copy");
+      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("paste");
+
+      lumine.applicationDelegate.performWebContentsAction.calls.reset();
+
+      const webContentsViewAnchor = document.createElement("div");
+      webContentsViewAnchor.setAttribute("data-lumine-web-contents-view", "");
+      webContentsViewAnchor.tabIndex = -1;
+      jasmine.attachToDOM(webContentsViewAnchor);
+      webContentsViewAnchor.focus();
 
       lumine.dispatchApplicationMenuCommand("core:copy");
       lumine.dispatchApplicationMenuCommand("core:paste");

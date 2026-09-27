@@ -1,4 +1,5 @@
 const WebContentsViewHandle = require("../src/web-contents-view-handle");
+const { shortcutPolicyForElement } = WebContentsViewHandle;
 
 describe("WebContentsViewHandle", () => {
   let delegate;
@@ -94,6 +95,7 @@ describe("WebContentsViewHandle", () => {
     });
     handle.attach(element);
     handle.cancelScheduledLayout();
+    expect(element.hasAttribute("data-lumine-web-contents-view")).toBe(true);
 
     handle._acceptEvent({
       type: "shortcut",
@@ -111,6 +113,41 @@ describe("WebContentsViewHandle", () => {
     expect(events[0].ctrlKey).toBe(true);
     expect(events[1].type).toBe("keyup");
     expect(events[1].key).toBe("Control");
+    handle.detach();
+    expect(element.hasAttribute("data-lumine-web-contents-view")).toBe(false);
+  });
+
+  it("builds a host policy without taking page editing or ordinary typing", () => {
+    const element = document.createElement("div");
+    element.className = "web-browser-native-host";
+    const parent = document.createElement("div");
+    parent.className = "web-browser";
+    parent.appendChild(element);
+    const binding = (command, keystrokes, selector = "*") => ({
+      command,
+      keystrokes,
+      selector,
+      compare: () => 0,
+    });
+    const keymapManager = {
+      getKeyBindings: jasmine
+        .createSpy("getKeyBindings")
+        .and.returnValue([
+          binding("unset!", "f1", ".web-browser-native-host"),
+          binding("command-palette:toggle", "f1", ".web-browser"),
+          binding("core:copy", "ctrl-c"),
+          binding("core:move-to-top", "ctrl-home"),
+          binding("core:move-up", "ctrl-p"),
+          binding("browser:find", "ctrl-f"),
+          binding("native!", "ctrl-h"),
+          binding("workspace:type", "a"),
+          binding("workspace:context-menu", "shift-f10"),
+          binding("workspace:chord", "ctrl-k p"),
+        ]),
+    };
+
+    expect(shortcutPolicyForElement(keymapManager, element)).toEqual(["f1", "ctrl-f", "ctrl-k p"]);
+    expect(keymapManager.getKeyBindings).toHaveBeenCalled();
   });
 
   it("clamps layout to the viewport and hides an occluded surface", async () => {
@@ -163,6 +200,7 @@ describe("WebContentsViewHandle", () => {
     handle.updateLayout();
     await Promise.resolve();
 
+    expect(delegate.invokeWebContentsView).toHaveBeenCalledWith("blur", "surface-1");
     expect(delegate.invokeWebContentsView).toHaveBeenCalledWith("layout", "surface-1", {
       bounds: { x: 10, y: 10, width: 100, height: 100 },
       visible: false,

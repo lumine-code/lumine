@@ -57,6 +57,7 @@ class WindowService {
       id: result.id,
       state: result.state,
       applicationDelegate: this.applicationDelegate,
+      keymapManager: this.lumineEnvironment?.keymaps,
       occlusionManager: this.webContentsViewOcclusionManager,
       onDidDestroy: (destroyedHandle) => {
         if (this.webContentsViews.get(destroyedHandle.id) === destroyedHandle) {

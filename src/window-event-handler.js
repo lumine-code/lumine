@@ -82,18 +82,20 @@ module.exports = class WindowEventHandler {
     );
   }
 
-  // Wire commands that should be handled by Chromium for elements with the
-  // `.native-key-bindings` class.
+  // Wire commands that should be handled by Chromium for native DOM controls
+  // and for the dedicated anchors of native WebContentsView surfaces.
   handleNativeKeybindings() {
     const bindCommandToAction = (command, action) => {
-      this.subscriptions.add(
-        this.lumineEnvironment.commands.add(
-          ".native-key-bindings",
-          command,
-          (_event) => this.applicationDelegate.performWebContentsAction(action),
-          false,
-        ),
-      );
+      for (const selector of [".native-key-bindings", "[data-lumine-web-contents-view]"]) {
+        this.subscriptions.add(
+          this.lumineEnvironment.commands.add(
+            selector,
+            command,
+            (_event) => this.applicationDelegate.performWebContentsAction(action),
+            false,
+          ),
+        );
+      }
     };
 
     bindCommandToAction("core:copy", "copy");

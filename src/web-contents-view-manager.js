@@ -1,10 +1,10 @@
 const crypto = require("crypto");
 const path = require("path");
 const electron = require("electron");
+const { keystrokeForKeyboardEvent } = require("./keymap-helpers");
 
 const IPC_CHANNEL = "lumine:web-contents-view";
 const EVENT_CHANNEL = "lumine:web-contents-view-event";
-const SHORTCUT_CHANNEL = "lumine:web-contents-view-shortcut";
 const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9._/-]{0,127}$/i;
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "file:"]);
 const EDIT_ACTIONS = new Set(["copy", "cut", "paste", "undo", "redo", "selectAll"]);
@@ -30,7 +30,6 @@ const SUPPORTED_PERMISSIONS = new Set([
   "serial",
   "usb",
 ]);
-
 function assertObject(value, name) {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${name} must be an object`);
@@ -87,10 +86,9 @@ function validateUserAgent(value) {
   return value;
 }
 
-function secureWebPreferences(session, preloadPath) {
+function secureWebPreferences(session) {
   return {
     session,
-    preload: preloadPath,
     nodeIntegration: false,
     nodeIntegrationInWorker: false,
     nodeIntegrationInSubFrames: false,
@@ -106,6 +104,80 @@ function secureWebPreferences(session, preloadPath) {
 
 function integer(value, fallback = 0) {
   return Number.isFinite(value) ? Math.round(value) : fallback;
+}
+
+function validateShortcutPolicy(value) {
+  if (!Array.isArray(value) || value.length > 2048) {
+    throw new TypeError("shortcut policy must be an array of at most 2048 entries");
+  }
+  const sequences = [];
+  const seen = new Set();
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.trim().length === 0 || entry.length > 256) {
+      throw new TypeError("shortcut policy entries must be non-empty strings");
+    }
+    if ([...entry].some((character) => character.charCodeAt(0) <= 31 || character === "\u007f")) {
+      throw new TypeError("shortcut policy contains a control character");
+    }
+    const strokes = entry.trim().split(/\s+/);
+    const key = strokes.join(" ");
+    if (!seen.has(key)) {
+      seen.add(key);
+      sequences.push(strokes);
+    }
+  }
+  return sequences;
+}
+
+function shortcutForInput(input) {
+  if (!input || input.isComposing || (input.type !== "keyDown" && input.type !== "keyUp")) {
+    return null;
+  }
+  const modifiers = new Set(
+    Array.isArray(input.modifiers) ? input.modifiers.map((modifier) => modifier.toLowerCase()) : [],
+  );
+  const control = Boolean(input.control);
+  const alt = Boolean(input.alt);
+  const meta = Boolean(input.meta);
+  if (modifiers.has("altgr") || modifiers.has("altgraph") || (control && alt && !meta)) {
+    return null;
+  }
+  const key = String(input.key || "");
+  if (!key || key.toLowerCase() === "unidentified") return null;
+  return keystrokeForKeyboardEvent({
+    type: input.type === "keyUp" ? "keyup" : "keydown",
+    key,
+    code: String(input.code || ""),
+    location: integer(input.location),
+    repeat: Boolean(input.isAutoRepeat),
+    ctrlKey: control,
+    altKey: alt,
+    metaKey: meta,
+    shiftKey: Boolean(input.shift),
+    getModifierState(name) {
+      const normalized = String(name).toLowerCase();
+      if (normalized === "altgraph") {
+        return modifiers.has("altgr") || modifiers.has("altgraph");
+      }
+      if (normalized === "numlock") return modifiers.has("numlock");
+      if (normalized === "capslock") return modifiers.has("capslock");
+      return false;
+    },
+  });
+}
+
+function shortcutDetail(input) {
+  return {
+    type: input.type === "keyUp" || input.type === "keyup" ? "keyup" : "keydown",
+    key: String(input.key || "").slice(0, 64),
+    code: String(input.code || "").slice(0, 64),
+    location: integer(input.location),
+    altKey: Boolean(input.altKey ?? input.alt),
+    ctrlKey: Boolean(input.ctrlKey ?? input.control),
+    metaKey: Boolean(input.metaKey ?? input.meta),
+    shiftKey: Boolean(input.shiftKey ?? input.shift),
+    repeat: Boolean(input.repeat ?? input.isAutoRepeat),
+  };
 }
 
 function sanitizeBounds(bounds, owner) {
@@ -179,11 +251,11 @@ class WebContentsViewManager {
   constructor(application, options = {}) {
     this.application = application;
     this.electron = options.electron || electron;
-    this.preloadPath = options.preloadPath || path.join(__dirname, "web-contents-view-preload.js");
     this.requestTimeout = options.requestTimeout || 30_000;
     this.downloadRequestTimeout = options.downloadRequestTimeout || 5 * 60_000;
     this.records = new Map();
     this.recordsByWebContentsId = new Map();
+    this.focusedRecords = new Map();
     this.sessionStates = new Map();
     this.permissionDecisions = new Map();
     this.destroyed = false;
@@ -208,11 +280,14 @@ class WebContentsViewManager {
         return this.layout(record, rest[0]);
       case "setVisible":
         return this.setVisible(record, rest[0]);
+      case "setShortcutPolicy":
+        return this.setShortcutPolicy(record, rest[0]);
       case "focus":
+        this.focusedRecords.set(record.owner, record);
         record.contents.focus();
         return null;
       case "blur":
-        record.owner.browserWindow.webContents.focus();
+        this.releaseFocus(record);
         return null;
       case "loadURL":
         return this.loadURL(record, rest[0]);
@@ -301,7 +376,7 @@ class WebContentsViewManager {
 
   createRecord(owner, profile, session) {
     const view = new this.electron.WebContentsView({
-      webPreferences: secureWebPreferences(session, this.preloadPath),
+      webPreferences: secureWebPreferences(session),
     });
     const record = {
       id: crypto.randomUUID(),
@@ -317,6 +392,9 @@ class WebContentsViewManager {
       favicon: null,
       hoverUrl: "",
       error: null,
+      shortcutPolicy: [],
+      pendingShortcutPolicy: null,
+      shortcutPolicyTimer: null,
       lastUserGestureAt: 0,
       listeners: [],
       pending: new Map(),
@@ -342,36 +420,81 @@ class WebContentsViewManager {
   }
 
   ownsFocusedContents(owner) {
-    const focused = this.electron.webContents.getFocusedWebContents();
-    if (!focused) return false;
-    return this.recordsByWebContentsId.get(focused.id)?.owner === owner;
+    return Boolean(this.focusedRecord(owner));
+  }
+
+  focusedRecord(owner) {
+    const tracked = this.focusedRecords.get(owner);
+    return tracked && !tracked.destroyed ? tracked : null;
+  }
+
+  releaseFocus(record) {
+    if (this.focusedRecords.get(record.owner) !== record) return false;
+    this.focusedRecords.delete(record.owner);
+    if (!record.owner.browserWindow.isDestroyed?.()) {
+      record.owner.browserWindow.webContents.focus();
+    }
+    return true;
   }
 
   performFocusedAction(owner, action) {
     if (!EDIT_ACTIONS.has(action)) throw new Error(`Unsupported focused action: ${action}`);
-    const focused = this.electron.webContents.getFocusedWebContents();
-    const record = focused ? this.recordsByWebContentsId.get(focused.id) : null;
-    if (!record || record.owner !== owner || record.destroyed) return false;
+    const record = this.focusedRecord(owner);
+    if (!record) return false;
     record.contents[action]();
     return true;
   }
 
-  handleShortcut(event, detail) {
-    const record = this.recordsByWebContentsId.get(event.sender.id);
-    if (!record || record.destroyed || !sameFrame(event.senderFrame, event.sender.mainFrame))
-      return;
-    if (!detail || typeof detail !== "object") return;
-    const safeDetail = {
-      type: detail.type === "keyup" ? "keyup" : "keydown",
-      key: String(detail.key || "").slice(0, 64),
-      code: String(detail.code || "").slice(0, 64),
-      altKey: Boolean(detail.altKey),
-      ctrlKey: Boolean(detail.ctrlKey),
-      metaKey: Boolean(detail.metaKey),
-      shiftKey: Boolean(detail.shiftKey),
-      repeat: Boolean(detail.repeat),
-    };
-    this.emit(record, "shortcut", safeDetail);
+  sendInputEventForTest(owner, input) {
+    const record = this.focusedRecord(owner);
+    if (!record) return false;
+    record.contents.sendInputEvent(input);
+    return true;
+  }
+
+  setShortcutPolicy(record, policy) {
+    record.shortcutPolicy = validateShortcutPolicy(policy);
+    this.clearPendingShortcutPolicy(record);
+    return null;
+  }
+
+  clearPendingShortcutPolicy(record) {
+    if (record.shortcutPolicyTimer) clearTimeout(record.shortcutPolicyTimer);
+    record.shortcutPolicyTimer = null;
+    record.pendingShortcutPolicy = null;
+  }
+
+  handleBeforeInput(record, event, input) {
+    if (input?.type === "keyDown" && !input.isAutoRepeat) record.lastUserGestureAt = Date.now();
+    const stroke = shortcutForInput(input);
+    if (!stroke || record.shortcutPolicy.length === 0) return;
+
+    let candidates = record.pendingShortcutPolicy;
+    if (candidates) {
+      const matches = candidates.filter((sequence) => sequence[0] === stroke);
+      if (matches.length > 0) {
+        candidates = matches;
+      } else if (stroke.startsWith("^")) {
+        return;
+      } else {
+        this.clearPendingShortcutPolicy(record);
+        candidates = null;
+      }
+    }
+    if (!candidates) {
+      candidates = record.shortcutPolicy.filter((sequence) => sequence[0] === stroke);
+    }
+    if (candidates.length === 0) return;
+
+    event.preventDefault();
+    this.emit(record, "shortcut", shortcutDetail(input));
+    const remainders = candidates.map((sequence) => sequence.slice(1)).filter(Boolean);
+    const pending = remainders.filter((sequence) => sequence.length > 0);
+    this.clearPendingShortcutPolicy(record);
+    if (pending.length > 0) {
+      record.pendingShortcutPolicy = pending;
+      record.shortcutPolicyTimer = setTimeout(() => this.clearPendingShortcutPolicy(record), 1000);
+    }
   }
 
   layout(record, options = {}) {
@@ -638,15 +761,19 @@ class WebContentsViewManager {
       record.error = null;
       emitState();
     });
-    for (const event of [
-      "did-stop-loading",
-      "did-navigate-in-page",
-      "page-title-updated",
-      "focus",
-      "blur",
-    ]) {
+    for (const event of ["did-stop-loading", "did-navigate-in-page", "page-title-updated"]) {
       on(event, emitState);
     }
+    on("focus", () => {
+      this.focusedRecords.set(record.owner, record);
+      emitState();
+    });
+    on("blur", () => {
+      if (this.focusedRecords.get(record.owner) === record) {
+        this.focusedRecords.delete(record.owner);
+      }
+      emitState();
+    });
     on("did-navigate", () => {
       void this.reapplyDeviceEmulation(record);
       emitState();
@@ -688,9 +815,7 @@ class WebContentsViewManager {
         typeof event.isMainFrame === "boolean" ? event.isMainFrame : legacyIsMainFrame;
       validateNavigation(event, targetURL, isMainFrame);
     });
-    on("before-input-event", (_event, input) => {
-      if (input.type === "keyDown" && !input.isAutoRepeat) record.lastUserGestureAt = Date.now();
-    });
+    on("before-input-event", (event, input) => this.handleBeforeInput(record, event, input));
     on("before-mouse-event", (_event, mouse) => {
       if (mouse.type === "mouseDown") record.lastUserGestureAt = Date.now();
     });
@@ -1259,7 +1384,7 @@ class WebContentsViewManager {
       canGoBack: Boolean(history?.canGoBack?.() ?? contents.canGoBack?.()),
       canGoForward: Boolean(history?.canGoForward?.() ?? contents.canGoForward?.()),
       zoomFactor: contents.getZoomFactor?.() || 1,
-      focused: this.electron.webContents.getFocusedWebContents?.()?.id === contents.id,
+      focused: this.focusedRecord(record.owner) === record,
       visible: record.visible,
       hoverUrl: record.hoverUrl,
       error: record.error,
@@ -1284,6 +1409,8 @@ class WebContentsViewManager {
   destroyRecord(record, { contentsAlreadyDestroyed = false } = {}) {
     if (!record || record.destroyed) return;
     record.destroyed = true;
+    this.clearPendingShortcutPolicy(record);
+    this.releaseFocus(record);
     record.visible = false;
     try {
       record.view.setVisible(false);
@@ -1356,6 +1483,7 @@ class WebContentsViewManager {
         state.session.removeListener(event, listener);
     }
     this.sessionStates.clear();
+    this.focusedRecords.clear();
     this.permissionDecisions.clear();
   }
 }
@@ -1364,9 +1492,10 @@ module.exports = WebContentsViewManager;
 Object.assign(module.exports, {
   IPC_CHANNEL,
   EVENT_CHANNEL,
-  SHORTCUT_CHANNEL,
   partitionForProfile,
   secureWebPreferences,
+  shortcutForInput,
+  validateShortcutPolicy,
   validateProfile,
   validateURL,
 });

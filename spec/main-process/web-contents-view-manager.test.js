@@ -40,6 +40,7 @@ describe("WebContentsViewManager", function () {
     assert.strictEqual(fakeElectron.views[0].options.webPreferences.webviewTag, false);
     assert.strictEqual(fakeElectron.views[0].options.webPreferences.navigateOnDragDrop, false);
     assert.strictEqual(fakeElectron.views[0].options.webPreferences.safeDialogs, true);
+    assert.isUndefined(fakeElectron.views[0].options.webPreferences.preload);
     assert.strictEqual(fakeElectron.views[0].webContents.userAgent, "Lumine Browser");
     assert.strictEqual(
       fakeElectron.views[0].webContents.session,
@@ -520,6 +521,15 @@ describe("WebContentsViewManager", function () {
     assert.isTrue(manager.performFocusedAction(owner, "copy"));
     assert.strictEqual(copies, 1);
     assert.isFalse(manager.performFocusedAction(createOwner(), "copy"));
+
+    const input = { type: "keyDown", keyCode: "F1" };
+    assert.isTrue(manager.sendInputEventForTest(owner, input));
+    assert.deepEqual(contents.inputEvents, [input]);
+    assert.isFalse(manager.sendInputEventForTest(createOwner(), input));
+    manager.dispatch(event, owner, "blur", id);
+    assert.strictEqual(owner.browserWindow.webContents.focusCalls, 1);
+    assert.isFalse(manager.performFocusedAction(owner, "copy"));
+    assert.isFalse(manager.sendInputEventForTest(owner, input));
   });
 
   it("holds downloads until an absolute destination is approved", function () {
@@ -727,37 +737,42 @@ describe("WebContentsViewManager", function () {
     );
   });
 
-  it("forwards only shortcuts coming from managed main frames", function () {
-    manager.dispatch(event, owner, "create", {
+  it("intercepts only shortcuts declared by the attached renderer policy", function () {
+    const { id } = manager.dispatch(event, owner, "create", {
       profile: { id: "web-browser/global", persistent: true },
     });
     const contents = fakeElectron.views[0].webContents;
-    manager.handleShortcut(
-      { sender: contents, senderFrame: contents.mainFrame },
-      { key: "p", code: "KeyP", ctrlKey: true, extra: "discarded" },
-    );
-    const shortcut = owner.sent.at(-1)[1];
-    assert.strictEqual(shortcut.type, "shortcut");
-    assert.deepEqual(shortcut.detail, {
-      type: "keydown",
-      key: "p",
-      code: "KeyP",
-      altKey: false,
-      ctrlKey: true,
-      metaKey: false,
-      shiftKey: false,
-      repeat: false,
-    });
+    manager.dispatch(event, owner, "setShortcutPolicy", id, [
+      "f1",
+      "ctrl-shift-p",
+      "ctrl-tab ^ctrl",
+    ]);
+    const prevented = [];
+    const emitInput = (input) => {
+      contents.emit(
+        "before-input-event",
+        { preventDefault: () => prevented.push(input.key) },
+        input,
+      );
+    };
 
-    manager.handleShortcut(
-      { sender: contents, senderFrame: contents.mainFrame },
-      { type: "keyup", key: "Control", code: "ControlLeft" },
-    );
-    assert.strictEqual(owner.sent.at(-1)[1].detail.type, "keyup");
+    emitInput({ type: "keyDown", key: "F1", code: "F1" });
+    emitInput({ type: "keyDown", key: "a", code: "KeyA" });
+    emitInput({ type: "keyDown", key: "c", code: "KeyC", control: true });
+    emitInput({ type: "keyDown", key: "P", code: "KeyP", control: true, shift: true });
+    emitInput({ type: "keyDown", key: "З", code: "KeyP", control: true, shift: true });
+    emitInput({ type: "keyDown", key: "Tab", code: "Tab", control: true });
+    emitInput({ type: "keyUp", key: "Control", code: "ControlLeft" });
+    emitInput({ type: "keyDown", key: "AltGraph", code: "AltRight", control: true, alt: true });
 
-    const count = owner.sent.length;
-    manager.handleShortcut({ sender: contents, senderFrame: {} }, { key: "p", ctrlKey: true });
-    assert.strictEqual(owner.sent.length, count);
+    assert.deepEqual(prevented, ["F1", "P", "З", "Tab", "Control"]);
+    const shortcuts = owner.sent
+      .map((entry) => entry[1])
+      .filter((entry) => entry.type === "shortcut");
+    assert.deepEqual(
+      shortcuts.map((entry) => entry.detail.type),
+      ["keydown", "keydown", "keydown", "keydown", "keyup"],
+    );
   });
 });
 
@@ -765,7 +780,8 @@ function createOwner() {
   const hostContents = new EventEmitter();
   hostContents.id = Math.floor(Math.random() * 1_000_000) + 10_000;
   hostContents.mainFrame = { processId: 1, routingId: hostContents.id, isDestroyed: () => false };
-  hostContents.focus = () => {};
+  hostContents.focusCalls = 0;
+  hostContents.focus = () => hostContents.focusCalls++;
   const contentView = {
     children: [],
     addChildView(view) {
@@ -834,6 +850,7 @@ function createFakeElectron() {
       this.loading = false;
       this.destroyed = false;
       this.closeCalls = 0;
+      this.inputEvents = [];
       this.deviceEmulationCalls = [];
       this.debugger = {
         attached: false,
@@ -891,6 +908,9 @@ function createFakeElectron() {
     }
     focus() {
       focusedContents = this;
+    }
+    sendInputEvent(input) {
+      this.inputEvents.push(input);
     }
     close() {
       this.closeCalls = (this.closeCalls || 0) + 1;

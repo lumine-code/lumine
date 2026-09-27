@@ -1,6 +1,28 @@
 const { Emitter } = require("@lumine-code/event-kit");
 
 const STATE_EVENT_TYPES = new Set(["state", "state-changed", "did-change-state"]);
+const PAGE_EDIT_COMMANDS = new Set([
+  "core:backspace",
+  "core:copy",
+  "core:cut",
+  "core:delete",
+  "core:move-down",
+  "core:move-left",
+  "core:move-right",
+  "core:move-to-bottom",
+  "core:move-to-top",
+  "core:move-up",
+  "core:paste",
+  "core:redo",
+  "core:select-all",
+  "core:select-down",
+  "core:select-left",
+  "core:select-right",
+  "core:select-to-bottom",
+  "core:select-to-top",
+  "core:select-up",
+  "core:undo",
+]);
 
 function copyState(state = {}) {
   const copy = { ...state };
@@ -112,6 +134,63 @@ function dispatchShortcut(element, detail = {}) {
   return event.defaultPrevented;
 }
 
+function isHostShortcutSequence(keystrokes) {
+  const first = keystrokes.split(/\s+/)[0];
+  if (!first || first.startsWith("^")) return false;
+  const parts = first.split("-");
+  const primary = parts.at(-1);
+  const modifiers = new Set(parts.slice(0, -1));
+  if (modifiers.has("ctrl") && modifiers.has("alt") && !modifiers.has("cmd")) return false;
+  if (
+    process.platform === "darwin" &&
+    modifiers.has("ctrl") &&
+    !modifiers.has("cmd") &&
+    primary === "space"
+  ) {
+    return false;
+  }
+  if (modifiers.size === 1 && modifiers.has("shift") && primary === "f10") return false;
+  if (modifiers.has("ctrl") || modifiers.has("cmd")) return true;
+  if (modifiers.has("alt")) return process.platform !== "darwin";
+  return primary === "escape" || /^f\d{1,2}$/.test(primary);
+}
+
+function shortcutPolicyForElement(keymapManager, element) {
+  if (!keymapManager?.getKeyBindings || !element) return [];
+  const bindings = keymapManager.getKeyBindings();
+  const policy = [];
+  const sequences = new Set(bindings.map((binding) => binding.keystrokes));
+  for (const keystrokes of sequences) {
+    let binding = null;
+    for (let current = element; current && current !== element.ownerDocument;) {
+      const matches = bindings
+        .filter(
+          (candidate) =>
+            candidate.keystrokes === keystrokes &&
+            current.webkitMatchesSelector(candidate.selector),
+        )
+        .sort((left, right) => left.compare(right));
+      const winner = matches[0];
+      if (winner && winner.command !== "unset!") {
+        binding = winner;
+        break;
+      }
+      current = current.parentElement;
+    }
+    if (!binding) continue;
+    if (
+      !binding.command ||
+      binding.command === "native!" ||
+      PAGE_EDIT_COMMANDS.has(binding.command) ||
+      !isHostShortcutSequence(keystrokes)
+    ) {
+      continue;
+    }
+    policy.push(keystrokes);
+  }
+  return policy;
+}
+
 /**
  * @public
  * @status public
@@ -119,11 +198,12 @@ function dispatchShortcut(element, detail = {}) {
  * A renderer-safe handle to one native WebContentsView owned by the current
  * Lumine window. It exposes only serializable operations and events.
  */
-module.exports = class WebContentsViewHandle {
-  constructor({ id, state, applicationDelegate, occlusionManager, onDidDestroy }) {
+class WebContentsViewHandle {
+  constructor({ id, state, applicationDelegate, keymapManager, occlusionManager, onDidDestroy }) {
     this.id = id;
     this.state = freezeState(state);
     this.applicationDelegate = applicationDelegate;
+    this.keymapManager = keymapManager;
     this.occlusionManager = occlusionManager;
     this.onDidDestroyCallback = onDidDestroy;
     this.emitter = new Emitter();
@@ -132,13 +212,21 @@ module.exports = class WebContentsViewHandle {
     this.intersectionObserver = null;
     this.anchorMutationObserver = null;
     this.domSubscriptions = [];
+    this.keymapSubscriptions = [];
+    this.anchorEligible = null;
     this.intersectionVisible = true;
     this.requestedVisible = true;
     this.layoutFrame = null;
     this.lastLayout = null;
     this.destroyed = false;
     this.destroyPromise = null;
+    this.lastShortcutPolicyKey = null;
+    this.shortcutPolicyUpdateQueued = false;
     this.occlusionManager?.addSurface(this);
+    const subscription = this.keymapManager?.onDidChangeKeyBindings?.(() =>
+      this.scheduleShortcutPolicyUpdate(),
+    );
+    if (subscription) this.keymapSubscriptions.push(subscription);
   }
 
   getId() {
@@ -251,6 +339,8 @@ module.exports = class WebContentsViewHandle {
 
     this.detach();
     this.anchorElement = element;
+    element.setAttribute("data-lumine-web-contents-view", "");
+    this.anchorEligible = null;
     this.intersectionVisible = true;
     const document = element.ownerDocument;
     const view = document?.defaultView;
@@ -279,6 +369,7 @@ module.exports = class WebContentsViewHandle {
     this.addDOMListener(view, "scroll", () => this.scheduleLayout(), true);
     this.addDOMListener(document, "visibilitychange", () => this.scheduleLayout());
     this.occlusionManager?.surfaceAttached(this, element);
+    this.updateShortcutPolicy();
     this.scheduleLayout();
     return this;
   }
@@ -295,6 +386,9 @@ module.exports = class WebContentsViewHandle {
   }
 
   releaseAttachment(sendHiddenLayout) {
+    if (sendHiddenLayout && this.anchorElement && this.anchorEligible !== false) {
+      this.requestFocusHandoff();
+    }
     this.cancelScheduledLayout();
     this.resizeObserver?.disconnect();
     this.intersectionObserver?.disconnect();
@@ -303,7 +397,10 @@ module.exports = class WebContentsViewHandle {
     this.intersectionObserver = null;
     this.anchorMutationObserver = null;
     for (const dispose of this.domSubscriptions.splice(0)) dispose();
+    this.anchorElement?.removeAttribute("data-lumine-web-contents-view");
     this.anchorElement = null;
+    this.anchorEligible = false;
+    if (sendHiddenLayout && this.keymapManager) this.sendShortcutPolicy([]);
     this.intersectionVisible = false;
     if (sendHiddenLayout) {
       this.sendLayout({
@@ -347,12 +444,15 @@ module.exports = class WebContentsViewHandle {
 
     const bounds = clampBounds(element);
     const documentVisible = element.ownerDocument?.visibilityState !== "hidden";
-    let visible =
+    const anchorEligible =
       this.requestedVisible &&
       documentVisible &&
       isElementVisible(element, this.intersectionVisible) &&
       bounds.width > 0 &&
       bounds.height > 0;
+    if (!anchorEligible && this.anchorEligible !== false) this.requestFocusHandoff();
+    this.anchorEligible = anchorEligible;
+    let visible = anchorEligible;
     if (visible && this.occlusionManager?.isOccluded(element, bounds)) visible = false;
 
     this.sendLayout({ bounds: serializableBounds(bounds), visible });
@@ -371,6 +471,13 @@ module.exports = class WebContentsViewHandle {
       });
   }
 
+  requestFocusHandoff() {
+    if (this.destroyed) return;
+    void this.invoke("blur").catch((error) => {
+      if (!this.destroyed) console.error("Failed to return focus from a web contents view", error);
+    });
+  }
+
   invoke(action, payload) {
     if (this.destroyed) {
       return Promise.reject(new Error("Cannot use a destroyed web contents view"));
@@ -379,6 +486,30 @@ module.exports = class WebContentsViewHandle {
       return this.applicationDelegate.invokeWebContentsView(action, this.id);
     }
     return this.applicationDelegate.invokeWebContentsView(action, this.id, payload);
+  }
+
+  updateShortcutPolicy() {
+    if (!this.anchorElement || !this.keymapManager || this.destroyed) return;
+    this.sendShortcutPolicy(shortcutPolicyForElement(this.keymapManager, this.anchorElement));
+  }
+
+  scheduleShortcutPolicyUpdate() {
+    if (this.shortcutPolicyUpdateQueued || this.destroyed) return;
+    this.shortcutPolicyUpdateQueued = true;
+    queueMicrotask(() => {
+      this.shortcutPolicyUpdateQueued = false;
+      this.updateShortcutPolicy();
+    });
+  }
+
+  sendShortcutPolicy(policy) {
+    const key = JSON.stringify(policy);
+    if (key === this.lastShortcutPolicyKey || this.destroyed) return;
+    this.lastShortcutPolicyKey = key;
+    void this.invoke("setShortcutPolicy", policy).catch((error) => {
+      if (this.lastShortcutPolicyKey === key) this.lastShortcutPolicyKey = null;
+      if (!this.destroyed) console.error("Failed to update web contents shortcut policy", error);
+    });
   }
 
   loadURL(url, options = {}) {
@@ -406,6 +537,7 @@ module.exports = class WebContentsViewHandle {
   }
 
   focus() {
+    this.updateShortcutPolicy();
     return this.invoke("focus");
   }
 
@@ -534,6 +666,7 @@ module.exports = class WebContentsViewHandle {
 
     this.releaseAttachment(false);
     this.destroyed = true;
+    for (const subscription of this.keymapSubscriptions.splice(0)) subscription.dispose();
     this.destroyPromise = Promise.resolve();
     this.occlusionManager?.removeSurface(this);
     this.onDidDestroyCallback?.(this);
@@ -553,6 +686,7 @@ module.exports = class WebContentsViewHandle {
 
     this.detach();
     this.destroyed = true;
+    for (const subscription of this.keymapSubscriptions.splice(0)) subscription.dispose();
     this.occlusionManager?.removeSurface(this);
     this.onDidDestroyCallback?.(this);
     this.destroyPromise = this.applicationDelegate
@@ -561,4 +695,8 @@ module.exports = class WebContentsViewHandle {
     this.emitter.emit("did-destroy", { reason: "renderer-request" });
     return this.destroyPromise;
   }
-};
+}
+
+module.exports = WebContentsViewHandle;
+module.exports.isHostShortcutSequence = isHostShortcutSequence;
+module.exports.shortcutPolicyForElement = shortcutPolicyForElement;

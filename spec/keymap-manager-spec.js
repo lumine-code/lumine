@@ -1484,7 +1484,9 @@ describe("KeymapManager", function () {
       return assert.isTrue(event.defaultPrevented);
     });
     return it("returns a disposable allowing the added bindings to be removed", function () {
-      var disposable2;
+      var disposable2, changes;
+      changes = [];
+      keymapManager.onDidChangeKeyBindings((change) => changes.push(change));
       keymapManager.add("foo", {
         ".a": {
           "ctrl-a": "x",
@@ -1517,6 +1519,15 @@ describe("KeymapManager", function () {
         1,
       );
       disposable2.dispose();
+      assert.equal(changes.length, 3);
+      assert.deepEqual(
+        changes.map(({ added, removed, source }) => [added.length, removed.length, source]),
+        [
+          [2, 0, "foo"],
+          [1, 0, "bar"],
+          [0, 1, "bar"],
+        ],
+      );
       assert.equal(
         keymapManager.findKeyBindings({
           command: "x",

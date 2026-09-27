@@ -185,10 +185,6 @@ ipcMain.handle(WebContentsViewManager.IPC_CHANNEL, (event, action, ...args) => {
   return application.webContentsViewManager.dispatch(event, window, action, ...args);
 });
 
-ipcMain.on(WebContentsViewManager.SHORTCUT_CHANNEL, (event, detail) => {
-  currentApplication().webContentsViewManager.handleShortcut(event, detail);
-});
-
 function assertString(value, name) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${name} must be a non-empty string`);
@@ -500,8 +496,14 @@ const handleWindowAction = async (event, action, ...args) => {
       ) {
         throw new TypeError("Unsupported input event type");
       }
-      window.webContents.sendInputEvent(args[0]);
-      return;
+      if (
+        currentApplication().webContentsViewManager.sendInputEventForTest(lumineWindow, args[0])
+      ) {
+        return "web-contents-view";
+      } else {
+        window.webContents.sendInputEvent(args[0]);
+      }
+      return "window";
     case "copy":
     case "paste":
     case "undo":

@@ -249,6 +249,19 @@ module.exports = KeymapManager = (function () {
       return this.emitter.on("did-fail-to-match-binding", callback);
     }
 
+    /**
+     * @public
+     * @status public
+     *
+     * Invoke the given callback whenever bindings are added or removed.
+     *
+     * @param {Function} callback - Called after the active binding set changes.
+     * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+     */
+    onDidChangeKeyBindings(callback) {
+      return this.emitter.on("did-change-key-bindings", callback);
+    }
+
     // Invoke the given callback when a keymap file is reloaded.
     //
     // * `callback` `Function` to be called when a keymap file is reloaded.
@@ -385,18 +398,34 @@ module.exports = KeymapManager = (function () {
         throwOnInvalidSelector,
       );
       this.keyBindings.push(...Array.from(addedKeyBindings || []));
+      if (addedKeyBindings.length > 0) {
+        this.emitter.emit("did-change-key-bindings", {
+          added: addedKeyBindings.slice(),
+          removed: [],
+          source,
+        });
+      }
       return new Disposable(() => {
+        const removed = [];
         for (var keyBinding of Array.from(addedKeyBindings)) {
           var index = this.keyBindings.indexOf(keyBinding);
           if (index !== -1) {
             this.keyBindings.splice(index, 1);
+            removed.push(keyBinding);
           }
+        }
+        if (removed.length > 0) {
+          this.emitter.emit("did-change-key-bindings", { added: [], removed, source });
         }
       });
     }
 
     removeBindingsFromSource(source) {
+      const removed = this.keyBindings.filter((keyBinding) => keyBinding.source === source);
       this.keyBindings = this.keyBindings.filter((keyBinding) => keyBinding.source !== source);
+      if (removed.length > 0) {
+        this.emitter.emit("did-change-key-bindings", { added: [], removed, source });
+      }
       return undefined;
     }
 
