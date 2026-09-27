@@ -39,7 +39,8 @@ describe("DisplayLayer geometry splice batching", () => {
     batched.layer.clearSpatialIndex();
     sequential.layer.clearSpatialIndex();
 
-    const nativeSplice = batched.layer.spatialIndex.splice.bind(batched.layer.spatialIndex);
+    const nativeSpatialIndex = batched.layer.spatialIndex;
+    const nativeSplice = nativeSpatialIndex.splice.bind(nativeSpatialIndex);
     const spliceMany = jasmine.createSpy("spliceMany").and.callFake((packed) => {
       const start = { row: 0, column: 0 };
       const deletedExtent = { row: 0, column: 0 };
@@ -54,7 +55,13 @@ describe("DisplayLayer geometry splice batching", () => {
         nativeSplice(start, deletedExtent, insertedExtent);
       }
     });
-    batched.layer.spatialIndex.spliceMany = spliceMany;
+    batched.layer.spatialIndex = new Proxy(nativeSpatialIndex, {
+      get(target, property) {
+        if (property === "spliceMany") return spliceMany;
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
 
     expectEquivalentLayout(batched.layer, sequential.layer);
     expect(spliceMany).toHaveBeenCalled();
