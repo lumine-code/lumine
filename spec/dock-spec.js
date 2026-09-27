@@ -407,6 +407,48 @@ describe("Dock", () => {
   });
 
   describe("a deserialized dock", () => {
+    it("reserves its saved geometry without painting provisional contents", () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getLeftDock();
+      const item = document.createElement("div");
+
+      dock.beginInitialRestore({ size: 173, visible: true });
+      dock.getActivePane().addItem(item);
+      dock.activate();
+
+      expect(lumine.workspace.getElement().style.visibility).toBe("");
+      expect(dock.isVisible()).toBe(true);
+      expect(dock.getElement().offsetWidth).toBe(173);
+      expect(dock.refs.wrapperElement).toHaveClass("lumine-dock-restoring");
+
+      dock.endInitialRestore();
+
+      expect(dock.isVisible()).toBe(true);
+      expect(dock.getActivePaneItem()).toBe(item);
+      expect(dock.refs.wrapperElement).not.toHaveClass("lumine-dock-restoring");
+    });
+
+    it("defers a package's request to show a saved hidden dock", async () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getLeftDock();
+      const item = {
+        element: document.createElement("div"),
+        getDefaultLocation: () => "left",
+      };
+
+      dock.beginInitialRestore({ size: 150, visible: false });
+      await lumine.workspace.open(item);
+
+      expect(dock.isVisible()).toBe(false);
+      expect(dock.refs.wrapperElement).toHaveClass("lumine-dock-restoring");
+
+      dock.endInitialRestore();
+
+      expect(dock.isVisible()).toBe(true);
+      expect(dock.getActivePaneItem()).toBe(item);
+      expect(dock.refs.wrapperElement).not.toHaveClass("lumine-dock-restoring");
+    });
+
     it("restores the serialized size", async () => {
       jasmine.attachToDOM(lumine.workspace.getElement());
 

@@ -1074,6 +1074,10 @@ class Environment {
       // synchronous facade sees the real project instead of an empty one.
       this.project.addPaths(this.#getLoadSettings().initialProjectRoots ?? [], { exact: true });
 
+      // Reserve the saved dock geometry before package activation can open a
+      // default item. Dock contents stay hidden until deserialization chooses
+      // their final active items, while the center remains visible throughout.
+      this.workspace.beginInitialDockRestore(state?.workspace);
       this.document.body.appendChild(this.workspace.getElement());
       if (this.backgroundStylesheet) this.backgroundStylesheet.remove();
 
@@ -1098,14 +1102,18 @@ class Environment {
         }),
       );
 
-      StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
-      await this.packages.activate();
-      StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
+      try {
+        StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
+        await this.packages.activate();
+        StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
 
-      const startTime = Date.now();
-      StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
-      await this.deserialize(state);
-      this.deserializeTimings.lumine = Date.now() - startTime;
+        const startTime = Date.now();
+        StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
+        await this.deserialize(state);
+        this.deserializeTimings.lumine = Date.now() - startTime;
+      } finally {
+        this.workspace.endInitialDockRestore();
+      }
 
       this.keymaps.loadUserKeymap();
       if (!this.window.isSafeMode()) this.requireUserInitScript();

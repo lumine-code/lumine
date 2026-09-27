@@ -142,6 +142,10 @@ module.exports = class Dock {
    * Show the dock without focusing it.
    */
   show() {
+    if (this.state.restoring) {
+      this.restoreRequestedVisible = true;
+      return;
+    }
     this.setState({ visible: true });
   }
 
@@ -153,6 +157,10 @@ module.exports = class Dock {
    * was previously focused.
    */
   hide() {
+    if (this.state.restoring) {
+      this.restoreRequestedVisible = false;
+      return;
+    }
     this.setState({ visible: false });
   }
 
@@ -164,6 +172,10 @@ module.exports = class Dock {
    * active pane container.
    */
   toggle() {
+    if (this.state.restoring) {
+      this.restoreRequestedVisible = !(this.restoreRequestedVisible ?? this.state.visible);
+      return;
+    }
     const state = { visible: !this.state.visible };
     if (!state.visible) state.hovered = false;
     this.setState(state);
@@ -195,7 +207,11 @@ module.exports = class Dock {
     // measuring after opening, for example. Revealing a dock as a drop target counts: it
     // moves the dock back into the flow, and the drag hit testing measures it right after.
     if (this.element != null) {
-      if ((shouldBeVisible && !wasVisible) || this.state.size !== prevState.size)
+      if (
+        (shouldBeVisible && !wasVisible) ||
+        this.state.size !== prevState.size ||
+        this.state.restoring !== prevState.restoring
+      )
         etch.updateSync(this);
       else etch.update(this);
     }
@@ -233,6 +249,8 @@ module.exports = class Dock {
     };
     // ...but the content needs to maintain a constant size.
     const wrapperStyle = { [this.widthOrHeight]: `${size}px` };
+    const wrapperClassList = ["lumine-dock-content-wrapper", this.location];
+    if (this.state.restoring) wrapperClassList.push("lumine-dock-restoring");
 
     return $(
       "lumine-dock",
@@ -247,7 +265,7 @@ module.exports = class Dock {
           $.div(
             {
               ref: "wrapperElement",
-              className: `lumine-dock-content-wrapper ${this.location}`,
+              className: wrapperClassList.join(" "),
               style: wrapperStyle,
             },
             $(DockResizeHandle, {
@@ -286,12 +304,14 @@ module.exports = class Dock {
   }
 
   handleDidAddPaneItem() {
+    if (this.state.restoring) return;
     if (this.state.size == null) {
       this.setState({ size: this.getInitialSize() });
     }
   }
 
   handleDidRemovePaneItem() {
+    if (this.state.restoring) return;
     // Hide the dock if you remove the last item.
     if (this.paneContainer.getPaneItems().length === 0) {
       this.setState({ visible: false, hovered: false, size: null });
@@ -466,6 +486,26 @@ module.exports = class Dock {
       paneContainer: this.paneContainer.serialize(),
       visible: this.state.visible,
     };
+  }
+
+  beginInitialRestore(serialized) {
+    this.restoreRequestedVisible = null;
+    this.setState({
+      restoring: true,
+      size: serialized.size || null,
+      visible: Boolean(serialized.visible),
+    });
+  }
+
+  endInitialRestore() {
+    if (!this.state.restoring) return;
+    const hasItems = this.paneContainer.getPaneItems().length > 0;
+    let visible = this.state.visible;
+    if (this.restoreRequestedVisible != null) visible = this.restoreRequestedVisible;
+    visible = visible && hasItems;
+    const size = hasItems ? this.state.size || this.getInitialSize() : null;
+    this.restoreRequestedVisible = null;
+    this.setState({ restoring: false, size, visible, hovered: visible && this.state.hovered });
   }
 
   deserialize(serialized, deserializerManager) {

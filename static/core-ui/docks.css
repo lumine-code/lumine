@@ -131,6 +131,10 @@ lumine-dock {
   }
 }
 
+.lumine-dock-content-wrapper.lumine-dock-restoring {
+  visibility: hidden;
+}
+
 /* Toggle button -------------- */
 
 .lumine-dock-toggle-button {

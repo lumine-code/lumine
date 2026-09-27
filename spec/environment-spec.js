@@ -1333,6 +1333,29 @@ describe("Environment", () => {
       expect(env.project.getPaths()).toEqual([]);
     });
 
+    it("holds the initial dock restore open through activation and deserialization", async () => {
+      const workspaceState = { paneContainers: {} };
+      const env = buildEnvironment({
+        initialProjectRoots: [],
+        state: { workspace: workspaceState },
+      });
+      spyOn(env.workspace, "beginInitialDockRestore").and.callThrough();
+      spyOn(env.workspace, "endInitialDockRestore").and.callThrough();
+      spyOn(env.packages, "activate").and.callFake(async () => {
+        expect(env.workspace.beginInitialDockRestore).toHaveBeenCalledWith(workspaceState);
+        expect(env.workspace.endInitialDockRestore).not.toHaveBeenCalled();
+      });
+      spyOn(env, "deserialize").and.callFake(async () => {
+        expect(env.workspace.endInitialDockRestore).not.toHaveBeenCalled();
+      });
+
+      await env.startEditorWindow();
+
+      expect(env.packages.activate).toHaveBeenCalled();
+      expect(env.deserialize).toHaveBeenCalled();
+      expect(env.workspace.endInitialDockRestore).toHaveBeenCalled();
+    });
+
     it("clears private states and the project index together", async () => {
       const env = buildEnvironment({ initialProjectRoots: [], clearWindowState: true });
       spyOn(env.stateStore, "clear").and.returnValue(Promise.resolve());

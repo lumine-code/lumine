@@ -92,6 +92,7 @@ function getBasenamesFromProjectRoots() {
 
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
 const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
+const DOCK_LOCATIONS = ["left", "right", "bottom"];
 
 /**
  * @public
@@ -570,6 +571,34 @@ module.exports = class Workspace extends Model {
         bottom: this.paneContainers.bottom.serialize(),
       },
     };
+  }
+
+  // Apply only the saved dock shell before package activation: its size and
+  // place in the workspace are visible immediately, while its pane contents
+  // remain hidden until deserialization selects the final active item.
+  beginInitialDockRestore(state) {
+    if (this.initialDockRestoreLocations) {
+      for (const location of this.initialDockRestoreLocations) {
+        this.paneContainers[location].endInitialRestore();
+      }
+    }
+    this.initialDockRestoreLocations = [];
+    if (!state?.paneContainers) return;
+
+    for (const location of DOCK_LOCATIONS) {
+      const dockState = state.paneContainers[location];
+      if (!dockState) continue;
+      this.paneContainers[location].beginInitialRestore(dockState);
+      this.initialDockRestoreLocations.push(location);
+    }
+  }
+
+  endInitialDockRestore() {
+    if (!this.initialDockRestoreLocations) return;
+    for (const location of this.initialDockRestoreLocations) {
+      this.paneContainers[location].endInitialRestore();
+    }
+    this.initialDockRestoreLocations = null;
   }
 
   // * `options` An optional `Object` that may contain the following key:
