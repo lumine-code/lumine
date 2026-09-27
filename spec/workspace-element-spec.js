@@ -644,6 +644,10 @@ describe("WorkspaceElement", () => {
       const rightDock = lumine.workspace.getRightDock();
       const bottomDock = lumine.workspace.getBottomDock();
 
+      for (const dock of [leftDock, rightDock, bottomDock]) {
+        dock.refs.toggleButton.refs.innerElement.style.transition = "none";
+      }
+
       expect(leftDock.isVisible()).toBe(true);
       expect(rightDock.isVisible()).toBe(true);
       expect(bottomDock.isVisible()).toBe(true);
