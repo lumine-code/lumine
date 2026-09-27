@@ -32,7 +32,7 @@ const NODE_TEXT_INPUT_CHUNK_CODE_UNITS = 32768;
 // indentation instead. Only comes into play when async indentation is enabled.
 const REPARSE_BUDGET_PER_TRANSACTION_MILLIS = 10;
 
-const PARSE_JOB_LIMIT_MICROS = 3000;
+const PARSE_JOB_LIMIT_MICROS = 5000;
 // The first slice of an opened file's initial parse runs inside the task that
 // opens the editor, so together with the editor mount around it it has to fit
 // under Chromium's 50 ms long-task threshold. 25 ms parses roughly the first
