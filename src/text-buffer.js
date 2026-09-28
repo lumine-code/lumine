@@ -3198,7 +3198,12 @@ class TextBuffer {
       const watcher = this.fileWatchClient
         ? this.fileWatchClient.watchFile(file.getPath())
         : watchFile(file.getPath());
-      this.fileWatchStartPromise = watcher.ready;
+      // Catch up changes that raced with watcher startup before exposing the
+      // watcher as ready. Otherwise callers can write immediately after
+      // awaiting this promise while the startup reload still owns an older
+      // snapshot of the file.
+      this.fileWatchStartPromise = watcher.ready.then(() => reconcileWatchedFile());
+      this.fileWatchStartPromise.catch(() => {});
       this.fileSubscriptions.add(
         new Disposable(() => {
           disposed = true;
@@ -3210,10 +3215,6 @@ class TextBuffer {
         }),
         watcher.onDidInvalidate(() => void reconcileWatchedFile()),
         watcher.onDidError(reportWatchError),
-      );
-      watcher.ready.then(
-        () => reconcileWatchedFile(),
-        () => {},
       );
     }
 
