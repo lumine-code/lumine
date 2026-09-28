@@ -12,7 +12,7 @@ const fsAdmin = require("@lumine-code/fs-admin");
 const FileState = require("../src/file-state");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
-const winattr = require("winattr");
+let winattr = null;
 
 process.on("unhandledRejection", console.error);
 
@@ -22,6 +22,10 @@ async function wait(ms) {
 
 describe("TextBuffer IO", () => {
   let buffer, buffer2;
+
+  beforeAll(async () => {
+    if (process.platform === "win32") winattr = await import("winattr");
+  });
 
   // These specs use real timers (`wait`, the buffer's debounced file-change
   // handling). Lumine's harness installs a fake clock by default.
@@ -539,7 +543,7 @@ describe("TextBuffer IO", () => {
     if (process.platform === "win32")
       describe("when a permission error occurs (Windows)", () => {
         it("can bypass hidden files", async (done) => {
-          winattr.setSync(filePath, { hidden: true });
+          winattr.setAttributesSync(filePath, { hidden: true });
 
           buffer.setText("I just wrote to a hidden file in Windows!");
           await buffer.save();
@@ -547,7 +551,7 @@ describe("TextBuffer IO", () => {
           expect(fs.readFileSync(filePath, "utf8")).toBe(
             "I just wrote to a hidden file in Windows!",
           );
-          expect(winattr.getSync(filePath).hidden).toBe(true);
+          expect(winattr.getAttributesSync(filePath).hidden).toBe(true);
           done();
         });
       });

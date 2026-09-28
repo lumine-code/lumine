@@ -24,9 +24,9 @@
   },
   "lumineTestRunner": "runners/jasmine-test-runner",
   "license": "MIT",
-  "electronVersion": "44.4.3",
+  "electronVersion": "44.4.5",
   "dependencies": {
-    "@babel/core": "8.0.1",
+    "@babel/core": "8.0.6",
     "@jasminejs/reporters": "1.1.0",
     "@lumine-code/babel-preset": "github:lumine-code/babel-preset#65a40b108cccf570c804d91643803e0a28134e1c",
     "@lumine-code/ctags": "github:lumine-code/node-ctags#bd126f8d9895b8c8365c35becf8bceb1b1bd8c26",
@@ -99,7 +99,7 @@
     "notifications": "github:lumine-code/notifications#5611cb201bbffd2fedbccebfccf216afd2714997",
     "one-theme": "github:lumine-code/one-theme#63cf4bc02800af03ef7720d7077ede97fa566f38",
     "picomatch": "^4.0.7",
-    "postcss-selector-parser": "7.1.5",
+    "postcss-selector-parser": "7.1.6",
     "random-seed": "^0.3.0",
     "resolve": "1.22.12",
     "search-panel": "github:lumine-code/search-panel#024282be03dcd99e6f3d6db407b0a2d301c79b14",
@@ -118,7 +118,7 @@
     "tree-view": "github:lumine-code/tree-view#fabea97b8bf59858101b3ed381cc0349d483949e",
     "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#b9913c92d94d6a673561faceced876183a96047e",
-    "winattr": "^3.0.1",
+    "winattr": "^4.0.0",
     "window-title": "github:lumine-code/window-title#11e99a126cfd307804f5d62539f91d1655d5d4fd"
   },
   "private": true,
@@ -159,7 +159,7 @@
     "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "4.2.0",
     "@eslint/js": "^10.0.1",
-    "electron": "44.4.3",
+    "electron": "44.4.5",
     "electron-builder": "26.15.7",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
@@ -169,7 +169,7 @@
     "prettier": "^3.9.9",
     "sinon": "22.1.0",
     "tree-sitter-python": "0.25.0",
-    "yargs": "18.1.0"
+    "yargs": "18.2.0"
   },
   "allowScripts": {
     "github:lumine-code/fuzzy-native#f24848ab8c03994bf0d0defa72525a678d02af96": true,

@@ -2548,14 +2548,14 @@ class TextBuffer {
 
         const isWindows = process.platform === "win32";
         if (isWindows) {
-          const winattr = getPromisifiedWinattr();
-          const attrs = await winattr.get(filePath);
+          const winattr = await getWinattr();
+          const attrs = await winattr.getAttributes(filePath);
           if (!attrs.hidden) throw error;
 
           try {
-            await winattr.set(filePath, { hidden: false });
+            await winattr.setAttributes(filePath, { hidden: false });
             await this.buffer.save(filePath, this.getEncoding());
-            await winattr.set(filePath, { hidden: true });
+            await winattr.setAttributes(filePath, { hidden: true });
           } catch {
             throw error;
           }
@@ -3576,18 +3576,10 @@ class SearchCallbackArgument {
   }
 }
 
-let _winattr = null;
-const getPromisifiedWinattr = function () {
-  if (_winattr === null) {
-    const { promisify } = require("util");
-    const winattr = require("winattr");
-    _winattr = {
-      set: promisify(winattr.set),
-      get: promisify(winattr.get),
-    };
-  }
-
-  return _winattr;
+let _winattrPromise = null;
+const getWinattr = function () {
+  if (_winattrPromise === null) _winattrPromise = import("winattr");
+  return _winattrPromise;
 };
 
 module.exports = TextBuffer;
