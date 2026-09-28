@@ -62,7 +62,7 @@
     "go-to-line": "github:lumine-code/go-to-line#c15df660c30c52a5393dcf90acef5542911a3b61",
     "grammar-selector": "github:lumine-code/grammar-selector#7e027d3c5da0a0f82ea0250e8106d43a4587080c",
     "gray-matter": "^4.0.3",
-    "incompatible-packages": "github:lumine-code/incompatible-packages#48cf29811b48ac89c6678c27e07a3e23c816c03b",
+    "incompatible-packages": "github:lumine-code/incompatible-packages#c3969a6eadceba8e80df0fc7856cfbc75ef5e0c9",
     "jasmine": "7.0.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#504a3e4eee25d8fed097aa43cf39e3470330ca62",
     "language-c": "github:lumine-code/language-c#7222dadfd347730ca59ef95724cef58786d4e8b0",
