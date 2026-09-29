@@ -70,6 +70,30 @@ describe("Dock", () => {
       expect(emptiedPane.isDestroyed()).toBe(true);
       expect(dock.getPanes()).toEqual([occupiedPane]);
     });
+
+    it("returns to the last used pane when closing the last item in a dock split", async () => {
+      const docks = [
+        lumine.workspace.getLeftDock(),
+        lumine.workspace.getRightDock(),
+        lumine.workspace.getBottomDock(),
+      ];
+
+      for (const dock of docks) {
+        const pane1 = dock.getActivePane();
+        pane1.addItem(document.createElement("div"));
+        const pane2 = pane1.splitRight({ items: [document.createElement("div")] });
+        const pane3 = pane2.splitRight({ items: [document.createElement("div")] });
+        pane2.activate();
+        pane3.activate();
+
+        await pane3.destroyActiveItem();
+
+        expect(pane3.isDestroyed()).toBe(true);
+        expect(dock.getActivePane()).toBe(pane2);
+        expect(lumine.workspace.getActivePane()).toBe(pane2);
+        expect(dock.isVisible()).toBe(true);
+      }
+    });
   });
 
   describe("hover-area hit testing", () => {

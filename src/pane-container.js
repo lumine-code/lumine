@@ -22,6 +22,7 @@ module.exports = class PaneContainer {
     this.subscriptions = new CompositeDisposable();
     this.itemRegistry = new ItemRegistry();
     this.alive = true;
+    this.paneActivationOrder = new Set();
     this.stoppedChangingActivePaneItemTimeout = null;
 
     this.setRoot(
@@ -79,12 +80,16 @@ module.exports = class PaneContainer {
   deserialize(state, deserializerManager) {
     if (state.version !== SERIALIZATION_VERSION) return;
     this.itemRegistry = new ItemRegistry();
+    this.paneActivationOrder.clear();
     this.setRoot(deserializerManager.deserialize(state.root));
     const activePane =
       find(this.getRoot().getPanes(), (pane) => pane.id === state.activePaneId) ||
       this.getPanes()[0];
     if (this.shouldDestroyEmptyPanes()) this.destroyEmptyPanes();
     const restoredActivePane = activePane.isAlive() ? activePane : this.getPanes()[0];
+    // A restored layout starts a new activation order without retaining panes
+    // from the previous layout or activating views while deserializing.
+    this.paneActivationOrder = new Set([restoredActivePane]);
     if (restoredActivePane !== this.activePane) {
       // Views can subscribe while setRoot() installs the restored panes. Tell
       // them which pane won without emitting did-activate and stealing focus.
@@ -258,6 +263,20 @@ module.exports = class PaneContainer {
     }
   }
 
+  activatePaneAfterDestroy() {
+    const panes = this.getPanes();
+    // The closing pane is already dead but still in the layout until its
+    // did-destroy event. Prefer the last surviving pane the user worked in.
+    const lastUsedPane = Array.from(this.paneActivationOrder)
+      .reverse()
+      .find((pane) => pane.isAlive() && panes.includes(pane));
+    if (lastUsedPane) {
+      lastUsedPane.activate();
+      return true;
+    }
+    return this.activateNextPane();
+  }
+
   moveActiveItemToPane(destPane) {
     const item = this.activePane.getActiveItem();
 
@@ -305,6 +324,7 @@ module.exports = class PaneContainer {
   }
 
   didDestroyPane(event) {
+    this.paneActivationOrder.delete(event.pane);
     this.emitter.emit("did-destroy-pane", event);
   }
 
@@ -314,6 +334,8 @@ module.exports = class PaneContainer {
         throw new Error("Setting active pane that is not present in pane container");
       }
 
+      this.paneActivationOrder.delete(activePane);
+      this.paneActivationOrder.add(activePane);
       this.activePane = activePane;
       this.emitter.emit("did-change-active-pane", this.activePane);
       this.didChangeActiveItemOnPane(this.activePane, this.activePane.getActiveItem());

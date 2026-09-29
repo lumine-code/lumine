@@ -91,6 +91,23 @@ describe("PaneContainer", () => {
       expect(containerB.getActivePane()).toBe(containerB.getPanes()[0]);
     });
 
+    it("starts a new activation order when replacing the layout", () => {
+      const containerB = new PaneContainer(params);
+      const oldPane = containerB.getActivePane().splitRight().splitRight();
+      containerB.deserialize(containerA.serialize(), lumine.deserializers);
+      const [pane1B, pane2B, pane3B] = containerB.getPanes();
+
+      pane3B.destroy();
+
+      expect(containerB.getActivePane()).toBe(pane1B);
+      expect(oldPane.isActive()).toBe(false);
+
+      pane2B.activate();
+      pane2B.destroy();
+
+      expect(containerB.getActivePane()).toBe(pane1B);
+    });
+
     describe("if there are empty panes after deserialization", () => {
       beforeEach(() => {
         spyOn(console, "warn");
@@ -157,12 +174,65 @@ describe("PaneContainer", () => {
       expect(pane2.isActive()).toBe(false);
     });
 
-    it("returns the next pane if the current active pane is destroyed", () => {
+    it("returns the previously active pane if the current active pane is destroyed", () => {
       pane2 = pane1.splitRight();
       pane2.activate();
       pane2.destroy();
       expect(container.getActivePane()).toBe(pane1);
       expect(pane1.isActive()).toBe(true);
+    });
+
+    it("returns to the last used pane instead of wrapping to the first pane", () => {
+      pane2 = pane1.splitRight();
+      const pane3 = pane2.splitRight();
+      pane2.activate();
+      pane3.activate();
+
+      pane3.destroy();
+
+      expect(container.getActivePane()).toBe(pane2);
+      expect(pane2.isFocused()).toBe(true);
+
+      pane2.destroy();
+
+      expect(container.getActivePane()).toBe(pane1);
+    });
+
+    it("uses the latest activation when a pane has been visited more than once", () => {
+      pane2 = pane1.splitRight();
+      const pane3 = pane2.splitRight();
+      pane1.activate();
+      pane2.activate();
+      pane3.activate();
+      pane1.activate();
+
+      pane1.destroy();
+
+      expect(container.getActivePane()).toBe(pane3);
+    });
+
+    it("skips closed inactive panes without changing the active pane", () => {
+      pane2 = pane1.splitRight();
+      const pane3 = pane2.splitRight();
+      pane2.activate();
+      pane3.activate();
+
+      pane2.destroy();
+
+      expect(container.getActivePane()).toBe(pane3);
+
+      pane3.destroy();
+
+      expect(container.getActivePane()).toBe(pane1);
+    });
+
+    it("uses layout order when no surviving pane has been active", () => {
+      pane2 = pane1.splitRight({ activate: false });
+      pane1.splitDown({ activate: false });
+
+      pane1.destroy();
+
+      expect(container.getActivePane()).toBe(container.getPanes()[0]);
     });
   });
 
@@ -681,6 +751,21 @@ describe("PaneContainer", () => {
       expect(document.activeElement).toBe(itemC);
     });
 
+    it("returns DOM focus to the last used pane after closing the third pane", async () => {
+      const pane1 = container.getActivePane();
+      pane1.addItem(focusableItem());
+      const item2 = focusableItem();
+      const pane2 = pane1.splitRight({ items: [item2] });
+      const pane3 = pane2.splitRight({ items: [focusableItem()] });
+      pane2.getElement().focus();
+      pane3.getElement().focus();
+
+      await withoutFocusEvents(() => pane3.close());
+
+      expect(container.getActivePane()).toBe(pane2);
+      expect(document.activeElement).toBe(item2);
+    });
+
     it("leaves the reparented pane's focus claim behind when another pane wins", async () => {
       // a | (b over c): closing c reparents b, but a is the pane that was
       // activated, so b must not take the focus back on its way up.
@@ -689,6 +774,7 @@ describe("PaneContainer", () => {
       paneA.addItem(itemA);
       const paneB = paneA.splitRight({ items: [focusableItem()] });
       const paneC = paneB.splitDown({ items: [focusableItem()] });
+      paneA.activate();
       paneC.getElement().focus();
 
       await withoutFocusEvents(() => paneC.close());

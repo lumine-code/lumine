@@ -1602,7 +1602,7 @@ describe("Pane", () => {
     });
 
     describe("if the pane is active", () => {
-      it("makes the next pane active", () => {
+      it("makes the previously active pane active", () => {
         expect(pane2.isActive()).toBe(true);
         pane2.destroy();
         expect(pane1.isActive()).toBe(true);

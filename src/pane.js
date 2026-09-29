@@ -1358,6 +1358,8 @@ module.exports = class Pane {
    *
    * Close the pane and destroy all its items.
    *
+   * Closing the active pane activates the most recently used remaining pane.
+   *
    * If this is the last pane, all the items will be destroyed but the pane
    * itself will not be destroyed.
    */
@@ -1374,7 +1376,7 @@ module.exports = class Pane {
     }
     if (this.container) {
       this.container.willDestroyPane({ pane: this });
-      if (this.isActive()) this.container.activateNextPane();
+      if (this.isActive()) this.container.activatePaneAfterDestroy();
     }
     this.emitter.emit("did-destroy");
     this.emitter.dispose();
