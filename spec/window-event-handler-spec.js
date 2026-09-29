@@ -131,21 +131,6 @@ describe("WindowEventHandler", () => {
       });
     });
 
-    it("offers web links to registered external URI openers before the system", async () => {
-      spyOn(lumine.shell, "openExternal").and.returnValue(Promise.resolve());
-      const opener = jasmine.createSpy("opener").and.returnValue(true);
-      const registration = lumine.externalURIs.addOpener(opener, { priority: 100 });
-      const link = document.createElement("a");
-      link.href = "http://localhost:3000";
-
-      windowEventHandler.handleLinkClick({ currentTarget: link, preventDefault() {} });
-      await Promise.resolve();
-
-      expect(opener).toHaveBeenCalledWith("http://localhost:3000", { source: "link" });
-      expect(lumine.shell.openExternal).not.toHaveBeenCalled();
-      registration.dispose();
-    });
-
     it('opens the "lumine://" links with URL handler', () => {
       const uriHandler = windowEventHandler.lumineEnvironment.uriHandlers;
       expect(uriHandler).toBeDefined();
@@ -274,27 +259,13 @@ describe("WindowEventHandler", () => {
     }));
 
   describe("native key bindings", () =>
-    it("dispatches them to native controls and WebContentsView anchors", () => {
+    it("correctly dispatches them to active elements with the '.native-key-bindings' class", () => {
       spyOn(lumine.applicationDelegate, "performWebContentsAction");
 
       const nativeKeyBindingsInput = document.createElement("input");
       nativeKeyBindingsInput.classList.add("native-key-bindings");
       jasmine.attachToDOM(nativeKeyBindingsInput);
       nativeKeyBindingsInput.focus();
-
-      lumine.dispatchApplicationMenuCommand("core:copy");
-      lumine.dispatchApplicationMenuCommand("core:paste");
-
-      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("copy");
-      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("paste");
-
-      lumine.applicationDelegate.performWebContentsAction.calls.reset();
-
-      const webContentsViewAnchor = document.createElement("div");
-      webContentsViewAnchor.setAttribute("data-lumine-web-contents-view", "");
-      webContentsViewAnchor.tabIndex = -1;
-      jasmine.attachToDOM(webContentsViewAnchor);
-      webContentsViewAnchor.focus();
 
       lumine.dispatchApplicationMenuCommand("core:copy");
       lumine.dispatchApplicationMenuCommand("core:paste");

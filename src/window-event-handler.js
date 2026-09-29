@@ -82,20 +82,18 @@ module.exports = class WindowEventHandler {
     );
   }
 
-  // Wire commands that should be handled by Chromium for native DOM controls
-  // and for the dedicated anchors of native WebContentsView surfaces.
+  // Wire commands that should be handled by Chromium for elements with the
+  // `.native-key-bindings` class.
   handleNativeKeybindings() {
     const bindCommandToAction = (command, action) => {
-      for (const selector of [".native-key-bindings", "[data-lumine-web-contents-view]"]) {
-        this.subscriptions.add(
-          this.lumineEnvironment.commands.add(
-            selector,
-            command,
-            (_event) => this.applicationDelegate.performWebContentsAction(action),
-            false,
-          ),
-        );
-      }
+      this.subscriptions.add(
+        this.lumineEnvironment.commands.add(
+          ".native-key-bindings",
+          command,
+          (_event) => this.applicationDelegate.performWebContentsAction(action),
+          false,
+        ),
+      );
     };
 
     bindCommandToAction("core:copy", "copy");
@@ -280,16 +278,7 @@ module.exports = class WindowEventHandler {
     const uri = event.currentTarget && event.currentTarget.getAttribute("href");
     if (uri && uri[0] !== "#") {
       if (/^(?:https?:\/\/|mailto:)/i.test(uri)) {
-        const openExternally = () => this.lumineEnvironment.shell.openExternal(uri);
-        let opening;
-        if (/^https?:\/\//i.test(uri) && this.lumineEnvironment.externalURIs?.hasOpeners()) {
-          opening = this.lumineEnvironment.externalURIs
-            .open(uri, { source: "link" })
-            .then((handled) => (handled ? undefined : openExternally()));
-        } else {
-          opening = openExternally();
-        }
-        void Promise.resolve(opening).catch((error) => {
+        void this.lumineEnvironment.shell.openExternal(uri).catch((error) => {
           this.lumineEnvironment.notifications.addWarning("Unable to open external link", {
             detail: error.message,
             dismissable: true,

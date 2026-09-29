@@ -642,20 +642,6 @@ describe("LumineWindow", function () {
       assert.isTrue(w.isWebViewFocused());
     });
 
-    it("returns true when a native child view owned by this window is focused", function () {
-      const w = new LumineWindow(app, service, {
-        browserWindowConstructor: StubBrowserWindow,
-      });
-      const focusedWebContents = {};
-      sinon.stub(webContents, "getFocusedWebContents").returns(focusedWebContents);
-      sinon.stub(BrowserWindow, "fromWebContents").returns(null);
-      app.webContentsViewManager = {
-        ownsFocusedContents: sinon.stub().withArgs(w).returns(true),
-      };
-
-      assert.isTrue(w.isWebViewFocused());
-    });
-
     it("returns false when another window owns the focused web contents", function () {
       const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,

@@ -21,7 +21,6 @@ const KeymapManager = require("./keymap-extensions");
 const TooltipManager = require("./tooltip-manager");
 const CommandRegistry = require("./command-registry");
 const URIHandlerRegistry = require("./uri-handler-registry");
-const ExternalURIRegistry = require("./external-uri-registry");
 const GrammarRegistry = require("./grammar-registry");
 const { HistoryManager } = require("./history-manager");
 const ReopenProjectMenuManager = require("./reopen-project-menu-manager");
@@ -269,17 +268,6 @@ class Environment {
      * @type {URIHandlerRegistry}
      */
     this.uriHandlers = new URIHandlerRegistry();
-
-    /**
-     * @public
-     * @status public
-     *
-     * Routes HTTP and HTTPS links through package-provided openers before
-     * falling back to the operating system.
-     *
-     * @type {ExternalURIRegistry}
-     */
-    this.externalURIs = new ExternalURIRegistry();
 
     /**
      * @public
@@ -818,8 +806,6 @@ class Environment {
 
     this.notifications.clear();
 
-    this.externalURIs.clear();
-
     await this.packages.reset();
     this.hooks.clear();
     this.workspace.reset(this.packages);
@@ -854,8 +840,6 @@ class Environment {
     this.emitter.emit("will-destroy");
     this.hooks.clear();
 
-    void this.window.destroy();
-
     this.menu.destroy();
     this.tooltips.destroy();
     this.disposables.dispose();
@@ -878,7 +862,6 @@ class Environment {
     this.commands.clear();
     if (this.stylesElement) this.stylesElement.remove();
     this.uriHandlers.destroy();
-    this.externalURIs.destroy();
 
     this.secrets?.dispose();
     void this.fileWatchClient.close();
@@ -1713,8 +1696,7 @@ class Environment {
   }
 
   dispatchApplicationMenuCommand(command, arg) {
-    let activeElement =
-      this.window.getFocusedWebContentsViewElement() ?? this.document.activeElement;
+    let { activeElement } = this.document;
     // Use the workspace element if body has focus
     if (activeElement === this.document.body) {
       activeElement = this.workspace.getElement();

@@ -1,5 +1,4 @@
 const ApplicationDelegate = require("../src/application-delegate");
-const { ipcRenderer } = require("electron");
 
 describe("ApplicationDelegate", function () {
   describe("set/getTemporaryWindowState", function () {
@@ -38,37 +37,6 @@ describe("ApplicationDelegate", function () {
         ["reserveProjectStateAdoption", ["/project"]],
         ["releaseProjectStateAdoption", "reservation-id"],
       ]);
-    });
-  });
-
-  describe("web contents view bridge", function () {
-    it("uses the dedicated invoke and event channels", async function () {
-      const applicationDelegate = new ApplicationDelegate();
-      spyOn(ipcRenderer, "invoke").and.returnValue(Promise.resolve({ id: "surface-1" }));
-      const callback = jasmine.createSpy("callback");
-      const subscription = applicationDelegate.onDidReceiveWebContentsViewEvent(callback);
-
-      await applicationDelegate.invokeWebContentsView("create", { profile: { id: "test" } });
-      ipcRenderer.emit(
-        "lumine:web-contents-view-event",
-        {},
-        {
-          id: "surface-1",
-          type: "state",
-          detail: { loading: true },
-        },
-      );
-
-      expect(ipcRenderer.invoke).toHaveBeenCalledWith("lumine:web-contents-view", "create", {
-        profile: { id: "test" },
-      });
-      expect(callback).toHaveBeenCalledWith({
-        id: "surface-1",
-        type: "state",
-        detail: { loading: true },
-      });
-
-      subscription.dispose();
     });
   });
 });

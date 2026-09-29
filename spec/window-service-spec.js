@@ -5,7 +5,6 @@ describe("WindowService", () => {
   const bootstrapSettings = getWindowLoadSettings();
   let delegate;
   let service;
-  let webContentsViewEvent;
 
   beforeEach(() => {
     getWindowLoadSettings.set({ windowId: 42 });
@@ -25,23 +24,11 @@ describe("WindowService", () => {
       onDidFocusWindow: jasmine.createSpy("onDidFocusWindow"),
       onDidBlurWindow: jasmine.createSpy("onDidBlurWindow"),
       setSheetOffset: jasmine.createSpy("setSheetOffset").and.returnValue(Promise.resolve()),
-      invokeWebContentsView: jasmine
-        .createSpy("invokeWebContentsView")
-        .and.returnValue(Promise.resolve()),
-      onDidReceiveWebContentsViewEvent: jasmine
-        .createSpy("onDidReceiveWebContentsViewEvent")
-        .and.callFake((callback) => {
-          webContentsViewEvent = callback;
-          return { dispose: jasmine.createSpy("dispose") };
-        }),
     };
     service = new WindowService(delegate);
   });
 
-  afterEach(async () => {
-    await service.destroy();
-    getWindowLoadSettings.set(bootstrapSettings);
-  });
+  afterEach(() => getWindowLoadSettings.set(bootstrapSettings));
 
   it("reads its id synchronously from bootstrap state", () => {
     expect(service.getId()).toBe(42);
@@ -137,93 +124,5 @@ describe("WindowService", () => {
     expect(delegate.onDidUnmaximizeWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidFocusWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidBlurWindow).toHaveBeenCalledWith(callback);
-  });
-
-  it("creates renderer-safe web contents view handles and routes their events", async () => {
-    delegate.invokeWebContentsView.and.callFake((action, id) => {
-      if (action === "create") {
-        return Promise.resolve({ id: "surface-1", state: { url: "about:blank" } });
-      }
-      return Promise.resolve(id);
-    });
-
-    const surface = await service.createWebContentsView({
-      profile: { id: "web-browser/global", persistent: true },
-    });
-    const anchor = document.createElement("div");
-    jasmine.attachToDOM(anchor);
-    surface.attach(anchor);
-    surface.cancelScheduledLayout();
-    const states = [];
-    surface.onDidChangeState((state) => states.push(state));
-    webContentsViewEvent({
-      id: "surface-1",
-      type: "state",
-      detail: { url: "https://example.test", title: "Example", focused: true },
-    });
-
-    expect(surface.getId()).toBe("surface-1");
-    expect(states).toEqual([{ url: "https://example.test", title: "Example", focused: true }]);
-    expect(service.getFocusedWebContentsViewElement()).toBe(anchor);
-    expect(delegate.invokeWebContentsView.calls.argsFor(0)).toEqual([
-      "create",
-      { profile: { id: "web-browser/global", persistent: true } },
-    ]);
-    await surface.destroy();
-    expect(delegate.invokeWebContentsView).toHaveBeenCalledWith("destroy", "surface-1");
-  });
-
-  it("materializes a popup's pre-created child surface", async () => {
-    delegate.invokeWebContentsView.and.returnValue(
-      Promise.resolve({ id: "parent", state: { url: "about:blank" } }),
-    );
-    const parent = await service.createWebContentsView();
-    const popups = [];
-    parent.onDidRequestPopup((event) => popups.push(event));
-
-    webContentsViewEvent({
-      id: "parent",
-      type: "popup",
-      detail: {
-        surface: { id: "child", state: { url: "https://example.test/login" } },
-        disposition: "foreground-tab",
-      },
-    });
-
-    expect(popups[0].surface.getId()).toBe("child");
-    expect(popups[0].surface.getState().url).toBe("https://example.test/login");
-  });
-
-  it("forgets a surface destroyed by main without issuing duplicate cleanup IPC", async () => {
-    delegate.invokeWebContentsView.and.callFake((action) => {
-      if (action === "create") {
-        return Promise.resolve({
-          id: "surface-1",
-          state: { url: "about:blank", focused: true },
-        });
-      }
-      return Promise.resolve();
-    });
-    const surface = await service.createWebContentsView();
-    const anchor = document.createElement("div");
-    jasmine.attachToDOM(anchor);
-    surface.attach(anchor);
-    surface.cancelScheduledLayout();
-    expect(service.getFocusedWebContentsViewElement()).toBe(anchor);
-    delegate.invokeWebContentsView.calls.reset();
-    const didDestroy = jasmine.createSpy("didDestroy");
-    surface.onDidDestroy(didDestroy);
-
-    webContentsViewEvent({
-      id: "surface-1",
-      type: "destroyed",
-      detail: { reason: "guest-closed" },
-    });
-    await surface.destroy();
-
-    expect(didDestroy).toHaveBeenCalledTimes(1);
-    expect(service.webContentsViews.has("surface-1")).toBe(false);
-    expect(service.getFocusedWebContentsViewElement()).toBeNull();
-    expect(delegate.invokeWebContentsView).not.toHaveBeenCalled();
   });
 });

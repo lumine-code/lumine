@@ -1296,17 +1296,6 @@ describe("LumineApplication", function () {
       await scenario.assert("[a 1.md] [c,d _] [b _]");
     });
 
-    it('"open" can deliver a package URI to a newly created window', function () {
-      const uri = "lumine://web-browser/open?url=https%3A%2F%2Fexample.test";
-      electron.ipcMain.emit("open", {}, { urlsToOpen: [uri], newWindow: true });
-
-      const opened = scenario.getWindow(3);
-      assert.strictEqual(Boolean(opened), true);
-      assert.isFalse(opened.sendURIMessage.called);
-      opened.emit("window:loaded");
-      assert.isTrue(opened.sendURIMessage.calledOnceWithExactly(uri));
-    });
-
     it('"open" honors LUMINE_DEV_MODE for internal window requests', async function () {
       process.env.LUMINE_DEV_MODE = "1";
 
