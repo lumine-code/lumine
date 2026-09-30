@@ -59,6 +59,8 @@ jobs:
         run: npm run benchmark:icons
       - name: Test API extractor
         run: npm run test:api-extractor
+      - name: Test JSX lint rules
+        run: npm run test:eslint-jsx
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract

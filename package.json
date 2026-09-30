@@ -155,6 +155,7 @@
     "test:main": "npm run test:only -- --main-process spec/main-process",
     "test:only": "npm start -- --test",
     "test:api-extractor": "node --test script/api-extractor.test.js",
+    "test:eslint-jsx": "node --test script/eslint-jsx.test.js",
     "benchmark:file-watch": "node benchmark/file-watch-benchmark.js"
   },
   "devDependencies": {

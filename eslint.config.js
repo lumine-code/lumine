@@ -2,7 +2,71 @@ const js = require("@eslint/js");
 const n = require("eslint-plugin-n");
 const globals = require("globals");
 const prettier = require("eslint-config-prettier");
-const jsx = require("./eslint-jsx");
+// Local JSX rules keep each file's factory explicit and count JSX references
+// for no-unused-vars without depending on a particular UI library.
+const jsxPragmas = new WeakMap();
+function readJSXPragmas(sourceCode) {
+  if (!jsxPragmas.has(sourceCode)) {
+    const pragmas = {};
+    for (const comment of sourceCode.getAllComments()) {
+      // Match Babel's annotation syntax and let the last annotation win.
+      const factory = /^\s*(?:\*\s*)?@jsx\s+(\S+)\s*$/m.exec(comment.value);
+      const fragment = /^\s*(?:\*\s*)?@jsxFrag\s+(\S+)\s*$/m.exec(comment.value);
+      if (factory) pragmas.factory = factory[1];
+      if (fragment) pragmas.fragment = fragment[1];
+    }
+    jsxPragmas.set(sourceCode, pragmas);
+  }
+  return jsxPragmas.get(sourceCode);
+}
+
+const jsx = {
+  rules: {
+    "require-pragma": {
+      meta: {
+        type: "problem",
+        schema: [],
+        messages: { missing: "This file contains JSX but declares no `/** @jsx ... */` pragma." },
+      },
+      create({ sourceCode, report }) {
+        const { factory } = readJSXPragmas(sourceCode);
+        let reported = false;
+        function check(node) {
+          if (factory || reported) return;
+          reported = true;
+          report({ node, messageId: "missing" });
+        }
+        return { JSXOpeningElement: check, JSXOpeningFragment: check };
+      },
+    },
+    "jsx-uses": {
+      meta: { type: "problem", schema: [] },
+      create({ sourceCode }) {
+        const { factory, fragment } = readJSXPragmas(sourceCode);
+        function mark(expression, node) {
+          if (expression) sourceCode.markVariableAsUsed(expression.split(".")[0], node);
+        }
+        return {
+          JSXOpeningElement(node) {
+            mark(factory, node);
+            // Plain lowercase tags are strings; a member tag still references
+            // its root even when that root starts with a lowercase letter.
+            if (node.name.type === "JSXIdentifier" && /^[a-z]/.test(node.name.name)) return;
+            let root = node.name;
+            while (root.type === "JSXMemberExpression") root = root.object;
+            if (root.type === "JSXIdentifier") sourceCode.markVariableAsUsed(root.name, root);
+          },
+          JSXOpeningFragment(node) {
+            mark(factory, node);
+            // A fragment type is separate from the factory that receives it.
+            // Compiler defaults are outside this rule's explicit-pragma scope.
+            mark(fragment, node);
+          },
+        };
+      },
+    },
+  },
+};
 
 // Modules provided by the Lumine/Electron runtime or the editor's root
 // dependencies — not resolvable from a bundled package's own manifest, so allow
