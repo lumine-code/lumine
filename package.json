@@ -102,7 +102,7 @@
     "postcss-selector-parser": "7.1.6",
     "random-seed": "^0.3.0",
     "resolve": "1.22.12",
-    "search-panel": "github:lumine-code/search-panel#024282be03dcd99e6f3d6db407b0a2d301c79b14",
+    "search-panel": "github:lumine-code/search-panel#dd160483ce6af2d08ccabf023a6a33625223374b",
     "semver": "7.8.5",
     "settings-view": "github:lumine-code/settings-view#453ee84ac5ca7aab2f94749bd036e543f9dbe84d",
     "snippets": "github:lumine-code/snippets#a89d44b2d388adf89368587edec30a846a6c5bde",
