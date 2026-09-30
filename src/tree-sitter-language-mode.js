@@ -3422,6 +3422,11 @@ class LanguageLayer {
 
     // The markers that hold all the language layer children of this layer.
     this.childLayerMarkers = new Set();
+    // Combined injections keep leaf discovery markers separate from their
+    // shared parser's extent, so editing one member never widens discovery to
+    // every other member of the document.
+    this.combinedInjectionGroups = new Map();
+    this.combinedInjectionMembersLayer = null;
     // All language strings that were given to us by injection points in the
     // past, but could not be matched to grammars.
     this.unrecognizedLanguageStrings = new Set();
@@ -3557,6 +3562,8 @@ class LanguageLayer {
     this.marker?.parentLanguageLayer?.childLayerMarkers.delete(this.marker);
     this.marker?.destroy();
     this.currentRangesLayer?.destroy();
+    this.combinedInjectionMembersLayer?.destroy();
+    this.combinedInjectionGroups.clear();
     this.foldResolver?.reset();
     this.scopeResolver?.destroy();
     this.subscriptions.dispose();
@@ -4676,10 +4683,12 @@ class LanguageLayer {
 
     // We won't touch _all_ injections, but we will touch any injection that
     // could possibly have been affected by this layer's update.
-    const childMarkerRanges = Array.from(this.childLayerMarkers, (marker) => ({
-      marker,
-      range: marker.getRange(),
-    }));
+    const childMarkerRanges = Array.from(this.childLayerMarkers)
+      .filter((marker) => !marker.combinedInjectionGroup)
+      .map((marker) => ({
+        marker,
+        range: marker.getRange(),
+      }));
     let existingInjectionMarkerEntries = childMarkerRanges.filter((entry) =>
       entry.range.intersectsWith(range),
     );
@@ -4701,11 +4710,44 @@ class LanguageLayer {
       range = range.union(new Range(earliest, latest));
     }
 
+    let existingCombinedMembers =
+      this.combinedInjectionMembersLayer
+        ?.findMarkers({ intersectsRange: range })
+        .filter((marker) => marker.combinedInjectionMember)
+        .map((marker) => marker.combinedInjectionMember) ?? [];
+    for (const member of existingCombinedMembers) {
+      range = range.union(member.marker.getRange());
+    }
+    // Widening to a member's owner node can catch more members (for example,
+    // content subranges from overlapping registrations on the same owner).
+    existingCombinedMembers =
+      this.combinedInjectionMembersLayer
+        ?.findMarkers({ intersectsRange: range })
+        .filter((marker) => marker.combinedInjectionMember)
+        .map((marker) => marker.combinedInjectionMember) ?? [];
+    const affectedCombinedGroups = [];
+    for (const byLanguage of this.combinedInjectionGroups.values()) {
+      for (const group of byLanguage.values()) {
+        // Joined newline/whitespace ranges can be affected without touching
+        // an owner. Rebuild their included ranges, but keep discovery local.
+        if (
+          group.marker?.languageLayer.currentRangesLayer.findMarkers({ intersectsRange: range })
+            .length
+        ) {
+          affectedCombinedGroups.push(group);
+        }
+      }
+    }
+
     // Why do we have to do this explicitly? Because `descendantsOfType` will
     // incorrectly return nodes if the range runs from (0, 0) to (0, 0). All
     // other empty ranges seem not to have this problem. Upon cursory
     // inspection, this bug doesn't seem to be limited to `web-tree-sitter`.
-    if (range.isEmpty()) {
+    if (
+      range.isEmpty() &&
+      existingCombinedMembers.length === 0 &&
+      affectedCombinedGroups.length === 0
+    ) {
       return;
     }
 
@@ -4758,6 +4800,8 @@ class LanguageLayer {
           injectionPointsByType,
           tree,
           injectionPointVersion,
+          existingCombinedMembers,
+          affectedCombinedGroups,
         );
       });
     }
@@ -4773,6 +4817,8 @@ class LanguageLayer {
       injectionPointsByType,
       tree,
       injectionPointVersion,
+      existingCombinedMembers,
+      affectedCombinedGroups,
     );
   }
 
@@ -4898,6 +4944,8 @@ class LanguageLayer {
     injectionPointsByType,
     tree,
     injectionPointVersion,
+    existingCombinedMembers = [],
+    affectedCombinedGroups = [],
   ) {
     const plan = {
       nodes,
@@ -4906,6 +4954,9 @@ class LanguageLayer {
       nodeIndex: 0,
       injectionPointIndex: 0,
       candidates: [],
+      combinedCandidates: [],
+      existingCombinedMembers,
+      affectedCombinedGroups,
       recognizedLanguageNames: new Set(),
       unrecognizedLanguageNames: new Set(),
       grammarsByLanguageName: new Map(),
@@ -4919,19 +4970,27 @@ class LanguageLayer {
     };
     const chunkSize = Math.max(1, this.languageMode.injectionReconcileChunkSize);
 
-    if (this._advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion)) {
-      if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return;
-      return this._commitInjectionPlan(plan);
+    const commit = (completedPlan) => {
+      if (!completedPlan || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
+        this._discardPreparedCombinedMembers(plan);
+        return;
+      }
+      return this._commitInjectionPlan(completedPlan);
+    };
+    try {
+      if (this._advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion)) {
+        return commit(plan);
+      }
+    } catch (error) {
+      this._discardPreparedCombinedMembers(plan);
+      throw error;
     }
-
-    return this._finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion).then(
-      (completedPlan) => {
-        if (!completedPlan || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
-          return;
-        }
-        return this._commitInjectionPlan(completedPlan);
-      },
-    );
+    return this._finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion)
+      .then(commit)
+      .catch((error) => {
+        this._discardPreparedCombinedMembers(plan);
+        throw error;
+      });
   }
 
   _advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion) {
@@ -4982,7 +5041,7 @@ class LanguageLayer {
                     plan.stale = true;
                     return true;
                   }
-                  plan.candidates.push({
+                  const candidate = {
                     grammar,
                     injectionPoint,
                     languageName,
@@ -4992,7 +5051,14 @@ class LanguageLayer {
                       injectionNodes,
                       injectionPoint,
                     ),
-                  });
+                  };
+                  if (injectionPoint.combined) {
+                    // Prepare cheap range markers inside the bounded candidate
+                    // tasks. They are unpublished until the plan commits and
+                    // are discarded if a callback or parent snapshot fails.
+                    plan.combinedCandidates.push(candidate);
+                    candidate.preparedMember = this._prepareCombinedInjectionMember(candidate);
+                  } else plan.candidates.push(candidate);
                 }
               }
             } else {
@@ -5064,7 +5130,10 @@ class LanguageLayer {
   }
 
   _commitInjectionPlan(plan) {
-    if (plan.stale) return;
+    if (plan.stale) {
+      this._discardPreparedCombinedMembers(plan);
+      return;
+    }
 
     const createdMarkers = [];
     const markersToUpdate = new Map();
@@ -5092,6 +5161,7 @@ class LanguageLayer {
 
         markersToUpdate.set(marker, nodeRangeSet);
       }
+      this._commitCombinedInjections(plan, markersToUpdate, createdMarkers);
     } catch (error) {
       for (const marker of createdMarkers) {
         this.childLayerMarkers.delete(marker);
@@ -5130,6 +5200,125 @@ class LanguageLayer {
     }
 
     return promises.length > 0 ? Promise.all(promises) : undefined;
+  }
+
+  _prepareCombinedInjectionMember({ injectionPoint, injectionRange, nodeRangeSet }) {
+    // Resolve child subtraction per member; apply parent intersection and
+    // newline/whitespace joins only after every member has been combined.
+    const memberRanges = new NodeRangeSet(null, [], injectionPoint);
+    memberRanges.nodeSpecs = nodeRangeSet.nodeSpecs;
+    memberRanges.newlinesBetween = false;
+    const ranges = memberRanges.getRanges(this.buffer);
+    if (ranges.length === 0) return null;
+    this.combinedInjectionMembersLayer ??= this.buffer.addMarkerLayer();
+    return {
+      marker: this.combinedInjectionMembersLayer.markRange(injectionRange),
+      contentMarkers: ranges.map((range) =>
+        this.combinedInjectionMembersLayer.markRange(rangeForNode(range)),
+      ),
+      initialRange: injectionRange,
+      initialNodeSpecs: ranges,
+    };
+  }
+
+  _discardPreparedCombinedMembers(plan) {
+    for (const candidate of plan.combinedCandidates) {
+      const member = candidate.preparedMember;
+      if (!member || member.group) continue;
+      member.marker.destroy();
+      for (const marker of member.contentMarkers) marker.destroy();
+    }
+  }
+
+  _commitCombinedInjections(plan, markersToUpdate, createdMarkers) {
+    if (
+      plan.combinedCandidates.length === 0 &&
+      plan.existingCombinedMembers.length === 0 &&
+      plan.affectedCombinedGroups.length === 0
+    )
+      return;
+    const changedGroups = new Set(plan.affectedCombinedGroups);
+    for (const member of plan.existingCombinedMembers) {
+      member.group.members.delete(member);
+      member.marker.destroy();
+      for (const marker of member.contentMarkers) marker.destroy();
+      changedGroups.add(member.group);
+    }
+    for (const candidate of plan.combinedCandidates) {
+      const { injectionPoint, grammar, languageName, preparedMember: member } = candidate;
+      if (!member) continue;
+      let byLanguage = this.combinedInjectionGroups.get(injectionPoint);
+      if (!byLanguage) {
+        byLanguage = new Map();
+        this.combinedInjectionGroups.set(injectionPoint, byLanguage);
+      }
+      let group = byLanguage.get(languageName);
+      if (group && group.grammar !== grammar) {
+        // A newly available grammar can replace the previous exact alias
+        // target. The full rescan has already retired its old members.
+        group.marker?.languageLayer.destroy();
+        group.marker = null;
+        group = null;
+      }
+      if (!group) {
+        group = { injectionPoint, grammar, languageName, members: new Set(), marker: null };
+        byLanguage.set(languageName, group);
+      }
+      member.group = group;
+      member.marker.combinedInjectionMember = member;
+      group.members.add(member);
+      changedGroups.add(group);
+    }
+    for (const group of changedGroups) {
+      if (group.members.size === 0) {
+        if (group.marker) {
+          this.languageMode.emitRangeUpdate(group.marker.getRange());
+          group.marker.languageLayer.destroy();
+        }
+        const byLanguage = this.combinedInjectionGroups.get(group.injectionPoint);
+        if (byLanguage?.get(group.languageName) === group) byLanguage.delete(group.languageName);
+        if (byLanguage?.size === 0) this.combinedInjectionGroups.delete(group.injectionPoint);
+        continue;
+      }
+      const nodes = [];
+      let extent = null;
+      for (const member of group.members) {
+        const range = member.initialRange ?? member.marker.getRange();
+        extent = extent ? extent.union(range) : range;
+        if (member.initialNodeSpecs) {
+          nodes.push(...member.initialNodeSpecs);
+          member.initialNodeSpecs = null;
+          member.initialRange = null;
+        } else {
+          for (const marker of member.contentMarkers) {
+            nodes.push(rangeToTreeSitterRangeSpec(marker.getRange(), this.buffer));
+          }
+        }
+      }
+      const ranges = new NodeRangeSet(plan.nodeRangeSet, nodes, {
+        ...group.injectionPoint,
+        includeChildren: true,
+      });
+      if (!group.marker) {
+        const marker = this.languageMode.injectionsMarkerLayer.markRange(extent);
+        createdMarkers.push(marker);
+        marker.combinedInjectionGroup = group;
+        marker.parentLanguageLayer = this;
+        marker.languageString = group.languageName;
+        marker.languageLayer = new LanguageLayer(
+          marker,
+          this.languageMode,
+          group.grammar,
+          this.depth + 1,
+          group.injectionPoint,
+        );
+        this.childLayerMarkers.add(marker);
+        group.marker = marker;
+      } else {
+        group.marker.setRange(extent);
+      }
+      markersToUpdate.set(group.marker, ranges);
+    }
   }
   _treeEditForBufferChange(start, oldEnd, newEnd, oldText, newText) {
     let startIndex = this.buffer.characterIndexForPosition(start);
