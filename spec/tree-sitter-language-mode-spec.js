@@ -305,6 +305,22 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("query capture groups", () => {
+    async function buildChunkedMode(source, query) {
+      jasmine.useRealClock();
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("tagsQuery", query);
+      buffer.setText(source);
+      const languageMode = new TreeSitterLanguageMode({
+        grammar,
+        buffer,
+        queryCaptureChunkRows: 1,
+        queryCaptureChunkCodeUnits: 20,
+      });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      return languageMode;
+    }
+
     it("returns resolved captures without exposing language layers", async () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("tagsQuery", "(identifier) @name");
@@ -363,6 +379,115 @@ describe("TreeSitterLanguageMode", () => {
         registration.dispose();
         injectedGrammar.deactivate();
       }
+    });
+
+    it("yields without changing capture order, duplicates, predicates, or enclosing captures", async () => {
+      const languageMode = await buildChunkedMode(
+        'function alpha() {\r\n  const beta = "zażółć🙂";\r\n  return gamma;\r\n}\r\nconst delta = epsilon;',
+        scm`
+          (program) @container
+          (function_declaration name: (identifier) @name) @definition.function
+          (identifier) @name @name
+          ((identifier) @ignored (#set! capture.shy true))
+          (string) @string
+        `,
+      );
+      const layer = languageMode.rootLanguageLayer;
+      const resolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
+      const extent = layer.getExtent();
+      const expected = layer.queries.tagsQuery
+        .captures(layer.tree.rootNode, {
+          startPosition: extent.start,
+          endPosition: extent.end,
+        })
+        .filter((capture) => resolver.store(capture, { boundaries: false }));
+      resolver.destroy();
+      const yieldScan = languageMode._yieldForQueryCaptureScan.bind(languageMode);
+      spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(() => {
+        layer.scopeResolver.reset();
+        return yieldScan();
+      });
+      const describeCapture = (capture) => [
+        capture.name,
+        capture.patternIndex,
+        capture.node.id,
+        capture.node.startIndex,
+        capture.node.endIndex,
+      ];
+
+      const groups = await languageMode.getQueryCaptureGroups("tagsQuery");
+
+      expect(languageMode._yieldForQueryCaptureScan).toHaveBeenCalled();
+      expect(groups[0].captures.map(describeCapture)).toEqual(expected.map(describeCapture));
+      expect(groups[0].captures.filter(({ name }) => name === "container").length).toBe(1);
+      expect(groups[0].captures.filter(({ name }) => name === "name").length).toBeGreaterThan(5);
+    });
+
+    it("stops a yielded query when its cancellation signal is aborted", async () => {
+      const languageMode = await buildChunkedMode(
+        "const alpha = beta;\nconst gamma = delta;",
+        "(identifier) @name",
+      );
+      const controller = new AbortController();
+      spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(() => {
+        controller.abort();
+        return Promise.resolve();
+      });
+      const captures = spyOn(
+        languageMode.rootLanguageLayer.queries.tagsQuery,
+        "captures",
+      ).and.callThrough();
+
+      const groups = await languageMode.getQueryCaptureGroups("tagsQuery", {
+        signal: controller.signal,
+      });
+
+      expect(groups).toEqual([]);
+      expect(captures).toHaveBeenCalledTimes(1);
+    });
+
+    it("abandons captures from a tree edited between batches", async () => {
+      const languageMode = await buildChunkedMode(
+        "const alpha = beta;\nconst gamma = delta;",
+        "(identifier) @name",
+      );
+      spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(() => {
+        buffer.insert(buffer.getEndPosition(), " x");
+        return Promise.resolve();
+      });
+
+      expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
+      await languageMode.atTransactionEnd();
+    });
+
+    it("abandons a replaced query before calling its released Wasm handle", async () => {
+      const languageMode = await buildChunkedMode(
+        "const alpha = beta;\nconst gamma = delta;",
+        "(identifier) @name",
+      );
+      const layer = languageMode.rootLanguageLayer;
+      const oldQuery = layer.queries.tagsQuery;
+      const captures = spyOn(oldQuery, "captures").and.callThrough();
+      spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(async () => {
+        await grammar.setQueryForTest("tagsQuery", "(identifier) @replacement");
+        await layer.queryReloadPromise;
+      });
+
+      expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
+      expect(captures).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops safely when its language mode is destroyed between batches", async () => {
+      const languageMode = await buildChunkedMode(
+        "const alpha = beta;\nconst gamma = delta;",
+        "(identifier) @name",
+      );
+      spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(() => {
+        languageMode.destroy();
+        return Promise.resolve();
+      });
+
+      expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
     });
   });
 

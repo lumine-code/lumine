@@ -64,6 +64,11 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
 const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
+// Full-buffer queries can return hundreds of thousands of captures. Keep both
+// query execution and predicate resolution in small tasks so background symbol
+// refreshes let typing and painting continue between batches.
+const QUERY_CAPTURE_CHUNK_ROWS = 200;
+const QUERY_CAPTURE_CHUNK_CODE_UNITS = 8192;
 // Newly-created injection layers often become ready together because they
 // share a grammar's cached language and queries. Without a shared budget,
 // their first parses all begin in the same microtask checkpoint and each may
@@ -264,6 +269,8 @@ class TreeSitterLanguageMode {
     injectionCandidateChunkRows,
     injectionCandidateChunkCodeUnits,
     injectionReconcileChunkSize,
+    queryCaptureChunkRows,
+    queryCaptureChunkCodeUnits,
     initialInjectionUpdateBudgetMs,
     maxIdleParsersPerLanguage,
   }) {
@@ -283,6 +290,8 @@ class TreeSitterLanguageMode {
       injectionCandidateChunkCodeUnits ?? INJECTION_CANDIDATE_CHUNK_CODE_UNITS;
     this.injectionReconcileChunkSize =
       injectionReconcileChunkSize ?? INJECTION_RECONCILE_CHUNK_SIZE;
+    this.queryCaptureChunkRows = queryCaptureChunkRows ?? QUERY_CAPTURE_CHUNK_ROWS;
+    this.queryCaptureChunkCodeUnits = queryCaptureChunkCodeUnits ?? QUERY_CAPTURE_CHUNK_CODE_UNITS;
     this.initialInjectionUpdateBudgetMs =
       initialInjectionUpdateBudgetMs ?? INITIAL_INJECTION_UPDATE_BUDGET_MILLIS;
     this.maxIdleParsersPerLanguage = maxIdleParsersPerLanguage ?? MAX_IDLE_PARSERS_PER_LANGUAGE;
@@ -527,6 +536,10 @@ class TreeSitterLanguageMode {
   }
 
   _yieldForInjectionReconcile() {
+    return new Promise((resolve) => setImmediate(resolve));
+  }
+
+  _yieldForQueryCaptureScan() {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
@@ -2017,29 +2030,91 @@ class TreeSitterLanguageMode {
       }
     }
 
+    const snapshots = layers.map((layer) => ({
+      layer,
+      tree: layer?.tree,
+      query: layer?.queries?.[queryType],
+      injectionPointVersion: layer?.injectionPointVersion,
+    }));
+    const isCurrent = () => this.queryCaptureSnapshotIsCurrent(snapshots, queryType, signal);
     const groups = [];
-    for (const layer of layers) {
-      const query = layer?.queries?.[queryType];
-      if (!query || !layer.tree) continue;
+    for (const { layer, tree, query } of snapshots) {
+      if (!query || !tree) continue;
       const extent = layer.getExtent();
-      const captures = query.captures(layer.tree.rootNode, {
-        startPosition: extent.start,
-        endPosition: extent.end,
-      });
       const resolvedCaptures = [];
+      // Highlight and fold requests also use the layer's resolver while this
+      // scan yields. Give the scan its own state so capture.final and capture.shy
+      // continue to apply across the complete, ordered stream.
       layer.scopeResolver.reset();
+      const scopeResolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
       try {
-        for (const capture of captures) {
-          if (layer.scopeResolver.store(capture, { boundaries: false })) {
-            resolvedCaptures.push(capture);
+        const chunkRows = Math.max(1, this.queryCaptureChunkRows);
+        const chunkCodeUnits = Math.max(1, this.queryCaptureChunkCodeUnits);
+        const endIndex = this.buffer.characterIndexForPosition(extent.end);
+        let start = extent.start;
+        let startIndex = this.buffer.characterIndexForPosition(start);
+        let firstChunk = true;
+
+        do {
+          if (!isCurrent()) return [];
+          const endRow = Math.min(extent.end.row, start.row + chunkRows);
+          const rowEnd = endRow === extent.end.row ? extent.end : new Point(endRow, 0);
+          const rowEndIndex = this.buffer.characterIndexForPosition(rowEnd);
+          const chunkEndIndex = Math.min(endIndex, startIndex + chunkCodeUnits, rowEndIndex);
+          const end =
+            chunkEndIndex === endIndex
+              ? extent.end
+              : this.buffer.positionForCharacterIndex(chunkEndIndex);
+          const captures = query.captures(tree.rootNode, {
+            startPosition: start,
+            endPosition: end,
+          });
+
+          for (const capture of captures) {
+            // Range queries also return captures enclosing the window. Their
+            // original starting position owns them: later windows skip them,
+            // while genuine duplicate captures within that first window stay
+            // intact and in the order supplied by Tree-sitter.
+            if (!firstChunk && comparePoints(capture.node.startPosition, start) < 0) continue;
+            if (scopeResolver.store(capture, { boundaries: false })) {
+              resolvedCaptures.push(capture);
+            }
           }
-        }
+
+          if (chunkEndIndex >= endIndex) break;
+          start = end;
+          startIndex = chunkEndIndex;
+          firstChunk = false;
+          await this._yieldForQueryCaptureScan();
+        } while (true);
       } finally {
-        layer.scopeResolver.reset();
+        scopeResolver.destroy();
       }
       groups.push({ grammar: layer.grammar, captures: resolvedCaptures });
     }
+    if (!isCurrent()) return [];
     return groups;
+  }
+
+  queryCaptureSnapshotIsCurrent(snapshots, queryType, signal) {
+    if (this.destroyed || signal?.aborted || this.resolveNextTransaction) return false;
+    for (const { layer, tree, query, injectionPointVersion } of snapshots) {
+      if (
+        layer?.destroyed ||
+        layer?.tree !== tree ||
+        layer?.queries?.[queryType] !== query ||
+        layer?.injectionPointVersion !== injectionPointVersion ||
+        layer?.queryReloadPromise ||
+        layer?.injectionPopulationDrainPromise ||
+        tree?.rootNode.hasChanges
+      ) {
+        return false;
+      }
+    }
+    const layers = this.getAllLanguageLayers();
+    return (
+      layers.length === snapshots.length && layers.every((layer, i) => layer === snapshots[i].layer)
+    );
   }
 
   /**
