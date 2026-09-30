@@ -148,6 +148,9 @@
     "shift-escape": "pane:toggle-pending-item"
   },
   "lumine-panel.modal": {
+    // Closing a dialog follows its cancellation lifecycle, including pending
+    // prompts, instead of closing the document behind its input field.
+    "cmdorctrl-w": "core:cancel",
     // More specific than the lumine-workspace binding above, so inside a modal
     // Shift-Escape walks the breadcrumb trail instead of toggling the pending
     // item.

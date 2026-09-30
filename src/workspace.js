@@ -2575,9 +2575,9 @@ module.exports = class Workspace extends Model {
    * Its neighbours here deliberately differ: {@link #saveActivePaneItem},
    * {@link #saveActivePaneItemAs} and {@link #closeActivePaneItemOrEmptyPaneOrWindow} are
    * pinned to the workspace center. They back `core:save`, `core:save-as` and
-   * `core:close`, whose keystrokes fire from anywhere in the window, so
-   * following focus would make Ctrl-S in a search field or a dock try to save
-   * that instead of the document being edited.
+   * the center fallback of `core:close`. Saving from a search field or a dock
+   * still saves the document being edited; closing from a dock instead
+   * resolves its owning pane from the command's dispatch target.
    */
   destroyActivePaneItem() {
     return this.getActivePane().destroyActiveItem();

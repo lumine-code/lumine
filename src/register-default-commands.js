@@ -8,6 +8,12 @@ function settleSaveCommand(result) {
   });
 }
 
+function dockForElement(workspace, element) {
+  return [workspace.getLeftDock(), workspace.getRightDock(), workspace.getBottomDock()].find(
+    (dock) => dock.getElement() === element,
+  );
+}
+
 module.exports = function ({
   commandRegistry,
   commandInstaller,
@@ -328,9 +334,23 @@ module.exports = function ({
         },
       },
       "core:close": {
-        description: "Close the active tab, or the empty pane, or the window.",
-        didDispatch: function () {
-          return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
+        description: "Close the focused tab, or the empty pane, or the window.",
+        didDispatch: function (event) {
+          const workspace = this.getModel();
+          const dockElement = event?.target?.closest?.("lumine-dock");
+          if (dockElement) {
+            // Follow the dispatch surface, including its nested input fields,
+            // rather than a dock that merely retained the last active claim.
+            const dock = dockForElement(workspace, dockElement);
+            const pane = event.target.closest("lumine-pane")?.getModel?.() ?? dock?.getActivePane();
+            if (pane?.getActiveItem() != null) return pane.destroyActiveItem();
+            if (dock?.getPanes().length > 1) return pane.close();
+            return dock?.hide();
+          }
+          // Legacy panels close through their own lifecycle handlers. Fixed
+          // header/footer controls must never close the document behind them.
+          if (event?.target?.closest?.("lumine-panel")) return;
+          return workspace.closeActivePaneItemOrEmptyPaneOrWindow();
         },
       },
       "core:save": function () {
@@ -381,11 +401,7 @@ module.exports = function ({
         description: "Hide this dock.",
         didDispatch: function () {
           const workspace = this.closest("lumine-workspace")?.getModel?.();
-          const dock = [
-            workspace?.getLeftDock(),
-            workspace?.getRightDock(),
-            workspace?.getBottomDock(),
-          ].find((candidate) => candidate?.getElement() === this);
+          const dock = workspace && dockForElement(workspace, this);
           return dock?.hide();
         },
       },
