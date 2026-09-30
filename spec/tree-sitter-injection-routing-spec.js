@@ -5,7 +5,7 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 const { Point, Range } = TextBuffer;
 
-describe("Tree-sitter leading injection change routing", () => {
+describe("Tree-sitter injection change routing", () => {
   for (const runtime of ["wasm", "node"]) {
     describe(runtime, () => {
       let registry, grammars, buffers, rootGrammar, childGrammar, point;
@@ -107,6 +107,7 @@ describe("Tree-sitter leading injection change routing", () => {
         const [layer] = layers(mode);
         const tree = layer.tree;
         const ranges = layer.getCurrentRanges();
+        const foldRowCache = mode.isFoldableCache;
         const boundaries = { cached: true };
         const boundaryRange = layer.getExtent();
         layer.foldResolver.boundaries = boundaries;
@@ -125,6 +126,7 @@ describe("Tree-sitter leading injection change routing", () => {
         expect(layer.foldResolver.reset).toHaveBeenCalledTimes(1);
         expect(layer.tree).toBe(tree);
         expect(layer.getCurrentRanges()).toBe(ranges);
+        expect(mode.isFoldableCache).toBe(foldRowCache);
         expect(layer.foldResolver.boundaries).toBeNull();
         expect(layer.foldResolver.boundariesRange).toBeNull();
         expect(layer.foldResolver.boundariesTree).toBeNull();
@@ -151,6 +153,95 @@ describe("Tree-sitter leading injection change routing", () => {
         await expectFresh(buffer, mode);
       });
 
+      it("keeps the tree and ranges while invalidating an unchanged earlier injection's fold cache", async () => {
+        const { buffer, mode } = await start("injected = 3\nsuffix = 0\n");
+        const [layer] = layers(mode);
+        const tree = layer.tree;
+        const ranges = layer.getCurrentRanges();
+        const foldRowCache = mode.isFoldableCache;
+        const boundaries = { cached: true };
+        const boundaryRange = layer.getExtent();
+        layer.foldResolver.boundaries = boundaries;
+        layer.foldResolver.boundariesRange = boundaryRange;
+        layer.foldResolver.boundariesTree = tree;
+        layer.foldResolver.dividedFoldEndsByStartNodeId.set(7, [new Point(0, 0)]);
+        spyOn(layer, "handleTextChange").and.callThrough();
+        spyOn(tree, "edit").and.callThrough();
+        spyOn(layer.foldResolver, "reset").and.callThrough();
+
+        replace(buffer, "suffix", "rename");
+        await mode.atTransactionEnd();
+
+        expect(layer.handleTextChange).not.toHaveBeenCalled();
+        expect(tree.edit).not.toHaveBeenCalled();
+        expect(layer.foldResolver.reset).toHaveBeenCalledTimes(1);
+        expect(layer.tree).toBe(tree);
+        expect(layer.getCurrentRanges()).toBe(ranges);
+        expect(mode.isFoldableCache).toBe(foldRowCache);
+        expect(layer.foldResolver.boundaries).toBeNull();
+        expect(layer.foldResolver.boundariesRange).toBeNull();
+        expect(layer.foldResolver.boundariesTree).toBeNull();
+        expect(layer.foldResolver.dividedFoldEndsByStartNodeId.size).toBe(0);
+        await expectFresh(buffer, mode);
+      });
+
+      it("routes equal-extent edits that touch the trailing owner boundary", async () => {
+        const { buffer, mode } = await start("injected = 3   \nsuffix = 0\n");
+        const [layer] = layers(mode);
+        const tree = layer.tree;
+        const boundaryEnd = layer.getExtent().end;
+        spyOn(layer, "handleTextChange").and.callThrough();
+        spyOn(tree, "edit").and.callThrough();
+
+        buffer.setTextInRange(
+          new Range(boundaryEnd, new Point(boundaryEnd.row, boundaryEnd.column + 1)),
+          "\t",
+        );
+
+        expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
+        expect(tree.edit).toHaveBeenCalledTimes(1);
+        await mode.atTransactionEnd();
+        await expectFresh(buffer, mode);
+      });
+
+      it("invalidates the boolean fold cache once when skipped content ranges are unknown", async () => {
+        const { buffer, mode } = await start("first = 3\nsecond = 4\nsuffix = 0\n");
+        const children = layers(mode);
+        const trees = children.map((layer) => layer.tree);
+        expect(children.length).toBe(2);
+        let cache = mode.isFoldableCache;
+        let replacements = 0;
+        const originalCache = cache;
+        Object.defineProperty(mode, "isFoldableCache", {
+          configurable: true,
+          enumerable: true,
+          get: () => cache,
+          set: (value) => {
+            cache = value;
+            replacements++;
+          },
+        });
+        for (const layer of children) {
+          layer.currentRangesCache = undefined;
+          spyOn(layer, "handleTextChange").and.callThrough();
+          spyOn(layer.tree, "edit").and.callThrough();
+        }
+
+        replace(buffer, "suffix", "rename");
+        expect(cache).not.toBe(originalCache);
+        expect(replacements).toBe(1);
+        await mode.atTransactionEnd();
+
+        expect(replacements).toBe(1);
+        for (let index = 0; index < children.length; index++) {
+          const layer = children[index];
+          expect(layer.handleTextChange).not.toHaveBeenCalled();
+          expect(trees[index].edit).not.toHaveBeenCalled();
+          expect(layer.tree).toBe(trees[index]);
+        }
+        await expectFresh(buffer, mode);
+      });
+
       it("reevaluates fold predicates that inspect text before the injection on its row", async () => {
         rootGrammar.removeInjectionPoint(point);
         point = {
@@ -171,6 +262,7 @@ describe("Tree-sitter leading injection change routing", () => {
         const tree = layer.tree;
         const ranges = layer.getCurrentRanges();
         expect(mode.getFoldableRanges().length).toBe(1);
+        expect(mode.isFoldableAtRow(0)).toBe(true);
         expect(layer.foldResolver.boundariesTree).toBe(tree);
         spyOn(layer, "handleTextChange").and.callThrough();
         spyOn(tree, "edit").and.callThrough();
@@ -182,8 +274,10 @@ describe("Tree-sitter leading injection change routing", () => {
           expect(layer.tree).toBe(tree);
           expect(layer.getCurrentRanges()).toBe(ranges);
           expect(mode.getFoldableRanges()).toEqual([]);
+          expect(mode.isFoldableAtRow(0)).toBe(false);
         });
         await mode.atTransactionEnd();
+        expect(mode.isFoldableAtRow(0)).toBe(false);
         await expectFresh(buffer, mode);
 
         const currentTree = layer.tree;
@@ -193,9 +287,73 @@ describe("Tree-sitter leading injection change routing", () => {
           expect(layer.tree).toBe(currentTree);
           expect(layer.getCurrentRanges()).toBe(currentRanges);
           expect(mode.getFoldableRanges().length).toBe(1);
+          expect(mode.isFoldableAtRow(0)).toBe(true);
         });
         await mode.atTransactionEnd();
         expect(mode.getFoldableRanges().length).toBe(1);
+        expect(mode.isFoldableAtRow(0)).toBe(true);
+        await expectFresh(buffer, mode);
+      });
+
+      it("reevaluates fold predicates that inspect text after the injection on its row", async () => {
+        rootGrammar.removeInjectionPoint(point);
+        point = {
+          type: "string",
+          language: () => "routing-child",
+          content: (node) => node,
+          includeChildren: true,
+        };
+        rootGrammar.addInjectionPoint(point);
+        await childGrammar.setQueryForTest(
+          "foldsQuery",
+          `((string) @fold
+            (#is? test.lastTextOnRow true)
+            (#set! fold.endAt endPosition))`,
+        );
+        const { buffer, mode } = await start('"""value\nmore\n"""   \n');
+        const [layer] = layers(mode);
+        const tree = layer.tree;
+        const ranges = layer.getCurrentRanges();
+        const end = layer.getExtent().end;
+        const suffix = new Range([end.row, end.column + 1], [end.row, end.column + 2]);
+        expect(mode.getFoldableRanges().length).toBe(1);
+        expect(mode.isFoldableAtRow(0)).toBe(true);
+        expect(layer.foldResolver.getFoldRangeForRow(0)).not.toBeNull();
+        expect(layer.foldResolver.boundariesTree).toBe(tree);
+        spyOn(layer, "handleTextChange").and.callThrough();
+        spyOn(tree, "edit").and.callThrough();
+
+        buffer.transact(() => {
+          buffer.setTextInRange(suffix, ";");
+          expect(layer.handleTextChange).not.toHaveBeenCalled();
+          expect(tree.edit).not.toHaveBeenCalled();
+          expect(layer.tree).toBe(tree);
+          expect(layer.getCurrentRanges()).toBe(ranges);
+          expect(mode.getFoldableRanges()).toEqual([]);
+          expect(layer.foldResolver.getFoldRangeForRow(0)).toBeNull();
+          expect(mode.isFoldableAtRow(0)).toBe(false);
+        });
+        await mode.atTransactionEnd();
+        expect(layers(mode)).toEqual([layer]);
+        expect(mode.isFoldableAtRow(0)).toBe(false);
+        await expectFresh(buffer, mode);
+
+        const currentTree = layer.tree;
+        const currentRanges = layer.getCurrentRanges();
+        buffer.transact(() => {
+          buffer.setTextInRange(suffix, " ");
+          expect(layer.handleTextChange).not.toHaveBeenCalled();
+          expect(tree.edit).not.toHaveBeenCalled();
+          expect(layer.tree).toBe(currentTree);
+          expect(layer.getCurrentRanges()).toBe(currentRanges);
+          expect(mode.getFoldableRanges().length).toBe(1);
+          expect(layer.foldResolver.getFoldRangeForRow(0)).not.toBeNull();
+          expect(mode.isFoldableAtRow(0)).toBe(true);
+        });
+        await mode.atTransactionEnd();
+        expect(layers(mode)).toEqual([layer]);
+        expect(mode.getFoldableRanges().length).toBe(1);
+        expect(mode.isFoldableAtRow(0)).toBe(true);
         await expectFresh(buffer, mode);
       });
 

@@ -2125,7 +2125,7 @@ describe("TreeSitterLanguageMode", () => {
             .sort((a, b) => a.getRange().compare(b.getRange()));
         }
 
-        it("skips an injection entirely when a suffix edit starts after its outer marker", async () => {
+        it("skips syntax updates but invalidates folds when a suffix edit starts after its outer marker", async () => {
           const languageMode = await startTemplateLanguageMode(
             "const value = html `<div>text</div>`; const suffix = tailValue;",
           );
@@ -2147,14 +2147,12 @@ describe("TreeSitterLanguageMode", () => {
 
           expect(htmlLayer.handleTextChange).not.toHaveBeenCalled();
           expect(originalTree.edit).not.toHaveBeenCalled();
-          expect(htmlLayer.foldResolver.reset).not.toHaveBeenCalled();
+          expect(htmlLayer.foldResolver.reset).toHaveBeenCalledTimes(1);
           expect(htmlLayer.tree).toBe(originalTree);
           expect(htmlLayer.getCurrentRanges()).toBe(originalRanges);
-          expect(htmlLayer.foldResolver.boundaries).toBe(cachedBoundaries);
-          expect(htmlLayer.foldResolver.boundariesRange).toBe(cachedBoundaryRange);
-          expect(htmlLayer.foldResolver.dividedFoldEndsByStartNodeId.get(7)).toEqual([
-            new Point(0, 0),
-          ]);
+          expect(htmlLayer.foldResolver.boundaries).toBeNull();
+          expect(htmlLayer.foldResolver.boundariesRange).toBeNull();
+          expect(htmlLayer.foldResolver.dividedFoldEndsByStartNodeId.size).toBe(0);
         });
 
         it("skips an earlier sibling but translates a later sibling", async () => {

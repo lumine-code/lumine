@@ -672,6 +672,8 @@ class TreeSitterLanguageMode {
 
     const sameExtent =
       edit.oldEndIndex === edit.newEndIndex && edit.oldEndPosition.isEqual(edit.newEndPosition);
+    const changedEndRow = Math.max(edit.oldEndPosition.row, edit.newEndPosition.row);
+    let foldRowCacheInvalidated = false;
     for (const marker of this.injectionsMarkerLayer.getMarkers()) {
       // Marker layers have already incorporated this buffer splice. If an
       // injection still ends strictly before the edit starts, neither its
@@ -680,21 +682,36 @@ class TreeSitterLanguageMode {
       // non-exclusive by default, so an insertion at either edge may become
       // part of the injection.
       const markerRange = marker.getRange();
-      if (markerRange.end.isLessThan(edit.startPosition)) continue;
       const layer = marker.languageLayer;
       // An equal-extent edit strictly before both the owner and all cached
       // content ranges cannot change this layer's source or coordinates. The
       // content check also protects injections that return ranges outside
-      // their owner node. Unknown ranges still take the full update path.
+      // their owner node. Unknown ranges keep the full path for leading edits.
       if (
-        sameExtent &&
-        edit.newEndPosition.isLessThan(markerRange.start) &&
-        layer.currentRangesCache?.length &&
-        layer.currentRangesCache.every((range) => edit.newEndPosition.isLessThan(range.start))
+        markerRange.end.isLessThan(edit.startPosition) ||
+        (sameExtent &&
+          edit.newEndPosition.isLessThan(markerRange.start) &&
+          layer.currentRangesCache?.length &&
+          layer.currentRangesCache.every((range) => edit.newEndPosition.isLessThan(range.start)))
       ) {
         // Fold predicates can inspect the full buffer row outside the layer's
         // ranges, so unchanged syntax does not imply unchanged fold captures.
         layer.foldResolver?.reset();
+        // Their boolean row cache needs invalidation as well, even if the fold
+        // starts on a different row. Unrelated row contexts retain the cache;
+        // unknown content ranges conservatively invalidate it once per edit.
+        const ranges = layer.currentRangesCache;
+        if (
+          !foldRowCacheInvalidated &&
+          (!ranges?.length ||
+            ranges.some(
+              (range) =>
+                range.start.row <= changedEndRow && range.end.row >= edit.startPosition.row,
+            ))
+        ) {
+          this.isFoldableCache = [];
+          foldRowCacheInvalidated = true;
+        }
         continue;
       }
       layer.handleTextChange(edit, oldText, newText);
