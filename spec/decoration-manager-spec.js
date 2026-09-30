@@ -16,6 +16,89 @@ describe("DecorationManager", function () {
 
   afterEach(() => buffer.destroy());
 
+  describe("decoration layer teardown", () => {
+    it("releases all layer bookkeeping when layer decorations are repeatedly destroyed", () => {
+      for (let i = 0; i < 3; i++) {
+        const layer = editor.addMarkerLayer();
+        const decoration = decorationManager.decorateMarkerLayer(layer, {
+          type: "text",
+          class: "semantic-tokens",
+        });
+        const subscription = decorationManager.layerUpdateDisposablesByLayer.get(layer);
+        spyOn(subscription, "dispose").and.callThrough();
+        expect(decorationManager.decorationCountsByLayer.get(layer)).toBe(1);
+
+        decoration.destroy();
+        decoration.destroy();
+        expect(decorationManager.decorationCountsByLayer.size).toBe(0);
+        expect(decorationManager.markerDecorationCountsByLayer.size).toBe(0);
+        expect(decorationManager.layerDecorationsByMarkerLayer.size).toBe(0);
+        expect(decorationManager.layerUpdateDisposablesByLayer.has(layer)).toBe(false);
+        expect(subscription.dispose).toHaveBeenCalledTimes(1);
+        layer.destroy();
+      }
+    });
+
+    it("counts marker decorations separately when their layer decoration is destroyed", () => {
+      const layer = editor.addMarkerLayer();
+      const marker = layer.markBufferRange([
+        [0, 0],
+        [0, 1],
+      ]);
+      const layerDecoration = decorationManager.decorateMarkerLayer(layer, { type: "text" });
+      const first = decorationManager.decorateMarker(marker, { type: "highlight", class: "one" });
+      const second = decorationManager.decorateMarker(marker, { type: "highlight", class: "two" });
+      expect(decorationManager.decorationCountsByLayer.get(layer)).toBe(3);
+      expect(decorationManager.markerDecorationCountsByLayer.get(layer)).toBe(2);
+
+      layerDecoration.destroy();
+      expect(decorationManager.decorationCountsByLayer.get(layer)).toBe(2);
+      expect(decorationManager.markerDecorationCountsByLayer.get(layer)).toBe(2);
+      first.destroy();
+      expect(decorationManager.decorationCountsByLayer.get(layer)).toBe(1);
+      expect(decorationManager.markerDecorationCountsByLayer.get(layer)).toBe(1);
+      expect(
+        decorationManager.decorationPropertiesByMarkerForScreenRowRange(0, 1).get(marker),
+      ).toEqual([second.getProperties()]);
+
+      second.destroy();
+      expect(decorationManager.decorationCountsByLayer.size).toBe(0);
+      expect(decorationManager.markerDecorationCountsByLayer.size).toBe(0);
+      expect(decorationManager.decorationsByMarker.size).toBe(0);
+      expect(decorationManager.layerDecorationsByMarkerLayer.size).toBe(0);
+      expect(decorationManager.layerUpdateDisposablesByLayer.has(layer)).toBe(false);
+    });
+
+    it("keeps a layer decoration active after its marker decoration is destroyed", () => {
+      const layer = editor.addMarkerLayer();
+      const marker = layer.markBufferRange([
+        [0, 0],
+        [0, 1],
+      ]);
+      const layerDecoration = decorationManager.decorateMarkerLayer(layer, {
+        type: "text",
+        class: "semantic-tokens",
+      });
+      const markerDecoration = decorationManager.decorateMarker(marker, { type: "highlight" });
+      const subscription = decorationManager.layerUpdateDisposablesByLayer.get(layer);
+      spyOn(subscription, "dispose").and.callThrough();
+
+      markerDecoration.destroy();
+      expect(decorationManager.decorationCountsByLayer.get(layer)).toBe(1);
+      expect(decorationManager.markerDecorationCountsByLayer.size).toBe(0);
+      expect(subscription.dispose).not.toHaveBeenCalled();
+      expect(
+        decorationManager.decorationPropertiesByMarkerForScreenRowRange(0, 1).get(marker),
+      ).toEqual([layerDecoration.getProperties()]);
+
+      layerDecoration.destroy();
+      expect(decorationManager.decorationCountsByLayer.size).toBe(0);
+      expect(decorationManager.layerDecorationsByMarkerLayer.size).toBe(0);
+      expect(decorationManager.layerUpdateDisposablesByLayer.has(layer)).toBe(false);
+      expect(subscription.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("decorations", function () {
     let [
       layer1Marker,

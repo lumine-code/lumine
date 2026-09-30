@@ -278,7 +278,7 @@ module.exports = class DecorationManager {
       if (decorations.size === 0) {
         this.layerDecorationsByMarkerLayer.delete(markerLayer);
       }
-      this.unobserveDecoratedLayer(markerLayer, true);
+      this.unobserveDecoratedLayer(markerLayer, false);
       this.emitDidUpdateDecorations();
     }
   }
@@ -304,12 +304,18 @@ module.exports = class DecorationManager {
     const newCount = this.decorationCountsByLayer.get(layer) - 1;
     if (newCount === 0) {
       this.layerUpdateDisposablesByLayer.get(layer).dispose();
+      this.layerUpdateDisposablesByLayer.delete(layer);
       this.decorationCountsByLayer.delete(layer);
     } else {
       this.decorationCountsByLayer.set(layer, newCount);
     }
     if (isMarkerDecoration) {
-      this.markerDecorationCountsByLayer.set(this.markerDecorationCountsByLayer.get(layer) - 1);
+      const newMarkerDecorationCount = this.markerDecorationCountsByLayer.get(layer) - 1;
+      if (newMarkerDecorationCount === 0) {
+        this.markerDecorationCountsByLayer.delete(layer);
+      } else {
+        this.markerDecorationCountsByLayer.set(layer, newMarkerDecorationCount);
+      }
     }
   }
 };
