@@ -2424,6 +2424,9 @@ module.exports = class TextEditorComponent {
   didDetach() {
     if (this.attached) {
       this.scrollAnimator.cancel();
+      this.focused = false;
+      this.stopCursorBlinking();
+      this.debouncedResumeCursorBlinking.cancel();
       if (this.softWrapDebounceTimer) {
         clearTimeout(this.softWrapDebounceTimer);
         this.softWrapDebounceTimer = null;
@@ -5142,8 +5145,13 @@ function debounce(fn, wait) {
     }
   }
 
-  return function () {
+  const debounced = function () {
     timestamp = Date.now();
     if (!timeout) timeout = setTimeout(later, wait);
   };
+  debounced.cancel = function () {
+    clearTimeout(timeout);
+    timeout = null;
+  };
+  return debounced;
 }

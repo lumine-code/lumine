@@ -983,6 +983,9 @@ module.exports = class TextEditor {
   destroy() {
     if (!this.alive) return;
     this.alive = false;
+    // Release the attached component while it is still reachable from the
+    // element. DOM removal may happen later, after these references are cleared.
+    this.component?.didDetach();
     this.disposables.dispose();
     this.displayLayer.destroy();
     for (let selection of this.selections.slice()) {

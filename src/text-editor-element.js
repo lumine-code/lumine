@@ -17,8 +17,8 @@ class TextEditorElement extends HTMLElement {
     // HTMLUnknownElement with none of this class on it, so every editor would
     // break somewhere downstream instead of at the call site. The component reads
     // any author-set value in its constructor, then sets its own in `buildShell`.
-    this.addEventListener("focus", (event) => this.getComponent().didFocus(event));
-    this.addEventListener("blur", (event) => this.getComponent().didBlur(event));
+    this.addEventListener("focus", (event) => this.component?.didFocus(event));
+    this.addEventListener("blur", (event) => this.component?.didBlur(event));
   }
 
   connectedCallback() {
@@ -28,7 +28,9 @@ class TextEditorElement extends HTMLElement {
 
   disconnectedCallback() {
     this.emitter.emit("did-detach");
-    this.getComponent().didDetach();
+    // A destroyed model has already released its component. Detaching must
+    // never create a replacement model through the lazy public accessor.
+    this.component?.didDetach();
   }
 
   static get observedAttributes() {
