@@ -3403,6 +3403,8 @@ class LanguageLayer {
     this.pendingQueryReloadTypes = new Set();
     this.queryReloadPromise = null;
     this.currentRangesCache = undefined;
+    this.lastIncludedRanges = null;
+    this.includedRangesAreCurrent = false;
 
     const handleInjectionPointChanges = () => {
       // When we add or remove injection points on this grammar, this language
@@ -3541,6 +3543,8 @@ class LanguageLayer {
     this.pendingInjectionPopulationRequests.length = 0;
     this.pendingQueryReloadTypes.clear();
     this.currentRangesCache = null;
+    this.lastIncludedRanges = null;
+    this.includedRangesAreCurrent = false;
 
     // Clean up all Tree-sitter trees.
     let temporaryTrees = this.temporaryTrees ?? [];
@@ -3943,7 +3947,24 @@ class LanguageLayer {
     if (this.foldResolver) {
       this.foldResolver.reset();
     }
-    this.currentRangesCache = undefined;
+    const sameExtent =
+      edit.oldEndIndex === edit.newEndIndex &&
+      Point.fromObject(edit.oldEndPosition).isEqual(edit.newEndPosition);
+    const editedRange = new Range(edit.startPosition, edit.oldEndPosition);
+    const containingRange = this.currentRangesCache
+      ? this.currentRangeContainingPoint(edit.startPosition)
+      : null;
+    // Equal-length edits wholly inside one included range (or wholly outside
+    // every range) cannot move any of its boundaries or absolute indices.
+    const rangesUnmoved =
+      sameExtent &&
+      this.currentRangesCache !== undefined &&
+      (containingRange?.containsRange(editedRange) ||
+        this.currentRangesLayer.findMarkers({ intersectsRange: editedRange }).length === 0);
+    if (!rangesUnmoved) {
+      this.currentRangesCache = undefined;
+      this.includedRangesAreCurrent = false;
+    }
 
     const { startPosition, oldEndPosition, newEndPosition } = edit;
 
@@ -4215,7 +4236,7 @@ class LanguageLayer {
       );
     }
 
-    if (includedRanges) {
+    if (includedRanges && !nodeRangeSet.rangesUnchanged) {
       this.setCurrentRanges(includedRanges);
     }
 
@@ -4385,6 +4406,8 @@ class LanguageLayer {
     }
 
     this.currentRangesCache = newRanges;
+    this.lastIncludedRanges = includedRanges;
+    this.includedRangesAreCurrent = true;
   }
 
   getCurrentRanges() {
@@ -4614,11 +4637,23 @@ class LanguageLayer {
     }
     if (
       this.childLayerMarkers.size === 0 &&
+      this.combinedInjectionGroups.size === 0 &&
       Object.keys(this.grammar.injectionPointsByType).length === 0
     ) {
       return;
     }
 
+    if (!nodeRangeSet && this.depth > 0) {
+      // Grammar and registration changes do not carry the parent update's
+      // range set. Preserve this layer's current included ranges when its
+      // descendants are rebuilt outside a buffer transaction.
+      nodeRangeSet = {
+        getRanges: (buffer) =>
+          (this.getCurrentRanges() ?? []).map((current) =>
+            rangeToTreeSitterRangeSpec(current, buffer),
+          ),
+      };
+    }
     this.pendingInjectionPopulationRequests.push({ range, nodeRangeSet });
     if (this.injectionPopulationDrainPromise) {
       return this.injectionPopulationDrainPromise;
@@ -4745,6 +4780,7 @@ class LanguageLayer {
     // inspection, this bug doesn't seem to be limited to `web-tree-sitter`.
     if (
       range.isEmpty() &&
+      existingInjectionMarkerEntries.length === 0 &&
       existingCombinedMembers.length === 0 &&
       affectedCombinedGroups.length === 0
     ) {
@@ -5052,7 +5088,11 @@ class LanguageLayer {
                       injectionPoint,
                     ),
                   };
-                  if (injectionPoint.combined) {
+                  const combined =
+                    typeof injectionPoint.combined === "function"
+                      ? injectionPoint.combined(node)
+                      : injectionPoint.combined;
+                  if (combined) {
                     // Prepare cheap range markers inside the bounded candidate
                     // tasks. They are unpublished until the plan commits and
                     // are discarded if a callback or parent snapshot fails.
@@ -5238,11 +5278,57 @@ class LanguageLayer {
     )
       return;
     const changedGroups = new Set(plan.affectedCombinedGroups);
+    const retainedMembers = new Set();
+    const membersByPoint = new Map();
+    const memberKey = (languageName, range) => `${languageName}:${range.toString()}`;
     for (const member of plan.existingCombinedMembers) {
+      const { injectionPoint, languageName } = member.group;
+      let byRange = membersByPoint.get(injectionPoint);
+      if (!byRange) {
+        byRange = new Map();
+        membersByPoint.set(injectionPoint, byRange);
+      }
+      const key = memberKey(languageName, member.marker.getRange());
+      let matching = byRange.get(key);
+      if (!matching) {
+        matching = [];
+        byRange.set(key, matching);
+      }
+      matching.push(member);
+    }
+    for (const candidate of plan.combinedCandidates) {
+      const prepared = candidate.preparedMember;
+      if (!prepared) continue;
+      const matching = membersByPoint
+        .get(candidate.injectionPoint)
+        ?.get(memberKey(candidate.languageName, candidate.injectionRange));
+      const existing = matching?.find(
+        (member) =>
+          !retainedMembers.has(member) &&
+          member.group.injectionPoint === candidate.injectionPoint &&
+          member.group.grammar === candidate.grammar &&
+          member.group.languageName === candidate.languageName &&
+          member.marker.getRange().isEqual(candidate.injectionRange) &&
+          member.contentMarkers.length === prepared.contentMarkers.length &&
+          member.contentMarkers.every((marker, index) =>
+            marker.getRange().isEqual(prepared.contentMarkers[index].getRange()),
+          ),
+      );
+      if (!existing) continue;
+      retainedMembers.add(existing);
+      prepared.marker.destroy();
+      for (const marker of prepared.contentMarkers) marker.destroy();
+      candidate.preparedMember = null;
+      changedGroups.add(existing.group);
+    }
+    const changedTopology = new Set();
+    for (const member of plan.existingCombinedMembers) {
+      if (retainedMembers.has(member)) continue;
       member.group.members.delete(member);
       member.marker.destroy();
       for (const marker of member.contentMarkers) marker.destroy();
       changedGroups.add(member.group);
+      changedTopology.add(member.group);
     }
     for (const candidate of plan.combinedCandidates) {
       const { injectionPoint, grammar, languageName, preparedMember: member } = candidate;
@@ -5268,8 +5354,10 @@ class LanguageLayer {
       member.marker.combinedInjectionMember = member;
       group.members.add(member);
       changedGroups.add(group);
+      changedTopology.add(group);
     }
     for (const group of changedGroups) {
+      if (group.marker?.languageLayer.destroyed) group.marker = null;
       if (group.members.size === 0) {
         if (group.marker) {
           this.languageMode.emitRangeUpdate(group.marker.getRange());
@@ -5278,6 +5366,25 @@ class LanguageLayer {
         const byLanguage = this.combinedInjectionGroups.get(group.injectionPoint);
         if (byLanguage?.get(group.languageName) === group) byLanguage.delete(group.languageName);
         if (byLanguage?.size === 0) this.combinedInjectionGroups.delete(group.injectionPoint);
+        continue;
+      }
+      const layer = group.marker?.languageLayer;
+      const optionsUnchanged =
+        group.rangeSet?.newlinesBetween === group.injectionPoint.newlinesBetween &&
+        group.rangeSet?.includeAdjacentWhitespace ===
+          group.injectionPoint.includeAdjacentWhitespace;
+      if (
+        !changedTopology.has(group) &&
+        layer?.includedRangesAreCurrent &&
+        optionsUnchanged &&
+        group.rangeSet.previous === plan.nodeRangeSet
+      ) {
+        // Content changed while every range stayed put. Reuse both the
+        // serialized parser ranges and the current-range marker list.
+        markersToUpdate.set(group.marker, {
+          rangesUnchanged: true,
+          getRanges: () => layer.lastIncludedRanges,
+        });
         continue;
       }
       const nodes = [];
@@ -5299,6 +5406,7 @@ class LanguageLayer {
         ...group.injectionPoint,
         includeChildren: true,
       });
+      group.rangeSet = ranges;
       if (!group.marker) {
         const marker = this.languageMode.injectionsMarkerLayer.markRange(extent);
         createdMarkers.push(marker);

@@ -132,6 +132,113 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
     expect(scopes()).toEqual(independent);
   });
 
+  it("reuses parser ranges for an equal-length edit inside one member", async () => {
+    await start("const a = /a+/;\nconst b = /b*/;");
+    const layer = layers()[0];
+    const serializedRanges = layer.lastIncludedRanges;
+    const markers = layer.currentRangesLayer.getMarkers();
+    spyOn(layer, "setCurrentRanges").and.callThrough();
+    await replace("a+", "c?");
+    expect(layer.setCurrentRanges).not.toHaveBeenCalled();
+    expect(layer.lastIncludedRanges).toBe(serializedRanges);
+    expect(layer.currentRangesLayer.getMarkers()).toEqual(markers);
+    expect(contents()).toEqual(["c?", "b*"]);
+    expect(scopesAt("?")).toContain("keyword.operator.quantifier.regexp");
+  });
+
+  it("preserves independent-layer scopes for partial and malformed regex patterns", async () => {
+    for (const pattern of ["(", "(?<name>", String.raw`\u`, "[a-z"]) {
+      const source = `const a = /${pattern}/;\nconst b = /x+/;`;
+      point.combined = false;
+      await start(source);
+      const independent = Array.from(source, (_, index) =>
+        mode.scopeDescriptorForPosition(buffer.positionForCharacterIndex(index)).getScopesArray(),
+      );
+      buffer.destroy();
+      point.combined = (node) => {
+        try {
+          new RegExp(node.text);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      await start(source);
+      const combined = Array.from(source, (_, index) =>
+        mode.scopeDescriptorForPosition(buffer.positionForCharacterIndex(index)).getScopesArray(),
+      );
+      expect(combined).withContext(pattern).toEqual(independent);
+      buffer.destroy();
+    }
+  });
+
+  it("matches a fresh parse through dense member insertion, deletion and partial syntax", async () => {
+    point.combined = (node) => {
+      try {
+        new RegExp(node.text);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    await start(Array.from({ length: 300 }, (_, i) => `const p${i} = /value${i}+/;`).join("\n"));
+    async function assertFresh() {
+      const freshBuffer = new TextBuffer({ text: buffer.getText() });
+      const fresh = new TreeSitterLanguageMode({
+        buffer: freshBuffer,
+        grammar: javascript,
+        config: lumine.config,
+        grammars: lumine.grammars,
+      });
+      freshBuffer.setLanguageMode(fresh);
+      try {
+        await fresh.ready;
+        await fresh.atGrammarSettlement();
+        const freshRanges = fresh
+          .getAllInjectionLayers()
+          .filter((layer) => layer.injectionPoint === point)
+          .flatMap((layer) => layer.getCurrentRanges());
+        const currentRanges = layers().flatMap((layer) => layer.getCurrentRanges());
+        const actual = currentRanges.sort((a, b) => a.compare(b)).map((range) => range.serialize());
+        const expected = freshRanges.sort((a, b) => a.compare(b)).map((range) => range.serialize());
+        const differingIndex = actual.findIndex(
+          (range, index) => JSON.stringify(range) !== JSON.stringify(expected[index]),
+        );
+        expect(actual)
+          .withContext(
+            JSON.stringify({
+              actualCount: actual.length,
+              expectedCount: expected.length,
+              differingIndex,
+              actual: actual[differingIndex],
+              expected: expected[differingIndex],
+            }),
+          )
+          .toEqual(expected);
+        for (const needle of ["value0+", "value150+", "value299+", "last+"]) {
+          const index = buffer.getText().indexOf(needle);
+          if (index < 0) continue;
+          const position = buffer.positionForCharacterIndex(index + needle.length - 1);
+          expect(mode.scopeDescriptorForPosition(position).getScopesArray()).toEqual(
+            fresh.scopeDescriptorForPosition(position).getScopesArray(),
+          );
+        }
+      } finally {
+        freshBuffer.destroy();
+      }
+    }
+    await replace("value125+", "(?<bad>");
+    await assertFresh();
+    await replace("const p125 = /(?<bad>/;\n", "");
+    await assertFresh();
+    buffer.insert([0, 0], "const first = /start*/;\n");
+    await mode.atTransactionEnd();
+    await assertFresh();
+    buffer.append("\nconst last = /last+/;");
+    await mode.atTransactionEnd();
+    await assertFresh();
+  });
+
   it("adds and removes members at either end and retires the final group", async () => {
     await start("const a = /a+/;\nconst b = /b+/;");
     const layer = layers()[0];
@@ -260,6 +367,40 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
     expect(scopesAt("?")).toContain("keyword.operator.quantifier.regexp");
     await replace("/b*/", "123");
     expect(contents()).toEqual(["aa?"]);
+  });
+
+  it("preserves parent clipping through nested registration changes", async () => {
+    const html = grammar("language-html", "html.json", "text.audit-html", ["audit-html"]);
+    html.addInjectionPoint({
+      type: "script_element",
+      language: () => "audit-js",
+      content: (node) => node.child(1),
+    });
+    point.content = () => ({
+      startIndex: 0,
+      endIndex: 4,
+      startPosition: { row: 0, column: 0 },
+      endPosition: { row: 0, column: 4 },
+    });
+    await start("<div>outside</div>\n<script>const a = /a+/;</script>", html);
+    expect(layers().length).toBe(0);
+    point.content = (node) => node;
+    javascript.removeInjectionPoint(point);
+    javascript.addInjectionPoint(point);
+    await mode.atGrammarSettlement();
+    expect(layers().length).toBe(1);
+    expect(contents()).toEqual(["a+"]);
+    point.content = () => ({
+      startIndex: 0,
+      endIndex: 4,
+      startPosition: { row: 0, column: 0 },
+      endPosition: { row: 0, column: 4 },
+    });
+    javascript.removeInjectionPoint(point);
+    javascript.addInjectionPoint(point);
+    await mode.atGrammarSettlement();
+    expect(layers().length).toBe(0);
+    expect(scopesAt("outside")).not.toContain("source.audit-regex");
   });
 
   it("recomputes joined whitespace when a gap stops being whitespace", async () => {
