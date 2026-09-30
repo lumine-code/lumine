@@ -72,6 +72,17 @@ describe("Decoration screen-range batches", () => {
     expect(reads).toHaveBeenCalled();
   });
 
+  it("retains cached-only reads without building a position batch", () => {
+    const markers = build();
+    for (const marker of markers) marker.onDidChange(() => {});
+    const batch = spyOn(editor.displayLayer, "translateBufferPositions").and.callThrough();
+    const rangeReads = spyOn(markers[0].bufferMarker, "getRange").and.callThrough();
+    const ranges = captureRanges();
+    expect(batch).not.toHaveBeenCalled();
+    expect(rangeReads).not.toHaveBeenCalled();
+    for (const marker of markers) expect(ranges.get(marker)).toEqual(marker.getScreenRange());
+  });
+
   it("does not batch identity geometry or custom width callbacks", () => {
     build();
     const batch = spyOn(editor.displayLayer, "translateBufferPositions").and.callThrough();

@@ -1603,18 +1603,25 @@ module.exports = class TextEditorComponent {
     )
       return null;
 
-    const batch = {
-      ranges: new Map(),
-      layoutState: displayLayer.layoutState,
-      mappingGeneration: displayLayer.mappingGeneration,
-      ratioForCharacter: displayLayer.ratioForCharacter,
-      isWrapBoundary: displayLayer.isWrapBoundary,
-      atomicSoftTabs: displayLayer.atomicSoftTabs,
-    };
-    const markers = [];
-    const points = [];
-    for (const marker of decorationsByMarker.keys()) {
-      if (marker.hasChangeObservers || marker.isDestroyed()) continue;
+    let batch;
+    let markers;
+    let points;
+    decorationsByMarker.forEach((_decorations, marker) => {
+      if (marker.hasChangeObservers || marker.isDestroyed()) return;
+      // Cached-only decoration sets need neither iterator-result objects nor
+      // empty arrays/maps. Stamp the first uncached read before calling it.
+      if (!batch) {
+        batch = {
+          ranges: new Map(),
+          layoutState: displayLayer.layoutState,
+          mappingGeneration: displayLayer.mappingGeneration,
+          ratioForCharacter: displayLayer.ratioForCharacter,
+          isWrapBoundary: displayLayer.isWrapBoundary,
+          atomicSoftTabs: displayLayer.atomicSoftTabs,
+        };
+        markers = [];
+        points = [];
+      }
       const range = marker.getBufferRange();
       markers.push(marker);
       points.push(range.start, range.end);
@@ -1623,8 +1630,8 @@ module.exports = class TextEditorComponent {
         bufferGeneration: marker.layer.bufferMarkerPositionGeneration,
         markerGeneration: marker.bufferMarker.positionGeneration,
       });
-    }
-    if (points.length < 64) return null;
+    });
+    if (!batch || points.length < 64) return null;
     const positions = displayLayer.translateBufferPositions(points);
     for (let index = 0; index < markers.length; index++) {
       const marker = markers[index];
