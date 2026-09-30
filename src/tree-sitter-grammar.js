@@ -40,6 +40,14 @@ const QUERY_ERROR_KIND_LABELS = {
   5: "pattern structure error",
 };
 
+const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery"]);
+
+function invalidatedQueryError(queryType) {
+  const error = new Error(`Query load for ${queryType} was invalidated`);
+  error.name = "AbortError";
+  return error;
+}
+
 /**
  * @public
  * @status extended
@@ -150,6 +158,7 @@ module.exports = class TreeSitterGrammar {
     this.querySourceMaps = new Map();
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
+    this.requestedQueryTypes = new Set();
     this.reportedQueryErrors = new Set();
     this.queryLoadGeneration = 0;
 
@@ -445,6 +454,7 @@ module.exports = class TreeSitterGrammar {
     if (!language) {
       return null;
     }
+    this.requestedQueryTypes.add(queryType);
     let query = this.queryCache.get(queryType);
     if (!query) {
       try {
@@ -585,6 +595,7 @@ module.exports = class TreeSitterGrammar {
    * @returns {Promise} that resolves to a Tree-sitter `Query` object.
    */
   getQuery(queryType) {
+    this.requestedQueryTypes.add(queryType);
     // Async, but designed so that multiple near-simultaneous calls to
     // `getQuery` from multiple buffers will not cause multiple calls to
     // `language.query`, since it's a major bottleneck. Instead they all
@@ -600,26 +611,55 @@ module.exports = class TreeSitterGrammar {
       return promise;
     }
 
+    const generation = this.queryLoadGeneration;
     promise = new Promise((resolve, reject) => {
-      this.getLanguage().then((language) => {
-        // let timeTag = `${this.scopeName} ${queryType} load time`;
-        try {
-          // if (inDevMode) { console.time(timeTag); }
-          query = this._createQuery(language, this[queryType]);
+      this.getLanguage().then(
+        (language) => {
+          if (generation !== this.queryLoadGeneration) {
+            reject(invalidatedQueryError(queryType));
+            return;
+          }
+          query = this.queryCache.get(queryType);
+          if (query) {
+            resolve(query);
+            return;
+          }
+          // let timeTag = `${this.scopeName} ${queryType} load time`;
+          try {
+            // if (inDevMode) { console.time(timeTag); }
+            query = this._createQuery(language, this[queryType]);
 
-          // if (inDevMode) { console.timeEnd(timeTag); }
-          this.cacheQuery(queryType, query);
-          resolve(query);
-        } catch (error) {
-          // if (inDevMode) { console.timeEnd(timeTag); }
-          error.queryDescriptor ??= this.describeQueryError(error, queryType);
-          reject(error);
-        }
-        // Propagate a failed language load; otherwise this promise never
-        // settles and callers await it forever.
-      }, reject);
+            if (generation !== this.queryLoadGeneration) {
+              query.delete?.();
+              reject(invalidatedQueryError(queryType));
+              return;
+            }
+
+            // if (inDevMode) { console.timeEnd(timeTag); }
+            this.cacheQuery(queryType, query);
+            resolve(query);
+          } catch (error) {
+            // if (inDevMode) { console.timeEnd(timeTag); }
+            if (generation !== this.queryLoadGeneration) {
+              reject(invalidatedQueryError(queryType));
+              return;
+            }
+            error.queryDescriptor ??= this.describeQueryError(error, queryType);
+            reject(error);
+          }
+          // Propagate a failed language load; otherwise this promise never
+          // settles and callers await it forever.
+        },
+        (error) => {
+          reject(
+            generation === this.queryLoadGeneration ? error : invalidatedQueryError(queryType),
+          );
+        },
+      );
     }).finally(() => {
-      this.promisesForQueries.delete(queryType);
+      if (this.promisesForQueries.get(queryType) === promise) {
+        this.promisesForQueries.delete(queryType);
+      }
     });
 
     this.promisesForQueries.set(queryType, promise);
@@ -720,23 +760,35 @@ module.exports = class TreeSitterGrammar {
   observeQueryFile(filePaths, queryType) {
     for (let filePath of filePaths) {
       const onChange = () => {
+        const generation = this.queryLoadGeneration;
         let existingQuery = this[queryType];
+        const existingSourceMap = this.querySourceMaps.get(queryType);
         // When any one of the file paths changes, we have to re-concatenate
         // the whole set.
         this.loadQueryFile(filePaths, queryType).then(async (changed) => {
-          if (!changed) return;
+          if (!changed || generation !== this.queryLoadGeneration) return;
           // Sanity-check the language for errors before we let the buffers know
           // about this change.
           try {
-            await this.getQuery(queryType);
+            if (!OPTIONAL_QUERY_TYPES.has(queryType) || this.requestedQueryTypes.has(queryType)) {
+              await this.getQuery(queryType);
+            }
           } catch (error) {
+            if (generation !== this.queryLoadGeneration || error.name === "AbortError") return;
             lumine.notifications.beep();
             this.reportQueryError(error, queryType);
             this[queryType] = existingQuery;
             this.uncacheQuery(queryType);
+            if (existingSourceMap) {
+              this.querySourceMaps.set(queryType, existingSourceMap);
+            } else {
+              this.querySourceMaps.delete(queryType);
+            }
             return;
           }
-          this.emitter.emit("did-change-query", { filePath, queryType });
+          if (generation === this.queryLoadGeneration) {
+            this.emitter.emit("did-change-query", { filePath, queryType });
+          }
         });
       };
       const handle = this.registry.fileWatchClient
@@ -849,6 +901,7 @@ module.exports = class TreeSitterGrammar {
     this._loadQueryFilesPromise = null;
     this.promisesForQueryFiles.clear();
     this.promisesForQueries.clear();
+    this.requestedQueryTypes.clear();
     // A new query object gets instantiated for each kind of query every time a
     // grammar activates. WASM queries need explicit cleanup; native queries
     // are garbage-collected and do not expose `delete`.
