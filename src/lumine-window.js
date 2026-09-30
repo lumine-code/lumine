@@ -602,6 +602,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.projectRoots.sort();
     this.loadSettings.initialProjectRoots = this.projectRoots;
     this.lumineApplication.projectStateCoordinator?.commit(this, this.projectRoots);
+    if (!this.isSpec) this.lumineApplication.requestSessionStateCleanup?.();
     return this.lumineApplication.saveCurrentWindowOptions();
   }
 

@@ -8,6 +8,7 @@ const ConfigFile = require("./config-file");
 const FileWatchService = require("./file-watch-service");
 const FileRecoveryService = require("./file-recovery-service");
 const ProjectStateCoordinator = require("./project-state-coordinator");
+const SessionStateMaintenance = require("./session-state-maintenance");
 const XdgShellInvoker = require("./xdg-shell-invoker");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
@@ -804,6 +805,13 @@ module.exports = class LumineApplication extends EventEmitter {
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
     this.projectStateCoordinator = new ProjectStateCoordinator(this.getAllWindows);
+    this.pendingWindowStateIds = new Map();
+    this.sessionStateMaintenance =
+      options.sessionStateMaintenance ||
+      new SessionStateMaintenance({
+        storagePath: path.join(process.env.LUMINE_HOME, "storage"),
+        getProtectedWindowIds: () => this.getSessionStateProtectedWindowIds(),
+      });
 
     this.fileWatchService = options.fileWatchService || new FileWatchService();
     this.mainFileWatchClient = this.fileWatchService.createClient("application-config");
@@ -877,6 +885,7 @@ module.exports = class LumineApplication extends EventEmitter {
       return window.closedPromise;
     });
     await Promise.all(windowsClosePromises);
+    await this.sessionStateMaintenance.close();
     this.disposable.dispose();
     await this.fileWatchService.close();
   }
@@ -935,10 +944,38 @@ module.exports = class LumineApplication extends EventEmitter {
 
     // Preserve window opening order
     const windows = [];
-    for (const options of optionsForWindowsToOpen) {
-      windows.push(await this.openWithOptions(options));
+    const restoringIds = optionsForWindowsToOpen
+      .map((options) => options.windowStateId)
+      .filter((id) => typeof id === "string");
+    for (const id of restoringIds) {
+      this.pendingWindowStateIds.set(id, (this.pendingWindowStateIds.get(id) || 0) + 1);
     }
-    return windows;
+    try {
+      for (const options of optionsForWindowsToOpen) {
+        windows.push(await this.openWithOptions(options));
+      }
+      return windows;
+    } finally {
+      for (const id of restoringIds) {
+        const count = this.pendingWindowStateIds.get(id);
+        if (count > 1) this.pendingWindowStateIds.set(id, count - 1);
+        else this.pendingWindowStateIds.delete(id);
+      }
+    }
+  }
+
+  getSessionStateProtectedWindowIds() {
+    return new Set([
+      ...this.pendingWindowStateIds.keys(),
+      ...this.getAllWindows()
+        .filter((window) => !window.isSpec)
+        .map((window) => window.windowStateId)
+        .filter((id) => typeof id === "string"),
+    ]);
+  }
+
+  requestSessionStateCleanup() {
+    if (!this.quitting) this.sessionStateMaintenance.schedule();
   }
 
   openWithOptions(options) {
@@ -1035,6 +1072,7 @@ module.exports = class LumineApplication extends EventEmitter {
     this.projectStateCoordinator.releaseWindow(window);
     this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
+    if (!window.isSpec) this.requestSessionStateCleanup();
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
       app.quit();
       return;
@@ -1072,6 +1110,10 @@ module.exports = class LumineApplication extends EventEmitter {
         accentColorChangeDisposable.dispose();
       });
       window.browserWindow.webContents.once("did-finish-load", blurHandler);
+      window.loadedPromise?.then(
+        () => this.requestSessionStateCleanup(),
+        () => {},
+      );
       this.saveCurrentWindowOptions(false);
     }
   }
@@ -1316,6 +1358,7 @@ module.exports = class LumineApplication extends EventEmitter {
           });
           const windowUnloadedResults = await Promise.all(windowUnloadPromises);
           if (windowUnloadedResults.every(Boolean)) {
+            await this.sessionStateMaintenance.close();
             await this.fileWatchService.close();
             app.quit();
           } else {
@@ -1329,6 +1372,7 @@ module.exports = class LumineApplication extends EventEmitter {
 
     this.disposable.add(
       ipcHelpers.on(app, "will-quit", () => {
+        void this.sessionStateMaintenance.close();
         void this.fileWatchService.close();
         this.killAllProcesses();
 
