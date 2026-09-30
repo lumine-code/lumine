@@ -124,6 +124,7 @@
   "private": true,
   "scripts": {
     "build": "electron-rebuild",
+    "benchmark:display": "node script/benchmark-display.js",
     "benchmark:git": "npm run test:only -- benchmark/git-renderer-boundary-spec.js",
     "benchmark:git-refs": "node benchmark/git-refs-provider-benchmark.js",
     "benchmark:icons": "node script/benchmark-icons.js",
