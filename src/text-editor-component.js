@@ -1547,9 +1547,24 @@ module.exports = class TextEditorComponent {
         this.getRenderedStartRow(),
         this.getRenderedEndRow(),
       );
+    const batch = this.getUnobservedDecorationScreenRanges(decorationsByMarker);
 
     decorationsByMarker.forEach((decorations, marker) => {
-      const screenRange = marker.getScreenRange();
+      const entry = batch?.ranges.get(marker);
+      const displayLayer = this.props.model.displayLayer;
+      const canUseBatch =
+        entry &&
+        !marker.hasChangeObservers &&
+        !marker.isDestroyed() &&
+        displayLayer.mappingGeneration === batch.mappingGeneration &&
+        displayLayer.layoutState === batch.layoutState &&
+        displayLayer.ratioForCharacter === batch.ratioForCharacter &&
+        displayLayer.isWrapBoundary === batch.isWrapBoundary &&
+        displayLayer.atomicSoftTabs === batch.atomicSoftTabs &&
+        marker.layer.screenPositionGeneration === entry.screenGeneration &&
+        marker.layer.bufferMarkerPositionGeneration === entry.bufferGeneration &&
+        marker.bufferMarker.positionGeneration === entry.markerGeneration;
+      const screenRange = canUseBatch ? entry.range : marker.getScreenRange();
       const reversed = marker.isReversed();
       for (let i = 0; i < decorations.length; i++) {
         const decoration = decorations[i];
@@ -1575,6 +1590,47 @@ module.exports = class TextEditorComponent {
     }
 
     this.populateTextDecorationsToRender();
+  }
+
+  getUnobservedDecorationScreenRanges(decorationsByMarker) {
+    const displayLayer = this.props.model.displayLayer;
+    if (
+      decorationsByMarker.size < 32 ||
+      !displayLayer.hasStandardCharacterWidth() ||
+      !displayLayer.hasStandardWrapBoundary() ||
+      typeof displayLayer.spatialIndex.changesForOldPositions !== "function" ||
+      displayLayer.spatialIndex.getChangeCount() === 0
+    )
+      return null;
+
+    const batch = {
+      ranges: new Map(),
+      layoutState: displayLayer.layoutState,
+      mappingGeneration: displayLayer.mappingGeneration,
+      ratioForCharacter: displayLayer.ratioForCharacter,
+      isWrapBoundary: displayLayer.isWrapBoundary,
+      atomicSoftTabs: displayLayer.atomicSoftTabs,
+    };
+    const markers = [];
+    const points = [];
+    for (const marker of decorationsByMarker.keys()) {
+      if (marker.hasChangeObservers || marker.isDestroyed()) continue;
+      const range = marker.getBufferRange();
+      markers.push(marker);
+      points.push(range.start, range.end);
+      batch.ranges.set(marker, {
+        screenGeneration: marker.layer.screenPositionGeneration,
+        bufferGeneration: marker.layer.bufferMarkerPositionGeneration,
+        markerGeneration: marker.bufferMarker.positionGeneration,
+      });
+    }
+    if (points.length < 64) return null;
+    const positions = displayLayer.translateBufferPositions(points);
+    for (let index = 0; index < markers.length; index++) {
+      const marker = markers[index];
+      batch.ranges.get(marker).range = Range(positions[index * 2], positions[index * 2 + 1]);
+    }
+    return batch;
   }
 
   addDecorationToRender(type, decoration, marker, screenRange, reversed) {

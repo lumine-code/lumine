@@ -457,33 +457,77 @@ class DisplayLayer {
     // in a large multi-selection.
     if (this.spatialIndex.getChangeCount() === 0) return bufferPosition;
 
-    let hunk = this.spatialIndex.changeForOldPosition(bufferPosition);
-    if (hunk) {
-      if (compare(bufferPosition, hunk.oldEnd) < 0) {
-        if (compare(hunk.oldStart, bufferPosition) === 0) {
-          return hunk.newStart;
-        } else {
-          // hunk is a fold
-          if (clipDirection === "backward") {
-            return hunk.newStart;
-          } else if (clipDirection === "forward") {
-            return hunk.newEnd;
-          } else {
-            const distanceFromFoldStart = traversal(bufferPosition, hunk.oldStart);
-            const distanceToFoldEnd = traversal(hunk.oldEnd, bufferPosition);
-            if (compare(distanceFromFoldStart, distanceToFoldEnd) <= 0) {
-              return hunk.newStart;
-            } else {
-              return hunk.newEnd;
-            }
-          }
-        }
-      } else {
-        return traverse(hunk.newEnd, traversal(bufferPosition, hunk.oldEnd));
-      }
-    } else {
-      return bufferPosition;
+    return bufferPositionThroughHunk(
+      bufferPosition,
+      this.spatialIndex.changeForOldPosition(bufferPosition),
+      clipDirection,
+    );
+  }
+
+  translateBufferPositions(positions, options) {
+    // Small reads and custom callbacks keep the scalar call order, including
+    // any reentrant work those callbacks perform. No secondary index is built.
+    if (
+      positions.length < 64 ||
+      !this.hasStandardCharacterWidth() ||
+      !this.hasStandardWrapBoundary() ||
+      typeof this.spatialIndex.changesForOldPositions !== "function" ||
+      this.spatialIndex.getChangeCount() === 0
+    ) {
+      return positions.map((position) => this.translateBufferPosition(position, options));
     }
+
+    const generation = this.mappingGeneration;
+    const atomicSoftTabs = this.atomicSoftTabs;
+    const clipDirection = options?.clipDirection || "closest";
+    const clipped = positions.map((position) => this.buffer.clipPosition(position));
+    let endBufferRow = 0;
+    for (const position of clipped) endBufferRow = Math.max(endBufferRow, position.row + 1);
+    this.populateSpatialIndexIfNeeded(endBufferRow, Infinity);
+    if (this.mappingGeneration !== generation) {
+      return positions.map((position) => this.translateBufferPosition(position, options));
+    }
+    if (this.spatialIndex.getChangeCount() === 0) {
+      return positions.map((position) => this.translateBufferPosition(position, options));
+    }
+
+    const packed = new Uint32Array(clipped.length * 2);
+    for (let index = 0; index < clipped.length; index++) {
+      const point = clipped[index];
+      const delta = this.getClipColumnDelta(point, clipDirection);
+      if (delta !== 0) clipped[index] = Point(point.row, point.column + delta);
+      packed[index * 2] = clipped[index].row;
+      packed[index * 2 + 1] = clipped[index].column;
+    }
+    if (this.mappingGeneration !== generation || this.atomicSoftTabs !== atomicSoftTabs) {
+      return positions.map((position) => this.translateBufferPosition(position, options));
+    }
+    const changes = this.spatialIndex.changesForOldPositions(packed);
+    const hunk = {
+      oldStart: { row: 0, column: 0 },
+      oldEnd: { row: 0, column: 0 },
+      newStart: { row: 0, column: 0 },
+      newEnd: { row: 0, column: 0 },
+    };
+    return clipped.map((position, index) => {
+      const offset = index * 9;
+      let screenPosition = position;
+      if (changes[offset]) {
+        hunk.oldStart.row = changes[offset + 1];
+        hunk.oldStart.column = changes[offset + 2];
+        hunk.oldEnd.row = changes[offset + 3];
+        hunk.oldEnd.column = changes[offset + 4];
+        hunk.newStart.row = changes[offset + 5];
+        hunk.newStart.column = changes[offset + 6];
+        hunk.newEnd.row = changes[offset + 7];
+        hunk.newEnd.column = changes[offset + 8];
+        screenPosition = bufferPositionThroughHunk(position, hunk, clipDirection);
+      }
+      const tabCount = this.tabCounts[screenPosition.row];
+      if (tabCount > 0) screenPosition = this.expandHardTabs(screenPosition, position, tabCount);
+      // The packed decoder reuses its four points; never expose one of them.
+      return Point.fromObject(screenPosition);
+    });
   }
 
   translateBufferRange(bufferRange, options) {
@@ -1915,6 +1959,20 @@ function copyLayoutState(state) {
     rightmostScreenPosition: state.rightmostScreenPosition.copy(),
     indexedBufferRowCount: state.indexedBufferRowCount,
   };
+}
+
+function bufferPositionThroughHunk(bufferPosition, hunk, clipDirection) {
+  if (!hunk) return bufferPosition;
+  if (compare(bufferPosition, hunk.oldEnd) >= 0) {
+    return traverse(hunk.newEnd, traversal(bufferPosition, hunk.oldEnd));
+  }
+  if (compare(hunk.oldStart, bufferPosition) === 0 || clipDirection === "backward") {
+    return hunk.newStart;
+  }
+  if (clipDirection === "forward") return hunk.newEnd;
+  const fromStart = traversal(bufferPosition, hunk.oldStart);
+  const toEnd = traversal(hunk.oldEnd, bufferPosition);
+  return compare(fromStart, toEnd) <= 0 ? hunk.newStart : hunk.newEnd;
 }
 
 function invisiblesEqual(left, right) {
