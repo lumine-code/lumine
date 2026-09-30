@@ -125,6 +125,8 @@
   "scripts": {
     "build": "electron-rebuild",
     "benchmark:display": "node script/benchmark-display.js",
+    "benchmark:injection-routing": "node script/benchmark-injection-routing.js",
+    "benchmark:presentation": "node script/benchmark-presentation.js",
     "benchmark:git": "npm run test:only -- benchmark/git-renderer-boundary-spec.js",
     "benchmark:git-refs": "node benchmark/git-refs-provider-benchmark.js",
     "benchmark:icons": "node script/benchmark-icons.js",
