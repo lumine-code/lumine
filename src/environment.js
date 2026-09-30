@@ -773,7 +773,6 @@ class Environment {
   }
 
   async reset() {
-    this.grammars.cancelGrammarWarmup();
     // Config::clear replaces its emitter, so observers held by ThemeManager
     // must be disposed before the reset and recreated on the next activation.
     this.themes.stopObservingThemeChanges();
@@ -832,7 +831,6 @@ class Environment {
   }
 
   destroy() {
-    this.grammars.cancelGrammarWarmup();
     if (!this.project) return;
 
     // Set this flag and then don't reset it after `destroy` is done, since we
@@ -1148,19 +1146,9 @@ class Environment {
       updateProcessEnvPromise,
     ]);
 
-    this.scheduleGrammarWarmup();
     StartupTime.addMarker("window:environment:start-editor-window:end");
 
     return output;
-  }
-
-  scheduleGrammarWarmup() {
-    if (this.unloading || this.window.isSpecMode()) return;
-    this.grammars.warmRecentGrammars({
-      requestIdleCallback: this.domWindow.requestIdleCallback.bind(this.domWindow),
-      cancelIdleCallback: this.domWindow.cancelIdleCallback.bind(this.domWindow),
-      shouldContinue: () => !this.unloading && !this.isDestroying,
-    });
   }
 
   serialize(options) {
@@ -1192,7 +1180,6 @@ class Environment {
 
     if (closing) {
       this.unloading = true;
-      this.grammars.cancelGrammarWarmup();
       // Package deactivation runs while the window is still visible. Mark the
       // document first so package-owned empty-workspace UI can disappear
       // without briefly leaving core's empty-pane mark behind on its own.
@@ -1228,7 +1215,6 @@ class Environment {
     // background tasks read this flag to stop starting — and stop settling —
     // work that nothing is left to observe.
     this.unloading = true;
-    this.grammars.cancelGrammarWarmup();
     void this.fileWatchClient.close();
     this.stateStore.close();
     this.projectStateIndex.close();

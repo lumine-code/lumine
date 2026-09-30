@@ -9,8 +9,6 @@ const fs = require("@lumine-code/fs-plus");
 const { Point, Range } = require("./text-buffer");
 
 const PATH_SPLIT_REGEX = new RegExp("[/.]");
-const RECENT_GRAMMAR_LIMIT = 5;
-const WARMUP_QUERY_TYPES = ["highlightsQuery", "foldsQuery", "indentsQuery"];
 
 /**
  * @public
@@ -30,10 +28,8 @@ module.exports = class GrammarRegistry {
   }
 
   clear() {
-    this.cancelGrammarWarmup();
     this.treeSitterGrammarsById = {};
     this.treeSitterGrammarsByInjectionName = new Map();
-    this.recentGrammarIds = [];
 
     if (this.subscriptions) this.subscriptions.dispose();
     this.subscriptions = new CompositeDisposable();
@@ -54,7 +50,7 @@ module.exports = class GrammarRegistry {
         languageOverridesByBufferId[bufferId] = languageId;
       }
     });
-    return { languageOverridesByBufferId, recentGrammarIds: [...this.recentGrammarIds] };
+    return { languageOverridesByBufferId };
   }
 
   deserialize(params) {
@@ -64,109 +60,6 @@ module.exports = class GrammarRegistry {
         this.languageOverridesByBufferId.set(bufferId, languageId);
       }
     }
-    const recentGrammarIds = Array.isArray(params.recentGrammarIds) ? params.recentGrammarIds : [];
-    this.recentGrammarIds = [...new Set([...this.recentGrammarIds, ...recentGrammarIds])]
-      .filter((id) => typeof id === "string" && id.length > 0 && id !== "text.plain")
-      .slice(0, RECENT_GRAMMAR_LIMIT);
-  }
-
-  // Keep identifiers rather than grammar/module objects across window reloads.
-  // Root languages take these few slots; generic injected links and TODOs
-  // would otherwise displace the languages the user opens files in.
-  recordGrammarUse(grammar) {
-    if (
-      !(grammar instanceof TreeSitterGrammar) ||
-      !grammar.scopeName ||
-      grammar.scopeName === "text.plain" ||
-      this.grammarForId(grammar.scopeName) !== grammar
-    ) {
-      return;
-    }
-    this.recentGrammarIds = [
-      grammar.scopeName,
-      ...this.recentGrammarIds.filter((id) => id !== grammar.scopeName),
-    ].slice(0, RECENT_GRAMMAR_LIMIT);
-  }
-
-  // Loading a parser is async, but compiling a query still uses the renderer.
-  // Give every query its own idle turn, and reuse the grammar's existing
-  // in-flight loads/cache when an editor starts using it in the meantime.
-  warmRecentGrammars({ requestIdleCallback, cancelIdleCallback, shouldContinue = () => true }) {
-    this.cancelGrammarWarmup();
-    const jobs = this.recentGrammarIds.flatMap((id) => {
-      const grammar = this.grammarForId(id);
-      if (!grammar) return [];
-      return [{ grammar, generation: grammar.queryLoadGeneration, queryIndex: -1 }];
-    });
-    if (jobs.length === 0) return;
-
-    const warmup = { jobs, idleId: null, cancelled: false, cancelIdleCallback };
-    this.grammarWarmup = warmup;
-    const isCurrent = (job) =>
-      this.grammarWarmup === warmup &&
-      !warmup.cancelled &&
-      shouldContinue() &&
-      this.grammarForId(job.grammar.scopeName) === job.grammar &&
-      job.grammar.queryLoadGeneration === job.generation;
-
-    const schedule = () => {
-      if (this.grammarWarmup !== warmup || warmup.cancelled) return;
-      while (warmup.jobs.length > 0 && !isCurrent(warmup.jobs[0])) warmup.jobs.shift();
-      if (warmup.jobs.length === 0) {
-        this.grammarWarmup = null;
-        return;
-      }
-      // There is no timeout: speculative parser work must wait for actual
-      // idle time instead of forcing itself into an interactive frame.
-      warmup.idleId = requestIdleCallback(() => {
-        warmup.idleId = null;
-        const job = warmup.jobs[0];
-        if (!isCurrent(job)) {
-          schedule();
-          return;
-        }
-        const queryType = WARMUP_QUERY_TYPES[job.queryIndex];
-        let operation;
-        try {
-          operation = queryType ? job.grammar.getQuery(queryType) : job.grammar.getLanguage();
-        } catch (error) {
-          operation = Promise.reject(error);
-        }
-        Promise.resolve(operation).then(
-          () => {
-            if (!isCurrent(job)) {
-              schedule();
-              return;
-            }
-            do {
-              job.queryIndex++;
-            } while (
-              job.queryIndex < WARMUP_QUERY_TYPES.length &&
-              !job.grammar.queryPaths[WARMUP_QUERY_TYPES[job.queryIndex]] &&
-              !job.grammar[WARMUP_QUERY_TYPES[job.queryIndex]]
-            );
-            if (job.queryIndex === WARMUP_QUERY_TYPES.length) warmup.jobs.shift();
-            schedule();
-          },
-          (error) => {
-            if (isCurrent(job) && queryType && error.name !== "AbortError") {
-              job.grammar.reportQueryError(error, queryType);
-            }
-            if (warmup.jobs[0] === job) warmup.jobs.shift();
-            schedule();
-          },
-        );
-      });
-    };
-    schedule();
-  }
-
-  cancelGrammarWarmup() {
-    const warmup = this.grammarWarmup;
-    if (!warmup) return;
-    this.grammarWarmup = null;
-    warmup.cancelled = true;
-    if (warmup.idleId !== null) warmup.cancelIdleCallback(warmup.idleId);
   }
 
   /**
@@ -424,7 +317,6 @@ module.exports = class GrammarRegistry {
     if (!(grammar instanceof TreeSitterGrammar)) {
       throw new TypeError("Language modes require a Tree-sitter grammar");
     }
-    this.recordGrammarUse(grammar);
     return new TreeSitterLanguageMode({
       grammar,
       buffer,

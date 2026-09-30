@@ -328,7 +328,7 @@ module.exports = class TreeSitterGrammar {
           this.treeSitterRuntime === "node"
             ? this.loadNativeLanguage()
             : await TreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
-        // A warmup can finish after its package was disabled or replaced.
+        // A language load can finish after its package was disabled or replaced.
         // Keep the shared language cache, but never revive that grammar instance.
         if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
         this._language = language;
