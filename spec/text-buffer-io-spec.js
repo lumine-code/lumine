@@ -956,6 +956,8 @@ describe("TextBuffer IO", () => {
         beforeEach(async (done) => {
           const filePath = path.join(__dirname, "fixtures", "win1251.txt");
           buffer = await TextBuffer.load(filePath);
+          // Finish startup reconciliation before the encoding reload owns the buffer.
+          await buffer.getFileWatchStartPromise();
           done();
         });
 
@@ -1001,6 +1003,8 @@ describe("TextBuffer IO", () => {
       beforeEach(async () => {
         const filePath = path.join(__dirname, "fixtures", "win1251.txt");
         buffer = await TextBuffer.load(filePath);
+        // Finish startup reconciliation before the encoding reload owns the buffer.
+        await buffer.getFileWatchStartPromise();
         const changed = new Promise((resolve) => buffer.onDidChange(resolve));
         buffer.setEncoding("WINDOWS-1251");
         await changed;
