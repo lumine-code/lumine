@@ -674,23 +674,45 @@ class TreeSitterLanguageMode {
       edit.oldEndIndex === edit.newEndIndex && edit.oldEndPosition.isEqual(edit.newEndPosition);
     const changedEndRow = Math.max(edit.oldEndPosition.row, edit.newEndPosition.row);
     let foldRowCacheInvalidated = false;
-    for (const marker of this.injectionsMarkerLayer.getMarkers()) {
+    const markers = this.injectionsMarkerLayer.getMarkers();
+    let packedRanges;
+    if (markers.length >= 64 && typeof this.injectionsMarkerLayer.index.getRanges === "function") {
+      const ids = new Uint32Array(markers.length);
+      for (let index = 0; index < markers.length; index++) ids[index] = markers[index].id;
+      // The synchronous routing loop only edits trees and clears their caches;
+      // it cannot mutate owner markers while this position snapshot is in use.
+      packedRanges = this.injectionsMarkerLayer.index.getRanges(ids);
+    }
+    for (let index = 0; index < markers.length; index++) {
+      const marker = markers[index];
       // Marker layers have already incorporated this buffer splice. If an
       // injection still ends strictly before the edit starts, neither its
       // contents nor any absolute position in its tree can have changed. A
       // boundary touch is deliberately not skipped: injection markers are
       // non-exclusive by default, so an insertion at either edge may become
       // part of the injection.
-      const markerRange = marker.getRange();
+      const offset = index * 4;
+      const markerRange = packedRanges ? null : marker.getRange();
+      const endsBeforeEdit = packedRanges
+        ? packedRanges[offset + 2] < edit.startPosition.row ||
+          (packedRanges[offset + 2] === edit.startPosition.row &&
+            packedRanges[offset + 3] < edit.startPosition.column)
+        : markerRange.end.isLessThan(edit.startPosition);
+      const startsAfterEdit =
+        sameExtent &&
+        (packedRanges
+          ? edit.newEndPosition.row < packedRanges[offset] ||
+            (edit.newEndPosition.row === packedRanges[offset] &&
+              edit.newEndPosition.column < packedRanges[offset + 1])
+          : edit.newEndPosition.isLessThan(markerRange.start));
       const layer = marker.languageLayer;
       // An equal-extent edit strictly before both the owner and all cached
       // content ranges cannot change this layer's source or coordinates. The
       // content check also protects injections that return ranges outside
       // their owner node. Unknown ranges keep the full path for leading edits.
       if (
-        markerRange.end.isLessThan(edit.startPosition) ||
-        (sameExtent &&
-          edit.newEndPosition.isLessThan(markerRange.start) &&
+        endsBeforeEdit ||
+        (startsAfterEdit &&
           layer.currentRangesCache?.length &&
           layer.currentRangesCache.every((range) => edit.newEndPosition.isLessThan(range.start)))
       ) {

@@ -188,8 +188,13 @@ function diagnostics(mode) {
     // objects owned by this buffer; never import a second addon to patch it.
     timed(mode.buffer.buffer, "setTextInRange", "nativeTextMutation");
     timed(MarkerLayer.prototype, "splice", "markerLayerSplice");
-    for (const layer of Object.values(mode.buffer.markerLayers))
+    for (const layer of Object.values(mode.buffer.markerLayers)) {
       timed(layer.index, "splice", "nativeMarkerSplice");
+      if (typeof layer.index.splicePacked === "function")
+        timed(layer.index, "splicePacked", "nativeMarkerSplicePacked");
+      if (typeof layer.index.getRanges === "function")
+        timed(layer.index, "getRanges", "nativeMarkerGetRanges");
+    }
     timed(Marker.prototype, "getRange", "markerGetRange");
     timed(MarkerLayer.prototype, "emitChangeEvents", "markerChangeEvents");
     timed(MarkerLayer.prototype, "emitUpdateEvent", "markerUpdateEvents");

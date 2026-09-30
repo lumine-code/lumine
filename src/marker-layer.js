@@ -6,6 +6,7 @@ const { MarkerIndex } = require("@lumine-code/superstring");
 const { intersectSet } = require("./set-helpers");
 const { traverse } = require("./point-helpers");
 const SerializationVersion = 2;
+const InvalidationFlags = { touch: 1, inside: 2, overlap: 4, surround: 8 };
 
 // Compare every lazily-built history snapshot against the eager dump-based one
 // and throw on any divergence. The referee for the shadow-range bookkeeping;
@@ -412,15 +413,35 @@ class MarkerLayer {
     }
 
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
-    let invalidated = this.index.splice(start, oldExtent, newExtent);
-    for (let id of invalidated.touch) {
-      let marker = this.markersById.get(id);
-      if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
-        if (this.destroyInvalidatedMarkers) {
-          marker.destroy();
-        } else {
-          marker.valid = false;
-          marker.refreshHistoryProps();
+    if (typeof this.index.splicePacked === "function") {
+      const invalidated = this.index.splicePacked(start, oldExtent, newExtent);
+      if (invalidated !== null) {
+        for (let offset = 0; offset < invalidated.length; offset += 2) {
+          const marker = this.markersById.get(invalidated[offset]);
+          let strategy = marker.getInvalidationStrategy();
+          // Coerce unusual property keys exactly once, as the legacy lookup does.
+          if (
+            (typeof strategy === "object" && strategy !== null) ||
+            typeof strategy === "function"
+          ) {
+            strategy = Reflect.ownKeys({ [strategy]: null })[0];
+          }
+          const flag = InvalidationFlags[strategy];
+          if (
+            Object.hasOwn(InvalidationFlags, strategy)
+              ? invalidated[offset + 1] & flag
+              : flag?.has(marker.id)
+          ) {
+            applyInvalidation(marker, this.destroyInvalidatedMarkers);
+          }
+        }
+      }
+    } else {
+      const invalidated = this.index.splice(start, oldExtent, newExtent);
+      for (const id of invalidated.touch) {
+        const marker = this.markersById.get(id);
+        if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
+          applyInvalidation(marker, this.destroyInvalidatedMarkers);
         }
       }
     }
@@ -796,6 +817,15 @@ class MarkerLayer {
 
   emitUpdateEvent() {
     return this.emitter.emit("did-update");
+  }
+}
+
+function applyInvalidation(marker, destroyInvalidatedMarkers) {
+  if (destroyInvalidatedMarkers) {
+    marker.destroy();
+  } else {
+    marker.valid = false;
+    marker.refreshHistoryProps();
   }
 }
 
