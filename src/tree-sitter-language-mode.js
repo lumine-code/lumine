@@ -705,7 +705,14 @@ class TreeSitterLanguageMode {
   rootLanguageRangesChanged() {
     const layer = this.rootLanguageLayer;
     if (this.destroyed || !layer) return;
+    if (!layer.tree) {
+      layer.rootRangePolicyNeedsUpdate = true;
+      return;
+    }
+    layer.resolveRootRangeSet();
+    if (!layer.rootRangeInvalidationPending) return;
     layer.rootRangePolicyNeedsUpdate = true;
+    layer.treeIsDirty = true;
     this.scopeDescriptorCache = null;
     if (!this.resolveNextTransaction) this.refreshNextTransactionPromise();
     layer.update(null).then(
@@ -1139,7 +1146,11 @@ class TreeSitterLanguageMode {
       iterator.moveToSuccessor();
     }
 
-    if (scopes.length === 0 || scopes[0] !== this.grammar.scopeName) {
+    if (
+      (!this.rootLanguageLayer.rootRangesRestricted ||
+        this.rootLanguageLayer.containsPoint(point)) &&
+      (scopes.length === 0 || scopes[0] !== this.grammar.scopeName)
+    ) {
       scopes.unshift(this.grammar.scopeName);
     }
     const descriptor = new ScopeDescriptor({ scopes });
@@ -2260,7 +2271,11 @@ class TreeSitterLanguageMode {
   //   instead of its _extent_ (see description above).
   languageLayersAtPoint(point, { exact = false } = {}) {
     let injectionLayers = this.injectionLayersAtPoint(point, { exact });
-    if (exact && !this.rootLanguageLayer?.containsPoint(point)) return injectionLayers;
+    if (
+      (exact || this.rootLanguageLayer?.rootRangesRestricted) &&
+      !this.rootLanguageLayer?.containsPoint(point)
+    )
+      return injectionLayers;
     return [this.rootLanguageLayer, ...injectionLayers];
   }
 
@@ -4185,6 +4200,73 @@ class LanguageLayer {
     return null;
   }
 
+  resolveRootRangeSet() {
+    const registration = this.languageMode.grammarRegistry?.rootLanguageRangesByBuffer?.get(
+      this.buffer,
+    );
+    const requested = registration?.provider(this.buffer) ?? null;
+    this.rootRangePolicyNeedsUpdate = false;
+    if (requested === null) {
+      if (this.rootRangesRestricted) {
+        this.rootRangesRestricted = false;
+        this.rootRangeSet.version++;
+        this.injectionPointVersion++;
+        this.rootIncludedRanges = null;
+        for (const marker of this.currentRangesLayer.getMarkers()) marker.destroy();
+        this.currentRangesCache = null;
+        this.lastIncludedRanges = null;
+        this.rootRangeInvalidationPending = true;
+      }
+      return null;
+    }
+    if (!Array.isArray(requested))
+      throw new TypeError("A range provider must return ranges or null");
+    const ranges = requested.map((range) => this.buffer.clipRange(Range.fromObject(range)));
+    ranges.sort((a, b) => a.compare(b));
+    const normalized = [];
+    for (const range of ranges) {
+      const previous = last(normalized);
+      if (previous && !previous.end.isLessThan(range.start)) {
+        normalized[normalized.length - 1] = previous.union(range);
+      } else {
+        normalized.push(range);
+      }
+    }
+    if (normalized.length === 0) {
+      const eof = this.buffer.getEndPosition();
+      normalized.push(new Range(eof, eof));
+    }
+    const current = this.rootRangesRestricted ? this.getCurrentRanges() : null;
+    const changed =
+      !current ||
+      current.length !== normalized.length ||
+      current.some((range, index) => !range.isEqual(normalized[index]));
+    this.rootRangeSet ??= {
+      isRootLanguageRangeSet: true,
+      version: 0,
+      rangesUnchanged: true,
+      getRanges: () => this.rootIncludedRanges,
+    };
+    if (changed) {
+      this.rootRangeSet.version++;
+      this.injectionPointVersion++;
+      this.rootRangeInvalidationPending = true;
+    }
+    this.rootRangesRestricted = true;
+    this.rootIncludedRanges = normalized.map((range) =>
+      rangeToTreeSitterRangeSpec(range, this.buffer),
+    );
+    // Marker positions already follow edits, including a moving EOF. Reuse them
+    // unless the provider actually changed which source belongs to the language.
+    if (changed) this.setCurrentRanges(this.rootIncludedRanges);
+    else {
+      this.currentRangesCache = normalized;
+      this.lastIncludedRanges = this.rootIncludedRanges;
+      this.includedRangesAreCurrent = true;
+    }
+    return this.rootRangeSet;
+  }
+
   injectionParentSnapshotIsCurrent({ layer, tree, injectionPointVersion }) {
     return Boolean(
       layer &&
@@ -4251,6 +4333,7 @@ class LanguageLayer {
     }
 
     if (this.depth === 0) nodeRangeSet = this.resolveRootRangeSet();
+    const rootRangeVersion = this.depth === 0 ? this.rootRangeSet?.version : null;
     let includedRanges = null;
     this.rangeList.clear();
 
@@ -4313,6 +4396,13 @@ class LanguageLayer {
 
     let changes = this.patchSinceCurrentParseStarted.getChanges();
     this.patchSinceCurrentParseStarted = null;
+    if (this.depth === 0 && rootRangeVersion !== this.rootRangeSet?.version) {
+      // A policy replacement can happen without a text edit while parsing is
+      // suspended. Do not publish a tree built for the superseded source mask.
+      tree.delete?.();
+      this.rootRangePolicyNeedsUpdate = true;
+      return;
+    }
 
     if (
       params.initialInjectionParentSnapshot &&
@@ -4347,6 +4437,11 @@ class LanguageLayer {
     let affectedRange = this.editedRange;
     this.lastTransactionEditedRange = this.editedRange;
     this.editedRange = null;
+    if (this.rootRangeInvalidationPending) {
+      this.rootRangeInvalidationPending = false;
+      affectedRange = this.buffer.getRange();
+      this.rangeList.add(affectedRange);
+    }
 
     let foldRangeList = new TreeSitterRangeList();
 
@@ -4394,11 +4489,17 @@ class LanguageLayer {
       }
 
       if (rangesWithSyntaxChanges.length > 0) {
-        this.rangeList.addAll(rangesWithSyntaxChanges.map(rangeForNode));
+        const syntaxRanges = rangesWithSyntaxChanges.map((range) => {
+          const result = rangeForNode(range);
+          // Switching between explicit ranges and the parser's unrestricted
+          // sentinel can report a changed range ending beyond the buffer.
+          return this.depth === 0 && this.rootRangeSet ? this.buffer.clipRange(result) : result;
+        });
+        this.rangeList.addAll(syntaxRanges);
 
         const combinedRangeWithSyntaxChange = new Range(
-          rangesWithSyntaxChanges[0].startPosition,
-          last(rangesWithSyntaxChanges).endPosition,
+          syntaxRanges[0].start,
+          last(syntaxRanges).end,
         );
 
         if (affectedRange) {
@@ -4433,6 +4534,7 @@ class LanguageLayer {
     // Now that we've assembled and coalesced all the ranges that need
     // invalidating, we'll invalidate them in buffer order.
     for (let range of this.rangeList) {
+      if (this.depth === 0 && this.rootRangeSet) range = this.buffer.clipRange(range);
       this.languageMode.emitRangeUpdate(range);
     }
 
@@ -4578,7 +4680,7 @@ class LanguageLayer {
       return this.tree;
     }
 
-    let ranges = null;
+    let ranges;
     if (this.depth === 0) {
       ranges = this.resolveRootRangeSet()?.getRanges(this.buffer) ?? null;
     } else {
@@ -4756,6 +4858,9 @@ class LanguageLayer {
       // range set. Preserve this layer's current included ranges when its
       // descendants are rebuilt outside a buffer transaction.
       nodeRangeSet = {
+        rootRangeSet: this.languageMode.rootLanguageLayer.rootRangesRestricted
+          ? this.languageMode.rootLanguageLayer.rootRangeSet
+          : undefined,
         getRanges: (buffer) =>
           (this.getCurrentRanges() ?? []).map((current) =>
             rangeToTreeSitterRangeSpec(current, buffer),
@@ -5491,6 +5596,7 @@ class LanguageLayer {
         // Content changed while every range stayed put. Reuse both the
         // serialized parser ranges and the current-range marker list.
         markersToUpdate.set(group.marker, {
+          rootRangeSet: group.rangeSet.rootRangeSet,
           rangesUnchanged: true,
           getRanges: () => layer.lastIncludedRanges,
         });
@@ -5562,6 +5668,7 @@ class NodeRangeSet {
   constructor(previous, nodes, injectionPoint) {
     this.previous = previous;
     this.previousVersion = previous?.version;
+    this.rootRangeSet = previous?.isRootLanguageRangeSet ? previous : previous?.rootRangeSet;
     this.newlinesBetween = injectionPoint.newlinesBetween;
     this.includeAdjacentWhitespace = injectionPoint.includeAdjacentWhitespace;
     this.includeChildren = injectionPoint.includeChildren;
@@ -5656,9 +5763,10 @@ class NodeRangeSet {
       }
       result = rangesWithWhitespace;
     }
-    if (previousRanges && (this.newlinesBetween || this.includeAdjacentWhitespace)) {
+    if (this.rootRangeSet && (this.newlinesBetween || this.includeAdjacentWhitespace)) {
       const clipped = [];
-      for (const range of result) this._pushRange(buffer, previousRanges, clipped, range, false);
+      const rootRanges = this.rootRangeSet.getRanges(buffer);
+      for (const range of result) this._pushRange(buffer, rootRanges, clipped, range, false);
       result = clipped;
     }
     return this._consolidateRanges(result);

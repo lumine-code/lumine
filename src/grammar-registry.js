@@ -35,6 +35,7 @@ module.exports = class GrammarRegistry {
     this.subscriptions = new CompositeDisposable();
 
     this.languageOverridesByBufferId = new Map();
+    this.rootLanguageRangesByBuffer = new WeakMap();
     this.grammarScoresByBuffer = new Map();
     this.languageModeMaintenanceByBuffer = new WeakMap();
     // Buffers already wired to release themselves, so a repeated assignment
@@ -116,6 +117,7 @@ module.exports = class GrammarRegistry {
       if (this.languageModeMaintenanceByBuffer.get(buffer) !== maintenance) return;
       this.grammarScoresByBuffer.delete(buffer);
       this.languageOverridesByBufferId.delete(buffer.id);
+      this.rootLanguageRangesByBuffer.delete(buffer);
       this.releasedBuffers.delete(buffer);
       this.languageModeMaintenanceByBuffer.delete(buffer);
       maintenance.tokens.clear();
@@ -185,6 +187,43 @@ module.exports = class GrammarRegistry {
    * @public
    * @status extended
    *
+   * Limit a buffer's root language to source ranges without changing its text.
+   * The policy follows the buffer across grammar changes and is not serialized.
+   * The provider runs before each parse; return `null` to parse the whole buffer,
+   * or an empty array to parse no source. Ranges use buffer coordinates.
+   *
+   * @param buffer - The {@link TextBuffer} whose root language is constrained.
+   * @param provider - A function receiving the buffer and returning an array of {@link Range}s or `null`.
+   * @returns {Disposable} Removes this policy and restores full-buffer parsing, unless a newer policy replaced it.
+   */
+  setRootLanguageRanges(buffer, provider) {
+    if (buffer.getBuffer) buffer = buffer.getBuffer();
+    if (typeof provider !== "function") throw new TypeError("A range provider must be a function");
+    if (buffer.isDestroyed()) return new Disposable();
+    const previous = this.rootLanguageRangesByBuffer.get(buffer);
+    previous?.destroySubscription.dispose();
+    if (previous) this.subscriptions.remove(previous.destroySubscription);
+    const registration = { provider, destroySubscription: null };
+    this.rootLanguageRangesByBuffer.set(buffer, registration);
+    registration.destroySubscription = buffer.onDidDestroy(() => {
+      this.rootLanguageRangesByBuffer.delete(buffer);
+      this.subscriptions.remove(registration.destroySubscription);
+    });
+    this.subscriptions.add(registration.destroySubscription);
+    buffer.getLanguageMode().rootLanguageRangesChanged?.();
+    return new Disposable(() => {
+      if (this.rootLanguageRangesByBuffer.get(buffer) !== registration) return;
+      this.rootLanguageRangesByBuffer.delete(buffer);
+      registration.destroySubscription.dispose();
+      this.subscriptions.remove(registration.destroySubscription);
+      if (!buffer.isDestroyed()) buffer.getLanguageMode().rootLanguageRangesChanged?.();
+    });
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Force a {@link TextBuffer} to use a different grammar than the
    * one that would otherwise be selected for it.
    *
@@ -217,6 +256,7 @@ module.exports = class GrammarRegistry {
     const subscription = buffer.onDidDestroy(() => {
       this.grammarScoresByBuffer.delete(buffer);
       this.languageOverridesByBufferId.delete(buffer.id);
+      this.rootLanguageRangesByBuffer.delete(buffer);
       this.releasedBuffers.delete(buffer);
       this.subscriptions.remove(subscription);
     });
