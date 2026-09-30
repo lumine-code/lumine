@@ -121,6 +121,7 @@ async function decorationCase({ layout, endpoints, order, cache }) {
       points.map((point) => editor.displayLayer.translateBufferPosition(point)),
     );
     const expectedLookup = packedChanges(editor.displayLayer.spatialIndex, points);
+    expect(packedChanges(editor.displayLayer.spatialIndex, []).length).toBe(0);
     const samples = { lookup: [], scalar: [], batch: [], query: [], component: [] };
     let queryChecksum;
     for (let index = -WARMUPS; index < SAMPLES; index++) {
@@ -171,13 +172,36 @@ async function decorationCase({ layout, endpoints, order, cache }) {
   }
 }
 
-async function longLineCase({ length, location, operation, views, layerMode, grammar }) {
-  const text = grammar ? `value = ${"x".repeat(length - 8)}` : "x".repeat(length);
+async function longLineCase({
+  length,
+  location,
+  operation,
+  views,
+  layerMode,
+  grammar,
+  pattern = "token",
+}) {
+  const fragment =
+    pattern === "tabs"
+      ? "alpha\tbeta gamma/delta "
+      : pattern === "token"
+        ? "x"
+        : "alpha beta-gamma/delta ";
+  const text = grammar
+    ? `value = ${"x".repeat(length - 8)}`
+    : fragment.repeat(Math.ceil(length / fragment.length)).slice(0, length);
   const buffer = new TextBuffer({ text });
   const context = build(buffer);
   const { editor, component } = context;
   const layers = [];
   try {
+    if (pattern === "fold") {
+      const foldColumn = Math.floor(length / 3);
+      editor.displayLayer.foldBufferRange([
+        [0, foldColumn],
+        [0, foldColumn + 1000],
+      ]);
+    }
     if (grammar) {
       expect(lumine.grammars.assignLanguageMode(buffer, "source.python")).toBe(true);
       expect(await editor.whenGrammarSettled()).toBe(true);
@@ -248,6 +272,8 @@ async function longLineCase({ length, location, operation, views, layerMode, gra
         });
       }
       const screenLines = editor.displayLayer.getScreenLines(screenRow, screenRow + 3);
+      if (pattern === "fold")
+        expect(editor.displayLayer.foldsMarkerLayer.findMarkers({}).length).toBe(1);
       finalChecksum = checksum(
         screenLines.map((line) => ({ text: line.lineText, tags: line.tags })),
       );
@@ -258,7 +284,7 @@ async function longLineCase({ length, location, operation, views, layerMode, gra
         ]);
     }
     return {
-      id: `long-line/${grammar ? "python" : "plain"}/${length}/${location}/${operation}/${views}/${layerMode}`,
+      id: `long-line/${grammar ? "python" : "plain"}/${length}/${location}/${operation}/${views}/${layerMode}${pattern === "token" ? "" : `/${pattern}`}`,
       kind: "long-line",
       length,
       location,
@@ -266,6 +292,7 @@ async function longLineCase({ length, location, operation, views, layerMode, gra
       views,
       layerMode,
       grammar,
+      pattern,
       samplesMs: samples,
       checksum: finalChecksum,
     };
@@ -361,6 +388,23 @@ describe("Legacy display performance benchmark", () => {
         }
       }
     }
+    for (const pattern of ["words", "tabs", "fold"]) {
+      for (const location of QUICK ? ["middle"] : ["start", "middle", "end"]) {
+        for (const operation of ["insert", "delete"]) {
+          results.push(
+            await longLineCase({
+              length: 250000,
+              location,
+              operation,
+              views: 1,
+              layerMode: "copies",
+              grammar: false,
+              pattern,
+            }),
+          );
+        }
+      }
+    }
     for (const length of QUICK ? [10000] : [10000, 250000, 1000000]) {
       results.push(
         await longLineCase({
@@ -381,6 +425,7 @@ describe("Legacy display performance benchmark", () => {
       platform: process.platform,
       arch: process.arch,
       config: CONFIG,
+      memory: process.memoryUsage(),
       addons: addons.map((file) => ({
         path: file,
         sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"),

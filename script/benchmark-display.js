@@ -90,6 +90,7 @@ function freeze() {
 
 async function run(source, label, index) {
   const output = path.join(runDirectory, `${label}-${index}.json`);
+  fs.rmSync(output, { force: true });
   const log = fs.createWriteStream(path.join(runDirectory, `${label}-${index}.log`));
   const electron = require("electron");
   const home = path.join(runDirectory, "homes", `${label}-${index}`);
