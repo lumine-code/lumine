@@ -594,8 +594,8 @@ describe("Tree-sitter benchmark", () => {
       (count, spy) => count + spy.calls.count(),
       0,
     );
-    expect(leadingHandleTextChangeCount).toBe(INJECTION_LAYERS);
-    expect(leadingChildTreeEditCount).toBe(INJECTION_LAYERS);
+    expect(leadingHandleTextChangeCount).toBe(0);
+    expect(leadingChildTreeEditCount).toBe(0);
     const siblingInjectionRoutingCounts = {
       trailing: {
         handleTextChange: trailingHandleTextChangeCount,

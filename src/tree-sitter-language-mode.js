@@ -670,6 +670,8 @@ class TreeSitterLanguageMode {
 
     this.rootLanguageLayer.handleTextChange(edit, oldText, newText);
 
+    const sameExtent =
+      edit.oldEndIndex === edit.newEndIndex && edit.oldEndPosition.isEqual(edit.newEndPosition);
     for (const marker of this.injectionsMarkerLayer.getMarkers()) {
       // Marker layers have already incorporated this buffer splice. If an
       // injection still ends strictly before the edit starts, neither its
@@ -677,8 +679,22 @@ class TreeSitterLanguageMode {
       // boundary touch is deliberately not skipped: injection markers are
       // non-exclusive by default, so an insertion at either edge may become
       // part of the injection.
-      if (marker.getRange().end.isLessThan(edit.startPosition)) continue;
-      marker.languageLayer.handleTextChange(edit, oldText, newText);
+      const markerRange = marker.getRange();
+      if (markerRange.end.isLessThan(edit.startPosition)) continue;
+      const layer = marker.languageLayer;
+      // An equal-extent edit strictly before both the owner and all cached
+      // content ranges cannot change this layer's source or coordinates. The
+      // content check also protects injections that return ranges outside
+      // their owner node. Unknown ranges still take the full update path.
+      if (
+        sameExtent &&
+        edit.newEndPosition.isLessThan(markerRange.start) &&
+        layer.currentRangesCache?.length &&
+        layer.currentRangesCache.every((range) => edit.newEndPosition.isLessThan(range.start))
+      ) {
+        continue;
+      }
+      layer.handleTextChange(edit, oldText, newText);
     }
   }
 
