@@ -30,13 +30,16 @@ module.exports = class MenuBarView {
     this.boundKeyDown = (event) => this.onKeyDown(event);
     this.boundKeyUp = (event) => this.onKeyUp(event);
     this.boundWheel = (event) => this.onWheel(event);
+    this.boundMouseDown = () => this.onMouseDown();
     this.boundFocusOut = (event) => this.onFocusOut(event);
     this.boundWindowBlur = () => this.onWindowBlur();
     this.boundWindowClick = (event) => this.onWindowClick(event);
-    document.body.addEventListener("keydown", this.boundKeyDown);
-    document.body.addEventListener("keyup", this.boundKeyUp);
-    // Embedded surfaces may consume wheel events, but Alt-tap state belongs to the whole window.
+    // Observe Alt usage before an embedded surface consumes its keyboard or
+    // pointer events. Only a standalone Alt press should focus the menu.
+    document.body.addEventListener("keydown", this.boundKeyDown, true);
+    document.body.addEventListener("keyup", this.boundKeyUp, true);
     window.addEventListener("wheel", this.boundWheel, { capture: true, passive: true });
+    window.addEventListener("mousedown", this.boundMouseDown, { capture: true, passive: true });
     window.addEventListener("blur", this.boundWindowBlur);
     window.addEventListener("click", this.boundWindowClick);
     this.element.addEventListener("focusout", this.boundFocusOut);
@@ -343,6 +346,10 @@ module.exports = class MenuBarView {
     this.altPressedAlone = false;
   }
 
+  onMouseDown() {
+    this.altPressedAlone = false;
+  }
+
   onFocusOut(event) {
     if (this.popup || this.element.contains(event.relatedTarget)) return;
     requestAnimationFrame(() => {
@@ -415,9 +422,10 @@ module.exports = class MenuBarView {
     this.destroyed = true;
     this.blur();
     this.subscriptions.dispose();
-    document.body.removeEventListener("keydown", this.boundKeyDown);
-    document.body.removeEventListener("keyup", this.boundKeyUp);
+    document.body.removeEventListener("keydown", this.boundKeyDown, true);
+    document.body.removeEventListener("keyup", this.boundKeyUp, true);
     window.removeEventListener("wheel", this.boundWheel, { capture: true });
+    window.removeEventListener("mousedown", this.boundMouseDown, { capture: true });
     window.removeEventListener("blur", this.boundWindowBlur);
     window.removeEventListener("click", this.boundWindowClick);
     this.element.removeEventListener("focusout", this.boundFocusOut);

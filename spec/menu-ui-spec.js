@@ -471,6 +471,125 @@ describe("HTML menu UI", () => {
     emitter.dispose();
   });
 
+  describe("MenuBar Alt coexistence with embedded surfaces", () => {
+    let menuBar, emitter, listeners;
+
+    beforeEach(() => {
+      emitter = new Emitter();
+      listeners = [];
+      menuBar = new MenuBarView(
+        {
+          getTemplate: () => [
+            { label: "&File", submenu: [{ label: "Open", command: "core:open" }] },
+            { label: "&Help", submenu: [{ label: "About", command: "application:about" }] },
+          ],
+          onDidChange: (callback) => emitter.on("change", callback),
+          showPopup: (options) => showMenuPopup(contextViews, options),
+        },
+        { autoHide: true, altGivesFocus: true },
+      );
+      document.body.appendChild(menuBar.element);
+      target.focus();
+    });
+
+    afterEach(() => {
+      for (const [type, handler] of listeners) target.removeEventListener(type, handler);
+      menuBar.destroy();
+      emitter.dispose();
+    });
+
+    function key(type, key, options = {}) {
+      target.dispatchEvent(
+        new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...options }),
+      );
+    }
+
+    function consume(type, stop, predicate = () => true) {
+      const handler = (event) => {
+        if (!predicate(event)) return;
+        event.preventDefault();
+        event[stop]();
+      };
+      target.addEventListener(type, handler);
+      listeners.push([type, handler]);
+    }
+
+    function expectConsumedTap() {
+      expect(document.activeElement).toBe(target);
+      expect(menuBar.element.classList).not.toContain("focused");
+      expect(menuBar.element.classList).toContain("no-menu-bar");
+      expect(menuBar.popup).toBeNull();
+    }
+
+    function expectFreshTapWorks() {
+      menuBar.blur();
+      target.focus();
+      key("keydown", "Alt", { altKey: true });
+      key("keyup", "Alt");
+      expect(document.activeElement).toBe(menuBar.visibleButtons()[0].element);
+      expect(menuBar.element.classList).toContain("focused");
+    }
+
+    it("keeps plain Alt, an unmodified mnemonic and Escape focus restoration available", () => {
+      expectFreshTapWorks();
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "h", bubbles: true, cancelable: true }),
+      );
+      expect(menuBar.activeButton).toBe(menuBar.visibleButtons()[1]);
+      expect(menuBar.popup).not.toBeNull();
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+      expectConsumedTap();
+    });
+
+    for (const stop of ["stopPropagation", "stopImmediatePropagation"]) {
+      it(`does not focus on Alt release before mouseup after a consumed mousedown (${stop})`, () => {
+        consume("mousedown", stop);
+        key("keydown", "Alt", { altKey: true });
+        target.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, altKey: true }),
+        );
+        key("keydown", "Alt", { altKey: true, repeat: true });
+        key("keyup", "Alt");
+        expectConsumedTap();
+        target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+        expectConsumedTap();
+        expectFreshTapWorks();
+      });
+
+      it(`does not focus after a target-consumed Alt-letter command (${stop})`, () => {
+        consume("keydown", stop, (event) => event.key === "t");
+        key("keydown", "Alt", { altKey: true });
+        key("keydown", "t", { altKey: true });
+        key("keyup", "t", { altKey: true });
+        key("keydown", "Alt", { altKey: true, repeat: true });
+        key("keyup", "Alt");
+        expectConsumedTap();
+        expectFreshTapWorks();
+      });
+    }
+
+    it("removes its global Alt observers when destroyed", () => {
+      const keydown = spyOn(menuBar, "onKeyDown").and.callThrough();
+      const keyup = spyOn(menuBar, "onKeyUp").and.callThrough();
+      const wheel = spyOn(menuBar, "onWheel").and.callThrough();
+      const mousedown = spyOn(menuBar, "onMouseDown").and.callThrough();
+      menuBar.destroy();
+      key("keydown", "Alt", { altKey: true });
+      key("keyup", "Alt");
+      target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, altKey: true }));
+      target.dispatchEvent(new WheelEvent("wheel", { bubbles: true, altKey: true }));
+
+      expect(keydown).not.toHaveBeenCalled();
+      expect(keyup).not.toHaveBeenCalled();
+      expect(wheel).not.toHaveBeenCalled();
+      expect(mousedown).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(target);
+      expect(menuBar.element.isConnected).toBe(false);
+    });
+  });
+
   it("conceals an auto-hidden MenuBar after an outside click", () => {
     const emitter = new Emitter();
     const fakeManager = {
