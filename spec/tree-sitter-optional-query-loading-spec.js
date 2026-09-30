@@ -4,7 +4,7 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 describe("Tree-sitter optional query loading", () => {
-  let grammar, buffers, modes, extraGrammars, registrations;
+  let grammar, buffers, modes, extraGrammars, registrations, paintJobs;
   function deferred() {
     let resolve, reject;
     const promise = new Promise((yes, no) => {
@@ -40,6 +40,16 @@ describe("Tree-sitter optional query loading", () => {
     modes = [];
     extraGrammars = [];
     registrations = [];
+    paintJobs = [];
+    spyOn(TreeSitterLanguageMode.prototype, "scheduleAfterHighlightPaint").and.callFake(
+      (callback) => {
+        const job = { callback, cancelled: false };
+        paintJobs.push(job);
+        return () => {
+          job.cancelled = true;
+        };
+      },
+    );
     const file = require.resolve("language-javascript/grammars/javascript.json");
     grammar = new TreeSitterGrammar(lumine.grammars, file, CSON.readFileSync(file));
     await grammar.getLanguage();
@@ -51,7 +61,7 @@ describe("Tree-sitter optional query loading", () => {
     grammar.deactivate();
   });
 
-  it("loads only mandatory queries at startup while declaring optional capabilities", async () => {
+  it("parses and highlights before compiling cold folding and indentation queries", async () => {
     const get = spyOn(grammar, "getQuery").and.callThrough();
     const languageMode = await mode();
     expect(
@@ -59,11 +69,198 @@ describe("Tree-sitter optional query loading", () => {
         .allArgs()
         .map(([type]) => type)
         .sort(),
-    ).toEqual(["foldsQuery", "highlightsQuery", "indentsQuery"]);
+    ).toEqual(["highlightsQuery"]);
+    expect(languageMode.tree).toBeTruthy();
+    expect(languageMode.rootLanguageLayer.queries.highlightsQuery).toBeTruthy();
+    expect(languageMode.rootLanguageLayer.queries.foldsQuery).toBeUndefined();
+    expect(languageMode.rootLanguageLayer.queries.indentsQuery).toBeUndefined();
+    expect(paintJobs.length).toBe(1);
+    // Reading the gutter and pre-filling caches must not undo the staging.
+    expect(languageMode.isFoldableAtRowForRendering(0)).toBe(false);
+    languageMode.prefillFoldCache(languageMode.buffer.getRange());
+    await languageMode.atGrammarSettlement();
+    expect(get.calls.count()).toBe(1);
     expect(languageMode.hasQuery("tagsQuery")).toBe(true);
     expect(languageMode.hasQuery("localsQuery")).toBe(true);
     expect(grammar.queryCache.has("tagsQuery")).toBe(false);
     expect(grammar.queryCache.has("localsQuery")).toBe(false);
+  });
+
+  it("compiles deferred queries separately and refreshes the gutter after folds arrive", async () => {
+    const languageMode = await mode("function alpha() {\n  return 1;\n}");
+    const layer = languageMode.rootLanguageLayer;
+    expect(languageMode.isFoldableAtRowForRendering(0)).toBe(false);
+    const update = spyOn(languageMode, "emitRangeUpdate").and.callThrough();
+    paintJobs[0].callback();
+    await waitFor(() => layer.queries.foldsQuery && paintJobs.length === 2);
+    expect(layer.queries.indentsQuery).toBeUndefined();
+    expect(update).toHaveBeenCalled();
+    expect(languageMode.isFoldableAtRow(0)).toBe(true);
+    paintJobs[1].callback();
+    await waitFor(() => layer.queries.indentsQuery);
+  });
+
+  it("answers the first explicit fold and indent requests before idle work runs", async () => {
+    // Ordinary JavaScript braces use editor regex indentation settings; give
+    // this standalone mode a query whose result proves the cold demand works.
+    grammar.indentsQuery = '"{" @indent\n"}" @dedent';
+    const languageMode = await mode("function alpha() {\n  return 1;\n}");
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    expect(languageMode.isFoldableAtRowForRendering(0)).toBe(false);
+    expect(languageMode.isFoldableAtRow(0)).toBe(true);
+    const range = languageMode.getFoldRangeForRow(0);
+    expect(range.start.row).toBe(0);
+    expect(range.end.row).toBe(2);
+    expect(languageMode.suggestedIndentForBufferRow(1, 2)).toBe(1);
+    expect(compile).toHaveBeenCalledTimes(2);
+    // A pending background callback sees the demanded handles and skips them.
+    paintJobs[0].callback();
+    await languageMode.atGrammarSettlement();
+    expect(compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("attaches warm ancillary query handles immediately without a paint callback", async () => {
+    const folds = await grammar.getQuery("foldsQuery");
+    const indents = await grammar.getQuery("indentsQuery");
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    const languageMode = await mode();
+    expect(languageMode.rootLanguageLayer.queries.foldsQuery).toBe(folds);
+    expect(languageMode.rootLanguageLayer.queries.indentsQuery).toBe(indents);
+    expect(paintJobs).toEqual([]);
+    expect(compile).toHaveBeenCalledTimes(1); // highlights remains cold.
+  });
+
+  it("cancels queued ancillary work when the buffer is destroyed", async () => {
+    const languageMode = await mode();
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    languageMode.buffer.destroy();
+    expect(paintJobs[0].cancelled).toBe(true);
+    paintJobs[0].callback();
+    await Promise.resolve();
+    expect(compile).not.toHaveBeenCalled();
+  });
+
+  it("waits for a rendering frame before scheduling cancellable idle compilation", async () => {
+    TreeSitterLanguageMode.prototype.scheduleAfterHighlightPaint.and.callThrough();
+    const frames = [],
+      idle = [];
+    const frame = spyOn(window, "requestAnimationFrame").and.callFake((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const cancelFrame = spyOn(window, "cancelAnimationFrame");
+    spyOn(window, "requestIdleCallback").and.callFake((callback) => {
+      idle.push(callback);
+      return idle.length;
+    });
+    const languageMode = await mode();
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    expect(frame).toHaveBeenCalledTimes(1);
+    expect(idle).toEqual([]);
+    await languageMode.atGrammarSettlement();
+    expect(compile).not.toHaveBeenCalled();
+    frames[0]();
+    expect(idle.length).toBe(1);
+    expect(compile).not.toHaveBeenCalled();
+    idle[0]();
+    await waitFor(() => languageMode.rootLanguageLayer.queries.foldsQuery && frames.length === 2);
+    expect(compile).toHaveBeenCalledTimes(1);
+    languageMode.buffer.destroy();
+    expect(cancelFrame).toHaveBeenCalledWith(2);
+  });
+
+  it("cancels idle work after the frame when its layer is destroyed", async () => {
+    TreeSitterLanguageMode.prototype.scheduleAfterHighlightPaint.and.callThrough();
+    let afterFrame;
+    spyOn(window, "requestAnimationFrame").and.callFake((callback) => {
+      afterFrame = callback;
+      return 17;
+    });
+    spyOn(window, "requestIdleCallback").and.returnValue(23);
+    const cancelIdle = spyOn(window, "cancelIdleCallback");
+    const languageMode = await mode();
+    afterFrame();
+    languageMode.buffer.destroy();
+    expect(cancelIdle).toHaveBeenCalledWith(23);
+  });
+
+  it("includes an already-started ancillary load in grammar settlement", async () => {
+    const languageMode = await mode();
+    const layer = languageMode.rootLanguageLayer;
+    const query = await grammar.createQuery("(statement_block) @fold");
+    const pending = deferred();
+    const getQuery = grammar.getQuery.bind(grammar);
+    spyOn(grammar, "getQuery").and.callFake((type) =>
+      type === "foldsQuery" ? pending.promise : getQuery(type),
+    );
+    paintJobs[0].callback();
+    await waitFor(() => layer.queryLoadPromises.size === 1);
+    let settled = false;
+    const settlement = languageMode.atGrammarSettlement().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    pending.resolve(query);
+    await settlement;
+    expect(layer.queries.foldsQuery).toBe(query);
+    expect(settled).toBe(true);
+    // A synthetic query is retained by the layer rather than the grammar cache.
+    // The afterEach buffer cleanup releases its only handle.
+  });
+
+  it("reports a broken ancillary query once and recovers after a source fix", async () => {
+    const languageMode = await mode();
+    grammar.foldsQuery = "(no_such_node) @fold";
+    const report = spyOn(grammar, "reportQueryError");
+    expect(languageMode.getFoldRangeForRow(0)).toBeNull();
+    expect(languageMode.getFoldRangeForRow(0)).toBeNull();
+    expect(report).toHaveBeenCalledTimes(1);
+    await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+    await languageMode.atGrammarSettlement();
+    expect(languageMode.rootLanguageLayer.queries.foldsQuery).toBeTruthy();
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retain a late ancillary handle after destruction", async () => {
+    const languageMode = await mode();
+    const layer = languageMode.rootLanguageLayer;
+    const pending = deferred();
+    const query = await grammar.createQuery("(statement_block) @fold");
+    grammar.cacheQuery("foldsQuery", query);
+    spyOn(grammar, "getQuery").and.returnValue(pending.promise);
+    paintJobs[0].callback();
+    const load = layer.queryLoadPromises.get("foldsQuery");
+    languageMode.buffer.destroy();
+    pending.resolve(query);
+    await load;
+    expect(layer.queries).toEqual({});
+    expect(grammar.queryReferenceCounts.get(query)).toBe(1);
+  });
+
+  it("stops deferred compilation when the grammar generation is discarded", async () => {
+    const languageMode = await mode();
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    grammar.deactivate();
+    paintJobs[0].callback();
+    await languageMode.atGrammarSettlement();
+    expect(compile).not.toHaveBeenCalled();
+    expect(paintJobs.length).toBe(1);
+  });
+
+  it("does not warm a reactivated grammar from its old standalone layer", async () => {
+    const languageMode = await mode();
+    const language = grammar.getLanguageSync();
+    const compile = spyOn(grammar, "_createQuery").and.callThrough();
+    grammar.deactivate();
+    grammar.activate();
+    await grammar.getLanguage();
+    expect(grammar.getLanguageSync()).toBe(language);
+    paintJobs[0].callback();
+    await Promise.resolve();
+    expect(compile).not.toHaveBeenCalled();
+    expect(languageMode.rootLanguageLayer.queries.foldsQuery).toBeUndefined();
+    expect(paintJobs.length).toBe(1);
   });
 
   it("shares a true compiled Query across concurrent requests and layers", async () => {

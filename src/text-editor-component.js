@@ -1469,7 +1469,7 @@ module.exports = class TextEditorComponent {
 
       const nextBufferRow = bufferRows[i + 1];
       if (bufferRow !== nextBufferRow) {
-        foldableFlags[i] = model.isFoldableAtBufferRow(bufferRow);
+        foldableFlags[i] = model.isFoldableAtBufferRowForRendering(bufferRow);
       } else {
         foldableFlags[i] = false;
       }

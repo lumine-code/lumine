@@ -6270,6 +6270,16 @@ module.exports = class TextEditor {
     return languageMode.isFoldableAtRow && languageMode.isFoldableAtRow(bufferRow);
   }
 
+  // Gutter rendering can wait for cold folding queries to finish in idle time.
+  // Public foldability checks and folding commands still prepare them on demand.
+  isFoldableAtBufferRowForRendering(bufferRow) {
+    const languageMode = this.buffer.getLanguageMode();
+    if (languageMode.isFoldableAtRowForRendering) {
+      return languageMode.isFoldableAtRowForRendering(bufferRow);
+    }
+    return languageMode.isFoldableAtRow?.(bufferRow);
+  }
+
   /**
    * @public
    * @status extended

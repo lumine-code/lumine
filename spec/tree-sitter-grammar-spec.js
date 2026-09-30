@@ -163,6 +163,57 @@ describe("TreeSitterGrammar", () => {
       expect(load).toHaveBeenCalledTimes(1);
     });
 
+    it("does not revive a grammar disabled during its language load", async () => {
+      let resolveLanguage;
+      const pending = new Promise((resolve) => (resolveLanguage = resolve));
+      const load = spyOn(TreeSitterGrammar, "loadLanguage").and.returnValue(pending);
+      const grammar = makeGrammar({ highlightsQuery: "unused.scm" });
+      const queries = spyOn(grammar, "loadQueryFiles").and.callThrough();
+      const loading = grammar.getLanguage();
+      const rejected = expectAsync(loading).toBeRejectedWithError(/invalidated/);
+      await conditionPromise(() => load.calls.any());
+
+      grammar.deactivate();
+      resolveLanguage({});
+      await rejected;
+
+      expect(grammar.getLanguageSync()).toBeNull();
+      expect(queries).not.toHaveBeenCalled();
+      expect(grammar.subscriptions).toBeNull();
+    });
+
+    it("keeps a reactivated grammar when an old query-file read finishes", async () => {
+      const queryPath = writeQueryFile("highlights.scm", "(identifier) @current");
+      const originalRead = fs.promises.readFile;
+      let resolveOldRead;
+      const oldRead = new Promise((resolve) => (resolveOldRead = resolve));
+      let reads = 0;
+      spyOn(fs.promises, "readFile").and.callFake((file, ...args) => {
+        if (file === queryPath && reads++ === 0) return oldRead;
+        return originalRead.call(fs.promises, file, ...args);
+      });
+      const grammar = makeGrammar({ highlightsQuery: "highlights.scm" });
+      grammar.activate();
+      const loaded = spyOn(grammar.emitter, "emit").and.callThrough();
+      const loading = grammar.getLanguage();
+      const rejected = expectAsync(loading).toBeRejectedWithError(/invalidated/);
+      await conditionPromise(() => reads === 1);
+
+      grammar.deactivate();
+      grammar.activate();
+      const currentLanguage = await grammar.getLanguage();
+      resolveOldRead("(identifier) @discarded");
+      await rejected;
+
+      expect(grammar.getLanguageSync()).toBe(currentLanguage);
+      expect(grammar.highlightsQuery).toContain("@current");
+      expect(grammar.highlightsQuery).not.toContain("@discarded");
+      expect(
+        loaded.calls.allArgs().filter(([name]) => name === "did-load-query-files").length,
+      ).toBe(1);
+      grammar.deactivate();
+    });
+
     it("rejects a missing query file and allows the load to be retried", async () => {
       const grammar = makeGrammar({ highlightsQuery: "missing.scm" });
 
@@ -386,6 +437,11 @@ describe("TreeSitterGrammar", () => {
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
+      // Folding and indentation are prepared after first highlighting, or
+      // immediately when requested. Exercise their independent failure paths.
+      let layer = languageMode.rootLanguageLayer;
+      await Promise.all([layer.ensureQuery("foldsQuery"), layer.ensureQuery("indentsQuery")]);
+
       // Both failures were reported — not just the first.
       let reportedTypes = grammar.reportQueryError.calls
         .allArgs()
@@ -395,7 +451,6 @@ describe("TreeSitterGrammar", () => {
 
       // The layer still activated, recovered highlighting with a placeholder,
       // and compiled the valid indents query.
-      let layer = languageMode.rootLanguageLayer;
       expect(layer.ready).toBe(true);
       await conditionPromise(() => grammar.highlightsQuery === "; (placeholder)");
       expect(layer.queries.indentsQuery).toBeTruthy();

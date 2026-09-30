@@ -80,6 +80,7 @@ const POST_PARSE_DEFER_CODE_UNITS = 1024 * 1024;
 const INITIAL_INJECTION_UPDATE_BUDGET_MILLIS = 8;
 const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
 const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery"]);
+const ANCILLARY_QUERY_TYPES = ["foldsQuery", "indentsQuery"];
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
 // keep that rare object alive for the renderer's remaining lifetime. This is a
@@ -556,6 +557,40 @@ class TreeSitterLanguageMode {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
+  scheduleAfterHighlightPaint(callback) {
+    const domWindow = globalThis.window;
+    let cancelled = false;
+    let frame = null;
+    let idle = null;
+    let timer = null;
+    const run = () => {
+      idle = timer = null;
+      if (!cancelled && !this.destroyed) callback();
+    };
+    const afterFrame = () => {
+      frame = timer = null;
+      if (cancelled || this.destroyed) return;
+      if (domWindow?.requestIdleCallback) {
+        idle = domWindow.requestIdleCallback(run, { timeout: 1000 });
+      } else {
+        timer = setTimeout(run, 0);
+      }
+    };
+    // Idle work queued from a frame runs after its rendering opportunity. A
+    // microtask here would compile before the new highlighting could paint.
+    if (domWindow?.requestAnimationFrame) {
+      frame = domWindow.requestAnimationFrame(afterFrame);
+    } else {
+      timer = setTimeout(afterFrame, 0);
+    }
+    return () => {
+      cancelled = true;
+      if (frame != null) domWindow.cancelAnimationFrame(frame);
+      if (idle != null) domWindow.cancelIdleCallback(idle);
+      if (timer != null) clearTimeout(timer);
+    };
+  }
+
   scheduleInitialInjectionUpdate(callback) {
     if (this.destroyed) return Promise.resolve(false);
 
@@ -938,10 +973,11 @@ class TreeSitterLanguageMode {
     return this.atTransactionEndPromise;
   }
 
-  // Resolves only after the current parse transaction and all layer work that
-  // can change the active grammar/query topology have settled. Awaiting a
-  // batch may create another layer or schedule another reload, so rescan the
-  // complete, current layer set until no unseen work remains.
+  // Resolves after the current parse transaction and in-flight query/layer
+  // work settle. Queued ancillary idle work is not a prerequisite: a consumer
+  // requests the query it needs rather than forcing background compiles before
+  // the first paint. Awaiting a batch may create another layer or schedule
+  // another reload, so rescan until no unseen in-flight work remains.
   async atGrammarSettlement() {
     await this.ready;
     let transaction = await this.atTransactionEnd();
@@ -1629,6 +1665,7 @@ class TreeSitterLanguageMode {
   Section - Folds
   */
   getFoldableRangeContainingPoint(point) {
+    this.ensureQueriesForLayersSync("foldsQuery");
     point = this.buffer.clipPosition(point);
     if (point.column >= this.buffer.lineLengthForRow(point.row)) {
       let fold = this.getFoldRangeForRow(point.row);
@@ -1689,6 +1726,7 @@ class TreeSitterLanguageMode {
     if (!this.tokenized) {
       return [];
     }
+    this.ensureQueriesForLayersSync("foldsQuery");
 
     let layers = this.getAllLanguageLayers();
     let allFolds = [];
@@ -1714,6 +1752,7 @@ class TreeSitterLanguageMode {
     if (!this.tokenized) {
       return [];
     }
+    this.ensureQueriesForLayersSync("foldsQuery");
 
     // The key for this red-black tree needs to be a combination of a point and
     // a range. We do this because we want to order primarily by buffer
@@ -1764,14 +1803,24 @@ class TreeSitterLanguageMode {
   }
 
   isFoldableAtRow(row) {
+    if (this.tokenized) {
+      const point = new Point(row, this.buffer.lineLengthForRow(row));
+      this.ensureQueriesForLayersSync("foldsQuery", this.languageLayersAtPoint(point));
+    }
+    return this.isFoldableAtRowForRendering(row);
+  }
+
+  isFoldableAtRowForRendering(row) {
     if (this.isFoldableCache[row] != null) {
       return !!this.isFoldableCache[row];
     }
 
-    let range = this.getFoldRangeForRow(row);
+    // The gutter asks during rendering. It can acquire chevrons after the
+    // deferred query lands without making that render compile a cold query.
+    let range = this.getFoldRangeForRowInternal(row, false);
 
-    // Don't bother to cache this result before we're able to load the folds
-    // query.
+    // A later ancillary-query update invalidates this cache, including an
+    // initial false result while the gutter is waiting for its query.
     if (this.tokenized) {
       // We can easily keep track of _if_ this row is foldable, even if edits
       // to the buffer end up moving this row around. But we don't bother to
@@ -1783,6 +1832,10 @@ class TreeSitterLanguageMode {
   }
 
   getFoldRangeForRow(row) {
+    return this.getFoldRangeForRowInternal(row, true);
+  }
+
+  getFoldRangeForRowInternal(row, demandQuery) {
     if (!this.tokenized) {
       return null;
     }
@@ -1790,6 +1843,7 @@ class TreeSitterLanguageMode {
     let rowEnd = this.buffer.lineLengthForRow(row);
     let point = new Point(row, rowEnd);
     let layers = this.languageLayersAtPoint(point);
+    if (demandQuery) this.ensureQueriesForLayersSync("foldsQuery", layers);
 
     let leadingCandidate = null;
     // Multiple language layers may want to claim a fold for a given row.
@@ -2031,6 +2085,7 @@ class TreeSitterLanguageMode {
    * @returns {Number}, `null`, or a `Promise` that will resolve with either a `Number` or `undefined`.
    */
   suggestedIndentForBufferRow(...args) {
+    this.ensureQueriesForLayersSync("indentsQuery");
     return this.indentResolver.suggestedIndentForBufferRow(...args);
   }
 
@@ -2048,6 +2103,7 @@ class TreeSitterLanguageMode {
   // auto-indent the remaining rows through another means. If `null`, signifies
   // that no auto-indent should be attempted at all for the given range.
   suggestedIndentForBufferRows(...args) {
+    this.ensureQueriesForLayersSync("indentsQuery");
     return this.indentResolver.suggestedIndentForBufferRows(...args);
   }
 
@@ -2060,6 +2116,7 @@ class TreeSitterLanguageMode {
   //
   // Returns a `Number`.
   suggestedIndentForEditedBufferRow(...args) {
+    this.ensureQueriesForLayersSync("indentsQuery");
     return this.indentResolver.suggestedIndentForEditedBufferRow(...args);
   }
 
@@ -2095,6 +2152,12 @@ class TreeSitterLanguageMode {
     }
 
     return results;
+  }
+
+  ensureQueriesForLayersSync(queryType, layers = this.getAllLanguageLayers()) {
+    for (const layer of layers) {
+      if (layer?.ready && layer.tree) layer.ensureQuerySync(queryType);
+    }
   }
 
   hasQuery(queryType) {
@@ -3486,6 +3549,7 @@ class LanguageLayer {
     this.languageMode = languageMode;
     this.buffer = this.languageMode.buffer;
     this.grammar = grammar;
+    this.grammarGeneration = grammar.queryLoadGeneration;
     this.depth = depth;
     this.injectionPoint = injectionPoint;
     this.rangeList = new TreeSitterRangeList();
@@ -3510,6 +3574,7 @@ class LanguageLayer {
     this.requestedQueryTypes = new Set();
     this.queryLoadFailures = new Map();
     this.queryRequestVersions = new Map();
+    this.cancelAncillaryQueryLoad = null;
     this.currentRangesCache = undefined;
     this.lastIncludedRanges = null;
     this.includedRangesAreCurrent = false;
@@ -3557,7 +3622,7 @@ class LanguageLayer {
         // instance, don't really have a need for any queries other than
         // `highlightsQuery`, and some kinds of layers don't even need
         // `highlightsQuery`.
-        let queries = ["highlightsQuery", "foldsQuery", "indentsQuery"];
+        let queries = ["highlightsQuery"];
         let promises = [];
         let failures = [];
 
@@ -3611,6 +3676,12 @@ class LanguageLayer {
         this.tree = null;
         this.scopeResolver = new ScopeResolver(this, (name) => this.languageMode.idForScope(name));
         this.foldResolver = new FoldResolver(this.buffer, this);
+        // Reusing a grammar must keep the warm path synchronous. Only a cold
+        // compile is deferred; attaching the grammar's cached handle is cheap.
+        for (const queryType of ANCILLARY_QUERY_TYPES) {
+          const query = this.grammar.queryCache.get(queryType);
+          if (query) this.adoptQuery(queryType, query);
+        }
 
         // What should our language scope name be? Should we even have one?
         let languageScope;
@@ -3643,6 +3714,10 @@ class LanguageLayer {
         this.ready = true;
       })
       .catch((error) => {
+        if (error.name === "AbortError") {
+          this.destroy();
+          return;
+        }
         if (!this.destroyed) throw error;
       });
   }
@@ -3657,6 +3732,8 @@ class LanguageLayer {
       return;
     }
     this.destroyed = true;
+    this.cancelAncillaryQueryLoad?.();
+    this.cancelAncillaryQueryLoad = null;
     this.injectionPointVersion++;
     this.pendingInjectionPopulationRequests.length = 0;
     this.pendingQueryReloadTypes.clear();
@@ -3700,6 +3777,74 @@ class LanguageLayer {
     this.childLayerMarkers.clear();
     for (const marker of childLayerMarkers) {
       marker.languageLayer.destroy();
+    }
+  }
+
+  // Start ancillary work only after this layer has published its first tree.
+  scheduleAncillaryQueries() {
+    if (
+      this.destroyed ||
+      this.cancelAncillaryQueryLoad ||
+      this.grammar.queryLoadGeneration !== this.grammarGeneration ||
+      this.grammar.getLanguageSync() !== this.language
+    )
+      return;
+    const needsLoad = (type) =>
+      typeof this.grammar[type] === "string" &&
+      !this.queries[type] &&
+      !this.queryLoadFailures.has(type);
+    if (!ANCILLARY_QUERY_TYPES.some(needsLoad)) return;
+    this.cancelAncillaryQueryLoad = this.languageMode.scheduleAfterHighlightPaint(() => {
+      this.cancelAncillaryQueryLoad = null;
+      if (this.destroyed || this.grammar.queryLoadGeneration !== this.grammarGeneration) return;
+      const queryType = ANCILLARY_QUERY_TYPES.find(needsLoad);
+      if (!queryType) return;
+      // One compile per rendering opportunity also avoids combining two cold
+      // compiles into a single long task. Demanded loads share this promise.
+      this.ensureQuery(queryType).then(
+        () => this.scheduleAncillaryQueries(),
+        (error) => {
+          if (!this.destroyed) {
+            console.error(`Error loading deferred queries for ${this.grammar.scopeName}`, error);
+          }
+        },
+      );
+    });
+  }
+
+  ensureQuerySync(queryType) {
+    if (this.destroyed || typeof this.grammar[queryType] !== "string") return null;
+    this.requestedQueryTypes.add(queryType);
+    if (this.queries[queryType]) return this.queries[queryType];
+    const source = this.grammar[queryType];
+    const generation = this.grammar.queryLoadGeneration;
+    const failed = this.queryLoadFailures.get(queryType);
+    if (failed?.source === source && failed.generation === generation) return null;
+    if (this.grammar.getLanguageSync() !== this.language) return null;
+    try {
+      const query = this.grammar.getQuerySync(queryType);
+      if (this.destroyed || generation !== this.grammar.queryLoadGeneration) return null;
+      this.adoptQuery(queryType, query);
+      this.queryLoadFailures.delete(queryType);
+      return query;
+    } catch (error) {
+      if (error.name !== "AbortError" && generation === this.grammar.queryLoadGeneration) {
+        this.queryLoadFailures.set(queryType, { source, generation });
+        this.grammar.reportQueryError(error, queryType);
+      }
+      return null;
+    }
+  }
+
+  adoptQuery(queryType, query) {
+    const previous = this.queries[queryType];
+    if (!query || query === previous) return;
+    this.grammar.retainQuery(query);
+    this.queries[queryType] = query;
+    this.grammar.releaseQuery(previous);
+    if (queryType === "foldsQuery" && this.tree) {
+      this.foldResolver.reset();
+      this.languageMode.emitRangeUpdate(this.getExtent());
     }
   }
 
@@ -3757,12 +3902,7 @@ class LanguageLayer {
         version !== this.queryRequestVersions.get(queryType)
       )
         continue;
-      const previous = this.queries[queryType];
-      if (query !== previous) {
-        this.grammar.retainQuery(query);
-        this.queries[queryType] = query;
-        this.grammar.releaseQuery(previous);
-      }
+      this.adoptQuery(queryType, query);
       this.queryLoadFailures.delete(queryType);
       return query;
     }
@@ -4602,6 +4742,7 @@ class LanguageLayer {
       // rows that don't even need highlighting changes.
       this.languageMode.emitFoldUpdate(range);
     }
+    this.scheduleAncillaryQueries();
 
     if (this.injectionPopulationNeedsRetry) {
       // A queued child update was planned from an older tree. The current tree

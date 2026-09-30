@@ -48,6 +48,12 @@ function invalidatedQueryError(queryType) {
   return error;
 }
 
+function invalidatedLanguageError() {
+  const error = new Error("Grammar language load was invalidated");
+  error.name = "AbortError";
+  return error;
+}
+
 /**
  * @public
  * @status extended
@@ -310,16 +316,24 @@ module.exports = class TreeSitterGrammar {
    * @returns {Promise} that will resolve with a Tree-sitter `Language` instance. Once it resolves, the grammar is ready to perform parsing and to execute query captures.
    */
   async getLanguage() {
+    const generation = this.queryLoadGeneration;
+    if (!this.subscriptions) throw invalidatedLanguageError();
     if (this.treeSitterRuntime === "wasm") {
       await initializeWebParser();
     }
+    if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
     if (!this._language) {
       try {
-        this._language =
+        const language =
           this.treeSitterRuntime === "node"
             ? this.loadNativeLanguage()
             : await TreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
+        // A warmup can finish after its package was disabled or replaced.
+        // Keep the shared language cache, but never revive that grammar instance.
+        if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
+        this._language = language;
       } catch (err) {
+        if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
         console.error(`Error loading grammar for ${this.scopeName}; original error follows`);
         console.error(err);
         throw err;
@@ -329,10 +343,12 @@ module.exports = class TreeSitterGrammar {
     if (!this._queryFilesLoaded) {
       await this.loadQueryFiles(this.grammarFilePath, this.queryPaths);
     }
+    if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
     return this._language;
   }
 
   async loadQueryFiles(grammarPath, queryPaths) {
+    if (!this.subscriptions) throw invalidatedLanguageError();
     if (this._loadQueryFilesPromise) {
       return this._loadQueryFilesPromise;
     }
