@@ -190,6 +190,14 @@ module.exports = function ({
           return config.set(keyPath, !config.get(keyPath));
         },
       },
+      "core:toggle-local-vcs-ignored-paths": {
+        description: "Include VCS-ignored paths in this window, or exclude them again.",
+        displayName: "Core: Toggle Local VCS Ignored Paths",
+        didDispatch: function () {
+          const keyPath = "core.excludeVcsIgnoredPaths";
+          return config.set(keyPath, !config.get(keyPath), { local: true });
+        },
+      },
       "core:refresh-file-index": {
         description: "Crawl the project again and update the shared file index.",
         didDispatch: function () {

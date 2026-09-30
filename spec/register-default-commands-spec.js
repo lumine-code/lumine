@@ -1,5 +1,6 @@
 const registerDefaultCommands = require("../src/register-default-commands");
 const { SaveConflictedError } = require("../src/pane");
+const Config = require("../src/config");
 
 describe("registerDefaultCommands", () => {
   const macOSOnlyCommands = [
@@ -140,6 +141,41 @@ describe("registerDefaultCommands", () => {
         ["core.excludeVcsIgnoredPaths", false],
         ["core.excludeVcsIgnoredPaths", true],
       ]);
+      expect(project.refreshFilePaths).not.toHaveBeenCalled();
+    });
+
+    it("toggles the window-local VCS-ignore policy through ordinary config observers", () => {
+      const keyPath = "core.excludeVcsIgnoredPaths";
+      const save = jasmine.createSpy("save configuration");
+      const config = new Config({ mainSource: "config.json", saveCallback: save });
+      config.setSchema("core", {
+        type: "object",
+        properties: { excludeVcsIgnoredPaths: { type: "boolean", default: true } },
+      });
+      config.resetUserSettings({});
+      const observed = [];
+      config.observe(keyPath, (value) => observed.push(value));
+      const project = { refreshFilePaths: jasmine.createSpy("refreshFilePaths") };
+      const commands = commandsRegisteredOn("win32", { config, project });
+      const commandName = "core:toggle-local-vcs-ignored-paths";
+      const [listener] = commands.get(commandName);
+
+      expect(listener.displayName).toBe("Core: Toggle Local VCS Ignored Paths");
+      expect(listener.description).toBe(
+        "Include VCS-ignored paths in this window, or exclude them again.",
+      );
+      expect(dispatch(commands, commandName)).toBe(true);
+      expect(config.get(keyPath)).toBe(false);
+      expect(config.get(keyPath, { includeLocal: false })).toBe(true);
+      expect(observed).toEqual([true, false]);
+
+      expect(dispatch(commands, commandName)).toBe(true);
+      expect(config.get(keyPath)).toBe(true);
+      expect(config.get(keyPath, { includeLocal: false })).toBe(true);
+      expect(observed).toEqual([true, false, true]);
+      expect(config.inspect(keyPath).hasLocalOverride).toBe(true);
+      advanceClock(10);
+      expect(save).not.toHaveBeenCalled();
       expect(project.refreshFilePaths).not.toHaveBeenCalled();
     });
 
