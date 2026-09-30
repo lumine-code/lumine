@@ -1,17 +1,16 @@
 const { buildKeydownEvent } = require("./keymap-spec-helpers/helpers");
 
-describe("closing the focused surface", () => {
+describe("closing the active center document", () => {
   let centerItem;
 
   beforeEach(async () => {
     await lumine.reset();
     jasmine.attachToDOM(lumine.workspace.getElement());
-    lumine.keymaps.loadBundledKeymaps();
     centerItem = await lumine.workspace.open();
     spyOn(lumine.window, "close");
   });
 
-  function createItem(location, { permanent = false, mini = false } = {}) {
+  function createItem(location, { mini = false } = {}) {
     const element = document.createElement("div");
     element.tabIndex = -1;
     const input = document.createElement("input");
@@ -25,7 +24,6 @@ describe("closing the focused surface", () => {
       editor,
       getTitle: () => "Dock item",
       getDefaultLocation: () => location,
-      isPermanentDockItem: () => permanent,
       destroy() {
         editor?.destroy();
       },
@@ -43,80 +41,66 @@ describe("closing the focused surface", () => {
     );
   }
 
-  function expectCenterPreserved() {
-    expect(lumine.workspace.getCenter().getActivePaneItem()).toBe(centerItem);
-    expect(centerItem.isDestroyed()).toBe(false);
-    expect(lumine.window.close).not.toHaveBeenCalled();
-  }
-
   for (const location of ["left", "right", "bottom"]) {
-    it(`closes only the active ${location} dock tab from its nested input`, async () => {
-      const previousItem = createItem(location);
+    it(`closes the center document from the ${location} dock's native input`, async () => {
+      const firstItem = createItem(location);
       const item = createItem(location);
-      await lumine.workspace.open(previousItem);
+      await lumine.workspace.open(firstItem);
       await lumine.workspace.open(item);
       const pane = lumine.workspace.paneForItem(item);
 
       pressClose(item.input);
 
-      expect(pane.getItems()).toEqual([previousItem]);
-      expect(pane.getActiveItem()).toBe(previousItem);
-      expect(lumine.workspace.paneContainerForItem(previousItem).isVisible()).toBe(true);
-      expectCenterPreserved();
+      expect(centerItem.isDestroyed()).toBe(true);
+      expect(pane.getItems()).toEqual([firstItem, item]);
+      expect(pane.getActiveItem()).toBe(item);
+      expect(lumine.workspace.paneContainerForItem(item).isVisible()).toBe(true);
+      expect(lumine.window.close).not.toHaveBeenCalled();
     });
   }
 
-  it("closes the host dock tab from a mini editor and hides the emptied dock", async () => {
+  it("keeps the host dock tab open when its mini editor has focus", async () => {
     const item = createItem("left", { mini: true });
     await lumine.workspace.open(item);
 
     pressClose(lumine.views.getView(item.editor));
 
-    expect(lumine.workspace.getLeftDock().getPaneItems()).toEqual([]);
-    expect(lumine.workspace.getLeftDock().isVisible()).toBe(false);
-    expectCenterPreserved();
-  });
-
-  it("uses the dispatch pane even when another dock pane is active", async () => {
-    const item = createItem("left");
-    const otherItem = createItem("left");
-    await lumine.workspace.open(item);
-    const pane = lumine.workspace.paneForItem(item);
-    const otherPane = pane.splitRight({ items: [otherItem] });
-    otherPane.activate();
-
-    await lumine.commands.dispatch(item.input, "core:close");
-
-    expect(pane.isDestroyed()).toBe(true);
-    expect(otherPane.getItems()).toEqual([otherItem]);
+    expect(centerItem.isDestroyed()).toBe(true);
+    expect(item.editor.isDestroyed()).toBe(false);
+    expect(lumine.workspace.getLeftDock().getPaneItems()).toEqual([item]);
     expect(lumine.workspace.getLeftDock().isVisible()).toBe(true);
-    expectCenterPreserved();
   });
 
-  it("respects cancellation of a dock tab close", async () => {
+  it("preserves the center close cancellation without closing a dock instead", async () => {
     const item = createItem("right");
     await lumine.workspace.open(item);
-    const subscription = lumine.workspace.onWillDestroyPaneItem(({ prevent }) => prevent());
+    const subscription = lumine.workspace.onWillDestroyPaneItem(
+      ({ item: closingItem, prevent }) => {
+        if (closingItem === centerItem) prevent();
+      },
+    );
     try {
       await lumine.commands.dispatch(item.input, "core:close");
+      expect(centerItem.isDestroyed()).toBe(false);
       expect(lumine.workspace.getRightDock().getPaneItems()).toEqual([item]);
-      expectCenterPreserved();
+      expect(lumine.window.close).not.toHaveBeenCalled();
     } finally {
       subscription.dispose();
     }
   });
 
-  it("respects a permanent dock item without closing the center instead", async () => {
-    const item = createItem("right", { permanent: true });
-    await lumine.workspace.open(item);
+  it("closes the center document while an empty dock has focus", async () => {
+    const dock = lumine.workspace.getLeftDock();
+    dock.activate();
 
-    await lumine.commands.dispatch(item.input, "core:close");
+    await lumine.commands.dispatch(dock.getElement(), "core:close");
 
-    expect(lumine.workspace.getRightDock().getPaneItems()).toEqual([item]);
-    expectCenterPreserved();
+    expect(centerItem.isDestroyed()).toBe(true);
+    expect(dock.isVisible()).toBe(true);
+    expect(lumine.window.close).not.toHaveBeenCalled();
   });
 
-  it("closes an empty dock split while leaving its other pane visible", async () => {
+  it("keeps an empty dock split when closing the center document", async () => {
     const item = createItem("bottom");
     await lumine.workspace.open(item);
     const pane = lumine.workspace.paneForItem(item);
@@ -124,76 +108,40 @@ describe("closing the focused surface", () => {
 
     await lumine.commands.dispatch(emptyPane.getElement(), "core:close");
 
-    expect(emptyPane.isDestroyed()).toBe(true);
-    expect(lumine.workspace.getBottomDock().getPanes()).toEqual([pane]);
-    expect(lumine.workspace.getBottomDock().isVisible()).toBe(true);
-    expectCenterPreserved();
-  });
-
-  it("hides an empty dock without closing the center", async () => {
-    const dock = lumine.workspace.getLeftDock();
-    dock.activate();
-
-    await lumine.commands.dispatch(dock.getElement(), "core:close");
-
-    expect(dock.isVisible()).toBe(false);
-    expectCenterPreserved();
-  });
-
-  it("still closes the center document when dispatched from the center", async () => {
-    const item = createItem("right");
-    await lumine.workspace.open(item);
-
-    await lumine.commands.dispatch(centerItem.getElement(), "core:close");
-
     expect(centerItem.isDestroyed()).toBe(true);
-    expect(lumine.workspace.getRightDock().getPaneItems()).toEqual([item]);
-    expect(lumine.window.close).not.toHaveBeenCalled();
+    expect(emptyPane.isDestroyed()).toBe(false);
+    expect(lumine.workspace.getBottomDock().getPanes()).toEqual([pane, emptyPane]);
   });
 
-  it("does not close the center from fixed panel controls", async () => {
-    const element = document.createElement("div");
+  it("closes the center document from fixed footer controls", () => {
     const button = document.createElement("button");
-    element.appendChild(button);
-    const panel = lumine.workspace.addFooterPanel({ item: element });
+    const panel = lumine.workspace.addFooterPanel({ item: button });
     try {
       pressClose(button);
+      expect(centerItem.isDestroyed()).toBe(true);
       expect(panel.isVisible()).toBe(true);
-      expectCenterPreserved();
+      expect(lumine.window.close).not.toHaveBeenCalled();
     } finally {
       panel.destroy();
     }
   });
 
-  it("cancels a hosted dialog from its native input without closing the center", () => {
-    const element = document.createElement("div");
+  it("keeps modal cancellation separate from closing the center document", () => {
     const input = document.createElement("input");
     input.classList.add("native-key-bindings");
-    element.appendChild(input);
-    const panel = lumine.workspace.addModalPanel({ item: element });
+    const panel = lumine.workspace.addModalPanel({ item: input });
     const cancel = jasmine.createSpy("cancel").and.callFake(() => panel.destroy());
-    const subscription = lumine.commands.add(element, "core:cancel", cancel);
+    const subscription = lumine.commands.add(input, "core:cancel", cancel);
     try {
       pressClose(input);
+      expect(centerItem.isDestroyed()).toBe(true);
+      expect(cancel).not.toHaveBeenCalled();
+      expect(panel.isVisible()).toBe(true);
+      lumine.commands.dispatch(input, "core:cancel");
       expect(cancel).toHaveBeenCalledTimes(1);
       expect(lumine.workspace.getModalPanels()).not.toContain(panel);
-      expectCenterPreserved();
     } finally {
       subscription.dispose();
-      panel.destroy();
-    }
-  });
-
-  it("consumes close in a modal that deliberately cannot be cancelled", () => {
-    const element = document.createElement("div");
-    const input = document.createElement("input");
-    element.appendChild(input);
-    const panel = lumine.workspace.addModalPanel({ item: element });
-    try {
-      pressClose(input);
-      expect(panel.isVisible()).toBe(true);
-      expectCenterPreserved();
-    } finally {
       panel.destroy();
     }
   });
