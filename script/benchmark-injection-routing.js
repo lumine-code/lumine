@@ -33,6 +33,17 @@ const config = {
   warmups: Number(option("warmups", mode === "release" ? 5 : 1)),
   layers: option("layers", "500,5000").split(",").map(Number),
   cases: option("cases", "leading,trailing,leading-length-changing,inside").split(","),
+  suites: option("suites", "injections").split(","),
+  markers: option("markers", "1000,10000").split(",").map(Number),
+  listeners: option("listeners", "none,sparse,dense").split(","),
+  markerCases: option("marker-cases", "leading,leading-insert,leading-delete").split(","),
+  representatives: option("representatives", "html,vue,ipython").split(","),
+  representativeCases: option(
+    "representative-cases",
+    "leading,leading-insert,leading-delete,inside",
+  ).split(","),
+  representativeBlocks: Number(option("representative-blocks", 50)),
+  grammarRoot: path.resolve(option("grammar-root", path.dirname(ROOT))),
 };
 if (
   !Number.isInteger(config.samples) ||
@@ -41,10 +52,36 @@ if (
   config.warmups < 0 ||
   config.layers.some((count) => !Number.isInteger(count) || count < 1 || count > 99999) ||
   config.cases.some(
-    (kind) => !["leading", "trailing", "leading-length-changing", "inside"].includes(kind),
-  )
+    (kind) =>
+      ![
+        "leading",
+        "trailing",
+        "leading-length-changing",
+        "leading-insert",
+        "leading-delete",
+        "inside",
+      ].includes(kind),
+  ) ||
+  config.suites.some((suite) => !["injections", "markers", "representative"].includes(suite)) ||
+  config.markers.some((count) => !Number.isInteger(count) || count < 1 || count > 99999) ||
+  config.listeners.some((kind) => !["none", "sparse", "dense"].includes(kind)) ||
+  [...config.markerCases, ...config.representativeCases].some(
+    (kind) =>
+      ![
+        "leading",
+        "trailing",
+        "leading-length-changing",
+        "leading-insert",
+        "leading-delete",
+        "inside",
+      ].includes(kind),
+  ) ||
+  config.representatives.some((name) => !["html", "vue", "ipython"].includes(name)) ||
+  !Number.isInteger(config.representativeBlocks) ||
+  config.representativeBlocks < 1 ||
+  config.representativeBlocks > 5000
 )
-  throw new Error("Invalid samples, warmups, layers or cases");
+  throw new Error("Invalid benchmark samples, counts, suites or cases");
 const electron = path.resolve(option("electron", require("electron")));
 const git = (...argv) => execFileSync("git", argv, { cwd: ROOT, encoding: "utf8" }).trim();
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
@@ -55,6 +92,9 @@ function percentile(values, fraction) {
 }
 
 function summarize(reports) {
+  const assets = grammarFingerprint(reports[0]);
+  if (reports.some((report) => grammarFingerprint(report) !== assets))
+    throw new Error("Grammar, query, provider or runtime WASM changed between processes");
   return reports[0].results.map((first) => {
     const cases = reports.map((report) => report.results.find(({ id }) => id === first.id));
     if (
@@ -94,6 +134,22 @@ function summarize(reports) {
       metrics,
       diagnostics: cases.map((result) => result.diagnostics),
     };
+  });
+}
+
+function grammarFingerprint(report) {
+  return JSON.stringify({
+    runtimeWasm: report.runtime.runtimeWasm.sha256,
+    assets: report.runtime.grammarAssets.map((grammar) => ({
+      scopeName: grammar.scopeName,
+      descriptor: grammar.descriptor.sha256,
+      wasm: grammar.wasm.sha256,
+      queries: grammar.queries.map((query) => query.sha256),
+    })),
+    providers: (report.runtime.injectionProviders || []).map((provider) => provider.sha256),
+    providerModules: (report.runtime.injectionProviderModules || []).map(
+      (provider) => provider.sha256,
+    ),
   });
 }
 
@@ -217,6 +273,11 @@ async function main() {
       Object.entries(reports).map(([label, entries]) => [label, summarize(entries)]),
     ),
   };
+  if (
+    compare &&
+    grammarFingerprint(reports.baseline[0]) !== grammarFingerprint(reports.candidate[0])
+  )
+    throw new Error("Baseline/candidate grammar, query, provider or runtime WASM mismatch");
   if (compare)
     summary.comparison = summary.results.baseline.map((before) => {
       const after = summary.results.candidate.find(({ id }) => id === before.id);
