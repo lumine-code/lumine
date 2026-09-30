@@ -29,6 +29,7 @@ const STANDARD_EVENT_BOUNDARY_CHARACTERS = [" ", "\t", "-", "/"];
 const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
 const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
 const ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP = /^[^\t \x2d\x2f\u0080-\uffff]*$/;
+const GEOMETRY_STABLE_REPLACEMENT_REGEXP = /^[A-Za-z0-9_]+$/;
 let nextLayoutGroupId = 1;
 
 class DisplayLayer {
@@ -58,6 +59,8 @@ class DisplayLayer {
     this.displayMarkerLayersById = new Map();
     this.destroyed = false;
     this.changesSinceLastEvent = new Patch();
+    this.mappingGeneration = 0;
+    this.pendingGeometryStableChange = null;
 
     this.invisibles = params.invisibles != null ? params.invisibles : {};
     this.tabLength = params.tabLength != null ? params.tabLength : 4;
@@ -67,6 +70,7 @@ class DisplayLayer {
       params.softWrapHangingIndent != null ? params.softWrapHangingIndent : 0;
     this.ratioForCharacter =
       params.ratioForCharacter != null ? params.ratioForCharacter : unitRatio;
+    this.standardRatioForCharacter = params.standardRatioForCharacter ?? null;
     this.isWrapBoundary = params.isWrapBoundary != null ? params.isWrapBoundary : isWordStart;
     this.foldCharacter = params.foldCharacter != null ? params.foldCharacter : "⋯";
     this.atomicSoftTabs = params.atomicSoftTabs != null ? params.atomicSoftTabs : true;
@@ -176,6 +180,7 @@ class DisplayLayer {
   }
 
   reset(params) {
+    this.pendingGeometryStableChange = null;
     if (!this.isDestroyed() && this.setParams(params)) {
       this.markMarkerScreenPositionsDirty();
       this.clearSpatialIndex();
@@ -195,6 +200,7 @@ class DisplayLayer {
       softWrapColumn: this.softWrapColumn,
       softWrapHangingIndent: this.softWrapHangingIndent,
       ratioForCharacter: this.ratioForCharacter,
+      standardRatioForCharacter: this.standardRatioForCharacter,
       isWrapBoundary: this.isWrapBoundary,
       foldCharacter: this.foldCharacter,
       atomicSoftTabs: this.atomicSoftTabs,
@@ -219,6 +225,7 @@ class DisplayLayer {
   }
 
   separateLayoutGroup(preserveSpatialState = true) {
+    this.pendingGeometryStableChange = null;
     this.layoutGroupId = nextLayoutGroupId++;
     this.layoutState = preserveSpatialState
       ? copyLayoutState(this.layoutState)
@@ -1015,27 +1022,112 @@ class DisplayLayer {
   }
 
   bufferWillChange(change) {
+    // Keep the exact event as a preparation token. A nested edit or layout
+    // reset during population invalidates it before we can reuse geometry.
+    this.pendingGeometryStableChange = change;
+    const ratioForCharacter = this.ratioForCharacter;
+    const isWrapBoundary = this.isWrapBoundary;
     const lineCount = this.buffer.getLineCount();
     let endRow = change.oldRange.end.row;
     while (endRow + 1 < lineCount && this.buffer.lineLengthForRow(endRow + 1) === 0) {
       endRow++;
     }
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
+
+    if (this.pendingGeometryStableChange !== change) return;
+    this.pendingGeometryStableChange = null;
+    const { oldRange, newRange, oldText, newText } = change;
+    if (
+      ratioForCharacter !== this.ratioForCharacter ||
+      isWrapBoundary !== this.isWrapBoundary ||
+      !this.hasStandardCharacterWidth() ||
+      !this.hasStandardWrapBoundary() ||
+      typeof oldText !== "string" ||
+      typeof newText !== "string" ||
+      oldText.length === 0 ||
+      oldText.length > 64 ||
+      oldText.length !== newText.length ||
+      oldRange.start.row !== oldRange.end.row ||
+      !isEqual(oldRange.start, newRange.start) ||
+      !isEqual(oldRange.end, newRange.end) ||
+      !GEOMETRY_STABLE_REPLACEMENT_REGEXP.test(oldText) ||
+      !GEOMETRY_STABLE_REPLACEMENT_REGEXP.test(newText) ||
+      this.foldsMarkerLayer.findMarkers({ intersectsRow: oldRange.start.row }).length > 0
+    ) {
+      return;
+    }
+
+    // The exclusive end may be the beginning of the next wrap. Invalidate
+    // the rows containing replaced characters, including their first row.
+    const startScreenRow = this.translateBufferPositionWithSpatialIndex(
+      oldRange.start,
+      "forward",
+    ).row;
+    const lastScreenRow = this.translateBufferPositionWithSpatialIndex(
+      Point(oldRange.end.row, oldRange.end.column - 1),
+      "forward",
+    ).row;
+    this.pendingGeometryStableChange = {
+      change,
+      layoutState: this.layoutState,
+      ratioForCharacter,
+      isWrapBoundary,
+      startScreenRow,
+      rowCount: lastScreenRow - startScreenRow + 1,
+    };
   }
 
-  bufferDidChange({ oldRange, newRange }) {
+  hasStandardCharacterWidth() {
+    return (
+      this.ratioForCharacter === unitRatio ||
+      (this.standardRatioForCharacter != null &&
+        this.ratioForCharacter === this.standardRatioForCharacter)
+    );
+  }
+
+  hasStandardWrapBoundary() {
+    return this.isWrapBoundary === isWordStart || this.isWrapBoundary === defaultIsWrapBoundary;
+  }
+
+  bufferDidChange(change) {
+    const preparedChange = this.pendingGeometryStableChange;
+    this.pendingGeometryStableChange = null;
+    const { oldRange, newRange } = change;
     const startRow = oldRange.start.row;
     const oldEndRow = oldRange.end.row;
     const newEndRow = newRange.end.row;
 
     this.indexedBufferRowCount += newEndRow - oldEndRow;
     this.markMarkerScreenPositionsDirty();
-    const layoutChange = this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity);
+    let layoutChange;
+    if (
+      preparedChange?.change === change &&
+      preparedChange.layoutState === this.layoutState &&
+      preparedChange.ratioForCharacter === this.ratioForCharacter &&
+      preparedChange.isWrapBoundary === this.isWrapBoundary &&
+      this.hasStandardCharacterWidth() &&
+      this.hasStandardWrapBoundary()
+    ) {
+      const { startScreenRow, rowCount } = preparedChange;
+      for (
+        let row = startScreenRow,
+          end = Math.min(startScreenRow + rowCount, this.cachedScreenLines.length);
+        row < end;
+        row++
+      ) {
+        this.cachedScreenLines[row] = undefined;
+      }
+      const extent = Point(rowCount, 0);
+      layoutChange = { start: Point(startScreenRow, 0), oldExtent: extent, newExtent: extent };
+    } else {
+      layoutChange = this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity);
+    }
     this.didChange(layoutChange);
     return layoutChange;
   }
 
   adoptSpatialStateFrom(source, layoutChange = null) {
+    this.pendingGeometryStableChange = null;
     this.layoutState = source.layoutState;
 
     if (layoutChange == null) return;
@@ -1083,6 +1175,7 @@ class DisplayLayer {
   }
 
   markMarkerScreenPositionsDirty() {
+    this.mappingGeneration++;
     this.displayMarkerLayersById.forEach((layer) => layer.markScreenPositionsDirty());
   }
 
@@ -1770,6 +1863,10 @@ class DisplayLayer {
     ) {
       paramsChanged = true;
       this.ratioForCharacter = params.ratioForCharacter;
+      this.standardRatioForCharacter = null;
+    }
+    if (Object.hasOwn(params, "standardRatioForCharacter")) {
+      this.standardRatioForCharacter = params.standardRatioForCharacter;
     }
     if (Object.hasOwn(params, "isWrapBoundary") && params.isWrapBoundary !== this.isWrapBoundary) {
       paramsChanged = true;

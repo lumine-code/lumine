@@ -301,12 +301,15 @@ module.exports = class TextEditor {
     if (params.displayLayer) {
       this.displayLayer = params.displayLayer;
     } else {
+      const ratioForCharacter = this.ratioForCharacter.bind(this);
       const displayLayerParams = {
         invisibles: this.getInvisibles(),
         softWrapColumn: this.getSoftWrapColumn(),
         atomicSoftTabs: params.atomicSoftTabs != null ? params.atomicSoftTabs : true,
         tabLength,
-        ratioForCharacter: this.ratioForCharacter.bind(this),
+        ratioForCharacter,
+        standardRatioForCharacter:
+          this.ratioForCharacter === standardRatioForCharacter ? ratioForCharacter : null,
         isWrapBoundary,
         foldCharacter: ZERO_WIDTH_NBSP,
         softWrapHangingIndent:
@@ -7310,6 +7313,10 @@ module.exports = class TextEditor {
     );
   }
 };
+
+// Capture the implementation once so later prototype spies or subclass
+// overrides do not inherit the geometry-preserving replacement fast path.
+const standardRatioForCharacter = module.exports.prototype.ratioForCharacter;
 
 // Drops the `doomed` members from `array` in place, keeping the survivors in
 // order. In place is the requirement rather than the optimization: packages
