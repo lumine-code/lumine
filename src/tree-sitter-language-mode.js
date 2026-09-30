@@ -692,6 +692,9 @@ class TreeSitterLanguageMode {
         layer.currentRangesCache?.length &&
         layer.currentRangesCache.every((range) => edit.newEndPosition.isLessThan(range.start))
       ) {
+        // Fold predicates can inspect the full buffer row outside the layer's
+        // ranges, so unchanged syntax does not imply unchanged fold captures.
+        layer.foldResolver?.reset();
         continue;
       }
       layer.handleTextChange(edit, oldText, newText);
