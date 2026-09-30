@@ -395,6 +395,7 @@ describe("TreeSitterLanguageMode", () => {
       const layer = languageMode.rootLanguageLayer;
       const resolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
       const extent = layer.getExtent();
+      await layer.ensureQuery("tagsQuery");
       const expected = layer.queries.tagsQuery
         .captures(layer.tree.rootNode, {
           startPosition: extent.start,
@@ -429,6 +430,7 @@ describe("TreeSitterLanguageMode", () => {
         "(identifier) @name",
       );
       const controller = new AbortController();
+      await languageMode.rootLanguageLayer.ensureQuery("tagsQuery");
       spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(() => {
         controller.abort();
         return Promise.resolve();
@@ -452,6 +454,7 @@ describe("TreeSitterLanguageMode", () => {
         "(function_declaration name: (identifier) @name) @definition.function\n(identifier) @variable",
       );
       const layer = languageMode.rootLanguageLayer;
+      await layer.ensureQuery("tagsQuery");
       const expected = layer.queries.tagsQuery
         .captures(layer.tree.rootNode)
         .map((capture) => [capture.name, capture.node.startIndex, capture.node.endIndex]);
@@ -488,6 +491,7 @@ describe("TreeSitterLanguageMode", () => {
         "(identifier) @name",
       );
       const layer = languageMode.rootLanguageLayer;
+      await layer.ensureQuery("tagsQuery");
       const oldQuery = layer.queries.tagsQuery;
       const captures = spyOn(oldQuery, "captures").and.callThrough();
       spyOn(languageMode, "_yieldForQueryCaptureScan").and.callFake(async () => {

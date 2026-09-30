@@ -79,6 +79,7 @@ const POST_PARSE_DEFER_CODE_UNITS = 1024 * 1024;
 // consume its own synchronous parse allowance before yielding.
 const INITIAL_INJECTION_UPDATE_BUDGET_MILLIS = 8;
 const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
+const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery"]);
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
 // keep that rare object alive for the renderer's remaining lifetime. This is a
@@ -701,6 +702,20 @@ class TreeSitterLanguageMode {
     );
   }
 
+  rootLanguageRangesChanged() {
+    const layer = this.rootLanguageLayer;
+    if (this.destroyed || !layer) return;
+    layer.rootRangePolicyNeedsUpdate = true;
+    this.scopeDescriptorCache = null;
+    if (!this.resolveNextTransaction) this.refreshNextTransactionPromise();
+    layer.update(null).then(
+      (shouldEndTransaction) => {
+        if (shouldEndTransaction) this.finishTransactionUpdate();
+      },
+      (error) => this.finishTransactionUpdate(error),
+    );
+  }
+
   finishTransactionUpdate(error = null) {
     this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
     this.lastTransactionChangeCount = this.transactionChangeCount;
@@ -870,7 +885,11 @@ class TreeSitterLanguageMode {
     while (!this.destroyed && !transaction.parseError) {
       const pending = new Set();
       for (const layer of this.getAllLanguageLayers()) {
-        for (const promise of [layer?.queryReloadPromise, layer?.injectionPopulationDrainPromise]) {
+        for (const promise of [
+          layer?.queryReloadPromise,
+          layer?.injectionPopulationDrainPromise,
+          ...(layer?.queryLoadPromises?.values?.() ?? []),
+        ]) {
           if (typeof promise?.then === "function" && !awaitedPromises.has(promise)) {
             pending.add(promise);
           }
@@ -2029,8 +2048,19 @@ class TreeSitterLanguageMode {
       // no pending work, captures below run in the same stack and therefore
       // describe exactly this layer set.
       layers = this.getAllLanguageLayers();
+      await Promise.all(layers.map((layer) => layer?.ensureQuery?.(queryType)));
+      if (this.destroyed || signal?.aborted) return [];
+      const currentLayers = this.getAllLanguageLayers();
+      if (
+        layers.length !== currentLayers.length ||
+        layers.some((layer, index) => layer !== currentLayers[index])
+      )
+        continue;
       const hasPendingWork = layers.some(
-        (layer) => layer?.queryReloadPromise?.then || layer?.injectionPopulationDrainPromise?.then,
+        (layer) =>
+          layer?.queryReloadPromise?.then ||
+          layer?.injectionPopulationDrainPromise?.then ||
+          layer?.queryLoadPromises?.size,
       );
       if (!this.resolveNextTransaction && !hasPendingWork) {
         if (this.lastTransactionParseError) return [];
@@ -2230,6 +2260,7 @@ class TreeSitterLanguageMode {
   //   instead of its _extent_ (see description above).
   languageLayersAtPoint(point, { exact = false } = {}) {
     let injectionLayers = this.injectionLayersAtPoint(point, { exact });
+    if (exact && !this.rootLanguageLayer?.containsPoint(point)) return injectionLayers;
     return [this.rootLanguageLayer, ...injectionLayers];
   }
 
@@ -3402,9 +3433,17 @@ class LanguageLayer {
     this.injectionPopulationDrainPromise = null;
     this.pendingQueryReloadTypes = new Set();
     this.queryReloadPromise = null;
+    this.queryLoadPromises = new Map();
+    this.requestedQueryTypes = new Set();
+    this.queryLoadFailures = new Map();
+    this.queryRequestVersions = new Map();
     this.currentRangesCache = undefined;
     this.lastIncludedRanges = null;
     this.includedRangesAreCurrent = false;
+    this.rootRangesRestricted = false;
+    this.rootRangePolicyNeedsUpdate = false;
+    this.rootRangeSet = null;
+    this.rootIncludedRanges = null;
 
     const handleInjectionPointChanges = () => {
       // When we add or remove injection points on this grammar, this language
@@ -3445,12 +3484,13 @@ class LanguageLayer {
         // instance, don't really have a need for any queries other than
         // `highlightsQuery`, and some kinds of layers don't even need
         // `highlightsQuery`.
-        let queries = ["highlightsQuery", "foldsQuery", "indentsQuery", "localsQuery", "tagsQuery"];
+        let queries = ["highlightsQuery", "foldsQuery", "indentsQuery"];
         let promises = [];
         let failures = [];
 
         for (let queryType of queries) {
           if (grammar[queryType]) {
+            this.requestedQueryTypes.add(queryType);
             let promise = this.grammar
               .getQuery(queryType)
               .then((query) => {
@@ -3459,6 +3499,11 @@ class LanguageLayer {
                 this.grammar.retainQuery(query);
               })
               .catch((error) => {
+                if (this.destroyed) return;
+                if (error.name === "AbortError") {
+                  this.destroy();
+                  return;
+                }
                 // Collect every failure instead of letting `Promise.all`
                 // reject on the first one; each broken query is reported
                 // individually below, and the layer still activates.
@@ -3542,6 +3587,8 @@ class LanguageLayer {
     this.injectionPointVersion++;
     this.pendingInjectionPopulationRequests.length = 0;
     this.pendingQueryReloadTypes.clear();
+    this.queryLoadPromises.clear();
+    this.queryLoadFailures.clear();
     this.currentRangesCache = null;
     this.lastIncludedRanges = null;
     this.includedRangesAreCurrent = false;
@@ -3584,38 +3631,86 @@ class LanguageLayer {
   }
 
   // Reload a query of a given type from the grammar.
+  ensureQuery(queryType) {
+    if (this.destroyed || typeof this.grammar[queryType] !== "string") {
+      return Promise.resolve(null);
+    }
+    this.requestedQueryTypes.add(queryType);
+    if (this.queries[queryType]) return Promise.resolve(this.queries[queryType]);
+    const pending = this.queryLoadPromises.get(queryType);
+    if (pending) return pending;
+    const failed = this.queryLoadFailures.get(queryType);
+    if (
+      failed?.source === this.grammar[queryType] &&
+      failed.generation === this.grammar.queryLoadGeneration
+    ) {
+      return Promise.resolve(null);
+    }
+    const promise = this.loadRequestedQuery(queryType).finally(() => {
+      if (this.queryLoadPromises.get(queryType) === promise)
+        this.queryLoadPromises.delete(queryType);
+    });
+    this.queryLoadPromises.set(queryType, promise);
+    return promise;
+  }
+
+  async loadRequestedQuery(queryType) {
+    while (!this.destroyed && typeof this.grammar[queryType] === "string") {
+      const source = this.grammar[queryType];
+      const generation = this.grammar.queryLoadGeneration;
+      const version = this.queryRequestVersions.get(queryType);
+      let query;
+      try {
+        query = await this.grammar.getQuery(queryType);
+      } catch (error) {
+        if (
+          this.destroyed ||
+          error.name === "AbortError" ||
+          generation !== this.grammar.queryLoadGeneration
+        )
+          return null;
+        if (
+          source !== this.grammar[queryType] ||
+          version !== this.queryRequestVersions.get(queryType)
+        )
+          continue;
+        this.queryLoadFailures.set(queryType, { source, generation });
+        this.grammar.reportQueryError(error, queryType);
+        return null;
+      }
+      if (this.destroyed || generation !== this.grammar.queryLoadGeneration || !query) return null;
+      if (
+        source !== this.grammar[queryType] ||
+        version !== this.queryRequestVersions.get(queryType)
+      )
+        continue;
+      const previous = this.queries[queryType];
+      if (query !== previous) {
+        this.grammar.retainQuery(query);
+        this.queries[queryType] = query;
+        this.grammar.releaseQuery(previous);
+      }
+      this.queryLoadFailures.delete(queryType);
+      return query;
+    }
+    return null;
+  }
+
   async reloadGrammarQuery(queryType) {
     if (typeof this.grammar[queryType] !== "string") {
       return;
     }
-    let originalQuery = this.queries[queryType];
-    try {
-      let query = await this.grammar.getQuery(queryType);
-      if (this.destroyed) return;
-      if (query !== originalQuery) {
-        this.grammar.retainQuery(query);
-      }
-      this.queries[queryType] = query;
-      if (query !== originalQuery) {
-        this.grammar.releaseQuery(originalQuery);
-      }
-      if (queryType === "foldsQuery") {
-        this.foldResolver.reset();
-      }
-
-      // Force a re-highlight of this layer's entire region.
-      let range = this.getExtent();
-      this.languageMode.emitRangeUpdate(range);
-      this.nodesToInvalidateOnChange.clear();
-      this.foldNodesToInvalidateOnChange.clear();
-    } catch (error) {
-      if (originalQuery) {
-        this.queries[queryType] = originalQuery;
-      } else {
-        delete this.queries[queryType];
-      }
-      this.grammar.reportQueryError(error, queryType);
+    const query = await this.loadRequestedQuery(queryType);
+    if (this.destroyed || !query) return;
+    if (queryType === "foldsQuery") {
+      this.foldResolver.reset();
     }
+
+    // Force a re-highlight of this layer's entire region.
+    let range = this.getExtent();
+    this.languageMode.emitRangeUpdate(range);
+    this.nodesToInvalidateOnChange.clear();
+    this.foldNodesToInvalidateOnChange.clear();
   }
 
   // Observe the grammar for changes in queries.
@@ -3633,6 +3728,10 @@ class LanguageLayer {
 
   scheduleQueryReload(queryType) {
     if (this.destroyed) return null;
+    this.queryRequestVersions.set(queryType, (this.queryRequestVersions.get(queryType) ?? 0) + 1);
+    this.queryLoadFailures.delete(queryType);
+    if (OPTIONAL_QUERY_TYPES.has(queryType) && !this.requestedQueryTypes.has(queryType))
+      return null;
     this.pendingQueryReloadTypes.add(queryType);
     if (this.queryReloadPromise) return this.queryReloadPromise;
 
@@ -3831,7 +3930,8 @@ class LanguageLayer {
     // a particular Tree-sitter parser and should be mitigated with the
     // `includeAdjacentWhitespace` option of `addInjectionPoint`.
     //
-    let includedRanges = this.depth === 0 ? [extent] : this.getCurrentRanges();
+    let includedRanges =
+      this.depth === 0 && !this.rootRangesRestricted ? [extent] : this.getCurrentRanges();
 
     let languageScopeIdForRange = () => this.languageScopeId;
     if (typeof this.languageScope === "function") {
@@ -4049,7 +4149,10 @@ class LanguageLayer {
         } while (
           !params.initialInjectionUpdateAborted &&
           !this.destroyed &&
-          (this.injectionPopulationNeedsRetry || !this.tree || this.tree.rootNode.hasChanges)
+          (this.injectionPopulationNeedsRetry ||
+            this.rootRangePolicyNeedsUpdate ||
+            !this.tree ||
+            this.tree.rootNode.hasChanges)
         );
 
         // `true` means that this update occurs in its own distinct transaction.
@@ -4147,6 +4250,7 @@ class LanguageLayer {
       });
     }
 
+    if (this.depth === 0) nodeRangeSet = this.resolveRootRangeSet();
     let includedRanges = null;
     this.rangeList.clear();
 
@@ -4357,7 +4461,7 @@ class LanguageLayer {
   }
 
   setCurrentRanges(includedRanges) {
-    if (this.depth === 0) {
+    if (this.depth === 0 && !this.rootRangesRestricted) {
       return;
     }
     const newRanges = includedRanges.map((range) => rangeForNode(range).freeze());
@@ -4427,7 +4531,7 @@ class LanguageLayer {
   // ranges — not just its extent. The optional `exclusive` flag will return
   // `false` if the point lies on a boundary of a content range.
   containsPoint(point, exclusive = false) {
-    if (this.depth === 0) {
+    if (this.depth === 0 && !this.rootRangesRestricted) {
       return this.getExtent().containsPoint(point, exclusive);
     }
     return Boolean(this.currentRangeContainingPoint(point, exclusive));
@@ -4475,7 +4579,9 @@ class LanguageLayer {
     }
 
     let ranges = null;
-    if (this.depth > 0) {
+    if (this.depth === 0) {
+      ranges = this.resolveRootRangeSet()?.getRanges(this.buffer) ?? null;
+    } else {
       ranges = this.getCurrentRanges().map((r) => {
         return rangeToTreeSitterRangeSpec(r, this.buffer);
       });
@@ -4643,7 +4749,9 @@ class LanguageLayer {
       return;
     }
 
-    if (!nodeRangeSet && this.depth > 0) {
+    if (!nodeRangeSet && this.depth === 0 && this.rootRangesRestricted) {
+      nodeRangeSet = this.rootRangeSet;
+    } else if (!nodeRangeSet && this.depth > 0) {
       // Grammar and registration changes do not carry the parent update's
       // range set. Preserve this layer's current included ranges when its
       // descendants are rebuilt outside a buffer transaction.
@@ -5377,7 +5485,8 @@ class LanguageLayer {
         !changedTopology.has(group) &&
         layer?.includedRangesAreCurrent &&
         optionsUnchanged &&
-        group.rangeSet.previous === plan.nodeRangeSet
+        group.rangeSet.previous === plan.nodeRangeSet &&
+        group.rangeSet.previousVersion === plan.nodeRangeSet?.version
       ) {
         // Content changed while every range stayed put. Reuse both the
         // serialized parser ranges and the current-range marker list.
@@ -5452,6 +5561,7 @@ class LanguageLayer {
 class NodeRangeSet {
   constructor(previous, nodes, injectionPoint) {
     this.previous = previous;
+    this.previousVersion = previous?.version;
     this.newlinesBetween = injectionPoint.newlinesBetween;
     this.includeAdjacentWhitespace = injectionPoint.includeAdjacentWhitespace;
     this.includeChildren = injectionPoint.includeChildren;
@@ -5546,6 +5656,11 @@ class NodeRangeSet {
       }
       result = rangesWithWhitespace;
     }
+    if (previousRanges && (this.newlinesBetween || this.includeAdjacentWhitespace)) {
+      const clipped = [];
+      for (const range of result) this._pushRange(buffer, previousRanges, clipped, range, false);
+      result = clipped;
+    }
     return this._consolidateRanges(result);
   }
 
@@ -5597,9 +5712,9 @@ class NodeRangeSet {
     return consolidated;
   }
 
-  _pushRange(buffer, previousRanges, newRanges, newRange) {
+  _pushRange(buffer, previousRanges, newRanges, newRange, allowNewline = true) {
     if (!previousRanges) {
-      if (this.newlinesBetween) {
+      if (allowNewline && this.newlinesBetween) {
         const { startIndex, startPosition } = newRange;
         this._ensureNewline(buffer, newRanges, startIndex, startPosition);
       }
@@ -5626,7 +5741,7 @@ class NodeRangeSet {
       const endIndex = Math.min(previousRange.endIndex, newRange.endIndex);
       const startPosition = Point.max(previousRange.startPosition, newRange.startPosition);
       const endPosition = Point.min(previousRange.endPosition, newRange.endPosition);
-      if (this.newlinesBetween) {
+      if (allowNewline && this.newlinesBetween) {
         this._ensureNewline(buffer, newRanges, startIndex, startPosition);
       }
       newRanges.push({ startIndex, endIndex, startPosition, endPosition });
