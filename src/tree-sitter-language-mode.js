@@ -69,6 +69,10 @@ const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
 // refreshes let typing and painting continue between batches.
 const QUERY_CAPTURE_CHUNK_ROWS = 200;
 const QUERY_CAPTURE_CHUNK_CODE_UNITS = 8192;
+// A quick incremental parse does not imply a quick tree diff: comparing large
+// flat syntax nodes and reconciling their injections can still take tens of
+// milliseconds. Run that completion work outside the input event's task.
+const POST_PARSE_DEFER_CODE_UNITS = 1024 * 1024;
 // Newly-created injection layers often become ready together because they
 // share a grammar's cached language and queries. Without a shared budget,
 // their first parses all begin in the same microtask checkpoint and each may
@@ -540,6 +544,10 @@ class TreeSitterLanguageMode {
   }
 
   _yieldForQueryCaptureScan() {
+    return new Promise((resolve) => setImmediate(resolve));
+  }
+
+  _yieldForPostParseWork() {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
@@ -2076,6 +2084,8 @@ class TreeSitterLanguageMode {
             // while genuine duplicate captures within that first window stay
             // intact and in the order supplied by Tree-sitter.
             if (!firstChunk && comparePoints(capture.node.startPosition, start) < 0) continue;
+            if (chunkEndIndex < endIndex && comparePoints(capture.node.startPosition, end) >= 0)
+              continue;
             if (scopeResolver.store(capture, { boundaries: false })) {
               resolvedCaptures.push(capture);
             }
@@ -4146,6 +4156,23 @@ class LanguageLayer {
         tree = this.languageMode.parse(language, this.tree, includedRanges, {
           scopeName: this.grammar.scopeName,
         });
+      }
+      if (
+        this.languageMode.useAsyncParsing &&
+        this.tree &&
+        this.buffer.getLength() >= POST_PARSE_DEFER_CODE_UNITS
+      ) {
+        params.async = true;
+        // Keep recording edits in patchSinceCurrentParseStarted while yielding,
+        // just as when parsing itself exceeds its synchronous budget. The
+        // completed tree receives those edits below and the owning update's
+        // retry loop reparses it before settling the transaction.
+        await this.languageMode._yieldForPostParseWork();
+        if (this.destroyed) {
+          this.patchSinceCurrentParseStarted = null;
+          tree.delete?.();
+          return;
+        }
       }
     } catch (error) {
       this.patchSinceCurrentParseStarted = null;

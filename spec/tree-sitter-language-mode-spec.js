@@ -446,6 +446,28 @@ describe("TreeSitterLanguageMode", () => {
       expect(captures).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps a later name capture in its own window when its enclosing definition spans the header", async () => {
+      const languageMode = await buildChunkedMode(
+        `function${"\n".repeat(250)}alpha() {\n  return beta;\n}`,
+        "(function_declaration name: (identifier) @name) @definition.function\n(identifier) @variable",
+      );
+      const layer = languageMode.rootLanguageLayer;
+      const expected = layer.queries.tagsQuery
+        .captures(layer.tree.rootNode)
+        .map((capture) => [capture.name, capture.node.startIndex, capture.node.endIndex]);
+
+      const groups = await languageMode.getQueryCaptureGroups("tagsQuery");
+
+      expect(
+        groups[0].captures.map((capture) => [
+          capture.name,
+          capture.node.startIndex,
+          capture.node.endIndex,
+        ]),
+      ).toEqual(expected);
+      expect(groups[0].captures.filter(({ name }) => name === "name").length).toBe(1);
+    });
+
     it("abandons captures from a tree edited between batches", async () => {
       const languageMode = await buildChunkedMode(
         "const alpha = beta;\nconst gamma = delta;",
@@ -1216,6 +1238,42 @@ describe("TreeSitterLanguageMode", () => {
         await languageMode.atTransactionEnd();
 
         expect(previousTree.delete).toHaveBeenCalledTimes(1);
+      });
+
+      it("defers large-buffer tree comparisons and adopts edits made while completion is paused", async () => {
+        jasmine.useRealClock();
+        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+        const source = `const payload = \`${"x".repeat(1024 * 1024)}\`;`;
+        buffer.setText(source);
+        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const compareTrees = spyOn(languageMode.tree, "getChangedRanges").and.callThrough();
+        let resumeCompletion;
+        let paused = false;
+        spyOn(languageMode, "_yieldForPostParseWork").and.callFake(() => {
+          if (paused) return Promise.resolve();
+          paused = true;
+          return new Promise((resolve) => {
+            resumeCompletion = resolve;
+          });
+        });
+
+        buffer.append("\nconst beta = 1;");
+        await waitForCondition(() => paused);
+        expect(compareTrees).not.toHaveBeenCalled();
+        buffer.append("\nconst gamma = 2;");
+        resumeCompletion();
+        await languageMode.atTransactionEnd();
+
+        expect(compareTrees).toHaveBeenCalled();
+        expect(languageMode.tree.rootNode.hasChanges).toBe(false);
+        expect(languageMode.tree.rootNode.hasError).toBe(false);
+        expect(
+          languageMode.tree.rootNode.descendantsOfType("identifier").map((node) => node.text),
+        ).toEqual(["payload", "beta", "gamma"]);
+        expect(buffer.getText()).toBe(`${source}\nconst beta = 1;\nconst gamma = 2;`);
       });
 
       it("yields to the event loop when the sync budget is exhausted, then resolves to a complete tree", async () => {
