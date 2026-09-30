@@ -5,6 +5,8 @@
 // is always `password` because that is the transport field the helper reads —
 // it carries whatever single value git asked for.
 
+const { CompositeDisposable } = require("@lumine-code/event-kit");
+
 function promptForGitCredential(query = {}) {
   const workspace = globalThis.lumine && globalThis.lumine.workspace;
   if (!workspace) {
@@ -49,16 +51,35 @@ function promptForGitCredential(query = {}) {
     element.append(message, input, buttons);
 
     const panel = workspace.addModalPanel({ item: element });
+    const subscriptions = new CompositeDisposable();
     let settled = false;
 
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
+      subscriptions.dispose();
       panel.destroy();
       fn(value);
     };
     const accept = () => finish(resolve, { password: input.value });
     const cancel = () => finish(reject, new Error("Git credential prompt was cancelled"));
+
+    subscriptions.add(
+      globalThis.lumine.commands.add(element, {
+        "core:confirm": (event) => {
+          event.stopPropagation();
+          accept();
+        },
+        "core:cancel": (event) => {
+          event.stopPropagation();
+          cancel();
+        },
+      }),
+      panel.onDidDestroy(cancel),
+      panel.onDidChangeVisible((visible) => {
+        if (!visible) cancel();
+      }),
+    );
 
     okButton.addEventListener("click", accept);
     cancelButton.addEventListener("click", cancel);
