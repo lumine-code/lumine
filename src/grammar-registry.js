@@ -613,7 +613,8 @@ module.exports = class GrammarRegistry {
    * @param {String} injectionPoint.type - The syntax-node type that may embed other languages.
    * @param {Function} injectionPoint.language - Called with a matching syntax node and returns a language name declared by the target Tree-sitter grammar in `injectionNames`. Matching ignores surrounding whitespace and letter case.
    * @param {Function} injectionPoint.content - Called with a matching syntax node and returns the node or nodes containing embedded source. The nodes become visible buffer ranges for the injected parser.
-   * @param {Boolean|Function} [injectionPoint.combined] - Share one child language layer for matching owners and their resolved language name. Defaults to `false`. A function is called with the owner node and returns whether that node can share a layer; `false` keeps its context independent. Individual ranges remain indexed so unrelated edits do not rescan every owner.
+   * @param {Boolean|Function} [injectionPoint.combined] - Share child language layers for matching owners and their resolved language name. Defaults to `false`. A function is called with the owner node and returns whether that node can share a layer; `false` keeps its context independent. Without a member limit the owners form one shared document. Individual ranges remain indexed so unrelated edits do not rescan every owner.
+   * @param {Number} [injectionPoint.combinedMaxMembers] - An optional positive safe integer limiting the number of owners in a combined child layer. Omit it for an unbounded combined document. Set a limit only when each owner remains correct at a group boundary. An owner returning several content nodes counts as one member and stays in one layer.
    * @param injectionPoint.includeChildren - A `Boolean` that indicates whether the children (and, in fact, all descendants) of the nodes returned by `content` should be included in the injection's buffer range(s). Defaults to `false`.
    * @param injectionPoint.newlinesBetween - A `Boolean` that indicates whether each node returned from `content` should be separated by at least one newline character so that the parser understands them to be logically separated. Embedded languages like ERB and EJS need this. Defaults to `false`.
    * @param injectionPoint.languageScope - A `String` or `Function` that returns the desired scope name to apply to each of the injection's buffer ranges. Defaults to the injected grammar's own language scope — e.g., `source.js` for the JavaScript grammar. Set to `null` if the language scope should be omitted. If a `Function`, will be called with the grammar instance as an argument, and should return either a `String` or `null`.
@@ -622,6 +623,13 @@ module.exports = class GrammarRegistry {
    * @returns {Disposable} A disposable that removes the injection point.
    */
   addInjectionPoint(grammarId, injectionPoint) {
+    if (
+      injectionPoint.combinedMaxMembers !== undefined &&
+      (!Number.isSafeInteger(injectionPoint.combinedMaxMembers) ||
+        injectionPoint.combinedMaxMembers <= 0)
+    ) {
+      throw new TypeError("combinedMaxMembers must be a positive safe integer");
+    }
     const table = this.treeSitterGrammarsById;
     const grammar = table[grammarId];
     if (grammar) {

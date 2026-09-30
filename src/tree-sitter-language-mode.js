@@ -4994,14 +4994,16 @@ class LanguageLayer {
         .map((marker) => marker.combinedInjectionMember) ?? [];
     const affectedCombinedGroups = [];
     for (const byLanguage of this.combinedInjectionGroups.values()) {
-      for (const group of byLanguage.values()) {
-        // Joined newline/whitespace ranges can be affected without touching
-        // an owner. Rebuild their included ranges, but keep discovery local.
-        if (
-          group.marker?.languageLayer.currentRangesLayer.findMarkers({ intersectsRange: range })
-            .length
-        ) {
-          affectedCombinedGroups.push(group);
+      for (const pool of byLanguage.values()) {
+        for (const group of pool.groups) {
+          // Joined newline/whitespace ranges can be affected without touching
+          // an owner. Rebuild their included ranges, but keep discovery local.
+          if (
+            group.marker?.languageLayer.currentRangesLayer.findMarkers({ intersectsRange: range })
+              .length
+          ) {
+            affectedCombinedGroups.push(group);
+          }
         }
       }
     }
@@ -5510,6 +5512,7 @@ class LanguageLayer {
     )
       return;
     const changedGroups = new Set(plan.affectedCombinedGroups);
+    const changedTopology = new Set();
     const retainedMembers = new Set();
     const membersByPoint = new Map();
     const memberKey = (languageName, range) => `${languageName}:${range.toString()}`;
@@ -5552,13 +5555,19 @@ class LanguageLayer {
       for (const marker of prepared.contentMarkers) marker.destroy();
       candidate.preparedMember = null;
       changedGroups.add(existing.group);
+      this._updateCombinedMemberLimit(existing.group.pool, changedGroups, changedTopology);
     }
-    const changedTopology = new Set();
     for (const member of plan.existingCombinedMembers) {
       if (retainedMembers.has(member)) continue;
       member.group.members.delete(member);
       member.marker.destroy();
       for (const marker of member.contentMarkers) marker.destroy();
+      if (
+        member.group.members.size === 0 &&
+        (!member.group.marker || member.group.marker.languageLayer.destroyed)
+      ) {
+        member.group.pool.pruneEmptyGroups = true;
+      }
       changedGroups.add(member.group);
       changedTopology.add(member.group);
     }
@@ -5570,24 +5579,40 @@ class LanguageLayer {
         byLanguage = new Map();
         this.combinedInjectionGroups.set(injectionPoint, byLanguage);
       }
-      let group = byLanguage.get(languageName);
-      if (group && group.grammar !== grammar) {
+      let pool = byLanguage.get(languageName);
+      if (pool && pool.grammar !== grammar) {
         // A newly available grammar can replace the previous exact alias
-        // target. The full rescan has already retired its old members.
-        group.marker?.languageLayer.destroy();
-        group.marker = null;
-        group = null;
+        // target. Retire every old group, including any outside this scan.
+        for (const group of pool.groups) {
+          for (const oldMember of group.members) {
+            oldMember.marker.destroy();
+            for (const marker of oldMember.contentMarkers) marker.destroy();
+          }
+          group.members.clear();
+          changedGroups.add(group);
+        }
+        pool.groups = [];
+        pool = null;
       }
-      if (!group) {
-        group = { injectionPoint, grammar, languageName, members: new Set(), marker: null };
-        byLanguage.set(languageName, group);
+      if (!pool) {
+        pool = { injectionPoint, grammar, languageName, groups: [], maxMembers: Infinity };
+        byLanguage.set(languageName, pool);
       }
+      this._updateCombinedMemberLimit(pool, changedGroups, changedTopology);
+      const group = this._combinedGroupForRange(pool, candidate.injectionRange);
       member.group = group;
       member.marker.combinedInjectionMember = member;
       group.members.add(member);
+      const extent = this._combinedGroupExtent(group);
+      group.pendingExtent = extent
+        ? extent.union(candidate.injectionRange)
+        : candidate.injectionRange;
       changedGroups.add(group);
       changedTopology.add(group);
+      if (group.members.size > pool.maxMembers)
+        this._splitCombinedGroup(group, changedGroups, changedTopology);
     }
+    this._compactCombinedGroups(changedGroups, changedTopology);
     for (const group of changedGroups) {
       if (group.marker?.languageLayer.destroyed) group.marker = null;
       if (group.members.size === 0) {
@@ -5596,7 +5621,8 @@ class LanguageLayer {
           group.marker.languageLayer.destroy();
         }
         const byLanguage = this.combinedInjectionGroups.get(group.injectionPoint);
-        if (byLanguage?.get(group.languageName) === group) byLanguage.delete(group.languageName);
+        if (byLanguage?.get(group.languageName) === group.pool && group.pool.groups.length === 0)
+          byLanguage.delete(group.languageName);
         if (byLanguage?.size === 0) this.combinedInjectionGroups.delete(group.injectionPoint);
         continue;
       }
@@ -5659,7 +5685,145 @@ class LanguageLayer {
       } else {
         group.marker.setRange(extent);
       }
+      group.pendingExtent = null;
       markersToUpdate.set(group.marker, ranges);
+    }
+  }
+
+  _createCombinedGroup(pool, index) {
+    const { injectionPoint, grammar, languageName } = pool;
+    const group = { injectionPoint, grammar, languageName, pool, members: new Set(), marker: null };
+    pool.groups.splice(index, 0, group);
+    return group;
+  }
+
+  _combinedGroupExtent(group) {
+    return (
+      group.pendingExtent ??
+      (group.marker && !group.marker.languageLayer.destroyed
+        ? group.marker.getRange()
+        : this._combinedMembersExtent(group.members))
+    );
+  }
+
+  _combinedGroupForRange(pool, range) {
+    if (pool.pruneEmptyGroups) {
+      // A cancelled child can leave owner markers until the next parent
+      // reconciliation. Empty dead groups have no usable extent or parser.
+      pool.groups = pool.groups.filter(
+        (group) =>
+          group.members.size > 0 || (group.marker && !group.marker.languageLayer.destroyed),
+      );
+      pool.pruneEmptyGroups = false;
+    }
+    const { groups, maxMembers } = pool;
+    if (groups.length === 0) return this._createCombinedGroup(pool, 0);
+    if (maxMembers === Infinity) return groups[0];
+    // Initial discovery is in source order. Keep that common append path
+    // constant-time, without looking through every existing group per owner.
+    const finalGroup = last(groups);
+    if (!range.start.isLessThan(this._combinedGroupExtent(finalGroup).end)) {
+      return finalGroup.members.size < maxMembers
+        ? finalGroup
+        : this._createCombinedGroup(pool, groups.length);
+    }
+    let low = 0;
+    let high = groups.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (this._combinedGroupExtent(groups[middle]).start.isGreaterThan(range.start)) high = middle;
+      else low = middle + 1;
+    }
+    const index = Math.max(0, low - 1);
+    const group = groups[index];
+    if (group.members.size < maxMembers) return group;
+    const extent = this._combinedGroupExtent(group);
+    if (!range.end.isGreaterThan(extent.start)) return this._createCombinedGroup(pool, index);
+    if (!range.start.isLessThan(extent.end)) return this._createCombinedGroup(pool, index + 1);
+    return group;
+  }
+
+  _combinedMembersExtent(members) {
+    let extent = null;
+    for (const member of members) {
+      const range = member.initialRange ?? member.marker.getRange();
+      extent = extent ? extent.union(range) : range;
+    }
+    return extent;
+  }
+
+  _splitCombinedGroup(group, changedGroups, changedTopology) {
+    const { pool } = group;
+    const members = [...group.members].sort((a, b) =>
+      (a.initialRange ?? a.marker.getRange()).compare(b.initialRange ?? b.marker.getRange()),
+    );
+    const split = Math.ceil(members.length / 2);
+    const next = this._createCombinedGroup(pool, pool.groups.indexOf(group) + 1);
+    group.members = new Set(members.slice(0, split));
+    next.members = new Set(members.slice(split));
+    for (const member of next.members) member.group = next;
+    for (const item of [group, next]) {
+      item.pendingExtent = this._combinedMembersExtent(item.members);
+      changedGroups.add(item);
+      changedTopology.add(item);
+    }
+  }
+
+  _updateCombinedMemberLimit(pool, changedGroups, changedTopology) {
+    const value = pool.injectionPoint.combinedMaxMembers;
+    // Registration validates the option. Ignore a later invalid direct
+    // mutation rather than allowing an impossible zero-member split loop.
+    const limit = Number.isSafeInteger(value) && value > 0 ? value : Infinity;
+    if (pool.maxMembers === limit) return;
+    pool.maxMembers = limit;
+    for (let index = 0; index < pool.groups.length; index++) {
+      const group = pool.groups[index];
+      changedGroups.add(group);
+      changedTopology.add(group);
+      while (group.members.size > limit)
+        this._splitCombinedGroup(group, changedGroups, changedTopology);
+    }
+  }
+
+  _compactCombinedGroups(changedGroups, changedTopology) {
+    const pools = new Set([...changedTopology].map((group) => group.pool));
+    const eligible = new Set(changedTopology);
+    for (const pool of pools) {
+      const compacted = [];
+      let removedNeighbor = false;
+      // Build the ordered array once. Repeated indexOf/splice would make
+      // initial cap=1 and whole-document deletion quadratic in group count.
+      for (const group of pool.groups) {
+        const previous = last(compacted);
+        if (group.members.size === 0) {
+          removedNeighbor = true;
+          if (previous) eligible.add(previous);
+          continue;
+        }
+        if (removedNeighbor) eligible.add(group);
+        removedNeighbor = false;
+        if (
+          previous &&
+          (eligible.has(previous) || eligible.has(group)) &&
+          previous.members.size + group.members.size <= pool.maxMembers
+        ) {
+          const extent = this._combinedGroupExtent(previous).union(
+            this._combinedGroupExtent(group),
+          );
+          for (const member of group.members) {
+            member.group = previous;
+            previous.members.add(member);
+          }
+          group.members.clear();
+          previous.pendingExtent = extent;
+          eligible.add(previous);
+          for (const item of [previous, group]) {
+            changedGroups.add(item);
+            changedTopology.add(item);
+          }
+        } else compacted.push(group);
+      }
+      pool.groups = compacted;
     }
   }
   _treeEditForBufferChange(start, oldEnd, newEnd, oldText, newText) {
