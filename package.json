@@ -177,7 +177,7 @@
   "allowScripts": {
     "github:lumine-code/fuzzy-native#f24848ab8c03994bf0d0defa72525a678d02af96": true,
     "github:lumine-code/keyboard-layout#71abc9b16fc7f3863ee2afa554f6762a1844214b": true,
-    "github:lumine-code/superstring#57a49a92f51b088642a130d03bed70598906887d": true,
+    "github:lumine-code/superstring#c622eaa57af0cd31a7689cb504390f1507fa99c9": true,
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f": true,
     "github:lumine-code/node-ctags#bd126f8d9895b8c8365c35becf8bceb1b1bd8c26": true,
