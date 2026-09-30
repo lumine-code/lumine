@@ -452,7 +452,7 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
     await mode.atTransactionEnd();
     expect(layers().length).toBe(1);
     expect(contents()).toEqual(["z+"]);
-    expect(mode.rootLanguageLayer.combinedInjectionMembersLayer.getMarkerCount()).toBe(2);
+    expect(mode.rootLanguageLayer.combinedInjectionMembersLayer.getMarkerCount()).toBe(1);
   });
 
   it("reevaluates grouped callbacks when their configuration requests a full rescan", async () => {

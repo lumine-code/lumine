@@ -5524,11 +5524,17 @@ class LanguageLayer {
     const ranges = memberRanges.getRanges(this.buffer);
     if (ranges.length === 0) return null;
     this.combinedInjectionMembersLayer ??= this.buffer.addMarkerLayer();
+    const marker = this.combinedInjectionMembersLayer.markRange(injectionRange);
     return {
-      marker: this.combinedInjectionMembersLayer.markRange(injectionRange),
-      contentMarkers: ranges.map((range) =>
-        this.combinedInjectionMembersLayer.markRange(rangeForNode(range)),
-      ),
+      marker,
+      contentMarkers: ranges.map((range) => {
+        const contentRange = rangeForNode(range);
+        // Both roles use this layer's default marker options. A single exact
+        // content range therefore follows every splice exactly like its owner.
+        return ranges.length === 1 && contentRange.isEqual(injectionRange)
+          ? marker
+          : this.combinedInjectionMembersLayer.markRange(contentRange);
+      }),
       initialRange: injectionRange,
       initialNodeSpecs: ranges,
     };
@@ -5538,8 +5544,14 @@ class LanguageLayer {
     for (const candidate of plan.combinedCandidates) {
       const member = candidate.preparedMember;
       if (!member || member.group) continue;
-      member.marker.destroy();
-      for (const marker of member.contentMarkers) marker.destroy();
+      this._destroyCombinedInjectionMember(member);
+    }
+  }
+
+  _destroyCombinedInjectionMember(member) {
+    member.marker.destroy();
+    for (const marker of member.contentMarkers) {
+      if (marker !== member.marker) marker.destroy();
     }
   }
 
@@ -5590,8 +5602,7 @@ class LanguageLayer {
       );
       if (!existing) continue;
       retainedMembers.add(existing);
-      prepared.marker.destroy();
-      for (const marker of prepared.contentMarkers) marker.destroy();
+      this._destroyCombinedInjectionMember(prepared);
       candidate.preparedMember = null;
       changedGroups.add(existing.group);
       this._updateCombinedMemberLimit(existing.group.pool, changedGroups, changedTopology);
@@ -5599,8 +5610,7 @@ class LanguageLayer {
     for (const member of plan.existingCombinedMembers) {
       if (retainedMembers.has(member)) continue;
       member.group.members.delete(member);
-      member.marker.destroy();
-      for (const marker of member.contentMarkers) marker.destroy();
+      this._destroyCombinedInjectionMember(member);
       if (
         member.group.members.size === 0 &&
         (!member.group.marker || member.group.marker.languageLayer.destroyed)
@@ -5624,8 +5634,7 @@ class LanguageLayer {
         // target. Retire every old group, including any outside this scan.
         for (const group of pool.groups) {
           for (const oldMember of group.members) {
-            oldMember.marker.destroy();
-            for (const marker of oldMember.contentMarkers) marker.destroy();
+            this._destroyCombinedInjectionMember(oldMember);
           }
           group.members.clear();
           changedGroups.add(group);
