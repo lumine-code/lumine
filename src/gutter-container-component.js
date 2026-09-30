@@ -43,7 +43,9 @@ module.exports = class GutterContainerComponent {
 
   shouldUpdate(props) {
     return (
-      !props.measuredContent || props.lineNumberGutterWidth !== this.props.lineNumberGutterWidth
+      !props.measuredContent ||
+      props.lineNumberGutterWidth !== this.props.lineNumberGutterWidth ||
+      props.activeBufferRow !== this.props.activeBufferRow
     );
   }
 
@@ -148,6 +150,7 @@ module.exports = class GutterContainerComponent {
       scrollHeight,
       lineNumberGutterWidth,
       lineHeight,
+      activeBufferRow,
       updateMode,
     } = this.props;
 
@@ -181,6 +184,7 @@ module.exports = class GutterContainerComponent {
         width,
         lineHeight: lineHeight,
         showLineNumbers,
+        activeBufferRow: oneTrueLineNumberGutter ? activeBufferRow : null,
         showFoldControls: oneTrueLineNumberGutter,
         updateMode,
       };
@@ -193,6 +197,7 @@ module.exports = class GutterContainerComponent {
         onMouseMove: gutter.onMouseMove,
         maxDigits: lineNumbersToRender.maxDigits,
         showLineNumbers,
+        activeBufferRow: oneTrueLineNumberGutter ? activeBufferRow : null,
         showFoldControls: oneTrueLineNumberGutter,
         updateMode,
       };
@@ -404,6 +409,10 @@ class LineNumberGutterComponent {
       const screenRow = screenRows[j];
 
       let className = "line-number";
+      // Expose the primary cursor's buffer row without prescribing its look.
+      // A wrapped line keeps its numbered row active while the caret moves
+      // through its continuations; custom gutters own their own row states.
+      if (bufferRow === this.props.activeBufferRow) className += " active-line-number";
       if (showFoldControls && foldable) className = className + " foldable";
 
       const decorationsForRow = decorations[row - startRow];
@@ -480,6 +489,7 @@ class LineNumberGutterComponent {
 
     if (newProps.updateMode !== UPDATE_MODE_SCROLL_TILES) return true;
     if (oldProps.showLineNumbers !== newProps.showLineNumbers) return true;
+    if (oldProps.activeBufferRow !== newProps.activeBufferRow) return true;
     if (oldProps.height !== newProps.height) return true;
     if (oldProps.width !== newProps.width) return true;
     if (oldProps.lineHeight !== newProps.lineHeight) return true;

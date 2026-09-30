@@ -2948,6 +2948,111 @@ describe("TextEditorComponent", () => {
     });
   });
 
+  describe("active line numbers", () => {
+    function activeRows(element) {
+      return Array.from(
+        element.querySelectorAll('.gutter[gutter-name="line-number"] .active-line-number'),
+        (node) => Number(node.dataset.bufferRow),
+      );
+    }
+
+    it("moves the primary cursor state without discarding line number decorations", async () => {
+      const { component, element, editor } = buildComponent({ text: "zero\none\ntwo" });
+      const marker = editor.markBufferRange([
+        [0, 0],
+        [0, 2],
+      ]);
+      editor.decorateMarker(marker, { type: "line-number", class: "package-decoration" });
+      await component.getNextUpdatePromise();
+      const firstRow = lineNumberNodeForScreenRow(component, 0);
+      expect(activeRows(element)).toEqual([0]);
+      expect(firstRow).toHaveClass("package-decoration");
+
+      editor.setCursorBufferPosition([1, 1]);
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([1]);
+      expect(lineNumberNodeForScreenRow(component, 0)).toBe(firstRow);
+      expect(firstRow).not.toHaveClass("active-line-number");
+      expect(firstRow).toHaveClass("package-decoration");
+    });
+
+    it("follows forward and reversed selection heads including a head at column zero", async () => {
+      const { component, element, editor } = buildComponent({ text: "zero\none\ntwo" });
+      const range = [
+        [0, 1],
+        [2, 0],
+      ];
+      editor.setSelectedBufferRange(range);
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([2]);
+
+      editor.setSelectedBufferRange(range, { reversed: true });
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([0]);
+    });
+
+    it("marks only the primary cursor and promotes the previous one on removal", async () => {
+      const { component, element, editor } = buildComponent({ text: "zero\none\ntwo" });
+      const primaryCursor = editor.addCursorAtBufferPosition([2, 1]);
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([2]);
+
+      primaryCursor.destroy();
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([0]);
+    });
+
+    it("keeps the numbered buffer row active on a soft wrap continuation", async () => {
+      const { component, element, editor } = buildComponent({
+        text: "abcdefghijklmno\nnext",
+        softWrapped: true,
+      });
+      await setEditorWidthInCharacters(component, 5);
+      editor.setCursorBufferPosition([0, 12]);
+      await component.getNextUpdatePromise();
+      expect(editor.getCursorScreenPosition().row).toBeGreaterThan(0);
+      expect(lineNumberNodeForScreenRow(component, 0)).toHaveClass("active-line-number");
+      expect(activeRows(element).every((row) => row === 0)).toBe(true);
+    });
+
+    it("refreshes recycled and remounted rows while leaving custom gutters and mini editors alone", async () => {
+      const { component, element, editor } = buildComponent({
+        text: Array.from({ length: 40 }, (_, row) => `row ${row}`).join("\n"),
+        rowsPerTile: 2,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 3);
+      const customGutter = editor.addGutter({ name: "custom-numbers", type: "line-number" });
+      editor.setCursorBufferPosition([20, 0], { autoscroll: false });
+      await component.getNextUpdatePromise();
+      await setScrollTop(component, 20 * component.getLineHeight());
+      expect(activeRows(element)).toEqual([20]);
+      expect(customGutter.getElement().querySelector(".active-line-number")).toBeNull();
+
+      editor.setCursorBufferPosition([21, 0], { autoscroll: false });
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([21]);
+      await setScrollTop(component, 0);
+      expect(activeRows(element)).toEqual([]);
+      editor.setCursorBufferPosition([0, 0], { autoscroll: false });
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([0]);
+
+      const gutter = editor.getLineNumberGutter();
+      gutter.hide();
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([]);
+      editor.setCursorBufferPosition([1, 0], { autoscroll: false });
+      gutter.show();
+      await component.getNextUpdatePromise();
+      expect(activeRows(element)).toEqual([1]);
+
+      editor.update({ mini: true });
+      await component.getNextUpdatePromise();
+      expect(element.querySelector(".active-line-number")).toBeNull();
+    });
+  });
+
   describe("line and line number decorations", () => {
     it("adds decoration classes on screen lines spanned by decorated markers", async () => {
       const { component, editor } = buildComponent({

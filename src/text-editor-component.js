@@ -931,6 +931,7 @@ module.exports = class TextEditorComponent {
         decorationsToRender: this.decorationsToRender,
         isLineNumberGutterVisible: this.props.model.isLineNumberGutterVisible(),
         showLineNumbers: this.showLineNumbers,
+        activeBufferRow: this.props.model.getLastCursor()?.getBufferPosition().row ?? null,
         lineNumbersToRender: this.lineNumbersToRender,
         didMeasureVisibleBlockDecoration: this.didMeasureVisibleBlockDecoration,
         updateMode,
