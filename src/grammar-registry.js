@@ -639,22 +639,41 @@ module.exports = class GrammarRegistry {
       table[grammarId] = { injectionPoints: [injectionPoint] };
     }
 
-    return new Disposable(() => {
-      const entry = table[grammarId];
-      if (entry?.removeInjectionPoint) {
-        const injectionPoints = entry.injectionPointsByType[injectionPoint.type];
-        if (injectionPoints?.includes(injectionPoint)) {
-          entry.removeInjectionPoint(injectionPoint);
-        }
-        return;
-      }
+    const originalEntry = table[grammarId];
+    let attachedGrammar = grammar?.removeInjectionPoint ? grammar : null;
+    // A registration made before the grammar loads starts on a stub. Remember
+    // the grammar that receives it, even if that grammar is later removed.
+    let loadSubscription = attachedGrammar
+      ? null
+      : this.onDidAddGrammar((added) => {
+          if (added.scopeName !== grammarId) return;
+          attachedGrammar = added;
+          loadSubscription.dispose();
+          this.subscriptions.remove(loadSubscription);
+          loadSubscription = null;
+        });
+    if (loadSubscription) this.subscriptions.add(loadSubscription);
 
-      const injectionPoints = entry?.injectionPoints;
-      const index = injectionPoints?.indexOf(injectionPoint) ?? -1;
-      if (index === -1) return;
-      injectionPoints.splice(index, 1);
-      if (injectionPoints.length === 0 && table[grammarId] === entry) {
-        delete table[grammarId];
+    return new Disposable(() => {
+      loadSubscription?.dispose();
+      if (loadSubscription) this.subscriptions.remove(loadSubscription);
+      const currentTable = this.treeSitterGrammarsById;
+      const entries = new Set([originalEntry, attachedGrammar, currentTable[grammarId]]);
+      for (const entry of entries) {
+        if (entry?.removeInjectionPoint) {
+          const injectionPoints = entry.injectionPointsByType[injectionPoint.type];
+          if (injectionPoints?.includes(injectionPoint)) entry.removeInjectionPoint(injectionPoint);
+          continue;
+        }
+
+        const injectionPoints = entry?.injectionPoints;
+        const index = injectionPoints?.indexOf(injectionPoint) ?? -1;
+        if (index === -1) continue;
+        injectionPoints.splice(index, 1);
+        if (injectionPoints.length === 0) {
+          if (table[grammarId] === entry) delete table[grammarId];
+          if (currentTable[grammarId] === entry) delete currentTable[grammarId];
+        }
       }
     });
   }
