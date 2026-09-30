@@ -126,6 +126,7 @@ const configSchema = {
         description:
           "When selected 'no', a blank environment is loaded. When selected 'yes' and Lumine is started from the icon or `lumine` by itself from the command line, restores the last state of all Lumine windows; otherwise a blank environment is loaded. When selected 'always', restores the last state of all Lumine windows always, no matter how Lumine is started.",
         type: "string",
+        allowLocal: false,
         enum: ["no", "yes", "always"],
         default: "yes",
       },
@@ -155,6 +156,7 @@ const configSchema = {
         description:
           "Specify whether Lumine should use the operating system's color profile (recommended) or an alternative color profile.<br>Changing this setting will require a relaunch of Lumine to take effect.",
         type: "string",
+        allowLocal: false,
         enum: [
           {
             value: "default",
@@ -166,6 +168,13 @@ const configSchema = {
           },
         ],
         default: "default",
+      },
+      allowWindowTransparency: {
+        title: "Allow Window Transparency",
+        description: "Allow transparent native windows when the application creates them.",
+        type: "any",
+        hidden: true,
+        allowLocal: false,
       },
     },
   },
@@ -783,6 +792,7 @@ if (process.platform === "darwin") {
     description:
       "Use pre-Lion fullscreen on macOS. This does not create a new desktop space for Lumine on fullscreen mode.",
     type: "boolean",
+    allowLocal: false,
     default: false,
   };
 }

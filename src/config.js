@@ -30,6 +30,10 @@ const SCOPE_RESOLUTIONS = new Set(["base", "grammar", "syntax"]);
  *
  * lumine.config.set('my-package.myKey', 'value')
  * lumine.config.get('my-package.myKey') // -> 'value'
+ *
+ * // Change only this window until it reloads, without saving to config.json.
+ * lumine.config.set('my-package.myKey', 'temporary', { local: true })
+ * lumine.config.unset('my-package.myKey', { local: true })
  * ```
  *
  * You may want to watch for changes. Use {@link #observe} to catch changes to the setting.
@@ -494,10 +498,13 @@ class Config {
 
     this.defaultSettings = {};
     this.settings = {};
+    this.localSettings = {};
     this.projectSettings = {};
     this.projectFile = null;
 
     this.scopedSettingsStore = new SelectorStore();
+    this.localScopedSettingsStore = new SelectorStore();
+    this.resolvedScopedSettingsStore = null;
 
     this.settingsLoaded = false;
     this.transactDepth = 0;
@@ -674,8 +681,8 @@ class Config {
    *   `editor.getLastCursor().getScopeDescriptor()`. See
    *   [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
    *   for more information.
-   * @returns {*} The value from Lumine's defaults or the user's configuration,
-   *   in the type specified by the configuration schema.
+   * @returns {*} The resolved value, including this window's local user
+   *   overrides, in the type specified by the configuration schema.
    */
   get(...args) {
     let keyPath, options, scope;
@@ -730,7 +737,11 @@ class Config {
 
     if (scope != null) {
       const scopeDescriptor = ScopeDescriptor.fromObject(scope);
-      result = this.scopedSettingsStore.getAll(scopeDescriptor.getScopeChain(), keyPath, options);
+      result = this.getScopedSettingsStore(options).getAll(
+        scopeDescriptor.getScopeChain(),
+        keyPath,
+        options,
+      );
     } else {
       result = [];
     }
@@ -749,7 +760,11 @@ class Config {
    *
    * Sets the value for a configuration setting.
    *
-   * This value is stored in Lumine's internal configuration file.
+   * This value is stored in Lumine's configuration file unless `local` is true.
+   * Local values replace user values in this renderer until it reloads. Project
+   * and scope precedence remains unchanged, and synchronized file changes do
+   * not remove local values. An ordinary write removes the local override at
+   * the same selector and key path before updating the user value.
    *
    * ### Examples
    *
@@ -778,15 +793,17 @@ class Config {
    *
    * @param {String} keyPath - The configuration key.
    * @param {*} value - The setting value. Passing `undefined` reverts it to the
-   *   default value.
+   *   default value, or removes the override when `local` is true.
    * @param {Object} [options] - Write options.
+   * @param {Boolean} [options.local=false] - Keep the value in this window only.
    * @param {String} [options.scopeSelector] - A scope such as `.source.ruby`.
    *   See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
    *   for more information.
    * @param {String} [options.source] - The associated source file. Defaults to
    *   the user's configuration file.
    * @returns {Boolean} `true` if the value was set; `false` if it could not be
-   *   coerced to the type specified by the setting's schema.
+   *   coerced to the type specified by the setting's schema or the schema
+   *   declares `allowLocal: false` for a requested local write.
    */
   set(...args) {
     let [keyPath, value, options = {}] = args;
@@ -795,21 +812,21 @@ class Config {
       throw new TypeError("Config::set writes with 'scopeSelector', not 'scope'");
     }
 
-    if (!this.settingsLoaded) {
-      this.pendingOperations.push(() => this.set(keyPath, value, options));
-    }
-
     // We should never use the scoped store to set global settings, since they are kept directly
     // in the config object.
     const scopeSelector = options.scopeSelector !== "*" ? options.scopeSelector : undefined;
     let source = options.source;
     const shouldSave = options.save != null ? options.save : true;
 
-    if (source && !scopeSelector && source !== this.projectFile) {
+    this.validateLocalSource(options);
+    if (source && !scopeSelector && source !== this.projectFile && source !== this.mainSource) {
       throw new Error("::set with a 'source' and no 'scopeSelector' is not yet implemented!");
     }
 
     if (!source) source = this.mainSource;
+
+    if (options.local && value !== undefined && !this.allowsLocalValue(keyPath, value))
+      return false;
 
     if (value !== undefined) {
       try {
@@ -819,13 +836,23 @@ class Config {
       }
     }
 
-    if (scopeSelector != null) {
-      this.setRawScopedValue(keyPath, value, source, scopeSelector);
-    } else {
-      this.setRawValue(keyPath, value, { source });
+    if (!this.settingsLoaded) {
+      const queuedValue = this.deepClone(value);
+      const queuedOptions = { ...options };
+      this.pendingOperations.push(() => this.set(keyPath, queuedValue, queuedOptions));
     }
 
-    if (source === this.mainSource && shouldSave && this.settingsLoaded) {
+    this.transact(() => {
+      if (options.local) {
+        this.setRawLocalValue(keyPath, value, scopeSelector);
+      } else {
+        if (source === this.mainSource) this.removeLocalValue(keyPath, scopeSelector);
+        if (scopeSelector != null) this.setRawScopedValue(keyPath, value, source, scopeSelector);
+        else this.setRawValue(keyPath, value, { source });
+      }
+    });
+
+    if (!options.local && source === this.mainSource && shouldSave && this.settingsLoaded) {
       this.requestSave();
     }
     return true;
@@ -835,25 +862,38 @@ class Config {
    * @public
    * @status essential
    *
-   * Restore the setting at `keyPath` to its default value.
+   * Restore the setting at `keyPath` to its default value. With `local: true`,
+   * remove only the selected local override and inherit the current user value.
    *
    * @param keyPath - The `String` name of the key.
    * @param {Object} [options]
+   * @param {Boolean} [options.local=false] - Remove only this window's override,
+   *   revealing the current user value. An absent override is a no-op.
    * @param {String} [options.scopeSelector] - See {@link #set}
    * @param {String} [options.source] - See {@link #set}
    */
   unset(keyPath, options) {
-    if (!this.settingsLoaded) {
-      this.pendingOperations.push(() => this.unset(keyPath, options));
-    }
-
     if (options?.scope != null) {
       throw new TypeError("Config::unset writes with 'scopeSelector', not 'scope'");
     }
+    this.validateLocalSource(options ?? {});
+    if (!this.settingsLoaded) {
+      const queuedOptions = { ...options };
+      this.pendingOperations.push(() => this.unset(keyPath, queuedOptions));
+    }
     let { scopeSelector, source } = options != null ? options : {};
+    if (scopeSelector === "*") scopeSelector = undefined;
     if (source == null) {
       source = this.mainSource;
     }
+
+    if (options?.local) return this.removeLocalValue(keyPath, scopeSelector);
+    return this.transact(() => this.unsetUserValue(keyPath, { scopeSelector, source }));
+  }
+
+  /** @private */
+  unsetUserValue(keyPath, { scopeSelector, source }) {
+    if (source === this.mainSource) this.removeLocalValue(keyPath, scopeSelector);
 
     if (scopeSelector != null) {
       if (keyPath != null) {
@@ -866,11 +906,7 @@ class Config {
           setValueAtKeyPath(settings, keyPath, undefined);
           settings = withoutEmptyObjects(settings);
           if (settings != null) {
-            this.set(null, settings, {
-              scopeSelector,
-              source,
-              priority: this.priorityForSource(source),
-            });
+            this.setRawScopedValue(null, settings, source, scopeSelector);
           } else {
             this.emitChangeEvent({ keyPath, scopeSelector, source });
           }
@@ -885,7 +921,7 @@ class Config {
         return this.emitChangeEvent({ keyPath: null, scopeSelector, source });
       }
     } else {
-      for (scopeSelector in this.scopedSettingsStore.propertiesForSource(source)) {
+      for (scopeSelector in this.getScopedSettingsStore().propertiesForSource(source)) {
         this.unset(keyPath, { scopeSelector, source });
       }
       if (keyPath != null && source === this.mainSource) {
@@ -902,14 +938,14 @@ class Config {
    * settings have been added via {@link #set}.
    */
   getSources() {
-    return _.uniq(_.pluck(this.scopedSettingsStore.propertySets, "source")).sort();
+    return _.uniq(_.pluck(this.getScopedSettingsStore().propertySets, "source")).sort();
   }
 
   /** Return every selector currently contributed by user, project, schema or package settings. */
   getScopeSelectors() {
     return _.uniq(
-      this.scopedSettingsStore.propertySets
-        .map((propertySet) => propertySet.selector.toString())
+      this.getScopedSettingsStore()
+        .propertySets.map((propertySet) => propertySet.selector.toString())
         .filter((selector) => selector && selector !== "*"),
     ).sort();
   }
@@ -921,21 +957,214 @@ class Config {
     return [...normalizedSelectorStrings(selector)];
   }
 
+  /** @private */
+  validateLocalSource(options) {
+    if (Object.hasOwn(options, "local") && typeof options.local !== "boolean") {
+      throw new TypeError("The local configuration option must be a boolean");
+    }
+    if (options.local && options.source != null && options.source !== this.mainSource) {
+      throw new TypeError("Local configuration belongs to the user's configuration source");
+    }
+  }
+
+  /** @private */
+  allowsLocalValue(keyPath, value) {
+    let schema = this.schema;
+    if (schema.allowLocal === false) return false;
+    for (const key of splitKeyPath(keyPath)) {
+      schema = schema?.properties?.[key] ?? schema?.additionalProperties;
+      if (schema?.allowLocal === false) return false;
+    }
+    if (isPlainObject(value)) {
+      return Object.entries(value).every(([key, child]) =>
+        this.allowsLocalValue(pushKeyPath(keyPath, key), child),
+      );
+    }
+    return true;
+  }
+
+  /** @private */
+  setRawLocalValue(keyPath, value, scopeSelector) {
+    if (value === undefined) return this.removeLocalValue(keyPath, scopeSelector);
+    if (scopeSelector != null) {
+      const settings = this.localScopedSettingsStore.propertiesForSourceAndSelector(
+        this.mainSource,
+        scopeSelector,
+      );
+      const properties = keyPath == null ? this.deepClone(value) : this.deepClone(settings);
+      if (keyPath != null) setValueAtKeyPath(properties, keyPath, this.deepClone(value));
+      this.localScopedSettingsStore.removePropertiesForSourceAndSelector(
+        this.mainSource,
+        scopeSelector,
+      );
+      this.localScopedSettingsStore.addProperties(
+        this.mainSource,
+        { [scopeSelector]: properties },
+        {
+          priority: this.priorityForSource(this.mainSource),
+        },
+      );
+    } else if (keyPath == null) {
+      this.localSettings = this.deepClone(value);
+    } else {
+      setValueAtKeyPath(this.localSettings, keyPath, this.deepClone(value));
+    }
+    this.emitChangeEvent({
+      keyPath,
+      scopeSelector: scopeSelector ?? null,
+      source: this.mainSource,
+      local: true,
+    });
+  }
+
+  /** @private */
+  removeLocalValue(keyPath, scopeSelector) {
+    if (scopeSelector != null) {
+      const settings = this.localScopedSettingsStore.propertiesForSourceAndSelector(
+        this.mainSource,
+        scopeSelector,
+      );
+      if (keyPath != null && getValueAtKeyPath(settings, keyPath) === undefined) return;
+      if (keyPath == null && Object.keys(settings).length === 0) return;
+      this.localScopedSettingsStore.removePropertiesForSourceAndSelector(
+        this.mainSource,
+        scopeSelector,
+      );
+      if (keyPath != null) {
+        deleteValueAtKeyPath(settings, keyPath);
+        const remaining = withoutEmptyObjects(settings);
+        if (remaining != null)
+          this.localScopedSettingsStore.addProperties(
+            this.mainSource,
+            { [scopeSelector]: remaining },
+            {
+              priority: this.priorityForSource(this.mainSource),
+            },
+          );
+      }
+    } else {
+      if (keyPath != null && getValueAtKeyPath(this.localSettings, keyPath) === undefined) return;
+      if (keyPath == null && Object.keys(this.localSettings).length === 0) return;
+      if (keyPath == null) this.localSettings = {};
+      else {
+        deleteValueAtKeyPath(this.localSettings, keyPath);
+        this.localSettings = withoutEmptyObjects(this.localSettings) ?? {};
+      }
+    }
+    this.emitChangeEvent({
+      keyPath,
+      scopeSelector: scopeSelector ?? null,
+      source: this.mainSource,
+      local: true,
+    });
+  }
+
+  /** @private */
+  getScopedSettingsStore(options = {}) {
+    const includeLocal = options.includeLocal !== false;
+    const omitted = options.withoutOverride;
+    if ((!includeLocal || this.localScopedSettingsStore.propertySets.length === 0) && !omitted)
+      return this.scopedSettingsStore;
+    if (includeLocal && !omitted && this.resolvedScopedSettingsStore)
+      return this.resolvedScopedSettingsStore;
+    const store = new SelectorStore();
+    const localProperties = includeLocal
+      ? this.deepClone(this.localScopedSettingsStore.propertiesForSource(this.mainSource))
+      : {};
+    const omittedSelectors =
+      omitted?.scopeSelector != null ? normalizedSelectorStrings(omitted.scopeSelector) : new Set();
+    if (omitted?.local) {
+      for (const selector of omittedSelectors) {
+        if (localProperties[selector])
+          deleteStoredValue(localProperties[selector], omitted.keyPath);
+      }
+    }
+    const localSets = new Map(
+      this.localScopedSettingsStore.propertySets.map((propertySet) => [
+        propertySet.selector.toString(),
+        propertySet,
+      ]),
+    );
+    store.propertySets = this.scopedSettingsStore.propertySets.map((propertySet) => {
+      const selector = propertySet.selector.toString();
+      let properties = propertySet.properties;
+      let selectorObject = propertySet.selector;
+      if (
+        omitted &&
+        !omitted.local &&
+        propertySet.source === omitted.source &&
+        omittedSelectors.has(selector)
+      ) {
+        properties = this.deepClone(properties);
+        deleteStoredValue(properties, omitted.keyPath);
+      }
+      if (
+        propertySet.source === this.mainSource &&
+        localProperties[selector] &&
+        Object.keys(localProperties[selector]).length
+      ) {
+        properties = this.deepDefaults(this.deepClone(localProperties[selector]), properties);
+        selectorObject = localSets.get(selector).selector;
+        delete localProperties[selector];
+      }
+      return new propertySet.constructor(propertySet.source, selectorObject, properties);
+    });
+    for (const [selector, properties] of Object.entries(localProperties)) {
+      if (Object.keys(properties).length) {
+        const propertySet = localSets.get(selector);
+        store.propertySets.push(
+          new propertySet.constructor(this.mainSource, propertySet.selector, properties),
+        );
+      }
+    }
+    store.propertySets.sort((left, right) => left.compare(right));
+    if (includeLocal && !omitted) this.resolvedScopedSettingsStore = store;
+    return store;
+  }
+
   /**
+   * @public
+   * @status extended
+   *
    * Inspect the stored layers for a key at an exact selector. Complex
    * selectors describe several possible scope chains, so only their exact
    * entries are reported; simple chains also receive inherited/effective
    * values.
+   *
+   * The selected target is the user file by default, or this window when
+   * `local` is true. `overrideValue` and `hasOverride` describe that target's
+   * exact declaration. `inheritedValue` removes that declaration while retaining
+   * normal project precedence. `editableValue` and `editableInheritedValue`
+   * exclude project values, and exclude all local values for the user-file
+   * target. `localValue` and `hasLocalOverride` describe the exact local
+   * declaration independently of the selected target. `effectiveValue` always
+   * describes actual runtime resolution, including projects and locals; it is
+   * undefined for a complex selector whose match cannot be inferred.
+   *
+   * @param {String} keyPath - The configuration key to inspect.
+   * @param {Object} [options] - Storage target options.
+   * @param {Boolean} [options.local=false] - Inspect this window's declaration.
+   * @param {String} [options.scopeSelector] - An exact selector; omitted or `*`
+   *   selects the base declaration.
+   * @param {String} [options.source] - The stored source, defaulting to the user
+   *   file. Local inspection only accepts the user source.
+   * @returns {Object} Stored and resolved values: `overrideValue`, `hasOverride`,
+   *   `inheritedValue`, `editableValue`, `editableInheritedValue`, `localValue`,
+   *   `hasLocalOverride`, `effectiveValue`, `baseValue`, `valuesBySource`,
+   *   `projectValue`, `variableByMatch`, `keyPath`, `scopeSelector`, and `schema`.
+   *   `allowLocal` is false when the key or a parent schema forbids local writes.
    */
   inspect(keyPath, options = {}) {
     if (options.scope != null) {
       throw new TypeError("Config::inspect identifies storage with 'scopeSelector', not 'scope'");
     }
-    const { scopeSelector, source = this.mainSource } = options;
+    this.validateLocalSource(options);
+    const { local = false, source = this.mainSource } = options;
+    const scopeSelector = options.scopeSelector === "*" ? undefined : options.scopeSelector;
     const baseValue = this.get(keyPath);
     const valuesBySource = {};
     if (scopeSelector != null) {
-      for (const entrySource of this.getSources()) {
+      for (const entrySource of _.uniq(_.pluck(this.scopedSettingsStore.propertySets, "source"))) {
         const properties = this.scopedSettingsStore.propertiesForSourceAndSelector(
           entrySource,
           scopeSelector,
@@ -943,20 +1172,45 @@ class Config {
         const value = getValueAtKeyPath(properties, keyPath);
         if (value !== undefined) valuesBySource[entrySource] = this.deepClone(value);
       }
+    } else {
+      const userValue = getValueAtKeyPath(this.settings, keyPath);
+      if (userValue !== undefined) valuesBySource[this.mainSource] = this.deepClone(userValue);
+      const projectValue = getValueAtKeyPath(this.projectSettings, keyPath);
+      if (this.projectFile != null && projectValue !== undefined)
+        valuesBySource[this.projectFile] = this.deepClone(projectValue);
     }
 
-    const overrideValue = valuesBySource[source];
+    const localProperties =
+      scopeSelector != null
+        ? this.localScopedSettingsStore.propertiesForSourceAndSelector(
+            this.mainSource,
+            scopeSelector,
+          )
+        : this.localSettings;
+    const localValue = this.deepClone(getValueAtKeyPath(localProperties, keyPath));
+    const overrideValue = local ? localValue : valuesBySource[source];
     const scopes = scopesForSimpleSelector(scopeSelector);
     let inheritedValue;
     let effectiveValue;
-    if (scopes) {
-      effectiveValue = this.get(keyPath, { scope: scopes });
-      inheritedValue = this.getScopedValueWithoutExactSource(
-        keyPath,
-        scopes,
-        scopeSelector,
-        source,
-      );
+    const readOptions = { includeLocal: local, scope: scopes ?? undefined };
+    const withoutOverride = { keyPath, scopeSelector, source, local };
+    const editableOptions = {
+      ...readOptions,
+      excludeSources: this.projectFile != null ? [this.projectFile] : [],
+    };
+    let editableValue = this.get(keyPath, editableOptions);
+    let editableInheritedValue = this.get(keyPath, { ...editableOptions, withoutOverride });
+    if (scopeSelector != null && !scopes) {
+      editableInheritedValue = local
+        ? this.deepDefaults(this.deepClone(valuesBySource[this.mainSource]), editableInheritedValue)
+        : editableInheritedValue;
+      editableValue =
+        overrideValue === undefined
+          ? editableInheritedValue
+          : this.deepDefaults(this.deepClone(overrideValue), editableInheritedValue);
+    } else {
+      effectiveValue = this.get(keyPath, scopes ? { scope: scopes } : {});
+      inheritedValue = this.get(keyPath, { ...readOptions, withoutOverride });
     }
 
     return {
@@ -969,37 +1223,21 @@ class Config {
       valuesBySource,
       inheritedValue,
       effectiveValue,
+      editableValue,
+      editableInheritedValue,
+      localValue,
+      hasLocalOverride: localValue !== undefined,
+      allowLocal: this.allowsLocalValue(keyPath),
       variableByMatch: scopeSelector != null && !scopes,
       projectValue: this.projectFile != null ? valuesBySource[this.projectFile] : undefined,
     };
   }
 
   getScopedValueWithoutExactSource(keyPath, scopes, scopeSelector, source) {
-    const store = new SelectorStore();
-    const selectorStrings = normalizedSelectorStrings(scopeSelector);
-    const propertySets = this.scopedSettingsStore.propertySets.slice().reverse();
-    for (const propertySet of propertySets) {
-      const selector = propertySet.selector.toString();
-      let properties = this.deepClone(propertySet.properties);
-      if (propertySet.source === source && selectorStrings.has(selector)) {
-        deleteValueAtKeyPath(properties, keyPath);
-        properties = withoutEmptyObjects(properties);
-      }
-      if (properties != null) {
-        store.addProperties(propertySet.source, { [selector]: properties });
-      }
-    }
-
-    const descriptor = ScopeDescriptor.fromObject(scopes);
-    const scopedValue = store.getPropertyValue(descriptor.getScopeChain(), keyPath);
-    const globalValue = this.getRawValue(keyPath);
-    if (scopedValue != null) {
-      if (isPlainObject(scopedValue) && isPlainObject(globalValue)) {
-        return this.deepDefaults(scopedValue, globalValue);
-      }
-      return scopedValue;
-    }
-    return globalValue;
+    return this.get(keyPath, {
+      scope: scopes,
+      withoutOverride: { keyPath, scopeSelector, source, local: false },
+    });
   }
 
   /**
@@ -1235,10 +1473,18 @@ class Config {
 
     const result = this.transact(() => {
       this._clearUnscopedSettingsForSource(source);
+      this.emitChangeEvent({
+        keyPath: null,
+        scopeSelector: null,
+        source: source ?? this.mainSource,
+      });
       this.settingsLoaded = true;
       for (let key in newSettings) {
         const value = newSettings[key];
-        this.set(key, value, { save: false, source });
+        const conformedValue = this.makeValueConformToSchema(key, value, {
+          suppressException: true,
+        });
+        this.setRawValue(key, conformedValue, { source });
       }
       if (this.pendingOperations.length) {
         for (let op of this.pendingOperations) {
@@ -1265,9 +1511,10 @@ class Config {
     this.projectFile = projectFile;
     if (this.projectFile != null) {
       this._resetSettings(newSettings, { source: this.projectFile });
-    } else {
+    } else if (oldProjectFile != null) {
       this.scopedSettingsStore.removePropertiesForSource(oldProjectFile);
       this.projectSettings = {};
+      this.emitChangeEvent({ keyPath: null, scopeSelector: null, source: oldProjectFile });
     }
   }
 
@@ -1280,7 +1527,28 @@ class Config {
     let value;
     // If `excludeSources` is missing or does not exclude the main source…
     if (!excludeSources || !excludeSources.includes(this.mainSource)) {
-      value = getValueAtKeyPath(this.settings, keyPath);
+      let userSettings = this.settings;
+      let localSettings = this.localSettings;
+      const omitted = options.withoutOverride;
+      if (omitted && omitted.scopeSelector == null && omitted.source === this.mainSource) {
+        if (omitted.local) {
+          localSettings = this.deepClone(localSettings);
+          deleteStoredValue(localSettings, omitted.keyPath);
+        } else {
+          userSettings = this.deepClone(userSettings);
+          deleteStoredValue(userSettings, omitted.keyPath);
+        }
+      }
+      value = getValueAtKeyPath(userSettings, keyPath);
+      if (options.includeLocal !== false) {
+        const localValue = getValueAtKeyPath(localSettings, keyPath);
+        if (localValue !== undefined) {
+          value =
+            isPlainObject(localValue) && isPlainObject(value)
+              ? this.deepDefaults(this.deepClone(localValue), value)
+              : localValue;
+        }
+      }
       // we should prefer the project specific setting as long as…
       if (
         this.projectFile != null &&
@@ -1290,7 +1558,17 @@ class Config {
         // `sources` is missing or includes the project-specific source.
         (!sources || sources.includes(this.projectFile))
       ) {
-        let projectValue = getValueAtKeyPath(this.projectSettings, keyPath);
+        let projectSettings = this.projectSettings;
+        if (
+          omitted &&
+          !omitted.local &&
+          omitted.scopeSelector == null &&
+          omitted.source === this.projectFile
+        ) {
+          projectSettings = this.deepClone(projectSettings);
+          deleteStoredValue(projectSettings, omitted.keyPath);
+        }
+        let projectValue = getValueAtKeyPath(projectSettings, keyPath);
         if (projectValue === undefined) {
           // There is no project-specific override for this key path. `value`
           // stays as `value` and we pretend this never happened.
@@ -1456,6 +1734,7 @@ class Config {
   // }
   // ```
   setScopedDefaultsFromSchema(keyPath, schema) {
+    this.resolvedScopedSettingsStore = null;
     if (schema.scopes != null && isPlainObject(schema.scopes)) {
       const scopedDefaults = {};
       for (let scope in schema.scopes) {
@@ -1528,6 +1807,21 @@ class Config {
       this.settings = this.makeValueConformToSchema(null, this.settings, {
         suppressException: true,
       });
+      this.localSettings =
+        this.makeValueConformToSchema(null, this.localSettings, { suppressException: true }) ?? {};
+      const localSelectors = this.localScopedSettingsStore.propertiesForSource(this.mainSource);
+      this.localScopedSettingsStore.removePropertiesForSource(this.mainSource);
+      for (const [selector, values] of Object.entries(localSelectors)) {
+        const conformed = this.makeValueConformToSchema(null, values, { suppressException: true });
+        if (conformed != null)
+          this.localScopedSettingsStore.addProperties(
+            this.mainSource,
+            { [selector]: conformed },
+            {
+              priority: this.priorityForSource(this.mainSource),
+            },
+          );
+      }
       const selectorsAndSettings = this.scopedSettingsStore.propertiesForSource(source);
       this.scopedSettingsStore.removePropertiesForSource(source);
       for (let scopeSelector in selectorsAndSettings) {
@@ -1556,6 +1850,7 @@ class Config {
   }
 
   emitChangeEvent(change) {
+    if (change) this.resolvedScopedSettingsStore = null;
     if (change) this.pendingChangeRecords.push(change);
     if (this.transactDepth > 0 || this.pendingChangeRecords.length === 0) return;
 
@@ -1635,7 +1930,7 @@ class Config {
 
   getRawScopedValue(scopeDescriptor, keyPath, options) {
     scopeDescriptor = ScopeDescriptor.fromObject(scopeDescriptor);
-    const result = this.scopedSettingsStore.getPropertyValue(
+    const result = this.getScopedSettingsStore(options).getPropertyValue(
       scopeDescriptor.getScopeChain(),
       keyPath,
       options,
@@ -1667,6 +1962,11 @@ class Config {
 }
 
 function validateScopeResolutionMetadata(keyPath, schema) {
+  if (Object.hasOwn(schema, "allowLocal") && typeof schema.allowLocal !== "boolean") {
+    throw new Error(
+      `Error loading schema for ${keyPath || "<root>"}: allowLocal must be a boolean`,
+    );
+  }
   if (Object.hasOwn(schema, "scopeResolution") && !SCOPE_RESOLUTIONS.has(schema.scopeResolution)) {
     throw new Error(
       `Error loading schema for ${keyPath || "<root>"}: scopeResolution must be ` +
@@ -1679,6 +1979,13 @@ function validateScopeResolutionMetadata(keyPath, schema) {
   if (isPlainObject(schema.items)) {
     validateScopeResolutionMetadata(`${keyPath}[]`, schema.items);
   }
+}
+
+function deleteStoredValue(settings, keyPath) {
+  if (!settings) return;
+  if (keyPath == null) {
+    for (const key of Object.keys(settings)) delete settings[key];
+  } else deleteValueAtKeyPath(settings, keyPath);
 }
 
 // Base schema enforcers. These will coerce raw input into the specified type,
@@ -1938,7 +2245,7 @@ function scopesForSimpleSelector(selector) {
   if (/[,:[\]#>+~]/.test(selector)) return null;
   const components = selector.trim().split(/\s+/);
   if (!components.every((component) => /^\.[A-Za-z0-9_.-]+$/.test(component))) return null;
-  return components.map((component) => component.slice(1));
+  return components;
 }
 
 function normalizedSelectorStrings(selector) {

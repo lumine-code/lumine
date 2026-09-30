@@ -782,6 +782,38 @@ describe("Environment", () => {
       lumine2.destroy();
     });
 
+    it("keeps local configuration out of serialized and restored window state", async () => {
+      const first = new Environment({
+        applicationDelegate: lumine.applicationDelegate,
+        enablePersistence: false,
+      });
+      const restored = new Environment({
+        applicationDelegate: lumine.applicationDelegate,
+        enablePersistence: false,
+      });
+      const userSettings = { "*": { windowLocalTest: "persisted" } };
+      for (const environment of [first, restored]) {
+        environment.config.setSchema("windowLocalTest", { type: "string", default: "default" });
+        environment.config.resetUserSettings(userSettings);
+      }
+      spyOn(restored.window, "setFullScreen").and.resolveTo();
+
+      try {
+        const initialState = first.serialize();
+        expect(first.config.set("windowLocalTest", "window-only", { local: true })).toBe(true);
+        const state = first.serialize();
+        expect(state).toEqual(initialState);
+
+        await restored.deserialize(state);
+        expect(restored.config.get("windowLocalTest")).toBe("persisted");
+        expect(restored.config.inspect("windowLocalTest", { local: true }).hasOverride).toBe(false);
+        expect(first.config.get("windowLocalTest")).toBe("window-only");
+      } finally {
+        first.destroy();
+        restored.destroy();
+      }
+    });
+
     describe("deserialization failures", () => {
       it("propagates unrecognized project state restoration failures", async () => {
         let err;

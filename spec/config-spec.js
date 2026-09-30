@@ -1,3 +1,5 @@
+const Config = require("../src/config");
+
 describe("Config", () => {
   let savedSettings;
 
@@ -9,6 +11,298 @@ describe("Config", () => {
     lumine.config.saveCallback = function (settings) {
       savedSettings.push(settings);
     };
+  });
+
+  describe("window-local user settings", () => {
+    let config;
+
+    beforeEach(() => {
+      config = new Config({
+        mainSource: "user.json",
+        saveCallback: (settings) => savedSettings.push(settings),
+      });
+      config.setSchema("test", {
+        type: "object",
+        properties: {
+          enabled: { type: "boolean", default: false },
+          count: { type: "integer", default: 2 },
+          sibling: { type: "integer", default: 3 },
+        },
+      });
+      config.resetUserSettings({});
+    });
+
+    it("keeps explicit local defaults and saves only the underlying user declarations", () => {
+      config.set("test.enabled", true);
+      advanceClock(10);
+      savedSettings.length = 0;
+      expect(config.set("test.enabled", false, { local: true })).toBe(true);
+      config.set("test.count", 0, { local: true, scopeSelector: ".source.js" });
+      expect(config.get("test.enabled")).toBe(false);
+      expect(config.getAll("test.count", { scope: ["source.js"] })).toEqual([
+        { scopeSelector: ".js.source", value: 0 },
+        { scopeSelector: "*", value: 2 },
+      ]);
+      expect(config.inspect("test.enabled", { local: true }).hasOverride).toBe(true);
+      advanceClock(10);
+      expect(savedSettings).toEqual([]);
+      config.set("test.sibling", 10);
+      advanceClock(10);
+      expect(savedSettings).toEqual([{ "*": { test: { enabled: true, sibling: 10 } } }]);
+      expect(config.get("test.enabled")).toBe(false);
+    });
+
+    it("preserves masks through user-file resets and reveals the latest underlying value", () => {
+      config.set("test.count", 8, { local: true });
+      config.set("test.count", 9, { local: true, scopeSelector: ".source.js" });
+      config.resetUserSettings({
+        "*": { test: { count: 4 } },
+        ".source.js": { test: { count: 5 } },
+      });
+      expect(config.get("test.count")).toBe(8);
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(9);
+      config.unset("test.count", { local: true, scopeSelector: ".source.js" });
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(5);
+      config.unset("test.count", { local: true });
+      expect(config.get("test.count")).toBe(4);
+      const changed = jasmine.createSpy("absent local unset");
+      config.onDidChangeConfiguration(changed);
+      config.unset("test.count", { local: true });
+      expect(changed).not.toHaveBeenCalled();
+    });
+
+    it("clears only the successfully written local subtree and keeps other selectors", () => {
+      config.set("test.count", 8, { local: true });
+      config.set("test.sibling", 9, { local: true });
+      config.set("test.count", 10, { local: true, scopeSelector: ".source.js" });
+      expect(config.set("test.count", "invalid")).toBe(false);
+      expect(config.get("test.count")).toBe(8);
+      config.set("test.count", 8);
+      expect(config.inspect("test.count").hasLocalOverride).toBe(false);
+      expect(config.get("test.sibling")).toBe(9);
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(10);
+      config.set("test", { count: 4 });
+      expect(config.inspect("test", { local: true }).hasOverride).toBe(false);
+      expect(config.get("test.sibling")).toBe(3);
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(10);
+    });
+
+    it("removes a scoped mask without removing unrelated local keys in that selector", () => {
+      config.set("test.count", 4, { scopeSelector: ".source.js" });
+      config.set("test.sibling", 5, { scopeSelector: ".source.js" });
+      config.set("test.count", 8, { local: true, scopeSelector: ".source.js" });
+      config.set("test.sibling", 9, { local: true, scopeSelector: ".source.js" });
+      config.unset("test.count", { scopeSelector: ".source.js" });
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(2);
+      expect(config.get("test.sibling", { scope: ["source.js"] })).toBe(9);
+    });
+
+    it("resets local-only selectors while retaining unrelated keys and other sources", () => {
+      config.set("test.count", 8, { local: true, scopeSelector: ".source.js" });
+      config.set("test.sibling", 9, { local: true, scopeSelector: ".source.js" });
+      config.set("test.count", 11, { source: "package", scopeSelector: ".source.js" });
+      config.unset("test.count");
+      expect(
+        config.inspect("test.count", { local: true, scopeSelector: ".source.js" }).hasOverride,
+      ).toBe(false);
+      expect(config.get("test.count")).toBe(2);
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(11);
+      expect(config.get("test.sibling", { scope: ["source.js"] })).toBe(9);
+    });
+
+    it("keeps project, scope specificity, and source filtering ahead of local base values", () => {
+      config.set("test.count", 4, { scopeSelector: ".source.js" });
+      config.set("test.count", 8, { local: true });
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(4);
+      config.set("test.count", 9, { local: true, scopeSelector: ".source" });
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(4);
+      config.resetProjectSettings(
+        { "*": { test: { count: 6 } }, ".source.js": { test: { count: 7 } } },
+        "project.json",
+      );
+      expect(config.get("test.count")).toBe(6);
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(7);
+      expect(
+        config.get("test.count", { scope: ["source.js"], excludeSources: ["project.json"] }),
+      ).toBe(4);
+      expect(
+        config.get("test.count", {
+          scope: ["source.js"],
+          excludeSources: ["user.json", "project.json"],
+        }),
+      ).toBe(2);
+      expect(config.get("test.count", { scope: ["source.js"], sources: ["user.json"] })).toBe(4);
+    });
+
+    it("retains insertion order for distinct selectors and reuses the folded store until mutation", () => {
+      config.set("test.count", 8, { local: true, scopeSelector: ".a" });
+      const firstStore = config.getScopedSettingsStore();
+      expect(config.getScopedSettingsStore()).toBe(firstStore);
+      config.set("test.count", 4, { scopeSelector: ".b" });
+      expect(config.get("test.count", { scope: ["a.b"] })).toBe(4);
+      expect(config.getScopedSettingsStore()).not.toBe(firstStore);
+      config.set("test.count", 9, { local: true, scopeSelector: ".a" });
+      expect(config.get("test.count", { scope: ["a.b"] })).toBe(9);
+      expect(config.inspect("test.count", { local: true, scopeSelector: ".a" }).editableValue).toBe(
+        9,
+      );
+    });
+
+    it("invalidates cached scoped project values and notifies observers when the project clears", () => {
+      config.set("test.count", 2, { local: true, scopeSelector: ".source.js" });
+      config.resetProjectSettings(
+        { "*": {}, ".source.js": { test: { count: 9 } } },
+        "project.json",
+      );
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(9);
+      const values = jasmine.createSpy("scoped values");
+      const mutations = jasmine.createSpy("project mutations");
+      config.observe("test.count", { scope: ["source.js"] }, values);
+      config.onDidChangeConfiguration(mutations);
+
+      config.clearProjectSettings();
+
+      expect(config.get("test.count", { scope: ["source.js"] })).toBe(2);
+      expect(values.calls.allArgs()).toEqual([[9], [2]]);
+      expect(mutations.calls.count()).toBe(1);
+      expect(mutations.calls.mostRecent().args[0].changes).toEqual([
+        { keyPath: null, scopeSelector: null, source: "project.json" },
+      ]);
+      config.clearProjectSettings();
+      expect(values.calls.count()).toBe(2);
+      expect(mutations.calls.count()).toBe(1);
+    });
+
+    it("reports target-specific editable values while retaining actual project resolution", () => {
+      config.set("test.count", 4);
+      config.set("test.count", 5, { scopeSelector: ".source.js" });
+      config.set("test.count", 8, { local: true });
+      config.set("test.count", 9, { local: true, scopeSelector: ".source.js" });
+      config.resetProjectSettings(
+        { "*": { test: { count: 6 } }, ".source.js": { test: { count: 7 } } },
+        "project.json",
+      );
+      expect(config.inspect("test.count")).toEqual(
+        jasmine.objectContaining({
+          overrideValue: 4,
+          editableValue: 4,
+          editableInheritedValue: 2,
+          localValue: 8,
+          hasLocalOverride: true,
+          effectiveValue: 6,
+        }),
+      );
+      expect(config.inspect("test.count", { local: true })).toEqual(
+        jasmine.objectContaining({
+          overrideValue: 8,
+          editableValue: 8,
+          editableInheritedValue: 4,
+          effectiveValue: 6,
+        }),
+      );
+      expect(config.inspect("test.count", { scopeSelector: ".source.js" })).toEqual(
+        jasmine.objectContaining({
+          overrideValue: 5,
+          editableValue: 5,
+          editableInheritedValue: 4,
+          effectiveValue: 7,
+        }),
+      );
+      expect(config.inspect("test.count", { local: true, scopeSelector: ".source.js" })).toEqual(
+        jasmine.objectContaining({
+          overrideValue: 9,
+          editableValue: 9,
+          editableInheritedValue: 5,
+          localValue: 9,
+          effectiveValue: 7,
+        }),
+      );
+    });
+
+    it("emits one effective change per write and emits metadata for equal-value masks", () => {
+      const values = jasmine.createSpy("value observer");
+      const mutations = jasmine.createSpy("configuration observer");
+      config.observe("test.count", values);
+      config.onDidChangeConfiguration(mutations);
+      config.set("test.count", 2, { local: true });
+      expect(values.calls.count()).toBe(1);
+      expect(mutations.calls.count()).toBe(1);
+      config.set("test.count", 8, { local: true });
+      config.set("test.count", 9);
+      expect(values.calls.count()).toBe(3);
+      expect(values.calls.mostRecent().args[0]).toBe(9);
+      config.set("test.count", 9, { local: true });
+      config.set("test.count", 9);
+      expect(values.calls.count()).toBe(3);
+      expect(config.inspect("test.count").hasLocalOverride).toBe(false);
+    });
+
+    it("queues valid startup operations in order and never queues rejected writes", () => {
+      config.settingsLoaded = false;
+      config.set("test.count", 4, { local: true });
+      expect(config.set("test.count", "invalid")).toBe(false);
+      config.set("test.count", 5);
+      config.set("test.count", 6, { local: true });
+      config.unset("test.count", { local: true });
+      config.set("test.enabled", false, { local: true });
+      expect(config.get("test.count")).toBe(5);
+      expect(config.get("test.enabled")).toBe(false);
+      advanceClock(10);
+      expect(savedSettings).toEqual([]);
+      config.resetUserSettings({ "*": { test: { count: 10, enabled: true } } });
+      expect(config.get("test.count")).toBe(5);
+      expect(config.get("test.enabled")).toBe(false);
+      expect(config.pendingOperations).toEqual([]);
+      expect(config.settings.test).toEqual({ count: 5, enabled: true });
+    });
+
+    it("revalidates locals when a schema loads without treating it as a user write", () => {
+      config.set("custom.count", "8", { local: true });
+      config.set("custom.count", "9", { local: true, scopeSelector: ".source.js" });
+      config.setSchema("custom", {
+        type: "object",
+        properties: { count: { type: "integer", default: 8 } },
+      });
+      expect(config.get("custom.count")).toBe(8);
+      expect(config.inspect("custom.count", { local: true }).hasOverride).toBe(true);
+      expect(config.get("custom.count", { scope: ["source.js"] })).toBe(9);
+    });
+
+    it("rejects unavailable local settings and illegal sources without partial changes", () => {
+      config.setSchema("restricted", {
+        type: "object",
+        allowLocal: false,
+        properties: { value: { type: "integer", default: 1 } },
+      });
+      expect(config.inspect("restricted.value").allowLocal).toBe(false);
+      expect(config.set("restricted.value", 4, { local: true })).toBe(false);
+      expect(
+        config.set(null, { test: { count: 8 }, restricted: { value: 4 } }, { local: true }),
+      ).toBe(false);
+      expect(config.get("test.count")).toBe(2);
+      expect(() =>
+        config.set("test.count", 4, { local: true, source: "project.json" }),
+      ).toThrowError(TypeError);
+      expect(() => config.unset("test.count", { local: true, source: "package" })).toThrowError(
+        TypeError,
+      );
+      expect(() => config.set("test.count", 4, { local: "true" })).toThrowError(TypeError);
+      expect(() => config.setSchema("bad", { type: "integer", allowLocal: "no" })).toThrowError(
+        /allowLocal must be a boolean/,
+      );
+      expect(config.set("restricted.value", 4)).toBe(true);
+    });
+
+    it("keeps local state isolated between Config instances and clears it with the renderer", () => {
+      config.set("test.count", 8, { local: true });
+      const other = new Config({ mainSource: "user.json" });
+      other.resetUserSettings({ "*": { test: { count: 4 } } });
+      expect(other.get("test.count")).toBe(4);
+      config.clear();
+      config.resetUserSettings({ "*": { test: { count: 4 } } });
+      expect(config.get("test.count")).toBe(4);
+      expect(config.inspect("test.count", { local: true }).hasOverride).toBe(false);
+    });
   });
 
   describe(".get(keyPath, {scope, sources, excludeSources})", () => {
