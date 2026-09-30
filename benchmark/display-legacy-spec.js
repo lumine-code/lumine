@@ -11,6 +11,11 @@ const SAMPLES = CONFIG.samples || 3;
 const WARMUPS = CONFIG.warmups ?? 1;
 const QUICK = CONFIG.mode !== "release";
 const checksum = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const packedChecksum = (value) =>
+  crypto
+    .createHash("sha256")
+    .update(Buffer.from(value.buffer, value.byteOffset, value.byteLength))
+    .digest("hex");
 
 function build(buffer, maxScreenLineLength = 500) {
   const editor = new TextEditor({
@@ -121,6 +126,8 @@ async function decorationCase({ layout, endpoints, order, cache }) {
       points.map((point) => editor.displayLayer.translateBufferPosition(point)),
     );
     const expectedLookup = packedChanges(editor.displayLayer.spatialIndex, points);
+    const expectedMappingChecksum = checksum(expected);
+    const expectedLookupChecksum = packedChecksum(expectedLookup);
     expect(packedChanges(editor.displayLayer.spatialIndex, []).length).toBe(0);
     const samples = { lookup: [], scalar: [], batch: [], query: [], component: [] };
     let queryChecksum;
@@ -133,9 +140,9 @@ async function decorationCase({ layout, endpoints, order, cache }) {
           ? editor.displayLayer.translateBufferPositions(points)
           : points.map((point) => editor.displayLayer.translateBufferPosition(point)),
       );
-      expect(mappingResult(batch.value)).toEqual(expected);
+      expect(checksum(mappingResult(batch.value))).toBe(expectedMappingChecksum);
       const lookup = time(() => packedChanges(editor.displayLayer.spatialIndex, points));
-      expect(Array.from(lookup.value)).toEqual(Array.from(expectedLookup));
+      expect(packedChecksum(lookup.value)).toBe(expectedLookupChecksum);
       const query = time(() => component.queryDecorationsToRender());
       const highlightRanges = component.decorationsToMeasure.highlights.map((item) => ({
         start: item.screenRange?.start,
@@ -432,6 +439,7 @@ describe("Legacy display performance benchmark", () => {
       })),
       corpus: {
         hash: checksum(results.map(({ id }) => id)),
+        validation: "SHA256 of normalized points and packed bytes for every sample",
         wrapColumn: 500,
         editorWidth: 1000,
         editorHeight: 800,
