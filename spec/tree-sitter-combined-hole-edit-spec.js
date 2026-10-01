@@ -66,6 +66,35 @@ describe("Combined injection equal-extent holes", () => {
           );
         }
       }
+      function deferPopulation(layer) {
+        const original = layer._populateInjections;
+        let entered,
+          resume,
+          first = true;
+        const reached = new Promise((resolve) => {
+          entered = resolve;
+        });
+        const waiting = new Promise((resolve) => {
+          resume = resolve;
+        });
+        spyOn(layer, "_populateInjections").and.callFake(async (...args) => {
+          if (first) {
+            first = false;
+            entered();
+            await waiting;
+          }
+          return original.apply(layer, args);
+        });
+        return { reached, resume };
+      }
+      function addDescendants() {
+        child.addInjectionPoint({
+          type: "integer",
+          language: () => "hole-grandchild",
+          content: (node) => node,
+          languageScope: null,
+        });
+      }
       beforeEach(() => {
         jasmine.useRealClock();
         registry = new GrammarRegistry({ config: lumine.config });
@@ -174,7 +203,7 @@ describe("Combined injection equal-extent holes", () => {
         expect(
           mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
             .length,
-        ).toBe(1);
+        ).toBe(0);
         expect(
           mode.getAllInjectionLayers().filter((layer) => layer.grammar === grandchild).length,
         ).toBe(2);
@@ -182,7 +211,42 @@ describe("Combined injection equal-extent holes", () => {
         await replace(buffer, mode, "3", "9");
         await expectFresh(buffer, mode);
       });
-      it("keeps the conservative path for descendant definitions with no current matches", async () => {
+      it("lets a module-owner callback read the latest hole text from the retained tree", async () => {
+        const observed = [];
+        child.addInjectionPoint({
+          type: "module",
+          language: (node) => {
+            observed.push(node.text);
+            return "hole-grandchild";
+          },
+          content: (node) => node,
+          includeChildren: true,
+          languageScope: null,
+        });
+        const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
+        const layer = layers(mode)[0],
+          tree = layer.tree;
+        expect(observed.some((text) => text.includes("beta"))).toBe(true);
+        // The joined newline ends at [1, 0], so replacing the whole identifier
+        // would touch a boundary. Change only the interior of this real hole.
+        expect(
+          layer.currentRangesLayer.findMarkers({ intersectsRange: buffer.findSync("eta") }).length,
+        ).toBe(0);
+        observed.length = 0;
+        spyOn(mode, "parseAsync").and.callThrough();
+        await replace(buffer, mode, "eta", "ota");
+        expect(layer.tree === tree).toBe(true);
+        expect(
+          mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
+            .length,
+        ).toBe(0);
+        expect(observed.length).toBeGreaterThan(0);
+        expect(observed.every((text) => text.includes("bota") && !text.includes("beta"))).toBe(
+          true,
+        );
+        await expectFresh(buffer, mode);
+      });
+      it("discovers new descendants when actual included content changes", async () => {
         child.addInjectionPoint({
           type: "string",
           language: () => "hole-grandchild",
@@ -199,13 +263,68 @@ describe("Combined injection equal-extent holes", () => {
         expect(
           mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
             .length,
-        ).toBe(1);
+        ).toBe(0);
         await expectFresh(buffer, mode);
         await replace(buffer, mode, "3", '"abc"');
         expect(
           mode.getAllInjectionLayers().filter((layer) => layer.grammar === grandchild).length,
         ).toBe(1);
         await expectFresh(buffer, mode);
+      });
+      for (const change of ["source", "ranges"]) {
+        it(`retries normal parsing when ${change} changes during retained-tree descendant discovery`, async () => {
+          addDescendants();
+          const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
+          const layer = layers(mode)[0],
+            gate = deferPopulation(layer);
+          spyOn(mode, "parseAsync").and.callThrough();
+          buffer.setTextInRange(buffer.findSync("alpha"), "gamma");
+          await gate.reached;
+          if (change === "source") buffer.setTextInRange(buffer.findSync("3"), "9");
+          else buffer.insert(layer.getCurrentRanges()[0].start, "5");
+          gate.resume();
+          await mode.atGrammarSettlement();
+          expect(
+            mode.parseAsync.calls.allArgs().some((args) => args[3]?.scopeName === child.scopeName),
+          ).toBe(true);
+          await expectFresh(buffer, mode);
+        });
+      }
+      it("retries descendant registration changes during local discovery without parsing unchanged source", async () => {
+        addDescendants();
+        const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
+        const layer = layers(mode)[0],
+          gate = deferPopulation(layer);
+        spyOn(mode, "parseAsync").and.callThrough();
+        buffer.setTextInRange(buffer.findSync("alpha"), "gamma");
+        await gate.reached;
+        child.addInjectionPoint({
+          type: "integer",
+          language: () => "hole-other",
+          content: (node) => node,
+          languageScope: null,
+        });
+        gate.resume();
+        await mode.atGrammarSettlement();
+        expect(mode.getAllInjectionLayers().filter((item) => item.depth === 2).length).toBe(4);
+        await expectFresh(buffer, mode);
+      });
+      it("drops queued discovery safely when its buffer is destroyed during an await", async () => {
+        addDescendants();
+        const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
+        const layer = layers(mode)[0],
+          gate = deferPopulation(layer);
+        buffer.setTextInRange(buffer.findSync("alpha"), "gamma");
+        await gate.reached;
+        const pending = mode.atGrammarSettlement();
+        buffer.destroy();
+        gate.resume();
+        await pending;
+        for (let index = 0; index < 10; index++)
+          await new Promise((resolve) => setImmediate(resolve));
+        expect(mode.getAllLanguageLayers().filter(Boolean).length).toBe(0);
+        expect(mode.parsersByLanguage.size).toBe(0);
+        expect(layer.pendingInjectionPopulationRequests.length).toBe(0);
       });
     });
   }

@@ -4273,18 +4273,21 @@ class LanguageLayer {
     const editedRange = new Range(edit.startPosition, edit.oldEndPosition);
     if (
       this.marker?.combinedInjectionGroup &&
+      this.tree &&
       sameExtent &&
       this.currentRangesCache?.length &&
       !this.currentParsePromise &&
       !this.patchSinceCurrentParseStarted &&
-      !this.hasInjectionDescendants() &&
       this.currentRangesLayer.findMarkers({ intersectsRange: editedRange }).length === 0
     ) {
       // A combined owner spans holes between its actual parser ranges. An
-      // equal-extent edit strictly inside a hole changes neither source nor
-      // coordinates; tree.edit would only make this valid tree look dirty.
-      // Boundary touches and layers with descendant discovery retain the full
-      // path, as do edits made while parsing is already in flight.
+      // equal-extent edit strictly inside a hole changes neither parser input
+      // nor coordinates; tree.edit would only make this valid tree look dirty.
+      // Descendant callbacks still receive the same local discovery range.
+      // Boundary touches and edits during a parse retain the full path.
+      if (this.hasInjectionDescendants()) {
+        this.editedRange = this.editedRange ? this.editedRange.union(editedRange) : editedRange;
+      }
       return;
     }
     const containingRange = this.currentRangesCache
@@ -4511,6 +4514,48 @@ class LanguageLayer {
     // possible for a layer to get destroyed during the async period between
     // layer updates.
     if (this.destroyed) return;
+
+    const injectionOnlyParent = nodeRangeSet?.injectionOnlyParentSnapshot;
+    if (injectionOnlyParent && !this.injectionParentSnapshotIsCurrent(injectionOnlyParent)) {
+      this.requestInjectionParentRetry(injectionOnlyParent);
+      params.initialInjectionUpdateAborted = true;
+      return;
+    }
+    if (
+      nodeRangeSet?.injectionOnly &&
+      nodeRangeSet.rangesUnchanged &&
+      this.includedRangesAreCurrent &&
+      this.tree &&
+      this.tree === this.lastSyntaxTree &&
+      !this.treeIsDirty &&
+      !this.tree.rootNode.hasChanges &&
+      !this.patchSinceCurrentParseStarted &&
+      !this.injectionPopulationNeedsRetry &&
+      !this.rootRangePolicyNeedsUpdate &&
+      this.temporaryTrees.length === 0 &&
+      nodeRangeSet.getRanges(this.buffer) === this.lastIncludedRanges
+    ) {
+      const affectedRange = this.editedRange;
+      this.lastTransactionEditedRange = affectedRange;
+      this.editedRange = null;
+      const included = this.lastIncludedRanges;
+      const range =
+        affectedRange ?? new Range(included[0].startPosition, last(included).endPosition);
+      // This is the existing discovery extent with no syntax changes. Keep
+      // update's async/retry lifecycle, without parsing, publishing or freeing
+      // the unchanged tree. No broader scan of external callback state is added.
+      const injectionPromise = this._populateInjections(range, nodeRangeSet);
+      if (injectionPromise) {
+        params.async = true;
+        await injectionPromise;
+      }
+      if (this.destroyed) return;
+      if (injectionOnlyParent && !this.injectionParentSnapshotIsCurrent(injectionOnlyParent)) {
+        this.requestInjectionParentRetry(injectionOnlyParent);
+        params.initialInjectionUpdateAborted = true;
+      }
+      return;
+    }
 
     if (
       this.languageMode.useAsyncParsing &&
@@ -5509,6 +5554,8 @@ class LanguageLayer {
       nodes,
       nodeRangeSet,
       injectionPointsByType,
+      tree,
+      injectionPointVersion,
       nodeIndex: 0,
       injectionPointIndex: 0,
       staticCandidates,
@@ -6001,10 +6048,22 @@ class LanguageLayer {
           !layer.injectionPopulationNeedsRetry &&
           !layer.rootRangePolicyNeedsUpdate &&
           layer.temporaryTrees.length === 0 &&
-          !layer.hasInjectionDescendants()
+          layer.includedRangesAreCurrent
         ) {
           // Discovery can widen across an adjacent owner even when the edit
           // touched only a hole. Its content and topology are still unchanged.
+          if (!layer.hasInjectionDescendants()) continue;
+          markersToUpdate.set(group.marker, {
+            rootRangeSet: group.rangeSet.rootRangeSet,
+            rangesUnchanged: true,
+            getRanges: () => layer.lastIncludedRanges,
+            injectionOnly: true,
+            injectionOnlyParentSnapshot: {
+              layer: this,
+              tree: plan.tree,
+              injectionPointVersion: plan.injectionPointVersion,
+            },
+          });
           continue;
         }
         markersToUpdate.set(group.marker, {
