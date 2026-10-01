@@ -39,7 +39,7 @@
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#71abc9b16fc7f3863ee2afa554f6762a1844214b",
     "@lumine-code/season": "github:lumine-code/season#14913f7d0c2cbc304fbcaf98a9ea0299c2b5166a",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#18ed4d6ce003d149adbe5dea9cebc23a4948c58c",
-    "@lumine-code/superstring": "github:lumine-code/superstring#ae18f7198ce8f04897907cee37db433e4a19e03b",
+    "@lumine-code/superstring": "github:lumine-code/superstring#3d785ebac27a3c93cf82894260d60b8540dcdc4e",
     "@lumine-code/temp": "github:lumine-code/node-temp#d952dc119d4dda6918a37c414302e6eb1dc9789d",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#1577303f839c11bd8d83d7fbe3cef8dd9219bfbb",
     "@lumine-code/watcher": "github:lumine-code/watcher#adabbe6c905eb4ea478969d6577719e5002da594",
@@ -178,7 +178,7 @@
   "allowScripts": {
     "github:lumine-code/fuzzy-native#f24848ab8c03994bf0d0defa72525a678d02af96": true,
     "github:lumine-code/keyboard-layout#71abc9b16fc7f3863ee2afa554f6762a1844214b": true,
-    "github:lumine-code/superstring#ae18f7198ce8f04897907cee37db433e4a19e03b": true,
+    "github:lumine-code/superstring#3d785ebac27a3c93cf82894260d60b8540dcdc4e": true,
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f": true,
     "github:lumine-code/node-ctags#bd126f8d9895b8c8365c35becf8bceb1b1bd8c26": true,
