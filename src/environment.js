@@ -50,7 +50,6 @@ const Pane = require("./pane");
 const Dock = require("./dock");
 const TextEditor = require("./text-editor");
 const TextBuffer = require("./text-buffer");
-const FileState = require("./file-state");
 const TextEditorRegistry = require("./text-editor-registry");
 const TextEditorFactory = require("./text-editor-factory");
 const PasteProviderRegistry = require("./paste-provider-registry");
@@ -100,16 +99,6 @@ class Environment {
 
   constructor(params = {}) {
     this.id = params.id != null ? params.id : nextId++;
-
-    /**
-     * @public
-     * @status public
-     *
-     * The {@link FileState} enum namespace.
-     *
-     * @type {FileState}
-     */
-    this.FileState = FileState;
 
     /**
      * @public
@@ -1427,7 +1416,7 @@ class Environment {
       for (let container of this.workspace.getPaneContainers()) {
         for (let item of container.getPaneItems()) {
           if (item instanceof TextEditor) {
-            if (item.getPath() || item.getFileState() !== FileState.UNMODIFIED) return false;
+            if (item.getPath() || item.getFileState() !== "unmodified") return false;
           } else {
             if (container === center) return false;
           }

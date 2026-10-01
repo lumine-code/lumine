@@ -2,7 +2,6 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
-const FileState = require("./file-state");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
 
 let nextInstanceId = 1;
@@ -1029,7 +1028,7 @@ module.exports = class Pane {
     // Don't prompt if the user hasn't opted into it.
     if (!lumine.config.get("core.promptOnSaveConflictedFile")) return true;
 
-    if (item.getFileState?.() !== FileState.CONFLICTED) {
+    if (item.getFileState?.() !== "conflicted") {
       return true;
     }
     // Figure out how to describe the buffer in the dialog.
@@ -1103,7 +1102,7 @@ module.exports = class Pane {
 
       // A pane item whose backing file was removed gets a clearer, more
       // accurate message than the generic "has changes" prompt.
-      const removed = item.getFileState?.() === FileState.REMOVED;
+      const removed = item.getFileState?.() === "removed";
       const message = removed
         ? `'${title}' was deleted on disk. Do you still want to save this file?`
         : `'${title}' has changes, do you want to save them?`;
@@ -1121,8 +1120,7 @@ module.exports = class Pane {
     if (!saveable || typeof item.getFileState !== "function") return false;
 
     return (
-      lumine.config.get("core.promptOnCloseDirtyBuffer") &&
-      item.getFileState() !== FileState.UNMODIFIED
+      lumine.config.get("core.promptOnCloseDirtyBuffer") && item.getFileState() !== "unmodified"
     );
   }
 
@@ -1172,7 +1170,7 @@ module.exports = class Pane {
 
     if (itemURI != null) {
       if (typeof item.save === "function") {
-        const conflicted = item.getFileState?.() === FileState.CONFLICTED;
+        const conflicted = item.getFileState?.() === "conflicted";
 
         // If the item is conflicted, we'll show a dialog in order to decide
         // how to proceed. The user may choose to overwrite (force the save) or
@@ -1262,7 +1260,7 @@ module.exports = class Pane {
     for (let item of this.getItems()) {
       if (
         typeof item.getFileState === "function" &&
-        item.getFileState() !== FileState.UNMODIFIED &&
+        item.getFileState() !== "unmodified" &&
         (typeof item.save === "function" || typeof item.saveAs === "function")
       ) {
         promises.push(this.saveItem(item));

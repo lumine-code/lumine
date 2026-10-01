@@ -6,7 +6,6 @@ const temp = require("@lumine-code/temp").track();
 const Pane = require("../src/pane");
 const PaneContainer = require("../src/pane-container");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
-const FileState = require("../src/file-state");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -801,7 +800,7 @@ describe("Pane", () => {
     });
 
     it("prompts for a generic saveable item with a dirty file state", async () => {
-      item1.getFileState = () => FileState.MODIFIED;
+      item1.getFileState = () => "modified";
       item1.getURI = () => "test";
       item1.save = jasmine.createSpy("save");
       confirm.and.returnValue(Promise.resolve(2));
@@ -812,7 +811,7 @@ describe("Pane", () => {
     });
 
     it("does not prompt for a read-only item in the removed state", async () => {
-      item1.getFileState = () => FileState.REMOVED;
+      item1.getFileState = () => "removed";
 
       expect(await pane.destroyItem(item1)).toBe(true);
       expect(confirm).not.toHaveBeenCalled();
@@ -820,7 +819,7 @@ describe("Pane", () => {
 
     it("does not prompt for a dirty generic item when prompting is disabled", async () => {
       lumine.config.set("core.promptOnCloseDirtyBuffer", false);
-      item1.getFileState = () => FileState.CONFLICTED;
+      item1.getFileState = () => "conflicted";
       item1.getURI = () => "test";
       item1.save = jasmine.createSpy("save");
 
@@ -1819,10 +1818,10 @@ describe("Pane", () => {
 
       const saveItemsPromise = pane.saveItems();
       expect(saveItemsPromise instanceof Promise).toBe(true);
-      expect(editor2.getBuffer().getFileState()).toBe(FileState.MODIFIED);
+      expect(editor2.getBuffer().getFileState()).toBe("modified");
 
       await saveItemsPromise;
-      expect(editor2.getBuffer().getFileState()).toBe(FileState.UNMODIFIED);
+      expect(editor2.getBuffer().getFileState()).toBe("unmodified");
     });
   });
 });

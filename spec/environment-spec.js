@@ -4,7 +4,6 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const Environment = require("../src/environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
-const FileState = require("../src/file-state");
 const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");
 
 describe("Environment", () => {
@@ -12,7 +11,7 @@ describe("Environment", () => {
     expect(global.lumine).toBe(lumine);
     expect(lumine.constructor.name).toBe("Environment");
     expect(global.atom).toBeUndefined();
-    expect(lumine.FileState).toBe(FileState);
+    expect(lumine.FileState).toBeUndefined();
   });
 
   describe("namespaced process APIs", () => {
@@ -1177,7 +1176,7 @@ describe("Environment", () => {
 
       expect(openPaths(env)).toEqual([fileA]);
       expect(env.workspace.getActiveTextEditor().getText()).toBe("edited but never saved");
-      expect(env.workspace.getActiveTextEditor().getFileState()).toBe(FileState.MODIFIED);
+      expect(env.workspace.getActiveTextEditor().getFileState()).toBe("modified");
     });
 
     it("starts clean when the incoming project has no saved state", async () => {

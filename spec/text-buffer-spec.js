@@ -14,7 +14,6 @@ const Range = require("../src/range");
 const DisplayLayer = require("../src/display-layer");
 const DefaultHistoryProvider = require("../src/default-history-provider");
 const TextBuffer = require("../src/text-buffer");
-const FileState = require("../src/file-state");
 fs.readFileSync(join(__dirname, "fixtures", "sample.js"), "utf8");
 const { buildRandomLines, getRandomBufferRange } = require("./text-buffer-helpers/random");
 const NullLanguageMode = require("../src/null-language-mode");
@@ -2587,7 +2586,7 @@ three\
       bufferToChange.onDidChangePath(pathChanged);
       const deleted = new Promise((resolve) => {
         const subscription = bufferToChange.onDidChangeFileState((state) => {
-          if (state === FileState.REMOVED) {
+          if (state === "removed") {
             subscription.dispose();
             resolve();
           }

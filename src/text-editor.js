@@ -9,7 +9,6 @@ const Cursor = require("./cursor");
 const Selection = require("./selection");
 const NullGrammar = require("./null-grammar");
 const ScopeDescriptor = require("./scope-descriptor");
-const FileState = require("./file-state");
 const { selectorMatchesAnyScope } = require("./selectors");
 
 const GutterContainer = require("./gutter-container");
@@ -937,7 +936,7 @@ module.exports = class TextEditor {
     this.disposables.add(this.buffer.onDidDestroy(() => this.destroy()));
     this.disposables.add(
       this.buffer.onDidChangeFileState((fileState) => {
-        if (!this.hasTerminatedPendingState && fileState !== FileState.UNMODIFIED)
+        if (!this.hasTerminatedPendingState && fileState !== "unmodified")
           this.terminatePendingState();
       }),
     );
@@ -1192,7 +1191,7 @@ module.exports = class TextEditor {
    *
    * Calls your `callback` when the value of {@link #getFileState} changes.
    *
-   * @param {Function} callback
+   * @param {Function} callback - to be called with the new state string from {@link #getFileState}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeFileState(callback) {
@@ -1762,7 +1761,9 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @returns {String} one of the values in `FileState`.
+   * Get the editor's mutually exclusive persistence state, as described by {@link TextBuffer#getFileState}.
+   *
+   * @returns {String} `"unmodified"`, `"modified"`, `"conflicted"`, or `"removed"`.
    */
   getFileState() {
     return this.buffer.getFileState();
@@ -1816,11 +1817,9 @@ module.exports = class TextEditor {
     }
 
     if (windowCloseRequested && projectHasPaths && lumine.stateStore.isConnected()) {
-      return (
-        this.getFileState() === FileState.CONFLICTED || this.getFileState() === FileState.REMOVED
-      );
+      return this.getFileState() === "conflicted" || this.getFileState() === "removed";
     } else {
-      return this.getFileState() !== FileState.UNMODIFIED && !this.buffer.hasMultipleEditors();
+      return this.getFileState() !== "unmodified" && !this.buffer.hasMultipleEditors();
     }
   }
 

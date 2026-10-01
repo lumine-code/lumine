@@ -3,7 +3,6 @@ const os = require("os");
 const path = require("path");
 const { PassThrough, Readable } = require("stream");
 const TextBuffer = require("../src/text-buffer");
-const FileState = require("../src/file-state");
 const FileDocumentRegistry = require("../src/file-document-registry");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
@@ -97,7 +96,7 @@ describe("TextBuffer deferred file observation", () => {
         "created file loaded",
       );
       expect(buffer.getText()).toBe("created after load");
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
     });
   }
 
@@ -219,9 +218,9 @@ describe("TextBuffer deferred file observation", () => {
     buffer.beginFileOperation();
     custom.exists = false;
     custom.delete();
-    expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+    expect(buffer.getFileState()).toBe("unmodified");
     await buffer.endFileOperation();
-    expect(buffer.getFileState()).toBe(FileState.REMOVED);
+    expect(buffer.getFileState()).toBe("removed");
     expect(buffer.getText()).toBe("before");
   });
 
@@ -274,7 +273,7 @@ describe("TextBuffer deferred file observation", () => {
         expect(buffer.file).toBe(custom);
         expect(buffer.getPath()).toBe(move.newPath);
         expect(buffer.getText()).toBe("decoded contents with unsaved edits");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
         expect(pathChanged).toHaveBeenCalledOnceWith(move.newPath);
         // A provider may deliver a second asynchronous notification after its
         // setPath promise settles; it still represents the same path change.

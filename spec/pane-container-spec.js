@@ -1,6 +1,5 @@
 const PaneContainer = require("../src/pane-container");
 const { Emitter } = require("@lumine-code/event-kit");
-const FileState = require("../src/file-state");
 
 describe("PaneContainer", () => {
   let confirm, params;
@@ -564,7 +563,7 @@ describe("PaneContainer", () => {
           return "";
         },
         getFileState() {
-          return FileState.MODIFIED;
+          return "modified";
         },
         save() {
           this.saved = true;
@@ -576,7 +575,7 @@ describe("PaneContainer", () => {
           return "";
         },
         getFileState() {
-          return FileState.UNMODIFIED;
+          return "unmodified";
         },
         save() {
           this.saved = true;
@@ -588,7 +587,7 @@ describe("PaneContainer", () => {
           return "";
         },
         getFileState() {
-          return FileState.REMOVED;
+          return "removed";
         },
         save() {
           this.saved = true;
@@ -619,7 +618,7 @@ describe("PaneContainer", () => {
           return "";
         },
         getFileState() {
-          return FileState.MODIFIED;
+          return "modified";
         },
         save() {
           this.saved = true;
@@ -631,7 +630,7 @@ describe("PaneContainer", () => {
           return "";
         },
         getFileState() {
-          return FileState.CONFLICTED;
+          return "conflicted";
         },
         save() {
           return new Promise((resolve) => {

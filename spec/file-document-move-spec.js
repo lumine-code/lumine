@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const TextBuffer = require("../src/text-buffer");
-const FileState = require("../src/file-state");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 describe("file document moves", () => {
@@ -40,7 +39,7 @@ describe("file document moves", () => {
     expect(editor.getBuffer()).toBe(buffer);
     expect(editor.getPath()).toBe(effect.newPath);
     expect(editor.getText()).toBe("unsaved");
-    expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+    expect(buffer.getFileState()).toBe("modified");
     editor.undo();
     expect(editor.getText()).toBe("base");
   });
@@ -84,7 +83,7 @@ describe("file document moves", () => {
     const original = editor.getPath();
     editor.setText("unsaved");
     fs.renameSync(original, path.join(root, "external.txt"));
-    await conditionPromise(() => editor.getBuffer().getFileState() === FileState.REMOVED);
+    await conditionPromise(() => editor.getBuffer().getFileState() === "removed");
     expect(editor.getPath()).toBe(original);
     expect(editor.getText()).toBe("unsaved");
     await editor.save();
@@ -113,7 +112,7 @@ describe("file document moves", () => {
       buffer.setText("unsaved");
       fs.writeFileSync(file, "changed during outage");
       invalidate({ path: file, reason: "worker-restarted", generation: 2 });
-      await conditionPromise(() => buffer.getFileState() === FileState.CONFLICTED);
+      await conditionPromise(() => buffer.getFileState() === "conflicted");
       expect(buffer.getText()).toBe("unsaved");
     } finally {
       buffer.destroy();

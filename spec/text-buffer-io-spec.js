@@ -9,7 +9,6 @@ const TextBuffer = require("../src/text-buffer");
 const TextBufferFile = require("../src/text-buffer-file");
 const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
 const fsAdmin = require("@lumine-code/fs-admin");
-const FileState = require("../src/file-state");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 let winattr = null;
@@ -45,7 +44,7 @@ describe("TextBuffer IO", () => {
 
       buffer = await TextBuffer.load(filePath);
       expect(buffer.getText()).toBe("abc");
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
       expect(buffer.undo()).toBe(false);
       expect(buffer.getText()).toBe("abc");
       done();
@@ -55,7 +54,7 @@ describe("TextBuffer IO", () => {
       const filePath = "does-not-exist.txt";
       buffer = await TextBuffer.load(filePath);
       expect(buffer.getText()).toBe("");
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
       expect(buffer.undo()).toBe(false);
       expect(buffer.getText()).toBe("");
       done();
@@ -88,7 +87,7 @@ describe("TextBuffer IO", () => {
 
         buffer = await TextBuffer.load(new ReverseCaseFile(filePath));
         expect(buffer.getText()).toBe("ABC\nDEF");
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         done();
       });
     });
@@ -101,7 +100,7 @@ describe("TextBuffer IO", () => {
 
       buffer = TextBuffer.loadSync(filePath);
       expect(buffer.getText()).toBe("abc");
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
     });
 
     it("returns an empty buffer if the file does not exist", () => {
@@ -226,11 +225,11 @@ describe("TextBuffer IO", () => {
       await buffer.reload();
       expect(events).toEqual(["will-reload", "did-reload"]);
       expect(buffer.getText()).toBe("");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
 
       buffer.undo();
       expect(buffer.getText()).toBe("cdefg");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
       done();
     });
 
@@ -309,14 +308,14 @@ describe("TextBuffer IO", () => {
 
     it("does not emit a change event", async (done) => {
       buffer.setText("Buffer contents");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
 
       const changeEvents = [];
       buffer.onWillChange(() => changeEvents.push(["will-change"]));
       buffer.onDidChange((event) => changeEvents.push(["did-change", event]));
 
       await buffer.save();
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
 
       setTimeout(() => {
         expect(changeEvents).toEqual([]);
@@ -327,7 +326,7 @@ describe("TextBuffer IO", () => {
     it("does not emit a conflict event due to the save", async () => {
       const events = [];
       buffer.onDidChangeFileState((fileState) => {
-        if (fileState === FileState.CONFLICTED) events.push(fileState);
+        if (fileState === "conflicted") events.push(fileState);
       });
 
       buffer.setText("Buffer contents");
@@ -414,7 +413,7 @@ describe("TextBuffer IO", () => {
         let probeCount = 0;
         let probeTimer;
         const subscription = buffer.onDidChangeFileState((fileState) => {
-          if (fileState === FileState.CONFLICTED) {
+          if (fileState === "conflicted") {
             subscription.dispose();
             clearInterval(probeTimer);
             done();
@@ -429,16 +428,16 @@ describe("TextBuffer IO", () => {
       });
 
       it("no longer reports being in conflict when the buffer is saved again", async (done) => {
-        expect(buffer.getFileState()).toBe(FileState.CONFLICTED);
+        expect(buffer.getFileState()).toBe("conflicted");
         await buffer.save();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         // Ensure we don't get flipped into conflicted status after the
         // `onDidChange` handler comes through…
         await wait(1000);
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         buffer.setText("q");
         // …and the buffer is modified again.
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
         done();
       });
     });
@@ -465,14 +464,14 @@ describe("TextBuffer IO", () => {
         buffer.setText("abc DEF ghi JKL\n".repeat(10 * 1024));
         await buffer.save();
         expect(fs.readFileSync(filePath, "utf8")).toBe("ABC def GHI jkl\n".repeat(10 * 1024));
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         done();
       });
 
       it("does not emit a conflict event due to the save", async () => {
         const events = [];
         buffer.onDidChangeFileState((fileState) => {
-          if (fileState === FileState.CONFLICTED) events.push(fileState);
+          if (fileState === "conflicted") events.push(fileState);
         });
 
         // `ReverseCaseFile` uses `fs.watch` to set up file-watching. This
@@ -533,7 +532,7 @@ describe("TextBuffer IO", () => {
           buffer.save().catch((error) => {
             expect(error.code).toBe("EACCES");
             expect(error.message).toBe("Permission denied");
-            expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+            expect(buffer.getFileState()).toBe("modified");
             expect(buffer.outstandingSaveCount).toBe(0);
             done();
           });
@@ -628,23 +627,23 @@ describe("TextBuffer IO", () => {
       it("reports state changes exactly once", async (done) => {
         const fileStateChanges = [];
         buffer.onDidChangeFileState((fileState) => fileStateChanges.push(fileState));
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
 
         buffer.insert([0, 0], "hi");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
         await stopChangingPromise();
-        expect(fileStateChanges).toEqual([FileState.MODIFIED]);
+        expect(fileStateChanges).toEqual(["modified"]);
 
         buffer.insert([0, 2], "ho");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
         await stopChangingPromise();
-        expect(fileStateChanges).toEqual([FileState.MODIFIED]);
+        expect(fileStateChanges).toEqual(["modified"]);
 
         buffer.undo();
         buffer.undo();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         await stopChangingPromise();
-        expect(fileStateChanges).toEqual([FileState.MODIFIED, FileState.UNMODIFIED]);
+        expect(fileStateChanges).toEqual(["modified", "unmodified"]);
         done();
       });
 
@@ -655,7 +654,7 @@ describe("TextBuffer IO", () => {
           buffer.setText(`lorem ipsum dolor`);
           fs.unlinkSync(filePath);
           await wait(500);
-          expect(buffer.getFileState()).toBe(FileState.REMOVED);
+          expect(buffer.getFileState()).toBe("removed");
         });
       });
     });
@@ -663,15 +662,15 @@ describe("TextBuffer IO", () => {
     describe("when the buffer is saved", () => {
       it("reports the state changing to unmodified", async (done) => {
         buffer.insert([0, 0], "hi");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
 
         const fileStateChanges = [];
         buffer.onDidChangeFileState((fileState) => fileStateChanges.push(fileState));
 
         await buffer.save();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         await stopChangingPromise();
-        expect(fileStateChanges).toEqual([FileState.UNMODIFIED]);
+        expect(fileStateChanges).toEqual(["unmodified"]);
         done();
       });
 
@@ -683,7 +682,7 @@ describe("TextBuffer IO", () => {
           const deleted = deletionPromise(buffer);
           fs.unlinkSync(filePath);
           await deleted;
-          expect(buffer.getFileState()).toBe(FileState.REMOVED);
+          expect(buffer.getFileState()).toBe("removed");
         });
 
         it("keeps the removed state when the user makes further changes", async () => {
@@ -693,14 +692,14 @@ describe("TextBuffer IO", () => {
           const deleted = deletionPromise(buffer);
           fs.unlinkSync(filePath);
           await deleted;
-          expect(buffer.getFileState()).toBe(FileState.REMOVED);
+          expect(buffer.getFileState()).toBe("removed");
 
           buffer.insert([0, 0], "! ");
-          expect(buffer.getFileState()).toBe(FileState.REMOVED);
+          expect(buffer.getFileState()).toBe("removed");
 
           // Removal is sticky even if we restore the text from deletion time.
           buffer.setText(`lorem ipsum`);
-          expect(buffer.getFileState()).toBe(FileState.REMOVED);
+          expect(buffer.getFileState()).toBe("removed");
         });
 
         describe("and re-saved", () => {
@@ -712,11 +711,11 @@ describe("TextBuffer IO", () => {
             fs.unlinkSync(filePath);
             await deleted;
             buffer.insert([0, 0], "! ");
-            expect(buffer.getFileState()).toBe(FileState.REMOVED);
+            expect(buffer.getFileState()).toBe("removed");
 
             await buffer.saveAs(filePath);
 
-            expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+            expect(buffer.getFileState()).toBe("unmodified");
           });
         });
       });
@@ -726,17 +725,17 @@ describe("TextBuffer IO", () => {
       it("reports removed regardless of whether it was modified at deletion", async () => {
         if (process.env.LUMINE_FILE_WATCH_TRACE)
           console.error("FILE_WATCH_SPEC_DELETE_RECREATE", filePath);
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         const deleted = deletionPromise(buffer);
         fs.unlinkSync(filePath);
         await deleted;
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
 
         await buffer.save();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
 
         buffer.insert([0, 0], "hi");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
         // Let the watcher observe the file existing again before deleting it a
         // second time. Re-creating and re-deleting the same path within a single
         // watcher batch coalesces into no net change, so this transition has no
@@ -745,35 +744,35 @@ describe("TextBuffer IO", () => {
         const deletedAgain = deletionPromise(buffer);
         fs.unlinkSync(filePath);
         await deletedAgain;
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
       });
 
       it("clears the removed state when retargeted to a path that never existed", async () => {
         const deleted = deletionPromise(buffer);
         fs.unlinkSync(filePath);
         await deleted;
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
 
         const newPath = path.join(temp.mkdirSync("lumine"), "does-not-exist.txt");
         buffer.setPath(newPath);
 
         expect(buffer.didHaveFileOnDisk).toBe(false);
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
       });
     });
 
     describe("when the buffer is re-saved after deletion", () => {
       it("stops reporting the file as deleted or modified", async (done) => {
         buffer.insert([0, 0], "hi");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+        expect(buffer.getFileState()).toBe("modified");
 
         const deleted = deletionPromise(buffer);
         fs.unlinkSync(filePath);
         await deleted;
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
 
         await buffer.save();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
 
         buffer.insert([0, 0], "hi");
         // Let the watcher observe the file existing again before deleting it a
@@ -784,7 +783,7 @@ describe("TextBuffer IO", () => {
         const deletedAgain = deletionPromise(buffer);
         fs.unlinkSync(filePath);
         await deletedAgain;
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
         done();
       });
     });
@@ -795,39 +794,39 @@ describe("TextBuffer IO", () => {
         buffer.onDidChangeFileState((fileState) => fileStateChanges.push(fileState));
 
         buffer.insert([0, 0], "hi");
-        expect(buffer.getFileState()).toBe(FileState.MODIFIED);
-        expect(fileStateChanges).toEqual([FileState.MODIFIED]);
+        expect(buffer.getFileState()).toBe("modified");
+        expect(fileStateChanges).toEqual(["modified"]);
 
         await buffer.reload();
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
-        expect(fileStateChanges).toEqual([FileState.MODIFIED, FileState.UNMODIFIED]);
+        expect(buffer.getFileState()).toBe("unmodified");
+        expect(fileStateChanges).toEqual(["modified", "unmodified"]);
       });
     });
 
     it("returns false for an empty buffer with no path", () => {
       buffer2 = new TextBuffer();
-      expect(buffer2.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer2.getFileState()).toBe("unmodified");
       buffer2.append("hello");
-      expect(buffer2.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer2.getFileState()).toBe("modified");
     });
 
     it("returns unmodified for an empty buffer at a path that never existed", async (done) => {
       buffer.destroy();
       const filePath = path.join(temp.mkdirSync(), "file-to-delete");
       buffer = await TextBuffer.load(filePath);
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
       done();
     });
 
     it("returns true for a non-empty buffer with no path", () => {
       buffer2 = new TextBuffer({ text: "something" });
-      expect(buffer2.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer2.getFileState()).toBe("modified");
 
       buffer2.append("a");
-      expect(buffer2.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer2.getFileState()).toBe("modified");
 
       buffer2.setText("");
-      expect(buffer2.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer2.getFileState()).toBe("unmodified");
     });
   });
 
@@ -867,7 +866,7 @@ describe("TextBuffer IO", () => {
         buffer2 = await TextBuffer.deserialize(buffer.serialize());
         expect(buffer2.getPath()).toBe(buffer.getPath());
         expect(buffer2.getText()).toBe("abc\ndef\nghi\n");
-        expect(buffer2.getFileState()).toBe(FileState.CONFLICTED);
+        expect(buffer2.getFileState()).toBe("conflicted");
         expect(buffer2.undo()).toBe(false);
         expect(buffer2.getText()).toBe("abc\ndef\nghi\n");
         done();
@@ -896,7 +895,7 @@ describe("TextBuffer IO", () => {
 
       buffer2 = await TextBuffer.deserialize(state);
       expect(buffer2.getText()).toBe(expectedText);
-      expect(buffer2.getFileState()).toBe(FileState.REMOVED);
+      expect(buffer2.getFileState()).toBe("removed");
       expect(buffer2.undo()).toBe(false);
     });
 
@@ -909,7 +908,7 @@ describe("TextBuffer IO", () => {
 
       expect(buffer2.getPath()).toBe(filePath);
       expect(buffer2.getText()).toBe("draft text");
-      expect(buffer2.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer2.getFileState()).toBe("modified");
       expect(buffer2.undo()).toBe(true);
       expect(buffer2.getText()).toBe("");
     });
@@ -1033,15 +1032,15 @@ describe("TextBuffer IO", () => {
     it("enters conflicted if the buffer is modified", async (done) => {
       buffer.append("f");
       expect(buffer.getText()).toBe("abcdef");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
 
       fs.writeFileSync(buffer.getPath(), "  abc");
 
       const subscription = buffer.onDidChangeFileState((fileState) => {
-        if (fileState === FileState.CONFLICTED) {
+        if (fileState === "conflicted") {
           subscription.dispose();
           expect(buffer.getText()).toBe("abcdef");
-          expect(buffer.getFileState()).toBe(FileState.CONFLICTED);
+          expect(buffer.getFileState()).toBe("conflicted");
           done();
         }
       });
@@ -1058,13 +1057,13 @@ describe("TextBuffer IO", () => {
 
       buffer.append("f");
       expect(buffer.getText()).toBe("abcdef");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
 
       const subscription = buffer.onDidChangeFileState((fileState) => {
-        if (fileState === FileState.CONFLICTED) {
+        if (fileState === "conflicted") {
           subscription.dispose();
           expect(buffer.getText()).toBe("abcdef");
-          expect(buffer.getFileState()).toBe(FileState.CONFLICTED);
+          expect(buffer.getFileState()).toBe("conflicted");
           done();
         }
       });
@@ -1095,7 +1094,7 @@ describe("TextBuffer IO", () => {
       const subscription = buffer.onDidReload(() => {
         subscription.dispose();
 
-        expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(buffer.getFileState()).toBe("unmodified");
         expect(buffer.getText()).toBe(newText);
 
         expect(markerB.getRange()).toEqual(Range(Point(0, 2), Point(0, 3)));
@@ -1202,7 +1201,7 @@ describe("TextBuffer IO", () => {
       const loadSpy = spyOn(buffer, "load").and.callThrough();
       const events = [];
       buffer.onDidChangeFileState((fileState) => {
-        if (fileState === FileState.CONFLICTED) events.push("conflicted");
+        if (fileState === "conflicted") events.push("conflicted");
       });
       buffer.onDidReload(() => events.push("did-reload"));
 
@@ -1217,11 +1216,11 @@ describe("TextBuffer IO", () => {
 
       expect(events).toEqual(["conflicted"]);
       expect(buffer.getText()).toBe("abcdef");
-      expect(buffer.getFileState()).toBe(FileState.CONFLICTED);
+      expect(buffer.getFileState()).toBe("conflicted");
 
       expect(buffer.undo()).toBe(true);
       expect(buffer.getText()).toBe("abcde");
-      expect(buffer.getFileState()).toBe(FileState.CONFLICTED);
+      expect(buffer.getFileState()).toBe("conflicted");
       expect(buffer.undo()).toBe(false);
     });
 
@@ -1233,7 +1232,7 @@ describe("TextBuffer IO", () => {
       const loadSpy = spyOn(buffer, "load").and.callThrough();
       const events = [];
       buffer.onDidChangeFileState((fileState) => {
-        if (fileState === FileState.CONFLICTED) events.push("conflicted");
+        if (fileState === "conflicted") events.push("conflicted");
       });
       buffer.onDidReload(() => events.push("did-reload"));
 
@@ -1248,7 +1247,7 @@ describe("TextBuffer IO", () => {
 
       expect(events).toEqual([]);
       expect(buffer.getText()).toBe("abcdef");
-      expect(buffer.getFileState()).toBe(FileState.MODIFIED);
+      expect(buffer.getFileState()).toBe("modified");
     });
 
     it("does not fire duplicate change events when multiple changes happen on disk", async () => {
@@ -1337,12 +1336,12 @@ describe("TextBuffer IO", () => {
         initiallyModified ? "modified" : "unmodified"
       }`, async () => {
         if (initiallyModified) buffer.setText("I WAS MODIFIED");
-        const removed = fileStatePromise(buffer, FileState.REMOVED);
+        const removed = fileStatePromise(buffer, "removed");
         fs.removeSync(filePath);
         await removed;
 
         expect(buffer.getPath()).toBe(filePath);
-        expect(buffer.getFileState()).toBe(FileState.REMOVED);
+        expect(buffer.getFileState()).toBe("removed");
         expect(buffer.isDestroyed()).toBe(false);
       });
     }
@@ -1350,20 +1349,20 @@ describe("TextBuffer IO", () => {
     it("emits one state event for deletion", async () => {
       const states = [];
       buffer.onDidChangeFileState((fileState) => states.push(fileState));
-      const removed = fileStatePromise(buffer, FileState.REMOVED);
+      const removed = fileStatePromise(buffer, "removed");
       fs.removeSync(filePath);
       await removed;
-      expect(states).toEqual([FileState.REMOVED]);
+      expect(states).toEqual(["removed"]);
     });
 
     it("resumes watching of the file when it is re-saved", async (done) => {
       if (process.env.LUMINE_FILE_WATCH_TRACE) console.error("FILE_WATCH_SPEC_RESAVE", filePath);
-      const removed = fileStatePromise(buffer, FileState.REMOVED);
+      const removed = fileStatePromise(buffer, "removed");
       fs.removeSync(filePath);
       await removed;
       await buffer.save();
       expect(fs.existsSync(buffer.getPath())).toBeTruthy();
-      expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(buffer.getFileState()).toBe("unmodified");
 
       buffer.onDidChange(() => {
         expect(buffer.getText()).toBe("moo");
@@ -1474,7 +1473,7 @@ function timeoutPromise(duration) {
 }
 
 function deletionPromise(buffer) {
-  return fileStatePromise(buffer, FileState.REMOVED);
+  return fileStatePromise(buffer, "removed");
 }
 
 function fileStatePromise(buffer, expectedState) {

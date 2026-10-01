@@ -13,7 +13,6 @@ const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const Environment = require("../src/environment");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
-const FileState = require("../src/file-state");
 const { Emitter } = require("@lumine-code/event-kit");
 
 describe("Workspace", () => {
@@ -2328,7 +2327,7 @@ describe("Workspace", () => {
     it("calls setDocumentEdited when the active item changes", () => {
       expect(lumine.workspace.getActivePaneItem()).toBe(item2);
       item1.insertText("a");
-      expect(item1.getFileState()).toBe(FileState.MODIFIED);
+      expect(item1.getFileState()).toBe("modified");
       lumine.workspace.getActivePane().activateNextItem();
 
       expect(setDocumentEdited).toHaveBeenCalledWith(true);
@@ -2339,19 +2338,19 @@ describe("Workspace", () => {
       item2.insertText("a");
       await timeoutPromise(item2.getBuffer().getStoppedChangingDelay());
 
-      expect(item2.getFileState()).toBe(FileState.MODIFIED);
+      expect(item2.getFileState()).toBe("modified");
       expect(setDocumentEdited).toHaveBeenCalledWith(true);
 
       item2.undo();
       await timeoutPromise(item2.getBuffer().getStoppedChangingDelay());
 
-      expect(item2.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(item2.getFileState()).toBe("unmodified");
       expect(setDocumentEdited).toHaveBeenCalledWith(false);
     });
 
     it("does not mark a read-only removed item as document-edited", () => {
       const item = {
-        getFileState: () => FileState.REMOVED,
+        getFileState: () => "removed",
         onDidChangeFileState: () => ({ dispose() {} }),
       };
       lumine.workspace.getActivePane().addItem(item);
@@ -2387,9 +2386,9 @@ describe("Workspace", () => {
 
     it("closes any file-backed item on an unmodified to removed transition", async () => {
       lumine.config.set("core.closeDeletedFileTabs", true);
-      const item = addFileBackedItem(FileState.UNMODIFIED);
+      const item = addFileBackedItem("unmodified");
 
-      item.setFileState(FileState.REMOVED);
+      item.setFileState("removed");
       await conditionPromise(() => item.destroyed);
 
       expect(lumine.workspace.paneForItem(item)).toBeUndefined();
@@ -2397,9 +2396,9 @@ describe("Workspace", () => {
 
     it("does not close an item that was dirty before removal", async () => {
       lumine.config.set("core.closeDeletedFileTabs", true);
-      const item = addFileBackedItem(FileState.MODIFIED);
+      const item = addFileBackedItem("modified");
 
-      item.setFileState(FileState.REMOVED);
+      item.setFileState("removed");
       await timeoutPromise(20);
 
       expect(item.destroyed).toBe(false);
@@ -3418,7 +3417,7 @@ describe("Workspace", () => {
 
             await scan(/match/, {}, ({ filePath }) => resultHandler(filePath));
 
-            expect(editor.getFileState()).toBe(FileState.MODIFIED);
+            expect(editor.getFileState()).toBe("modified");
             expect(resultHandler).not.toHaveBeenCalled();
           });
 
@@ -3431,7 +3430,7 @@ describe("Workspace", () => {
 
             await scan(/match/, {}, ({ filePath }) => resultHandler(filePath));
 
-            expect(editor.getFileState()).toBe(FileState.MODIFIED);
+            expect(editor.getFileState()).toBe("modified");
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
@@ -3446,7 +3445,7 @@ describe("Workspace", () => {
               resultHandler(filePath),
             );
 
-            expect(editor.getFileState()).toBe(FileState.MODIFIED);
+            expect(editor.getFileState()).toBe("modified");
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
@@ -3612,7 +3611,7 @@ describe("Workspace", () => {
           const resultHandler = jasmine.createSpy("result found");
           await scan(/dollar/, {}, () => resultHandler());
 
-          expect(editor.getFileState()).toBe(FileState.MODIFIED);
+          expect(editor.getFileState()).toBe("modified");
           expect(resultHandler).not.toHaveBeenCalled();
         });
 
@@ -4153,7 +4152,7 @@ describe("Workspace", () => {
         const didReload = new Promise((resolve) => editor.buffer.onDidReload(resolve));
         spyOn(editor.buffer, "save").and.callThrough();
 
-        expect(editor.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(editor.getFileState()).toBe("unmodified");
 
         await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
@@ -4164,7 +4163,7 @@ describe("Workspace", () => {
         expect(results[0].filePath).toBe(filePath);
         expect(results[0].replacements).toBe(6);
         expect(editor.buffer.save).not.toHaveBeenCalled();
-        expect(editor.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(editor.getFileState()).toBe("unmodified");
         expect(editor.getText()).toContain("okthen");
         expect(fs.readFileSync(filePath, "utf8")).toContain("okthen");
       });
@@ -4237,10 +4236,10 @@ describe("Workspace", () => {
         );
         const didConflict = new Promise((resolve) =>
           editor.buffer.onDidChangeFileState((fileState) => {
-            if (fileState === FileState.CONFLICTED) resolve();
+            if (fileState === "conflicted") resolve();
           }),
         );
-        expect(editor.getFileState()).toBe(FileState.MODIFIED);
+        expect(editor.getFileState()).toBe("modified");
 
         await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
@@ -4250,7 +4249,7 @@ describe("Workspace", () => {
         expect(results).toHaveLength(1);
         expect(results[0].filePath).toBe(filePath);
         expect(results[0].replacements).toBe(6);
-        expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+        expect(editor.getFileState()).toBe("conflicted");
         expect(editor.getText()).not.toContain("okthen");
         expect(fs.readFileSync(filePath, "utf8")).toContain("okthen");
       });

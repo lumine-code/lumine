@@ -12,7 +12,6 @@ const Pane = require("../src/pane");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
-const FileState = require("../src/file-state");
 
 async function languageModeReady(editor) {
   let languageMode = editor.getBuffer().getLanguageMode();
@@ -4778,7 +4777,7 @@ describe("TextEditor", () => {
                 [4, 9],
               ],
             ]);
-            expect(buffer.getFileState()).toBe(FileState.UNMODIFIED);
+            expect(buffer.getFileState()).toBe("unmodified");
           });
         });
 
@@ -10933,7 +10932,7 @@ describe("TextEditor advanced behavior", () => {
         ],
         "let",
       );
-      expect(editor.getFileState()).toBe(FileState.MODIFIED);
+      expect(editor.getFileState()).toBe("modified");
 
       // …then change the file on disk so that our modifications are orphaned.
       fs.writeFileSync(destination, `${contents}\n\n// changed`);
@@ -10947,14 +10946,14 @@ describe("TextEditor advanced behavior", () => {
       // specs is to verify that the correct things happen _after_ a certain
       // condition is met; it's the job of `TextBuffer`’s specs to prove that
       // file-watching produces that condition.
-      editor.buffer.setFileState(FileState.CONFLICTED);
-      expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+      editor.buffer.setFileState("conflicted");
+      expect(editor.getFileState()).toBe("conflicted");
     });
 
     afterEach(() => disposables?.dispose());
 
     it("is considered to be in a conflicted state, but will overwrite with user confirmation", async () => {
-      expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+      expect(editor.getFileState()).toBe("conflicted");
 
       let uncommittedContents = editor.getText();
 
@@ -10968,19 +10967,19 @@ describe("TextEditor advanced behavior", () => {
         return Pane.prototype.promptOnSaveConflictedFile.calls.count() > 0;
       });
 
-      await conditionPromise(() => editor.getFileState() === FileState.UNMODIFIED);
+      await conditionPromise(() => editor.getFileState() === "unmodified");
 
       // …and whatever was in the buffer when we chose to overwrite should
       // match what's now present on disk.
       expect(fs.readFileSync(destination, "utf8").toString()).toBe(uncommittedContents);
 
       // Now that we've written to disk, there's no longer a conflict.
-      expect(editor.getFileState()).toBe(FileState.UNMODIFIED);
+      expect(editor.getFileState()).toBe("unmodified");
     });
 
     it("is considered to be in conflicted state and will not overwrite if user declines", async () => {
       let contentsOnDisk = fs.readFileSync(destination, "utf8").toString();
-      expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+      expect(editor.getFileState()).toBe("conflicted");
 
       const rejection = new Pane.SaveConflictedError("Save cancelled due to conflict");
       rejection.path = destination;
@@ -10999,7 +10998,7 @@ describe("TextEditor advanced behavior", () => {
 
       // Since we cancelled the write, the conflict state should still be
       // present and unresolved.
-      expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+      expect(editor.getFileState()).toBe("conflicted");
       await expectAsync(save).toBeRejectedWith(rejection);
     });
 
@@ -11009,7 +11008,7 @@ describe("TextEditor advanced behavior", () => {
       });
 
       it("is considered to be in a conflicted state, but will not prompt the user", async () => {
-        expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+        expect(editor.getFileState()).toBe("conflicted");
         expect(lumine.config.get("core.promptOnSaveConflictedFile")).toBe(false);
 
         let uncommittedContents = editor.getText();
@@ -11019,7 +11018,7 @@ describe("TextEditor advanced behavior", () => {
         let activePane = lumine.workspace.getActivePane();
         activePane.saveItem(editor);
 
-        await conditionPromise(() => editor.getFileState() === FileState.UNMODIFIED);
+        await conditionPromise(() => editor.getFileState() === "unmodified");
 
         // User should not have been shown the dialog…
         expect(Pane.prototype.promptOnSaveConflictedFile).not.toHaveBeenCalled();
@@ -11029,7 +11028,7 @@ describe("TextEditor advanced behavior", () => {
         expect(fs.readFileSync(destination, "utf8").toString()).toBe(uncommittedContents);
 
         // Now that we've written to disk, there's no longer a conflict.
-        expect(editor.getFileState()).toBe(FileState.UNMODIFIED);
+        expect(editor.getFileState()).toBe("unmodified");
       });
     });
   });
@@ -11063,7 +11062,7 @@ describe("TextEditor advanced behavior", () => {
 
     describe("when core.promptOnCloseDirtyBuffer is configured", () => {
       it("prompts for every dirty file state by default", () => {
-        for (const fileState of [FileState.MODIFIED, FileState.CONFLICTED, FileState.REMOVED]) {
+        for (const fileState of ["modified", "conflicted", "removed"]) {
           editor.buffer.setFileState(fileState);
           expect(editor.shouldPromptToSave()).toBeTruthy();
         }
@@ -11071,7 +11070,7 @@ describe("TextEditor advanced behavior", () => {
 
       it("does not prompt for any dirty file state when disabled", () => {
         lumine.config.set("core.promptOnCloseDirtyBuffer", false);
-        for (const fileState of [FileState.MODIFIED, FileState.CONFLICTED, FileState.REMOVED]) {
+        for (const fileState of ["modified", "conflicted", "removed"]) {
           editor.buffer.setFileState(fileState);
           expect(editor.shouldPromptToSave()).toBeFalsy();
         }
@@ -11089,7 +11088,7 @@ describe("TextEditor advanced behavior", () => {
       editor.setText("other stuff");
       let promise = new Promise((resolve) =>
         editor.onDidChangeFileState((fileState) => {
-          if (fileState === FileState.CONFLICTED) resolve();
+          if (fileState === "conflicted") resolve();
         }),
       );
       // Wait for the file watcher to be armed before mutating the file on disk;
@@ -11114,7 +11113,7 @@ describe("TextEditor advanced behavior", () => {
     });
 
     it("returns true when the window is closing after the file was removed", () => {
-      editor.buffer.setFileState(FileState.REMOVED);
+      editor.buffer.setFileState("removed");
       expect(
         editor.shouldPromptToSave({
           windowCloseRequested: true,

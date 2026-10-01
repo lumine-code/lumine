@@ -19,7 +19,6 @@ const layoutDrag = require("./layout-drag");
 // Builds detached dialog models and their optional modal hosts with this
 // window's services.
 const ModalDialogFactory = require("./modal-dialog-factory");
-const FileState = require("./file-state");
 const FileDocumentRegistry = require("./file-document-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
@@ -221,7 +220,10 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  *
  * #### `getFileState()`
  *
- * Returns one of the mutually exclusive values in `FileState`.
+ * Returns one mutually exclusive state string: `"unmodified"` when the document
+ * matches its saved base, `"modified"` when it has local changes, `"conflicted"`
+ * when it has diverged from its backing file, or `"removed"` when its backing
+ * file no longer exists.
  *
  * #### `onDidChangeFileState(callback)`
  *
@@ -902,8 +904,8 @@ module.exports = class Workspace extends Model {
         fileStateSubscriptions.add(
           item.onDidChangeFileState((fileState) => {
             const shouldClose =
-              previousFileState === FileState.UNMODIFIED &&
-              fileState === FileState.REMOVED &&
+              previousFileState === "unmodified" &&
+              fileState === "removed" &&
               this.config.get("core.closeDeletedFileTabs");
             previousFileState = fileState;
             if (shouldClose) void pane.destroyItem(item, true);
@@ -1121,7 +1123,7 @@ module.exports = class Workspace extends Model {
       activePaneItem != null &&
       typeof activePaneItem.getFileState === "function" &&
       (typeof activePaneItem.save === "function" || typeof activePaneItem.saveAs === "function")
-        ? activePaneItem.getFileState() !== FileState.UNMODIFIED
+        ? activePaneItem.getFileState() !== "unmodified"
         : false;
     this.applicationDelegate.setWindowDocumentEdited(dirty);
   }

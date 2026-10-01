@@ -9,7 +9,6 @@ const { filterPatch } = require("../src/patch-filter");
 const Notification = require("../src/notification");
 const { watchDirectory, watchFile } = require("../src/file-watch");
 const { Icon } = require("../src/icon-descriptor");
-const FileState = require("../src/file-state");
 
 const lumineExport = {
   BufferedNodeProcess,
@@ -31,7 +30,6 @@ const lumineExport = {
   // particular has no hand-written equivalent a provider would guess at: it is
   // the difference between "no icon here" and "not mine, ask the next one".
   Icon,
-  FileState,
 };
 
 // Absolute path to the bundled ripgrep binary, for packages that spawn their

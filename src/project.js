@@ -4,7 +4,6 @@ const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
-const FileState = require("./file-state");
 const { watchDirectory } = require("./file-watch");
 
 const DefaultDirectoryProvider = require("./default-directory-provider");
@@ -182,8 +181,7 @@ module.exports = class Project extends Model {
       // restored. Dirty buffers are retained as `removed` so their text can be
       // recovered.
       bufferState.mustExist =
-        bufferState.fileState === FileState.UNMODIFIED &&
-        bufferState.digestWhenLastPersisted !== false;
+        bufferState.fileState === "unmodified" && bufferState.digestWhenLastPersisted !== false;
 
       return TextBuffer.deserialize({
         ...bufferState,
