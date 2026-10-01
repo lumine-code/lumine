@@ -6,6 +6,7 @@ const { Language: WebLanguage, Parser: WebParser, Query: WebQuery } = require("w
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
+const { compileInjectionQuery } = require("./tree-sitter-injections");
 
 // Load the runtime Wasm through Node's `fs` rather than letting the emscripten
 // module `fetch` it. In Electron's renderer, `web-tree-sitter` takes its
@@ -306,6 +307,19 @@ module.exports = class TreeSitterGrammar {
     return new this.Query(language, queryContents);
   }
 
+  _createGrammarQuery(language, queryType) {
+    const query = this._createQuery(language, this[queryType]);
+    try {
+      if (queryType === "injectionsQuery") {
+        query.injectionDescriptors = compileInjectionQuery(query, this[queryType]);
+      }
+      return query;
+    } catch (error) {
+      query.delete?.();
+      throw error;
+    }
+  }
+
   /**
    * @public
    * @status extended
@@ -474,7 +488,7 @@ module.exports = class TreeSitterGrammar {
     let query = this.queryCache.get(queryType);
     if (!query) {
       try {
-        query = this._createQuery(language, this[queryType]);
+        query = this._createGrammarQuery(language, queryType);
       } catch (error) {
         error.queryDescriptor ??= this.describeQueryError(error, queryType);
         throw error;
@@ -607,7 +621,7 @@ module.exports = class TreeSitterGrammar {
    * Given a kind of query, retrieves a Tree-sitter `Query` object
    * in async fashion.
    *
-   * @param queryType - A `String` describing the query type: typically one of `highlightsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
+   * @param queryType - A `String` describing the query type: typically one of `highlightsQuery`, `injectionsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
    * @returns {Promise} that resolves to a Tree-sitter `Query` object.
    */
   getQuery(queryType) {
@@ -643,7 +657,7 @@ module.exports = class TreeSitterGrammar {
           // let timeTag = `${this.scopeName} ${queryType} load time`;
           try {
             // if (inDevMode) { console.time(timeTag); }
-            query = this._createQuery(language, this[queryType]);
+            query = this._createGrammarQuery(language, queryType);
 
             if (generation !== this.queryLoadGeneration) {
               query.delete?.();
