@@ -2899,6 +2899,13 @@ class NullLanguageModeHighlightIterator {
 }
 
 class NullLayerHighlightIterator {
+  constructor(languageLayer) {
+    this.languageLayer = languageLayer;
+    this.name = languageLayer.grammar.scopeName;
+    this.depth = languageLayer.depth;
+    this.coverShallowerScopes = false;
+  }
+
   seek() {
     return [false, new OpenScopeMap()];
   }
@@ -3073,7 +3080,7 @@ class HighlightIterator {
         this.iterators.push(iterator);
       }
 
-      if (iterator?.languageLayer?.injectionPoint?.coverShallowerScopes) {
+      if (iterator.coverShallowerScopes) {
         // The procedure we follow for covering scopes in the _middle_ of a
         // highlighting task needs to be emulated when deciding which scopes
         // are already open at the _start_ of the task. This layer wants to
@@ -4262,7 +4269,7 @@ class LanguageLayer {
     if (this.tree) {
       return new LayerHighlightIterator(this, this.tree);
     } else {
-      return new NullLayerHighlightIterator();
+      return new NullLayerHighlightIterator(this);
     }
   }
 

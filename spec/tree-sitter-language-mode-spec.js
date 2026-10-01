@@ -5432,6 +5432,41 @@ describe("TreeSitterLanguageMode", () => {
       let injectionLayers = languageMode.getAllInjectionLayers();
       expect(injectionLayers.length).toBe(1);
 
+      const rootLayer = languageMode.rootLanguageLayer;
+      const rootTree = rootLayer.tree;
+      try {
+        rootLayer.tree = null;
+        languageMode.scopeDescriptorCache = null;
+        const pendingRoot = rootLayer.buildHighlightIterator();
+        expect(pendingRoot.languageLayer).toBe(rootLayer);
+        expect(pendingRoot.depth).toBe(0);
+        expect(pendingRoot.coverShallowerScopes).toBe(false);
+        expect(() => languageMode.scopeDescriptorForPosition(new Point(0, 19))).not.toThrow();
+        expect(
+          languageMode.scopeDescriptorForPosition(new Point(0, 19)).getScopesArray(),
+        ).toContain("string.regexp");
+      } finally {
+        rootLayer.tree = rootTree;
+        languageMode.scopeDescriptorCache = null;
+      }
+
+      const injectedLayer = injectionLayers[0];
+      const injectedTree = injectedLayer.tree;
+      try {
+        injectedLayer.tree = null;
+        languageMode.scopeDescriptorCache = null;
+        const pendingChild = injectedLayer.buildHighlightIterator();
+        expect(pendingChild.languageLayer).toBe(injectedLayer);
+        expect(pendingChild.depth).toBe(1);
+        expect(pendingChild.coverShallowerScopes).toBe(false);
+        expect(
+          languageMode.scopeDescriptorForPosition(new Point(0, 19)).getScopesArray(),
+        ).toContain("regex-inner");
+      } finally {
+        injectedLayer.tree = injectedTree;
+        languageMode.scopeDescriptorCache = null;
+      }
+
       let descriptor = languageMode.scopeDescriptorForPosition(new Point(0, 19));
       let scopes = descriptor.getScopesArray();
       expect(scopes.includes("gadfly")).toBe(false);
