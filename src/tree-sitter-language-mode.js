@@ -832,7 +832,14 @@ class TreeSitterLanguageMode {
       // foldable. Run one capture query per accumulated range only after the
       // update that owns every subsumed transaction has finished.
       for (const range of ranges) {
-        this.prefillFoldCache(range);
+        let prefillRange = range;
+        if (range.end.row - range.start.row > FOLD_PREFILL_MAX_ROWS) {
+          prefillRange = new Range(
+            range.start,
+            new Point(range.start.row + FOLD_PREFILL_MAX_ROWS, 0),
+          );
+        }
+        this.prefillFoldCache(prefillRange);
       }
 
       for (const layer of this.getAllInjectionLayers()) {

@@ -4096,6 +4096,40 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("folding", () => {
+    it("bounds eager fold queries after a whole replacement and refreshes distant folds on demand", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+      const prefix = Array.from({ length: 1200 }, (_, index) => `const x${index} = ${index};`).join(
+        "\n",
+      );
+      buffer.setText(`${prefix}\nif (ready) {\n  run();\n}\n`);
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      expect(languageMode.getFoldRangeForRow(1200)).not.toBeNull();
+      expect(languageMode.isFoldableAtRow(1200)).toBe(true);
+
+      const captures = spyOn(
+        languageMode.rootLanguageLayer.queries.foldsQuery,
+        "captures",
+      ).and.callThrough();
+      buffer.setText(`${prefix}\nconst ready = false;\nrun();\n// done\n`);
+      await languageMode.atTransactionEnd();
+      expect(captures).toHaveBeenCalled();
+      for (const [, options] of captures.calls.allArgs()) {
+        expect(options.endPosition.row - options.startPosition.row).toBeLessThanOrEqual(400);
+      }
+      expect(languageMode.getFoldRangeForRow(1200)).toBeNull();
+      expect(languageMode.isFoldableAtRow(1200)).toBe(false);
+
+      buffer.setText(`${prefix}\nif (next) {\n  run();\n}\n`);
+      await languageMode.atTransactionEnd();
+      const distant = languageMode.getFoldRangeForRow(1200);
+      expect(distant).not.toBeNull();
+      expect(distant.start.row).toBe(1200);
+      expect(languageMode.isFoldableAtRow(1200)).toBe(true);
+    });
+
     it("reuses an empty fold boundary cache until the syntax tree is replaced", async () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
