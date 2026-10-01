@@ -279,6 +279,7 @@ module.exports = class Workspace extends Model {
     this.config = params.config;
     this.project = params.project;
     this.fileDocuments = new FileDocumentRegistry();
+    this.fileMoveReadiness = Promise.resolve();
     this.disposables.add(this.fileDocuments);
     this.observeFileDocuments();
     this.notificationManager = params.notificationManager;
@@ -424,9 +425,16 @@ module.exports = class Workspace extends Model {
   beginFileMove(plannedRenames) {
     const documents = this.fileDocuments.beginFileMove(plannedRenames);
     const repositories = this.project.repositoryRegistry.beginFileMove(plannedRenames);
+    // Preparations may finish out of order, but callers start workers in the
+    // planned order. Preserve that order without waiting for earlier moves to
+    // finish copying. A failed preparation must not block later transactions.
+    const ready = Promise.all([this.fileMoveReadiness, documents.ready, repositories.ready]).then(
+      () => {},
+    );
+    this.fileMoveReadiness = ready.catch(() => {});
     let completion;
     return {
-      ready: Promise.all([documents.ready, repositories.ready]).then(() => {}),
+      ready,
       complete: (confirmedRenames = []) => {
         completion ||= (async () => {
           const failures = [];
@@ -475,6 +483,7 @@ module.exports = class Workspace extends Model {
 
   reset(packageManager) {
     this.packageManager = packageManager;
+    this.fileMoveReadiness = Promise.resolve();
     void this.modalDialogFactory.destroy();
     this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
     this.emitter.dispose();

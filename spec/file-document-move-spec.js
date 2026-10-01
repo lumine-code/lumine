@@ -23,6 +23,84 @@ describe("file document moves", () => {
     return editor;
   }
 
+  it("releases move readiness in planned order when preparations finish in reverse order", async () => {
+    let releaseFirst;
+    let releaseSecond;
+    const firstPreparation = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondPreparation = new Promise((resolve) => {
+      releaseSecond = resolve;
+    });
+    const firstPath = path.join(root, "first.txt");
+    const secondPath = path.join(root, "second.txt");
+    const registrations = [
+      lumine.workspace.registerFileDocument({
+        owner: {},
+        getPath: () => firstPath,
+        setPath: () => {},
+        beginFileOperation: () => firstPreparation,
+      }),
+      lumine.workspace.registerFileDocument({
+        owner: {},
+        getPath: () => secondPath,
+        setPath: () => {},
+        beginFileOperation: () => secondPreparation,
+      }),
+    ];
+    spyOn(lumine.project.repositoryRegistry, "beginFileMove").and.callThrough();
+    const first = lumine.workspace.beginFileMove([
+      { oldPath: firstPath, newPath: firstPath + ".moved" },
+    ]);
+    const second = lumine.workspace.beginFileMove([
+      { oldPath: secondPath, newPath: secondPath + ".moved" },
+    ]);
+    const order = [];
+    first.ready.then(() => order.push("first"));
+    second.ready.then(() => order.push("second"));
+    try {
+      await lumine.project.repositoryRegistry.beginFileMove.calls.mostRecent().returnValue.ready;
+      releaseSecond();
+      await new Promise(setImmediate);
+      expect(order).toEqual([]);
+      releaseFirst();
+      await Promise.all([first.ready, second.ready]);
+      expect(order).toEqual(["first", "second"]);
+      // Readiness does not wait for the first copy's completion.
+      await second.complete([]);
+      await first.complete([]);
+    } finally {
+      releaseFirst();
+      releaseSecond();
+      for (const transaction of [first, second]) await transaction.complete([]);
+      for (const registration of registrations) registration.dispose();
+    }
+  });
+
+  it("does not block later moves after an earlier preparation fails", async () => {
+    const firstPath = path.join(root, "failed.txt");
+    const registration = lumine.workspace.registerFileDocument({
+      owner: {},
+      getPath: () => firstPath,
+      setPath: () => {},
+      beginFileOperation: () => Promise.reject(new Error("preparation failed")),
+    });
+    const first = lumine.workspace.beginFileMove([
+      { oldPath: firstPath, newPath: firstPath + ".moved" },
+    ]);
+    const second = lumine.workspace.beginFileMove([
+      { oldPath: path.join(root, "other.txt"), newPath: path.join(root, "other-moved.txt") },
+    ]);
+    try {
+      await expectAsync(first.ready).toBeRejectedWithError("preparation failed");
+      await second.ready;
+      await second.complete([]);
+      await expectAsync(first.complete([])).toBeRejectedWithError("Unable to complete file move");
+    } finally {
+      registration.dispose();
+    }
+  });
+
   it("preserves dirty text and undo through a confirmed move", async () => {
     const editor = await open("source.txt");
     editor.setText("unsaved");
