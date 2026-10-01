@@ -270,8 +270,8 @@ let options = {
   mac: {
     icon: ICONS.icns,
     category: "public.app-category.developer-tools",
-    // Electron 44 follows Chromium in requiring macOS 13 or later.
-    minimumSystemVersion: "13.0",
+    // Match Electron's Node headers and the native dependencies' deployment target.
+    minimumSystemVersion: "13.5",
     hardenedRuntime: true,
     // Now that we're on a recent Electron, we no longer have to hide the
     // `allow-jit` entitlement from Intel Macs in order to work around a
