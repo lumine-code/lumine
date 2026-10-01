@@ -5135,6 +5135,39 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe(".scopeDescriptorForPosition", () => {
+    it("preserves a parent scope opening exactly where a covering injection ends", async () => {
+      jasmine.useRealClock();
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
+      await grammar.setQueryForTest("highlightsQuery", "(end_tag) @meta.closing.tag");
+      await jsGrammar.setQueryForTest("highlightsQuery", "(identifier) @variable.other");
+      grammar.addInjectionPoint({
+        ...SCRIPT_TAG_INJECTION_POINT,
+        includeChildren: true,
+        coverShallowerScopes: true,
+      });
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(grammar);
+      const source = "<script>const value = 1;</script>";
+      buffer.setText(source);
+      const languageMode = new TreeSitterLanguageMode({
+        grammar,
+        buffer,
+        grammars: lumine.grammars,
+      });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      await languageMode.atGrammarSettlement();
+      const closingStart = source.indexOf("</script>");
+      const injected = languageMode.getAllInjectionLayers()[0];
+      expect(injected.getCurrentRanges().at(-1).end).toEqual(new Point(0, closingStart));
+      for (const column of [closingStart, closingStart + 2, closingStart + 5]) {
+        expect(
+          languageMode.scopeDescriptorForPosition(new Point(0, column)).getScopesArray(),
+        ).toContain("meta.closing.tag");
+      }
+    });
+
     it("returns a scope descriptor representing the given position in the syntax tree", async () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 

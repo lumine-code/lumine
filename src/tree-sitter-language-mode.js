@@ -3087,7 +3087,6 @@ class HighlightIterator {
         // cover shallower scopes, so we need to re-assess our list of already
         // open scopes to see if any of them _would've_ been covered at the
         // point when they were opened.
-        let ranges = iterator.languageLayer.getCurrentRanges();
         for (let [earlierIterator, earlierOpenScopes] of openScopesByLayer) {
           // It's possible, though uncommon, for injections to overlap, because
           // there's no mechanism that prevents it. Since we sorted the layers
@@ -3105,8 +3104,10 @@ class HighlightIterator {
           // language scope.
           let languageScopeId = earlierIterator.languageLayer.languageScopeId;
           for (let [point, scopes] of earlierOpenScopes) {
-            let pointIsCoveredByNewIterator = ranges.some((r) => r.containsPoint(point));
-            if (!pointIsCoveredByNewIterator) {
+            const coverage = iterator.coversIteratorAtPosition(earlierIterator, point);
+            // These scopes opened at this point. An injection ending here can
+            // cover closing boundaries, but must preserve these openings.
+            if (coverage !== true && coverage !== "open") {
               continue;
             }
             earlierOpenScopes.set(
