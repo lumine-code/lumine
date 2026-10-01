@@ -2825,12 +2825,12 @@ class TextBuffer {
         return;
       }
 
-      // An automatic reload can begin while the buffer is clean, then finish
+      // A non-forced reload can begin while the buffer is clean, then finish
       // after the user has edited it. The native buffer returns `null` in that
-      // case so it does not overwrite the edit. Preserve that decision here:
-      // compare the unchanged base text with the file instead of treating the
-      // cancelled load as a successful reload.
-      if (patch == null && this.loaded && options?.reconcileOnCancelledLoad) {
+      // case so it does not overwrite the edit. Every caller, including an
+      // encoding change, must compare the unchanged base text with the file
+      // instead of treating the cancelled load as a successful reload.
+      if (patch == null && this.loaded && !options?.discardChanges) {
         await this.reconcileFileChangeAfterCancelledLoad(loadCount, operationGeneration, file);
         return this;
       }
@@ -3121,7 +3121,7 @@ class TextBuffer {
           } else {
             // A clean buffer whose removed file reappeared with different
             // contents can safely follow the disk again.
-            return this.load({ internal: true, reconcileOnCancelledLoad: true });
+            return this.load({ internal: true });
           }
         } else {
           this.updateFileStateFromBuffer({ resolveStickyState: true });
@@ -3130,7 +3130,7 @@ class TextBuffer {
         // This buffer was previously in sync with what was on disk, so we
         // can update its contents to match the new contents on disk. By
         // definition, this means there is no conflict if the load succeeds.
-        return this.load({ internal: true, reconcileOnCancelledLoad: true });
+        return this.load({ internal: true });
       }
     };
     const reportWatchError = (error) => {

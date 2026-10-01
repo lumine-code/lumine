@@ -1355,6 +1355,83 @@ describe("TextBuffer IO", () => {
       expect(states).toEqual(["removed"]);
     });
 
+    for (const recreatedText of ["delete me", "recreated on disk"]) {
+      it(`automatically follows a clean file recreated with ${
+        recreatedText === "delete me" ? "the same" : "different"
+      } contents and observes subsequent changes`, async () => {
+        const states = [];
+        const reloads = [];
+        buffer.onDidChangeFileState((fileState) => states.push(fileState));
+        buffer.onWillReload(() => reloads.push("will-reload"));
+        buffer.onDidReload(() => reloads.push("did-reload"));
+
+        const removed = fileStatePromise(buffer, "removed");
+        fs.removeSync(filePath);
+        await removed;
+        fs.writeFileSync(filePath, recreatedText);
+        await conditionPromise(
+          () => buffer.getFileState() === "unmodified" && buffer.getText() === recreatedText,
+          "recreated clean file reconciled",
+        );
+
+        expect(states).toEqual(["removed", "unmodified"]);
+        expect(reloads).toEqual(recreatedText === "delete me" ? [] : ["will-reload", "did-reload"]);
+
+        fs.writeFileSync(filePath, "changed after recreation");
+        await conditionPromise(
+          () => buffer.getText() === "changed after recreation",
+          "recreated file still watched",
+        );
+        expect(buffer.getFileState()).toBe("unmodified");
+
+        const removedAgain = fileStatePromise(buffer, "removed");
+        fs.removeSync(filePath);
+        await removedAgain;
+        expect(states).toEqual(["removed", "unmodified", "removed"]);
+      });
+    }
+
+    for (const recreatedText of ["delete me", "recreated on disk"]) {
+      it(`preserves unsaved edits when a removed file reappears ${
+        recreatedText === "delete me" ? "matching" : "differing from"
+      } the base text`, async () => {
+        const removed = fileStatePromise(buffer, "removed");
+        fs.removeSync(filePath);
+        await removed;
+        buffer.setText("unsaved after deletion");
+        expect(buffer.getFileState()).toBe("removed");
+
+        const states = [];
+        const reloads = [];
+        buffer.onDidChangeFileState((fileState) => states.push(fileState));
+        buffer.onWillReload(() => reloads.push("will-reload"));
+        buffer.onDidReload(() => reloads.push("did-reload"));
+        const expectedState = recreatedText === "delete me" ? "modified" : "conflicted";
+        fs.writeFileSync(filePath, recreatedText);
+        await conditionPromise(
+          () => buffer.getFileState() === expectedState,
+          "recreated modified file reconciled",
+        );
+
+        expect(buffer.getText()).toBe("unsaved after deletion");
+        expect(states).toEqual([expectedState]);
+        expect(reloads).toEqual([]);
+
+        // Returning the disk to the base contents clears a conflict without
+        // reloading or replacing the user's unsaved text.
+        if (expectedState === "conflicted") {
+          fs.writeFileSync(filePath, "delete me");
+          await conditionPromise(
+            () => buffer.getFileState() === "modified",
+            "recreated file conflict resolved",
+          );
+          expect(states).toEqual(["conflicted", "modified"]);
+          expect(buffer.getText()).toBe("unsaved after deletion");
+          expect(reloads).toEqual([]);
+        }
+      });
+    }
+
     it("resumes watching of the file when it is re-saved", async (done) => {
       if (process.env.LUMINE_FILE_WATCH_TRACE) console.error("FILE_WATCH_SPEC_RESAVE", filePath);
       const removed = fileStatePromise(buffer, "removed");

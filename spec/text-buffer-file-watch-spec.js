@@ -135,6 +135,49 @@ describe("TextBuffer deferred file observation", () => {
     });
   }
 
+  for (const decodedText of ["before", "decoded differently"]) {
+    it(`preserves edits made during an encoding reload when disk ${decodedText === "before" ? "matches" : "differs from"} the base`, async () => {
+      const custom = source();
+      buffer = await TextBuffer.load(custom);
+      const pendingRead = new PassThrough();
+      let firstRead = true;
+      custom.createReadStream = () => {
+        if (firstRead) {
+          firstRead = false;
+          return pendingRead;
+        }
+        return Readable.from([Buffer.from(decodedText, "utf16le")]);
+      };
+      const reloads = [];
+      const states = [];
+      buffer.onWillReload(() => reloads.push("will-reload"));
+      buffer.onDidReload(() => reloads.push("did-reload"));
+      buffer.onDidChangeFileState((state) => states.push(state));
+
+      buffer.setEncoding("utf16le");
+      expect(firstRead).toBe(false);
+      expect(buffer.pendingFileLoads).toBe(1);
+      buffer.append(" with unsaved edits");
+      pendingRead.end(Buffer.from(decodedText, "utf16le"));
+      await conditionPromise(() => buffer.pendingFileLoads === 0, "encoding load reconciled");
+
+      const expectedState = decodedText === "before" ? "modified" : "conflicted";
+      expect(buffer.getText()).toBe("before with unsaved edits");
+      expect(buffer.getEncoding()).toBe("utf16le");
+      expect(buffer.getFileState()).toBe(expectedState);
+      expect(states).toEqual(
+        expectedState === "modified" ? ["modified"] : ["modified", "conflicted"],
+      );
+      expect(reloads).toEqual([]);
+      expect(buffer.undo()).toBe(true);
+      expect(buffer.getText()).toBe("before");
+      expect(buffer.getFileState()).toBe(
+        expectedState === "modified" ? "unmodified" : "conflicted",
+      );
+      expect(buffer.undo()).toBe(false);
+    });
+  }
+
   it("defers watcher reconciliation until an explicit reload finishes", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);
