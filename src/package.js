@@ -885,6 +885,15 @@ module.exports = class Package {
 
     for (const grammarPath of grammarPaths) {
       try {
+        // An asynchronous load may have published some grammars already. Keep
+        // their identities and the injection points registered by services.
+        const loadedGrammar = this.grammars.find(
+          (grammar) => grammar.grammarFilePath === grammarPath,
+        );
+        if (loadedGrammar) {
+          if (!this.grammarsActivated) loadedGrammar.activate();
+          continue;
+        }
         const grammar = this.grammarRegistry.readGrammarSync(grammarPath);
         grammar.packageName = this.name;
         grammar.bundledPackage = this.bundledPackage;
@@ -899,12 +908,24 @@ module.exports = class Package {
     this.grammarsActivated = true;
   }
 
-  loadGrammars() {
-    if (this.grammarsLoaded) return Promise.resolve();
-    if (this.hasPackageRootEntry("grammars") === false) return Promise.resolve();
+  async loadGrammars() {
+    if (this.grammarsLoaded) return;
+    if (this.hasPackageRootEntry("grammars") === false) {
+      this.grammarsLoaded = true;
+      return;
+    }
 
     const loadGrammar = (grammarPath, callback) => {
+      if (this.grammarsLoaded) return callback();
       return this.grammarRegistry.readGrammar(grammarPath, (error, grammar) => {
+        // Synchronous workspace restore can finish while this read is pending.
+        // A late result must not replace its grammar and discard injections.
+        if (
+          this.grammarsLoaded ||
+          this.grammars.some((loadedGrammar) => loadedGrammar.grammarFilePath === grammarPath)
+        ) {
+          return callback();
+        }
         if (error) {
           const detail = `${error.message} in ${grammarPath}`;
           const stack = `${error.stack}\n  at ${grammarPath}:1:1`;
@@ -926,19 +947,20 @@ module.exports = class Package {
 
     const cachedGrammarPaths = this.getCachedResourcePaths("grammarPaths");
     if (cachedGrammarPaths) {
-      return new Promise((resolve) => asyncEach(cachedGrammarPaths, loadGrammar, () => resolve()));
-    }
-
-    return new Promise((resolve) => {
-      const grammarsDirPath = path.join(this.path, "grammars");
-      fs.exists(grammarsDirPath, (grammarsDirExists) => {
-        if (!grammarsDirExists) return resolve();
-        fs.list(grammarsDirPath, ["json", "jsonc"], (error, grammarPaths) => {
-          if (error || !grammarPaths) return resolve();
-          asyncEach(grammarPaths, loadGrammar, () => resolve());
+      await new Promise((resolve) => asyncEach(cachedGrammarPaths, loadGrammar, () => resolve()));
+    } else {
+      await new Promise((resolve) => {
+        const grammarsDirPath = path.join(this.path, "grammars");
+        fs.exists(grammarsDirPath, (grammarsDirExists) => {
+          if (!grammarsDirExists) return resolve();
+          fs.list(grammarsDirPath, ["json", "jsonc"], (error, grammarPaths) => {
+            if (error || !grammarPaths) return resolve();
+            asyncEach(grammarPaths, loadGrammar, () => resolve());
+          });
         });
       });
-    });
+    }
+    this.grammarsLoaded = true;
   }
 
   loadSettings(settingsLoad = this.settingsLoad) {
