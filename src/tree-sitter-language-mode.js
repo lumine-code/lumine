@@ -4271,6 +4271,22 @@ class LanguageLayer {
       edit.oldEndIndex === edit.newEndIndex &&
       Point.fromObject(edit.oldEndPosition).isEqual(edit.newEndPosition);
     const editedRange = new Range(edit.startPosition, edit.oldEndPosition);
+    if (
+      this.marker?.combinedInjectionGroup &&
+      sameExtent &&
+      this.currentRangesCache?.length &&
+      !this.currentParsePromise &&
+      !this.patchSinceCurrentParseStarted &&
+      !this.hasInjectionDescendants() &&
+      this.currentRangesLayer.findMarkers({ intersectsRange: editedRange }).length === 0
+    ) {
+      // A combined owner spans holes between its actual parser ranges. An
+      // equal-extent edit strictly inside a hole changes neither source nor
+      // coordinates; tree.edit would only make this valid tree look dirty.
+      // Boundary touches and layers with descendant discovery retain the full
+      // path, as do edits made while parsing is already in flight.
+      return;
+    }
     const containingRange = this.currentRangesCache
       ? this.currentRangeContainingPoint(edit.startPosition)
       : null;
@@ -5049,12 +5065,7 @@ class LanguageLayer {
     if (!this.tree || this.destroyed) {
       return;
     }
-    if (
-      this.childLayerMarkers.size === 0 &&
-      this.combinedInjectionGroups.size === 0 &&
-      !this.queries.injectionsQuery &&
-      Object.keys(this.grammar.injectionPointsByType).length === 0
-    ) {
+    if (!this.hasInjectionDescendants()) {
       return;
     }
 
@@ -5107,6 +5118,15 @@ class LanguageLayer {
 
     this._drainInjectionPopulationRequests().then(finishDrain, failDrain);
     return drainPromise;
+  }
+
+  hasInjectionDescendants() {
+    return Boolean(
+      this.childLayerMarkers.size ||
+      this.combinedInjectionGroups.size ||
+      this.queries.injectionsQuery ||
+      Object.keys(this.grammar.injectionPointsByType).length,
+    );
   }
 
   async _drainInjectionPopulationRequests() {
@@ -5972,6 +5992,21 @@ class LanguageLayer {
       ) {
         // Content changed while every range stayed put. Reuse both the
         // serialized parser ranges and the current-range marker list.
+        if (
+          layer.tree &&
+          !layer.treeIsDirty &&
+          !layer.tree.rootNode.hasChanges &&
+          !layer.currentParsePromise &&
+          !layer.patchSinceCurrentParseStarted &&
+          !layer.injectionPopulationNeedsRetry &&
+          !layer.rootRangePolicyNeedsUpdate &&
+          layer.temporaryTrees.length === 0 &&
+          !layer.hasInjectionDescendants()
+        ) {
+          // Discovery can widen across an adjacent owner even when the edit
+          // touched only a hole. Its content and topology are still unchanged.
+          continue;
+        }
         markersToUpdate.set(group.marker, {
           rootRangeSet: group.rangeSet.rootRangeSet,
           rangesUnchanged: true,
