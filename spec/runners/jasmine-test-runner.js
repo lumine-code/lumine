@@ -60,6 +60,7 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
   require("../helpers/attach-to-dom");
   require("../helpers/deprecation-snapshots");
   require("../helpers/document-focus");
+  const errorReporting = require("../helpers/spec-error-reporting")(lumine, { headless });
 
   const jasmineContent = document.createElement("div");
   jasmineContent.setAttribute("id", "jasmine-content");
@@ -73,15 +74,17 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
     window.beforeEach(focusTestWindow);
   }
 
-  return loadSpecsAndRunThem(logFile, headless, testPaths).then((result) => {
-    reportDocumentFocusSkips();
+  return loadSpecsAndRunThem(logFile, headless, testPaths)
+    .then((result) => {
+      reportDocumentFocusSkips();
 
-    if (result.hasDeprecations) Grim.logDeprecations();
+      if (result.hasDeprecations) Grim.logDeprecations();
 
-    // Failures are deliberately not retried - a flaky spec must be fixed at
-    // its source, not masked by re-running it until it happens to pass.
-    return jasmineRunFailed(result) ? 1 : 0;
-  });
+      // Failures are deliberately not retried - a flaky spec must be fixed at
+      // its source, not masked by re-running it until it happens to pass.
+      return jasmineRunFailed(result) ? 1 : 0;
+    })
+    .finally(() => errorReporting.dispose());
 };
 
 const defineJasmineHelpersOnWindow = (jasmineEnv) => {
