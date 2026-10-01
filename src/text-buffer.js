@@ -1084,6 +1084,28 @@ class TextBuffer {
 
   /**
    * @public
+   * @status extended
+   *
+   * Compute native diff changes to target text without modifying this buffer,
+   * its history, markers or observers. Ranges use UTF-16 buffer coordinates.
+   *
+   * @param {String} text - Target text.
+   * @returns {Array} Changes containing oldRange, newRange, oldText and newText.
+   */
+  getChangesToText(text) {
+    return this.buffer
+      .diff(text)
+      .getChanges()
+      .map((change) => ({
+        oldRange: new Range(change.oldStart, change.oldEnd),
+        newRange: new Range(change.newStart, change.newEnd),
+        oldText: change.oldText,
+        newText: change.newText,
+      }));
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Replace the current buffer contents by applying a diff based on the
