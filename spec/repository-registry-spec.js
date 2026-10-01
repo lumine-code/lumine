@@ -1872,6 +1872,133 @@ describe("RepositoryRegistry", () => {
     }
   });
 
+  describe("explicit file moves", () => {
+    let rootPath, originalPath, destinationPath, original;
+    beforeEach(() => {
+      rootPath = temp.mkdirSync("explicit-repository-move");
+      originalPath = path.join(rootPath, "source", "repository");
+      destinationPath = path.join(rootPath, "destination", "deep", "repository");
+      original = new FakeRepository(originalPath);
+      repositories.push(original);
+      project.directories = [directoryFor(rootPath)];
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      registry.register(original);
+    });
+
+    function begin() {
+      const rename = { oldPath: originalPath, newPath: destinationPath, isDirectory: true };
+      return { rename, transaction: registry.beginFileMove([rename]) };
+    }
+
+    function copyRepository() {
+      fs.cpSync(originalPath, destinationPath, { recursive: true });
+      const copied = new FakeRepository(destinationPath);
+      repositories.push(copied);
+      return copied;
+    }
+
+    it("defers discovery of a partially copied destination and resolves a confirmed copy beyond scan depth", async () => {
+      registry.config = config({
+        "git.watchDiscovery": true,
+        "git.watchDepth": 10,
+        "git.scanDepth": 10,
+      });
+      const { rename, transaction } = begin();
+      await transaction.ready;
+      const copied = copyRepository();
+      expect(copied.getGitDirectoryIdentity()).not.toEqual(original.getGitDirectoryIdentity());
+      await registry.handleProjectFileChanges([
+        { action: "created", kind: "directory", path: destinationPath },
+      ]);
+      await registry.rescan();
+      expect(registry.getForPath(destinationPath)).toBeNull();
+      expect(registry.getRepositories()).toEqual([original]);
+
+      registry.config = config({ "git.watchDiscovery": false, "git.scanDepth": 0 });
+      fs.rmSync(originalPath, { recursive: true });
+      await transaction.complete([rename]);
+      expect(original.isDestroyed()).toBe(true);
+      expect(registry.getRepositories()).toEqual([copied]);
+      expect(registry.getForPath(destinationPath)).toBe(copied);
+      expect(registry.fileMoves.size).toBe(0);
+    });
+
+    it("keeps the original repository on cancellation and releases destination suppression", async () => {
+      const { transaction } = begin();
+      await transaction.ready;
+      expect(registry.isFileMoveDestination(destinationPath)).toBe(true);
+      await transaction.complete([]);
+      expect(registry.getRepositories()).toEqual([original]);
+      expect(original.isDestroyed()).toBe(false);
+      expect(registry.isFileMoveDestination(destinationPath)).toBe(false);
+    });
+
+    it("discovers a surviving destination copy after partial cleanup leaves the source", async () => {
+      const { transaction } = begin();
+      await transaction.ready;
+      const copied = copyRepository();
+      await registry.handleProjectFileChanges([
+        { action: "created", kind: "directory", path: destinationPath },
+      ]);
+      await transaction.complete([]);
+      expect(registry.getRepositories()).toEqual([original, copied]);
+    });
+
+    it("discovers an unknown moved repository after releasing its suppressed events", async () => {
+      registry.destroy();
+      registry = new RepositoryRegistry({
+        project,
+        config: config({ "git.watchDiscovery": true, "git.watchDepth": 10 }),
+      });
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      const { rename, transaction } = begin();
+      await transaction.ready;
+      const copied = copyRepository();
+      fs.rmSync(originalPath, { recursive: true });
+      await registry.handleProjectFileChanges([
+        { action: "created", kind: "directory", path: destinationPath },
+      ]);
+      expect(registry.getForPath(destinationPath)).toBeNull();
+      await transaction.complete([rename]);
+      expect(registry.getForPath(destinationPath)).toBe(copied);
+    });
+
+    it("keeps concurrent destinations suppressed until their own transaction completes", async () => {
+      const first = begin();
+      const otherDestination = path.join(rootPath, "another-destination");
+      const second = registry.beginFileMove([
+        { oldPath: originalPath, newPath: otherDestination, isDirectory: true },
+      ]);
+      await Promise.all([first.transaction.ready, second.ready]);
+      await first.transaction.complete([]);
+      expect(registry.isFileMoveDestination(destinationPath)).toBe(false);
+      expect(registry.isFileMoveDestination(otherDestination)).toBe(true);
+      await second.complete([]);
+      expect(registry.fileMoves.size).toBe(0);
+    });
+
+    it("resolves confirmed child moves through a source directory alias", async () => {
+      const sourceAlias = path.join(rootPath, "source-alias");
+      fs.symlinkSync(originalPath, sourceAlias, process.platform === "win32" ? "junction" : "dir");
+      const transaction = registry.beginFileMove([
+        { oldPath: sourceAlias, newPath: destinationPath, isDirectory: true },
+      ]);
+      await transaction.ready;
+      const copied = copyRepository();
+      fs.rmSync(path.join(originalPath, ".git"), { recursive: true });
+      fs.writeFileSync(path.join(originalPath, "retained.txt"), "retained");
+      await transaction.complete([
+        {
+          oldPath: path.join(sourceAlias, ".git"),
+          newPath: path.join(destinationPath, ".git"),
+          isDirectory: true,
+        },
+      ]);
+      expect(original.isDestroyed()).toBe(true);
+      expect(registry.getForPath(destinationPath)).toBe(copied);
+    });
+  });
+
   it("replaces a repository moved within one watched project root", async () => {
     registry.destroy();
     const rootPath = temp.mkdirSync("moved-within-root");

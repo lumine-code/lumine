@@ -38,6 +38,12 @@ function snapshotAbortError() {
   return error;
 }
 
+function repositoryDestroyedError() {
+  const error = new Error("Repository has been destroyed");
+  error.code = "ERR_GIT_REPOSITORY_DESTROYED";
+  return error;
+}
+
 function yieldToRenderer() {
   return new Promise((resolve) => setImmediate(resolve));
 }
@@ -324,7 +330,7 @@ module.exports = class GitRepository {
 
   async repositoryHostRequest(callback, { signal = null } = {}) {
     if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
-    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (!this.gitHostClient || this.isDestroyed()) throw repositoryDestroyedError();
     const controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     if (signal?.aborted) abort();
@@ -337,8 +343,7 @@ module.exports = class GitRepository {
         controller.signal,
       );
       if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
-      if (!this.gitHostClient || this.isDestroyed())
-        throw new Error("Repository has been destroyed");
+      if (!this.gitHostClient || this.isDestroyed()) throw repositoryDestroyedError();
       controller.signal.throwIfAborted();
       return result;
     } catch (error) {
@@ -433,7 +438,7 @@ module.exports = class GitRepository {
    */
   getPath() {
     if (this.path == null) {
-      if (this.isDestroyed()) throw new Error("Repository has been destroyed");
+      if (this.isDestroyed()) throw repositoryDestroyedError();
       this.path = path.resolve(this.descriptor.getPath());
     }
     return this.path;
@@ -453,7 +458,7 @@ module.exports = class GitRepository {
   // already resolved worktree, submodule, symlink, and bare-repository semantics,
   // so the worker targets exactly this repository without upward discovery.
   getHostDescriptor() {
-    if (this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (this.isDestroyed()) throw repositoryDestroyedError();
     const worktreeGitMarker = this.descriptor.getWorktreeGitMarker?.() ?? null;
     const gitDirectoryIdentity = this.descriptor.getGitDirectoryIdentity?.() ?? null;
     const workingDirectoryIdentity = this.descriptor.getWorkingDirectoryIdentity?.() ?? null;
@@ -577,7 +582,7 @@ module.exports = class GitRepository {
    * @returns {String} The shortened `HEAD` reference.
    */
   getShortHead() {
-    if (this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (this.isDestroyed()) throw repositoryDestroyedError();
     // Read the head from whichever snapshot has loaded. Both carry the branch
     // name (or a shortened oid for a detached HEAD); the status snapshot is the
     // one the file-tree/tab UI keeps warm, the refs snapshot backs the branch
@@ -1037,7 +1042,7 @@ module.exports = class GitRepository {
 
   async executeSnapshotRefresh(mask, options = {}) {
     if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
-    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (!this.gitHostClient || this.isDestroyed()) throw repositoryDestroyedError();
 
     const statusRequested = mask.has("status");
     const refsRequested = mask.has("refs");
@@ -1268,6 +1273,7 @@ module.exports = class GitRepository {
 
   reportBackgroundSnapshotError(error) {
     if (this.isDestroyed()) return;
+    if (error?.name === "AbortError" || error?.code === "ABORT_ERR") return;
     const diagnosticCode = error?.gitCode || error?.code;
     if (isRepositoryUnavailableError(error)) {
       this.signalRepositoryUnavailable(error);
@@ -1436,7 +1442,7 @@ module.exports = class GitRepository {
     signal,
   } = {}) {
     if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
-    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (!this.gitHostClient || this.isDestroyed()) throw repositoryDestroyedError();
 
     if (from?.type === "commit") assertGitRevision(from.revision);
     if (to?.type === "commit") assertGitRevision(to.revision);

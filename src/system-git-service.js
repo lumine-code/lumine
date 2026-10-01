@@ -219,6 +219,7 @@ module.exports = class SystemGitService {
     try {
       await this.assertRepositoryDescriptorAvailable(descriptor, {
         operation,
+        checkGitMetadata: true,
       });
     } catch (validationError) {
       if (validationError?.code === ERR_GIT_REPOSITORY_UNAVAILABLE) return validationError;

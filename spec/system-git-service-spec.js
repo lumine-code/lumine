@@ -343,6 +343,44 @@ describe("SystemGitService", () => {
     expect(error.operation).toBe("readConfig");
   });
 
+  it("classifies partial Git metadata removal as unavailable before the directory disappears", async () => {
+    const descriptor = createDirectoryMarkerDescriptor();
+    fs.writeFileSync(path.join(descriptor.gitDirectory, "HEAD"), "ref: refs/heads/main\n");
+    fs.mkdirSync(path.join(descriptor.gitDirectory, "objects"));
+    fs.mkdirSync(path.join(descriptor.gitDirectory, "refs"));
+    const originalError = new Error("Git status failed: fatal: not a git repository");
+    const runner = {
+      run: jasmine.createSpy("run").and.callFake(async () => {
+        fs.unlinkSync(path.join(descriptor.gitDirectory, "HEAD"));
+        throw originalError;
+      }),
+    };
+    const service = new SystemGitService({ runner });
+
+    await expectAsync(service.readConfig(descriptor, ["core.filemode"])).toBeRejectedWith(
+      jasmine.objectContaining({
+        code: ERR_GIT_REPOSITORY_UNAVAILABLE,
+        reason: "git-metadata-missing",
+        operation: "readConfig",
+      }),
+    );
+    expect(fs.statSync(descriptor.gitDirectory).isDirectory()).toBe(true);
+  });
+
+  it("preserves a Git failure when its required repository metadata is intact", async () => {
+    const descriptor = createDirectoryMarkerDescriptor();
+    fs.writeFileSync(path.join(descriptor.gitDirectory, "HEAD"), "ref: refs/heads/main\n");
+    fs.mkdirSync(path.join(descriptor.gitDirectory, "objects"));
+    fs.mkdirSync(path.join(descriptor.gitDirectory, "refs"));
+    const originalError = new Error("Git config failed: invalid key");
+    const runner = { run: jasmine.createSpy("run").and.rejectWith(originalError) };
+    const service = new SystemGitService({ runner });
+
+    await expectAsync(service.readConfig(descriptor, ["invalid key"])).toBeRejectedWith(
+      originalError,
+    );
+  });
+
   it("does not turn a successful repository mutation into a later move failure", async () => {
     const { descriptor, markerPath } = createGitfileDescriptor();
     const assertRepositoryDescriptorAvailable = jasmine

@@ -343,6 +343,31 @@ describe("git repository descriptor", () => {
     }
   });
 
+  it("detects partial Git metadata removal while its directory still exists", async () => {
+    for (const metadataName of ["HEAD", "objects", "refs"]) {
+      const { workingDirectory, gitDirectory } = createGitfileRepository();
+      const descriptor = await discoverRepositoryDescriptorAsync(workingDirectory);
+      fs.removeSync(path.join(gitDirectory, metadataName));
+
+      expect((await inspectRepositoryDescriptorAsync(descriptor)).available).toBe(true);
+      expect(await inspectRepositoryDescriptorAsync(descriptor, { checkGitMetadata: true }))
+        .withContext(metadataName)
+        .toEqual({ available: false, reason: "git-metadata-missing" });
+      await expectAsync(
+        assertRepositoryDescriptorAvailableAsync(descriptor, {
+          operation: "snapshot",
+          checkGitMetadata: true,
+        }),
+      ).toBeRejectedWith(
+        jasmine.objectContaining({
+          code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+          operation: "snapshot",
+          reason: "git-metadata-missing",
+        }),
+      );
+    }
+  });
+
   it("compares a directory marker target by filesystem identity", async () => {
     const root = temp.mkdirSync("descriptor-directory-marker-");
     const workingDirectory = path.join(root, "worktree");

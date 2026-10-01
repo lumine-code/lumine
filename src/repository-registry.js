@@ -125,6 +125,33 @@ function pathContainsNormalized(parent, child) {
   return child === parent || child.startsWith(prefix);
 }
 
+function relocatedPath(filePath, moves, aliases = []) {
+  let target = filePath;
+  for (const move of moves) {
+    let relative = relativeToAny(move.aliases, normalizePath(target));
+    let aliased = false;
+    if (relative == null && target === filePath) {
+      for (const alias of aliases) {
+        relative = relativeToAny(move.aliases, alias);
+        if (relative != null) {
+          aliased = true;
+          break;
+        }
+      }
+    }
+    if (relative === "" || (move.isDirectory && relative != null)) {
+      // Keep the path's original casing even though aliases are normalized.
+      const suffix = relative
+        ? aliased
+          ? relative.split("/").join(path.sep)
+          : target.slice(target.length - relative.length)
+        : "";
+      target = suffix ? path.join(move.newPath, suffix) : move.newPath;
+    }
+  }
+  return target;
+}
+
 function hasPathOrAncestor(paths, filePath) {
   let candidate = filePath;
   while (true) {
@@ -254,6 +281,7 @@ module.exports = class RepositoryRegistry {
     this.scanGeneration = 0;
     this.fileChangeGeneration = 0;
     this.fileChangeValidationTail = Promise.resolve();
+    this.fileMoves = new Set();
     this.repositoryMoveTombstones = [];
     this.repositoryMoveCreatedPaths = new Map();
     this.repositoryMoveDeletedPaths = new Map();
@@ -1055,6 +1083,136 @@ module.exports = class RepositoryRegistry {
         ? registered.repository
         : null;
     return this.getForPath(filePath) || registeredRepository;
+  }
+
+  // Explicit moves carry the logical result even when a cross-volume copy
+  // changes every filesystem identity. Capture known repositories before the
+  // worker starts; watcher correlation alone cannot recognize that copy.
+  beginFileMove(plannedRenames) {
+    const move = { destinations: plannedRenames.map(({ newPath }) => pathAliases(newPath)) };
+    this.fileMoves.add(move);
+    const entries = plannedRenames.some(
+      ({ oldPath, isDirectory }) => isDirectory || isGitMarkerPath(oldPath),
+    )
+      ? this.entriesById.values()
+      : [];
+    const known = Array.from(entries, (entry) => ({
+      repository: entry.repository,
+      workingDirectory: entry.workingDirectory,
+      gitDirectory: entry.repository.getPath?.() || entry.workingDirectory,
+    }));
+    let planned;
+    const ready = Promise.all(
+      plannedRenames.map(async (rename) => ({
+        ...rename,
+        aliases: await pathAliasesAsync(rename.oldPath),
+        destinationAliases: await pathAliasesAsync(rename.newPath),
+      })),
+    ).then(async (moves) => {
+      planned = moves;
+      move.destinations = moves.map(({ destinationAliases }) => destinationAliases);
+      await Promise.all(
+        known.map(async (record) => {
+          [record.workingDirectoryAliases, record.gitDirectoryAliases] = await Promise.all([
+            pathAliasesAsync(record.workingDirectory),
+            pathAliasesAsync(record.gitDirectory),
+          ]);
+        }),
+      );
+    });
+    let completion;
+    return {
+      ready,
+      complete: (confirmedRenames = []) => {
+        completion ||= (async () => {
+          await ready;
+          await this.fileChangeValidationTail;
+          this.fileMoves.delete(move);
+          if (this.destroyed) return;
+          const affected = known.filter(
+            (record) =>
+              relocatedPath(record.workingDirectory, planned, record.workingDirectoryAliases) !==
+                record.workingDirectory ||
+              relocatedPath(record.gitDirectory, planned, record.gitDirectoryAliases) !==
+                record.gitDirectory,
+          );
+          const confirmed = confirmedRenames.map((rename) => {
+            for (const candidate of planned) {
+              const relative = relativeToAny(
+                pathAliases(candidate.oldPath),
+                normalizePath(rename.oldPath),
+              );
+              if (relative === "" || (candidate.isDirectory && relative != null)) {
+                return {
+                  ...rename,
+                  aliases: candidate.aliases.map((alias) => path.join(alias, relative || "")),
+                };
+              }
+            }
+            return { ...rename, aliases: pathAliases(rename.oldPath) };
+          });
+          await this.removeUnavailableRepositories(
+            new Set(affected.map(({ repository }) => repository)),
+            this.fileChangeGeneration,
+          );
+          const candidates = new Set();
+          for (const record of affected) {
+            candidates.add(record.workingDirectory);
+            candidates.add(
+              relocatedPath(record.workingDirectory, confirmed, record.workingDirectoryAliases),
+            );
+            candidates.add(
+              relocatedPath(record.workingDirectory, planned, record.workingDirectoryAliases),
+            );
+            const gitDirectory = relocatedPath(
+              record.gitDirectory,
+              confirmed,
+              record.gitDirectoryAliases,
+            );
+            if (gitDirectory !== record.gitDirectory) {
+              candidates.add(
+                isGitMarkerPath(gitDirectory) ? path.dirname(gitDirectory) : gitDirectory,
+              );
+            }
+          }
+          for (const candidate of candidates) {
+            if (this.destroyed) return;
+            if (
+              !this.rootPaths.some(
+                (root) => pathContains(root, candidate) || pathContains(candidate, root),
+              )
+            )
+              continue;
+            await this.resolveForPath(candidate, { refresh: true });
+          }
+          await this.discoverRepositoriesForFileChanges(
+            plannedRenames.map(({ newPath, isDirectory }) => ({
+              action: "created",
+              path: newPath,
+              kind: isDirectory ? "directory" : "file",
+            })),
+          );
+        })().finally(() => this.fileMoves.delete(move));
+        return completion;
+      },
+    };
+  }
+
+  isFileMoveDestination(filePath) {
+    if (!filePath) return false;
+    const candidates = pathAliases(filePath);
+    return [...this.fileMoves].some((move) =>
+      move.destinations.some((destinations) =>
+        destinations.some((destination) =>
+          candidates.some((candidate) => pathContainsNormalized(destination, candidate)),
+        ),
+      ),
+    );
+  }
+
+  async isFileMoveDestinationAsync(filePath) {
+    if (this.fileMoves.size === 0 || !filePath) return false;
+    return (await pathAliasesAsync(filePath)).some((alias) => this.isFileMoveDestination(alias));
   }
 
   async discoverForPath(filePath, options = {}) {
@@ -2052,6 +2210,10 @@ module.exports = class RepositoryRegistry {
       }
 
       const current = queue.shift();
+      if (await this.isFileMoveDestinationAsync(current.directoryPath)) {
+        complete = false;
+        continue;
+      }
       let children;
       try {
         children = await fs.promises.readdir(current.directoryPath, { withFileTypes: true });
@@ -2066,6 +2228,11 @@ module.exports = class RepositoryRegistry {
         }
 
         const repository = await this.discoverForPath(current.directoryPath, { refresh: true });
+        if (await this.isFileMoveDestinationAsync(current.directoryPath)) {
+          this.abandonDiscoveredRepository(repository, current.directoryPath);
+          complete = false;
+          continue;
+        }
         if (this.destroyed || generation !== this.scanGeneration) {
           this.abandonDiscoveredRepository(repository, current.directoryPath);
           return { repositories: discovered, complete: false };
@@ -2388,6 +2555,7 @@ module.exports = class RepositoryRegistry {
 
     const availableCreated = new Map();
     for (const created of this.repositoryMoveCreatedPaths.values()) {
+      if (await this.isFileMoveDestinationAsync(created.path)) continue;
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
       try {
         const stats = await fs.promises.stat(created.path, { bigint: true });
@@ -2552,12 +2720,30 @@ module.exports = class RepositoryRegistry {
     });
   }
 
+  fileChangesOutsideMoves(events) {
+    // An explicit move's destination may contain a half-copied .git directory.
+    // Keep it out of automatic discovery until the worker confirms the result.
+    return events.flatMap((event) => {
+      if (!this.isFileMoveDestination(event.path) && !this.isFileMoveDestination(event.oldPath))
+        return [event];
+      if (event.oldPath && !this.isFileMoveDestination(event.oldPath)) {
+        return [{ ...event, action: "deleted", path: event.oldPath, oldPath: undefined }];
+      }
+      if (event.path && !this.isFileMoveDestination(event.path)) {
+        return [{ ...event, action: "created", oldPath: undefined }];
+      }
+      return [];
+    });
+  }
+
   handleProjectFileChanges(events) {
+    events = this.fileChangesOutsideMoves(events);
     const generation = this.fileChangeGeneration;
     const work = this.fileChangeValidationTail.then(async () => {
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
-      await this.rememberRepositoryMoveCreatedPaths(events, generation);
-      const routingEvents = await this.repositoryLifecycleEventAliases(events);
+      const aliasedEvents = await this.repositoryLifecycleEventAliases(events);
+      const routingEvents = this.fileChangesOutsideMoves(aliasedEvents);
+      await this.rememberRepositoryMoveCreatedPaths(routingEvents, generation);
       this.rememberRepositoryMoveDeletedPaths(routingEvents, generation);
       this.invalidateRepositoryMoveAttemptsForEvents(routingEvents);
       // Earlier discovery may have transferred an alias to a different
@@ -2840,6 +3026,11 @@ module.exports = class RepositoryRegistry {
     const seen = new Set();
     let rootAliasesPromise = null;
     for (const event of events) {
+      if (
+        (await this.isFileMoveDestinationAsync(event.path)) ||
+        (await this.isFileMoveDestinationAsync(event.oldPath))
+      )
+        continue;
       const markerCandidates = [event.path, event.oldPath].filter((candidatePath) =>
         isGitMarkerPath(candidatePath),
       );
@@ -2919,6 +3110,10 @@ module.exports = class RepositoryRegistry {
         if (present) {
           if (this.automaticRepositoryLimitReached()) continue;
           const repository = await this.discoverForPath(discoveryPath, { refresh: true });
+          if (await this.isFileMoveDestinationAsync(discoveryPath)) {
+            this.abandonDiscoveredRepository(repository, discoveryPath);
+            continue;
+          }
           if (this.destroyed || generation !== this.scanGeneration) {
             this.abandonDiscoveredRepository(repository, discoveryPath);
             return;

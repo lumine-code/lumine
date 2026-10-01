@@ -415,14 +415,33 @@ module.exports = class Workspace extends Model {
    * @public
    * @status public
    *
-   * Suspend affected documents before moving files. Complete the returned
+   * Suspend affected documents and defer repository discovery before moving files. Complete the returned
    * transaction with confirmed moves, including partial results on failure.
    *
    * @param {Array<Object>} plannedRenames - Entries with oldPath, newPath and isDirectory.
    * @returns {Object} A transaction with a ready promise and an asynchronous complete(confirmedRenames) method.
    */
   beginFileMove(plannedRenames) {
-    return this.fileDocuments.beginFileMove(plannedRenames);
+    const documents = this.fileDocuments.beginFileMove(plannedRenames);
+    const repositories = this.project.repositoryRegistry.beginFileMove(plannedRenames);
+    let completion;
+    return {
+      ready: Promise.all([documents.ready, repositories.ready]).then(() => {}),
+      complete: (confirmedRenames = []) => {
+        completion ||= (async () => {
+          const failures = [];
+          for (const transaction of [documents, repositories]) {
+            try {
+              await transaction.complete(confirmedRenames);
+            } catch (error) {
+              failures.push(error);
+            }
+          }
+          if (failures.length) throw new AggregateError(failures, "Unable to complete file move");
+        })();
+        return completion;
+      },
+    };
   }
 
   createCenter() {

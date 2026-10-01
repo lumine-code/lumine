@@ -1355,7 +1355,10 @@ async function configuredWorktreeMatchesAsync(core, gitDirectory, workingDirecto
   return false;
 }
 
-async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
+async function inspectRepositoryDescriptorAsync(
+  descriptor,
+  { signal, checkGitMetadata = false } = {},
+) {
   const parts = repositoryDescriptorParts(descriptor);
   throwIfAborted(signal);
 
@@ -1514,6 +1517,16 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
     }
   }
 
+  // Recursive removal can leave the Git directory in place after its HEAD or
+  // object database has gone. Directory identity alone cannot classify that
+  // command failure as the end of a repository's lifetime. Check its structure
+  // on failure reinspection without adding metadata reads to every preflight.
+  if (checkGitMetadata && !(await isGitDirectoryAsync(finalGitDirectory.path))) {
+    throwIfAborted(signal);
+    return unavailableInspection("git-metadata-missing");
+  }
+  throwIfAborted(signal);
+
   const normalizedDescriptor = Object.freeze({
     gitDirectory: finalGitDirectory.path,
     workingDirectory: finalWorkingDirectory?.path ?? null,
@@ -1526,9 +1539,15 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
   return Object.freeze({ available: true, descriptor: normalizedDescriptor });
 }
 
-async function assertRepositoryDescriptorAvailableAsync(descriptor, { signal, operation } = {}) {
+async function assertRepositoryDescriptorAvailableAsync(
+  descriptor,
+  { signal, operation, checkGitMetadata = false } = {},
+) {
   const parts = repositoryDescriptorParts(descriptor, { requireComplete: true });
-  const inspection = await inspectRepositoryDescriptorAsync(descriptor, { signal });
+  const inspection = await inspectRepositoryDescriptorAsync(descriptor, {
+    signal,
+    checkGitMetadata,
+  });
   if (inspection.available) return inspection.descriptor;
 
   const error = new Error(

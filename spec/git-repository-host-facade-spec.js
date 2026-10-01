@@ -680,6 +680,36 @@ describe("GitRepository host facade", () => {
     expect(diagnostic).not.toHaveBeenCalled();
   });
 
+  it("does not warn when a background refresh is cancelled", () => {
+    repo = new GitRepository(copyRepository());
+    const warning = spyOn(lumine.notifications, "addWarning");
+    const diagnostic = spyOn(console, "error");
+
+    repo.reportBackgroundSnapshotError(
+      Object.assign(new Error("cancelled"), { name: "AbortError" }),
+    );
+    repo.reportBackgroundSnapshotError(
+      Object.assign(new Error("cancelled"), { code: "ABORT_ERR" }),
+    );
+
+    expect(warning).not.toHaveBeenCalled();
+    expect(diagnostic).not.toHaveBeenCalled();
+  });
+
+  it("classifies facade reads started after disposal as repository lifecycle", async () => {
+    const getHistory = jasmine.createSpy("getHistory");
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getHistory } });
+    repo.destroy();
+
+    await expectAsync(repo.getCommits()).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_GIT_REPOSITORY_DESTROYED" }),
+    );
+    await expectAsync(repo.refreshStatusSnapshot()).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_GIT_REPOSITORY_DESTROYED" }),
+    );
+    expect(getHistory).not.toHaveBeenCalled();
+  });
+
   it("emits unavailable once and still rejects a manual request", async () => {
     const error = new Error("Git repository is unavailable");
     error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
