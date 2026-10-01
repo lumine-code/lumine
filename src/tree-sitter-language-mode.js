@@ -6187,6 +6187,7 @@ class NodeRangeSet {
     this.newlinesBetween = injectionPoint.newlinesBetween;
     this.includeAdjacentWhitespace = injectionPoint.includeAdjacentWhitespace;
     this.includeChildren = injectionPoint.includeChildren;
+    this.excludeChildrenLines = injectionPoint.excludeChildrenLines;
 
     // We shouldn't retain references to nodes here because the tree might get
     // disposed of later. Let's compile the information we need now while we're
@@ -6230,7 +6231,33 @@ class NodeRangeSet {
       if (node.children && !this.includeChildren) {
         // If `includeChildren` is `false`, we're effectively collecting all
         // the disjoint text nodes that are direct descendants of this node.
-        for (const child of node.children) {
+        let children = node.children;
+        if (this.excludeChildrenLines) {
+          children = [];
+          for (const child of node.children) {
+            if (child.endIndex <= child.startIndex) continue;
+            const startPosition = Point.max(
+              node.startPosition,
+              new Point(child.startPosition.row, 0),
+            );
+            const nextRow = child.endPosition.row + (child.endPosition.column === 0 ? 0 : 1);
+            const endPosition = Point.min(node.endPosition, buffer.clipPosition([nextRow, 0]));
+            const startIndex = Math.max(
+              node.startIndex,
+              buffer.characterIndexForPosition(startPosition),
+            );
+            const endIndex = Math.min(node.endIndex, buffer.characterIndexForPosition(endPosition));
+            if (endIndex <= startIndex) continue;
+            const previous = children.at(-1);
+            if (previous && startIndex <= previous.endIndex) {
+              if (endIndex > previous.endIndex) {
+                previous.endIndex = endIndex;
+                previous.endPosition = endPosition;
+              }
+            } else children.push({ startIndex, endIndex, startPosition, endPosition });
+          }
+        }
+        for (const child of children) {
           const nextIndex = child.startIndex;
           if (nextIndex > index) {
             this._pushRange(buffer, previousRanges, result, {

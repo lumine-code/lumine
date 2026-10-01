@@ -1,5 +1,6 @@
 const BOOLEAN_PROPERTIES = {
   "injection.include-children": "includeChildren",
+  "injection.exclude-children-lines": "excludeChildrenLines",
   "injection.include-adjacent-whitespace": "includeAdjacentWhitespace",
   "injection.newlines-between": "newlinesBetween",
   "injection.combined": "combined",
