@@ -109,7 +109,7 @@
     "source-map-support": "^0.5.21",
     "status-bar": "github:lumine-code/status-bar#6d1263f1b97fe802c84bcc72c353ef79f11d9c14",
     "styleguide": "github:lumine-code/styleguide#50821f3be929073213ff456d08dbc8de0518d70a",
-    "tabs": "github:lumine-code/tabs#d7c184c254e5577567368c88ffd9c065d6fea6c4",
+    "tabs": "github:lumine-code/tabs#cbe4e6b37731f8a016d18acecd2e87630b1c6ed3",
     "tar": "7.5.22",
     "timecop": "github:lumine-code/timecop#2edc676f72f0892af2bbc3cac6fffbc54ff38e3e",
     "tinyglobby": "^0.2.17",
