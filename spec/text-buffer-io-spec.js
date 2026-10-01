@@ -1046,6 +1046,24 @@ describe("TextBuffer IO", () => {
       });
     });
 
+    for (const changedText of ["abc", "abcdef"]) {
+      it(`preserves unsaved edits and reports a conflict when disk shares a ${
+        changedText.length < 5 ? "shorter" : "longer"
+      } prefix with the base`, async () => {
+        buffer.append(" local");
+        const reloads = [];
+        buffer.onDidReload(() => reloads.push("did-reload"));
+        fs.writeFileSync(filePath, changedText);
+        await conditionPromise(
+          () => buffer.getFileState() === "conflicted",
+          "changed disk length reported as a conflict",
+        );
+
+        expect(buffer.getText()).toBe("abcde local");
+        expect(reloads).toEqual([]);
+      });
+    }
+
     it("enters conflicted if the buffer is modified and backed by a custom file", async (done) => {
       fs.writeFileSync(buffer.getPath(), "abcde");
       const file = new ReverseCaseFile(filePath);
