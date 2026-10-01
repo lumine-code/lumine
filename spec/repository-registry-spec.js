@@ -1977,6 +1977,24 @@ describe("RepositoryRegistry", () => {
       expect(registry.fileMoves.size).toBe(0);
     });
 
+    it("discovers unknown nested destination repositories within the configured watch depth", async () => {
+      registry.config = config({ "git.watchDiscovery": true, "git.watchDepth": 4 });
+      const nestedPath = path.join(originalPath, "nested");
+      const deeperPath = path.join(nestedPath, "deeper");
+      repositories.push(new FakeRepository(nestedPath), new FakeRepository(deeperPath));
+      const { rename, transaction } = begin();
+      await transaction.ready;
+      const copied = copyRepository();
+      const nested = new FakeRepository(path.join(destinationPath, "nested"));
+      const deeper = new FakeRepository(path.join(destinationPath, "nested", "deeper"));
+      repositories.push(nested, deeper);
+      fs.rmSync(originalPath, { recursive: true });
+      await transaction.complete([rename]);
+      expect(registry.getRepositories()).toEqual([copied, nested]);
+      expect(registry.getForPath(nested.getWorkingDirectory())).toBe(nested);
+      expect(registry.getRepositories()).not.toContain(deeper);
+    });
+
     it("resolves confirmed child moves through a source directory alias", async () => {
       const sourceAlias = path.join(rootPath, "source-alias");
       fs.symlinkSync(originalPath, sourceAlias, process.platform === "win32" ? "junction" : "dir");

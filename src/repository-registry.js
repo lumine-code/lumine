@@ -1192,6 +1192,30 @@ module.exports = class RepositoryRegistry {
               kind: isDirectory ? "directory" : "file",
             })),
           );
+          if (this.config?.get("git.watchDiscovery") === true) {
+            const depth = this.config?.get("git.watchDepth") ?? 1;
+            const roots = await Promise.all(
+              this.rootPaths.map(async (rootPath) => ({
+                rootPath,
+                aliases: await pathAliasesAsync(rootPath),
+              })),
+            );
+            for (const { newPath, isDirectory } of plannedRenames) {
+              if (!isDirectory) continue;
+              const aliases = await pathAliasesAsync(newPath);
+              for (const root of roots) {
+                const relative = aliases
+                  .map((alias) => relativeToAny(root.aliases, alias))
+                  .find((candidate) => candidate != null);
+                if (relative == null || pathDepth(relative) > depth) continue;
+                await this.scanRoot(root.rootPath, depth, this.scanGeneration, {
+                  directoryPath: newPath,
+                  depth: pathDepth(relative),
+                });
+                break;
+              }
+            }
+          }
         })().finally(() => this.fileMoves.delete(move));
         return completion;
       },
@@ -2193,11 +2217,11 @@ module.exports = class RepositoryRegistry {
     return discovered;
   }
 
-  async scanRoot(rootPath, maxDepth, generation) {
+  async scanRoot(rootPath, maxDepth, generation, start = { directoryPath: rootPath, depth: 0 }) {
     const discovered = [];
     let complete = true;
     const excluded = this.getExcludedDirectoryNames();
-    const queue = [{ directoryPath: rootPath, depth: 0 }];
+    const queue = [start];
 
     while (queue.length > 0) {
       if (this.destroyed || generation !== this.scanGeneration) {
