@@ -1071,6 +1071,9 @@ class TreeSitterLanguageMode {
   }
 
   repopulateInjections() {
+    // Grammar removal/replacement must cancel any plan holding the old target
+    // grammar, including plans that have not published their child layers yet.
+    for (const layer of this.getAllLanguageLayers()) layer.injectionPointVersion++;
     this.rootLanguageLayer?._populateInjections(MAX_RANGE, null);
   }
 
@@ -3626,6 +3629,7 @@ class LanguageLayer {
     // All language strings that were given to us by injection points in the
     // past, but could not be matched to grammars.
     this.unrecognizedLanguageStrings = new Set();
+    this.recognizedLanguageStrings = new Set();
 
     // A constructor can't go async, so all our async administrative tasks hang
     // off this promise. We can `await this.languageLoaded` later on.
@@ -4029,6 +4033,11 @@ class LanguageLayer {
     for (let lang of Array.from(this.unrecognizedLanguageStrings)) {
       if (matches(lang, grammar, cache)) return true;
     }
+    // A static rule may recognize a grammar but reject its owner through the
+    // target's content filter. Replacing that filter still needs rediscovery.
+    for (const lang of this.recognizedLanguageStrings) {
+      if (matches(lang, grammar, cache)) return true;
+    }
     return false;
   }
 
@@ -4053,6 +4062,7 @@ class LanguageLayer {
     // coalesces requests, and grammar registrations are rare compared with
     // buffer edits.
     if (this.injectionPopulationDrainPromise || this.injectionPointsMatchGrammar(grammar, cache)) {
+      this.injectionPointVersion++;
       this._populateInjections(MAX_RANGE, null);
     }
 
@@ -5628,7 +5638,7 @@ class LanguageLayer {
         const { node, injectionPoint, languageName, contentNodes } =
           plan.staticCandidates[plan.staticCandidateIndex++];
         const grammar = this._grammarForInjectionLanguage(plan, languageName);
-        if (grammar) {
+        if (grammar && grammar._matchesInjectionContent(node)) {
           this._appendInjectionCandidate(
             plan,
             node,
@@ -5864,9 +5874,11 @@ class LanguageLayer {
 
     for (const languageName of plan.recognizedLanguageNames) {
       this.unrecognizedLanguageStrings.delete(languageName);
+      this.recognizedLanguageStrings.add(languageName);
     }
     for (const languageName of plan.unrecognizedLanguageNames) {
       this.unrecognizedLanguageStrings.add(languageName);
+      this.recognizedLanguageStrings.delete(languageName);
     }
 
     for (const staleRange of staleRanges) {

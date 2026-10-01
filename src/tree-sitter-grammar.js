@@ -118,6 +118,10 @@ module.exports = class TreeSitterGrammar {
 
     this.contentRegex = buildRegex(params.contentRegex);
     this.firstLineRegex = buildRegex(params.firstLineRegex);
+    this.injectionContentRegex = normalizeInjectionContentRegex(
+      params.injectionContentRegex,
+      grammarPath,
+    );
     this.injectionNames = normalizeInjectionNames(params.injectionNames, grammarPath);
     this.injectionPointsByType = {};
 
@@ -305,6 +309,15 @@ module.exports = class TreeSitterGrammar {
 
   _createQuery(language, queryContents) {
     return new this.Query(language, queryContents);
+  }
+
+  _matchesInjectionContent(node) {
+    const filter = this.injectionContentRegex;
+    if (!filter) return true;
+    const text = node.text;
+    return Array.isArray(filter)
+      ? filter.some((expression) => expression.test(text))
+      : filter.test(text);
   }
 
   _createGrammarQuery(language, queryType) {
@@ -1037,4 +1050,29 @@ function normalizeInjectionNames(value, grammarPath) {
     names.add(name.trim().toLowerCase());
   }
   return Object.freeze(Array.from(names));
+}
+
+function normalizeInjectionContentRegex(value, grammarPath) {
+  if (value == null) return null;
+  const expressions = Array.isArray(value) ? value : [value];
+  if (
+    expressions.length === 0 ||
+    expressions.some(
+      (expression) => typeof expression !== "string" || expression.trim().length === 0,
+    )
+  ) {
+    throw new Error(
+      `Tree-sitter grammar ${grammarPath} must specify injectionContentRegex as a nonempty string or array of nonempty strings`,
+    );
+  }
+  try {
+    return Array.isArray(value)
+      ? value.map((expression) => new RegExp(expression))
+      : new RegExp(value);
+  } catch (error) {
+    throw new Error(
+      `Tree-sitter grammar ${grammarPath} contains an invalid injectionContentRegex: ${error.message}`,
+      { cause: error },
+    );
+  }
 }

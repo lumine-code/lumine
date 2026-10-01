@@ -14,11 +14,12 @@ describe("Tree-sitter static injections", () => {
           arguments: (argument_list (integer) @injection.content)) @injection.owner
       `;
 
-      function grammar(scopeName, injectionNames = []) {
+      function grammar(scopeName, injectionNames = [], options = {}) {
         const file = require.resolve("language-python/grammars/python.json");
         const config = CSON.readFileSync(file);
         const result = new TreeSitterGrammar(registry, file, {
           ...config,
+          ...options,
           scopeName,
           injectionNames,
           treeSitter:
@@ -87,6 +88,102 @@ describe("Tree-sitter static injections", () => {
           "source.static-two",
         ]);
         expect(layers(mode).map(contents)).toEqual([["10", "20"], ["30"]]);
+      });
+
+      it("uses a target's declarative content filter without creating empty annotation layers", async () => {
+        const target = grammar("source.static-filter", ["filtered"], {
+          injectionContentRegex: ["20", "30"],
+        });
+        const { mode } = await start("filtered(10)\nfiltered(20)\nfiltered(30)");
+        expect(
+          target.injectionContentRegex.every((expression) => expression instanceof RegExp),
+        ).toBe(true);
+        expect(layers(mode).map(contents)).toEqual([["20"], ["30"]]);
+      });
+
+      it("preserves numeric backreferences within each content-filter alternative", async () => {
+        grammar("source.static-filter", ["filtered"], {
+          injectionContentRegex: ["^(x)$", "(10)\\1"],
+        });
+        const { mode } = await start("filtered(1010)\nfiltered(10)");
+        expect(layers(mode).map(contents)).toEqual([["1010"]]);
+      });
+
+      it("tests the owner envelope so a multi-fragment rule never loses its eligibility context", async () => {
+        grammar("source.static-filter", ["filtered"], { injectionContentRegex: "filtered" });
+        const { mode } = await start("filtered(10, 20)");
+        expect(layers(mode).map(contents)).toEqual([["10", "20"]]);
+      });
+
+      it("keeps explicit JavaScript injections valid independently of the static target filter", async () => {
+        grammar("source.static-filter", ["filtered"], { injectionContentRegex: "NEVER" });
+        root.addInjectionPoint({
+          type: "integer",
+          language: () => "filtered",
+          content: (node) => node,
+        });
+        const { mode } = await start("filtered(10)");
+        expect(layers(mode).map(contents)).toEqual([["10"]]);
+      });
+
+      it("reconsiders a filtered owner when a target grammar is replaced", async () => {
+        grammar("source.static-filter", ["filtered"], { injectionContentRegex: "NEVER" });
+        const { mode } = await start("filtered(10)");
+        expect(layers(mode).length).toBe(0);
+        const replacement = grammar("source.static-filter", ["filtered"], {
+          injectionContentRegex: "10",
+        });
+        mode.updateInjectionsForGrammar(replacement);
+        await mode.atGrammarSettlement();
+        expect(layers(mode).map(contents)).toEqual([["10"]]);
+      });
+
+      it("removes and restores static layers when their target grammar disappears and returns", async () => {
+        const target = grammar("source.static-filter", ["filtered"], {
+          injectionContentRegex: "10",
+        });
+        const { mode } = await start("filtered(10)");
+        expect(layers(mode).length).toBe(1);
+        registry.removeGrammar(target);
+        mode.repopulateInjections();
+        await mode.atGrammarSettlement();
+        expect(layers(mode).length).toBe(0);
+        registry.addGrammar(target);
+        mode.updateInjectionsForGrammar(target);
+        await mode.atGrammarSettlement();
+        expect(layers(mode).map(contents)).toEqual([["10"]]);
+      });
+
+      it("invalidates a yielded plan before a removed target can create a child layer", async () => {
+        let resume;
+        const realYield = TreeSitterLanguageMode.prototype._yieldForInjectionReconcile;
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionReconcile").and.callFake(
+          function () {
+            if (!resume)
+              return new Promise((resolve) => {
+                resume = resolve;
+              });
+            return realYield.call(this);
+          },
+        );
+        const pending = start("one(10)\none(20)", { injectionReconcileChunkSize: 1 });
+        while (!resume) await new Promise((resolve) => setTimeout(resolve, 0));
+        const mode = buffers[0].getLanguageMode();
+        const removed = registry.grammarForScopeName("source.static-one");
+        registry.removeGrammar(removed);
+        removed.deactivate();
+        mode.repopulateInjections();
+        resume();
+        await pending;
+        expect(layers(mode).length).toBe(0);
+      });
+
+      it("rejects malformed target content filters with the descriptor path", () => {
+        for (const value of ["", [], ["ok", ""], 42, "["]) {
+          expect(() =>
+            grammar("source.invalid-filter", [], { injectionContentRegex: value }),
+          ).toThrowError(/injectionContentRegex/);
+        }
       });
 
       it("reports an invalid static query while keeping parsing and dynamic injections available", async () => {
