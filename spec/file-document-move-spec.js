@@ -9,18 +9,29 @@ describe("file document moves", () => {
   beforeEach(async () => {
     jasmine.useRealClock();
     root = fs.realpathSync.native(temp.mkdirSync("document-moves-"));
+    // Prepare this stable fixture before watcher discovery starts. Concurrent
+    // native realpath reads on Windows can temporarily block a directory rename.
+    for (const name of ["dir/a.txt", "dir-other/a.txt"]) {
+      const target = path.join(root, name);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "base");
+    }
     lumine.project.setPaths([root]);
     lumine.config.set("core.closeDeletedFileTabs", false);
     await lumine.project.getWatcherPromise(root);
   });
 
+  async function openExisting(name) {
+    const editor = await lumine.workspace.open(path.join(root, name));
+    await editor.getBuffer().getFileWatchStartPromise();
+    return editor;
+  }
+
   async function open(name, contents = "base") {
     const target = path.join(root, name);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, contents);
-    const editor = await lumine.workspace.open(target);
-    await editor.getBuffer().getFileWatchStartPromise();
-    return editor;
+    return openExisting(name);
   }
 
   it("releases move readiness in planned order when preparations finish in reverse order", async () => {
@@ -141,8 +152,8 @@ describe("file document moves", () => {
   });
 
   it("retargets documents below moved directories without touching siblings", async () => {
-    const moved = await open("dir/a.txt");
-    const sibling = await open("dir-other/a.txt");
+    const moved = await openExisting("dir/a.txt");
+    const sibling = await openExisting("dir-other/a.txt");
     const effect = {
       oldPath: path.join(root, "dir"),
       newPath: path.join(root, "renamed"),
