@@ -613,6 +613,43 @@ describe("Recursive source coverage handoffs", () => {
     expect(events.filter((event) => event.type === "error")).toEqual([]);
   });
 
+  it("cancels a stalled covering-root probe without releasing another subscriber's source", async () => {
+    worker.platform = "darwin";
+    await subscribe(1, "directory", fixture, true);
+    const started = deferred();
+    const finish = deferred();
+    const filesystem = worker.fs;
+    worker.fs = {
+      ...filesystem,
+      async stat(filePath, options) {
+        if (filePath === fixture) {
+          started.resolve();
+          await finish.promise;
+        }
+        return filesystem.stat(filePath, options);
+      },
+    };
+    const child = subscribe(2, "file", target);
+    child.catch(() => {});
+    try {
+      await started.promise;
+      let closed = false;
+      const cancellation = worker.unsubscribe(2).then(() => (closed = true));
+      await until(() => closed, "cancelling the blocked covering-root probe");
+      await cancellation;
+      await expectAsync(child).toBeRejectedWith(jasmine.objectContaining({ code: "ABORT_ERR" }));
+      expect(worker.subscriptions.size).toBe(1);
+      expect(insideSources().length).toBe(1);
+      expect(insideSources()[0].disposed).toBe(false);
+      expect(changes(2)).toEqual([]);
+    } finally {
+      worker.fs = filesystem;
+      finish.resolve();
+    }
+    await until(() => worker.planningReads.size === 0, "the cancelled metadata probe settling");
+    expect(insideSources().length).toBe(1);
+  }, 20000);
+
   it("inherits the deepest native close barrier when two recursive parents migrate in succession", async () => {
     await subscribe(1, "file", target);
     const previous = [...engine.sources].find((source) => source.directory === nested);

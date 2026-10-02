@@ -50,7 +50,7 @@ The main process owns configuration subscriptions and renderer sessions; the wor
 
 The native library uses ReadDirectoryChangesW on Windows, inotify on Linux and FSEvents on macOS. There is no renderer `fs.watch`, polling backend, Watchman selection or public snapshot API. Root symlinks are resolved and revalidated; recursive observation does not traverse nested symlinks or junctions. Subscribe explicitly through such a path to observe its target.
 
-Concurrent subscriptions share preliminary filesystem reads as well as physical sources. Those reads are retained only while pending. Each subscription still verifies its topology with fresh reads after its sources are armed, preserving detection of changes during startup.
+Concurrent subscriptions share preliminary filesystem reads as well as physical sources. Those reads are retained only while pending. Within one plan, a directory used as both a location guard and a main binding reuses the metadata already read. Borrowing a covering source uses that plan's directory identities when available, while readiness still waits for native arming and retired descendant cleanup. Each subscription verifies its topology with fresh reads after its sources are armed, preserving detection of changes during startup.
 
 On Windows, an open directory handle can prevent relocation of one of its ancestors even when the handle shares deletion access. Recursive source pooling avoids descendant handles inside an observed project, allowing its repositories to be renamed with files open. Moving an ancestor above the outermost observed source can still require releasing the affected observations first. The service does not watch an entire drive recursively to bypass this filesystem restriction.
 
@@ -70,3 +70,22 @@ The repository registry reconciles filesystem changes by location and filesystem
 Discovery of previously unknown repositories remains controlled by `git.watchDiscovery` and `git.watchDepth`. Fixed-path filesystem observation and Git rediscovery do not retarget externally moved documents or project roots. Editor-owned file moves use the transaction described above to preserve document state while reconciling repository locations.
 
 Known Git object writes and ordinary ref traffic update the appropriate snapshots without repeating repository discovery. Concurrent candidate walks share pending filesystem reads; final identity reads and command preflight validation remain fresh.
+
+## Diagnostics
+
+Run the native observation benchmark from the editor repository to measure source sharing, readiness, event latency and explicit cleanup:
+
+```sh
+node benchmark/file-watch-benchmark.js
+```
+
+Repository event routing builds one fresh shared-metadata index per batch. Its construction visits each repository once and indexes its current metadata aliases; each distinct event directory then walks lexical path ancestors and the repositories that actually match them. Working-tree and private Git lookups use their existing ownership maps. This avoids scanning the entire repository fleet for each event directory while preserving enclosing repositories, submodules, worktrees and newly discovered metadata aliases without renderer filesystem reads.
+
+The routing benchmark uses 128 and 512 synthetic repositories, including linked worktrees, and batches of 1000 and 8000 distinct working-tree or metadata directories. It reports entry visits, routing lookups and uninstrumented timing samples. Set `LUMINE_REPOSITORY_ROUTING_RUNS` to an integer from 1 to 10 to choose the sample count; the default is three. Deterministic routing-work bounds are covered by `spec/repository-routing-performance-spec.js`, while reported latency varies with the machine and concurrent load.
+
+```sh
+node benchmark/repository-routing-benchmark.js
+node benchmark/repository-routing-benchmark.js --baseline <ref>
+```
+
+The optional baseline ref loads that revision's registry in memory using the same installed dependencies, fixture and measurement driver. It does not change the checkout or the running editor.

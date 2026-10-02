@@ -45,11 +45,13 @@ class FileWatchWorker {
     this.nextIncident = 0;
     this.pendingIncidents = new Map();
     this.planningReads = new Map();
+    this.effectiveBindings = new WeakMap();
     this.closed = false;
     this.trace = createFileWatchTrace("worker");
   }
 
   planningFilesystem() {
+    if (this.planningFs) return this.planningFs;
     const filesystem = {};
     for (const method of ["stat", "lstat", "realpath", "readlink"]) {
       filesystem[method] = (targetPath, ...options) => {
@@ -66,6 +68,7 @@ class FileWatchWorker {
         return pending;
       };
     }
+    this.planningFs = filesystem;
     return filesystem;
   }
 
@@ -188,11 +191,21 @@ class FileWatchWorker {
     const guardTarget = resolution.blockedPath || canonicalTarget;
     const descriptors = new Map();
     const add = async (directoryPath, recursive, guardPath, main = false, guard = false) => {
+      // Canonical targets and resolved link parents can request the same source
+      // as both a location guard and a main binding. The descriptor already
+      // carries this plan's metadata; another stat/realpath would be discarded.
+      let descriptor = descriptors.get(sourceKey(directoryPath, recursive, guard));
+      if (descriptor) {
+        if (guardPath)
+          descriptor.guardPaths.add(path.join(descriptor.directory, path.basename(guardPath)));
+        if (main) descriptor.main = true;
+        return true;
+      }
       const stat = await this.stat(directoryPath, filesystem);
       if (!stat?.isDirectory()) return false;
       const canonical = await filesystem.realpath(directoryPath);
       const key = sourceKey(canonical, recursive, guard);
-      let descriptor = descriptors.get(key);
+      descriptor = descriptors.get(key);
       if (!descriptor) {
         descriptor = {
           key,
@@ -296,6 +309,15 @@ class FileWatchWorker {
     }
     const bindings = new Map();
     for (const [key, descriptor] of descriptors) {
+      if (descriptor.directory === source.path) {
+        bindings.set(key, descriptor);
+        continue;
+      }
+      const cached = this.effectiveBindings.get(descriptor);
+      if (cached?.coveringDirectory === source.path) {
+        bindings.set(key, cached);
+        continue;
+      }
       const guardPaths = new Set(descriptor.guardPaths);
       if (source.recursive && descriptor.directory !== source.path) {
         // The physical parent receives relocation events for descendant
@@ -306,13 +328,15 @@ class FileWatchWorker {
           guardPaths.add(current);
         }
       }
-      bindings.set(key, { ...descriptor, guardPaths });
+      const effective = { ...descriptor, guardPaths, coveringDirectory: source.path };
+      this.effectiveBindings.set(descriptor, effective);
+      bindings.set(key, effective);
     }
     if (bindings.size) source.members.set(logical, bindings);
     else source.members.delete(logical);
   }
 
-  async coveringSource(logical, descriptor, excluded) {
+  coveringSource(logical, descriptor, excluded) {
     // Canonical ancestor keys avoid scanning every native source for each
     // descriptor, including fleets of unrelated fixed-file subscriptions.
     const candidates = ancestors(descriptor.directory)
@@ -326,31 +350,53 @@ class FileWatchWorker {
           containsPath(source.path, descriptor.directory, true) &&
           (source.path !== descriptor.directory || source.identity === descriptor.identity),
       );
-    for (const source of candidates) {
-      const descriptors = logical?.acquiring?.plan?.descriptors;
-      const planned =
-        descriptors?.get(sourceKey(source.path, false, false)) ||
-        descriptors?.get(sourceKey(source.path, true, false)) ||
-        descriptors?.get(sourceKey(source.path, false, true));
-      let matches;
-      if (planned) {
-        // Preliminary directory identities are already fresh enough to choose
-        // a candidate. Final verification and migration still read afresh.
-        matches = planned.identity === source.identity;
-      } else {
+    const findFrom = (index) => {
+      for (; index < candidates.length; index++) {
+        const source = candidates[index];
+        const descriptors = logical?.acquiring?.plan?.descriptors;
+        const planned =
+          descriptors?.get(sourceKey(source.path, false, false)) ||
+          descriptors?.get(sourceKey(source.path, true, false)) ||
+          descriptors?.get(sourceKey(source.path, false, true));
+        if (planned) {
+          // Preliminary identities can choose a candidate synchronously.
+          // Final verification and migration still read afresh.
+          if (
+            planned.identity === source.identity &&
+            !source.invalid &&
+            this.sources.get(source.key) === source
+          )
+            return source;
+          continue;
+        }
         // macOS plans can omit a covering ancestor; late native readiness has
         // no logical plan at all. Both still need their own metadata probe.
         const read = this.stat(source.path, this.planningFilesystem());
-        const stat = logical ? await this.waitFor(logical, read) : await read;
-        matches = stat?.isDirectory() && identity(stat) === source.identity;
+        const pending = logical ? this.waitFor(logical, read) : read;
+        return pending.then((stat) => {
+          if (
+            stat?.isDirectory() &&
+            identity(stat) === source.identity &&
+            !source.invalid &&
+            this.sources.get(source.key) === source
+          )
+            return source;
+          return findFrom(index + 1);
+        });
       }
-      if (matches && !source.invalid && this.sources.get(source.key) === source) return source;
-    }
-    return null;
+      return null;
+    };
+    return findFrom(0);
   }
 
-  async acquire(logical, descriptor) {
-    const covering = await this.coveringSource(logical, descriptor);
+  acquire(logical, descriptor) {
+    const covering = this.coveringSource(logical, descriptor);
+    return typeof covering?.then === "function"
+      ? covering.then((source) => this.bindSource(logical, descriptor, source))
+      : this.bindSource(logical, descriptor, covering);
+  }
+
+  bindSource(logical, descriptor, covering) {
     let source = covering || this.sources.get(descriptor.key);
     if (logical.cancelled) throw abortError(logical.path);
     if (!source || source.invalid || (!covering && source.identity !== descriptor.identity)) {
@@ -730,7 +776,11 @@ class FileWatchWorker {
         });
         for (const descriptor of next.descriptors.values()) {
           if (logical.cancelled) throw abortError(logical.path);
-          const source = await this.waitFor(logical, this.acquire(logical, descriptor));
+          const acquisition = this.acquire(logical, descriptor);
+          const source =
+            typeof acquisition?.then === "function"
+              ? await this.waitFor(logical, acquisition)
+              : acquisition;
           // Ancestors arm before their descendants. A second plan after all
           // ready acknowledgements closes creation/rename races during setup.
           await this.waitFor(logical, source.ready.promise);

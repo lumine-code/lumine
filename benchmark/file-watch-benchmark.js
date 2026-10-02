@@ -5,7 +5,8 @@ const path = require("node:path");
 const FileWatchService = require("../src/file-watch-service");
 
 // Run with `node benchmark/file-watch-benchmark.js`. Each run observes a tree
-// of 100 directories/1000 files, then 1000 files sharing one parent directory.
+// of 100 directories/1000 files, 1000 files sharing one parent directory, and
+// 1000 fixed files beneath an already armed recursive directory observation.
 // The first arm includes worker startup; later arms reuse the same process.
 // RSS is sampled without forcing GC and includes normal retained runtime heaps.
 const runs = Number(process.env.LUMINE_FILE_WATCH_BENCHMARK_RUNS || 3);
@@ -41,8 +42,22 @@ function populate() {
     flatFiles.push(filePath);
   }
   return [
-    { name: "recursive-tree", root: tree, files: treeFiles, recursive: true },
-    { name: "shared-file-parent", root: flat, files: flatFiles, recursive: false },
+    {
+      name: "recursive-tree",
+      root: tree,
+      files: treeFiles,
+      directories: DIRECTORY_COUNT,
+      recursive: true,
+    },
+    { name: "shared-file-parent", root: flat, files: flatFiles, directories: 1, recursive: false },
+    {
+      name: "files-under-recursive-parent",
+      root: tree,
+      files: treeFiles,
+      directories: DIRECTORY_COUNT,
+      recursive: false,
+      recursiveParent: true,
+    },
   ];
 }
 
@@ -68,25 +83,38 @@ async function measure(scenario, run) {
   const coldWorker = !service.worker;
   const mainRssBefore = process.memoryUsage().rss;
   const started = performance.now();
-  const handles = scenario.recursive
-    ? [client.watchDirectory(scenario.root, { recursive: true })]
-    : scenario.files.map((filePath) => client.watchFile(filePath));
-  for (const handle of handles) {
-    handle.onDidChange((events) => {
-      for (const event of events) {
-        if (event.action !== "updated") continue;
-        const pending = pendingWrites.get(event.path);
-        if (!pending) continue;
-        pendingWrites.delete(event.path);
-        clearTimeout(pending.timeout);
-        pending.resolve(performance.now() - pending.started);
-      }
-    });
-    handle.onDidError((error) => errors.push(error));
-  }
+  const handles = [];
+  let parentReadyMs = null;
+  let parent;
   try {
+    if (scenario.recursiveParent) {
+      parent = client.watchDirectory(scenario.root, { recursive: true });
+      parent.onDidError((error) => errors.push(error));
+      await parent.ready;
+      parentReadyMs = performance.now() - started;
+    }
+    const observationStarted = performance.now();
+    handles.push(
+      ...(scenario.recursive
+        ? [client.watchDirectory(scenario.root, { recursive: true })]
+        : scenario.files.map((filePath) => client.watchFile(filePath))),
+    );
+    for (const handle of handles) {
+      handle.onDidChange((events) => {
+        for (const event of events) {
+          if (event.action !== "updated") continue;
+          const pending = pendingWrites.get(event.path);
+          if (!pending) continue;
+          pendingWrites.delete(event.path);
+          clearTimeout(pending.timeout);
+          pending.resolve(performance.now() - pending.started);
+        }
+      });
+      handle.onDidError((error) => errors.push(error));
+    }
     await Promise.all(handles.map((handle) => handle.ready));
-    const readyMs = performance.now() - started;
+    const readyMs = performance.now() - observationStarted;
+    const totalReadyMs = performance.now() - started;
     const armed = await service.requestWorker("diagnostics");
     const mainRssArmed = process.memoryUsage().rss;
     const latencies = [];
@@ -125,10 +153,14 @@ async function measure(scenario, run) {
       scenario: scenario.name,
       run,
       coldWorker,
-      directories: scenario.recursive ? DIRECTORY_COUNT : 1,
+      directories: scenario.directories,
       files: FILE_COUNT,
-      logicalHandles: handles.length,
+      logicalHandles: handles.length + (parent ? 1 : 0),
+      primaryLogicalHandles: handles.length,
+      parentLogicalHandles: parent ? 1 : 0,
+      parentReadyMs: parentReadyMs === null ? null : round(parentReadyMs),
       readyMs: round(readyMs),
+      totalReadyMs: round(totalReadyMs),
       closeMs: round(closeMs),
       latency: latencySummary(latencies),
       physicalSources: armed.sources.length,
