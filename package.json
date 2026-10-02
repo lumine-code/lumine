@@ -113,7 +113,6 @@
     "timecop": "github:lumine-code/timecop#da9cad86a81c5d30d9f2641f4e852247988aab96",
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#f381b1d11ff34fcf43856116698b8241caa84cc9",
-    "tree-sitter": "0.25.1",
     "tree-view": "github:lumine-code/tree-view#2953e76b234040318066eefa7d339e9c1ddc270a",
     "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#b9913c92d94d6a673561faceced876183a96047e",
@@ -171,7 +170,6 @@
     "mock-spawn": "^0.2.6",
     "prettier": "^3.9.9",
     "sinon": "22.1.0",
-    "tree-sitter-python": "0.25.0",
     "yargs": "18.2.0"
   },
   "allowScripts": {
@@ -181,8 +179,6 @@
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f": true,
     "github:lumine-code/node-ctags#bd126f8d9895b8c8365c35becf8bceb1b1bd8c26": true,
-    "tree-sitter@0.25.1": true,
-    "tree-sitter-python@0.25.0": true,
     "github:lumine-code/watcher#adabbe6c905eb4ea478969d6577719e5002da594": true
   }
 }

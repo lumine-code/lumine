@@ -22,18 +22,10 @@ describe("Static Tree-sitter injection query contract", () => {
 
   afterAll(() => grammar.deactivate());
 
-  function compile(source, nativeShape = false) {
+  function compile(source) {
     const query = grammar.createQuerySync(source);
     queries.push(query);
-    const candidate = nativeShape
-      ? {
-          setProperties: query.setProperties,
-          assertedProperties: query.assertedProperties,
-          refutedProperties: query.refutedProperties,
-          startIndexForPattern: (index) => query.startIndexForPattern(index),
-        }
-      : query;
-    return compileInjectionQuery(candidate, source);
+    return compileInjectionQuery(query, source);
   }
 
   const regex = (directives = '(#set! injection.language "regex")') => `
@@ -66,47 +58,39 @@ describe("Static Tree-sitter injection query contract", () => {
     expect(Object.isFrozen(descriptors.get(0))).toBe(true);
   });
 
-  for (const nativeShape of [false, true]) {
-    const runtime = nativeShape ? "native source validation" : "WASM quantifiers";
-    it(`requires one owner and mandatory content with ${runtime}`, () => {
-      expect(() =>
-        compile('((regex) @injection.content (#set! injection.language "regex"))', nativeShape),
-      ).toThrowError(/exactly one @injection.owner/);
-      expect(() =>
-        compile(
-          '((regex pattern: (regex_pattern)? @injection.content) @injection.owner (#set! injection.language "regex"))',
-          nativeShape,
-        ),
-      ).toThrowError(/at least one @injection.content/);
-      expect(() =>
-        compile(
-          '((regex pattern: (regex_pattern) @injection.content) @injection.owner? (#set! injection.language "regex"))',
-          nativeShape,
-        ),
-      ).toThrowError(/exactly one @injection.owner/);
-      expect(() =>
-        compile(
-          '((regex pattern: (regex_pattern) @injection.content @injection.owner) @injection.owner (#set! injection.language "regex"))',
-          nativeShape,
-        ),
-      ).toThrowError(/exactly one @injection.owner/);
-    });
+  it("requires one owner and mandatory content", () => {
+    expect(() =>
+      compile('((regex) @injection.content (#set! injection.language "regex"))'),
+    ).toThrowError(/exactly one @injection.owner/);
+    expect(() =>
+      compile(
+        '((regex pattern: (regex_pattern)? @injection.content) @injection.owner (#set! injection.language "regex"))',
+      ),
+    ).toThrowError(/at least one @injection.content/);
+    expect(() =>
+      compile(
+        '((regex pattern: (regex_pattern) @injection.content) @injection.owner? (#set! injection.language "regex"))',
+      ),
+    ).toThrowError(/exactly one @injection.owner/);
+    expect(() =>
+      compile(
+        '((regex pattern: (regex_pattern) @injection.content @injection.owner) @injection.owner (#set! injection.language "regex"))',
+      ),
+    ).toThrowError(/exactly one @injection.owner/);
+  });
 
-    it(`accepts one capture per alternative and repeated content with ${runtime}`, () => {
-      expect(
-        compile(
-          '([(string) @injection.content (template_string) @injection.content] @injection.owner (#set! injection.language "html"))',
-          nativeShape,
-        ).size,
-      ).toBe(1);
-      expect(
-        compile(
-          '((array (number)+ @injection.content) @injection.owner (#set! injection.language "html"))',
-          nativeShape,
-        ).size,
-      ).toBe(1);
-    });
-  }
+  it("accepts one capture per alternative and repeated content", () => {
+    expect(
+      compile(
+        '([(string) @injection.content (template_string) @injection.content] @injection.owner (#set! injection.language "html"))',
+      ).size,
+    ).toBe(1);
+    expect(
+      compile(
+        '((array (number)+ @injection.content) @injection.owner (#set! injection.language "html"))',
+      ).size,
+    ).toBe(1);
+  });
 
   it("rejects unknown properties, unsupported predicates and unevaluated assertions", () => {
     expect(() => compile(regex('(#set! injection.langauge "regex")'))).toThrowError(
@@ -132,15 +116,13 @@ describe("Static Tree-sitter injection query contract", () => {
   });
 
   it("accepts implemented text predicates without treating their operands as captures", () => {
-    for (const nativeShape of [false, true])
-      expect(
-        compile(
-          regex(
-            '(#eq? @injection.content "one+") (#match? @injection.content "^[a-z]+") (#set! injection.language "regex")',
-          ),
-          nativeShape,
-        ).size,
-      ).toBe(1);
+    expect(
+      compile(
+        regex(
+          '(#eq? @injection.content "one+") (#match? @injection.content "^[a-z]+") (#set! injection.language "regex")',
+        ),
+      ).size,
+    ).toBe(1);
   });
 
   it("rejects capture typos and ambiguous or missing language selection", () => {
@@ -168,22 +150,20 @@ describe("Static Tree-sitter injection query contract", () => {
     expect(error.index).toBeGreaterThan(source.indexOf("((regex"));
   });
 
-  it("validates separate native patterns when no end-offset API is exposed", () => {
+  it("validates each pattern's language selection", () => {
     const source = `${regex()}\n${regex('(#set! injection.language "html")')}`;
-    expect([...compile(source, true).values()].map(({ languageName }) => languageName)).toEqual([
+    expect([...compile(source).values()].map(({ languageName }) => languageName)).toEqual([
       "regex",
       "html",
     ]);
-    expect(() => compile(`${regex()}\n${regex("")}`, true)).toThrowError(
-      /pattern 2: a language capture/,
-    );
+    expect(() => compile(`${regex()}\n${regex("")}`)).toThrowError(/pattern 2: a language capture/);
   });
 
   const node = (id, startIndex, endIndex, text = "") => ({ id, startIndex, endIndex, text });
   const capture = (name, value) => ({ name, node: value });
   const owner = () => node(1, 0, 100);
 
-  it("aggregates fragments and deduplicates repeated windows using both runtime match shapes", () => {
+  it("aggregates fragments and deduplicates repeated windows", () => {
     const descriptors = compile(regex());
     const host = owner();
     const first = node(2, 5, 10);
@@ -197,7 +177,7 @@ describe("Static Tree-sitter injection query contract", () => {
       [
         firstMatch,
         {
-          pattern: 0,
+          patternIndex: 0,
           captures: [capture("injection.owner", host), capture("injection.content", second)],
         },
       ],

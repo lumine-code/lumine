@@ -1,4 +1,3 @@
-const NativeTreeSitter = require("tree-sitter");
 const { Node } = require("web-tree-sitter");
 const { Point, Range, spliceArray } = require("./text-buffer");
 const { Patch } = require("@lumine-code/superstring");
@@ -19,13 +18,12 @@ const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
-// Both Tree-sitter bindings call input callbacks with an index and a position,
-// not an end index. Returning the entire remaining suffix makes every callback
+// Tree-sitter calls input callbacks with an index and a position, not an end
+// index. Returning the entire remaining suffix makes every callback
 // allocate O(file size), while web-tree-sitter copies at most 10 KiB of UTF-16
-// data into Wasm anyway. A bounded chunk is composed transparently by both
-// bindings for parsing and SyntaxNode#text.
+// data into Wasm anyway. A bounded chunk is composed transparently for parsing
+// and Node#text.
 const WASM_PARSE_INPUT_CHUNK_CODE_UNITS = 4096;
-const NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS = 32768;
 const NODE_TEXT_INPUT_CHUNK_CODE_UNITS = 32768;
 
 // How many milliseconds we can spend on synchronous re-parses (for indentation
@@ -57,10 +55,10 @@ const FOLD_PREFILL_MAX_ROWS = 400;
 // more than the row does once the query machinery is warm.
 const FOLD_WINDOW_ROWS_BEHIND = 100;
 const FOLD_WINDOW_ROWS_AHEAD = 300;
-// `SyntaxNode#descendantsOfType` materializes its entire result synchronously.
+// `Node#descendantsOfType` materializes its entire result synchronously.
 // Injection points often target common leaf nodes — strings and comments — so
 // one whole-file call can monopolize the renderer for hundreds of milliseconds.
-// Row and code-unit windows keep each native traversal bounded while preserving
+// Row and code-unit windows keep each traversal bounded while preserving
 // document order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
@@ -166,21 +164,14 @@ function resolveNodePosition(node, descriptor) {
   return result[lastPart];
 }
 
-// Define some additions to the `Node` class that we need for
-// backward-compatibility.
-function patchNodePrototype(proto) {
-  // The old `TreeSitterLanguageMode` added a `range` property to nodes that
-  // returns a `Range` instance. We do the same for reasons of backward
-  // compatibility — but it's also rather convenient.
-  Object.defineProperty(proto, "range", {
-    get() {
-      return rangeForNode(this);
-    },
-  });
-}
-
-patchNodePrototype(Node.prototype);
-patchNodePrototype(NativeTreeSitter.SyntaxNode.prototype);
+// The old `TreeSitterLanguageMode` added a `range` property to nodes that
+// returns a `Range` instance. We do the same for reasons of backward
+// compatibility — but it's also rather convenient.
+Object.defineProperty(Node.prototype, "range", {
+  get() {
+    return rangeForNode(this);
+  },
+});
 
 // Compares “informal” points like the ones in a Tree-sitter tree; saves us
 // from having to convert them to actual `Point`s.
@@ -421,7 +412,7 @@ class TreeSitterLanguageMode {
     // to read; idle parsers are safe to release immediately.
     for (const [language, pool] of this.parsersByLanguage) {
       for (const parser of pool.idle) {
-        parser.delete?.();
+        parser.delete();
       }
       pool.idle.length = 0;
       if (pool.active.size === 0) this.parsersByLanguage.delete(language);
@@ -486,7 +477,7 @@ class TreeSitterLanguageMode {
     if (!pool?.active.delete(parser)) return;
 
     if (this.destroyed || pool.idle.length >= this.maxIdleParsersPerLanguage) {
-      parser.delete?.();
+      parser.delete();
     } else {
       pool.idle.push(parser);
     }
@@ -515,7 +506,6 @@ class TreeSitterLanguageMode {
     } catch (error) {
       const grammar = this.grammarsByLanguage.get(language);
       const recoverable =
-        grammar?.treeSitterRuntime === "wasm" &&
         error instanceof WebAssembly.RuntimeError &&
         /memory access out of bounds/i.test(error.message);
       if (!recoverable) throw error;
@@ -1288,7 +1278,7 @@ class TreeSitterLanguageMode {
     return point;
   }
 
-  // A backend fault can surface with a stack that stops at `Parser.parse` — it
+  // A parser fault can surface with a stack that stops at `Parser.parse` — it
   // names neither the grammar nor what it was parsing, and an injection layer
   // means the file's own grammar is not even a good guess.
   // This says which grammar faulted and on what, which is the whole difference
@@ -1305,8 +1295,7 @@ class TreeSitterLanguageMode {
 
   compatibleOldTreeForLanguage(language, oldTree) {
     if (!oldTree) return null;
-    const grammar = this.grammarsByLanguage.get(language);
-    if (grammar?.treeSitterRuntime === "wasm" && oldTree.language !== language) return null;
+    if (oldTree.language !== language) return null;
     return oldTree;
   }
 
@@ -1341,8 +1330,8 @@ class TreeSitterLanguageMode {
     // will fail incorrectly.
     //
     // Instead, we can pass a callback that will look up the relevant ranges of
-    // text as needed. This works with both Tree-sitter backends and updates the
-    // text as the buffer changes, so captures against dirty trees stay safe.
+    // text as needed. This updates the text as the buffer changes, so captures
+    // against dirty trees stay safe.
     //
     // In practice, captures against dirty trees will only happen on injection
     // layers, and only when the edits that have been made since the last clean
@@ -1357,18 +1346,15 @@ class TreeSitterLanguageMode {
     // accurate captures.
     let parseDone = false;
     let text = this.buffer.getText();
-    const grammar = this.grammarsByLanguage.get(language);
-    const parseChunkSize =
-      grammar?.treeSitterRuntime === "wasm"
-        ? WASM_PARSE_INPUT_CHUNK_CODE_UNITS
-        : NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS;
     let callback = (index) => {
       // Stick with a frozen copy of the text at parse time… until parsing is
       // done, at which point we should use the latest buffer text. (The
       // buffer caches the result of `getText` until its next change, so this
       // does not re-build the string on every lookup.)
       let currentText = parseDone ? this.buffer.getText() : text;
-      const chunkSize = parseDone ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS : parseChunkSize;
+      const chunkSize = parseDone
+        ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
+        : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
       return currentText.slice(index, index + chunkSize);
     };
 
@@ -1457,13 +1443,10 @@ class TreeSitterLanguageMode {
     }
 
     let parseDone = false;
-    const grammar = this.grammarsByLanguage.get(language);
-    const parseChunkSize =
-      grammar?.treeSitterRuntime === "wasm"
-        ? WASM_PARSE_INPUT_CHUNK_CODE_UNITS
-        : NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS;
     let callback = (index) => {
-      const chunkSize = parseDone ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS : parseChunkSize;
+      const chunkSize = parseDone
+        ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
+        : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
       return this.buffer.getText().slice(index, index + chunkSize);
     };
 
@@ -2338,7 +2321,7 @@ class TreeSitterLanguageMode {
         if (typeof source !== "string") continue;
         try {
           let query = grammar._createGrammarQuery(grammar.getLanguageSync(), queryType);
-          query.delete?.();
+          query.delete();
           validatedCount++;
         } catch (error) {
           let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, queryType);
@@ -3778,7 +3761,7 @@ class LanguageLayer {
       if (!tree) {
         continue;
       }
-      tree.delete?.();
+      tree.delete();
     }
 
     this.marker?.parentLanguageLayer?.childLayerMarkers.delete(this.marker);
@@ -4676,7 +4659,7 @@ class LanguageLayer {
         await this.languageMode._yieldForPostParseWork();
         if (this.destroyed) {
           this.patchSinceCurrentParseStarted = null;
-          tree.delete?.();
+          tree.delete();
           return;
         }
       }
@@ -4690,7 +4673,7 @@ class LanguageLayer {
     if (this.depth === 0 && rootRangeVersion !== this.rootRangeSet?.version) {
       // A policy replacement can happen without a text edit while parsing is
       // suspended. Do not publish a tree built for the superseded source mask.
-      tree.delete?.();
+      tree.delete();
       this.rootRangePolicyNeedsUpdate = true;
       return;
     }
@@ -4703,7 +4686,7 @@ class LanguageLayer {
       // Do not publish it even briefly: current-range markers, canonical trees
       // and invalidation events must all continue to describe the last
       // committed parent topology until its owner retries reconciliation.
-      tree.delete?.();
+      tree.delete();
       this.requestInjectionParentRetry(params.initialInjectionParentSnapshot);
       return;
     }
@@ -4769,14 +4752,14 @@ class LanguageLayer {
       this.tree = tree;
       this.treeIsDirty = false;
 
-      oldTree?.delete?.();
+      oldTree?.delete();
       if (oldSyntaxTree !== oldTree) {
-        oldSyntaxTree?.delete?.();
+        oldSyntaxTree?.delete();
       }
 
       while (this.temporaryTrees.length > 0) {
         let tree = this.temporaryTrees.pop();
-        tree.delete?.();
+        tree.delete();
       }
 
       if (rangesWithSyntaxChanges.length > 0) {
@@ -4807,9 +4790,6 @@ class LanguageLayer {
       // Store a reference to this tree so we can compare it with the next
       // transaction's tree later on.
       this.lastSyntaxTree = tree;
-
-      // Both backends expose their base syntax-node class, so compatibility
-      // helpers can be installed before any tree is parsed.
 
       this.rangeList.add(rangeForNode(tree.rootNode));
       if (includedRanges) {
@@ -5325,7 +5305,7 @@ class LanguageLayer {
 
     // Query for all the nodes within the original range that could possibly
     // prompt the creation of injection points. A large range is collected in
-    // bounded row windows so the native query cannot monopolize one task.
+    // bounded row windows so the query cannot monopolize one task.
     const nodes = this._collectInjectionCandidateNodes(
       tree,
       Object.keys(injectionPointsByType),

@@ -22,6 +22,16 @@ function scm(strings) {
   return strings.join("");
 }
 
+// These fixtures define their own injection points. Package queries are tested
+// separately and must not create additional layers in these isolated modes.
+function readGrammarConfig(grammarPath) {
+  const config = CSON.readFileSync(grammarPath);
+  return {
+    ...config,
+    treeSitter: { ...config.treeSitter, injectionsQuery: [] },
+  };
+}
+
 const cGrammarPath = resolve("language-c/grammars/c.json");
 const pythonGrammarPath = resolve("language-python/grammars/python.json");
 const jsGrammarPath = resolve("language-javascript/grammars/javascript.json");
@@ -33,19 +43,19 @@ const htmlGrammarPath = resolve("language-html/grammars/html.json");
 const ejsGrammarPath = resolve("language-html/grammars/ejs.json");
 
 let jsConfig = {
-  ...CSON.readFileSync(jsGrammarPath),
+  ...readGrammarConfig(jsGrammarPath),
   injectionNames: ["js", "javascript"],
 };
 let jsRegexConfig = {
-  ...CSON.readFileSync(jsRegexGrammarPath),
+  ...readGrammarConfig(jsRegexGrammarPath),
   injectionNames: ["js-regex"],
 };
-let cConfig = { ...CSON.readFileSync(cGrammarPath), injectionNames: ["c"] };
+let cConfig = { ...readGrammarConfig(cGrammarPath), injectionNames: ["c"] };
 let pythonConfig = {
-  ...CSON.readFileSync(pythonGrammarPath),
+  ...readGrammarConfig(pythonGrammarPath),
   injectionNames: ["py", "python"],
 };
-let htmlConfig = { ...CSON.readFileSync(htmlGrammarPath), injectionNames: ["html"] };
+let htmlConfig = { ...readGrammarConfig(htmlGrammarPath), injectionNames: ["html"] };
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -82,7 +92,12 @@ describe("TreeSitterLanguageMode", () => {
       jasmine.useRealClock();
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       buffer.setLanguageMode(
-        new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config }),
+        new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+          config: lumine.config,
+        }),
       );
       const languageMode = buffer.getLanguageMode();
       expect(languageMode.tokenized).toBe(false);
@@ -97,7 +112,11 @@ describe("TreeSitterLanguageMode", () => {
   describe("atGrammarSettlement", () => {
     async function buildLanguageMode() {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       return languageMode;
@@ -240,7 +259,11 @@ describe("TreeSitterLanguageMode", () => {
   describe("query reload lifecycle", () => {
     async function buildLanguageLayer() {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       return languageMode.rootLanguageLayer;
@@ -311,6 +334,7 @@ describe("TreeSitterLanguageMode", () => {
       await grammar.setQueryForTest("tagsQuery", query);
       buffer.setText(source);
       const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
         grammar,
         buffer,
         queryCaptureChunkRows: 1,
@@ -325,7 +349,11 @@ describe("TreeSitterLanguageMode", () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("tagsQuery", "(identifier) @name");
       buffer.setText("const alpha = beta;");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
 
       expect(languageMode.hasQuery("tagsQuery")).toBe(true);
@@ -522,7 +550,11 @@ describe("TreeSitterLanguageMode", () => {
       jasmine.useRealClock();
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       buffer.setText("const value = 1;");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       const rootLayer = languageMode.rootLanguageLayer;
@@ -536,7 +568,11 @@ describe("TreeSitterLanguageMode", () => {
 
     it("coalesces dirty-tree highlight requests until the transaction settles", async () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       let settleTransaction;
@@ -560,7 +596,11 @@ describe("TreeSitterLanguageMode", () => {
     it("honors an explicit highlight query end row of zero", async () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       buffer.setText("first\nsecond");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -587,7 +627,11 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setText(
         Array.from({ length: 72 }, (_, row) => `value_${row} = 1 # comment`).join("\r\n"),
       );
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -610,7 +654,11 @@ describe("TreeSitterLanguageMode", () => {
     it("reuses a scope descriptor at the same point until highlighting changes", async () => {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       buffer.setText("const value = 1;");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       spyOn(languageMode, "buildHighlightIterator").and.callThrough();
@@ -656,7 +704,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("aa.bbb = cc(d.eee());");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -715,6 +767,7 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setText("a = bb.ccc();");
 
       const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
         grammar,
         buffer,
       });
@@ -752,7 +805,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("a\n  .b();");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -782,7 +839,11 @@ describe("TreeSitterLanguageMode", () => {
       );
       buffer.setText("int main() {\n  int a\n  int b;\n}");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -832,7 +893,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("a(\nb,\nc\n");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -885,7 +950,11 @@ describe("TreeSitterLanguageMode", () => {
 
       \``);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -939,7 +1008,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(["// abc", "", 'a("b").c'].join("\r\n"));
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -986,7 +1059,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("`\na${1}\nb${2}\n`;");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -1032,7 +1109,11 @@ describe("TreeSitterLanguageMode", () => {
         hello();
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -1079,7 +1160,11 @@ describe("TreeSitterLanguageMode", () => {
       );
       buffer.setText(`exports.object = Class(SOME_CONSTANT, x)`);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -1115,7 +1200,11 @@ describe("TreeSitterLanguageMode", () => {
       // and that child starts later and ends earlier than the interpolation.
       buffer.setText('a = f"bc{d}ef"');
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -1147,6 +1236,7 @@ describe("TreeSitterLanguageMode", () => {
         buffer.setText("abc;");
 
         const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
           buffer,
           grammar,
         });
@@ -1195,7 +1285,11 @@ describe("TreeSitterLanguageMode", () => {
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         const contents = "x".repeat(20000);
         buffer.setText(`const value = \`${contents}\`;`);
-        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -1231,7 +1325,11 @@ describe("TreeSitterLanguageMode", () => {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         buffer.setText("const value = 1;");
-        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -1249,7 +1347,11 @@ describe("TreeSitterLanguageMode", () => {
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         const source = `const payload = \`${"x".repeat(1024 * 1024)}\`;`;
         buffer.setText(source);
-        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -1297,6 +1399,7 @@ describe("TreeSitterLanguageMode", () => {
         buffer.setText("function f(a, b) { return a + b; }\n".repeat(100));
 
         const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
           grammar,
           buffer,
           syncTimeoutMicros: 0,
@@ -1355,7 +1458,7 @@ describe("TreeSitterLanguageMode", () => {
 
       async function useHighlightsQuery(query) {
         await grammar.setQueryForTest("highlightsQuery", query);
-        languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
       }
@@ -1494,6 +1597,7 @@ describe("TreeSitterLanguageMode", () => {
         buffer.setText("abc;");
 
         const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
           buffer,
           grammar,
           syncTimeoutMicros: 10,
@@ -1558,7 +1662,11 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        const languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
         await wait(0);
@@ -3108,7 +3216,7 @@ describe("TreeSitterLanguageMode", () => {
         const ejsGrammar = new TreeSitterGrammar(
           lumine.grammars,
           ejsGrammarPath,
-          CSON.readFileSync(ejsGrammarPath),
+          readGrammarConfig(ejsGrammarPath),
         );
 
         await ejsGrammar.setQueryForTest(
@@ -3167,7 +3275,7 @@ describe("TreeSitterLanguageMode", () => {
         const ejsGrammar = new TreeSitterGrammar(
           lumine.grammars,
           ejsGrammarPath,
-          CSON.readFileSync(ejsGrammarPath),
+          readGrammarConfig(ejsGrammarPath),
         );
 
         await ejsGrammar.setQueryForTest(
@@ -3187,7 +3295,7 @@ describe("TreeSitterLanguageMode", () => {
         const ejsGrammar = new TreeSitterGrammar(
           lumine.grammars,
           ejsGrammarPath,
-          CSON.readFileSync(ejsGrammarPath),
+          readGrammarConfig(ejsGrammarPath),
         );
 
         await ejsGrammar.setQueryForTest(
@@ -3348,7 +3456,7 @@ describe("TreeSitterLanguageMode", () => {
         const ejsGrammar = new TreeSitterGrammar(
           lumine.grammars,
           ejsGrammarPath,
-          CSON.readFileSync(ejsGrammarPath),
+          readGrammarConfig(ejsGrammarPath),
         );
 
         await ejsGrammar.setQueryForTest(
@@ -3405,7 +3513,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("only covers scope boundaries in parent layers if a nested layer has a boundary at the same position", async () => {
         const jsdocGrammar = new TreeSitterGrammar(lumine.grammars, jsdocGrammarPath, {
-          ...CSON.readFileSync(jsdocGrammarPath),
+          ...readGrammarConfig(jsdocGrammarPath),
           injectionNames: ["jsdoc"],
         });
 
@@ -3437,7 +3545,7 @@ describe("TreeSitterLanguageMode", () => {
       it("reports scopes from shallower layers when they are at the start or end of an injection", async () => {
         jasmine.useRealClock();
         const jsdocGrammar = new TreeSitterGrammar(lumine.grammars, jsdocGrammarPath, {
-          ...CSON.readFileSync(jsdocGrammarPath),
+          ...readGrammarConfig(jsdocGrammarPath),
           injectionNames: ["jsdoc"],
         });
         await jsdocGrammar.setQueryForTest(
@@ -4103,7 +4211,11 @@ describe("TreeSitterLanguageMode", () => {
         "\n",
       );
       buffer.setText(`${prefix}\nif (ready) {\n  run();\n}\n`);
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       expect(languageMode.getFoldRangeForRow(1200)).not.toBeNull();
@@ -4134,7 +4246,11 @@ describe("TreeSitterLanguageMode", () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
       buffer.setText("const first = 1;\nconst second = 2;");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4162,7 +4278,7 @@ describe("TreeSitterLanguageMode", () => {
       } finally {
         foldResolver.reset();
         layer.tree = originalTree;
-        replacementTree.delete?.();
+        replacementTree.delete();
       }
     });
 
@@ -4170,7 +4286,11 @@ describe("TreeSitterLanguageMode", () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
       buffer.setText("if (ready) {\n  run();\n}");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4194,7 +4314,11 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setText(
         Array.from({ length: 2000 }, (_, index) => `const x${index} = ${index};`).join("\n"),
       );
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       spyOn(languageMode, "getFoldRangeForRow").and.callThrough();
@@ -4230,7 +4354,11 @@ describe("TreeSitterLanguageMode", () => {
         }
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4293,7 +4421,11 @@ describe("TreeSitterLanguageMode", () => {
         }
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4356,7 +4488,11 @@ describe("TreeSitterLanguageMode", () => {
         </Element>
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4420,7 +4556,11 @@ describe("TreeSitterLanguageMode", () => {
         </div>
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4496,7 +4636,11 @@ describe("TreeSitterLanguageMode", () => {
         </div>
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4525,7 +4669,11 @@ describe("TreeSitterLanguageMode", () => {
         */
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4585,7 +4733,11 @@ describe("TreeSitterLanguageMode", () => {
         #endif
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4690,7 +4842,11 @@ describe("TreeSitterLanguageMode", () => {
         #endif
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4734,7 +4890,11 @@ describe("TreeSitterLanguageMode", () => {
         </head>
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4769,7 +4929,11 @@ describe("TreeSitterLanguageMode", () => {
         })}
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4804,7 +4968,11 @@ describe("TreeSitterLanguageMode", () => {
         }
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4853,9 +5021,13 @@ describe("TreeSitterLanguageMode", () => {
       const grammar = new TreeSitterGrammar(
         lumine.grammars,
         pythonGrammarPath,
-        CSON.readFileSync(pythonGrammarPath),
+        readGrammarConfig(pythonGrammarPath),
       );
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
 
       buffer.setText(dedent`
@@ -4910,7 +5082,11 @@ describe("TreeSitterLanguageMode", () => {
           e
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -4966,7 +5142,11 @@ describe("TreeSitterLanguageMode", () => {
         }
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       languageMode.isFoldableCache = [];
@@ -4991,7 +5171,7 @@ describe("TreeSitterLanguageMode", () => {
         const grammar = new TreeSitterGrammar(
           lumine.grammars,
           pythonGrammarPath,
-          CSON.readFileSync(pythonGrammarPath),
+          readGrammarConfig(pythonGrammarPath),
         );
 
         await grammar.setQueryForTest(
@@ -5042,7 +5222,11 @@ describe("TreeSitterLanguageMode", () => {
             print 'd'
         `);
 
-        let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        let languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -5181,7 +5365,7 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("foo({bar: baz});");
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5201,7 +5385,7 @@ describe("TreeSitterLanguageMode", () => {
 
       // Adjust position when at end of line
 
-      languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5330,7 +5514,7 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("a; ");
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5351,7 +5535,7 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("a  // b");
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5378,7 +5562,7 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("\n/* lorem ipsum dolor sit amet */");
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5591,7 +5775,7 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("foo({bar: baz});");
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -5606,7 +5790,7 @@ describe("TreeSitterLanguageMode", () => {
         "property_identifier",
       ]);
 
-      languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setText("//bar\n");
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -5677,7 +5861,11 @@ describe("TreeSitterLanguageMode", () => {
 
         buffer.setText("foo({bar: baz});");
 
-        let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        let languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -5753,7 +5941,11 @@ describe("TreeSitterLanguageMode", () => {
 
         buffer.setText("a(`${b({ccc: ddd})} eee`);");
 
-        let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        let languageMode = new TreeSitterLanguageMode({
+          grammars: lumine.grammars,
+          grammar,
+          buffer,
+        });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
@@ -5984,7 +6176,11 @@ describe("TreeSitterLanguageMode", () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       buffer.setText("foo(bar({x: 2}));");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6299,7 +6495,7 @@ describe("TreeSitterLanguageMode", () => {
         }
       `);
 
-      let languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      let languageMode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6415,7 +6611,11 @@ describe("TreeSitterLanguageMode", () => {
       const originalText = "if (foo)";
       buffer.setText(originalText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6450,7 +6650,11 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
       buffer.setText("if (foo)");
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6475,7 +6679,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("if (foo) { bar(); }");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       // await wait(0);
@@ -6509,7 +6717,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText("  // lorem ipsum");
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6537,7 +6749,11 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -6572,7 +6788,11 @@ describe("TreeSitterLanguageMode", () => {
                   this is a ridiculous amount of indentation
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -6607,7 +6827,11 @@ describe("TreeSitterLanguageMode", () => {
                   this is a ridiculous amount of indentation
       `);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -6640,7 +6864,11 @@ describe("TreeSitterLanguageMode", () => {
       let textToPaste = `// this is a comment\n// and this is another`;
       buffer.setText(textToPaste);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
 
       // Don't rely on this method to give us an accurate answer.
       spyOn(languageMode, "suggestedIndentForLineAtBufferRow").and.returnValue(9);
@@ -6692,7 +6920,11 @@ describe("TreeSitterLanguageMode", () => {
       let textToPaste = `// this is a comment\n  // and this is another`;
       buffer.setText(textToPaste);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
 
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -6747,7 +6979,11 @@ describe("TreeSitterLanguageMode", () => {
       let textToPaste = `// this is a comment\n  // and this is another`;
       buffer.setText(textToPaste);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
 
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -6798,7 +7034,11 @@ describe("TreeSitterLanguageMode", () => {
       let textToPaste = `// this is a comment\n  // and this is another\n`;
       buffer.setText(textToPaste);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
 
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -6856,7 +7096,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(emptyClassText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       // Force this test to use async indent in all cases.
       languageMode.transactionReparseBudgetMs = 0;
       languageMode.currentTransactionReparseBudgetMs = 0;
@@ -6930,7 +7174,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(emptyClassText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -6975,7 +7223,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(emptyClassText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
@@ -7016,7 +7268,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(emptyClassText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -7060,7 +7316,11 @@ describe("TreeSitterLanguageMode", () => {
       let textToPaste = `a comment`;
       buffer.setText(textToPaste);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
 
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -7112,7 +7372,11 @@ describe("TreeSitterLanguageMode", () => {
 
       buffer.setText(emptyClassText);
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -7153,7 +7417,11 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
       // Force this test to use async indent in all cases.
       languageMode.transactionReparseBudgetMs = 0;
       languageMode.currentTransactionReparseBudgetMs = 0;

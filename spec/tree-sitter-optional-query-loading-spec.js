@@ -51,7 +51,12 @@ describe("Tree-sitter optional query loading", () => {
       },
     );
     const file = require.resolve("language-javascript/grammars/javascript.json");
-    grammar = new TreeSitterGrammar(lumine.grammars, file, CSON.readFileSync(file));
+    const config = CSON.readFileSync(file);
+    // Keep this fixture focused on staged query loading as the shipped grammar adds injections.
+    grammar = new TreeSitterGrammar(lumine.grammars, file, {
+      ...config,
+      treeSitter: { ...config.treeSitter, injectionsQuery: [] },
+    });
     await grammar.getLanguage();
   });
   afterEach(() => {

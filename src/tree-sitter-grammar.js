@@ -1,8 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { createRequire } = require("module");
-const NativeTreeSitter = require("tree-sitter");
-const { Language: WebLanguage, Parser: WebParser, Query: WebQuery } = require("web-tree-sitter");
+const { Language, Parser, Query } = require("web-tree-sitter");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
@@ -15,11 +13,11 @@ const { compileInjectionQuery } = require("./tree-sitter-injections");
 const webTreeSitterWasmPath = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
 let parserInitPromise = null;
 
-function initializeWebParser() {
+function initializeParser() {
   if (!parserInitPromise) {
     const pendingInitialization = fs.promises
       .readFile(webTreeSitterWasmPath)
-      .then((wasmBinary) => WebParser.init({ wasmBinary }));
+      .then((wasmBinary) => Parser.init({ wasmBinary }));
     const guardedInitialization = pendingInitialization.catch((error) => {
       if (parserInitPromise === guardedInitialization) {
         parserInitPromise = null;
@@ -62,7 +60,7 @@ function invalidatedLanguageError() {
  * This class holds an instance of a Tree-sitter grammar.
  */
 module.exports = class TreeSitterGrammar {
-  // Cache each loaded language — or its in-flight load — at the WASM or native module path.
+  // Cache each loaded language — or its in-flight load — at the WASM path.
   static LANGUAGE_CACHE = new Map();
 
   static async loadLanguage(grammarPath) {
@@ -90,7 +88,7 @@ module.exports = class TreeSitterGrammar {
       .then(() =>
         typeof grammarPath === "string" ? fs.promises.readFile(grammarPath) : grammarPath,
       )
-      .then((input) => WebLanguage.load(input))
+      .then((input) => Language.load(input))
       .then(
         (language) => {
           this.LANGUAGE_CACHE.set(grammarPath, language);
@@ -132,33 +130,10 @@ module.exports = class TreeSitterGrammar {
     this.grammarFilePath = grammarPath;
     this.queryPaths = params.treeSitter;
     this.languageSegment = params.treeSitter.languageSegment ?? null;
-    this.treeSitterRuntime = params.treeSitter.runtime ?? "wasm";
-    const dirName = path.dirname(grammarPath);
-
-    if (this.treeSitterRuntime === "node") {
-      if (typeof params.treeSitter.languageModule !== "string") {
-        throw new Error(
-          `Node Tree-sitter grammar ${grammarPath} must specify treeSitter.languageModule`,
-        );
-      }
-      this.Parser = NativeTreeSitter;
-      this.Query = NativeTreeSitter.Query;
-      this.languageModule = params.treeSitter.languageModule;
-      this.requireFromGrammar = createRequire(grammarPath);
-      this.languageModulePath = this.requireFromGrammar.resolve(this.languageModule);
-      this.treeSitterGrammarPath = null;
-    } else if (this.treeSitterRuntime === "wasm") {
-      if (typeof params.treeSitter.grammar !== "string") {
-        throw new Error(`WASM Tree-sitter grammar ${grammarPath} must specify treeSitter.grammar`);
-      }
-      this.Parser = WebParser;
-      this.Query = WebQuery;
-      this.treeSitterGrammarPath = path.join(dirName, params.treeSitter.grammar);
-    } else {
-      throw new Error(
-        `Unsupported Tree-sitter runtime '${this.treeSitterRuntime}' in ${grammarPath}`,
-      );
+    if (typeof params.treeSitter.grammar !== "string") {
+      throw new Error(`WASM Tree-sitter grammar ${grammarPath} must specify treeSitter.grammar`);
     }
+    this.treeSitterGrammarPath = path.join(path.dirname(grammarPath), params.treeSitter.grammar);
 
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
@@ -276,39 +251,14 @@ module.exports = class TreeSitterGrammar {
     return this._language;
   }
 
-  loadNativeLanguage() {
-    let cacheKey = `node:${this.languageModulePath}`;
-    if (TreeSitterGrammar.LANGUAGE_CACHE.has(cacheKey)) {
-      return TreeSitterGrammar.LANGUAGE_CACHE.get(cacheKey);
-    }
-
-    let languageModule = this.requireFromGrammar(this.languageModulePath);
-    if (languageModule?.default?.language && !languageModule.language) {
-      languageModule = languageModule.default;
-    }
-    if (!languageModule?.language) {
-      throw new Error(
-        `Node Tree-sitter module '${this.languageModule}' does not export a language handle`,
-      );
-    }
-
-    // node-tree-sitter uses `nodeTypeInfo`, when present, to synthesize a
-    // JavaScript subclass per node type with `new Function`. The renderer's
-    // CSP deliberately forbids dynamic code generation, and the editor only
-    // relies on the shared SyntaxNode API, so expose just the native handle.
-    let language = { language: languageModule.language };
-    TreeSitterGrammar.LANGUAGE_CACHE.set(cacheKey, language);
-    return language;
-  }
-
   createParser(language = this._language) {
-    let parser = new this.Parser();
+    let parser = new Parser();
     parser.setLanguage(language);
     return parser;
   }
 
   _createQuery(language, queryContents) {
-    return new this.Query(language, queryContents);
+    return new Query(language, queryContents);
   }
 
   _matchesInjectionContent(node) {
@@ -328,7 +278,7 @@ module.exports = class TreeSitterGrammar {
       }
       return query;
     } catch (error) {
-      query.delete?.();
+      query.delete();
       throw error;
     }
   }
@@ -345,16 +295,11 @@ module.exports = class TreeSitterGrammar {
   async getLanguage() {
     const generation = this.queryLoadGeneration;
     if (!this.subscriptions) throw invalidatedLanguageError();
-    if (this.treeSitterRuntime === "wasm") {
-      await initializeWebParser();
-    }
+    await initializeParser();
     if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
     if (!this._language) {
       try {
-        const language =
-          this.treeSitterRuntime === "node"
-            ? this.loadNativeLanguage()
-            : await TreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
+        const language = await TreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
         // A language load can finish after its package was disabled or replaced.
         // Keep the shared language cache, but never revive that grammar instance.
         if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
@@ -673,7 +618,7 @@ module.exports = class TreeSitterGrammar {
             query = this._createGrammarQuery(language, queryType);
 
             if (generation !== this.queryLoadGeneration) {
-              query.delete?.();
+              query.delete();
               reject(invalidatedQueryError(queryType));
               return;
             }
@@ -755,7 +700,7 @@ module.exports = class TreeSitterGrammar {
     if (!count) return;
     if (count === 1) {
       this.queryReferenceCounts.delete(query);
-      query.delete?.();
+      query.delete();
     } else {
       this.queryReferenceCounts.set(query, count - 1);
     }
@@ -946,13 +891,12 @@ module.exports = class TreeSitterGrammar {
     this.promisesForQueries.clear();
     this.requestedQueryTypes.clear();
     // A new query object gets instantiated for each kind of query every time a
-    // grammar activates. WASM queries need explicit cleanup; native queries
-    // are garbage-collected and do not expose `delete`.
+    // grammar activates. WASM queries need explicit cleanup.
     for (let queryType of [...this.queryCache.keys()]) {
       this.uncacheQuery(queryType);
     }
     for (let value of this.internalQueryCache.values()) {
-      value.delete?.();
+      value.delete();
     }
     this.internalQueryCache.clear();
     this._language = null;

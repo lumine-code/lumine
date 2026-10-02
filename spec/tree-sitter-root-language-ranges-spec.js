@@ -212,11 +212,9 @@ describe("Root language ranges", () => {
     expect(languageMode.tree.rootNode.startIndex).toBe(buffer.getLength());
   });
 
-  it("limits a native Python root parser without modifying source", async () => {
+  it("limits a Python root parser without modifying source", async () => {
     const rootGrammar = grammar("language-python", "python", {
       treeSitter: {
-        runtime: "node",
-        languageModule: require.resolve("tree-sitter-python"),
         highlightsQuery: [],
         foldsQuery: [],
         indentsQuery: [],

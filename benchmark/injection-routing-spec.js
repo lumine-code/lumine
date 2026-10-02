@@ -101,7 +101,7 @@ function semanticChecksum(buffer, mode) {
         }
       }
     } finally {
-      cursor.delete?.();
+      cursor.delete();
     }
   }
   return finishHighlights();
@@ -421,7 +421,6 @@ async function runRepresentative(name, assets, providers) {
     assets.push(grammar);
     registrations.push(registry.addGrammar(grammar));
     await grammar.getLanguage();
-    expect(grammar.treeSitterRuntime).toBe("wasm");
     await Promise.all(
       ["highlightsQuery", "foldsQuery", "indentsQuery", "localsQuery", "tagsQuery"]
         .filter((key) => grammar.queryPaths[key])
@@ -520,7 +519,6 @@ describe("Injection routing benchmark", () => {
     try {
       await Promise.all([grammar.getLanguage(), htmlGrammar.getLanguage()]);
       for (const candidate of [grammar, htmlGrammar]) {
-        expect(candidate.treeSitterRuntime).toBe("wasm");
         await Promise.all(
           ["highlightsQuery", "foldsQuery", "indentsQuery", "localsQuery", "tagsQuery"]
             .filter((key) => candidate.queryPaths[key])

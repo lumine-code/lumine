@@ -6,140 +6,33 @@ const BOOLEAN_PROPERTIES = {
   "injection.combined": "combined",
   "injection.cover-shallower-scopes": "coverShallowerScopes",
 };
-const TEXT_PREDICATES = new Set([
-  "eq?",
-  "not-eq?",
-  "any-eq?",
-  "any-not-eq?",
-  "match?",
-  "not-match?",
-  "any-match?",
-  "any-not-match?",
-  "any-of?",
-  "not-any-of?",
-]);
 const INJECTION_CAPTURES = new Set(["injection.owner", "injection.content", "injection.language"]);
-
-// Native queries do not expose capture quantifiers. Read only the structure of
-// their already-compiled patterns, ignoring strings, comments and predicates.
-function sourceCaptures(source) {
-  const tokens =
-    source.match(/;[^\r\n]*|"(?:\\.|[^"\\])*"|#[^\s()[\]]+|[()[\]?*+]|[^\s()[\]?*+]+/g) ?? [];
-  let index = 0;
-  const read = (end) => {
-    const result = [];
-    while (index < tokens.length) {
-      const token = tokens[index++];
-      if (token.startsWith(";")) continue;
-      if (token === end) break;
-      if (token === "(" || token === "[") {
-        result.push({ kind: token, items: read(token === "(" ? ")" : "]") });
-      } else result.push(token);
-    }
-    return result;
-  };
-  const add = (target, captures) => {
-    for (const [name, [min, max]] of captures) {
-      const previous = target.get(name) ?? [0, 0];
-      target.set(name, [previous[0] + min, previous[1] + max]);
-    }
-  };
-  const sequence = (items, alternatives = false) => {
-    const expressions = [];
-    let expression;
-    for (const item of items) {
-      if (typeof item === "string" && item.startsWith("@")) {
-        if (expression) {
-          const name = item.slice(1);
-          add(expression.captures, new Map([[name, expression.bounds.slice()]]));
-        }
-      } else if (item === "?" || item === "*" || item === "+") {
-        if (expression) {
-          const min = item === "+" ? 1 : 0;
-          const max = item === "?" ? 1 : Infinity;
-          expression.bounds = [expression.bounds[0] * min, expression.bounds[1] * max];
-          for (const [name, bounds] of expression.captures) {
-            expression.captures.set(name, [bounds[0] * min, bounds[1] * max]);
-          }
-        }
-      } else if (typeof item !== "string" && !item.items[0]?.startsWith?.("#")) {
-        expression = {
-          captures: sequence(item.items, item.kind === "["),
-          bounds: [1, 1],
-        };
-        expressions.push(expression);
-      } else if (typeof item === "string" && !item.endsWith(":") && item !== ".") {
-        expression = { captures: new Map(), bounds: [1, 1] };
-        expressions.push(expression);
-      }
-    }
-    const result = new Map();
-    if (alternatives) {
-      const names = new Set(expressions.flatMap(({ captures }) => [...captures.keys()]));
-      for (const name of names) {
-        const bounds = expressions.map(({ captures }) => captures.get(name) ?? [0, 0]);
-        result.set(name, [
-          Math.min(...bounds.map(([min]) => min)),
-          Math.max(...bounds.map(([, max]) => max)),
-        ]);
-      }
-    } else for (const { captures } of expressions) add(result, captures);
-    return result;
-  };
-  const items = read(null);
-  const predicates = [];
-  const visit = (children) => {
-    for (const item of children) {
-      if (typeof item === "string") continue;
-      if (item.items[0]?.startsWith?.("#")) predicates.push(item.items[0].slice(1));
-      else visit(item.items);
-    }
-  };
-  visit(items);
-  return { captures: sequence(items), predicates };
-}
-
-function patternSource(query, source, patternIndex, patternCount) {
-  const start = query.startIndexForPattern?.(patternIndex) ?? 0;
-  const end =
-    query.endIndexForPattern?.(patternIndex) ??
-    (patternIndex + 1 < patternCount ? query.startIndexForPattern?.(patternIndex + 1) : undefined);
-  // Both runtimes report UTF-8 byte offsets for pattern boundaries.
-  const bytes = Buffer.from(source);
-  return {
-    source: bytes.subarray(start, end).toString(),
-    index: bytes.subarray(0, start).toString().length,
-  };
-}
 
 function compileInjectionQuery(query, source) {
   const descriptors = new Map();
-  const count =
-    query.patternCount?.() ?? query.captureQuantifiers?.length ?? query.setProperties?.length ?? 0;
+  const bytes = typeof source === "string" ? Buffer.from(source) : null;
+  const bounds = [
+    [0, 0],
+    [0, 1],
+    [0, Infinity],
+    [1, 1],
+    [1, Infinity],
+  ];
+  const count = query.patternCount();
   for (let patternIndex = 0; patternIndex < count; patternIndex++) {
-    const pattern =
-      typeof source === "string" ? patternSource(query, source, patternIndex, count) : null;
     const fail = (message) => {
       const error = new Error(`Invalid injection pattern ${patternIndex + 1}: ${message}`);
       error.name = "QueryError";
-      error.index = pattern?.index ?? 0;
+      // Query pattern offsets use UTF-8 bytes; diagnostics index the source string.
+      error.index =
+        bytes?.subarray(0, query.startIndexForPattern(patternIndex)).toString().length ?? 0;
       throw error;
     };
-    const parsed = pattern && sourceCaptures(pattern.source);
-    const captures = parsed?.captures ?? new Map();
-    if (query.captureQuantifiers?.[patternIndex]) {
-      const bounds = [
-        [0, 0],
-        [0, 1],
-        [0, Infinity],
-        [1, 1],
-        [1, Infinity],
-      ];
-      query.captureNames.forEach((name, index) => {
-        const quantifier = query.captureQuantifiers[patternIndex][index];
-        if (quantifier) captures.set(name, bounds[quantifier]);
-      });
-    } else if (!parsed) fail("query source is required to validate native captures");
+    const captures = new Map();
+    query.captureNames.forEach((name, index) => {
+      const quantifier = query.captureQuantifiers[patternIndex][index];
+      if (quantifier) captures.set(name, bounds[quantifier]);
+    });
     for (const name of captures.keys()) {
       if (name.startsWith("injection.") && !INJECTION_CAPTURES.has(name))
         fail(`unknown capture @${name}`);
@@ -149,22 +42,19 @@ function compileInjectionQuery(query, source) {
       fail("each match must have exactly one @injection.owner");
     if (!(captures.get("injection.content")?.[0] >= 1))
       fail("each match must have at least one @injection.content");
-    const predicates =
-      parsed?.predicates ??
-      query.predicatesForPattern?.(patternIndex)?.map(({ operator }) => operator) ??
-      [];
-    for (const operator of predicates) {
-      if (operator !== "set!" && !TEXT_PREDICATES.has(operator))
-        fail(`unsupported predicate #${operator}`);
+    // The WASM runtime evaluates text predicates and extracts #set! properties.
+    // Its remaining predicates have no evaluator in the injection contract.
+    for (const { operator } of query.predicatesForPattern(patternIndex)) {
+      fail(`unsupported predicate #${operator}`);
     }
-    if (
-      Object.keys(query.assertedProperties?.[patternIndex] ?? {}).length ||
-      Object.keys(query.refutedProperties?.[patternIndex] ?? {}).length
-    ) {
-      fail("#is? and #is-not? properties are not evaluated for injections");
+    if (Object.keys(query.assertedProperties[patternIndex] ?? {}).length) {
+      fail("unsupported predicate #is?; properties are not evaluated for injections");
+    }
+    if (Object.keys(query.refutedProperties[patternIndex] ?? {}).length) {
+      fail("unsupported predicate #is-not?; properties are not evaluated for injections");
     }
     const descriptor = { patternIndex };
-    for (const [name, value] of Object.entries(query.setProperties?.[patternIndex] ?? {})) {
+    for (const [name, value] of Object.entries(query.setProperties[patternIndex] ?? {})) {
       if (Object.hasOwn(BOOLEAN_PROPERTIES, name)) {
         if (value !== null && value !== "true" && value !== "false")
           fail(`${name} must be true or false`);
@@ -208,7 +98,7 @@ function collectInjectionMatches(
   state = { records: [], patterns: new Map() },
 ) {
   for (const match of matches) {
-    const patternIndex = match.patternIndex ?? match.pattern;
+    const patternIndex = match.patternIndex;
     const injectionPoint = descriptors.get(patternIndex);
     if (!injectionPoint) throw new Error(`Unknown injection pattern ${patternIndex}`);
     const owners = match.captures.filter(({ name }) => name === "injection.owner");

@@ -273,143 +273,72 @@ describe("Packed Tree-sitter injection change routing", () => {
     expect(routes(packed)).toEqual(routes(scalar));
   });
 
-  for (const runtime of ["wasm", "node"]) {
-    describe(runtime, () => {
-      let registry, grammars, rootGrammar, childGrammar;
+  describe("grammar injections", () => {
+    let registry, grammars, rootGrammar, childGrammar;
 
-      function grammar(scopeName, injectionNames) {
-        const file = require.resolve("language-python/grammars/python.json");
-        const config = CSON.readFileSync(file);
-        const result = new TreeSitterGrammar(registry, file, {
-          ...config,
-          scopeName,
-          injectionNames,
-          treeSitter:
-            runtime === "wasm"
-              ? { grammar: config.treeSitter.grammar }
-              : { runtime: "node", languageModule: require.resolve("tree-sitter-python") },
-        });
-        grammars.push(result);
-        registry.addGrammar(result);
-        return result;
-      }
-
-      async function start(text, packed = true) {
-        const buffer = new TextBuffer({ text });
-        buffers.push(buffer);
-        const mode = new TreeSitterLanguageMode({
-          buffer,
-          grammar: rootGrammar,
-          config: lumine.config,
-          grammars: registry,
-        });
-        buffer.setLanguageMode(mode);
-        await mode.ready;
-        await mode.atGrammarSettlement();
-        configureRanges(mode.injectionsMarkerLayer.index, packed);
-        return { buffer, mode };
-      }
-
-      function syntax(mode) {
-        return [mode.rootLanguageLayer, ...mode.getAllInjectionLayers()].map((layer) => ({
-          ranges: layer.getCurrentRanges()?.map((range) => range.serialize()),
-          syntax: layer.tree.rootNode.toString(),
-          text: layer.tree.rootNode.text,
-        }));
-      }
-
-      beforeEach(async () => {
-        jasmine.useRealClock();
-        registry = new GrammarRegistry({ config: lumine.config });
-        grammars = [];
-        rootGrammar = grammar("source.packed-root", []);
-        childGrammar = grammar("source.packed-child", ["packed-child"]);
-        rootGrammar.addInjectionPoint({
-          type: "integer",
-          language: (node) => (Number(node.text) >= 3 ? "packed-child" : null),
-          content: (node) => node,
-        });
+    function grammar(scopeName, injectionNames) {
+      const file = require.resolve("language-python/grammars/python.json");
+      const config = CSON.readFileSync(file);
+      const result = new TreeSitterGrammar(registry, file, {
+        ...config,
+        scopeName,
+        injectionNames,
+        treeSitter: { grammar: config.treeSitter.grammar },
       });
+      grammars.push(result);
+      registry.addGrammar(result);
+      return result;
+    }
 
-      afterEach(() => {
-        for (const buffer of buffers) buffer.destroy();
-        for (const entry of grammars) entry.deactivate();
-        registry.clear();
+    async function start(text, packed = true) {
+      const buffer = new TextBuffer({ text });
+      buffers.push(buffer);
+      const mode = new TreeSitterLanguageMode({
+        buffer,
+        grammar: rootGrammar,
+        config: lumine.config,
+        grammars: registry,
       });
+      buffer.setLanguageMode(mode);
+      await mode.ready;
+      await mode.atGrammarSettlement();
+      configureRanges(mode.injectionsMarkerLayer.index, packed);
+      return { buffer, mode };
+    }
 
-      it("produces scalar and fresh parse results after rapid Unicode and CRLF edits", async () => {
-        const packed = await start(source(64, "\r\n"));
-        const scalar = await start(source(64, "\r\n"), false);
-        expect(packed.mode.getAllInjectionLayers().length).toBe(64);
-        for (const { buffer, mode } of [packed, scalar]) {
-          buffer.transact(() => {
-            buffer.setTextInRange(
-              [
-                [0, 0],
-                [0, 6],
-              ],
-              "rename",
-            );
-            buffer.insert([0, 0], "# 😀\r\n", { normalizeLineEndings: false });
-            buffer.setTextInRange(
-              [
-                [33, 8],
-                [33, 9],
-              ],
-              "4",
-            );
-            buffer.setTextInRange(
-              [
-                [33, 7],
-                [33, 8],
-              ],
-              "\t",
-            );
-            buffer.setTextInRange(
-              [
-                [0, 0],
-                [1, 0],
-              ],
-              "# éé\n",
-              {
-                normalizeLineEndings: false,
-              },
-            );
-          });
-          await mode.atTransactionEnd();
-        }
-        const fresh = await start(packed.buffer.getText());
-        expect(syntax(packed.mode)).toEqual(syntax(scalar.mode));
-        expect(syntax(packed.mode)).toEqual(syntax(fresh.mode));
+    function syntax(mode) {
+      return [mode.rootLanguageLayer, ...mode.getAllInjectionLayers()].map((layer) => ({
+        ranges: layer.getCurrentRanges()?.map((range) => range.serialize()),
+        syntax: layer.tree.rootNode.toString(),
+        text: layer.tree.rootNode.text,
+      }));
+    }
+
+    beforeEach(async () => {
+      jasmine.useRealClock();
+      registry = new GrammarRegistry({ config: lumine.config });
+      grammars = [];
+      rootGrammar = grammar("source.packed-root", []);
+      childGrammar = grammar("source.packed-child", ["packed-child"]);
+      rootGrammar.addInjectionPoint({
+        type: "integer",
+        language: (node) => (Number(node.text) >= 3 ? "packed-child" : null),
+        content: (node) => node,
       });
+    });
 
-      it("retains a later child edit while its earlier parse is suspended", async () => {
-        const { buffer, mode } = await start(source(64));
-        const layer = mode
-          .getAllInjectionLayers()
-          .find((entry) => entry.getExtent().start.row === 32);
-        const parseAsync = mode.parseAsync.bind(mode);
-        let entered, resume;
-        const enteredPromise = new Promise((resolve) => (entered = resolve));
-        const resumePromise = new Promise((resolve) => (resume = resolve));
-        let suspended = false;
-        spyOn(mode, "parseAsync").and.callFake((language, oldTree, ranges, params) => {
-          const result = parseAsync(language, oldTree, ranges, params);
-          if (params.scopeName !== childGrammar.scopeName || suspended) return result;
-          suspended = true;
-          entered();
-          return Promise.resolve(result).then((tree) => resumePromise.then(() => tree));
-        });
-        spyOn(layer, "handleTextChange").and.callThrough();
-        buffer.setTextInRange(
-          [
-            [32, 8],
-            [32, 9],
-          ],
-          "4",
-        );
-        try {
-          await enteredPromise;
+    afterEach(() => {
+      for (const buffer of buffers) buffer.destroy();
+      for (const entry of grammars) entry.deactivate();
+      registry.clear();
+    });
+
+    it("produces scalar and fresh parse results after rapid Unicode and CRLF edits", async () => {
+      const packed = await start(source(64, "\r\n"));
+      const scalar = await start(source(64, "\r\n"), false);
+      expect(packed.mode.getAllInjectionLayers().length).toBe(64);
+      for (const { buffer, mode } of [packed, scalar]) {
+        buffer.transact(() => {
           buffer.setTextInRange(
             [
               [0, 0],
@@ -417,26 +346,92 @@ describe("Packed Tree-sitter injection change routing", () => {
             ],
             "rename",
           );
+          buffer.insert([0, 0], "# 😀\r\n", { normalizeLineEndings: false });
           buffer.setTextInRange(
             [
-              [32, 8],
-              [32, 9],
+              [33, 8],
+              [33, 9],
             ],
-            "5",
+            "4",
           );
-          expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
-          expect(
-            layer.patchSinceCurrentParseStarted.getChanges().map((change) => change.newText),
-          ).toEqual(["5"]);
-        } finally {
-          resume();
-        }
+          buffer.setTextInRange(
+            [
+              [33, 7],
+              [33, 8],
+            ],
+            "\t",
+          );
+          buffer.setTextInRange(
+            [
+              [0, 0],
+              [1, 0],
+            ],
+            "# éé\n",
+            {
+              normalizeLineEndings: false,
+            },
+          );
+        });
         await mode.atTransactionEnd();
-        const fresh = await start(buffer.getText());
-        expect(layer.tree.rootNode.text).toBe("5");
-        expect(layer.patchSinceCurrentParseStarted).toBeNull();
-        expect(syntax(mode)).toEqual(syntax(fresh.mode));
-      });
+      }
+      const fresh = await start(packed.buffer.getText());
+      expect(syntax(packed.mode)).toEqual(syntax(scalar.mode));
+      expect(syntax(packed.mode)).toEqual(syntax(fresh.mode));
     });
-  }
+
+    it("retains a later child edit while its earlier parse is suspended", async () => {
+      const { buffer, mode } = await start(source(64));
+      const layer = mode
+        .getAllInjectionLayers()
+        .find((entry) => entry.getExtent().start.row === 32);
+      const parseAsync = mode.parseAsync.bind(mode);
+      let entered, resume;
+      const enteredPromise = new Promise((resolve) => (entered = resolve));
+      const resumePromise = new Promise((resolve) => (resume = resolve));
+      let suspended = false;
+      spyOn(mode, "parseAsync").and.callFake((language, oldTree, ranges, params) => {
+        const result = parseAsync(language, oldTree, ranges, params);
+        if (params.scopeName !== childGrammar.scopeName || suspended) return result;
+        suspended = true;
+        entered();
+        return Promise.resolve(result).then((tree) => resumePromise.then(() => tree));
+      });
+      spyOn(layer, "handleTextChange").and.callThrough();
+      buffer.setTextInRange(
+        [
+          [32, 8],
+          [32, 9],
+        ],
+        "4",
+      );
+      try {
+        await enteredPromise;
+        buffer.setTextInRange(
+          [
+            [0, 0],
+            [0, 6],
+          ],
+          "rename",
+        );
+        buffer.setTextInRange(
+          [
+            [32, 8],
+            [32, 9],
+          ],
+          "5",
+        );
+        expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
+        expect(
+          layer.patchSinceCurrentParseStarted.getChanges().map((change) => change.newText),
+        ).toEqual(["5"]);
+      } finally {
+        resume();
+      }
+      await mode.atTransactionEnd();
+      const fresh = await start(buffer.getText());
+      expect(layer.tree.rootNode.text).toBe("5");
+      expect(layer.patchSinceCurrentParseStarted).toBeNull();
+      expect(syntax(mode)).toEqual(syntax(fresh.mode));
+    });
+  });
 });
