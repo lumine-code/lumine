@@ -114,9 +114,23 @@ describe("Repository filesystem watch lifecycle", () => {
     clearChanges();
     fs.writeFileSync(head, "ref: refs/heads/recreated\n");
     await until(
+      () =>
+        tree.changes.some((event) => event.path === head && event.action !== "deleted") &&
+        has(headFile, "updated"),
+      "replacement metadata activity and its fixed-file update",
+    );
+    expect(fs.readFileSync(head, "utf8")).toBe("ref: refs/heads/recreated\n");
+    // A recursive FSEvents stream does not enumerate pre-existing children.
+    // Its first HEAD activity may retain ItemCreated and coalesce this write
+    // with the initial creation. Establish that child baseline before asking
+    // for the subsequent update's exact action.
+    clearChanges();
+    fs.writeFileSync(head, "ref: refs/heads/recreated-again\n");
+    await until(
       () => has(tree, "updated", head) && has(headFile, "updated"),
       "replacement repository metadata updates",
     );
+    expect(fs.readFileSync(head, "utf8")).toBe("ref: refs/heads/recreated-again\n");
     expect(observations.flatMap(({ errors }) => errors)).toEqual([]);
   }, 20000);
 
