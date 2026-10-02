@@ -29,7 +29,10 @@ module.exports = class GitRepositoryHistoryProvider {
     if (limit != null) args.push(`--max-count=${limit}`);
     if (skip > 0) args.push(`--skip=${skip}`);
     args.push(allRefs ? "--all" : revision);
-    if (path) args.push("--follow", "--", path);
+    if (path) {
+      args.unshift("--literal-pathspecs");
+      args.push("--follow", "--", path);
+    }
 
     const result = await this.runner.runResult(args, workingDirectory, {
       ...options,

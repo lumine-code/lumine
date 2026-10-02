@@ -223,6 +223,22 @@ describe("repository history", () => {
       ]);
     });
 
+    it("limits history to literal file names containing glob metacharacters", async () => {
+      for (const name of ["file[1].txt", "file1.txt"]) {
+        fs.writeFileSync(path.join(workingDirectory, name), `${name}\n`);
+      }
+      await operations.stageFiles(["file[1].txt", "file1.txt"]);
+      await operations.commit("add ambiguous file names");
+      fs.appendFileSync(path.join(workingDirectory, "file1.txt"), "different file\n");
+      await operations.stageFiles(["file1.txt"]);
+      await operations.commit("modify different file");
+
+      const history = await repo.getCommits({ path: "file[1].txt" });
+      expect(history.commits.map((commit) => commit.subject)).toEqual(["add ambiguous file names"]);
+      const missing = await repo.getCommits({ path: "file[12].txt" });
+      expect(missing.commits).toEqual([]);
+    });
+
     it("walks all refs through a structured repository option", async () => {
       await operationProvider.run(["checkout", "-b", "side"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "side.txt"), "side\n");
@@ -359,6 +375,20 @@ describe("repository history", () => {
         '[submodule "spaced"]\n\tpath = vendor/dir with space/żółć\n\turl = ../module.git\n',
       );
       expect(await repo.getSubmodulePaths()).toEqual(["vendor/dir with space/żółć"]);
+    });
+
+    it("reads the index mode of literal paths containing glob metacharacters", async () => {
+      fs.writeFileSync(path.join(workingDirectory, "file[1].txt"), "literal\n");
+      fs.writeFileSync(path.join(workingDirectory, "file1.txt"), "executable\n");
+      await operations.stageFiles(["file[1].txt", "file1.txt"]);
+      await operationProvider.run(
+        ["update-index", "--chmod=+x", "--", "file1.txt"],
+        workingDirectory,
+      );
+
+      expect(await repo.getFileMode("file1.txt")).toBe("100755");
+      expect(await repo.getFileMode("file[1].txt")).toBe("100644");
+      expect(await repo.getFileMode("file[12].txt")).toBeNull();
     });
 
     it("attributes blame lines to the right commits and authors", async () => {

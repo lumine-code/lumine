@@ -162,7 +162,10 @@ module.exports = class GitRepositoryDiffProvider {
       throw unsupportedPair(from, to);
     }
 
-    if (request.paths?.length) args.push("--", ...request.paths);
+    if (request.paths?.length) {
+      args.unshift("--literal-pathspecs");
+      args.push("--", ...request.paths);
+    }
     try {
       return await this.runner.run(args, workingDirectory, {
         ...(emptyTree?.options || options),

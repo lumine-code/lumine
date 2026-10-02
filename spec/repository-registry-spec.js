@@ -1721,6 +1721,200 @@ describe("RepositoryRegistry", () => {
     expect(registry.getRepositories()).toEqual(repositories);
   });
 
+  it("overlaps sibling discovery with a bounded batch and accepts repositories in scan order", async () => {
+    const rootPath = temp.mkdirSync("parallel-scanned-root");
+    for (let index = 0; index < 12; index++) {
+      repositories.push(
+        new FakeRepository(path.join(rootPath, `repo-${String(index).padStart(2, "0")}`)),
+      );
+    }
+    let active = 0;
+    let maximumActive = 0;
+    project.repositoryForPathFromProviders = async (filePath) => {
+      if (filePath === rootPath) return null;
+      const repository = repositories.find(
+        (candidate) => candidate.getWorkingDirectory() === filePath,
+      );
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      // Earlier paths finish later, so completion order cannot be acceptance order.
+      const index = repositories.indexOf(repository);
+      for (let tick = 0; tick < 12 - (index % 4) * 3; tick++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      active--;
+      return repository;
+    };
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+
+    const discovered = await registry.scanProjectRoots({ depth: 1 });
+
+    expect(maximumActive).toBeGreaterThan(1);
+    expect(maximumActive).toBeLessThanOrEqual(4);
+    expect(discovered).toEqual(repositories);
+    expect(registry.getRepositories()).toEqual(repositories);
+  });
+
+  it("releases every pending scan discovery when its generation becomes stale", async () => {
+    const rootPath = temp.mkdirSync("parallel-stale-scanned-root");
+    for (let index = 0; index < 4; index++) {
+      repositories.push(new FakeRepository(path.join(rootPath, `repo-${index}`)));
+    }
+    const abandoned = spyOn(project, "repositoryForPathFromProviders").and.callFake(
+      async (filePath) => {
+        if (filePath === rootPath) return null;
+        const repository = repositories.find(
+          (candidate) => candidate.getWorkingDirectory() === filePath,
+        );
+        for (let tick = 0; tick < 5; tick++) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        if (repository === repositories[0]) registry.setProjectRoots([], { scan: false });
+        return repository;
+      },
+    );
+    project.abandonRepositoryForPath = jasmine.createSpy("abandonRepositoryForPath");
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+
+    await registry.scanProjectRoots({ depth: 1 });
+    await Promise.resolve();
+
+    expect(abandoned.calls.count()).toBe(5);
+    expect(registry.getRepositories()).toEqual([]);
+    expect(project.abandonRepositoryForPath.calls.count()).toBe(4);
+    expect(
+      project.abandonRepositoryForPath.calls.allArgs().map(([repository]) => repository),
+    ).toEqual(repositories);
+  });
+
+  it("releases sibling discoveries when a provider fails in the same scan batch", async () => {
+    const rootPath = temp.mkdirSync("parallel-failed-scanned-root");
+    for (let index = 0; index < 4; index++) {
+      repositories.push(new FakeRepository(path.join(rootPath, `repo-${index}`)));
+    }
+    const failure = new Error("Repository provider failed");
+    project.repositoryForPathFromProviders = async (filePath) => {
+      if (filePath === rootPath) return null;
+      if (filePath === repositories[0].getWorkingDirectory()) throw failure;
+      return repositories.find((candidate) => candidate.getWorkingDirectory() === filePath);
+    };
+    project.abandonRepositoryForPath = jasmine.createSpy("abandonRepositoryForPath");
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+
+    await expectAsync(registry.scanProjectRoots({ depth: 1 })).toBeRejectedWith(failure);
+    await Promise.resolve();
+
+    expect(registry.getRepositories()).toEqual([]);
+    expect(
+      project.abandonRepositoryForPath.calls.allArgs().map(([repository]) => repository),
+    ).toEqual(repositories.slice(1));
+  });
+
+  it("keeps the repository count cap while releasing surplus speculative discoveries", async () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({ project, config: config({ "git.maxCount": 2 }) });
+    const rootPath = temp.mkdirSync("parallel-limited-scanned-root");
+    for (let index = 0; index < 4; index++) {
+      repositories.push(new FakeRepository(path.join(rootPath, `repo-${index}`)));
+    }
+    project.abandonRepositoryForPath = jasmine.createSpy("abandonRepositoryForPath");
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+
+    const discovered = await registry.scanProjectRoots({ depth: 1 });
+    await Promise.resolve();
+
+    expect(discovered).toEqual(repositories.slice(0, 2));
+    expect(registry.getRepositories()).toEqual(repositories.slice(0, 2));
+    expect(
+      project.abandonRepositoryForPath.calls.allArgs().map(([repository]) => repository),
+    ).toEqual(repositories.slice(2));
+  });
+
+  it("rescans known repositories and removes vanished ones after reaching the count cap", async () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({ project, config: config({ "git.maxCount": 2 }) });
+    const rootPath = temp.mkdirSync("limited-rescanned-root");
+    for (const name of ["b-existing", "c-removed"]) {
+      repositories.push(new FakeRepository(path.join(rootPath, name)));
+    }
+    project.directories = [directoryFor(rootPath)];
+    registry.setProjectRoots(project.directories, { scan: false });
+    await registry.scanProjectRoots({ depth: 1 });
+    expect(registry.getRepositories()).toEqual(repositories);
+    // A new, earlier candidate must not stop reconciliation of old entries.
+    const surplus = new FakeRepository(path.join(rootPath, "a-new"));
+    repositories.push(surplus);
+    fs.rmSync(repositories[1].getPath(), { recursive: true });
+
+    await registry.rescan();
+
+    expect(registry.getRepositories()).toEqual([repositories[0], surplus]);
+    expect(repositories[1].isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toContain(surplus);
+  });
+
+  it("cancels count-cap slot refilling when the scan generation changes", async () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({ project, config: config({ "git.maxCount": 1 }) });
+    const rootPath = temp.mkdirSync("limited-stale-refill-root");
+    const original = new FakeRepository(path.join(rootPath, "b-original"));
+    repositories.push(original);
+    project.directories = [directoryFor(rootPath)];
+    registry.setProjectRoots(project.directories, { scan: false });
+    await registry.scanProjectRoots({ depth: 1 });
+    fs.rmSync(original.getPath(), { recursive: true });
+    const first = new FakeRepository(path.join(rootPath, "a-new"));
+    const second = new FakeRepository(path.join(rootPath, "c-new"));
+    repositories.push(first, second);
+    let firstDiscoveries = 0;
+    let secondDiscoveries = 0;
+    project.repositoryForPathFromProviders = async (filePath) => {
+      if (filePath === first.getWorkingDirectory()) {
+        if (++firstDiscoveries === 2) registry.setProjectRoots([], { scan: false });
+        return first;
+      }
+      if (filePath === second.getWorkingDirectory()) {
+        secondDiscoveries++;
+        return second;
+      }
+      return null;
+    };
+    project.abandonRepositoryForPath = jasmine.createSpy("abandonRepositoryForPath");
+
+    await registry.rescan();
+    await Promise.resolve();
+
+    expect(firstDiscoveries).toBe(2);
+    expect(secondDiscoveries).toBe(1);
+    expect(registry.getRepositories()).toEqual([]);
+    expect(project.abandonRepositoryForPath).toHaveBeenCalledWith(
+      first,
+      first.getWorkingDirectory(),
+    );
+  });
+
+  it("fills freed count-cap slots without pruning known repositories under another root", async () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({ project, config: config({ "git.maxCount": 2 }) });
+    const firstRoot = temp.mkdirSync("limited-refill-first-root");
+    const secondRoot = temp.mkdirSync("limited-refill-second-root");
+    const removed = new FakeRepository(path.join(firstRoot, "b-removed"));
+    const surviving = new FakeRepository(path.join(secondRoot, "existing"));
+    repositories.push(removed, surviving);
+    project.directories = [directoryFor(firstRoot), directoryFor(secondRoot)];
+    registry.setProjectRoots(project.directories, { scan: false });
+    await registry.scanProjectRoots({ depth: 1 });
+    fs.rmSync(removed.getPath(), { recursive: true });
+    const replacement = new FakeRepository(path.join(firstRoot, "a-new"));
+    repositories.push(replacement);
+
+    await registry.rescan();
+
+    expect(registry.getRepositories()).toEqual([surviving, replacement]);
+    expect(removed.isDestroyed()).toBe(true);
+    expect(surviving.isDestroyed()).toBe(false);
+  });
+
   it("removes repositories that disappeared during a manual rescan", async () => {
     const workdir = temp.mkdirSync("removed-repository");
     const repository = new FakeRepository(workdir);

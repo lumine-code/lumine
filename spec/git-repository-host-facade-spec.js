@@ -157,6 +157,62 @@ describe("GitRepository host facade", () => {
     expect((await refs).initialized).toBe(true);
   });
 
+  it("cancels one subscriber-free scheduled kind while preserving the other kind", async () => {
+    const calls = [];
+    const gitHostClient = {
+      async getSnapshot(_descriptor, request) {
+        calls.push(request);
+        return {
+          refs: {
+            fingerprint: "refs",
+            unchanged: false,
+            value: refsValue(request.generations.refs),
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), {
+      gitHostClient,
+      statusSnapshotDebounceMs: 0,
+      refsSnapshotDebounceMs: 0,
+    });
+    const statusSubscription = repo.onDidChangeStatusSnapshot(() => {});
+    const changed = new Promise((resolve) => repo.onDidChangeRefsSnapshot(resolve));
+    statusSubscription.dispose();
+    advanceClock(1);
+    await changed;
+
+    expect(calls.length).toBe(1);
+    expect(calls[0].status).toBe(false);
+    expect(calls[0].refs).toBe(true);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+  });
+
+  it("does not add an already-aborted caller's kind to a queued snapshot", async () => {
+    const calls = [];
+    const gitHostClient = {
+      async getSnapshot(_descriptor, request) {
+        calls.push(request);
+        return {
+          status: {
+            fingerprint: "status",
+            unchanged: false,
+            value: statusValue(request.generations.status),
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+    controller.abort();
+    const status = repo.refreshStatusSnapshot();
+    await expectAsync(repo.refreshRefsSnapshot({ signal: controller.signal })).toBeRejected();
+    await status;
+
+    expect(calls.length).toBe(1);
+    expect(calls[0].refs).toBe(false);
+  });
+
   it("refreshes declared submodules in the worker without leaking routing data", async () => {
     const workingDirectory = copyRepository();
     repo = new GitRepository(workingDirectory);
@@ -192,6 +248,134 @@ describe("GitRepository host facade", () => {
     const values = await repo.getConfigValuesAsync(["user.name", "user.email"]);
     expect(values).toEqual({ "user.name": "Lumine", "user.email": null });
     expect(getConfigValues.calls.argsFor(0)[1]).toEqual(["user.name", "user.email"]);
+  });
+
+  it("rejects pre-aborted single and batched config reads without returning late values", async () => {
+    const getConfigValues = jasmine
+      .createSpy("get config values")
+      .and.resolveTo({ "user.name": "Lumine" });
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expectAsync(
+      repo.getConfigValueAsync("user.name", { signal: controller.signal }),
+    ).toBeRejectedWith(controller.signal.reason);
+    await expectAsync(
+      repo.getConfigValuesAsync(["user.name"], { signal: controller.signal }),
+    ).toBeRejectedWith(controller.signal.reason);
+
+    for (const [, , options] of getConfigValues.calls.allArgs()) {
+      expect(options.signal).not.toBe(controller.signal);
+      expect(options.signal.aborted).toBe(true);
+    }
+    expect(repo.repositoryReadControllers.size).toBe(0);
+  });
+
+  it("cancels one in-flight config read while preserving an independent caller", async () => {
+    const reads = [];
+    const getConfigValues = jasmine.createSpy("get config values").and.callFake(
+      (_descriptor, _keys, { signal }) =>
+        new Promise((resolve, reject) => {
+          reads.push({ signal, resolve });
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    );
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    const controller = new AbortController();
+    const single = repo.getConfigValueAsync("user.name", { signal: controller.signal });
+    const batch = repo.getConfigValuesAsync(["user.email"]);
+    controller.abort();
+
+    await expectAsync(single).toBeRejectedWith(controller.signal.reason);
+    expect(reads[0].signal).not.toBe(controller.signal);
+    expect(reads[0].signal.aborted).toBe(true);
+    expect(reads[1].signal.aborted).toBe(false);
+    reads[1].resolve({ "user.email": "lumine@example.com" });
+    expect(await batch).toEqual({ "user.email": "lumine@example.com" });
+    expect(repo.repositoryReadControllers.size).toBe(0);
+  });
+
+  it("discards a batched config result that finishes after its caller aborts", async () => {
+    let finishRead;
+    const getConfigValues = jasmine
+      .createSpy("get config values")
+      .and.callFake(() => new Promise((resolve) => (finishRead = resolve)));
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    const controller = new AbortController();
+    const pending = repo.getConfigValuesAsync(["user.name"], { signal: controller.signal });
+    controller.abort();
+    finishRead({ "user.name": "late value" });
+
+    await expectAsync(pending).toBeRejectedWith(controller.signal.reason);
+    expect(repo.repositoryReadControllers.size).toBe(0);
+  });
+
+  it("reads the short HEAD from the latest status or refs refresh", async () => {
+    let branch = "main";
+    const gitHostClient = {
+      async getSnapshot(_descriptor, request) {
+        if (request.status) {
+          return {
+            status: {
+              fingerprint: branch || "detached",
+              unchanged: false,
+              value: {
+                ...statusValue(request.generations.status),
+                head: { oid: "b".repeat(40), name: branch, detached: !branch, unborn: false },
+              },
+            },
+          };
+        }
+        return {
+          refs: {
+            fingerprint: branch,
+            unchanged: false,
+            value: { ...refsValue(request.generations.refs), head: { name: branch } },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    expect(repo.getShortHead()).toBe("");
+    await repo.refreshStatusSnapshot();
+    expect(repo.getShortHead()).toBe("main");
+
+    branch = "feature";
+    await repo.refreshRefsSnapshot();
+    expect(repo.getShortHead()).toBe("feature");
+
+    branch = null;
+    await repo.refreshStatusSnapshot();
+    expect(repo.getShortHead()).toBe("bbbbbbb");
+  });
+
+  it("uses an unchanged section's HEAD when it is refreshed after another section", async () => {
+    const gitHostClient = {
+      async getSnapshot(_descriptor, request) {
+        if (request.status) {
+          return {
+            status: request.knownFingerprints.status
+              ? { fingerprint: "status", unchanged: true }
+              : { fingerprint: "status", unchanged: false, value: statusValue(1) },
+          };
+        }
+        return {
+          refs: {
+            fingerprint: "refs",
+            unchanged: false,
+            value: { ...refsValue(1), head: { name: "feature" } },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    await repo.refreshStatusSnapshot();
+    await repo.refreshRefsSnapshot();
+    expect(repo.getShortHead()).toBe("feature");
+
+    await repo.refreshStatusSnapshot();
+    expect(repo.getShortHead()).toBe("main");
   });
 
   it("reads an explicit stage-0 index object through the host client", async () => {

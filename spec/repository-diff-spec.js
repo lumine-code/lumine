@@ -490,6 +490,22 @@ describe("repository diff", () => {
       expect(filtered.files).toEqual([]);
     });
 
+    it("filters diffs by literal file names containing glob metacharacters", async () => {
+      for (const name of ["file[1].txt", "file1.txt"]) {
+        fs.writeFileSync(path.join(workingDirectory, name), "before\n");
+      }
+      await operations.stageFiles(["file[1].txt", "file1.txt"]);
+      await operations.commit("add ambiguous file names");
+      for (const name of ["file[1].txt", "file1.txt"]) {
+        fs.writeFileSync(path.join(workingDirectory, name), "after\n");
+      }
+
+      const result = await repo.getDiff({ paths: ["file[1].txt"] });
+      expect(result.files.map((file) => file.newPath)).toEqual(["file[1].txt"]);
+      const missing = await repo.getDiff({ paths: ["file[12].txt"] });
+      expect(missing.files).toEqual([]);
+    });
+
     it("supports whitespace-insensitive diffs", async () => {
       fs.writeFileSync(path.join(workingDirectory, "file.txt"), "one\nTWO   \n");
 

@@ -24,7 +24,7 @@ module.exports = class GitRepositoryStatusProvider {
   // working-tree mode for untracked paths.
   async getFileMode(workingDirectory, relativePosixPath, options = {}) {
     const output = await this.runner.run(
-      ["ls-files", "--stage", "--", relativePosixPath],
+      ["--literal-pathspecs", "ls-files", "--stage", "--", relativePosixPath],
       workingDirectory,
       options,
     );

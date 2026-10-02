@@ -555,6 +555,57 @@ describe("GitRepository", () => {
       expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
     });
 
+    it("does not refresh a maintained snapshot for each additional subscriber", async () => {
+      repo.onDidChangeStatusSnapshot(() => {});
+      await runScheduler();
+
+      for (let index = 0; index < 20; index++) repo.onDidChangeStatusSnapshot(() => {});
+      await runScheduler();
+
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
+    });
+
+    it("lets a manual refresh fulfill the pending background refresh", async () => {
+      repo.onDidChangeStatusSnapshot(() => {});
+      await repo.refreshStatusSnapshot();
+      await runScheduler();
+
+      expect(repo.snapshotRefreshTimer).toBeNull();
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
+    });
+
+    it("keeps background interest when the absorbing manual caller aborts", async () => {
+      let resolveStatus;
+      let ownedSignal;
+      statusSnapshotProvider.getStatus.and.callFake((_workingDir, options) => {
+        ownedSignal = options.signal;
+        return new Promise((resolve) => (resolveStatus = resolve));
+      });
+      const changed = new Promise((resolve) => repo.onDidChangeStatusSnapshot(resolve));
+      const controller = new AbortController();
+      const manual = repo.refreshStatusSnapshot({ signal: controller.signal });
+      await Promise.resolve();
+      controller.abort();
+
+      await expectAsync(manual).toBeRejectedWithError(Error, /aborted/);
+      expect(ownedSignal.aborted).toBe(false);
+      resolveStatus(output);
+      expect((await changed).initialized).toBe(true);
+      await runScheduler();
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
+    });
+
+    it("cancels the pending load when its last subscriber leaves", async () => {
+      const subscription = repo.onDidChangeStatusSnapshot(() => {});
+      subscription.dispose();
+      await runScheduler();
+
+      expect(repo.snapshotRefreshTimer).toBeNull();
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(0);
+      expect((await repo.refreshStatusSnapshot()).initialized).toBe(true);
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
+    });
+
     it("does not spawn a status subprocess without subscribers", async () => {
       repo.scheduleStatusSnapshotRefresh();
       await runScheduler();
@@ -685,6 +736,36 @@ describe("GitRepository", () => {
       expect(snapshot.head.name).toBe("main");
       expect(snapshot.branches[0].isHead).toBe(true);
       expect(repo.getRefsSnapshot()).toBe(snapshot);
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
+    });
+
+    it("does not refresh maintained refs for each additional subscriber", async () => {
+      repo.onDidChangeRefsSnapshot(() => {});
+      await runScheduler();
+
+      for (let index = 0; index < 20; index++) repo.onDidChangeRefsSnapshot(() => {});
+      await runScheduler();
+
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
+    });
+
+    it("lets a manual refs refresh fulfill the pending background refresh", async () => {
+      repo.onDidChangeRefsSnapshot(() => {});
+      await repo.refreshRefsSnapshot();
+      await runScheduler();
+
+      expect(repo.snapshotRefreshTimer).toBeNull();
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
+    });
+
+    it("cancels the pending refs load when its last subscriber leaves", async () => {
+      const subscription = repo.onDidChangeRefsSnapshot(() => {});
+      subscription.dispose();
+      await runScheduler();
+
+      expect(repo.snapshotRefreshTimer).toBeNull();
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(0);
+      expect((await repo.refreshRefsSnapshot()).initialized).toBe(true);
       expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
     });
 

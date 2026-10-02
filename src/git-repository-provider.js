@@ -35,6 +35,7 @@ function filesystemIdentitiesMatch(current, expected) {
 }
 
 function repositoryMatchesDescriptor(repository, descriptor) {
+  const currentDescriptor = repository.descriptor;
   return (
     filesystemIdentitiesMatch(
       repository.getGitDirectoryIdentity?.(),
@@ -43,6 +44,12 @@ function repositoryMatchesDescriptor(repository, descriptor) {
     filesystemIdentitiesMatch(
       repository.getWorkingDirectoryIdentity?.(),
       descriptor.getWorkingDirectoryIdentity?.(),
+    ) &&
+    normalizePath(currentDescriptor.getCommonDirectory?.() || repository.getPath()) ===
+      normalizePath(descriptor.getCommonDirectory?.() || descriptor.getPath()) &&
+    filesystemIdentitiesMatch(
+      currentDescriptor.getCommonDirectoryIdentity?.(),
+      descriptor.getCommonDirectoryIdentity?.(),
     )
   );
 }

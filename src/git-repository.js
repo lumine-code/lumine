@@ -201,6 +201,7 @@ module.exports = class GitRepository {
     // parsing, fingerprinting, and line-diff computation stay off the renderer.
     this.gitHostClient = options.gitHostClient || new GitHostClient();
     this.statusSnapshot = EMPTY_STATUS_SNAPSHOT;
+    this.snapshotHead = null;
     this.statusSnapshotFingerprint = null;
     this.statusEntriesByPath = new Map();
     this.directoryStatusAggregates = new Map();
@@ -377,13 +378,14 @@ module.exports = class GitRepository {
    */
   onDidChangeStatusSnapshot(callback) {
     this.statusSnapshotSubscriberCount++;
-    this.scheduleStatusSnapshotRefresh();
+    if (this.statusSnapshotSubscriberCount === 1) this.scheduleStatusSnapshotRefresh();
     const subscription = this.emitter.on("did-change-status-snapshot", callback);
     let disposed = false;
     return new Disposable(() => {
       if (disposed) return;
       disposed = true;
       this.statusSnapshotSubscriberCount--;
+      if (this.statusSnapshotSubscriberCount === 0) this.cancelScheduledSnapshotRefresh("status");
       subscription.dispose();
     });
   }
@@ -402,13 +404,14 @@ module.exports = class GitRepository {
    */
   onDidChangeRefsSnapshot(callback) {
     this.refsSnapshotSubscriberCount++;
-    this.scheduleRefsSnapshotRefresh();
+    if (this.refsSnapshotSubscriberCount === 1) this.scheduleRefsSnapshotRefresh();
     const subscription = this.emitter.on("did-change-refs-snapshot", callback);
     let disposed = false;
     return new Disposable(() => {
       if (disposed) return;
       disposed = true;
       this.refsSnapshotSubscriberCount--;
+      if (this.refsSnapshotSubscriberCount === 0) this.cancelScheduledSnapshotRefresh("refs");
       subscription.dispose();
     });
   }
@@ -583,17 +586,12 @@ module.exports = class GitRepository {
    */
   getShortHead() {
     if (this.isDestroyed()) throw repositoryDestroyedError();
-    // Read the head from whichever snapshot has loaded. Both carry the branch
-    // name (or a shortened oid for a detached HEAD); the status snapshot is the
-    // one the file-tree/tab UI keeps warm, the refs snapshot backs the branch
-    // switcher and window title.
-    for (const snapshot of [this.statusSnapshot, this.refsSnapshot]) {
-      if (snapshot.initialized && snapshot.head) {
-        const head = snapshot.head;
-        if (head.name) return head.name;
-        if (head.detached && head.oid) return head.oid.slice(0, 7);
-      }
-    }
+    // Both snapshots carry HEAD, but refresh independently. Use the latest
+    // successfully refreshed section so a refs-only branch switch cannot be
+    // hidden by an older status snapshot (or the other way around).
+    const head = this.snapshotHead;
+    if (head?.name) return head.name;
+    if (head?.detached && head.oid) return head.oid.slice(0, 7);
     return "";
   }
 
@@ -658,10 +656,12 @@ module.exports = class GitRepository {
    * Resolves to the value or `null` when unset.
    *
    * @param {String} key - The configuration key to look up.
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise<String|null>} The configured value.
    */
-  async getConfigValueAsync(key) {
-    const values = await this.getConfigValuesAsync([key]);
+  async getConfigValueAsync(key, options = {}) {
+    const values = await this.getConfigValuesAsync([key], options);
     return Object.hasOwn(values, key) ? values[key] : null;
   }
 
@@ -674,17 +674,21 @@ module.exports = class GitRepository {
    * to a `String` value or `null` when unset.
    *
    * @param {Array<String>} keys - Configuration keys to read.
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise<Object>} Values keyed by the requested names.
    */
-  getConfigValuesAsync(keys) {
+  getConfigValuesAsync(keys, { signal } = {}) {
     const requested = Array.from(keys || [], String);
     if (requested.length === 0) return Promise.resolve({});
     if (this.isDestroyed()) {
       if (this.repositoryUnavailableError) return Promise.reject(this.repositoryUnavailableError);
       return Promise.resolve(Object.fromEntries(requested.map((key) => [key, null])));
     }
-    return this.repositoryHostRequest((client, descriptor, requestSignal) =>
-      client.getConfigValues(descriptor, requested, { signal: requestSignal }),
+    return this.repositoryHostRequest(
+      (client, descriptor, requestSignal) =>
+        client.getConfigValues(descriptor, requested, { signal: requestSignal }),
+      { signal },
     ).then((values) =>
       Object.fromEntries(
         requested.map((key) => [key, Object.hasOwn(values || {}, key) ? values[key] : null]),
@@ -906,6 +910,7 @@ module.exports = class GitRepository {
   // Once work has started, later callers join one trailing request whose mask
   // is the union of everything that arrived.
   coalesceSnapshotRefresh(kind, options = {}) {
+    if (options.signal?.aborted) return Promise.reject(snapshotAbortError());
     const state = this.snapshotRefreshCoalescer;
 
     const merge = (request, requestedKind, requestedOptions) => {
@@ -960,13 +965,16 @@ module.exports = class GitRepository {
         promise: null,
       };
       const result = this.waitForSnapshotRequest(request, kind, options.signal);
+      this.absorbScheduledSnapshotRefresh(request, kind);
       begin(request);
       return result;
     }
 
     if (!state.flight.started) {
       merge(state.flight, kind, options);
-      return this.waitForSnapshotRequest(state.flight, kind, options.signal);
+      const result = this.waitForSnapshotRequest(state.flight, kind, options.signal);
+      this.absorbScheduledSnapshotRefresh(state.flight, kind);
+      return result;
     }
 
     if (!state.trailing) {
@@ -985,7 +993,35 @@ module.exports = class GitRepository {
       merge(state.trailing, kind, options);
     }
 
-    return this.waitForSnapshotRequest(state.trailing, kind, options.signal);
+    const result = this.waitForSnapshotRequest(state.trailing, kind, options.signal);
+    this.absorbScheduledSnapshotRefresh(state.trailing, kind);
+    return result;
+  }
+
+  // An explicit refresh already starts after the pending background trigger,
+  // so it can fulfill that trigger without another run when the timer fires.
+  // Keep background interest as its own waiter: aborting the explicit caller
+  // must not cancel the update that existing snapshot subscribers requested.
+  absorbScheduledSnapshotRefresh(request, kind) {
+    if (!this.scheduledSnapshotKinds.has(kind)) return;
+    this.cancelScheduledSnapshotRefresh(kind);
+    if (kind === "status") {
+      request.statusIncludeIgnored = true;
+      request.options.includeIgnored = true;
+    }
+    this.waitForSnapshotRequest(request, kind).catch((error) => {
+      if (request.backgroundErrorReported) return;
+      request.backgroundErrorReported = true;
+      this.reportBackgroundSnapshotError(error);
+    });
+  }
+
+  cancelScheduledSnapshotRefresh(kind) {
+    this.scheduledSnapshotKinds.delete(kind);
+    if (this.scheduledSnapshotKinds.size === 0 && this.snapshotRefreshTimer != null) {
+      clearTimeout(this.snapshotRefreshTimer);
+      this.snapshotRefreshTimer = null;
+    }
   }
 
   waitForSnapshotRequest(request, kind, signal) {
@@ -1144,6 +1180,7 @@ module.exports = class GitRepository {
       const prepared = {
         commit: () => {
           this.statusSnapshotFingerprint = section.fingerprint;
+          this.snapshotHead = this.statusSnapshot.head;
         },
         emit: () => {},
         value: this.statusSnapshot,
@@ -1218,6 +1255,7 @@ module.exports = class GitRepository {
       commit: () => {
         this.statusSnapshotFingerprint = section.fingerprint;
         this.statusSnapshot = snapshot;
+        this.snapshotHead = snapshot.head;
         this.statusEntriesByPath = statusEntriesByPath;
         this.directoryStatusAggregates = directoryStatusAggregates;
         this.ignoredFileKeys = ignoredFileKeys;
@@ -1239,6 +1277,7 @@ module.exports = class GitRepository {
       const prepared = {
         commit: () => {
           this.refsSnapshotFingerprint = section.fingerprint;
+          this.snapshotHead = this.refsSnapshot.head;
         },
         emit: () => {},
         value: this.refsSnapshot,
@@ -1261,6 +1300,7 @@ module.exports = class GitRepository {
       commit: () => {
         this.refsSnapshotFingerprint = section.fingerprint;
         this.refsSnapshot = snapshot;
+        this.snapshotHead = snapshot.head;
       },
       emit: () => this.emitter.emit("did-change-refs-snapshot", snapshot),
       value: snapshot,
@@ -1417,7 +1457,7 @@ module.exports = class GitRepository {
    * @param {Object} [options.from] - The starting endpoint.
    * @param {Object} [options.to] - The ending endpoint. Endpoints may be commit,
    *   index, worktree, file, or empty descriptors.
-   * @param {Array<String>} [options.paths] - Pathspecs limiting the diff.
+   * @param {Array<String>} [options.paths] - Literal file or directory paths limiting the diff.
    * @param {Number} [options.context=3] - Context lines.
    * @param {Boolean} [options.ignoreWhitespace=false] - Ignore all whitespace.
    * @param {Boolean} [options.detectRenames=true] - Detect renames.

@@ -11,6 +11,7 @@ const REPOSITORY_MOVE_CORRELATION_MS = 30_000;
 const MAX_REPOSITORY_MOVE_TOMBSTONES = 128;
 const MAX_REPOSITORY_MOVE_CREATED_PATHS = 4096;
 const MAX_REPOSITORY_MOVE_DELETED_PATHS = 4096;
+const REPOSITORY_SCAN_CONCURRENCY = 4;
 
 // Valid answers from an operation implementation's getOperationRefreshHint():
 // which read snapshots the just-finished operation can have invalidated.
@@ -2193,10 +2194,12 @@ module.exports = class RepositoryRegistry {
     const scanDepth = depth ?? this.config?.get("git.scanDepth") ?? 1;
 
     const discovered = [];
+    const skippedCandidates = [];
     let complete = true;
     for (const rootPath of this.rootPaths) {
       const result = await this.scanRoot(rootPath, scanDepth, generation);
       discovered.push(...result.repositories);
+      skippedCandidates.push(...(result.skippedCandidates || []));
       complete &&= result.complete;
     }
     if (this.destroyed || generation !== this.scanGeneration) return discovered;
@@ -2207,11 +2210,27 @@ module.exports = class RepositoryRegistry {
     if (complete) {
       const discoveredSet = new Set(discovered);
       for (const entry of Array.from(this.entriesById.values())) {
+        if (this.destroyed || generation !== this.scanGeneration) return discovered;
         const wasRootOwned = entry.rootOwners.size > 0 || entry.pendingRootReconciliation;
         entry.pendingRootReconciliation = false;
         if (!wasRootOwned || discoveredSet.has(entry.repository)) continue;
         entry.rootOwners.clear();
         if (!this.hasOwners(entry)) this.removeEntry(entry, { destroy: true });
+      }
+
+      // Removing vanished entries can free slots that an earlier candidate
+      // could not use. Revisit each skipped directory at most once, without
+      // crawling its descendants again or letting another generation in.
+      for (const candidate of skippedCandidates) {
+        if (this.destroyed || generation !== this.scanGeneration) break;
+        if (this.automaticRepositoryLimitReached()) break;
+        const result = await this.scanRoot(candidate.rootPath, candidate.depth, generation, {
+          directoryPath: candidate.directoryPath,
+          depth: candidate.depth,
+        });
+        for (const repository of result.repositories) {
+          if (!discovered.includes(repository)) discovered.push(repository);
+        }
       }
     }
     return discovered;
@@ -2219,80 +2238,120 @@ module.exports = class RepositoryRegistry {
 
   async scanRoot(rootPath, maxDepth, generation, start = { directoryPath: rootPath, depth: 0 }) {
     const discovered = [];
+    const skippedCandidates = [];
     let complete = true;
     const excluded = this.getExcludedDirectoryNames();
     const queue = [start];
 
+    const isCurrent = () =>
+      !this.destroyed &&
+      generation === this.scanGeneration &&
+      this.rootPaths.some((candidate) => normalizePath(candidate) === normalizePath(rootPath));
+
     while (queue.length > 0) {
-      if (this.destroyed || generation !== this.scanGeneration) {
-        return { repositories: discovered, complete: false };
-      }
-      if (
-        !this.rootPaths.some((candidate) => normalizePath(candidate) === normalizePath(rootPath))
-      ) {
+      if (!isCurrent()) {
         return { repositories: discovered, complete: false };
       }
 
-      const current = queue.shift();
-      if (await this.isFileMoveDestinationAsync(current.directoryPath)) {
-        complete = false;
-        continue;
-      }
-      let children;
+      // Filesystem discovery can overlap, but ownership and lifecycle events
+      // are accepted in breadth-first order. Keep a small batch so a fleet of
+      // sibling repositories neither scans serially nor floods the filesystem.
+      const batch = queue.splice(0, REPOSITORY_SCAN_CONCURRENCY);
+      const project = this.project;
+      const results = await Promise.allSettled(
+        batch.map(async (current) => {
+          if (await this.isFileMoveDestinationAsync(current.directoryPath)) return null;
+          let children;
+          try {
+            children = await fs.promises.readdir(current.directoryPath, { withFileTypes: true });
+          } catch {
+            return null;
+          }
+          if (!isCurrent()) return null;
+          const candidate =
+            current.depth === 0 || children.some((child) => isGitMarkerName(child.name));
+          const repository = candidate
+            ? await this.discoverForPath(current.directoryPath, { refresh: true })
+            : null;
+          return { children, candidate, repository };
+        }),
+      );
+      const accepted = new Set();
       try {
-        children = await fs.promises.readdir(current.directoryPath, { withFileTypes: true });
-      } catch {
-        complete = false;
-        continue;
+        for (let index = 0; index < batch.length; index++) {
+          if (!isCurrent()) return { repositories: discovered, complete: false };
+          const current = batch[index];
+          const result = results[index];
+          if (result.status === "rejected") throw result.reason;
+          if (!result.value) {
+            complete = false;
+            continue;
+          }
+          const { children, candidate, repository } = result.value;
+          if (candidate && (await this.isFileMoveDestinationAsync(current.directoryPath))) {
+            complete = false;
+            continue;
+          }
+          if (!isCurrent()) return { repositories: discovered, complete: false };
+          const knownRepository =
+            repository &&
+            this.entriesById.has(this.repositoryId(repository, repository.getWorkingDirectory()));
+          // The cap limits new registrations, not revisiting existing entries.
+          // Continue traversing after a skipped candidate so a complete rescan
+          // can still release repositories that have disappeared at the cap.
+          const limitReached =
+            candidate &&
+            repository &&
+            current.depth > 0 &&
+            !knownRepository &&
+            this.automaticRepositoryLimitReached();
+          if (limitReached) skippedCandidates.push({ rootPath, ...current });
+          if (candidate && !limitReached) {
+            this.commitDiscoveredRepository(repository, current.directoryPath);
+            accepted.add(index);
+            const entry = this.register(repository);
+            if (!isCurrent()) {
+              this.prune(entry);
+              return { repositories: discovered, complete: false };
+            }
+            if (entry) {
+              entry.missing = false;
+              entry.pendingRootReconciliation = false;
+              entry.rootOwners.add(rootPath);
+              if (!discovered.includes(entry.repository)) discovered.push(entry.repository);
+            }
+          }
+
+          if (current.depth >= maxDepth) continue;
+          for (const child of children) {
+            if (!child.isDirectory() || child.isSymbolicLink() || excluded.has(child.name))
+              continue;
+            queue.push({
+              directoryPath: path.join(current.directoryPath, child.name),
+              depth: current.depth + 1,
+            });
+          }
+
+          // Yield between directories so large scans do not monopolize startup.
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      } finally {
+        // Stale roots, provider failures and the count cap must release every
+        // speculative discovery, including ones later in the same batch.
+        for (let index = 0; index < results.length; index++) {
+          const result = results[index];
+          if (result.status === "fulfilled" && !accepted.has(index)) {
+            this.abandonDiscoveredRepository(
+              result.value?.repository,
+              batch[index].directoryPath,
+              project,
+            );
+          }
+        }
       }
-
-      if (current.depth === 0 || children.some((child) => isGitMarkerName(child.name))) {
-        if (current.depth > 0 && this.automaticRepositoryLimitReached()) {
-          return { repositories: discovered, complete: false };
-        }
-
-        const repository = await this.discoverForPath(current.directoryPath, { refresh: true });
-        if (await this.isFileMoveDestinationAsync(current.directoryPath)) {
-          this.abandonDiscoveredRepository(repository, current.directoryPath);
-          complete = false;
-          continue;
-        }
-        if (this.destroyed || generation !== this.scanGeneration) {
-          this.abandonDiscoveredRepository(repository, current.directoryPath);
-          return { repositories: discovered, complete: false };
-        }
-        this.commitDiscoveredRepository(repository, current.directoryPath);
-        const entry = this.register(repository);
-        if (
-          this.destroyed ||
-          generation !== this.scanGeneration ||
-          !this.rootPaths.some((candidate) => normalizePath(candidate) === normalizePath(rootPath))
-        ) {
-          this.prune(entry);
-          return { repositories: discovered, complete: false };
-        }
-        if (entry) {
-          entry.missing = false;
-          entry.pendingRootReconciliation = false;
-          entry.rootOwners.add(rootPath);
-          if (!discovered.includes(entry.repository)) discovered.push(entry.repository);
-        }
-      }
-
-      if (current.depth >= maxDepth) continue;
-      for (const child of children) {
-        if (!child.isDirectory() || child.isSymbolicLink() || excluded.has(child.name)) continue;
-        queue.push({
-          directoryPath: path.join(current.directoryPath, child.name),
-          depth: current.depth + 1,
-        });
-      }
-
-      // Yield between directories so large scans do not monopolize startup.
-      await new Promise((resolve) => setImmediate(resolve));
     }
 
-    return { repositories: discovered, complete };
+    return { repositories: discovered, complete, skippedCandidates };
   }
 
   getExcludedDirectoryNames() {

@@ -12,6 +12,13 @@ const fs = require("fs");
 const MAX_BUFFER_EXCEEDED_CODE = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
 
+function abortError() {
+  const error = new Error("The Git operation was aborted");
+  error.name = "AbortError";
+  error.code = "ABORT_ERR";
+  return error;
+}
+
 async function pathIsMissing(filePath, { directory = false } = {}) {
   if (!filePath) return false;
   try {
@@ -61,6 +68,10 @@ function childEnvironment(options) {
 function createGitExec(gitPath) {
   return function exec(args, workingDirectory, options = {}) {
     return new Promise((resolve, reject) => {
+      if (options.signal?.aborted) {
+        reject(abortError());
+        return;
+      }
       const encoding = options.encoding === "buffer" ? "buffer" : "utf8";
       const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
       const killSignal = options.killSignal || "SIGTERM";
@@ -83,10 +94,14 @@ function createGitExec(gitPath) {
       let stdoutLength = 0;
       let stderrLength = 0;
       let maxBufferExceeded = false;
+      let aborted = false;
 
-      const onAbort = () => child.kill(killSignal);
+      const onAbort = () => {
+        aborted = true;
+        child.kill(killSignal);
+      };
       if (options.signal) {
-        if (options.signal.aborted) child.kill(killSignal);
+        if (options.signal.aborted) onAbort();
         else options.signal.addEventListener("abort", onAbort, { once: true });
       }
       const cleanup = () => {
@@ -116,6 +131,10 @@ function createGitExec(gitPath) {
         if (settled) return;
         settled = true;
         cleanup();
+        if (aborted) {
+          reject(abortError());
+          return;
+        }
         classifySpawnError(error, gitPath, workingDirectory).then(reject, reject);
       });
 
@@ -123,6 +142,10 @@ function createGitExec(gitPath) {
         if (settled) return;
         settled = true;
         cleanup();
+        if (aborted) {
+          reject(abortError());
+          return;
+        }
         if (maxBufferExceeded) {
           const error = new Error(`git output exceeded the maxBuffer of ${maxBuffer} bytes`);
           error.code = MAX_BUFFER_EXCEEDED_CODE;

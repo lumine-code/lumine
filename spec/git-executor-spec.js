@@ -123,16 +123,26 @@ describe("git executor", () => {
     expect(error.message).toContain(missingGit);
   });
 
-  it("kills the process when the abort signal fires", async () => {
+  it("rejects an already-aborted request before attempting to spawn", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const missingGitExec = createGitExec(path.join(temp.dir, "missing-aborted-git"));
+    await expectAsync(
+      missingGitExec(["--version"], process.cwd(), { signal: controller.signal }),
+    ).toBeRejectedWith(jasmine.objectContaining({ name: "AbortError", code: "ABORT_ERR" }));
+  });
+
+  it("rejects a running command with AbortError when the abort signal fires", async () => {
     const controller = new AbortController();
     const pending = exec(["hash-object", "--stdin"], process.cwd(), {
       stdin: "",
       signal: controller.signal,
     });
     controller.abort();
-    // Aborting kills git; the result still settles (resolve or reject) rather
-    // than hanging.
-    await pending.catch(() => {});
-    expect(true).toBe(true);
+    await expectAsync(pending).toBeRejectedWith(
+      jasmine.objectContaining({ name: "AbortError", code: "ABORT_ERR" }),
+    );
+    // A cancelled process must release its resources for later commands.
+    expect((await exec(["--version"], process.cwd())).exitCode).toBe(0);
   });
 });

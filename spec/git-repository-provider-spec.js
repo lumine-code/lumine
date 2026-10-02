@@ -27,6 +27,20 @@ describe("GitRepositoryProvider", () => {
     return workingDirectory;
   }
 
+  function createExternalCommonDirectoryRepository() {
+    const root = temp.mkdirSync("provider-common-directory-");
+    const workingDirectory = path.join(root, "worktree");
+    const gitDirectory = path.join(root, "private.git");
+    const commonDirectory = path.join(root, "common.git");
+    fs.mkdirSync(workingDirectory);
+    fs.mkdirSync(gitDirectory);
+    fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir", "git.git"), commonDirectory);
+    fs.writeFileSync(path.join(gitDirectory, "HEAD"), "ref: refs/heads/master\n");
+    fs.writeFileSync(path.join(gitDirectory, "commondir"), "../common.git\n");
+    fs.writeFileSync(path.join(workingDirectory, ".git"), "gitdir: ../private.git\n");
+    return { root, workingDirectory, gitDirectory, commonDirectory };
+  }
+
   describe(".repositoryForPath(filePath)", () => {
     describe("when specified a Directory with a Git repository", () => {
       it("resolves with a GitRepository", async () => {
@@ -213,6 +227,45 @@ describe("GitRepositoryProvider", () => {
       expect(original.isDestroyed()).toBe(true);
       expect(committedReplacement.isDestroyed()).toBe(false);
       expect(provider.getRepositoryForPath(workingDirectory)).toBe(committedReplacement);
+    });
+
+    it("replaces a linked worktree facade when its common directory is retargeted", async () => {
+      const { root, workingDirectory, gitDirectory, commonDirectory } =
+        createExternalCommonDirectoryRepository();
+      const original = await provider.repositoryForPath(workingDirectory);
+      provider.commitRepositoryForPath(original, workingDirectory);
+      const otherCommonDirectory = path.join(root, "other-common.git");
+      fs.copySync(commonDirectory, otherCommonDirectory);
+      fs.writeFileSync(path.join(gitDirectory, "commondir"), "../other-common.git\n");
+
+      const replacement = await provider.repositoryForPath(workingDirectory);
+
+      expect(replacement).not.toBe(original);
+      expect(original.isDestroyed()).toBe(false);
+      provider.commitRepositoryForPath(replacement, workingDirectory);
+      expect(original.isDestroyed()).toBe(true);
+      expect(replacement.getHostDescriptor().commonDirectory).toBe(
+        fs.realpathSync.native(otherCommonDirectory).replace(/\\/g, "/"),
+      );
+    });
+
+    it("detects replacement of a linked worktree common directory at the same path", async () => {
+      provider = new GitRepositoryProvider({ isRegistered: () => false });
+      const { root, workingDirectory, commonDirectory } = createExternalCommonDirectoryRepository();
+      const original = await provider.repositoryForPath(workingDirectory);
+      provider.commitRepositoryForPath(original, workingDirectory);
+      const originalIdentity = original.getHostDescriptor().commonDirectoryIdentity;
+      fs.renameSync(commonDirectory, path.join(root, "old-common.git"));
+      fs.copySync(path.join(root, "old-common.git"), commonDirectory);
+
+      const replacement = await provider.repositoryForPath(workingDirectory);
+
+      expect(replacement).not.toBe(original);
+      expect(replacement.getHostDescriptor().commonDirectoryIdentity).not.toEqual(originalIdentity);
+      provider.abandonRepositoryForPath(replacement, workingDirectory);
+      expect(replacement.isDestroyed()).toBe(true);
+      expect(original.isDestroyed()).toBe(false);
+      expect(provider.getRepositoryForPath(workingDirectory)).toBe(original);
     });
 
     it("keys repositories by both Git directory and working directory", async () => {
