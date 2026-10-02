@@ -215,7 +215,12 @@ module.exports = class SystemGitService {
   }
 
   async repositoryFailure(error, descriptor, operation) {
-    if (error?.code === ERR_GIT_REPOSITORY_UNAVAILABLE) return error;
+    if (
+      error?.code === ERR_GIT_REPOSITORY_UNAVAILABLE ||
+      error?.name === "AbortError" ||
+      error?.code === "ABORT_ERR"
+    )
+      return error;
     try {
       await this.assertRepositoryDescriptorAvailable(descriptor, {
         operation,
@@ -543,12 +548,14 @@ module.exports = class SystemGitService {
       },
     );
     for (const record of output.split("\0")) {
+      if (!record) continue;
       const separator = record.indexOf("\n");
-      if (separator === -1) continue;
-      const requestedKeys = requested.get(canonicalConfigKey(record.slice(0, separator)));
+      const key = separator === -1 ? record : record.slice(0, separator);
+      const value = separator === -1 ? "" : record.slice(separator + 1);
+      const requestedKeys = requested.get(canonicalConfigKey(key));
       if (requestedKeys) {
         for (const requestedKey of requestedKeys) {
-          values[requestedKey] = record.slice(separator + 1);
+          values[requestedKey] = value;
         }
       }
     }

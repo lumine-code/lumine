@@ -25,7 +25,7 @@ module.exports = class GitRepositoryHistoryProvider {
     { revision = "HEAD", allRefs = false, path = null, limit, skip = 0 },
     options = {},
   ) {
-    const args = ["log", "-z", `--format=${LOG_FORMAT}`];
+    const args = ["log", "-z", "--no-show-signature", "--encoding=UTF-8", `--format=${LOG_FORMAT}`];
     if (limit != null) args.push(`--max-count=${limit}`);
     if (skip > 0) args.push(`--skip=${skip}`);
     args.push(allRefs ? "--all" : revision);

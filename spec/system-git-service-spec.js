@@ -102,6 +102,28 @@ describe("SystemGitService", () => {
     });
   });
 
+  it("distinguishes valueless configuration entries from missing keys", async () => {
+    const service = new SystemGitService({
+      runner: {
+        run: async () => "feature.enabled\0feature.disabled\nfalse\0feature.empty\n\0",
+      },
+    });
+
+    expect(
+      await service.readConfig(createDirectoryMarkerDescriptor(), [
+        "FEATURE.ENABLED",
+        "feature.disabled",
+        "feature.empty",
+        "feature.missing",
+      ]),
+    ).toEqual({
+      "FEATURE.ENABLED": "",
+      "feature.disabled": "false",
+      "feature.empty": "",
+      "feature.missing": null,
+    });
+  });
+
   it("uses the resolved commit id when reading changed files", async () => {
     const resolved = "a".repeat(40);
     const parent = "b".repeat(40);
@@ -341,6 +363,31 @@ describe("SystemGitService", () => {
     expect(error.code).toBe(ERR_GIT_REPOSITORY_UNAVAILABLE);
     expect(error.reason).toBe("worktree-marker-missing");
     expect(error.operation).toBe("readConfig");
+  });
+
+  it("preserves a cancelled read instead of reclassifying a subsequent repository move", async () => {
+    const { descriptor, markerPath } = createGitfileDescriptor();
+    const controller = new AbortController();
+    const cancellation = Object.assign(new Error("read cancelled"), {
+      name: "AbortError",
+      code: "ABORT_ERR",
+    });
+    const assertRepositoryDescriptorAvailable = jasmine
+      .createSpy("assertRepositoryDescriptorAvailable")
+      .and.callFake(assertRepositoryDescriptorAvailableAsync);
+    const runner = {
+      run: jasmine.createSpy("run").and.callFake(async () => {
+        controller.abort(cancellation);
+        fs.unlinkSync(markerPath);
+        throw controller.signal.reason;
+      }),
+    };
+    const service = new SystemGitService({ runner, assertRepositoryDescriptorAvailable });
+
+    await expectAsync(
+      service.readConfig(descriptor, ["core.filemode"], { signal: controller.signal }),
+    ).toBeRejectedWith(cancellation);
+    expect(assertRepositoryDescriptorAvailable.calls.count()).toBe(1);
   });
 
   it("classifies partial Git metadata removal as unavailable before the directory disappears", async () => {

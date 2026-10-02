@@ -9,6 +9,7 @@ const {
   parseBlamePorcelain,
 } = require("../src/repository-history");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
+const GitRepositoryHistoryProvider = require("../src/git-repository-history-provider");
 const CoreGitRepository = require("../src/git-repository");
 const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 
@@ -212,6 +213,60 @@ describe("repository history", () => {
       expect(secondPage.nextCursor).toBeNull();
       expect(secondPage.commits[0].parents).toEqual([]);
       expect(secondPage.commits[0].author.name).toBe("Author One");
+    });
+
+    it("returns UTF-8 commit metadata when Git config requests another output encoding", async () => {
+      await operations.setConfig("user.name", "Żaneta Test");
+      await operations.commit("Żółć message\n\nTreść wiadomości.", { allowEmpty: true });
+      await operations.setConfig("i18n.logOutputEncoding", "ISO-8859-2");
+
+      const page = await repo.getCommits({ limit: 1 });
+      const commit = await repo.getCommit("HEAD");
+
+      for (const result of [page.commits[0], commit]) {
+        expect(result.author.name).toBe("Żaneta Test");
+        expect(result.subject).toBe("Żółć message");
+        expect(result.body).toBe("Treść wiadomości.");
+      }
+    });
+
+    it("keeps signature verification diagnostics out of structured commit history", async () => {
+      const tree = (
+        await operationProvider.run(["rev-parse", "HEAD^{tree}"], workingDirectory)
+      ).trim();
+      // A signature packet need not verify for Git's display setting to print
+      // diagnostics before the formatted fields. Keep any GPG setup local.
+      const rawCommit = [
+        `tree ${tree}`,
+        "author Test <test@example.com> 1760000000 +0000",
+        "committer Test <test@example.com> 1760000000 +0000",
+        "gpgsig -----BEGIN PGP SIGNATURE-----",
+        " invalid",
+        " -----END PGP SIGNATURE-----",
+        "",
+        "Signed commit",
+        "",
+      ].join("\n");
+      const sha = (
+        await operationProvider.run(
+          ["hash-object", "-t", "commit", "-w", "--stdin"],
+          workingDirectory,
+          {
+            stdin: rawCommit,
+          },
+        )
+      ).trim();
+      await operations.setConfig("log.showSignature", "true");
+      const provider = new GitRepositoryHistoryProvider();
+      const output = await provider.getLog(
+        workingDirectory,
+        { revision: sha, limit: 1 },
+        { env: { GNUPGHOME: temp.mkdirSync("repository-history-gpg") } },
+      );
+      const [commit] = parseCommitRecords(output);
+
+      expect(commit.sha).toBe(sha);
+      expect(commit.subject).toBe("Signed commit");
     });
 
     it("follows renames for path-limited history", async () => {
