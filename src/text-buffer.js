@@ -2477,6 +2477,29 @@ class TextBuffer {
    */
   clipRange(range) {
     range = Range.fromObject(range);
+    if (this.clipPosition === defaultClipPosition && range.start.row === range.end.row) {
+      Point.assertValid(range.start);
+      Point.assertValid(range.end);
+      const row = range.start.row;
+      if (row >= 0 && row <= this.getLastRow()) {
+        // Both endpoints share the same bounds. A single-row edit should not
+        // repeat the native line count and line length lookups for each point.
+        const lineLength = this.lineLengthForRow(row);
+        const start =
+          range.start.column < 0
+            ? new Point(row, 0)
+            : range.start.column > lineLength
+              ? new Point(row, lineLength)
+              : range.start;
+        const end =
+          range.end.column < 0
+            ? new Point(row, 0)
+            : range.end.column > lineLength
+              ? new Point(row, lineLength)
+              : range.end;
+        return start === range.start && end === range.end ? range : new Range(start, end);
+      }
+    }
     const start = this.clipPosition(range.start);
     const end = this.clipPosition(range.end);
     if (range.start.isEqual(start) && range.end.isEqual(end)) {
@@ -3483,6 +3506,8 @@ class TextBuffer {
     return this.nextMarkerId++;
   }
 }
+
+const defaultClipPosition = TextBuffer.prototype.clipPosition;
 
 Object.assign(TextBuffer, {
   version: 6,
