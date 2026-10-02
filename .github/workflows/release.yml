@@ -64,7 +64,7 @@ jobs:
           install() { npm ci --ignore-scripts; }
           install || install || install
       - name: Download the Electron binary
-        run: node ./node_modules/electron/install.js
+        run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
       # No GH_TOKEN here, so electron-builder does not auto-publish; the draft

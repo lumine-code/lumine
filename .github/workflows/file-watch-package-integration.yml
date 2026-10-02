@@ -45,7 +45,7 @@ jobs:
           install() { npm ci --ignore-scripts; }
           install || install || install
       - name: Download the Electron binary
-        run: node ./node_modules/electron/install.js
+        run: node script/install-electron.js
       - name: Rebuild core native modules for Electron
         run: npm run build
       # One core build serves all packages. The runner checks out the recorded

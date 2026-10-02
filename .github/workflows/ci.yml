@@ -61,6 +61,8 @@ jobs:
         run: npm run test:api-extractor
       - name: Test JSX lint rules
         run: npm run test:eslint-jsx
+      - name: Test Electron download retries
+        run: node --test script/install-electron.test.js
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract
@@ -143,7 +145,7 @@ jobs:
           install() { npm ci; }
           install || install || install
       - name: Download the Electron binary
-        run: node ./node_modules/electron/install.js
+        run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
       # The full CI suite uses a visible, focused window so focus-dependent

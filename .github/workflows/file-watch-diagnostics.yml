@@ -51,7 +51,7 @@ jobs:
           install() { npm ci; }
           install || install || install
       - name: Download Electron
-        run: node node_modules/electron/install.js
+        run: node script/install-electron.js
       - name: Build native modules for Electron
         run: npm run build
       - name: Trace the application-owned file worker
