@@ -195,6 +195,40 @@ module.exports = class TextEditor {
     // Indent guides moved from the editor core to the indent-guide package.
     delete state.showIndentGuide;
 
+    const retained = lumineEnvironment.project.restoredBufferAliases?.get(bufferId);
+    if (retained?.buffer === state.buffer) {
+      // A dock keeps its live buffer across project changes. Saved layer IDs
+      // belong to a discarded editor, or even another window, and may collide
+      // with the dock's layers. Restore the center with independent layers.
+      const savedDisplayLayer = retained.state.displayLayers?.[state.displayLayerId];
+      const savedSelections = retained.state.markerLayers?.[state.selectionsMarkerLayerId];
+      const savedFolds = retained.state.markerLayers?.[savedDisplayLayer?.foldsMarkerLayerId];
+      const viewState = state.viewState || {
+        selections: Object.values(savedSelections?.markersById || {}).map(
+          ({ range, reversed }) => ({ range: Range.fromObject(range).serialize(), reversed }),
+        ),
+        scrollTopRow: state.initialScrollTopRow,
+        scrollLeftColumn: state.initialScrollLeftColumn,
+      };
+      const folds =
+        state.foldedBufferRanges ||
+        Object.values(savedFolds?.markersById || {}).map(({ range }) => range);
+      delete state.displayLayerId;
+      delete state.selectionsMarkerLayerId;
+      const editor = new TextEditor(state);
+      const sameText =
+        retained.state.text != null
+          ? retained.state.text === editor.getText()
+          : retained.state.fileState === "unmodified" &&
+            editor.getFileState() === "unmodified" &&
+            retained.state.digestWhenLastPersisted === editor.buffer.digestWhenLastPersisted;
+      if (sameText) {
+        for (const range of folds) editor.foldBufferRange(range);
+      }
+      editor.restoreViewState(viewState);
+      return editor;
+    }
+
     return new TextEditor(state);
   }
 
@@ -825,6 +859,8 @@ module.exports = class TextEditor {
 
       displayLayerId: this.displayLayer.id,
       selectionsMarkerLayerId: this.selectionsMarkerLayer.id,
+      viewState: this.serializeViewState(),
+      foldedBufferRanges: this.displayLayer.foldRangesSnapshot().map((range) => range.serialize()),
 
       initialScrollTopRow: this.getScrollTopRow(),
       initialScrollLeftColumn: this.getScrollLeftColumn(),

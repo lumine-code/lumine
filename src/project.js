@@ -76,6 +76,7 @@ module.exports = class Project extends Model {
     this.watchersByPath = new Map();
     this.retiredBufferIDs = new Set();
     this.retiredBufferPaths = new Set();
+    this.restoredBufferAliases = new Map();
     this.subscriptions = new CompositeDisposable();
     this.repositoryRegistry.attachProject(this);
     this.consumeServices(packageManager);
@@ -129,6 +130,7 @@ module.exports = class Project extends Model {
     this.loadPromisesByPath = {};
     this.retiredBufferIDs = new Set();
     this.retiredBufferPaths = new Set();
+    this.restoredBufferAliases = new Map();
     this.consumeServices(packageManager);
   }
 
@@ -170,11 +172,26 @@ module.exports = class Project extends Model {
    * @category Serialization
    */
 
-  deserialize(state) {
+  deserialize(state, _deserializers, { preserveRetainedBuffers = false } = {}) {
     this.retiredBufferIDs = new Set();
     this.retiredBufferPaths = new Set();
+    this.restoredBufferAliases = new Map();
+    const retainedBuffers = preserveRetainedBuffers
+      ? this.buffers.filter((buffer) => buffer.isRetained())
+      : [];
 
     const handleBufferState = (bufferState) => {
+      // Docks remain in this window when only the center follows the project.
+      // Their live buffers take precedence over copies from the saved session.
+      const retained = retainedBuffers.find(
+        (buffer) =>
+          buffer.getId() === bufferState.id ||
+          (bufferState.filePath && buffer.getPath() === bufferState.filePath),
+      );
+      if (retained) {
+        this.restoredBufferAliases.set(bufferState.id, { buffer: retained, state: bufferState });
+        return Promise.resolve(retained);
+      }
       // Use a little guilty knowledge of the way TextBuffers are serialized.
       // This allows TextBuffers that have never been saved (but have filePaths) to be deserialized, but prevents
       // clean TextBuffers backed by files that have been deleted from being
@@ -199,8 +216,9 @@ module.exports = class Project extends Model {
     }
 
     return Promise.all(bufferPromises).then((buffers) => {
-      this.buffers = buffers.filter(Boolean);
+      this.buffers = [...new Set([...retainedBuffers, ...buffers.filter(Boolean)])];
       for (let buffer of this.buffers) {
+        if (retainedBuffers.includes(buffer)) continue;
         this.grammarRegistry.maintainLanguageMode(buffer);
         this.subscribeToBuffer(buffer);
       }
@@ -644,12 +662,17 @@ module.exports = class Project extends Model {
    * Three things are worth knowing before reaching for this:
    *
    * * Development and safe mode belong to the window, so they cannot change
-   *   here. Use `Environment.open` with `newWindow` for those.
+   *   here. Use `lumine.application.openWindow` with `newWindow` for those.
    * * Each window keeps its own state for a set of folders. If this window has
    *   never opened them, it can adopt the most recently saved state only while
    *   no other window has that project open.
-   * * Package state is not re-applied. A package that follows the project
+   * * Package state stays with the window. A package that follows the project
    *   observes {@link #onDidChangePaths} and rebuilds itself.
+   *
+   * Changes run sequentially, so a second call saves the project left by the
+   * first. Every requested path must name an available directory; a missing
+   * folder or a file rejects the change before the current editors are closed.
+   * Editors retained by docks keep their live buffers and edit history.
    *
    * @param {Array} projectPaths - of `String` paths to the directories the window should have open.
    * @returns {Promise} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.
@@ -1301,6 +1324,8 @@ module.exports = class Project extends Model {
 
   // Only to be used when deserializing
   bufferForIdSync(id) {
+    const retained = this.restoredBufferAliases?.get(id)?.buffer;
+    if (retained && !retained.isDestroyed()) return retained;
     if (this.retiredBufferIDs.has(id)) {
       return null;
     }

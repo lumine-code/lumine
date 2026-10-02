@@ -223,6 +223,21 @@ describe("Project", () => {
       expect(deserializedProject.getBuffers()[0].getText()).toBe("unsaved\n");
     });
 
+    it("resolves saved buffer identities to a retained live buffer for the same path", async () => {
+      const editor = await lumine.workspace.open("a");
+      const buffer = editor.getBuffer();
+      const state = lumine.project.serialize({ isUnloading: true });
+      const savedId = `${buffer.getId()}-other-session`;
+      state.buffers[0].id = savedId;
+
+      await lumine.project.deserialize(state, lumine.deserializers, {
+        preserveRetainedBuffers: true,
+      });
+
+      expect(lumine.project.getBuffers()).toEqual([buffer]);
+      expect(lumine.project.bufferForIdSync(savedId)).toBe(buffer);
+    });
+
     it("serializes marker layers and history only if Lumine is quitting", async () => {
       await lumine.workspace.open("a");
 

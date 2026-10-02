@@ -2548,8 +2548,9 @@ module.exports = class Workspace extends Model {
   }
 
   confirmClose(options) {
+    const locations = options?.locations || ALL_LOCATIONS;
     return Promise.all(
-      this.getPaneContainers().map((container) => container.confirmClose(options)),
+      locations.map((location) => this.paneContainers[location].confirmClose(options)),
     ).then((results) => !results.includes(false));
   }
 

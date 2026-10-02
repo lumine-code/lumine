@@ -1470,13 +1470,47 @@ class Environment {
    * @returns {Promise} that resolves to whether the window changed.
    * @private
    */
-  async restoreProjectState(projectPaths) {
+  restoreProjectState(projectPaths) {
+    // Several commands can arrive while a save dialog or state read is pending.
+    // Each change must finish before the next one snapshots the outgoing project.
+    const requestedPaths = Array.isArray(projectPaths) ? projectPaths.slice() : projectPaths;
+    const changing = (this.projectStateChangePromise || Promise.resolve()).then(() =>
+      this.performProjectStateChange(requestedPaths),
+    );
+    this.projectStateChangePromise = changing.catch(() => {});
+    return changing;
+  }
+
+  resolveProjectStateFolders(projectPaths) {
+    if (!Array.isArray(projectPaths)) throw new TypeError("Project paths must be an array");
+    return [
+      ...new Set(
+        projectPaths.map((projectPath) => {
+          if (typeof projectPath !== "string" || projectPath.length === 0) {
+            throw new TypeError("Each project path must be a non-empty string");
+          }
+          const provided = this.project.getProvidedDirectoryForProjectPath(projectPath);
+          const normalized = provided
+            ? provided.getPath()
+            : this.project.defaultDirectoryProvider.normalizePath(projectPath);
+          // The ordinary directory resolver accepts a file or a missing child by
+          // returning its parent. Switching projects must never open that parent.
+          if (provided ? !provided.existsSync() : !fs.isDirectorySync(normalized)) {
+            const error = new Error(`Project directory ${projectPath} does not exist`);
+            error.missingProjectPaths = [projectPath];
+            throw error;
+          }
+          return this.project.getDirectoryForProjectPath(normalized).getPath();
+        }),
+      ),
+    ];
+  }
+
+  async performProjectStateChange(projectPaths) {
     // Resolve the same way ::openLocations does before hashing: the state key
     // is a hash of the path strings, so an unresolved path would miss its own
     // saved session.
-    const folders = projectPaths.map((projectPath) =>
-      this.project.getDirectoryForProjectPath(projectPath).getPath(),
-    );
+    const folders = this.resolveProjectStateFolders(projectPaths);
     if (folders.length === 0) return false;
 
     const currentPaths = this.project.getPaths();
@@ -1494,27 +1528,65 @@ class Environment {
     const closing = await this.workspace.confirmClose({
       windowCloseRequested: true,
       projectHasPaths: currentPaths.length > 0,
+      locations: PROJECT_STATE_LOCATIONS,
     });
     if (!closing) return false;
+
+    // Save/Save As in the prompt can change both text and project paths. Keep
+    // the resulting state rather than restoring the pre-prompt snapshot later.
+    this.resolveProjectStateFolders(folders);
+    await this.saveState({ isUnloading: true });
+    const outgoingState = this.serialize({ isUnloading: true });
+    const outgoingProjectFile = this.config.projectFile;
+    const outgoingProjectSettings = {
+      "*": this.config.projectSettings,
+      ...(outgoingProjectFile
+        ? this.config.scopedSettingsStore.propertiesForSource(outgoingProjectFile)
+        : {}),
+    };
 
     const loaded = await this.loadProjectState(folders);
     try {
       const locations = PROJECT_STATE_LOCATIONS;
 
-      await this.workspace.clear({ locations });
-      this.project.destroyUnretainedBuffers();
-      // Settings from a project file are resolved when a window launches, so
-      // they cannot be resolved again here. Clearing them is the honest
-      // direction: better none than the outgoing project's.
-      this.config.clearProjectSettings();
+      // State reads and native save dialogs yield to other filesystem work.
+      // Refuse a disappeared root while the outgoing editors still exist.
+      this.resolveProjectStateFolders(folders);
 
-      if (loaded.state) {
-        await this.restoreStateIntoThisEnvironment(loaded.state, { locations });
-      } else {
-        this.project.setPaths(folders, { mustExist: true, exact: true });
-        if (this.config.get("core.openEmptyEditorOnStart")) {
-          await this.workspace.open(null, { pending: true });
+      const restoreOptions = {
+        locations,
+        preservePackageState: true,
+        preserveRetainedBuffers: true,
+        throwProjectErrors: true,
+      };
+      try {
+        await this.workspace.clear({ locations });
+        this.project.destroyUnretainedBuffers();
+        // Project-file settings are resolved only at window launch.
+        this.config.clearProjectSettings();
+
+        if (loaded.state) {
+          await this.restoreStateIntoThisEnvironment(loaded.state, restoreOptions);
+          this.project.destroyUnretainedBuffers();
+        } else {
+          this.project.setPaths(folders, { mustExist: true, exact: true });
+          if (this.config.get("core.openEmptyEditorOnStart")) {
+            await this.workspace.open(null, { pending: true });
+          }
         }
+      } catch (error) {
+        // Deserialization can still fail after preflight, for example when a
+        // folder disappears during asynchronous buffer loading. Recover the
+        // outgoing center from the snapshot kept before teardown.
+        await this.workspace.clear({ locations });
+        this.project.destroyUnretainedBuffers();
+        await this.restoreStateIntoThisEnvironment(outgoingState, restoreOptions);
+        this.config.resetProjectSettings(outgoingProjectSettings, outgoingProjectFile);
+        throw error;
+      } finally {
+        // Buffer aliases and their saved marker/history state are needed only
+        // while the center's editors are being deserialized.
+        this.project.restoredBufferAliases.clear();
       }
     } finally {
       await this.releaseUnusedProjectStateReservation(loaded.reservationId, folders);
@@ -1597,24 +1669,27 @@ class Environment {
 
   // * `options` An optional `Object` passed on to {@link Workspace#deserialize},
   //   which reads `locations` from it.
-  async deserialize(state, options) {
+  async deserialize(state, options = {}) {
     if (!state) return Promise.resolve();
 
     await this.window.setFullScreen(Boolean(state.fullScreen));
 
     const missingProjectPaths = [];
 
-    this.packages.packageStates = state.packageStates || {};
-    if (this.packages.hasLoadedInitialPackages()) {
-      this.packages.initializePackages();
+    if (!options.preservePackageState) {
+      this.packages.packageStates = state.packageStates || {};
+      if (this.packages.hasLoadedInitialPackages()) {
+        this.packages.initializePackages();
+      }
     }
     this.uriHandlers.deserialize(state.uriHistory);
 
     let startTime = Date.now();
     if (state.project) {
       try {
-        await this.project.deserialize(state.project, this.deserializers);
+        await this.project.deserialize(state.project, this.deserializers, options);
       } catch (error) {
+        if (options.throwProjectErrors) throw error;
         // We handle the missingProjectPaths case in openLocations().
         if (!error.missingProjectPaths) {
           this.notifications.addError("Unable to deserialize project", {

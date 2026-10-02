@@ -11,7 +11,10 @@ module.exports = class ProjectDirectory {
   constructor(directoryPath) {
     if (directoryPath) {
       directoryPath = Path.normalize(directoryPath);
-      if (directoryPath.length > 1 && directoryPath.endsWith(Path.sep)) {
+      if (
+        directoryPath.length > Path.parse(directoryPath).root.length &&
+        directoryPath.endsWith(Path.sep)
+      ) {
         directoryPath = directoryPath.substring(0, directoryPath.length - 1);
       }
     }
@@ -98,7 +101,7 @@ module.exports = class ProjectDirectory {
     if (pathToCheck === directoryPath) {
       return "";
     } else if (this.isPathPrefixOf(directoryPath, pathToCheck)) {
-      return fullPath.substring(directoryPath.length + 1);
+      return fullPath.substring(directoryPath.length + (directoryPath.endsWith(Path.sep) ? 0 : 1));
     }
 
     // Check the real path.
@@ -107,7 +110,7 @@ module.exports = class ProjectDirectory {
     if (pathToCheck === directoryPath) {
       return "";
     } else if (this.isPathPrefixOf(directoryPath, pathToCheck)) {
-      return fullPath.substring(directoryPath.length + 1);
+      return fullPath.substring(directoryPath.length + (directoryPath.endsWith(Path.sep) ? 0 : 1));
     } else {
       return fullPath;
     }
@@ -133,6 +136,11 @@ module.exports = class ProjectDirectory {
   }
 
   isPathPrefixOf(prefix, fullPath) {
-    return fullPath.startsWith(prefix) && fullPath[prefix.length] === Path.sep;
+    return (
+      fullPath.startsWith(prefix) &&
+      (prefix.endsWith(Path.sep)
+        ? fullPath.length > prefix.length
+        : fullPath[prefix.length] === Path.sep)
+    );
   }
 };

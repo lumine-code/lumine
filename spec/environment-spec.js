@@ -1111,6 +1111,9 @@ describe("Environment", () => {
         applicationDelegate: lumine.applicationDelegate,
         enablePersistence: true,
       });
+      // This synthetic window has no user config file; keep its settings local
+      // rather than sending an undefined config path to the real main process.
+      built.config.saveCallback = () => {};
       const configDirPath = lumine.getConfigDirPath();
       built.stateStore.initialize({ configDirPath });
       built.projectStateIndex.initialize({ configDirPath });
@@ -1122,6 +1125,20 @@ describe("Environment", () => {
 
     const openPaths = (environment) =>
       environment.workspace.getTextEditors().map((editor) => editor.getPath());
+
+    const addDockEditor = async (filePath) => {
+      const buffer = await env.project.bufferForPath(filePath);
+      const dockEditor = env.workspace.buildTextEditor({ buffer });
+      const dockItem = {
+        element: dockEditor.getElement(),
+        getTitle: () => "Dock Editor",
+        getURI: () => "lumine://dock-editor",
+        getDefaultLocation: () => "bottom",
+        destroy: () => dockEditor.destroy(),
+      };
+      await env.workspace.open(dockItem, { activatePane: false });
+      return { buffer, dockEditor, dockItem };
+    };
 
     beforeEach(async () => {
       jasmine.useRealClock();
@@ -1213,7 +1230,10 @@ describe("Environment", () => {
         getTitle: () => "Dock Item",
         getURI: () => "lumine://dock-item",
         getDefaultLocation: () => "bottom",
+        shouldPromptToSave: jasmine.createSpy("dock save prompt").and.returnValue(true),
+        save: jasmine.createSpy("dock save"),
       };
+      spyOn(env.applicationDelegate, "confirm").and.returnValue(Promise.resolve(1));
       await env.workspace.open(dockItem, { activatePane: false });
       env.workspace.getBottomDock().show();
       await env.workspace.open(fileA);
@@ -1225,6 +1245,8 @@ describe("Environment", () => {
       );
       expect(env.workspace.getBottomDock().isVisible()).toBe(true);
       expect(env.workspace.getCenter().getPaneItems()).toEqual([]);
+      expect(dockItem.shouldPromptToSave).not.toHaveBeenCalled();
+      expect(dockItem.save).not.toHaveBeenCalled();
     });
 
     it("does nothing when the paths are already open", async () => {
@@ -1250,6 +1272,257 @@ describe("Environment", () => {
       expect(await env.project.setState([dirB])).toBe(false);
       expect(env.project.getPaths()).toEqual([dirA]);
       expect(openPaths(env)).toEqual([fileA]);
+    });
+
+    it("runs overlapping switches in order against the project each one leaves open", async () => {
+      const editor = await env.workspace.open(fileA);
+      editor.setText("unsaved outgoing text");
+      let confirm;
+      const confirmation = new Promise((resolve) => {
+        confirm = resolve;
+      });
+      spyOn(env.workspace, "confirmClose").and.returnValue(confirmation);
+
+      const toB = env.project.setState([dirB]);
+      await conditionPromise(() => env.workspace.confirmClose.calls.count() === 1);
+      const backToA = env.project.setState([dirA]);
+      await Promise.resolve();
+      expect(env.workspace.confirmClose.calls.count()).toBe(1);
+      confirm(true);
+
+      expect(await toB).toBe(true);
+      expect(await backToA).toBe(true);
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(env.workspace.getActiveTextEditor().getText()).toBe("unsaved outgoing text");
+    });
+
+    it("rejects files and missing folders before changing the outgoing session", async () => {
+      const editor = await env.workspace.open(fileA);
+      spyOn(env, "saveState").and.callThrough();
+      for (const requested of [fileB, path.join(dirB, "missing"), null]) {
+        await expectAsync(env.project.setState([requested])).toBeRejected();
+        expect(env.project.getPaths()).toEqual([dirA]);
+        expect(env.workspace.getActiveTextEditor()).toBe(editor);
+      }
+      expect(env.saveState).not.toHaveBeenCalled();
+    });
+
+    it("allows a later switch after an earlier one rejects", async () => {
+      await env.workspace.open(fileA);
+      const rejected = env.project.setState([fileB]);
+      const valid = env.project.setState([dirB]);
+      await expectAsync(rejected).toBeRejected();
+      expect(await valid).toBe(true);
+      expect(env.project.getPaths()).toEqual([dirB]);
+    });
+
+    it("leaves editors open when the target disappears during the save prompt", async () => {
+      const editor = await env.workspace.open(fileA);
+      spyOn(env.workspace, "confirmClose").and.callFake(async () => {
+        fs.unlinkSync(fileB);
+        fs.rmdirSync(dirB);
+        return true;
+      });
+
+      await expectAsync(env.project.setState([dirB])).toBeRejected();
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(env.workspace.getActiveTextEditor()).toBe(editor);
+      expect(editor.isDestroyed()).toBe(false);
+    });
+
+    it("leaves editors open when the target disappears during its state read", async () => {
+      const editor = await env.workspace.open(fileA);
+      spyOn(env, "loadProjectState").and.callFake(async () => {
+        fs.unlinkSync(fileB);
+        fs.rmdirSync(dirB);
+        return { state: null, reservationId: null };
+      });
+
+      await expectAsync(env.project.setState([dirB])).toBeRejected();
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(env.workspace.getActiveTextEditor()).toBe(editor);
+    });
+
+    it("persists the result of saving during confirmation", async () => {
+      const editor = await env.workspace.open(fileA);
+      editor.setText("saved during confirmation");
+      spyOn(env.workspace, "confirmClose").and.callFake(async () => {
+        await editor.save();
+        return true;
+      });
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      env.workspace.confirmClose.and.returnValue(Promise.resolve(true));
+      expect(await env.project.setState([dirA])).toBe(true);
+      expect(env.workspace.getActiveTextEditor().getText()).toBe("saved during confirmation");
+      expect(env.workspace.getActiveTextEditor().getFileState()).toBe("unmodified");
+    });
+
+    it("persists a new path chosen by Save As during confirmation", async () => {
+      const editor = await env.workspace.open(fileA);
+      const renamed = path.join(dirA, "renamed.txt");
+      spyOn(env.workspace, "confirmClose").and.callFake(async () => {
+        await editor.saveAs(renamed);
+        return true;
+      });
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      env.workspace.confirmClose.and.returnValue(Promise.resolve(true));
+      expect(await env.project.setState([dirA])).toBe(true);
+      expect(openPaths(env)).toEqual([renamed]);
+    });
+
+    it("keeps retained dock editor buffers registered and shares them with restored editors", async () => {
+      const { buffer, dockEditor, dockItem } = await addDockEditor(fileA);
+      await env.workspace.open(fileA);
+      expect(await env.project.setState([dirB])).toBe(true);
+      dockEditor.setText("edited from the retained dock");
+      expect(await env.project.setState([dirA])).toBe(true);
+
+      expect(env.project.getBuffers()).toEqual([buffer]);
+      expect(buffer.isDestroyed()).toBe(false);
+      expect(env.workspace.getActiveTextEditor().getBuffer()).toBe(buffer);
+      expect(env.workspace.getActiveTextEditor().getText()).toBe("edited from the retained dock");
+      expect(env.workspace.paneForItem(dockItem)).toBe(
+        env.workspace.getBottomDock().getActivePane(),
+      );
+      env.workspace.getActiveTextEditor().undo();
+      expect(dockEditor.getText()).toBe("aaa");
+    });
+
+    it("restores retained-buffer center selections and folds with independent layers", async () => {
+      fs.writeFileSync(fileA, "one\ntwo\nthree\nfour\nfive\n");
+      const { dockEditor } = await addDockEditor(fileA);
+      const editor = await env.workspace.open(fileA);
+      editor.setSelectedBufferRange(
+        [
+          [1, 1],
+          [1, 3],
+        ],
+        { reversed: true },
+      );
+      editor.foldBufferRange([
+        [2, 0],
+        [4, 0],
+      ]);
+      const folds = editor.displayLayer.foldRangesSnapshot().map((range) => range.serialize());
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(await env.project.setState([dirA])).toBe(true);
+      const restored = env.workspace.getActiveTextEditor();
+      expect(restored.getSelectedBufferRange().serialize()).toEqual([
+        [1, 1],
+        [1, 3],
+      ]);
+      expect(restored.getLastSelection().isReversed()).toBe(true);
+      expect(restored.displayLayer.foldRangesSnapshot().map((range) => range.serialize())).toEqual(
+        folds,
+      );
+      expect(restored.displayLayer).not.toBe(dockEditor.displayLayer);
+      expect(restored.selectionsMarkerLayer).not.toBe(dockEditor.selectionsMarkerLayer);
+      await env.workspace.paneForItem(restored).destroyItem(restored, true);
+      expect(dockEditor.displayLayer.isDestroyed()).toBe(false);
+      dockEditor.insertText("still editable");
+      expect(dockEditor.getText()).toContain("still editable");
+    });
+
+    it("adopts another window's saved center without reusing a live dock's layer identities", async () => {
+      fs.writeFileSync(fileB, "one\ntwo\nthree\nfour\nfive\n");
+      const { buffer, dockEditor } = await addDockEditor(fileB);
+      dockEditor.setCursorBufferPosition([0, 1]);
+      const source = buildEnvironment();
+      try {
+        source.project.setPaths([dirB]);
+        const editor = await source.workspace.open(fileB);
+        expect(editor.displayLayer.id).toBe(dockEditor.displayLayer.id);
+        editor.setSelectedBufferRange([
+          [1, 1],
+          [1, 3],
+        ]);
+        editor.foldBufferRange([
+          [2, 0],
+          [4, 0],
+        ]);
+        const state = source.serialize({ isUnloading: true });
+        const removePortableViews = (node) => {
+          if (!node || typeof node !== "object") return;
+          if (node.deserializer === "TextEditor") {
+            delete node.viewState;
+            delete node.foldedBufferRanges;
+          }
+          for (const child of Object.values(node)) removePortableViews(child);
+        };
+        removePortableViews(state.workspace);
+        const stateKey = getWindowProjectStateKey(source.windowStateId, [dirB]);
+        await source.stateStore.save(stateKey, state);
+        await source.projectStateIndex.save(getProjectStateKey([dirB]), stateKey);
+      } finally {
+        source.stateStore.close();
+        source.destroy();
+      }
+      spyOn(env.applicationDelegate, "reserveProjectStateAdoption").and.returnValue(
+        Promise.resolve({ allowed: true, reservationId: null }),
+      );
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      const restored = env.workspace.getActiveTextEditor();
+      expect(restored.getBuffer()).toBe(buffer);
+      expect(restored.getSelectedBufferRange().serialize()).toEqual([
+        [1, 1],
+        [1, 3],
+      ]);
+      expect(restored.isFoldedAtBufferRow(2)).toBe(true);
+      expect(restored.displayLayer).not.toBe(dockEditor.displayLayer);
+      expect(restored.selectionsMarkerLayer).not.toBe(dockEditor.selectionsMarkerLayer);
+      expect(dockEditor.getCursorBufferPosition().serialize()).toEqual([0, 1]);
+      await env.workspace.paneForItem(restored).destroyItem(restored, true);
+      expect(dockEditor.displayLayer.isDestroyed()).toBe(false);
+      expect(dockEditor.selectionsMarkerLayer.isDestroyed()).toBe(false);
+    });
+
+    it("recovers the outgoing session if incoming project deserialization fails", async () => {
+      await env.workspace.open(fileA);
+      expect(await env.project.setState([dirB])).toBe(true);
+      const editor = await env.workspace.open(fileB);
+      editor.setText("unsaved B");
+      const projectFile = path.join(dirB, "project.json");
+      env.config.resetProjectSettings(
+        {
+          "*": { editor: { tabLength: 7 } },
+          ".source.js": { editor: { tabLength: 5 } },
+        },
+        projectFile,
+      );
+      const deserialize = env.project.deserialize.bind(env.project);
+      let failed = false;
+      spyOn(env.project, "deserialize").and.callFake(async (...args) => {
+        await deserialize(...args);
+        if (!failed) {
+          failed = true;
+          throw new Error("Incoming project failed");
+        }
+      });
+
+      await expectAsync(env.project.setState([dirA])).toBeRejectedWithError(
+        "Incoming project failed",
+      );
+      expect(env.project.getPaths()).toEqual([dirB]);
+      expect(openPaths(env)).toEqual([fileB]);
+      expect(env.workspace.getActiveTextEditor().getText()).toBe("unsaved B");
+      expect(env.config.get("editor.tabLength")).toBe(7);
+      expect(env.config.get("editor.tabLength", { scope: ["source.js"] })).toBe(5);
+      expect(env.config.projectFile).toBe(projectFile);
+    });
+
+    it("does not replace window package state with a saved project's package state", async () => {
+      await env.workspace.open(fileA);
+      env.packages.packageStates = { "inactive-package": { value: "saved A" } };
+      expect(await env.project.setState([dirB])).toBe(true);
+      const windowPackageStates = { "inactive-package": { value: "current window" } };
+      env.packages.packageStates = windowPackageStates;
+      expect(await env.project.setState([dirA])).toBe(true);
+      expect(env.packages.packageStates).toBe(windowPackageStates);
+      expect(env.packages.getPackageState("inactive-package")).toEqual({ value: "current window" });
     });
   });
 
