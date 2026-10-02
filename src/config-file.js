@@ -29,6 +29,7 @@ module.exports = class ConfigFile {
     this.emitter = new Emitter();
     this.value = {};
     this.reloadCallbacks = [];
+    this.loadGeneration = 0;
 
     // Use a queue to prevent multiple concurrent write to the same file.
     const writeQueue = asyncQueue((data, callback) =>
@@ -111,8 +112,15 @@ module.exports = class ConfigFile {
   }
 
   reload() {
+    const generation = ++this.loadGeneration;
     return new Promise((resolve) => {
       CSON.readFile(this.path, (error, data) => {
+        // A delayed read must not overwrite a newer filesystem observation or
+        // report an error for contents that have already been read successfully.
+        if (generation !== this.loadGeneration) {
+          resolve();
+          return;
+        }
         if (error) {
           this.emitter.emit(
             "did-error",

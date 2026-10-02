@@ -24,11 +24,15 @@ await handle.closed;
 
 Changes are batches of `{action, path}` entries with `created`, `updated` or `deleted` actions. Paths are absolute and retain the subscriber's spelling. Events are coalesced hints to read current state, not a history of filesystem operations. Atomic replacement remains an update at the same filename. The service does not apply project ignore rules.
 
+Native content hints also cover writes that preserve file size and modification time. A simultaneous access-time or permissions change does not prove that contents stayed unchanged; ambiguous hints can therefore cause an extra reread. Reads alone do not produce a content update.
+
 ## Recovery
 
 `onDidInvalidate` delivers `{path, reason, generation}` after observation has recovered from interrupted delivery. Changes in that interval are not replayed. Reread the affected state before relying on later deltas. Runtime errors retain their code, path and backend. The application retries worker failures with backoff while retaining subscription ownership.
 
 For project consumers, use `project.onDidChangeFiles` and `project.onDidInvalidateFiles`. The latter names `rootPaths` instead of a single path. File discovery, repository state and document caches reconcile those roots. Language-server sessions affected by recovery restart once per recovery generation and receive their open documents again, including unsaved contents.
+
+Delivery acknowledgements retry after a transport failure with bounded backoff and one pending retry per session. Queue overflow triggers invalidation even when the overflowing batch leaves no changes to deliver. Session shutdown attempts owner-level release even when an individual unsubscribe fails.
 
 ## Document moves
 
@@ -45,3 +49,5 @@ Custom TextBuffer data sources retain their own identity and stream transformati
 The main process owns configuration subscriptions and renderer sessions; the worker alone loads the native addon. Reload or crash releases only that renderer session. Physical directory sources are shared by canonical path and recursion mode; shallow sources never take over recursive subscriptions or descendants they cannot observe.
 
 The native library uses ReadDirectoryChangesW on Windows, inotify on Linux and FSEvents on macOS. There is no renderer `fs.watch`, polling backend, Watchman selection or public snapshot API. Root symlinks are resolved and revalidated; recursive observation does not traverse nested symlinks or junctions. Subscribe explicitly through such a path to observe its target.
+
+Concurrent subscriptions share preliminary filesystem reads as well as physical sources. Those reads are retained only while pending. Each subscription still verifies its topology with fresh reads after its sources are armed, preserving detection of changes during startup.

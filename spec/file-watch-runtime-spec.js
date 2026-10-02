@@ -203,6 +203,25 @@ describe("File watch runtime", () => {
     expect(changes(1)).toEqual([{ action: "created", path: target }]);
   });
 
+  it("invalidates when a single native batch exactly overflows the subscription queue", async () => {
+    await subscribe(1, "directory", directory, true);
+    const source = [...engine.sources].find(
+      (candidate) => candidate.directory === directory && candidate.recursive,
+    );
+    source.callback({
+      type: "changes",
+      events: Array.from({ length: MAX_QUEUED_EVENTS + 1 }, (_, index) => ({
+        action: "created",
+        path: path.join(directory, `overflow-${index}`),
+      })),
+    });
+    await until(() => events.some((event) => event.id === 1 && event.type === "invalidate"));
+    expect(
+      events.find((event) => event.id === 1 && event.type === "invalidate").payload.reason,
+    ).toBe("subscription-queue-overflow");
+    expect(changes(1)).toEqual([]);
+  });
+
   it("retains membership changes while a renderer's previous event is awaiting acknowledgement", async () => {
     const delivered = [];
     await service.dispatch(
@@ -359,6 +378,24 @@ describe("File watch runtime", () => {
     await Promise.all([1, 2, 3].map((id) => worker.unsubscribe(id)));
     expect(worker.diagnostics().sources).toEqual([]);
     expect(engine.sources.size).toBe(0);
+  });
+
+  it("shares concurrent preliminary reads but verifies topology with fresh filesystem reads", async () => {
+    let reads = 0;
+    const firstComponent = ancestors(directory)[1] || directory;
+    worker.fs = {
+      ...fs.promises,
+      async lstat(targetPath, options) {
+        if (targetPath === firstComponent) reads++;
+        return fs.promises.lstat(targetPath, options);
+      },
+    };
+    const logical = { path: directory, kind: "directory", recursive: true };
+    await Promise.all(Array.from({ length: 20 }, () => worker.plan(logical, true)));
+    expect(reads).toBe(1);
+    expect(worker.planningReads.size).toBe(0);
+    await worker.plan(logical);
+    expect(reads).toBe(2);
   });
 
   it("shares file parent sources and releases every listener after repeated arm/close", async () => {
@@ -735,17 +772,45 @@ describe("File watch runtime", () => {
     expect(changes(1)).toEqual([]);
   });
 
-  it("suppresses a retained content hint when only access time changed after readiness", async () => {
+  it("ignores access-time-only metadata without a native content hint", async () => {
+    worker.platform = "darwin";
     const target = path.join(directory, "access-only");
     const baselineTime = new Date(1600000000000);
     fs.writeFileSync(target, "unchanged");
     fs.utimesSync(target, baselineTime, baselineTime);
     await subscribe(1, "file", target);
-    fs.utimesSync(target, new Date(), baselineTime);
-    engine.emit({ action: "updated", path: target, contentChanged: true });
+    const baseline = await fs.promises.stat(target, { bigint: true });
+    const stat = worker.stat.bind(worker);
+    worker.stat = async (filePath, filesystem) => {
+      if (filePath !== target) return stat(filePath, filesystem);
+      return Object.assign(Object.create(baseline), { atimeNs: baseline.atimeNs + 1n });
+    };
+    engine.emit({ action: "updated", path: target, contentChanged: false });
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(changes(1)).toEqual([]);
   });
+
+  for (const platform of ["win32", "linux", "darwin"]) {
+    it(`retains a same-size/mtime write with changed access time on ${platform}`, async () => {
+      worker.platform = platform;
+      const target = path.join(directory, "access-and-content");
+      fs.writeFileSync(target, "before");
+      await subscribe(1, "file", target);
+      const baseline = await fs.promises.stat(target, { bigint: true });
+      const stat = worker.stat.bind(worker);
+      worker.stat = async (filePath, filesystem) => {
+        if (filePath !== target) return stat(filePath, filesystem);
+        return Object.assign(Object.create(baseline), {
+          atimeNs: baseline.atimeNs + 1n,
+          // The worker must trust content hints even on coarse-timestamp filesystems.
+          ctimeNs: baseline.ctimeNs,
+        });
+      };
+      engine.emit({ action: "updated", path: target, contentChanged: true });
+      await until(() => changes(1).length);
+      expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+    });
+  }
 
   it("preserves content hints that arrive while the initial baseline stat is pending", async () => {
     const target = path.join(directory, "initial-race");

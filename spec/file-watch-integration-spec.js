@@ -87,6 +87,26 @@ describe("Application file watcher integration", () => {
     expect(fileEvents[0]).toEqual({ action: "updated", path: target });
   });
 
+  it("reports a same-size write with restored mtime and changed access time", async () => {
+    const target = path.join(directory, "same-stamp.txt");
+    const baselineTime = new Date(1600000000000);
+    fs.writeFileSync(target, "before");
+    fs.utimesSync(target, baselineTime, baselineTime);
+    const handle = client.watchFile(target);
+    const events = [];
+    handle.onDidChange((batch) => events.push(...batch));
+    await handle.ready;
+    // Allow filesystems with coarse change-time precision to distinguish
+    // the write from the baseline without changing its size or mtime.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    fs.writeFileSync(target, "after!");
+    fs.utimesSync(target, new Date(), baselineTime);
+    await until(() => events.length);
+    expect(events[0]).toEqual({ action: "updated", path: target });
+    expect(fs.statSync(target).mtimeMs).toBe(baselineTime.getTime());
+    expect(fs.readFileSync(target, "utf8")).toBe("after!");
+  });
+
   it("retains creation while a newly created file is rewritten before each batch", async () => {
     const handle = client.watchDirectory(directory, { recursive: true });
     const events = [];

@@ -3,6 +3,7 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const dedent = require("dedent");
 const ConfigFile = require("../src/config-file");
+const CSON = require("@lumine-code/season");
 
 describe("ConfigFile", () => {
   let filePath, configFile, subscription;
@@ -119,6 +120,91 @@ describe("ConfigFile", () => {
     it("creates a new ConfigFile for unrecognized paths", () => {
       const cf = ConfigFile.at(path1, lumine.fileWatchClient);
       expect(cf).not.toEqual(configFile);
+    });
+  });
+
+  describe("overlapping reloads", () => {
+    let reads;
+    let changes;
+    let errors;
+
+    beforeEach(() => {
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
+      reads = [];
+      changes = [];
+      errors = [];
+      spyOn(CSON, "readFile").and.callFake((_path, callback) => reads.push(callback));
+      configFile.onDidChange((value) => changes.push(value));
+      configFile.onDidError((message) => errors.push(message));
+    });
+
+    for (const newestFirst of [false, true]) {
+      it(`retains the newest read when the ${newestFirst ? "newer" : "older"} read finishes first`, async () => {
+        const older = configFile.reload();
+        const newer = configFile.reload();
+        const olderContents = { value: "obsolete" };
+        const newerContents = { value: "current" };
+
+        if (newestFirst) {
+          reads[1](null, newerContents);
+          await newer;
+          reads[0](null, olderContents);
+          await older;
+        } else {
+          reads[0](null, olderContents);
+          await older;
+          expect(changes).toEqual([]);
+          reads[1](null, newerContents);
+          await newer;
+        }
+
+        expect(configFile.get()).toEqual(newerContents);
+        expect(changes).toEqual([newerContents]);
+        expect(errors).toEqual([]);
+      });
+    }
+
+    it("ignores an obsolete read error after a newer read succeeds", async () => {
+      const older = configFile.reload();
+      const newer = configFile.reload();
+      const current = { value: "current" };
+      reads[1](null, current);
+      await newer;
+      reads[0](new Error("Contents were replaced"));
+      await older;
+
+      expect(configFile.get()).toEqual(current);
+      expect(changes).toEqual([current]);
+      expect(errors).toEqual([]);
+    });
+
+    it("preserves the previous value and reports the newest read error", async () => {
+      configFile.value = { value: "previous" };
+      const older = configFile.reload();
+      const newer = configFile.reload();
+      reads[1](new Error("Current contents are invalid"));
+      await newer;
+      reads[0](null, { value: "obsolete" });
+      await older;
+
+      expect(configFile.get()).toEqual({ value: "previous" });
+      expect(changes).toEqual([]);
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toContain("Current contents are invalid");
+    });
+
+    it("completes update callbacks only after the newest read succeeds", async () => {
+      spyOn(configFile, "requestSave");
+      const updated = jasmine.createSpy("update completed");
+      const update = configFile.update({ value: "saved" }).then(updated);
+      const older = configFile.reload();
+      const newer = configFile.reload();
+      reads[0](null, { value: "obsolete" });
+      await older;
+      expect(updated).not.toHaveBeenCalled();
+      reads[1](null, { value: "saved" });
+      await Promise.all([newer, update]);
+      expect(updated).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -42,7 +42,7 @@
     "@lumine-code/superstring": "github:lumine-code/superstring#3d785ebac27a3c93cf82894260d60b8540dcdc4e",
     "@lumine-code/temp": "github:lumine-code/node-temp#d952dc119d4dda6918a37c414302e6eb1dc9789d",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#1577303f839c11bd8d83d7fbe3cef8dd9219bfbb",
-    "@lumine-code/watcher": "github:lumine-code/watcher#adabbe6c905eb4ea478969d6577719e5002da594",
+    "@lumine-code/watcher": "github:lumine-code/watcher#fc9107a80b3d9af7f0328702f026f0ba094ee722",
     "@vscode/ripgrep": "1.18.0",
     "about": "github:lumine-code/about#5f2018efbe238f0af5886c8d5339f545477ac0a4",
     "async": "3.2.6",
@@ -179,6 +179,6 @@
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f": true,
     "github:lumine-code/node-ctags#bd126f8d9895b8c8365c35becf8bceb1b1bd8c26": true,
-    "github:lumine-code/watcher#adabbe6c905eb4ea478969d6577719e5002da594": true
+    "github:lumine-code/watcher#fc9107a80b3d9af7f0328702f026f0ba094ee722": true
   }
 }

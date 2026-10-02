@@ -2,6 +2,8 @@ const { absolutePath } = require("./file-watch-paths");
 const { deferred, abortError, deserializeError } = require("./file-watch-protocol");
 const { createFileWatchTrace, summarizeFileWatchPayload } = require("./file-watch-trace");
 
+const ACK_RETRY_DELAYS = [250, 1000, 5000, 30000];
+
 /**
  * @public
  * @status public
@@ -171,6 +173,7 @@ class FileWatchClient {
     this.request = request;
     this.reportError = reportError;
     this.handles = new Map();
+    this.acknowledgements = new Map();
     this.nextId = 0;
     this.disposed = false;
     this.subscription = onEvent((event) => {
@@ -187,19 +190,54 @@ class FileWatchClient {
         this.handles.get(event.id)?.deliver(event.type, event.payload);
       } finally {
         if (event.sequence !== undefined) {
-          Promise.resolve()
-            .then(() => {
-              this.trace?.("ack-send", {
-                id: event.id,
-                path: this.handles.get(event.id)?.path,
-                sequence: event.sequence,
-              });
-              return this.request({ type: "ack", sequence: event.sequence });
-            })
-            .catch(() => {});
+          this.acknowledge(event);
         }
       }
     });
+  }
+
+  acknowledge(event) {
+    const { id, sequence } = event;
+    // A newer delivery proves the service accepted every older acknowledgement,
+    // even if its IPC reply was lost. Keep at most the latest delivery's retry.
+    for (const [previous, pending] of this.acknowledgements) {
+      if (previous > sequence) return;
+      if (previous < sequence) {
+        clearTimeout(pending.timer);
+        this.acknowledgements.delete(previous);
+      }
+    }
+    if (this.disposed || this.acknowledgements.has(sequence)) return;
+    const pending = { attempt: 0, timer: null };
+    this.acknowledgements.set(sequence, pending);
+    const send = () => {
+      Promise.resolve()
+        .then(() => {
+          if (this.disposed || this.acknowledgements.get(sequence) !== pending) return;
+          this.trace?.("ack-send", {
+            id,
+            path: this.handles.get(id)?.path,
+            sequence,
+            attempt: pending.attempt,
+          });
+          return this.request({ type: "ack", sequence });
+        })
+        .then(
+          () => {
+            if (this.acknowledgements.get(sequence) === pending) {
+              this.acknowledgements.delete(sequence);
+            }
+          },
+          () => {
+            if (this.disposed || this.acknowledgements.get(sequence) !== pending) return;
+            const delay =
+              ACK_RETRY_DELAYS[Math.min(pending.attempt++, ACK_RETRY_DELAYS.length - 1)];
+            pending.timer = setTimeout(send, delay);
+            pending.timer.unref?.();
+          },
+        );
+    };
+    send();
   }
 
   watchFile(filePath) {
@@ -275,8 +313,12 @@ class FileWatchClient {
   close() {
     if (this.closing) return this.closing;
     this.disposed = true;
+    for (const pending of this.acknowledgements.values()) clearTimeout(pending.timer);
+    this.acknowledgements.clear();
     this.closing = this.disposeAll()
-      .then(() => this.request({ type: "close" }))
+      // A failed unsubscribe reply must not skip the owner-level release.
+      // Preserve the rejection while still asking the service to clean up.
+      .finally(() => this.request({ type: "close" }))
       .finally(() => {
         this.subscription.dispose();
       });

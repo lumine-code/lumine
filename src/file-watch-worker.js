@@ -40,20 +40,41 @@ class FileWatchWorker {
     this.subscriptions = new Map();
     this.nextIncident = 0;
     this.pendingIncidents = new Map();
+    this.planningReads = new Map();
     this.closed = false;
     this.trace = createFileWatchTrace("worker");
   }
 
-  async stat(targetPath) {
+  planningFilesystem() {
+    const filesystem = {};
+    for (const method of ["stat", "lstat", "realpath", "readlink"]) {
+      filesystem[method] = (targetPath, ...options) => {
+        const key = `${method}\0${targetPath}`;
+        let pending = this.planningReads.get(key);
+        if (!pending) {
+          pending = Promise.resolve().then(() => this.fs[method](targetPath, ...options));
+          this.planningReads.set(key, pending);
+          const forget = () => {
+            if (this.planningReads.get(key) === pending) this.planningReads.delete(key);
+          };
+          pending.then(forget, forget);
+        }
+        return pending;
+      };
+    }
+    return filesystem;
+  }
+
+  async stat(targetPath, filesystem = this.fs) {
     try {
-      return await this.fs.stat(targetPath, { bigint: true });
+      return await filesystem.stat(targetPath, { bigint: true });
     } catch (error) {
       if (MISSING_CODES.has(error.code)) return null;
       throw error;
     }
   }
 
-  async resolveTarget(targetPath) {
+  async resolveTarget(targetPath, filesystem = this.fs) {
     const links = [];
     let current = path.parse(targetPath).root;
     let components = targetPath.slice(current.length).split(path.sep).filter(Boolean);
@@ -68,13 +89,13 @@ class FileWatchWorker {
       const entry = path.join(current, component);
       let stat;
       try {
-        stat = await this.fs.lstat(entry, { bigint: true });
+        stat = await filesystem.lstat(entry, { bigint: true });
       } catch (error) {
         if (!MISSING_CODES.has(error.code)) throw error;
         // realpath on the complete target cannot resolve a dangling link.
         // Keep the missing suffix after the last existing, resolved component.
         return {
-          path: path.join(await this.fs.realpath(current), component, ...components),
+          path: path.join(await filesystem.realpath(current), component, ...components),
           stat: null,
           links,
         };
@@ -86,8 +107,8 @@ class FileWatchWorker {
             path: targetPath,
           });
         }
-        const parent = await this.fs.realpath(current);
-        const target = await this.fs.readlink(entry);
+        const parent = await filesystem.realpath(current);
+        const target = await filesystem.readlink(entry);
         links.push({
           path: path.join(parent, component),
           parent,
@@ -107,21 +128,26 @@ class FileWatchWorker {
       } else {
         current = entry;
         if (components.length && !stat.isDirectory()) {
-          const blockedPath = await this.fs.realpath(current);
+          const blockedPath = await filesystem.realpath(current);
           return { path: path.join(blockedPath, ...components), stat: null, links, blockedPath };
         }
         if (!components.length) {
-          return { path: await this.fs.realpath(current), stat, links };
+          return { path: await filesystem.realpath(current), stat, links };
         }
       }
     }
-    return { path: await this.fs.realpath(current), stat: await this.stat(current), links };
+    return {
+      path: await filesystem.realpath(current),
+      stat: await this.stat(current, filesystem),
+      links,
+    };
   }
 
-  async nearestDirectory(targetPath) {
+  async nearestDirectory(targetPath, filesystem = this.fs) {
     let current = targetPath;
     while (true) {
-      if ((await this.stat(current))?.isDirectory()) return this.fs.realpath(current);
+      if ((await this.stat(current, filesystem))?.isDirectory())
+        return filesystem.realpath(current);
       const parent = path.dirname(current);
       if (parent === current) {
         throw Object.assign(new Error(`No existing directory for ${targetPath}`), {
@@ -133,8 +159,9 @@ class FileWatchWorker {
     }
   }
 
-  async plan(logical) {
-    const resolution = await this.resolveTarget(logical.path);
+  async plan(logical, coalesce = false) {
+    const filesystem = coalesce ? this.planningFilesystem() : this.fs;
+    const resolution = await this.resolveTarget(logical.path, filesystem);
     const targetStat = resolution.stat;
     if (targetStat && targetStat.isDirectory() !== (logical.kind === "directory")) {
       throw Object.assign(new Error(`Expected a ${logical.kind}: ${logical.path}`), {
@@ -146,9 +173,9 @@ class FileWatchWorker {
     const guardTarget = resolution.blockedPath || canonicalTarget;
     const descriptors = new Map();
     const add = async (directoryPath, recursive, guardPath, main = false, guard = false) => {
-      const stat = await this.stat(directoryPath);
+      const stat = await this.stat(directoryPath, filesystem);
       if (!stat?.isDirectory()) return false;
-      const canonical = await this.fs.realpath(directoryPath);
+      const canonical = await filesystem.realpath(directoryPath);
       const key = `${canonical}\0${recursive ? 1 : 0}\0${guard ? 1 : 0}`;
       let descriptor = descriptors.get(key);
       if (!descriptor) {
@@ -182,7 +209,7 @@ class FileWatchWorker {
       // vnode guards, whose events describe directory membership, not content.
       for (const link of resolution.links) await add(link.parent, false, link.path, false, true);
       if (!targetStat) {
-        const anchor = await this.nearestDirectory(path.dirname(guardTarget));
+        const anchor = await this.nearestDirectory(path.dirname(guardTarget), filesystem);
         const relative = relativePath(anchor, guardTarget);
         const child = path.join(anchor, relative.split(path.sep)[0]);
         await add(anchor, false, child, false, true);
@@ -360,7 +387,8 @@ class FileWatchWorker {
           if (eventPath === logical.path) logical.rebind = true;
         }
       }
-      if (logical.rebind || logical.checkFile || logical.events.size) this.schedule(logical);
+      if (logical.rebind || logical.checkFile || logical.events.size || logical.invalidation)
+        this.schedule(logical);
     }
   }
 
@@ -422,7 +450,10 @@ class FileWatchWorker {
         })
         .finally(() => {
           logical.processing = null;
-          if (!logical.cancelled && (logical.rebind || logical.checkFile || logical.events.size)) {
+          if (
+            !logical.cancelled &&
+            (logical.rebind || logical.checkFile || logical.events.size || logical.invalidation)
+          ) {
             const delay = logical.retry ? this.retryDelay : this.settleDelay;
             logical.retry = false;
             this.schedule(logical, delay);
@@ -437,7 +468,10 @@ class FileWatchWorker {
       let next;
       const acquired = new Map();
       try {
-        next = await this.plan(logical);
+        // Share only concurrent preliminary reads. The verification below
+        // must start fresh after every source is armed, so an earlier read
+        // can never hide a topology change in the observation gap.
+        next = await this.plan(logical, true);
         this.trace?.("rebind-plan", {
           id: logical.id,
           path: logical.path,
@@ -533,15 +567,12 @@ class FileWatchWorker {
       stat = await this.stat(logical.path);
     }
     const current = fingerprint(stat);
-    const accessTime = stat ? (stat.atimeNs ?? stat.atimeMs) : null;
     this.trace?.("file-stat", {
       id: logical.id,
       path: logical.path,
       initial,
       before: logical.fingerprint,
       after: current,
-      accessBefore: logical.accessTime,
-      accessAfter: accessTime,
       contentChanged,
       contentVersionBefore: contentVersion,
       contentVersionAfter: logical.contentVersion,
@@ -553,20 +584,15 @@ class FileWatchWorker {
       // their write may not be represented by its returned metadata.
       logical.contentChanged = false;
     }
-    // Some native streams retain an earlier content flag on a later access
-    // notification. An access-only metadata change is not a content update;
-    // an unchanged-stat content hint still covers same-size/mtime rewrites.
-    if (
-      !initial &&
-      (current !== logical.fingerprint ||
-        (current !== null && contentChanged && accessTime === logical.accessTime))
-    ) {
+    // Native backends distinguish reads from content activity. Trust their
+    // content hints even when a write preserves size/mtime or also changes
+    // atime; a second metadata heuristic here can discard genuine writes.
+    if (!initial && (current !== logical.fingerprint || (current !== null && contentChanged))) {
       const action =
         current === null ? "deleted" : logical.fingerprint === null ? "created" : "updated";
       mergeChange(logical.events, { action, path: logical.path });
     }
     logical.fingerprint = current;
-    logical.accessTime = accessTime;
   }
 
   async update(logical) {
