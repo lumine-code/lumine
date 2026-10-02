@@ -356,7 +356,7 @@ module.exports = class CommandRegistry {
    * @param target - The DOM node at which to start bubbling the command event.
    * @param {String} commandName - indicating the name of the command to dispatch.
    * @param detail - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
-   * @returns {Promise<Array>|null} Resolves to the listener results after all matched handlers finish, or `null` when no handler matches. Handler errors reject the promise.
+   * @returns {Promise<Array>|null} Resolves to the listener results after all matched handlers finish, or `null` when no handler matches. Rejected handler promises reject the returned promise; synchronous handler errors are thrown.
    */
   dispatch(target, commandName, detail) {
     const event = new CustomEvent(commandName, { bubbles: true, detail });
