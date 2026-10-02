@@ -23,6 +23,7 @@ const REPOSITORY_METADATA_NAMES = new Set([
   "commondir",
   "config",
   "config.worktree",
+  "reftable",
   "gitdir",
 ]);
 
@@ -206,12 +207,20 @@ function refreshHintForChange(gitRelativeDirectory, name) {
 
   const [section] = gitRelativeDirectory.split("/");
   if (section === "objects") return "none";
+  if (section === "reftable") {
+    return gitRelativeDirectory === "reftable" && name === "tables.list" ? "both" : "none";
+  }
   if (section === "refs" || section === "logs") return "both";
   if (
     section === "" &&
-    (name === "HEAD" || name === "packed-refs" || name === "refs" || name === "logs")
+    (name === "HEAD" ||
+      name === "packed-refs" ||
+      name === "refs" ||
+      name === "logs" ||
+      name === "reftable")
   )
     return "both";
+  if (section === "" && (name === "config" || name === "config.worktree")) return "both";
   // A linked worktree appearing or disappearing changes this repository's
   // worktree list and nothing else about it. Its own Git directory routes to
   // its own entry once it is registered; this covers the worktrees nobody has
@@ -3061,7 +3070,7 @@ module.exports = class RepositoryRegistry {
   // Refresh what window focus can actually have made stale.
   //
   // The project watcher reports changes whether or not the window is focused,
-  // so a repository it fully covers — working directory and Git directory both
+  // so a repository it fully covers — working directory and all Git metadata
   // inside a project root — learned about a terminal commit or checkout the
   // moment it happened, and regaining focus tells it nothing new. Focus
   // matters for the repositories the watcher cannot see (one followed through
@@ -3084,17 +3093,52 @@ module.exports = class RepositoryRegistry {
   }
 
   // Whether the project watcher sees everything that can change this
-  // repository's snapshots: its working directory and its Git directory both
-  // inside a project root. Checked separately because they can part ways — a
-  // linked worktree's Git directory lives under its main repository's, which
-  // may be outside every root even when the worktree itself is inside one.
+  // repository's snapshots: its working directory, private Git directory and
+  // shared metadata all inside project roots. A worktree can keep private
+  // metadata within the roots while its common refs/config remain outside.
   watcherCovers(entry, rootAliases) {
     const covered = (aliases) =>
       aliases.length > 0 &&
       aliases.some((alias) =>
         rootAliases.some((rootAlias) => pathContainsNormalized(rootAlias, alias)),
       );
-    return covered(entry.routingDirectories) && covered(entry.gitDirectoryAliases);
+    return covered(entry.routingDirectories) && this.metadataDomainAliases(entry).every(covered);
+  }
+
+  metadataDomainAliases(entry) {
+    const privateAliases = entry.gitDirectoryAliases.filter(
+      (directory) => this.gitDirectoryOwners.get(directory) === entry,
+    );
+    const domains = [privateAliases];
+    if (privateAliases.length === 0) return domains;
+    const commonDirectory = entry.repository.getCommonDirectory?.();
+    if (!commonDirectory) return domains;
+    const commonAliases = pathAliases(commonDirectory);
+    if (commonAliases.some((alias) => privateAliases.includes(alias))) return domains;
+    // Shared metadata is a refresh domain, never a private-directory owner.
+    // A registered main repository can supply its already-discovered aliases.
+    const commonOwner = this.gitDirectoryOwners.get(commonAliases[0]);
+    if (commonOwner && !commonOwner.missing && !commonOwner.repository.isDestroyed?.()) {
+      commonAliases.push(
+        ...commonOwner.gitDirectoryAliases.filter(
+          (alias) => this.gitDirectoryOwners.get(alias) === commonOwner,
+        ),
+      );
+    }
+    // Project streams can use a main repository's discovered spelling for a
+    // worktree's nested private directory. This translation is freshness-only.
+    for (const privateAlias of [...privateAliases]) {
+      const relative = relativeToAny(pathAliases(commonDirectory), privateAlias);
+      if (relative == null) continue;
+      for (const commonAlias of commonAliases) {
+        privateAliases.push(
+          relative ? path.join(commonAlias, ...relative.split("/")) : commonAlias,
+        );
+      }
+    }
+    domains[0] = Array.from(new Set(privateAliases));
+    domains.push(Array.from(new Set(commonAliases)));
+    return domains;
   }
 
   // Keep the snapshots current with what actually happens on disk.
@@ -3224,7 +3268,9 @@ module.exports = class RepositoryRegistry {
   // and only its worktree list carries that, while a submodule's is
   // `modules/<name>/HEAD`, which does move the gitlink its status reports.
   changeContextsFor(changedPath, directoryPath) {
-    const gitMatches = this.matchGitDirectories(directoryPath);
+    const gitMatches = this.collectGitDirectoryMatches(normalizePath(directoryPath), {
+      includeCommon: true,
+    });
     if (gitMatches.length > 0) {
       return gitMatches.map(({ entry, relativePath }) => ({
         repository: entry.repository,
@@ -3248,14 +3294,24 @@ module.exports = class RepositoryRegistry {
     return this.collectGitDirectoryMatches(normalizedDirectory);
   }
 
-  collectGitDirectoryMatches(normalizedDirectory) {
+  collectGitDirectoryMatches(normalizedDirectory, { includeCommon = false } = {}) {
     const matches = [];
     for (const entry of this.entriesById.values()) {
       if (entry.missing || entry.repository.isDestroyed?.()) continue;
-      const ownedAliases = entry.gitDirectoryAliases.filter(
-        (directory) => this.gitDirectoryOwners.get(directory) === entry,
-      );
-      const relativePath = relativeToAny(ownedAliases, normalizedDirectory);
+      const domains = includeCommon
+        ? this.metadataDomainAliases(entry)
+        : [
+            entry.gitDirectoryAliases.filter(
+              (directory) => this.gitDirectoryOwners.get(directory) === entry,
+            ),
+          ];
+      let relativePath = null;
+      for (const aliases of domains) {
+        const candidate = relativeToAny(aliases, normalizedDirectory);
+        if (candidate != null && (relativePath == null || candidate.length < relativePath.length)) {
+          relativePath = candidate;
+        }
+      }
       if (relativePath != null) matches.push({ entry, relativePath });
     }
     // A shorter relative path means a closer Git directory, so this puts the

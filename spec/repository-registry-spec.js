@@ -2846,6 +2846,49 @@ describe("RepositoryRegistry", () => {
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
     });
 
+    for (const name of ["config", "config.worktree"]) {
+      it(`refreshes refs and status when ${name} changes`, async () => {
+        project.emitFileChanges([
+          { action: "updated", path: path.join(repository.getPath(), name) },
+        ]);
+        await registry.fileChangeValidationTail;
+        expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+      });
+    }
+
+    it("refreshes both snapshots when a reftable stack is published", async () => {
+      project.emitFileChanges([
+        { action: "updated", path: path.join(repository.getPath(), "reftable", "tables.list") },
+      ]);
+      await registry.fileChangeValidationTail;
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+    });
+
+    for (const action of ["created", "updated", "deleted"]) {
+      it(`refreshes both snapshots on a coarse reftable directory ${action} event`, async () => {
+        const plan = registry.repositoryRefreshPlanForFileChanges([
+          { action, path: path.join(repository.getPath(), "reftable") },
+        ]);
+        expect(plan.pending.get(repository)).toBe("both");
+      });
+    }
+
+    it("ignores unpublished reftable files, temporary lists and locks", async () => {
+      project.emitFileChanges([
+        { action: "created", path: path.join(repository.getPath(), "reftable", "0001.ref") },
+        { action: "updated", path: path.join(repository.getPath(), "reftable", "tables.list.tmp") },
+        {
+          action: "deleted",
+          path: path.join(repository.getPath(), "reftable", "tables.list.lock"),
+        },
+      ]);
+      await registry.fileChangeValidationTail;
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
     // A fetch writes thousands of loose objects and every Git write pairs with
     // a lock file. Neither changes what a status or a ref reads.
     it("ignores loose objects and lock files", async () => {
@@ -2907,6 +2950,39 @@ describe("RepositoryRegistry", () => {
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
       });
 
+      it("keeps private config.worktree changes distinct from shared metadata", async () => {
+        worktree.getCommonDirectory = () => repository.getPath();
+        project.emitFileChanges([
+          { action: "updated", path: path.join(worktreeGitDirectory, "config.worktree") },
+        ]);
+        await registry.fileChangeValidationTail;
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
+        expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+      });
+
+      it("routes private and common metadata through a discovered main-root alias without claiming shared ownership", () => {
+        const commonAlias = path.join(workingDirectory, "common-alias");
+        const mainEntry = registry.entryByRepository.get(repository);
+        registry.claimGitDirectory(mainEntry, normalize(commonAlias));
+        mainEntry.gitDirectoryAliases.push(normalize(commonAlias));
+        worktree.getCommonDirectory = () => repository.getPath();
+        const privateAlias = path.join(commonAlias, "worktrees", "feature");
+        const plan = registry.repositoryRefreshPlanForFileChanges([
+          { action: "updated", path: path.join(privateAlias, "HEAD") },
+        ]);
+        expect(plan.pending.get(worktree)).toBe("both");
+        expect(plan.pending.get(repository)).toBe("refs");
+        expect(
+          registry.watcherCovers(registry.entryByRepository.get(worktree), [
+            normalize(workingDirectory),
+            normalize(worktreePath),
+          ]),
+        ).toBe(true);
+        expect(registry.gitDirectoryOwners.get(normalize(privateAlias))).toBeUndefined();
+      });
+
       it("refreshes the main repository's refs when a worktree is created", async () => {
         project.emitFileChanges([
           {
@@ -2933,6 +3009,30 @@ describe("RepositoryRegistry", () => {
         expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
       });
+
+      for (const relative of [
+        path.join("refs", "heads", "feature"),
+        "config",
+        path.join("reftable", "tables.list"),
+      ]) {
+        it(`refreshes both repositories for a common metadata change at ${relative}`, async () => {
+          worktree.getCommonDirectory = () => repository.getPath();
+          project.emitFileChanges([
+            { action: "updated", path: path.join(repository.getPath(), relative) },
+          ]);
+          await registry.fileChangeValidationTail;
+          for (const each of [repository, worktree]) {
+            expect(each.scheduledStatusSnapshotRefreshCount).toBe(1);
+            expect(each.scheduledRefsSnapshotRefreshCount).toBe(1);
+          }
+          expect(registry.gitDirectoryOwners.get(normalize(repository.getPath()))?.repository).toBe(
+            repository,
+          );
+          expect(registry.gitDirectoryOwners.get(normalize(worktreeGitDirectory))?.repository).toBe(
+            worktree,
+          );
+        });
+      }
 
       // The lock file every Git write pairs with is still noise, wherever it is.
       it("ignores lock files inside a worktree Git directory", async () => {
@@ -3075,6 +3175,22 @@ describe("RepositoryRegistry", () => {
 
       registry.handleWindowFocus();
 
+      expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
+    });
+
+    it("uses focus fallback if common metadata lies outside covered private and working roots", () => {
+      const rootPath = temp.mkdirSync("focus-common-outside");
+      const active = new FakeRepository(path.join(rootPath, "active"));
+      const worktree = new FakeRepository(path.join(rootPath, "linked"));
+      worktree.getCommonDirectory = () => path.join(temp.dir, "outside-common-metadata");
+      repositories.push(active, worktree);
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      registry.register(active);
+      registry.register(worktree);
+      registry.setActiveRepository(active);
+      resetCounts(active, worktree);
+      registry.handleWindowFocus();
       expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
       expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
     });
