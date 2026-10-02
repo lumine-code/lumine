@@ -27,6 +27,9 @@ async function installElectron({
 
     const temporaryDownloadFailure =
       /HTTPError: Response code (?:408|429|5\d\d)\b/.test(stderr) ||
+      // The upstream installer prints only the stack, hiding fetch's cause.
+      // A rejected request still gets the same bounded download retry.
+      /TypeError: fetch failed\b/.test(stderr) ||
       /\b(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)\b/.test(
         stderr,
       );

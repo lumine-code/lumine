@@ -31,6 +31,7 @@ for (const failure of [
   "HTTPError: Response code 500 (Internal Server Error) for https://github.com/electron/electron/releases/download/v44.5.1/electron-v44.5.1-linux-x64.zip\n",
   "HTTPError: Response code 429 (Too Many Requests)\n",
   "HTTPError: Response code 408 (Request Timeout)\n",
+  "TypeError: fetch failed\n    at node:internal/deps/undici/undici:13510:13\n    at async FetchDownloader.download\n",
   "TypeError: fetch failed\n  cause: Error: read ECONNRESET\n",
   "TypeError: fetch failed\n  code: 'EAI_AGAIN'\n",
 ]) {
