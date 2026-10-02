@@ -82,6 +82,13 @@ function lastOccupiedRowForRange(range) {
   return range.end.row;
 }
 
+function scanFirstMatchInRange(buffer, regex, range, options, callback) {
+  const matchRange = buffer.findInRangeSync(regex, range);
+  if (matchRange && !(range.end.isEqual(matchRange.start) && range.end.column > 0)) {
+    callback(new SearchCallbackArgument(buffer, Range.fromObject(matchRange), regex, options));
+  }
+}
+
 /**
  * @public
  * @status extended
@@ -2015,6 +2022,11 @@ class TextBuffer {
     }
 
     range = this.clipRange(range);
+    if (!regex.global && !reverse) {
+      // A forward scan without /g visits only its first match. Avoid finding
+      // and allocating every other match in the range before that callback.
+      return scanFirstMatchInRange(this, regex, range, options, callback);
+    }
     const matchRanges = this.findAllInRangeSync(regex, range);
     let startIndex = 0;
     let endIndex = matchRanges.length;
