@@ -10,6 +10,7 @@ module.exports = class GitRepositoryStatusProvider {
       "status",
       "--porcelain=v2",
       "--branch",
+      "--ahead-behind",
       "-z",
       "--untracked-files=all",
       "--ignore-submodules=none",

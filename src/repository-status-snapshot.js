@@ -144,10 +144,15 @@ function parseUpstream(headers) {
   const name = headers.get("branch.upstream");
   if (!name) return null;
   const aheadBehind = /^\+(\d+) -(\d+)$/.exec(headers.get("branch.ab") || "");
+  const oid = headers.get("branch.oid");
+  // Git omits branch.ab when the upstream commit is missing. An unborn
+  // HEAD also omits it even with an existing upstream, so it proves nothing.
+  const gone = oid && oid !== "(initial)" && !headers.has("branch.ab");
   return Object.freeze({
     name,
     ahead: aheadBehind ? Number(aheadBehind[1]) : 0,
     behind: aheadBehind ? Number(aheadBehind[2]) : 0,
+    ...(gone ? { gone: true } : {}),
   });
 }
 

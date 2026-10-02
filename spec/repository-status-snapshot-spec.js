@@ -117,6 +117,7 @@ describe("Repository status snapshots", () => {
       "status",
       "--porcelain=v2",
       "--branch",
+      "--ahead-behind",
       "-z",
       "--untracked-files=all",
       "--ignore-submodules=none",
@@ -126,6 +127,7 @@ describe("Repository status snapshots", () => {
       "status",
       "--porcelain=v2",
       "--branch",
+      "--ahead-behind",
       "-z",
       "--untracked-files=all",
       "--ignore-submodules=none",
@@ -133,5 +135,25 @@ describe("Repository status snapshots", () => {
       "--ignored=matching",
     ]);
     expect(runner.run.calls.argsFor(1)[2].signal).toBe("signal");
+  });
+
+  it("flags a gone upstream only when a committed HEAD has no ahead/behind header", () => {
+    const head = "# branch.oid abc123\0# branch.head main\0# branch.upstream origin/main\0";
+    expect(parseStatusSnapshot(head).upstream).toEqual({
+      name: "origin/main",
+      ahead: 0,
+      behind: 0,
+      gone: true,
+    });
+    expect(parseStatusSnapshot(`${head}# branch.ab +0 -0\0`).upstream).toEqual({
+      name: "origin/main",
+      ahead: 0,
+      behind: 0,
+    });
+    const unborn = "# branch.oid (initial)\0# branch.head main\0# branch.upstream origin/main\0";
+    expect(parseStatusSnapshot(unborn).upstream.gone).toBeUndefined();
+    expect(
+      parseStatusSnapshot("# branch.head main\0# branch.upstream origin/main\0").upstream.gone,
+    ).toBeUndefined();
   });
 });
