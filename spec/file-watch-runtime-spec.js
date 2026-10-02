@@ -431,6 +431,66 @@ describe("File watch runtime", () => {
     expect(engine.sources.size).toBe(0);
   });
 
+  it("cancels startup without waiting for a stalled filesystem metadata read", async () => {
+    const started = deferred();
+    const finish = deferred();
+    worker.fs = {
+      ...fs.promises,
+      async lstat(targetPath, options) {
+        started.resolve();
+        await finish.promise;
+        return fs.promises.lstat(targetPath, options);
+      },
+    };
+    const ready = subscribe(1, "directory", directory);
+    await started.promise;
+    const closed = worker.unsubscribe(1);
+    try {
+      await until(() => worker.subscriptions.size === 0, "cancelled startup");
+      await closed;
+      await expectAsync(ready).toBeRejectedWith(jasmine.objectContaining({ code: "ABORT_ERR" }));
+      expect(engine.created.length).toBe(0);
+    } finally {
+      finish.resolve();
+      await ready.catch(() => {});
+      await closed;
+    }
+    await until(() => worker.planningReads.size === 0);
+    expect(events).toEqual([]);
+    expect(engine.created.length).toBe(0);
+  });
+
+  it("releases an active source without waiting for a stalled content stat", async () => {
+    const target = path.join(directory, "stalled-stat");
+    fs.writeFileSync(target, "contents");
+    await subscribe(1, "file", target);
+    const started = deferred();
+    const finish = deferred();
+    const stat = worker.stat.bind(worker);
+    worker.stat = async (filePath, filesystem) => {
+      const value = await stat(filePath, filesystem);
+      if (filePath === target) {
+        started.resolve();
+        await finish.promise;
+      }
+      return value;
+    };
+    engine.emit({ action: "updated", path: target, contentChanged: true });
+    await started.promise;
+    const closed = worker.unsubscribe(1);
+    try {
+      await until(() => worker.subscriptions.size === 0, "cancelled reconciliation");
+      await closed;
+      expect(engine.sources.size).toBe(0);
+      expect(events).toEqual([]);
+    } finally {
+      finish.resolve();
+      await closed;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(events).toEqual([]);
+  });
+
   it("does not lend a closing source to a new owner while the old owner's work drains", async () => {
     const first = path.join(directory, "old-file");
     const second = path.join(directory, "new-file");

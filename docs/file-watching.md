@@ -20,7 +20,7 @@ handle.dispose();
 await handle.closed;
 ```
 
-`ready` resolves once observation is armed; attach listeners before awaiting it. An authoritative initial read after readiness closes the gap between constructing a document and starting observation. `dispose()` stops callbacks immediately, including during startup. `closed` resolves once owned resources are released. Disposing before readiness rejects `ready` with `ABORT_ERR`. Subscriptions returned by the three event methods are individually disposable.
+`ready` resolves once observation is armed; attach listeners before awaiting it. An authoritative initial read after readiness closes the gap between constructing a document and starting observation. `dispose()` stops callbacks immediately, including during startup. `closed` resolves once owned observation resources are released, without waiting for a stalled filesystem metadata read; its late result is ignored. Disposing before readiness rejects `ready` with `ABORT_ERR`. Subscriptions returned by the three event methods are individually disposable.
 
 Changes are batches of `{action, path}` entries with `created`, `updated` or `deleted` actions. Paths are absolute and retain the subscriber's spelling. Events are coalesced hints to read current state, not a history of filesystem operations. Atomic replacement remains an update at the same filename. The service does not apply project ignore rules.
 

@@ -3,7 +3,6 @@ const path = require("path");
 const { absolutePath, containsPath, relativePath, ancestors } = require("./file-watch-paths");
 const {
   MAX_QUEUED_EVENTS,
-  deferred,
   abortError,
   serializeError,
   mergeChange,
@@ -72,6 +71,17 @@ class FileWatchWorker {
       if (MISSING_CODES.has(error.code)) return null;
       throw error;
     }
+  }
+
+  waitFor(logical, operation) {
+    const { signal } = logical.cancel;
+    let cancel;
+    return new Promise((resolve, reject) => {
+      cancel = () => reject(signal.reason);
+      signal.addEventListener("abort", cancel, { once: true });
+      Promise.resolve(operation).then(resolve, reject);
+      if (signal.aborted) cancel();
+    }).finally(() => signal.removeEventListener("abort", cancel));
   }
 
   async resolveTarget(targetPath, filesystem = this.fs) {
@@ -471,7 +481,7 @@ class FileWatchWorker {
         // Share only concurrent preliminary reads. The verification below
         // must start fresh after every source is armed, so an earlier read
         // can never hide a topology change in the observation gap.
-        next = await this.plan(logical, true);
+        next = await this.waitFor(logical, this.plan(logical, true));
         this.trace?.("rebind-plan", {
           id: logical.id,
           path: logical.path,
@@ -489,10 +499,10 @@ class FileWatchWorker {
           acquired.set(descriptor.key, source);
           // Ancestors arm before their descendants. A second plan after all
           // ready acknowledgements closes creation/rename races during setup.
-          await Promise.race([source.handle.ready, logical.cancel.promise]);
+          await this.waitFor(logical, source.handle.ready);
         }
         if (logical.cancelled) throw abortError(logical.path);
-        const verified = await this.plan(logical);
+        const verified = await this.waitFor(logical, this.plan(logical));
         this.trace?.("rebind-verified", {
           id: logical.id,
           path: logical.path,
@@ -553,7 +563,7 @@ class FileWatchWorker {
 
   async reconcileFile(logical, initial = false, contentChanged = false) {
     const contentVersion = logical.contentVersion || 0;
-    let stat = await this.stat(logical.path);
+    let stat = await this.waitFor(logical, this.stat(logical.path));
     if (!stat && logical.fingerprint !== null && !initial) {
       // Editors commonly replace a file via rename. A short second check keeps
       // the transient absence inside one update rather than closing its tab.
@@ -564,7 +574,7 @@ class FileWatchWorker {
       logical.missingTimer = null;
       logical.finishMissing = null;
       if (logical.cancelled) return;
-      stat = await this.stat(logical.path);
+      stat = await this.waitFor(logical, this.stat(logical.path));
     }
     const current = fingerprint(stat);
     this.trace?.("file-stat", {
@@ -658,7 +668,7 @@ class FileWatchWorker {
       invalidation: null,
       initializing: true,
       cancelled: false,
-      cancel: deferred(),
+      cancel: new AbortController(),
     };
     this.subscriptions.set(id, logical);
     this.trace?.("subscribe", { id, path: logical.path, kind, recursive });
@@ -706,7 +716,7 @@ class FileWatchWorker {
     this.trace?.("unsubscribe", { id, path: logical.path, cancelled: logical.cancelled });
     if (logical.closed) return logical.closed;
     logical.cancelled = true;
-    logical.cancel.reject(abortError(logical.path));
+    logical.cancel.abort(abortError(logical.path));
     clearTimeout(logical.timer);
     clearTimeout(logical.missingTimer);
     logical.finishMissing?.();
