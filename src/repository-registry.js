@@ -1071,29 +1071,28 @@ module.exports = class RepositoryRegistry {
   getForPath(filePath) {
     if (!filePath) return null;
 
-    let bestEntry = null;
-    let bestLength = -1;
-    const normalizedFilePath = normalizePath(filePath);
-    for (const entry of this.entriesById.values()) {
-      if (entry.missing || entry.repository.isDestroyed?.()) continue;
-      const matchingDirectory = entry.routingDirectories.find(
-        (workingDirectory) =>
-          this.routingDirectoryOwners.get(workingDirectory) === entry &&
-          pathContainsNormalized(workingDirectory, normalizedFilePath),
-      );
-      if (matchingDirectory) {
-        const candidateLength = matchingDirectory.length;
-        if (candidateLength > bestLength) {
-          bestEntry = entry;
-          bestLength = candidateLength;
-        }
-      }
-    }
-
     // Routing is purely lexical. Repository discovery resolves symlinks and
     // Windows aliases asynchronously, then registers both the canonical
-    // working directory and the spelling through which it was opened.
-    return bestEntry?.repository || null;
+    // working directory and the spelling through which it was opened. The
+    // first owned ancestor is the longest prefix, independent of fleet size.
+    let candidate = normalizePath(filePath);
+    while (true) {
+      const entry = this.routingDirectoryOwners.get(candidate);
+      if (this.isLiveRoutingEntry(entry)) return entry.repository;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) return null;
+      candidate = parent;
+    }
+  }
+
+  isLiveRoutingEntry(entry) {
+    return Boolean(
+      entry &&
+      !entry.missing &&
+      !entry.removing &&
+      this.entriesById.get(entry.id) === entry &&
+      !entry.repository.isDestroyed?.(),
+    );
   }
 
   /**
@@ -3166,10 +3165,15 @@ module.exports = class RepositoryRegistry {
     // classification needs is a property of the directory, so each one is
     // resolved — aliases and all — exactly once per batch.
     const contextsByDirectory = new Map();
+    let metadataRouting = null;
     const contextsFor = (changedPath) => {
       const directoryPath = path.dirname(changedPath);
       if (!contextsByDirectory.has(directoryPath)) {
-        contextsByDirectory.set(directoryPath, this.changeContextsFor(changedPath, directoryPath));
+        metadataRouting ||= this.metadataRoutingIndex();
+        contextsByDirectory.set(
+          directoryPath,
+          this.changeContextsFor(changedPath, directoryPath, metadataRouting),
+        );
       }
       return contextsByDirectory.get(directoryPath);
     };
@@ -3267,9 +3271,10 @@ module.exports = class RepositoryRegistry {
   // linked worktree's HEAD is `worktrees/<name>/HEAD` to the main repository,
   // and only its worktree list carries that, while a submodule's is
   // `modules/<name>/HEAD`, which does move the gitlink its status reports.
-  changeContextsFor(changedPath, directoryPath) {
+  changeContextsFor(changedPath, directoryPath, metadataRouting = null) {
     const gitMatches = this.collectGitDirectoryMatches(normalizePath(directoryPath), {
       includeCommon: true,
+      metadataRouting,
     });
     if (gitMatches.length > 0) {
       return gitMatches.map(({ entry, relativePath }) => ({
@@ -3294,29 +3299,50 @@ module.exports = class RepositoryRegistry {
     return this.collectGitDirectoryMatches(normalizedDirectory);
   }
 
-  collectGitDirectoryMatches(normalizedDirectory, { includeCommon = false } = {}) {
-    const matches = [];
+  metadataRoutingIndex() {
+    const index = new Map();
+    // Shared domains may gain a main repository alias between batches. Build
+    // one fresh index per batch rather than caching provider relationships or
+    // repeating a fleet scan for every distinct changed directory.
     for (const entry of this.entriesById.values()) {
-      if (entry.missing || entry.repository.isDestroyed?.()) continue;
-      const domains = includeCommon
-        ? this.metadataDomainAliases(entry)
-        : [
-            entry.gitDirectoryAliases.filter(
-              (directory) => this.gitDirectoryOwners.get(directory) === entry,
-            ),
-          ];
-      let relativePath = null;
-      for (const aliases of domains) {
-        const candidate = relativeToAny(aliases, normalizedDirectory);
-        if (candidate != null && (relativePath == null || candidate.length < relativePath.length)) {
-          relativePath = candidate;
+      if (!this.isLiveRoutingEntry(entry)) continue;
+      for (const aliases of this.metadataDomainAliases(entry)) {
+        for (const alias of aliases) {
+          let entries = index.get(alias);
+          if (!entries) {
+            entries = new Set();
+            index.set(alias, entries);
+          }
+          entries.add(entry);
         }
       }
-      if (relativePath != null) matches.push({ entry, relativePath });
     }
-    // A shorter relative path means a closer Git directory, so this puts the
-    // owning repository first and its enclosing ones behind it.
-    matches.sort((a, b) => a.relativePath.length - b.relativePath.length);
+    return index;
+  }
+
+  collectGitDirectoryMatches(
+    normalizedDirectory,
+    { includeCommon = false, metadataRouting = null } = {},
+  ) {
+    const index = includeCommon ? metadataRouting || this.metadataRoutingIndex() : null;
+    const matches = [];
+    const seen = new Set();
+    let candidate = normalizedDirectory;
+    while (true) {
+      const entries = index ? index.get(candidate) || [] : [this.gitDirectoryOwners.get(candidate)];
+      for (const entry of entries) {
+        if (seen.has(entry) || !this.isLiveRoutingEntry(entry)) continue;
+        seen.add(entry);
+        const relativePath =
+          candidate === normalizedDirectory
+            ? ""
+            : normalizedDirectory.slice(candidate.length + (candidate.endsWith(path.sep) ? 0 : 1));
+        matches.push({ entry, relativePath: relativePath.split(path.sep).join("/") });
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) break;
+      candidate = parent;
+    }
     return matches;
   }
 
