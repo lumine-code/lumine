@@ -187,7 +187,7 @@ function applyMutation(projects, mutation) {
     if (index !== -1) updated.splice(index, 1);
   } else if (mutation.type === "add") {
     if (index !== -1) updated.splice(index, 1);
-    updated.push(new HistoryProject(mutation.paths, mutation.lastOpened));
+    updated.unshift(new HistoryProject(mutation.paths, mutation.lastOpened));
     updated.sort((a, b) => b.lastOpened - a.lastOpened);
   }
   return updated;

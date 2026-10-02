@@ -190,6 +190,34 @@ describe("HistoryManager", () => {
       expect(projects[0].lastOpened).toEqual(date);
     });
 
+    it("orders the latest intent first when additions and reopens share a timestamp", async () => {
+      const date = new Date(2030, 0, 1);
+      await historyManager.addProject(["/tied-first"], date);
+      await historyManager.addProject(["/tied-second"], date);
+      expect(
+        historyManager
+          .getProjects()
+          .slice(0, 2)
+          .map((p) => p.paths),
+      ).toEqual([["/tied-second"], ["/tied-first"]]);
+
+      await historyManager.addProject(["/tied-first"], date);
+      expect(
+        historyManager
+          .getProjects()
+          .slice(0, 2)
+          .map((p) => p.paths),
+      ).toEqual([["/tied-first"], ["/tied-second"]]);
+
+      await historyManager.addProject(["/tied-third"], date);
+      expect(
+        historyManager
+          .getProjects()
+          .slice(0, 3)
+          .map((p) => p.paths),
+      ).toEqual([["/tied-third"], ["/tied-first"], ["/tied-second"]]);
+    });
+
     it("fires the onDidChangeProjects event when adding a project", async () => {
       const didChangeSpy = jasmine.createSpy();
       const beforeCount = historyManager.getProjects().length;
