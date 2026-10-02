@@ -7,18 +7,17 @@ const fs = require("@lumine-code/fs-plus");
 const sourceMapSupport = require("source-map-support");
 
 const babelCompiler = require("./babel");
-// A .jsx file is always compiled — no pragma sniffing — through the same Babel
-// pipeline and on-disk cache as pragma-carrying .js files. Prototype delegation
-// rather than a copy, so spies on the babel module stay visible.
-const jsxCompiler = Object.assign(Object.create(babelCompiler), {
+// JSX and TypeScript always use Babel, without pragma sniffing. Delegate to the
+// same compiler so its configuration, cache and spies cover all four extensions.
+const unconditionalBabelCompiler = Object.assign(Object.create(babelCompiler), {
   shouldCompile: () => true,
 });
 
 const COMPILERS = {
   ".js": babelCompiler,
-  ".jsx": jsxCompiler,
-  ".ts": require("./typescript"),
-  ".tsx": require("./typescript"),
+  ".jsx": unconditionalBabelCompiler,
+  ".ts": unconditionalBabelCompiler,
+  ".tsx": unconditionalBabelCompiler,
 };
 
 const cacheStats = {};

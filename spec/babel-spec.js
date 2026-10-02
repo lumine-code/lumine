@@ -38,6 +38,47 @@ describe("Babel transpiler support", function () {
     }
   });
 
+  it("invalidates cached output when the TypeScript transformer updates without Babel core", function () {
+    const babelModulePath = require.resolve("../src/babel");
+    const originalBabelModule = require.cache[babelModulePath];
+    const transformerManifestPath =
+      require.resolve("@babel/plugin-transform-typescript/package.json");
+    const coreManifestPath = require.resolve("@babel/core/package.json");
+    const readFileSync = fs.readFileSync;
+    const transformerManifest = readFileSync(transformerManifestPath, "utf8");
+    const transformerVersion = JSON.parse(transformerManifest).version;
+    const coreVersion = JSON.parse(readFileSync(coreManifestPath, "utf8")).version;
+    const updatedManifest = transformerManifest.replace(
+      /("version"\s*:\s*")[^"]+("\s*)/,
+      (_match, before, after) => before + transformerVersion + "-cache-test" + after,
+    );
+    let useUpdatedManifest = false;
+
+    spyOn(fs, "readFileSync").and.callFake(function (filePath, ...args) {
+      if (useUpdatedManifest && filePath === transformerManifestPath) return updatedManifest;
+      return readFileSync.call(this, filePath, ...args);
+    });
+
+    function freshCachePath() {
+      delete require.cache[babelModulePath];
+      return require(babelModulePath).getCachePath(
+        "export const value: number = 42;",
+        "version.ts",
+      );
+    }
+
+    try {
+      const originalCachePath = freshCachePath();
+      useUpdatedManifest = true;
+      const updatedCachePath = freshCachePath();
+
+      expect(updatedCachePath).not.toBe(originalCachePath);
+      expect(JSON.parse(fs.readFileSync(coreManifestPath, "utf8")).version).toBe(coreVersion);
+    } finally {
+      require.cache[babelModulePath] = originalBabelModule;
+    }
+  });
+
   describe("when a .js file starts with /** @babel */;", () =>
     it("transpiles it using babel", function () {
       const transpiled = require("./fixtures/babel/babel-comment.js");

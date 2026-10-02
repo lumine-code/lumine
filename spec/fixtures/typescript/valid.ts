@@ -1,2 +1,2 @@
-var inc = v => v + 1
+const inc = (v: number): number => v + 1
 export = inc

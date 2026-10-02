@@ -43,7 +43,6 @@
     "@lumine-code/temp": "github:lumine-code/node-temp#d952dc119d4dda6918a37c414302e6eb1dc9789d",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#1577303f839c11bd8d83d7fbe3cef8dd9219bfbb",
     "@lumine-code/watcher": "github:lumine-code/watcher#adabbe6c905eb4ea478969d6577719e5002da594",
-    "@typescript/typescript6": "6.0.2",
     "@vscode/ripgrep": "1.18.0",
     "about": "github:lumine-code/about#5f2018efbe238f0af5886c8d5339f545477ac0a4",
     "async": "3.2.6",
