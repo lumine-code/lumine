@@ -351,6 +351,173 @@ describe("File watch runtime", () => {
     expect(changes(2)).toEqual([{ action: "updated", path: target }]);
   });
 
+  for (const fileFirst of [true, false]) {
+    it(`retains descendant creation after an ancestor deletion while file reconciliation is delayed (file first: ${fileFirst})`, async () => {
+      worker.platform = "darwin";
+      const metadata = path.join(directory, ".git");
+      const head = path.join(metadata, "HEAD");
+      fs.mkdirSync(metadata);
+      fs.writeFileSync(head, "previous");
+      if (fileFirst) {
+        await subscribe(1, "file", head);
+        await subscribe(2, "directory", directory, true);
+      } else {
+        await subscribe(2, "directory", directory, true);
+        await subscribe(1, "file", head);
+      }
+      spyOn(worker, "schedule");
+      fs.rmSync(metadata, { recursive: true });
+      engine.emit({ action: "deleted", path: metadata });
+      // The directory acknowledges a real absence before the fixed file's
+      // delayed stat has had an opportunity to replace its old fingerprint.
+      await worker.update(worker.subscriptions.get(2));
+      expect(changes(2)).toEqual([{ action: "deleted", path: metadata }]);
+      expect(worker.subscriptions.get(1).nativePresence).toBe(false);
+      events.length = 0;
+
+      fs.mkdirSync(metadata);
+      fs.writeFileSync(head, "replacement");
+      engine.emit({ action: "created", path: metadata });
+      engine.emit({ action: "created", path: head, contentChanged: true });
+      await worker.update(worker.subscriptions.get(2));
+      expect(changes(2)).toEqual([
+        { action: "created", path: metadata },
+        { action: "created", path: head },
+      ]);
+      await worker.update(worker.subscriptions.get(1));
+    });
+
+    it(`retains descendant creation after delete/create of an ancestor in one batch (file first: ${fileFirst})`, async () => {
+      worker.platform = "darwin";
+      const metadata = path.join(directory, ".git");
+      const head = path.join(metadata, "HEAD");
+      fs.mkdirSync(metadata);
+      fs.writeFileSync(head, "previous");
+      if (fileFirst) {
+        await subscribe(1, "file", head);
+        await subscribe(2, "directory", directory, true);
+      } else {
+        await subscribe(2, "directory", directory, true);
+        await subscribe(1, "file", head);
+      }
+      spyOn(worker, "schedule");
+      fs.rmSync(metadata, { recursive: true });
+      fs.mkdirSync(metadata);
+      fs.writeFileSync(head, "replacement");
+      const source = [...engine.sources].find((candidate) => candidate.recursive);
+      source.callback({
+        type: "changes",
+        events: [
+          { action: "deleted", path: metadata },
+          { action: "created", path: metadata },
+          { action: "created", path: head, contentChanged: true },
+        ],
+      });
+      await worker.update(worker.subscriptions.get(2));
+      expect(changes(2)).toEqual([
+        { action: "updated", path: metadata },
+        { action: "created", path: head },
+      ]);
+      await worker.update(worker.subscriptions.get(1));
+    });
+  }
+
+  it("does not restore descendant presence from a stat begun before its ancestor was deleted", async () => {
+    worker.platform = "darwin";
+    const metadata = path.join(directory, ".git");
+    const head = path.join(metadata, "HEAD");
+    fs.mkdirSync(metadata);
+    fs.writeFileSync(head, "previous");
+    await subscribe(1, "file", head);
+    await subscribe(2, "directory", directory, true);
+    spyOn(worker, "schedule");
+    const entered = deferred();
+    const finish = deferred();
+    const filesystem = worker.fs;
+    let held = false;
+    worker.fs = {
+      ...filesystem,
+      async stat(filePath, options) {
+        const stat = await filesystem.stat(filePath, options);
+        if (filePath === head && !held) {
+          held = true;
+          entered.resolve();
+          await finish.promise;
+        }
+        return stat;
+      },
+    };
+    const logical = worker.subscriptions.get(1);
+    const reconcile = worker.reconcileFile(logical);
+    await entered.promise;
+    fs.rmSync(metadata, { recursive: true });
+    engine.emit({ action: "deleted", path: metadata });
+    finish.resolve();
+    await reconcile;
+    expect(logical.nativePresence).toBe(false);
+    expect(logical.presenceVersion).toBe(1);
+    worker.fs = filesystem;
+    await worker.update(worker.subscriptions.get(2));
+    events.length = 0;
+
+    fs.mkdirSync(metadata);
+    fs.writeFileSync(head, "replacement");
+    engine.emit({ action: "created", path: metadata });
+    engine.emit({ action: "created", path: head, contentChanged: true });
+    await worker.update(worker.subscriptions.get(2));
+    expect(changes(2)).toEqual([
+      { action: "created", path: metadata },
+      { action: "created", path: head },
+    ]);
+    await worker.update(logical);
+  });
+
+  it("invalidates a pending canonical target when its ancestor is deleted during rebind", async () => {
+    worker.platform = "darwin";
+    const first = path.join(directory, "first");
+    const second = path.join(directory, "second");
+    const alias = path.join(directory, "alias");
+    for (const target of [first, second]) {
+      fs.mkdirSync(target);
+      fs.writeFileSync(path.join(target, "HEAD"), "present");
+    }
+    fs.symlinkSync(first, alias, process.platform === "win32" ? "junction" : "dir");
+    links.add(alias);
+    await subscribe(1, "file", path.join(alias, "HEAD"));
+    await subscribe(2, "directory", directory, true);
+    spyOn(worker, "schedule");
+    const entered = deferred();
+    const finish = deferred();
+    const acquire = worker.acquire.bind(worker);
+    let held = false;
+    spyOn(worker, "acquire").and.callFake(async (logical, descriptor) => {
+      const source = await acquire(logical, descriptor);
+      if (
+        logical.id === 1 &&
+        logical.acquiring?.plan?.canonicalTarget === path.join(second, "HEAD") &&
+        !held
+      ) {
+        held = true;
+        entered.resolve();
+        await finish.promise;
+      }
+      return source;
+    });
+    fs.unlinkSync(alias);
+    fs.symlinkSync(second, alias, process.platform === "win32" ? "junction" : "dir");
+    const logical = worker.subscriptions.get(1);
+    const rebind = worker.rebind(logical);
+    await entered.promise;
+    fs.rmSync(second, { recursive: true });
+    engine.emit({ action: "deleted", path: second });
+    expect(logical.nativePresence).toBe(false);
+    expect(logical.presenceVersion).toBe(1);
+    finish.resolve();
+    await rebind;
+    expect(logical.plan.canonicalTarget).toBe(path.join(second, "HEAD"));
+    expect(logical.plan.stat).toBeNull();
+  });
+
   it("invalidates when a single native batch exactly overflows the subscription queue", async () => {
     await subscribe(1, "directory", directory, true);
     const source = [...engine.sources].find(

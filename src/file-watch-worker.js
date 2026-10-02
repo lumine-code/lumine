@@ -556,8 +556,13 @@ class FileWatchWorker {
           .filter(Boolean),
       );
       for (const event of message.events) {
-        if (event.action === "deleted") presentFiles.delete(event.path);
-        else if (event.action === "created" && presentFiles.has(event.path)) {
+        if (event.action === "deleted") {
+          // Directory backends can condense a subtree removal to its root.
+          // Every observed descendant then loses its known-presence baseline.
+          for (const presentPath of presentFiles) {
+            if (containsPath(event.path, presentPath, true)) presentFiles.delete(presentPath);
+          }
+        } else if (event.action === "created" && presentFiles.has(event.path)) {
           directoryActions.set(event, "updated");
         }
       }
@@ -579,9 +584,20 @@ class FileWatchWorker {
           logical.checkFile = true;
         }
         if (logical.kind === "file") {
+          if (
+            event.action === "deleted" &&
+            [logical.plan?.canonicalTarget, logical.acquiring?.plan?.canonicalTarget].some(
+              (target) => target && containsPath(event.path, target, true),
+            )
+          ) {
+            logical.nativePresence = false;
+            logical.presenceVersion = (logical.presenceVersion || 0) + 1;
+            logical.rebind = true;
+            logical.checkFile = true;
+          }
           if (main.length && event.path === logical.plan?.canonicalTarget) {
-            if (event.action === "deleted" || event.action === "created") {
-              logical.nativePresence = event.action === "created";
+            if (event.action === "created") {
+              logical.nativePresence = true;
               logical.presenceVersion = (logical.presenceVersion || 0) + 1;
             }
             logical.checkFile = true;
