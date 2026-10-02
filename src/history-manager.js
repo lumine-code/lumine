@@ -15,6 +15,9 @@ class HistoryManager {
     this.stateStore = stateStore;
     this.emitter = new Emitter();
     this.projects = [];
+    this.confirmedProjects = [];
+    this.pendingMutations = [];
+    this.operationPromise = Promise.resolve();
     this.disposables = new CompositeDisposable();
     this.disposables.add(
       commands.add(
@@ -29,7 +32,15 @@ class HistoryManager {
         false,
       ),
     );
-    this.disposables.add(project.onDidChangePaths((projectPaths) => this.addProject(projectPaths)));
+    this.disposables.add(
+      project.onDidChangePaths((projectPaths) => {
+        // This event has no caller to await the write. Observe its failure while
+        // keeping direct history actions' rejection available to their callers.
+        this.addProject(projectPaths).catch((error) => {
+          console.warn("Unable to save recent project history", error);
+        });
+      }),
+    );
   }
 
   destroy() {
@@ -42,7 +53,7 @@ class HistoryManager {
    *
    * Obtain a list of previously opened projects.
    *
-   * @returns {Array} of `HistoryProject` objects, most recent first.
+   * @returns {Array} of detached `HistoryProject` objects, most recent first. Their paths and dates can be changed without modifying history.
    */
   getProjects() {
     return this.projects.map((p) => new HistoryProject(p.paths, p.lastOpened));
@@ -59,10 +70,8 @@ class HistoryManager {
    *
    * @returns {Promise} that resolves when the history has been successfully cleared.
    */
-  async clearProjects() {
-    this.projects = [];
-    await this.saveState();
-    this.didChangeProjects();
+  clearProjects() {
+    return this.mutateProjects({ type: "clear" });
   }
 
   /**
@@ -84,30 +93,17 @@ class HistoryManager {
 
   async addProject(paths, lastOpened) {
     if (paths.length === 0) return;
-
-    let project = this.getProject(paths);
-    if (!project) {
-      project = new HistoryProject(paths);
-      this.projects.push(project);
-    }
-    project.lastOpened = lastOpened || new Date();
-    this.projects.sort((a, b) => b.lastOpened - a.lastOpened);
-
-    await this.saveState();
-    this.didChangeProjects();
+    return this.mutateProjects({
+      type: "add",
+      paths: paths.slice(),
+      lastOpened: new Date(lastOpened || Date.now()),
+    });
   }
 
   async removeProject(paths) {
     if (paths.length === 0) return;
 
-    let project = this.getProject(paths);
-    if (!project) return;
-
-    let index = this.projects.indexOf(project);
-    this.projects.splice(index, 1);
-
-    await this.saveState();
-    this.didChangeProjects();
+    return this.mutateProjects({ type: "remove", paths: paths.slice() });
   }
 
   getProject(paths) {
@@ -120,25 +116,81 @@ class HistoryManager {
     return null;
   }
 
-  async loadState() {
-    const history = await this.stateStore.load("history-manager");
-    if (history && history.projects) {
-      this.projects = history.projects
-        .filter((p) => Array.isArray(p.paths) && p.paths.length > 0)
-        .map((p) => new HistoryProject(p.paths, new Date(p.lastOpened)));
+  loadState() {
+    return this.queueOperation(async () => {
+      const history = await this.stateStore.load("history-manager");
+      this.confirmedProjects = deserializeProjects(history);
+      this.reapplyPendingMutations();
       this.didChangeProjects({ reloaded: true });
-    } else {
-      this.projects = [];
-    }
+    });
   }
 
-  async saveState() {
-    const projects = this.projects.map((p) => ({
-      paths: p.paths,
-      lastOpened: p.lastOpened,
+  saveState(mutation) {
+    return this.stateStore.update("history-manager", (history) => ({
+      projects: applyMutation(deserializeProjects(history), mutation).map((p) => ({
+        paths: p.paths.slice(),
+        lastOpened: new Date(p.lastOpened),
+      })),
     }));
-    await this.stateStore.save("history-manager", { projects });
   }
+
+  mutateProjects(mutation) {
+    this.pendingMutations.push(mutation);
+    // Project-path listeners observe their addition in the same call stack.
+    this.projects = applyMutation(this.projects, mutation);
+    // Capture this seam while the operation is requested: the spec runner
+    // stubs saveState to protect real history, including deferred operations.
+    const saveState = this.saveState.bind(this);
+    return this.queueOperation(async () => {
+      let history;
+      try {
+        history = await saveState(mutation);
+      } catch (error) {
+        this.pendingMutations.splice(this.pendingMutations.indexOf(mutation), 1);
+        this.reapplyPendingMutations();
+        this.didChangeProjects({ reloaded: true });
+        throw error;
+      }
+      this.pendingMutations.splice(this.pendingMutations.indexOf(mutation), 1);
+      this.confirmedProjects =
+        history == null
+          ? applyMutation(this.confirmedProjects, mutation)
+          : deserializeProjects(history);
+      this.reapplyPendingMutations();
+      this.didChangeProjects();
+    });
+  }
+
+  reapplyPendingMutations() {
+    this.projects = this.pendingMutations.reduce(applyMutation, this.confirmedProjects);
+  }
+
+  queueOperation(operation) {
+    const result = this.operationPromise.then(operation);
+    this.operationPromise = result.catch(() => {});
+    return result;
+  }
+}
+
+function deserializeProjects(history) {
+  return (Array.isArray(history?.projects) ? history.projects : [])
+    .filter((p) => Array.isArray(p.paths) && p.paths.length > 0)
+    .map((p) => new HistoryProject(p.paths, p.lastOpened));
+}
+
+function applyMutation(projects, mutation) {
+  const updated = projects.map((p) => new HistoryProject(p.paths, p.lastOpened));
+  if (!mutation) return updated;
+  if (mutation.type === "clear") return [];
+  const index = updated.findIndex((p) => arrayEquivalent(p.paths, mutation.paths));
+  if (mutation.type === "remove") {
+    if (index !== -1) updated.splice(index, 1);
+  } else if (mutation.type === "add") {
+    if (index !== -1) updated.splice(index, 1);
+    updated.push(new HistoryProject(mutation.paths, mutation.lastOpened));
+    updated.sort((a, b) => b.lastOpened - a.lastOpened);
+  }
+  return updated;
 }
 
 function arrayEquivalent(a, b) {
@@ -156,14 +208,14 @@ class HistoryProject {
   }
 
   set paths(paths) {
-    this._paths = paths;
+    this._paths = paths.slice();
   }
   get paths() {
     return this._paths;
   }
 
   set lastOpened(lastOpened) {
-    this._lastOpened = lastOpened;
+    this._lastOpened = new Date(lastOpened);
   }
   get lastOpened() {
     return this._lastOpened;

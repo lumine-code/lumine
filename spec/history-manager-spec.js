@@ -1,12 +1,20 @@
 const { HistoryManager, HistoryProject } = require("../src/history-manager");
 const StateStore = require("../src/state-store");
+const { conditionPromise, timeoutPromise: wait } = require("./helpers/async-spec-helpers");
+// Capture the original before the global helper spies on the prototype. Only
+// these managers write to the isolated test table; real window history stays
+// protected by the global spy.
+const saveHistoryState = HistoryManager.prototype.saveState;
 
 describe("HistoryManager", () => {
   let historyManager, commandRegistry, project, stateStore;
   let commandDisposable, projectDisposable;
+  let otherManagers, otherStores;
 
   beforeEach(async () => {
     jasmine.useRealClock();
+    otherManagers = [];
+    otherStores = [];
     commandDisposable = jasmine.createSpyObj("Disposable", ["dispose"]);
     commandRegistry = jasmine.createSpyObj("CommandRegistry", ["add"]);
     commandRegistry.add.and.returnValue(commandDisposable);
@@ -34,16 +42,35 @@ describe("HistoryManager", () => {
       project,
       commands: commandRegistry,
     });
+    historyManager.saveState = saveHistoryState;
     await historyManager.loadState();
   });
 
   afterEach(async () => {
+    await historyManager.operationPromise;
+    for (const manager of otherManagers) {
+      await manager.operationPromise;
+      manager.destroy();
+    }
+    historyManager.destroy();
     await stateStore.clear();
     // Release the connection so its WAL lock on the shared session store is not
     // held across every spec in this file, which intermittently starved later
     // specs' connections on CI.
     stateStore.close();
+    for (const store of otherStores) store.close();
   });
+
+  const buildOtherManager = async () => {
+    const store = new StateStore("history-manager-test", 1);
+    store.initialize({ configDirPath: lumine.getConfigDirPath() });
+    otherStores.push(store);
+    const manager = new HistoryManager({ stateStore: store, project, commands: commandRegistry });
+    manager.saveState = saveHistoryState;
+    otherManagers.push(manager);
+    await manager.loadState();
+    return manager;
+  };
 
   describe("constructor", () => {
     it("registers the 'clear-project-history' command with its description", () => {
@@ -69,10 +96,14 @@ describe("HistoryManager", () => {
         const firstProjects = historyManager.getProjects();
         firstProjects.pop();
         firstProjects[0].path = "modified";
+        firstProjects[0].paths[0] = "changed path";
+        firstProjects[0].lastOpened.setFullYear(2000);
 
         const secondProjects = historyManager.getProjects();
         expect(secondProjects.length).toBe(2);
         expect(secondProjects[0].path).not.toBe("modified");
+        expect(secondProjects[0].paths).toEqual(["/1", "c:\\2"]);
+        expect(secondProjects[0].lastOpened.getFullYear()).toBe(2016);
       });
     });
 
@@ -85,13 +116,8 @@ describe("HistoryManager", () => {
 
       it("saves the state", async () => {
         await historyManager.clearProjects();
-        const historyManager2 = new HistoryManager({
-          stateStore,
-          project,
-          commands: commandRegistry,
-        });
-        await historyManager2.loadState();
-        expect(historyManager.getProjects().length).toBe(0);
+        const historyManager2 = await buildOtherManager();
+        expect(historyManager2.getProjects().length).toBe(0);
       });
 
       it("fires the onDidChangeProjects event", async () => {
@@ -143,7 +169,7 @@ describe("HistoryManager", () => {
       const projects = historyManager.getProjects();
       expect(projects.length).toBe(3);
       expect(projects[2].paths).toEqual(["/a/b"]);
-      expect(projects[2].lastOpened).toBe(date);
+      expect(projects[2].lastOpened).toEqual(date);
     });
 
     it("adds a new project to the start", async () => {
@@ -152,7 +178,7 @@ describe("HistoryManager", () => {
       const projects = historyManager.getProjects();
       expect(projects.length).toBe(3);
       expect(projects[0].paths).toEqual(["/so/new"]);
-      expect(projects[0].lastOpened).toBe(date);
+      expect(projects[0].lastOpened).toEqual(date);
     });
 
     it("updates an existing project and moves it to the start", async () => {
@@ -161,7 +187,7 @@ describe("HistoryManager", () => {
       const projects = historyManager.getProjects();
       expect(projects.length).toBe(2);
       expect(projects[0].paths).toEqual(["/test"]);
-      expect(projects[0].lastOpened).toBe(date);
+      expect(projects[0].lastOpened).toEqual(date);
     });
 
     it("fires the onDidChangeProjects event when adding a project", async () => {
@@ -199,15 +225,10 @@ describe("HistoryManager", () => {
   describe("saveState", () => {
     let savedHistory;
     beforeEach(() => {
-      // historyManager.saveState is spied on globally to prevent specs from
-      // modifying the shared project history. Since these tests depend on
-      // saveState, we unspy it but in turn spy on the state store instead
-      // so that no data is actually stored to it.
-      jasmine.unspy(historyManager, "saveState");
-
-      spyOn(historyManager.stateStore, "save").and.callFake((name, history) => {
-        savedHistory = history;
-        return Promise.resolve();
+      savedHistory = { projects: historyManager.getProjects() };
+      spyOn(historyManager.stateStore, "update").and.callFake((_name, update) => {
+        savedHistory = update(savedHistory);
+        return Promise.resolve(savedHistory);
       });
     });
 
@@ -219,11 +240,183 @@ describe("HistoryManager", () => {
         project,
         commands: commandRegistry,
       });
+      otherManagers.push(historyManager2);
       spyOn(historyManager2.stateStore, "load").and.callFake((_name) =>
         Promise.resolve(savedHistory),
       );
       await historyManager2.loadState();
       expect(historyManager2.getProjects()[0].paths).toEqual(["/save/state"]);
+    });
+  });
+
+  describe("independent windows", () => {
+    const paths = (manager) => manager.getProjects().map((entry) => entry.paths);
+
+    it("keeps both additions from stale independent snapshots", async () => {
+      const other = await buildOtherManager();
+      await Promise.all([historyManager.addProject(["/new-a"]), other.addProject(["/new-b"])]);
+      await historyManager.loadState();
+      expect(paths(historyManager)).toContain(["/new-a"]);
+      expect(paths(historyManager)).toContain(["/new-b"]);
+      expect(historyManager.getProjects().length).toBe(4);
+    });
+
+    it("does not resurrect a removed project when another window adds one", async () => {
+      const other = await buildOtherManager();
+      await Promise.all([historyManager.removeProject(["/test"]), other.addProject(["/new"])]);
+      await historyManager.loadState();
+      expect(paths(historyManager)).not.toContain(["/test"]);
+      expect(paths(historyManager)).toContain(["/new"]);
+      expect(historyManager.getProjects().length).toBe(2);
+    });
+
+    it("keeps a later addition after a different window clears stale history", async () => {
+      const other = await buildOtherManager();
+      await Promise.all([historyManager.clearProjects(), other.addProject(["/after-clear"])]);
+      await historyManager.loadState();
+      expect(paths(historyManager)).toEqual([["/after-clear"]]);
+    });
+
+    it("removes a persisted project absent from this window's stale snapshot", async () => {
+      const other = await buildOtherManager();
+      await other.addProject(["/only-in-other-window"]);
+      await historyManager.removeProject(["/only-in-other-window"]);
+      await other.loadState();
+      expect(paths(other)).not.toContain(["/only-in-other-window"]);
+    });
+
+    it("does not restore stale projects when saveState is called without a mutation", async () => {
+      const other = await buildOtherManager();
+      await other.removeProject(["/test"]);
+      await historyManager.saveState();
+      await historyManager.loadState();
+      expect(paths(historyManager)).not.toContain(["/test"]);
+    });
+
+    it("keeps immediate input paths and dates independent from their callers", async () => {
+      const inputPaths = ["/new"];
+      const date = new Date(2026, 9, 2);
+      const adding = historyManager.addProject(inputPaths, date);
+      inputPaths[0] = "changed";
+      date.setFullYear(2000);
+      expect(paths(historyManager)).toContain(["/new"]);
+      await adding;
+      expect(paths(historyManager)).toContain(["/new"]);
+      expect(historyManager.getProject(["/new"]).lastOpened.getFullYear()).toBe(2026);
+    });
+  });
+
+  describe("pending local operations", () => {
+    const paths = () => historyManager.getProjects().map((entry) => entry.paths);
+
+    it("reapplies later additions while an earlier write result is pending", async () => {
+      const update = stateStore.update.bind(stateStore);
+      let release, started;
+      const began = new Promise((resolve) => {
+        started = resolve;
+      });
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      let first = true;
+      spyOn(stateStore, "update").and.callFake(async (...args) => {
+        const saved = await update(...args);
+        if (first) {
+          first = false;
+          started();
+          await gate;
+        }
+        return saved;
+      });
+      const a = historyManager.addProject(["/a"]);
+      await began;
+      const b = historyManager.addProject(["/b"]);
+      const observed = [];
+      historyManager.onDidChangeProjects(() => observed.push(paths()));
+      release();
+      await a;
+      expect(observed[0]).toContain(["/b"]);
+      await b;
+      expect(paths()).toContain(["/a"]);
+      expect(paths()).toContain(["/b"]);
+    });
+
+    it("does not let a pending reload hide an immediate local addition", async () => {
+      const load = stateStore.load.bind(stateStore);
+      let release, started;
+      const began = new Promise((resolve) => {
+        started = resolve;
+      });
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      spyOn(stateStore, "load").and.callFake(async (...args) => {
+        const loaded = await load(...args);
+        started();
+        await gate;
+        return loaded;
+      });
+      const loading = historyManager.loadState();
+      await began;
+      const adding = historyManager.addProject(["/during-reload"]);
+      expect(paths()).toContain(["/during-reload"]);
+      release();
+      await loading;
+      expect(paths()).toContain(["/during-reload"]);
+      await adding;
+      expect(paths()).toContain(["/during-reload"]);
+    });
+
+    it("recovers from a rejected write without dropping a later local edit", async () => {
+      const update = stateStore.update.bind(stateStore);
+      let first = true;
+      spyOn(stateStore, "update").and.callFake((...args) => {
+        if (first) {
+          first = false;
+          return Promise.reject(new Error("Storage failed"));
+        }
+        return update(...args);
+      });
+      const rejected = historyManager.addProject(["/failed"]);
+      const later = historyManager.addProject(["/later"]);
+      await expectAsync(rejected).toBeRejectedWithError("Storage failed");
+      expect(paths()).not.toContain(["/failed"]);
+      expect(paths()).toContain(["/later"]);
+      await later;
+      expect(paths()).toContain(["/later"]);
+    });
+
+    it("observes an automatic write failure and recovers on the next project change", async () => {
+      const update = stateStore.update.bind(stateStore);
+      const failure = new Error("Storage failed");
+      let first = true;
+      spyOn(stateStore, "update").and.callFake((...args) => {
+        if (first) {
+          first = false;
+          return Promise.reject(failure);
+        }
+        return update(...args);
+      });
+      const warning = spyOn(console, "warn");
+      const unhandled = jasmine.createSpy("unhandled project-history rejection");
+      window.addEventListener("unhandledrejection", unhandled);
+      try {
+        project.didChangePathsListener(["/failed-auto"]);
+        await conditionPromise(() => warning.calls.count() > 0);
+        await wait(0);
+        expect(warning).toHaveBeenCalledOnceWith("Unable to save recent project history", failure);
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(paths()).not.toContain(["/failed-auto"]);
+
+        project.didChangePathsListener(["/recovered-auto"]);
+        await historyManager.operationPromise;
+        expect(paths()).toContain(["/recovered-auto"]);
+        const saved = await stateStore.load("history-manager");
+        expect(saved.projects.map((entry) => entry.paths)).toContain(["/recovered-auto"]);
+        expect(saved.projects.map((entry) => entry.paths)).not.toContain(["/failed-auto"]);
+      } finally {
+        window.removeEventListener("unhandledrejection", unhandled);
+      }
     });
   });
 });

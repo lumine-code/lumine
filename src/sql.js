@@ -82,6 +82,40 @@ module.exports = class SQLStateStore {
     return parsed?.value;
   }
 
+  async update(key, updater) {
+    if (typeof updater !== "function") throw new TypeError("State updater must be a function");
+    if (!this.db) throw new Error("State storage is unavailable");
+
+    // Lock before reading: another renderer must not change this value between
+    // the read and write. Updaters run synchronously while the lock is held.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = getOne(this.db, `SELECT value FROM ${this.tableName} WHERE key = ?`, key);
+      const current = row ? JSON.parse(row.value, reviver)?.value : null;
+      const updated = updater(current);
+      if (updated && typeof updated.then === "function") {
+        // A rejected async updater must not escape as an unhandled rejection.
+        Promise.resolve(updated).catch(() => {});
+        throw new TypeError("State updater must be synchronous");
+      }
+      exec(
+        this.db,
+        `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
+        key,
+        JSON.stringify({ value: updated, storedAt: new Date().toString() }),
+      );
+      this.db.exec("COMMIT");
+      return updated;
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // Preserve the original failure if the connection also became unusable.
+      }
+      throw error;
+    }
+  }
+
   async delete(key) {
     if (!this.db) return null;
     exec(this.db, `DELETE FROM ${this.tableName} WHERE key = ?`, key);

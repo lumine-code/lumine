@@ -24,6 +24,10 @@ module.exports = class StateStore {
     return this._getOrCreateImplementation().save(key, value);
   }
 
+  update(key, updater) {
+    return this._getOrCreateImplementation().update(key, updater);
+  }
+
   load(key) {
     return this._getOrCreateImplementation().load(key);
   }

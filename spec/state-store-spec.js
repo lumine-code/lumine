@@ -80,4 +80,79 @@ describe("StateStore", () => {
       expect(await store.load("existing-key")).toEqual({ migrated: true });
     });
   });
+
+  describe("atomic updates", () => {
+    let first, second;
+    let updateDatabaseIndex = 0;
+
+    beforeEach(() => {
+      jasmine.useRealClock();
+      const name = `${databaseName}-atomic-${updateDatabaseIndex++}`;
+      first = new StateStore(name, version);
+      second = new StateStore(name, version);
+      for (const store of [first, second]) {
+        store.initialize({ configDirPath: lumine.getConfigDirPath() });
+      }
+    });
+
+    afterEach(() => {
+      first.close();
+      second.close();
+    });
+
+    it("updates a missing value and returns the stored value", async () => {
+      const changed = await first.update("key", (current) => {
+        expect(current).toBeNull();
+        return { count: 1 };
+      });
+      expect(changed).toEqual({ count: 1 });
+      expect(await second.load("key")).toEqual({ count: 1 });
+    });
+
+    it("reads the latest value from independent connections for overlapping updates", async () => {
+      await first.save("key", { count: 0 });
+      await Promise.all([
+        first.update("key", (current) => ({ count: current.count + 1 })),
+        second.update("key", (current) => ({ count: current.count + 1 })),
+      ]);
+      expect(await first.load("key")).toEqual({ count: 2 });
+    });
+
+    it("rolls back a failing updater and releases the lock for another connection", async () => {
+      await first.save("key", { count: 0 });
+      await expectAsync(
+        first.update("key", (current) => {
+          current.count = 99;
+          throw new Error("Updater failed");
+        }),
+      ).toBeRejectedWithError("Updater failed");
+      expect(await second.load("key")).toEqual({ count: 0 });
+      expect(await second.update("key", (current) => ({ count: current.count + 1 }))).toEqual({
+        count: 1,
+      });
+    });
+
+    it("rejects asynchronous updaters without changing stored state", async () => {
+      await first.save("key", { count: 0 });
+      await expectAsync(first.update("key", async () => ({ count: 99 }))).toBeRejectedWithError(
+        TypeError,
+        "State updater must be synchronous",
+      );
+      expect(await second.load("key")).toEqual({ count: 0 });
+      expect(await second.update("key", () => ({ count: 1 }))).toEqual({ count: 1 });
+    });
+
+    it("rolls back values that cannot be serialized", async () => {
+      await first.save("key", { count: 0 });
+      await expectAsync(
+        first.update("key", () => {
+          const circular = {};
+          circular.self = circular;
+          return circular;
+        }),
+      ).toBeRejected();
+      expect(await second.load("key")).toEqual({ count: 0 });
+      expect(await second.update("key", () => ({ count: 1 }))).toEqual({ count: 1 });
+    });
+  });
 });
