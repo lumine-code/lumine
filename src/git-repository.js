@@ -457,6 +457,16 @@ module.exports = class GitRepository {
     return this.workingDirectoryPath;
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * @returns {String} directory shared by linked worktrees for refs and configuration.
+   */
+  getCommonDirectory() {
+    return path.resolve(this.descriptor.getCommonDirectory?.() ?? this.getPath());
+  }
+
   // Structured-clone-safe descriptor consumed by git-host. The renderer has
   // already resolved worktree, submodule, symlink, and bare-repository semantics,
   // so the worker targets exactly this repository without upward discovery.

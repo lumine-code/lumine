@@ -17,6 +17,39 @@ function copyRepository() {
   return workingDirectory;
 }
 
+describe("repository common metadata path", () => {
+  it("uses the discovered common path without filesystem lookups", () => {
+    const privateDirectory = path.resolve("private-metadata");
+    const commonDirectory = path.resolve("shared-metadata");
+    const repository = new CoreGitRepository({
+      getPath: () => privateDirectory,
+      getWorkingDirectory: () => null,
+      getCommonDirectory: () => commonDirectory,
+    });
+    const stat = spyOn(fs, "statSync").and.callThrough();
+    try {
+      expect(repository.getCommonDirectory()).toBe(commonDirectory);
+      expect(repository.getPath()).toBe(privateDirectory);
+      expect(stat).not.toHaveBeenCalled();
+    } finally {
+      repository.destroy();
+    }
+  });
+
+  it("uses the private directory when there is no separate common directory", () => {
+    const privateDirectory = path.resolve("normal-metadata");
+    const repository = new CoreGitRepository({
+      getPath: () => privateDirectory,
+      getWorkingDirectory: () => null,
+    });
+    try {
+      expect(repository.getCommonDirectory()).toBe(privateDirectory);
+    } finally {
+      repository.destroy();
+    }
+  });
+});
+
 const statusValue = (generation) => ({
   schemaVersion: 1,
   generation,
