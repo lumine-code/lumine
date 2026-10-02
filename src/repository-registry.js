@@ -12,6 +12,19 @@ const MAX_REPOSITORY_MOVE_TOMBSTONES = 128;
 const MAX_REPOSITORY_MOVE_CREATED_PATHS = 4096;
 const MAX_REPOSITORY_MOVE_DELETED_PATHS = 4096;
 const REPOSITORY_SCAN_CONCURRENCY = 4;
+const MAX_REPOSITORY_DISCOVERY_CHANGES = 4096;
+const REPOSITORY_READINESS_NAMES = new Set(
+  ["HEAD", "objects", "refs"].map((name) =>
+    process.platform === "win32" ? name.toLowerCase() : name,
+  ),
+);
+const REPOSITORY_METADATA_NAMES = new Set([
+  ...REPOSITORY_READINESS_NAMES,
+  "commondir",
+  "config",
+  "config.worktree",
+  "gitdir",
+]);
 
 // Valid answers from an operation implementation's getOperationRefreshHint():
 // which read snapshots the just-finished operation can have invalidated.
@@ -194,7 +207,11 @@ function refreshHintForChange(gitRelativeDirectory, name) {
   const [section] = gitRelativeDirectory.split("/");
   if (section === "objects") return "none";
   if (section === "refs" || section === "logs") return "both";
-  if (section === "" && (name === "HEAD" || name === "packed-refs")) return "both";
+  if (
+    section === "" &&
+    (name === "HEAD" || name === "packed-refs" || name === "refs" || name === "logs")
+  )
+    return "both";
   // A linked worktree appearing or disappearing changes this repository's
   // worktree list and nothing else about it. Its own Git directory routes to
   // its own entry once it is registered; this covers the worktrees nobody has
@@ -282,6 +299,9 @@ module.exports = class RepositoryRegistry {
     this.scanGeneration = 0;
     this.fileChangeGeneration = 0;
     this.fileChangeValidationTail = Promise.resolve();
+    this.repositoryDiscoveryRevision = 0;
+    this.repositoryDiscoveryChanges = new Map();
+    this.repositoryDiscoveryDiscardedThrough = 0;
     this.fileMoves = new Set();
     this.repositoryMoveTombstones = [];
     this.repositoryMoveCreatedPaths = new Map();
@@ -755,6 +775,7 @@ module.exports = class RepositoryRegistry {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.repositoryDiscoveryChanges.clear();
     this.scanGeneration++;
     this.fileChangeGeneration++;
     this.activeResolutionGeneration++;
@@ -796,6 +817,9 @@ module.exports = class RepositoryRegistry {
     if (this.project.onDidInvalidateFiles) {
       this.projectSubscriptions.add(
         this.project.onDidInvalidateFiles(() => {
+          // Deltas from the observation gap cannot validate an older discovery.
+          this.repositoryDiscoveryDiscardedThrough = ++this.repositoryDiscoveryRevision;
+          this.repositoryDiscoveryChanges.clear();
           this.project.clearRepositoryPathCache({ invalidateProviders: true });
           if (this.fileWatchRecovery) {
             this.fileWatchRecoveryPending = true;
@@ -1075,7 +1099,11 @@ module.exports = class RepositoryRegistry {
    */
   async resolveForPath(filePath, { refresh = true } = {}) {
     if (!filePath) return null;
-    const repository = await this.discoverForPath(filePath, { refresh });
+    const { repository, revision } = await this.discoverForPathWithRevision(filePath, { refresh });
+    if (this.discoveredRepositoryChanged(repository, filePath, revision)) {
+      this.abandonDiscoveredRepository(repository, filePath);
+      return null;
+    }
     this.commitDiscoveredRepository(repository, filePath);
     const registered = this.register(repository);
     if (this.destroyed) return null;
@@ -1241,15 +1269,38 @@ module.exports = class RepositoryRegistry {
   }
 
   async discoverForPath(filePath, options = {}) {
-    if (!filePath) return null;
-    if (!this.project) return this.getForPath(filePath);
+    return (await this.discoverForPathWithRevision(filePath, options)).repository;
+  }
+
+  async discoverForPathWithRevision(filePath, options = {}) {
+    let revision = this.repositoryDiscoveryRevision;
+    if (!filePath) return { repository: null, revision };
+    if (!this.project) return { repository: this.getForPath(filePath), revision };
     const project = this.project;
-    const repository = await project.repositoryForPathFromProviders(filePath, options);
-    if (this.destroyed || this.project !== project) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (this.destroyed || this.project !== project) return { repository: null, revision };
+      revision = this.repositoryDiscoveryRevision;
+      const repository = await project.repositoryForPathFromProviders(
+        filePath,
+        attempt === 0 ? options : { ...options, refresh: true, joinPending: false },
+      );
+      if (this.destroyed || this.project !== project || repository?.isDestroyed?.()) {
+        this.abandonDiscoveredRepository(repository, filePath, project);
+        return { repository: null, revision };
+      }
+      // A negative result is authoritative for this lookup. A topology hint
+      // cannot turn missing storage into a retry or resurrect a removed facade.
+      if (!repository || !this.discoveredRepositoryChanged(repository, filePath, revision)) {
+        return { repository, revision };
+      }
       this.abandonDiscoveredRepository(repository, filePath, project);
-      return null;
+      // A delayed creation event can veto a descriptor that already describes
+      // the finished checkout. Revalidate once against the current metadata,
+      // after abandonment has released the provider's stale pending facade.
+      // Continuing changes still veto the retry instead of spinning forever.
+      if (attempt === 0) await Promise.resolve();
     }
-    return repository;
+    return { repository: null, revision };
   }
 
   commitDiscoveredRepository(repository, filePath) {
@@ -1735,6 +1786,17 @@ module.exports = class RepositoryRegistry {
 
         let operationError = null;
         try {
+          if (
+            this.destroyed ||
+            entry.removing ||
+            this.entriesById.get(entry.id) !== entry ||
+            repository.isDestroyed?.()
+          ) {
+            throw Object.assign(new Error("Repository has been destroyed"), {
+              code: "ERR_GIT_REPOSITORY_DESTROYED",
+              operation: operationName,
+            });
+          }
           const record = this.findOperationImplementation(repository, operationName);
           if (!record) {
             const error = new Error(
@@ -1819,7 +1881,14 @@ module.exports = class RepositoryRegistry {
 
   getOperationImplementation(repository, provider) {
     const entry = this.entryByRepository.get(repository);
-    if (!entry || !this.operationProviders.includes(provider)) return null;
+    if (
+      !entry ||
+      entry.removing ||
+      this.entriesById.get(entry.id) !== entry ||
+      repository.isDestroyed?.() ||
+      !this.operationProviders.includes(provider)
+    )
+      return null;
     if (entry.operationImplementations.has(provider)) {
       return entry.operationImplementations.get(provider);
     }
@@ -2270,10 +2339,13 @@ module.exports = class RepositoryRegistry {
           if (!isCurrent()) return null;
           const candidate =
             current.depth === 0 || children.some((child) => isGitMarkerName(child.name));
-          const repository = candidate
-            ? await this.discoverForPath(current.directoryPath, { refresh: true })
-            : null;
-          return { children, candidate, repository };
+          const discovery = candidate
+            ? await this.discoverForPathWithRevision(current.directoryPath, {
+                refresh: true,
+                joinPending: true,
+              })
+            : { repository: null, revision: this.repositoryDiscoveryRevision };
+          return { children, candidate, ...discovery };
         }),
       );
       const accepted = new Set();
@@ -2287,12 +2359,19 @@ module.exports = class RepositoryRegistry {
             complete = false;
             continue;
           }
-          const { children, candidate, repository } = result.value;
+          const { children, candidate, repository, revision } = result.value;
           if (candidate && (await this.isFileMoveDestinationAsync(current.directoryPath))) {
             complete = false;
             continue;
           }
           if (!isCurrent()) return { repositories: discovered, complete: false };
+          if (
+            candidate &&
+            this.discoveredRepositoryChanged(repository, current.directoryPath, revision)
+          ) {
+            complete = false;
+            continue;
+          }
           const knownRepository =
             repository &&
             this.entriesById.has(this.repositoryId(repository, repository.getWorkingDirectory()));
@@ -2740,8 +2819,14 @@ module.exports = class RepositoryRegistry {
           }
         }
 
-        const repository = await this.discoverForPath(discoveryPath, { refresh: true });
-        if (this.destroyed || generation !== this.fileChangeGeneration) {
+        const { repository, revision } = await this.discoverForPathWithRevision(discoveryPath, {
+          refresh: true,
+        });
+        if (
+          this.destroyed ||
+          generation !== this.fileChangeGeneration ||
+          this.discoveredRepositoryChanged(repository, discoveryPath, revision)
+        ) {
           this.abandonDiscoveredRepository(repository, discoveryPath);
           return;
         }
@@ -2819,8 +2904,72 @@ module.exports = class RepositoryRegistry {
     });
   }
 
+  recordRepositoryDiscoveryChanges(events) {
+    const changedPaths = new Set();
+    for (const event of events) {
+      for (const eventPath of [event.path, event.oldPath].filter(Boolean)) {
+        const parent = path.dirname(eventPath);
+        const name = gitMetadataName(eventPath);
+        const metadata = REPOSITORY_METADATA_NAMES.has(name);
+        if (isGitMarkerPath(eventPath)) changedPaths.add(normalizePath(parent));
+        else if (
+          metadata &&
+          (!REPOSITORY_READINESS_NAMES.has(name) ||
+            event.oldPath ||
+            ["created", "deleted", "renamed"].includes(event.action)) &&
+          (isGitMarkerPath(parent) || this.gitDirectoryOwners.has(normalizePath(parent)))
+        ) {
+          changedPaths.add(normalizePath(parent));
+        } else if (
+          event.oldPath ||
+          (["created", "deleted", "renamed"].includes(event.action) && event.kind !== "file")
+        ) {
+          changedPaths.add(normalizePath(eventPath));
+        }
+      }
+    }
+    if (changedPaths.size === 0) return;
+    const revision = ++this.repositoryDiscoveryRevision;
+    for (const changedPath of changedPaths) {
+      this.repositoryDiscoveryChanges.delete(changedPath);
+      this.repositoryDiscoveryChanges.set(changedPath, revision);
+    }
+    while (this.repositoryDiscoveryChanges.size > MAX_REPOSITORY_DISCOVERY_CHANGES) {
+      const oldest = this.repositoryDiscoveryChanges.keys().next().value;
+      this.repositoryDiscoveryDiscardedThrough = Math.max(
+        this.repositoryDiscoveryDiscardedThrough,
+        this.repositoryDiscoveryChanges.get(oldest),
+      );
+      this.repositoryDiscoveryChanges.delete(oldest);
+    }
+  }
+
+  discoveredRepositoryChanged(repository, filePath, revision) {
+    if (revision === this.repositoryDiscoveryRevision) return false;
+    if (revision < this.repositoryDiscoveryDiscardedThrough) return true;
+    const paths = [
+      filePath,
+      ...(repository?.getWorkingDirectoryAliases?.() || [repository?.getWorkingDirectory?.()]),
+      ...(repository?.getGitDirectoryAliases?.() || [repository?.getPath?.()]),
+    ]
+      .filter(Boolean)
+      .map(normalizePath);
+    for (const [changedPath, changedRevision] of this.repositoryDiscoveryChanges) {
+      if (
+        changedRevision > revision &&
+        paths.some((candidate) => pathContainsNormalized(changedPath, candidate))
+      )
+        return true;
+    }
+    return false;
+  }
+
   handleProjectFileChanges(events) {
     events = this.fileChangesOutsideMoves(events);
+    // Discovery runs concurrently with this serialized lifecycle queue. Mark
+    // changed topology at arrival so an older provider result cannot commit
+    // after a later removal, even while another lifecycle batch is awaiting I/O.
+    this.recordRepositoryDiscoveryChanges(events);
     const generation = this.fileChangeGeneration;
     const work = this.fileChangeValidationTail.then(async () => {
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
@@ -2833,7 +2982,9 @@ module.exports = class RepositoryRegistry {
       // repository. Plan against routing as it exists when this batch reaches
       // the front of the serialized lifecycle queue, not when it first arrived.
       const refreshPlan = this.repositoryRefreshPlanForFileChanges(routingEvents);
-      await this.removeUnavailableRepositories(refreshPlan.deletedRepositories, generation);
+      await this.removeUnavailableRepositories(refreshPlan.deletedRepositories, generation, {
+        metadataRepositories: refreshPlan.metadataRepositories,
+      });
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
       await this.reconcileMovedRepositories(generation);
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
@@ -2847,7 +2998,11 @@ module.exports = class RepositoryRegistry {
     return settled;
   }
 
-  async removeUnavailableRepositories(repositories, generation) {
+  async removeUnavailableRepositories(
+    repositories,
+    generation,
+    { metadataRepositories = new Set() } = {},
+  ) {
     if (repositories.size === 0 || generation !== this.fileChangeGeneration) return;
     const candidates = Array.from(repositories, (repository) =>
       this.entryByRepository.get(repository),
@@ -2868,6 +3023,7 @@ module.exports = class RepositoryRegistry {
           try {
             const inspection = await inspectRepositoryDescriptorAsync(
               repository.getHostDescriptor(),
+              { checkGitMetadata: metadataRepositories.has(repository) },
             );
             unavailable = !inspection.available;
           } catch (error) {
@@ -2955,9 +3111,10 @@ module.exports = class RepositoryRegistry {
   repositoryRefreshPlanForFileChanges(events) {
     const pending = new Map();
     const deletedRepositories = new Set();
+    const metadataRepositories = new Set();
     const deletedPaths = new Set();
     if (this.destroyed || this.entriesById.size === 0) {
-      return { pending, deletedRepositories };
+      return { pending, deletedRepositories, metadataRepositories };
     }
 
     // Batches run to thousands of events during an install or a checkout, and
@@ -2993,6 +3150,13 @@ module.exports = class RepositoryRegistry {
         }
         for (const context of contextsFor(changedPath)) {
           if (deleted) deletedRepositories.add(context.repository);
+          if (
+            deleted &&
+            context.gitRelativeDirectory === "" &&
+            REPOSITORY_READINESS_NAMES.has(gitMetadataName(changedPath))
+          ) {
+            metadataRepositories.add(context.repository);
+          }
           // A `.git` marker can be rewritten in place to point at a different
           // repository. Validate its exact descriptor on every marker event,
           // not only deletion; a background snapshot may have no subscribers
@@ -3021,7 +3185,7 @@ module.exports = class RepositoryRegistry {
       }
     }
 
-    return { pending, deletedRepositories };
+    return { pending, deletedRepositories, metadataRepositories };
   }
 
   scheduleRepositoryRefreshPlan(pending) {
@@ -3107,6 +3271,18 @@ module.exports = class RepositoryRegistry {
     const generation = this.scanGeneration;
     const watchDepth = this.config?.get("git.watchDepth") ?? 1;
     const seen = new Set();
+    const metadataDirectories = new Map();
+    const isKnownGitMetadata = (filePath) => {
+      const directoryPath = path.dirname(filePath);
+      let known = metadataDirectories.get(directoryPath);
+      if (known !== true) {
+        known = this.matchGitDirectories(directoryPath).length > 0;
+        // A readiness event can register this repository later in the batch.
+        // Positive metadata ownership stays useful; a negative must be retried.
+        if (known) metadataDirectories.set(directoryPath, true);
+      }
+      return known;
+    };
     let rootAliasesPromise = null;
     for (const event of events) {
       if (
@@ -3114,17 +3290,51 @@ module.exports = class RepositoryRegistry {
         (await this.isFileMoveDestinationAsync(event.oldPath))
       )
         continue;
-      const markerCandidates = [event.path, event.oldPath].filter((candidatePath) =>
-        isGitMarkerPath(candidatePath),
-      );
+      const markerCandidates = [event.path, event.oldPath].flatMap((candidatePath) => {
+        if (!candidatePath) return [];
+        if (isGitMarkerPath(candidatePath)) return [candidatePath];
+        const parent = path.dirname(candidatePath);
+        const name = gitMetadataName(candidatePath);
+        // git init and recursive copies can deliver the marker before its
+        // required contents. Retry when HEAD, objects or refs finishes arriving,
+        // while ordinary object/ref writes remain snapshot-only notifications.
+        return REPOSITORY_READINESS_NAMES.has(name) &&
+          isGitMarkerPath(parent) &&
+          !this.gitDirectoryOwners.has(normalizePath(parent))
+          ? [parent]
+          : [];
+      });
       const candidates = markerCandidates.map((candidatePath) => ({
         candidatePath,
         workingDirectory: path.dirname(candidatePath),
         directoryEvent: false,
       }));
+      for (const candidatePath of [event.path, event.oldPath].filter(Boolean)) {
+        const parent = path.dirname(candidatePath);
+        if (
+          !REPOSITORY_READINESS_NAMES.has(gitMetadataName(candidatePath)) ||
+          isGitMarkerPath(parent) ||
+          this.gitDirectoryOwners.has(normalizePath(parent)) ||
+          this.routingDirectoryOwners.has(normalizePath(parent)) ||
+          !["created", "renamed"].includes(event.action) ||
+          seen.has(`directory\0${normalizePath(parent)}\0${normalizePath(parent)}`)
+        )
+          continue;
+        // Bare repositories have no .git marker to announce readiness. Their
+        // first metadata entries may follow the root-directory notification.
+        if (await repositoryMarkerExists(parent)) {
+          candidates.push({
+            candidatePath: parent,
+            workingDirectory: parent,
+            discoveryPath: parent,
+            directoryEvent: true,
+          });
+        }
+      }
       if (
         event.path &&
         !isGitMarkerPath(event.path) &&
+        !isKnownGitMetadata(event.path) &&
         ["created", "renamed"].includes(event.action)
       ) {
         let stats = null;
@@ -3192,12 +3402,18 @@ module.exports = class RepositoryRegistry {
 
         if (present) {
           if (this.automaticRepositoryLimitReached()) continue;
-          const repository = await this.discoverForPath(discoveryPath, { refresh: true });
+          const { repository, revision } = await this.discoverForPathWithRevision(discoveryPath, {
+            refresh: true,
+          });
           if (await this.isFileMoveDestinationAsync(discoveryPath)) {
             this.abandonDiscoveredRepository(repository, discoveryPath);
             continue;
           }
-          if (this.destroyed || generation !== this.scanGeneration) {
+          if (
+            this.destroyed ||
+            generation !== this.scanGeneration ||
+            this.discoveredRepositoryChanged(repository, discoveryPath, revision)
+          ) {
             this.abandonDiscoveredRepository(repository, discoveryPath);
             return;
           }
@@ -3212,7 +3428,11 @@ module.exports = class RepositoryRegistry {
               continue;
             }
           }
-          if (this.destroyed || generation !== this.scanGeneration) {
+          if (
+            this.destroyed ||
+            generation !== this.scanGeneration ||
+            this.discoveredRepositoryChanged(repository, discoveryPath, revision)
+          ) {
             this.abandonDiscoveredRepository(repository, discoveryPath);
             return;
           }
@@ -3621,7 +3841,8 @@ module.exports = class RepositoryRegistry {
   }
 
   hasRepository(repository) {
-    return this.entryByRepository.has(repository);
+    const entry = this.entryByRepository.get(repository);
+    return Boolean(entry && this.entriesById.get(entry.id) === entry);
   }
 
   repositoryRelatesToRoot(entry, rootPath) {
@@ -3668,6 +3889,7 @@ module.exports = class RepositoryRegistry {
     if (!entry || entry.removing || !this.entriesById.has(entry.id)) return;
     entry.removing = true;
     this.entriesById.delete(entry.id);
+    this.entryByRepository.delete(entry.repository);
     for (const directory of entry.routingDirectories) {
       if (this.routingDirectoryOwners.get(directory) === entry) {
         this.routingDirectoryOwners.delete(directory);

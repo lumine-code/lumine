@@ -2,11 +2,33 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const os = require("os");
 const picomatch = require("picomatch");
-const { normalizePath, pathsAreEqual, realpathRecursive } = require("./repository-paths");
 
 const IS_WINDOWS = process.platform === "win32";
 const ERR_GIT_REPOSITORY_UNAVAILABLE = "ERR_GIT_REPOSITORY_UNAVAILABLE";
 const MISSING_PATH_ERROR_CODES = new Set(["ENOENT", "ENOTDIR"]);
+const MAX_SHARED_DISCOVERY_READS = 4096;
+const pendingDiscoveryReads = new Map();
+const sharedDiscoveryFilesystem = Object.fromEntries(
+  ["stat", "lstat", "readFile", "realpath"].map((method) => [
+    method,
+    (targetPath, ...options) => {
+      const key = `${method}\0${targetPath}\0${JSON.stringify(options)}`;
+      let pending = pendingDiscoveryReads.get(key);
+      if (!pending) {
+        if (pendingDiscoveryReads.size >= MAX_SHARED_DISCOVERY_READS) {
+          return fs.promises[method](targetPath, ...options);
+        }
+        pending = Promise.resolve().then(() => fs.promises[method](targetPath, ...options));
+        pendingDiscoveryReads.set(key, pending);
+        const forget = () => {
+          if (pendingDiscoveryReads.get(key) === pending) pendingDiscoveryReads.delete(key);
+        };
+        pending.then(forget, forget);
+      }
+      return pending;
+    },
+  ]),
+);
 
 function isMissingPathError(error) {
   return MISSING_PATH_ERROR_CODES.has(error?.code);
@@ -92,17 +114,17 @@ function realpath(unrealPath) {
   }
 }
 
-async function realpathAsync(unrealPath) {
+async function realpathAsync(unrealPath, filesystem = fs.promises) {
   try {
-    return await fs.promises.realpath(unrealPath);
+    return await filesystem.realpath(unrealPath);
   } catch {
     return unrealPath;
   }
 }
 
-async function normalizePathAsync(unrealPath, useRealpath = true) {
+async function normalizePathAsync(unrealPath, useRealpath = true, filesystem = fs.promises) {
   let normalized = unrealPath;
-  if (useRealpath || IS_WINDOWS) normalized = await realpathAsync(unrealPath);
+  if (useRealpath || IS_WINDOWS) normalized = await realpathAsync(unrealPath, filesystem);
   return IS_WINDOWS ? normalized.replace(/\\/g, "/") : normalized;
 }
 
@@ -111,30 +133,52 @@ async function normalizeExistingPathAsync(unrealPath) {
   return IS_WINDOWS ? normalized.replace(/\\/g, "/") : normalized;
 }
 
+// Discovery is authoritative: a symlink may have been retargeted since the
+// last lookup. Resolve existing ancestors afresh and retain a missing suffix.
+function realpathRecursiveForDiscovery(unrealPath) {
+  if (!unrealPath) return unrealPath;
+  let currentPath = path.resolve(unrealPath);
+  const startPath = currentPath;
+  while (true) {
+    try {
+      const resolved = fs.realpathSync.native
+        ? fs.realpathSync.native(currentPath)
+        : fs.realpathSync(currentPath);
+      return normalizeLexicalPath(path.join(resolved, path.relative(currentPath, startPath)));
+    } catch (error) {
+      if (!isMissingPathError(error)) throw error;
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) return normalizeLexicalPath(startPath);
+      currentPath = parentPath;
+    }
+  }
+}
+
 // Resolve a possibly missing path without performing any synchronous
 // filesystem work on the renderer. The first existing ancestor is resolved
 // and the missing suffix is reattached, matching realpathRecursive().
-async function realpathRecursiveAsync(unrealPath) {
-  if (!path.isAbsolute(unrealPath)) return normalizePathAsync(unrealPath);
+async function realpathRecursiveAsync(unrealPath, filesystem = fs.promises) {
+  if (!unrealPath) return unrealPath;
+  if (!path.isAbsolute(unrealPath)) return normalizePathAsync(unrealPath, true, filesystem);
 
   let currentPath = unrealPath;
   let resolvedPath = unrealPath;
   let remainder = "";
   while (!isRootPath(currentPath)) {
     try {
-      resolvedPath = await fs.promises.realpath(currentPath);
+      resolvedPath = await filesystem.realpath(currentPath);
       break;
     } catch (error) {
-      if (error.code !== "ENOENT") return normalizePathAsync(unrealPath, false);
+      if (error.code !== "ENOENT") return normalizePathAsync(unrealPath, false, filesystem);
       const parentPath = path.resolve(currentPath, "..");
-      if (parentPath === currentPath) return normalizePathAsync(unrealPath, false);
+      if (parentPath === currentPath) return normalizePathAsync(unrealPath, false, filesystem);
       currentPath = parentPath;
       remainder = path.relative(currentPath, unrealPath);
     }
   }
-  if (isRootPath(currentPath)) return normalizePathAsync(unrealPath, false);
+  if (isRootPath(currentPath)) return normalizePathAsync(unrealPath, false, filesystem);
 
-  return normalizePathAsync(path.join(resolvedPath, remainder), false);
+  return normalizePathAsync(path.join(resolvedPath, remainder), false, filesystem);
 }
 
 function normalizedPathsAreEqual(pathA, pathB, caseInsensitive) {
@@ -179,18 +223,18 @@ async function statOrNullAsync(candidate) {
   }
 }
 
-async function statForDiscoveryAsync(candidate) {
+async function statForDiscoveryAsync(candidate, filesystem = fs.promises) {
   try {
-    return await fs.promises.stat(candidate);
+    return await filesystem.stat(candidate);
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
   }
 }
 
-async function lstatForDiscoveryAsync(candidate) {
+async function lstatForDiscoveryAsync(candidate, filesystem = fs.promises) {
   try {
-    return await fs.promises.lstat(candidate);
+    return await filesystem.lstat(candidate);
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -241,23 +285,23 @@ function isGitDirectory(directory) {
   );
 }
 
-async function isGitDirectoryAsync(directory) {
+async function isGitDirectoryAsync(directory, filesystem = fs.promises) {
   let commonDir = directory;
   try {
     const commonDirValue = (
-      await fs.promises.readFile(path.join(directory, "commondir"), "utf8")
+      await filesystem.readFile(path.join(directory, "commondir"), "utf8")
     ).trim();
     if (commonDirValue) {
       commonDir = path.resolve(directory, commonDirValue);
-      if (!(await statForDiscoveryAsync(commonDir))?.isDirectory()) return false;
+      if (!(await statForDiscoveryAsync(commonDir, filesystem))?.isDirectory()) return false;
     }
   } catch (error) {
     if (!isMissingPathError(error)) throw error;
   }
   const [head, objects, refs] = await Promise.all([
-    statForDiscoveryAsync(path.join(directory, "HEAD")),
-    statForDiscoveryAsync(path.join(commonDir, "objects")),
-    statForDiscoveryAsync(path.join(commonDir, "refs")),
+    statForDiscoveryAsync(path.join(directory, "HEAD"), filesystem),
+    statForDiscoveryAsync(path.join(commonDir, "objects"), filesystem),
+    statForDiscoveryAsync(path.join(commonDir, "refs"), filesystem),
   ]);
   return Boolean(head?.isFile() && objects?.isDirectory() && refs?.isDirectory());
 }
@@ -278,9 +322,9 @@ function resolveGitFile(gitFilePath, baseDirectory) {
   }
 }
 
-async function resolveGitFileAsync(gitFilePath, baseDirectory) {
+async function resolveGitFileAsync(gitFilePath, baseDirectory, filesystem = fs.promises) {
   try {
-    const target = parseGitFile(await fs.promises.readFile(gitFilePath, "utf8"));
+    const target = parseGitFile(await filesystem.readFile(gitFilePath, "utf8"));
     return target ? path.resolve(baseDirectory, target) : null;
   } catch (error) {
     if (isMissingPathError(error)) return null;
@@ -296,16 +340,19 @@ function pathsResolveToSameLocation(pathA, pathB) {
     : normalizedPathsMatch(realpath(pathA), realpath(pathB));
 }
 
-async function pathsResolveToSameLocationAsync(pathA, pathB) {
+async function pathsResolveToSameLocationAsync(pathA, pathB, filesystem = fs.promises) {
   const [leftStats, rightStats] = await Promise.all([
-    fs.promises.stat(pathA, { bigint: true }),
-    fs.promises.stat(pathB, { bigint: true }),
+    filesystem.stat(pathA, { bigint: true }),
+    filesystem.stat(pathB, { bigint: true }),
   ]);
   const leftIdentity = filesystemIdentity(leftStats);
   const rightIdentity = filesystemIdentity(rightStats);
   return leftIdentity && rightIdentity
     ? leftIdentity.device === rightIdentity.device && leftIdentity.inode === rightIdentity.inode
-    : normalizedPathsMatch(await realpathAsync(pathA), await realpathAsync(pathB));
+    : normalizedPathsMatch(
+        await realpathAsync(pathA, filesystem),
+        await realpathAsync(pathB, filesystem),
+      );
 }
 
 // A linked-worktree Git directory normally points back to the `.git` gitfile
@@ -330,14 +377,15 @@ function linkedWorktreeMarker(gitDirectory) {
   }
 }
 
-async function linkedWorktreeMarkerAsync(gitDirectory) {
+async function linkedWorktreeMarkerAsync(gitDirectory, filesystem = fs.promises) {
   try {
-    const pointer = (await fs.promises.readFile(path.join(gitDirectory, "gitdir"), "utf8")).trim();
+    const pointer = (await filesystem.readFile(path.join(gitDirectory, "gitdir"), "utf8")).trim();
     if (!pointer) return null;
     const markerPath = path.isAbsolute(pointer) ? pointer : path.resolve(gitDirectory, pointer);
-    if (!(await statForDiscoveryAsync(markerPath))?.isFile()) return null;
-    const target = await resolveGitFileAsync(markerPath, path.dirname(markerPath));
-    if (!target || !(await pathsResolveToSameLocationAsync(target, gitDirectory))) return null;
+    if (!(await statForDiscoveryAsync(markerPath, filesystem))?.isFile()) return null;
+    const target = await resolveGitFileAsync(markerPath, path.dirname(markerPath), filesystem);
+    if (!target || !(await pathsResolveToSameLocationAsync(target, gitDirectory, filesystem)))
+      return null;
     return {
       discoveredWorkingDirectory: path.dirname(markerPath),
       worktreeGitMarker: { path: markerPath, kind: "gitfile" },
@@ -703,12 +751,33 @@ async function computeWorkingDirectoryAsync(
 // exact `.git` marker that established a worktree relationship. A gitfile is
 // authoritative even when its target has no legacy `gitdir` backlink (as with
 // `--separate-git-dir`).
-function discoverRepositoryLocation(startPath) {
+function discoverRepositoryLocation(startPath, openedStartPath = startPath) {
   if (!startPath) return null;
   let current = path.resolve(startPath);
+  const resolvedStartPath = current;
+  const sameSpelling = normalizedPathsAreEqual(
+    normalizeLexicalPath(openedStartPath),
+    normalizeLexicalPath(resolvedStartPath),
+    false,
+  );
+  while (!statForDiscovery(current)?.isDirectory()) {
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
 
   while (true) {
-    const dotGit = path.join(current, ".git");
+    const openedCurrent = path.resolve(openedStartPath, path.relative(resolvedStartPath, current));
+    const markerDirectory =
+      sameSpelling ||
+      normalizedPathsAreEqual(
+        realpathRecursiveForDiscovery(openedCurrent),
+        normalizeLexicalPath(current),
+        false,
+      )
+        ? openedCurrent
+        : current;
+    const dotGit = path.join(markerDirectory, ".git");
     const dotGitEntry = lstatForDiscovery(dotGit);
     if (dotGitEntry) {
       let dotGitStat;
@@ -767,23 +836,48 @@ function discoverRepositoryLocation(startPath) {
   }
 }
 
-async function discoverRepositoryLocationAsync(startPath) {
+async function discoverRepositoryLocationAsync(
+  startPath,
+  openedStartPath = startPath,
+  filesystem = fs.promises,
+) {
   if (!startPath) return null;
   let current = path.resolve(startPath);
+  const resolvedStartPath = current;
+  const sameSpelling = normalizedPathsAreEqual(
+    normalizeLexicalPath(openedStartPath),
+    normalizeLexicalPath(resolvedStartPath),
+    false,
+  );
+  while (!(await statForDiscoveryAsync(current, filesystem))?.isDirectory()) {
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
 
   while (true) {
-    const dotGit = path.join(current, ".git");
-    const dotGitEntry = await lstatForDiscoveryAsync(dotGit);
+    const openedCurrent = path.resolve(openedStartPath, path.relative(resolvedStartPath, current));
+    const markerDirectory =
+      sameSpelling ||
+      normalizedPathsAreEqual(
+        await realpathRecursiveAsync(openedCurrent, filesystem),
+        normalizeLexicalPath(current),
+        false,
+      )
+        ? openedCurrent
+        : current;
+    const dotGit = path.join(markerDirectory, ".git");
+    const dotGitEntry = await lstatForDiscoveryAsync(dotGit, filesystem);
     if (dotGitEntry) {
       let dotGitStat;
       try {
-        dotGitStat = await statForDiscoveryAsync(dotGit);
+        dotGitStat = await statForDiscoveryAsync(dotGit, filesystem);
       } catch (error) {
         if (error.code === "ELOOP") return { invalidMarker: true };
         throw error;
       }
       if (!dotGitStat) return { invalidMarker: true };
-      if (dotGitStat.isDirectory() && (await isGitDirectoryAsync(dotGit))) {
+      if (dotGitStat.isDirectory() && (await isGitDirectoryAsync(dotGit, filesystem))) {
         return {
           gitDirectory: dotGit,
           discoveredWorkingDirectory: current,
@@ -791,8 +885,8 @@ async function discoverRepositoryLocationAsync(startPath) {
         };
       }
       if (dotGitStat.isFile()) {
-        const resolved = await resolveGitFileAsync(dotGit, current);
-        if (resolved && (await isGitDirectoryAsync(resolved))) {
+        const resolved = await resolveGitFileAsync(dotGit, current, filesystem);
+        if (resolved && (await isGitDirectoryAsync(resolved, filesystem))) {
           return {
             gitDirectory: resolved,
             discoveredWorkingDirectory: current,
@@ -802,7 +896,7 @@ async function discoverRepositoryLocationAsync(startPath) {
       }
       return { invalidMarker: true };
     }
-    if (await isGitDirectoryAsync(current)) {
+    if (await isGitDirectoryAsync(current, filesystem)) {
       if (
         normalizedPathsAreEqual(
           normalizeLexicalPath(current),
@@ -816,7 +910,7 @@ async function discoverRepositoryLocationAsync(startPath) {
           worktreeGitMarker: { path: current, kind: "directory" },
         };
       }
-      const linkedMarker = await linkedWorktreeMarkerAsync(current);
+      const linkedMarker = await linkedWorktreeMarkerAsync(current, filesystem);
       if (linkedMarker) return { gitDirectory: current, ...linkedMarker };
       return {
         gitDirectory: current,
@@ -832,32 +926,49 @@ async function discoverRepositoryLocationAsync(startPath) {
 }
 
 function discoverGitDirectory(startPath) {
-  const location = discoverRepositoryLocation(startPath);
+  const location = discoverRepositoryLocation(realpathRecursiveForDiscovery(startPath), startPath);
   return location?.invalidMarker ? null : (location?.gitDirectory ?? null);
 }
 
 // When the opened path is reached through a symlink, remember the unresolved
 // directory that maps to the working directory so paths arriving through that
 // symlink still route.
-function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensitive) {
+function computeOpenedWorkingDirectory(
+  startPath,
+  workingDirectory,
+  caseInsensitive,
+  resolvedStartPath = realpathRecursiveForDiscovery(startPath),
+) {
   if (!workingDirectory) return null;
   const normalizedStartPath = normalizeLexicalPath(startPath);
-  if (realpathRecursive(startPath) === normalizedStartPath) return null;
+  if (normalizedPathsAreEqual(resolvedStartPath, normalizedStartPath, caseInsensitive)) return null;
 
   let candidate = normalizedStartPath;
   while (!isRootPath(candidate)) {
-    if (pathsAreEqual(candidate, workingDirectory, caseInsensitive)) return candidate;
+    if (
+      normalizedPathsAreEqual(
+        realpathRecursiveForDiscovery(candidate),
+        workingDirectory,
+        caseInsensitive,
+      )
+    )
+      return candidate;
     candidate = path.resolve(candidate, "..");
   }
   return null;
 }
 
-async function computeOpenedWorkingDirectoryAsync(startPath, workingDirectory, caseInsensitive) {
+async function computeOpenedWorkingDirectoryAsync(
+  startPath,
+  workingDirectory,
+  caseInsensitive,
+  resolvedStartPath = null,
+) {
   if (!workingDirectory) return null;
   const normalizedStartPath = normalizeLexicalPath(startPath);
   if (
     normalizedPathsAreEqual(
-      await realpathRecursiveAsync(startPath),
+      resolvedStartPath || (await realpathRecursiveAsync(startPath)),
       normalizedStartPath,
       caseInsensitive,
     )
@@ -885,6 +996,9 @@ class GitRepositoryDescriptor {
   constructor(gitDir, startPath, resolved = null) {
     this.gitDir = resolved ? resolved.gitDir : realpath(gitDir);
     this.gitDirectoryAliases = new Set([this.gitDir, normalizeLexicalPath(gitDir)]);
+    for (const alias of resolved?.gitDirectoryAliases || []) {
+      if (alias) this.gitDirectoryAliases.add(alias);
+    }
     this.worktreeGitMarker = resolved?.worktreeGitMarker || null;
     this.gitDirectoryIdentity = resolved?.gitDirectoryIdentity || null;
     this.workingDirectoryIdentity = resolved?.workingDirectoryIdentity || null;
@@ -898,7 +1012,7 @@ class GitRepositoryDescriptor {
     } else {
       const rawWorkingDirectory = computeWorkingDirectory(this.gitDir);
       this.workingDirectory = rawWorkingDirectory
-        ? trimTrailingSeparator(normalizePath(rawWorkingDirectory, true))
+        ? trimTrailingSeparator(normalizeLexicalPath(realpath(rawWorkingDirectory)))
         : null;
       this.caseInsensitiveFs = fs.isCaseInsensitive();
       this.openedWorkingDirectory = computeOpenedWorkingDirectory(
@@ -946,7 +1060,8 @@ class GitRepositoryDescriptor {
 // Discover the repository for a starting path and build its descriptor, or null
 // when the path is not inside a repository.
 function discoverRepositoryDescriptor(startPath) {
-  const location = discoverRepositoryLocation(startPath);
+  const resolvedStartPath = realpathRecursiveForDiscovery(startPath);
+  const location = discoverRepositoryLocation(resolvedStartPath, startPath);
   if (!location || location.invalidMarker) return null;
 
   const gitDir = realpath(location.gitDirectory);
@@ -959,7 +1074,7 @@ function discoverRepositoryDescriptor(startPath) {
   );
   if (rawWorkingDirectory === undefined) return null;
   const workingDirectory = rawWorkingDirectory
-    ? trimTrailingSeparator(normalizePath(rawWorkingDirectory, true))
+    ? trimTrailingSeparator(normalizeLexicalPath(realpath(rawWorkingDirectory)))
     : null;
   let workingDirectoryIdentity = null;
   if (workingDirectory) {
@@ -984,7 +1099,13 @@ function discoverRepositoryDescriptor(startPath) {
     startPath ?? location.gitDirectory,
     workingDirectory,
     caseInsensitiveFs,
+    resolvedStartPath,
   );
+  const openedGitDirectory = openedWorkingDirectory
+    ? worktreeGitMarker?.kind === "directory"
+      ? normalizeLexicalPath(path.join(openedWorkingDirectory, ".git"))
+      : null
+    : computeOpenedWorkingDirectory(startPath, gitDir, caseInsensitiveFs, resolvedStartPath);
   return new GitRepositoryDescriptor(location.gitDirectory, startPath, {
     gitDir,
     workingDirectory,
@@ -995,11 +1116,21 @@ function discoverRepositoryDescriptor(startPath) {
     commonDirectoryIdentity: commonDirectory.identity,
     caseInsensitiveFs,
     openedWorkingDirectory,
+    gitDirectoryAliases: [openedGitDirectory],
   });
 }
 
 async function discoverRepositoryDescriptorAsync(startPath) {
-  const location = await discoverRepositoryLocationAsync(startPath);
+  // Share only the candidate walk. Identity, config and marker construction
+  // below start fresh; an earlier request must not supply their final reads.
+  const resolvedStartPath = startPath
+    ? await realpathRecursiveAsync(path.resolve(startPath), sharedDiscoveryFilesystem)
+    : null;
+  const location = await discoverRepositoryLocationAsync(
+    resolvedStartPath,
+    startPath,
+    sharedDiscoveryFilesystem,
+  );
   if (!location || location.invalidMarker) return null;
 
   const gitDir = await realpathAsync(location.gitDirectory);
@@ -1037,7 +1168,18 @@ async function discoverRepositoryDescriptorAsync(startPath) {
     startPath ?? location.gitDirectory,
     workingDirectory,
     caseInsensitiveFs,
+    resolvedStartPath,
   );
+  const openedGitDirectory = openedWorkingDirectory
+    ? worktreeGitMarker?.kind === "directory"
+      ? normalizeLexicalPath(path.join(openedWorkingDirectory, ".git"))
+      : null
+    : await computeOpenedWorkingDirectoryAsync(
+        startPath,
+        gitDir,
+        caseInsensitiveFs,
+        resolvedStartPath,
+      );
   return new GitRepositoryDescriptor(location.gitDirectory, startPath, {
     gitDir,
     workingDirectory,
@@ -1048,6 +1190,7 @@ async function discoverRepositoryDescriptorAsync(startPath) {
     commonDirectoryIdentity: commonDirectory.identity,
     caseInsensitiveFs,
     openedWorkingDirectory,
+    gitDirectoryAliases: [openedGitDirectory],
   });
 }
 
@@ -1169,6 +1312,19 @@ function normalizedPathsMatch(pathA, pathB) {
   return normalizeForIdentity(pathA) === normalizeForIdentity(pathB);
 }
 
+function directoryPathsMatch(actualPath, actualIdentity, expectedPath, expectedIdentity) {
+  if (normalizedPathsMatch(actualPath, expectedPath)) return true;
+  // Case-insensitive filesystems preserve identity across a case-only rename.
+  // Identity is required: folding alone would merge distinct case-sensitive
+  // directories or accept replacement of the old path by another repository.
+  return Boolean(
+    actualIdentity &&
+    expectedIdentity &&
+    normalizedPathsMatch(actualPath.toLowerCase(), expectedPath.toLowerCase()) &&
+    filesystemIdentityMatches(actualIdentity, expectedIdentity),
+  );
+}
+
 async function inspectDirectoryAsync(candidate, missingReason, wrongTypeReason, signal) {
   throwIfAborted(signal);
   let stats;
@@ -1199,7 +1355,12 @@ async function inspectDirectoryAsync(candidate, missingReason, wrongTypeReason, 
 }
 
 function directoryInspectionsMatch(left, right) {
-  if (!left?.path || !right?.path || !normalizedPathsMatch(left.path, right.path)) return false;
+  if (
+    !left?.path ||
+    !right?.path ||
+    !directoryPathsMatch(right.path, right.identity, left.path, left.identity)
+  )
+    return false;
   if (!left.identity && !right.identity) return true;
   return Boolean(
     left.identity &&
@@ -1375,9 +1536,11 @@ async function inspectRepositoryDescriptorAsync(
       return unavailableInspection(inspectedWorkingDirectory.reason);
     }
     if (
-      !normalizedPathsMatch(
+      !directoryPathsMatch(
         inspectedWorkingDirectory.path,
+        inspectedWorkingDirectory.identity,
         trimTrailingSeparator(normalizeLexicalPath(parts.workingDirectory)),
+        parts.workingDirectoryIdentity,
       ) ||
       !filesystemIdentityMatches(inspectedWorkingDirectory.identity, parts.workingDirectoryIdentity)
     ) {
@@ -1396,9 +1559,11 @@ async function inspectRepositoryDescriptorAsync(
     return unavailableInspection(inspectedGitDirectory.reason);
   }
   if (
-    !normalizedPathsMatch(
+    !directoryPathsMatch(
       inspectedGitDirectory.path,
+      inspectedGitDirectory.identity,
       trimTrailingSeparator(normalizeLexicalPath(parts.gitDirectory)),
+      parts.gitDirectoryIdentity,
     ) ||
     !filesystemIdentityMatches(inspectedGitDirectory.identity, parts.gitDirectoryIdentity)
   ) {
@@ -1416,9 +1581,11 @@ async function inspectRepositoryDescriptorAsync(
   }
   if (
     (parts.commonDirectory &&
-      !normalizedPathsMatch(
+      !directoryPathsMatch(
         inspectedCommonDirectory.path,
+        inspectedCommonDirectory.identity,
         trimTrailingSeparator(normalizeLexicalPath(parts.commonDirectory)),
+        parts.commonDirectoryIdentity,
       )) ||
     !filesystemIdentityMatches(inspectedCommonDirectory.identity, parts.commonDirectoryIdentity)
   ) {

@@ -373,7 +373,7 @@ describe("File watch runtime", () => {
     expect(changes(1)).toEqual([]);
     expect(changes(2)).toEqual([{ action: "updated", path: target }]);
     expect(worker.diagnostics().sources.filter((source) => source.path === directory).length).toBe(
-      2,
+      1,
     );
     await Promise.all([1, 2, 3].map((id) => worker.unsubscribe(id)));
     expect(worker.diagnostics().sources).toEqual([]);
@@ -928,10 +928,7 @@ describe("File watch runtime", () => {
           recursive,
           guard,
         })),
-      ).toEqual([
-        { directory, recursive: true, guard: false },
-        { directory, recursive: false, guard: false },
-      ]);
+      ).toEqual([{ directory, recursive: true, guard: false }]);
     });
 
     it("uses cheap macOS guards only at the nearest missing anchor and then arms the target", async () => {

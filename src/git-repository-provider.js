@@ -54,6 +54,26 @@ function repositoryMatchesDescriptor(repository, descriptor) {
   );
 }
 
+function descriptorsHaveSameIdentity(left, right) {
+  if (!left || !right) return false;
+  if (
+    repositoryIdentity(left.getPath(), left.getWorkingDirectory()) !==
+      repositoryIdentity(right.getPath(), right.getWorkingDirectory()) ||
+    normalizePath(left.getCommonDirectory()) !== normalizePath(right.getCommonDirectory())
+  )
+    return false;
+  const identities = [
+    [left.getGitDirectoryIdentity(), right.getGitDirectoryIdentity()],
+    [left.getCommonDirectoryIdentity(), right.getCommonDirectoryIdentity()],
+  ];
+  if (left.getWorkingDirectory() !== null) {
+    identities.push([left.getWorkingDirectoryIdentity(), right.getWorkingDirectoryIdentity()]);
+  }
+  return identities.every(
+    ([current, expected]) => current && expected && filesystemIdentitiesMatch(current, expected),
+  );
+}
+
 // Provider that conforms to the project.repository-provider@1.0.0 service.
 // Discovery and validation have one owner: git-repository-descriptor. The
 // descriptor produced here is passed into GitRepository instead of making the
@@ -68,13 +88,62 @@ module.exports = class GitRepositoryProvider {
     this.repositoriesByGitDirectory = new Map();
     this.repositoryState = new WeakMap();
     this.pendingDescriptorsByPath = new Map();
+    this.pendingDiscoveryRequestsByPath = new Map();
     this.isRegistered = isRegistered;
     this.maxPendingDescriptors = maxPendingDescriptors;
   }
 
   async repositoryForPath(filePath) {
+    const key = filePath ? normalizePath(filePath) : filePath;
+    let group = this.pendingDiscoveryRequestsByPath.get(key);
+    if (!group) {
+      group = { latest: null, pending: 0 };
+      this.pendingDiscoveryRequestsByPath.set(key, group);
+    }
+    const request = {};
+    group.latest = request;
+    group.pending++;
+    request.completed = this.discoverRepositoryForPath(filePath, key, group, request);
+    try {
+      return (await request.completed).repository;
+    } finally {
+      if (--group.pending === 0 && this.pendingDiscoveryRequestsByPath.get(key) === group) {
+        this.pendingDiscoveryRequestsByPath.delete(key);
+      }
+    }
+  }
+
+  async discoverRepositoryForPath(filePath, key, group, request) {
     const descriptor = await discoverRepositoryDescriptorAsync(filePath);
-    if (descriptor) {
+    // A newer request may have observed initialization, deletion or replacement
+    // while this filesystem walk was pending. Its candidate owns this path.
+    if (group.latest !== request) return this.adoptLatestDiscovery(descriptor, key, group);
+    if (!descriptor && filePath) {
+      const previous = this.pendingDescriptorsByPath.get(key);
+      if (previous) {
+        this.pendingDescriptorsByPath.delete(key);
+        this.releaseAbandonedRepository(previous.repository);
+      }
+    }
+    return this.rememberDiscovery(descriptor, key, group, request);
+  }
+
+  async adoptLatestDiscovery(descriptor, key, group) {
+    if (!descriptor) return { repository: null, descriptor: null };
+    let latest;
+    let outcome;
+    do {
+      latest = group.latest;
+      outcome = await latest.completed;
+    } while (latest !== group.latest);
+    if (!descriptorsHaveSameIdentity(descriptor, outcome.descriptor)) {
+      return { repository: null, descriptor: null };
+    }
+    return this.rememberDiscovery(outcome.descriptor, key, group, latest);
+  }
+
+  rememberDiscovery(descriptor, key, group, request) {
+    if (descriptor && !this.pendingDescriptorsByPath.has(key)) {
       if (this.pendingDescriptorsByPath.size >= this.maxPendingDescriptors) {
         const abandonedRepositories = new Set(
           Array.from(this.pendingDescriptorsByPath.values(), ({ repository }) => repository),
@@ -87,22 +156,33 @@ module.exports = class GitRepositoryProvider {
     }
     const repository = this.repositoryForDescriptor(descriptor);
     if (repository && descriptor) {
-      const key = normalizePath(filePath);
+      if (group.latest !== request) {
+        this.releaseAbandonedRepository(repository);
+        return this.adoptLatestDiscovery(descriptor, key, group);
+      }
       const previous = this.pendingDescriptorsByPath.get(key);
       if (previous && previous.repository !== repository) {
         this.pendingDescriptorsByPath.delete(key);
         this.releaseAbandonedRepository(previous.repository);
       }
-      this.pendingDescriptorsByPath.set(key, { repository, descriptor });
+      const claims = previous?.repository === repository ? previous.claims || 1 : 0;
+      this.pendingDescriptorsByPath.set(key, { repository, descriptor, claims: claims + 1 });
     }
-    return repository;
+    return { repository, descriptor };
+  }
+
+  consumePendingDescriptor(repository, key) {
+    const pending = this.pendingDescriptorsByPath.get(key);
+    if (!pending || pending.repository !== repository) return null;
+    if (pending.claims > 1) pending.claims--;
+    else this.pendingDescriptorsByPath.delete(key);
+    return pending;
   }
 
   commitRepositoryForPath(repository, filePath) {
     const key = normalizePath(filePath);
-    const pending = this.pendingDescriptorsByPath.get(key);
-    if (!pending || pending.repository !== repository) return;
-    this.pendingDescriptorsByPath.delete(key);
+    const pending = this.consumePendingDescriptor(repository, key);
+    if (!pending) return;
     if (repository.isDestroyed()) return;
     repository.addWorkingDirectoryAlias?.(pending.descriptor.openedWorkingDirectory);
     for (const alias of pending.descriptor.getGitDirectoryAliases?.() || []) {
@@ -132,9 +212,8 @@ module.exports = class GitRepositoryProvider {
 
   abandonRepositoryForPath(repository, filePath) {
     const key = normalizePath(filePath);
-    const pending = this.pendingDescriptorsByPath.get(key);
-    if (pending?.repository !== repository) return false;
-    this.pendingDescriptorsByPath.delete(key);
+    const pending = this.consumePendingDescriptor(repository, key);
+    if (!pending) return false;
     this.releaseAbandonedRepository(repository);
     return true;
   }

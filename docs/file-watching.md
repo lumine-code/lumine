@@ -46,8 +46,27 @@ Custom TextBuffer data sources retain their own identity and stream transformati
 
 ## Ownership and platforms
 
-The main process owns configuration subscriptions and renderer sessions; the worker alone loads the native addon. Reload or crash releases only that renderer session. Physical directory sources are shared by canonical path and recursion mode; shallow sources never take over recursive subscriptions or descendants they cannot observe.
+The main process owns configuration subscriptions and renderer sessions; the worker alone loads the native addon. Reload or crash releases only that renderer session. An armed recursive directory source also serves subscriptions and location guards below it, preserving each subscriber's shallow or recursive scope. A broader recursive source takes over existing descendants after arming, and its readiness waits for their native handles to close. Shallow sources never take over recursive subscriptions or descendants they cannot observe.
 
 The native library uses ReadDirectoryChangesW on Windows, inotify on Linux and FSEvents on macOS. There is no renderer `fs.watch`, polling backend, Watchman selection or public snapshot API. Root symlinks are resolved and revalidated; recursive observation does not traverse nested symlinks or junctions. Subscribe explicitly through such a path to observe its target.
 
 Concurrent subscriptions share preliminary filesystem reads as well as physical sources. Those reads are retained only while pending. Each subscription still verifies its topology with fresh reads after its sources are armed, preserving detection of changes during startup.
+
+On Windows, an open directory handle can prevent relocation of one of its ancestors even when the handle shares deletion access. Recursive source pooling avoids descendant handles inside an observed project, allowing its repositories to be renamed with files open. Moving an ancestor above the outermost observed source can still require releasing the affected observations first. The service does not watch an entire drive recursively to bypass this filesystem restriction.
+
+## Git repository lifecycle
+
+The repository registry reconciles filesystem changes by location and filesystem identity. Removing a repository invalidates its old descriptor, drops its routing and rejects queued operations before another provider can execute them. A new repository at the same path receives a fresh descriptor; stale reads and writes cannot silently switch to it. Case-only renames retain access when the filesystem still resolves the old spelling to the same identity.
+
+| Change                                                           | Registry behavior                                                                                                       |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `git init` or a recursive repository copy                        | Retries discovery when `HEAD`, `objects` and `refs` become available, including a marker delivered before its contents. |
+| Deleting `.git`, `HEAD`, `objects` or `refs`                     | Removes unavailable repository state; restoring valid metadata permits fresh discovery.                                 |
+| Moving or renaming a known repository inside an observed project | Removes the old location and discovers the destination, including condensed ancestor-directory events.                  |
+| Copying a repository                                             | Keeps the source and destination as distinct filesystem identities.                                                     |
+| Moving a repository outside every observed project               | Removes its old routing; opening the destination or adding it as a project permits discovery there.                     |
+| Changing storage while discovery is pending                      | Discards results from the earlier topology instead of resurrecting an obsolete repository.                              |
+
+Discovery of previously unknown repositories remains controlled by `git.watchDiscovery` and `git.watchDepth`. Fixed-path filesystem observation and Git rediscovery do not retarget externally moved documents or project roots. Editor-owned file moves use the transaction described above to preserve document state while reconciling repository locations.
+
+Known Git object writes and ordinary ref traffic update the appropriate snapshots without repeating repository discovery. Concurrent candidate walks share pending filesystem reads; final identity reads and command preflight validation remain fresh.

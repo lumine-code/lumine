@@ -63,7 +63,7 @@ jobs:
           if [ "$FULL_SUITE" = "true" ]; then
             $prefix npm run test:editor 2>&1 | tee file-watch-trace.log
           else
-            $prefix npm run test:only -- spec/file-watch-runtime-spec.js spec/file-watch-client-spec.js spec/config-file-spec.js spec/file-watch-integration-spec.js spec/watch-file-spec.js spec/text-buffer-file-watch-spec.js spec/text-buffer-io-spec.js 2>&1 | tee file-watch-trace.log
+            $prefix npm run test:only -- spec/file-watch-runtime-spec.js spec/file-watch-client-spec.js spec/config-file-spec.js spec/file-watch-integration-spec.js spec/file-watch-repository-lifecycle-spec.js spec/watch-file-spec.js spec/text-buffer-file-watch-spec.js spec/text-buffer-io-spec.js spec/project-repository-discovery-spec.js spec/repository-registry-spec.js spec/repository-lifecycle-spec.js spec/repository-file-watch-integration-spec.js spec/git-repository-provider-spec.js spec/git-repository-descriptor-spec.js spec/git-repository-provider-lifecycle-spec.js spec/git-repository-discovery-renderer-spec.js spec/git-repository-spec.js spec/git-repository-host-facade-spec.js spec/git-host-real-process-spec.js spec/git-repository-lifecycle-host-spec.js 2>&1 | tee file-watch-trace.log
           fi
       - uses: actions/upload-artifact@v6
         if: always()

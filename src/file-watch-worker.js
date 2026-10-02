@@ -3,6 +3,7 @@ const path = require("path");
 const { absolutePath, containsPath, relativePath, ancestors } = require("./file-watch-paths");
 const {
   MAX_QUEUED_EVENTS,
+  deferred,
   abortError,
   serializeError,
   mergeChange,
@@ -17,6 +18,10 @@ function identity(stat) {
 
 function fingerprint(stat) {
   return stat ? `${identity(stat)}:${stat.size}:${stat.mtimeNs ?? stat.mtimeMs}` : null;
+}
+
+function sourceKey(directory, recursive, guard) {
+  return `${directory}\0${recursive ? 1 : 0}\0${guard ? 1 : 0}`;
 }
 
 /** Logical fixed-path subscriptions and canonical directory source pooling. */
@@ -186,7 +191,7 @@ class FileWatchWorker {
       const stat = await this.stat(directoryPath, filesystem);
       if (!stat?.isDirectory()) return false;
       const canonical = await filesystem.realpath(directoryPath);
-      const key = `${canonical}\0${recursive ? 1 : 0}\0${guard ? 1 : 0}`;
+      const key = sourceKey(canonical, recursive, guard);
       let descriptor = descriptors.get(key);
       if (!descriptor) {
         descriptor = {
@@ -271,14 +276,71 @@ class FileWatchWorker {
     };
   }
 
-  acquire(logical, descriptor) {
-    let source = this.sources.get(descriptor.key);
-    if (!source || source.invalid || source.identity !== descriptor.identity) {
+  refreshMember(logical, source) {
+    const descriptors = new Map([
+      ...(logical.bindings.get(source) || []),
+      ...(logical.acquiring?.bindings.get(source) || []),
+    ]);
+    const bindings = new Map();
+    for (const [key, descriptor] of descriptors) {
+      const guardPaths = new Set(descriptor.guardPaths);
+      if (source.recursive && descriptor.directory !== source.path) {
+        // The physical parent receives relocation events for descendant
+        // ancestors instead of a descendant stream's RootChanged signal.
+        let current = source.path;
+        for (const component of relativePath(source.path, descriptor.directory).split(path.sep)) {
+          current = path.join(current, component);
+          guardPaths.add(current);
+        }
+      }
+      bindings.set(key, { ...descriptor, guardPaths });
+    }
+    if (bindings.size) source.members.set(logical, bindings);
+    else source.members.delete(logical);
+  }
+
+  async coveringSource(logical, descriptor, excluded) {
+    // Canonical ancestor keys avoid scanning every native source for each
+    // descriptor, including fleets of unrelated fixed-file subscriptions.
+    const candidates = ancestors(descriptor.directory)
+      .map((directory) => this.sources.get(sourceKey(directory, true, false)))
+      .filter(
+        (source) =>
+          source?.recursive &&
+          source !== excluded &&
+          !source.guard &&
+          !source.invalid &&
+          containsPath(source.path, descriptor.directory, true) &&
+          (source.path !== descriptor.directory || source.identity === descriptor.identity),
+      );
+    for (const source of candidates) {
+      const read = this.stat(source.path, this.planningFilesystem());
+      const stat = logical ? await this.waitFor(logical, read) : await read;
+      if (
+        stat?.isDirectory() &&
+        identity(stat) === source.identity &&
+        !source.invalid &&
+        this.sources.get(source.key) === source
+      )
+        return source;
+    }
+    return null;
+  }
+
+  async acquire(logical, descriptor) {
+    const covering = await this.coveringSource(logical, descriptor);
+    let source = covering || this.sources.get(descriptor.key);
+    if (logical.cancelled) throw abortError(logical.path);
+    if (!source || source.invalid || (!covering && source.identity !== descriptor.identity)) {
       source = {
         key: descriptor.key,
         path: descriptor.directory,
         identity: descriptor.identity,
+        recursive: descriptor.recursive,
+        guard: descriptor.guard,
         members: new Map(),
+        ready: deferred(),
+        armed: false,
         invalid: false,
       };
       this.trace?.("source-open", { id: logical.id, path: logical.path, source: descriptor });
@@ -288,9 +350,95 @@ class FileWatchWorker {
         (message) => this.sourceEvent(source, message),
       );
       this.sources.set(source.key, source);
+      source.handle.ready
+        .then(async () => {
+          source.armed = true;
+          // A parent can finish arming while an earlier descendant lookup is
+          // still in flight. Recheck after native readiness to adopt that late
+          // source before its logical subscribers are acknowledged as ready.
+          const parent = await this.coveringSource(
+            null,
+            { directory: source.path, identity: source.identity },
+            source,
+          );
+          if (parent?.armed && !source.invalid) await this.consolidate(parent);
+          else await this.consolidate(source);
+          if (!source.coveredBy) source.ready.resolve();
+        })
+        .catch((error) => {
+          if (!source.coveredBy) source.ready.reject(error);
+        });
     }
-    source.members.set(logical, descriptor);
+    this.addBinding(logical, source, descriptor);
     return source;
+  }
+
+  addBinding(logical, source, descriptor) {
+    const attempt = logical.acquiring;
+    let bindings = attempt.bindings.get(source);
+    if (!bindings) attempt.bindings.set(source, (bindings = new Map()));
+    bindings.set(descriptor.key, descriptor);
+    attempt.sources.set(source.key, source);
+    this.refreshMember(logical, source);
+  }
+
+  async consolidate(parent) {
+    if (
+      !parent.armed ||
+      !parent.recursive ||
+      parent.guard ||
+      parent.invalid ||
+      !parent.members.size ||
+      this.sources.get(parent.key) !== parent
+    )
+      return;
+    const stat = await this.stat(parent.path);
+    if (!stat?.isDirectory() || identity(stat) !== parent.identity) {
+      throw Object.assign(new Error("File watch covering root changed before migration"), {
+        code: "ENOENT",
+      });
+    }
+    if (parent.invalid || !parent.members.size || this.sources.get(parent.key) !== parent) return;
+    const closing = [];
+    for (const source of [...this.sources.values()]) {
+      if (
+        source === parent ||
+        source.invalid ||
+        !containsPath(parent.path, source.path, true) ||
+        (source.path === parent.path && source.identity !== parent.identity)
+      )
+        continue;
+      // The parent is armed before ownership moves. Retire the old generation
+      // before cancellation can report ABORT_ERR or deliver a queued callback.
+      source.invalid = true;
+      source.coveredBy = parent;
+      if (this.sources.get(source.key) === source) this.sources.delete(source.key);
+      for (const logical of source.members.keys()) {
+        for (const owner of [logical, logical.acquiring].filter(Boolean)) {
+          if (owner.sources.get(source.key) !== source) continue;
+          owner.sources.delete(source.key);
+          owner.sources.set(parent.key, parent);
+          const previous = owner.bindings.get(source);
+          owner.bindings.delete(source);
+          owner.bindings.set(
+            parent,
+            new Map([...(owner.bindings.get(parent) || []), ...(previous || [])]),
+          );
+        }
+        this.refreshMember(logical, parent);
+      }
+      source.members.clear();
+      // Pending descendants can become ready through this armed parent even
+      // when cancellation rejects their original native readiness promise.
+      source.handle.dispose();
+      const retired = Promise.all([source.handle.closed, source.retiredClosed]);
+      Promise.all([parent.ready.promise, retired]).then(source.ready.resolve, source.ready.reject);
+      closing.push(retired);
+    }
+    // Awaiting the new parent's ready is also a relocation barrier on Windows:
+    // no retired descendant directory handles remain open after it resolves.
+    parent.retiredClosed = Promise.all([parent.retiredClosed, ...closing]);
+    await parent.retiredClosed;
   }
 
   async release(logical, source) {
@@ -301,9 +449,10 @@ class FileWatchWorker {
       path: logical.path,
       sourcePath: source.path,
     });
+    source.invalid = true;
     if (this.sources.get(source.key) === source) this.sources.delete(source.key);
     source.handle.dispose();
-    await source.handle.closed;
+    await Promise.all([source.handle.closed, source.retiredClosed]);
     this.trace?.("source-close-done", {
       id: logical.id,
       path: logical.path,
@@ -316,14 +465,17 @@ class FileWatchWorker {
       sourcePath: source.path,
       sourceKey: source.key,
       invalid: source.invalid,
-      subscriptions: [...source.members].map(([logical, descriptor]) => ({
+      subscriptions: [...source.members].map(([logical, bindings]) => ({
         id: logical.id,
         path: logical.path,
         canonicalTarget: logical.plan?.canonicalTarget,
-        main: descriptor.main,
-        guard: descriptor.guard,
-        recursive: descriptor.recursive,
-        guardPaths: [...descriptor.guardPaths],
+        bindings: [...bindings.values()].map((descriptor) => ({
+          directory: descriptor.directory,
+          main: descriptor.main,
+          guard: descriptor.guard,
+          recursive: descriptor.recursive,
+          guardPaths: [...descriptor.guardPaths],
+        })),
         cancelled: logical.cancelled,
       })),
       type: message.type,
@@ -331,6 +483,7 @@ class FileWatchWorker {
       error: message.error,
       ...summarizeFileWatchPayload(message.events || []),
     });
+    if (source.coveredBy) return;
     if (message.type === "invalidate" || message.type === "error") {
       const reason = message.reason || "source-lost";
       const incident =
@@ -360,12 +513,15 @@ class FileWatchWorker {
       return;
     }
     if (message.type !== "changes" || source.invalid) return;
-    for (const [logical, descriptor] of source.members) {
+    for (const [logical, bindings] of source.members) {
       if (logical.cancelled) continue;
+      const descriptors = [...bindings.values()];
+      const main = descriptors.filter((descriptor) => descriptor.main);
+      const guardPaths = descriptors.flatMap((descriptor) => [...descriptor.guardPaths]);
       for (const event of message.events) {
         if (
           event.action !== "updated" &&
-          [...descriptor.guardPaths].some(
+          guardPaths.some(
             (guardPath) =>
               guardPath === event.path || guardPath.toLowerCase() === event.path.toLowerCase(),
           )
@@ -373,9 +529,8 @@ class FileWatchWorker {
           logical.rebind = true;
           logical.checkFile = true;
         }
-        if (!descriptor.main) continue;
         if (logical.kind === "file") {
-          if (event.path === logical.plan?.canonicalTarget) {
+          if (main.length && event.path === logical.plan?.canonicalTarget) {
             logical.checkFile = true;
             if (event.contentChanged === true) {
               logical.contentVersion = (logical.contentVersion || 0) + 1;
@@ -383,7 +538,11 @@ class FileWatchWorker {
             }
             if (event.action !== "updated") logical.rebind = true;
           }
-        } else if (containsPath(descriptor.directory, event.path, logical.recursive)) {
+        } else {
+          const descriptor = main.find((binding) =>
+            containsPath(binding.directory, event.path, logical.recursive),
+          );
+          if (!descriptor) continue;
           const relative = relativePath(descriptor.directory, event.path);
           const eventPath = relative ? path.join(logical.path, relative) : logical.path;
           mergeChange(logical.events, { action: event.action, path: eventPath });
@@ -477,6 +636,9 @@ class FileWatchWorker {
     while (!logical.cancelled) {
       let next;
       const acquired = new Map();
+      const bindings = new Map();
+      const attempt = { sources: acquired, bindings };
+      logical.acquiring = attempt;
       try {
         // Share only concurrent preliminary reads. The verification below
         // must start fresh after every source is armed, so an earlier read
@@ -495,11 +657,10 @@ class FileWatchWorker {
         });
         for (const descriptor of next.descriptors.values()) {
           if (logical.cancelled) throw abortError(logical.path);
-          const source = this.acquire(logical, descriptor);
-          acquired.set(descriptor.key, source);
+          const source = await this.waitFor(logical, this.acquire(logical, descriptor));
           // Ancestors arm before their descendants. A second plan after all
           // ready acknowledgements closes creation/rename races during setup.
-          await this.waitFor(logical, source.handle.ready);
+          await this.waitFor(logical, source.ready.promise);
         }
         if (logical.cancelled) throw abortError(logical.path);
         const verified = await this.waitFor(logical, this.plan(logical));
@@ -517,8 +678,25 @@ class FileWatchWorker {
             code: "ENOENT",
           });
         }
+        for (const source of acquired.values()) {
+          // A physical recursive ancestor need not occur in the logical plan.
+          // Check its own root after arming, using a fresh metadata read.
+          const verifiedRoot = [...verified.descriptors.values()].find(
+            (descriptor) => descriptor.directory === source.path,
+          );
+          if (verifiedRoot?.identity === source.identity && !source.invalid) continue;
+          const stat = await this.waitFor(logical, this.stat(source.path));
+          if (!stat?.isDirectory() || identity(stat) !== source.identity || source.invalid) {
+            throw Object.assign(new Error("File watch covering root changed while arming"), {
+              code: "ENOENT",
+            });
+          }
+        }
         const previous = logical.sources;
         logical.sources = acquired;
+        logical.bindings = bindings;
+        logical.acquiring = null;
+        for (const source of acquired.values()) this.refreshMember(logical, source);
         const oldPlan = logical.plan;
         logical.plan = verified;
         if (!initial && oldPlan?.topology !== verified.topology) {
@@ -527,10 +705,22 @@ class FileWatchWorker {
             incident: this.incident("target-changed"),
           };
           if (logical.kind === "directory" && Boolean(oldPlan?.stat) !== Boolean(verified.stat)) {
-            mergeChange(logical.events, {
+            // A covered directory can receive timestamp updates while its new
+            // main binding is being verified. Its known missing/present state
+            // determines the root transition before those incidental updates.
+            logical.events.set(logical.path, {
               path: logical.path,
               action: verified.stat ? "created" : "deleted",
             });
+          } else if (
+            logical.kind === "directory" &&
+            verified.stat &&
+            logical.events.get(logical.path)?.action === "deleted"
+          ) {
+            // On a case-insensitive volume the old spelling still names the
+            // directory after a rename. Report activity on that fixed path
+            // without claiming that its still-present root was deleted.
+            logical.events.set(logical.path, { path: logical.path, action: "updated" });
           }
         }
         await Promise.all(
@@ -540,6 +730,7 @@ class FileWatchWorker {
         );
         return;
       } catch (error) {
+        if (logical.acquiring === attempt) logical.acquiring = null;
         this.trace?.("rebind-error", {
           id: logical.id,
           path: logical.path,
@@ -547,15 +738,18 @@ class FileWatchWorker {
           error: serializeError(error),
         });
         await Promise.all(
-          [...acquired.values()]
-            .filter((source) => logical.sources.get(source.key) !== source)
-            .map((source) => this.release(logical, source)),
+          [...acquired.values()].map((source) => {
+            if (logical.sources.get(source.key) !== source) return this.release(logical, source);
+            this.refreshMember(logical, source);
+          }),
         );
         // The filesystem may move between stat, realpath and native startup.
         // Retry its topology, but do not turn permission/resource errors into
         // an apparently armed watcher or spin indefinitely on a busy tree.
         if (!logical.cancelled && MISSING_CODES.has(error.code) && ++attempts < 8) continue;
         throw error;
+      } finally {
+        if (logical.acquiring === attempt) logical.acquiring = null;
       }
     }
     throw abortError(logical.path);
@@ -661,6 +855,7 @@ class FileWatchWorker {
       path: absolutePath(targetPath),
       recursive,
       sources: new Map(),
+      bindings: new Map(),
       events: new Map(),
       fingerprint: null,
       rebind: false,
@@ -707,6 +902,7 @@ class FileWatchWorker {
     logical.finishMissing?.();
     const sources = [...logical.sources.values()];
     logical.sources.clear();
+    logical.bindings.clear();
     await Promise.all(sources.map((source) => this.release(logical, source)));
   }
 
@@ -750,8 +946,8 @@ class FileWatchWorker {
       sources: [...this.sources.values()].map((source) => ({
         path: source.path,
         subscribers: source.members.size,
-        recursive: [...source.members.values()][0]?.recursive || false,
-        guard: [...source.members.values()][0]?.guard || false,
+        recursive: source.recursive,
+        guard: source.guard,
       })),
     };
   }

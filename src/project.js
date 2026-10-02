@@ -59,6 +59,7 @@ module.exports = class Project extends Model {
     this.directoryProviders = [];
     this.defaultDirectoryProvider = new DefaultDirectoryProvider();
     this.repositoryPromisesByPath = new Map();
+    this.repositoryLookupState = new WeakMap();
     this.repositoriesByCachedPath = new Map();
     this.repositoryPromiseKeysByRepository = new Map();
     this.repositoryCacheObservedRepositories = new WeakSet();
@@ -400,10 +401,23 @@ module.exports = class Project extends Model {
     return this.repositoryRegistry.resolveForPath(filePath, options);
   }
 
-  repositoryForPathFromProviders(filePath, { refresh = false } = {}) {
+  repositoryForPathFromProviders(filePath, { refresh = false, joinPending = false } = {}) {
     if (this.isDestroyed()) return Promise.resolve(null);
     const pathKey = repositoryPathKey(filePath);
+    const lookupState = (this.repositoryLookupState ||= new WeakMap());
     if (refresh) {
+      const pending = this.repositoryPromisesByPath.get(pathKey);
+      const state = lookupState.get(pending);
+      // Background scans may share a current in-flight lookup. Explicit
+      // refreshes keep their force semantics, including symlink retargeting
+      // before the watcher has announced the changed repository metadata.
+      if (
+        joinPending &&
+        state?.pending &&
+        state.providerGeneration === this.repositoryProviderGeneration &&
+        state.discoveryRevision === this.repositoryRegistry?.repositoryDiscoveryRevision
+      )
+        return pending;
       this.repositoryPromisesByPath.delete(pathKey);
       this.repositoriesByCachedPath.delete(pathKey);
     }
@@ -413,6 +427,11 @@ module.exports = class Project extends Model {
         this.clearRepositoryPathCache();
       }
       const providerGeneration = this.repositoryProviderGeneration;
+      const state = {
+        pending: true,
+        providerGeneration,
+        discoveryRevision: this.repositoryRegistry?.repositoryDiscoveryRevision,
+      };
       const providers = this.repositoryProviders.slice();
       const promises = providers.map((provider) => provider.repositoryForPath(filePath));
       let discoveryAccepted = false;
@@ -488,7 +507,11 @@ module.exports = class Project extends Model {
             this.repositoriesByCachedPath.delete(pathKey);
           }
           throw error;
+        })
+        .finally(() => {
+          state.pending = false;
         });
+      lookupState.set(promise, state);
       this.repositoryPromisesByPath.set(pathKey, promise);
     }
     return promise;
