@@ -15,6 +15,7 @@ const { isWrapBoundary: defaultIsWrapBoundary } = require("./text-utils");
 // scan of every screen row.
 const SCREEN_LINE_BLOCK_SIZE = 1024;
 const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
+const HARD_TAB_RUN_MIN_LENGTH = 64;
 const ASCII_WRAP_BOUNDARY_NONE = 0;
 const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
 const ASCII_WRAP_BOUNDARY_STANDARD = 2;
@@ -444,7 +445,9 @@ class DisplayLayer {
     );
     const tabCount = this.tabCounts[screenPosition.row];
     if (tabCount > 0) {
-      screenPosition = this.expandHardTabs(screenPosition, bufferPosition, tabCount);
+      screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
+        ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, true)
+        : this.expandHardTabs(screenPosition, bufferPosition, tabCount);
     }
 
     return Point.fromObject(screenPosition);
@@ -524,7 +527,11 @@ class DisplayLayer {
         screenPosition = bufferPositionThroughHunk(position, hunk, clipDirection);
       }
       const tabCount = this.tabCounts[screenPosition.row];
-      if (tabCount > 0) screenPosition = this.expandHardTabs(screenPosition, position, tabCount);
+      if (tabCount > 0) {
+        screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
+          ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, true)
+          : this.expandHardTabs(screenPosition, position, tabCount);
+      }
       // The packed decoder reuses its four points; never expose one of them.
       return Point.fromObject(screenPosition);
     });
@@ -547,7 +554,9 @@ class DisplayLayer {
     screenPosition = this.constrainScreenPosition(screenPosition, clipDirection);
     const tabCount = this.tabCounts[screenPosition.row];
     if (tabCount > 0) {
-      screenPosition = this.collapseHardTabs(screenPosition, tabCount, clipDirection);
+      screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
+        ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, false, clipDirection)
+        : this.collapseHardTabs(screenPosition, tabCount, clipDirection);
     }
     const bufferPosition = this.translateScreenPositionWithSpatialIndex(
       screenPosition,
@@ -1930,6 +1939,89 @@ class DisplayLayer {
   isSoftWrapHunk(hunk) {
     return isEqual(hunk.oldStart, hunk.oldEnd);
   }
+}
+
+function shouldSkipHardTabRuns(layer, position, tabCount) {
+  // Dense rows and short queries keep the scalar loop: searching a succession
+  // of tiny runs costs more than advancing their individual characters.
+  return (
+    layer.screenLineLengths[position.row] >= tabCount * HARD_TAB_RUN_MIN_LENGTH &&
+    position.column >= HARD_TAB_RUN_MIN_LENGTH &&
+    Number.isInteger(position.column) &&
+    Number.isInteger(layer.tabLength) &&
+    Number.isInteger(layer.softWrapHangingIndent)
+  );
+}
+
+function translateHardTabsWithRunSkipping(layer, target, tabCount, expanding, clipDirection) {
+  const screenRowStart = Point(target.row, 0);
+  const screenRowEnd = expanding ? target : Point(target.row, layer.screenLineLengths[target.row]);
+  const hunks = layer.spatialIndex.getChangesInNewRange(screenRowStart, screenRowEnd);
+  let hunkIndex = 0;
+  let unexpandedColumn = 0;
+  let expandedColumn = 0;
+  let { row: bufferRow, column: bufferColumn } =
+    layer.translateScreenPositionWithSpatialIndex(screenRowStart);
+  let line = layer.buffer.lineForRow(bufferRow);
+
+  while (tabCount > 0) {
+    const remaining = target.column - (expanding ? unexpandedColumn : expandedColumn);
+    if (remaining === 0) break;
+
+    const hunk = hunks[hunkIndex];
+    if (hunk && hunk.oldStart.row === bufferRow && hunk.oldStart.column === bufferColumn) {
+      if (layer.isSoftWrapHunk(hunk)) {
+        if (hunkIndex !== 0) throw new Error("Unexpected soft wrap hunk");
+        unexpandedColumn = expanding
+          ? hunk.newEnd.column
+          : Math.min(target.column, hunk.newEnd.column);
+        expandedColumn = unexpandedColumn;
+      } else {
+        ({ row: bufferRow, column: bufferColumn } = hunk.oldEnd);
+        line = layer.buffer.lineForRow(bufferRow);
+        unexpandedColumn++;
+        expandedColumn++;
+      }
+      hunkIndex++;
+      continue;
+    }
+
+    if (line[bufferColumn] === "\t") {
+      const nextTabStop = expanding
+        ? expandedColumn + (layer.tabLength - (expandedColumn % layer.tabLength))
+        : expandedColumn + layer.tabLength - (expandedColumn % layer.tabLength);
+      if (!expanding && nextTabStop > target.column) {
+        const forward =
+          clipDirection === "forward" ||
+          (clipDirection !== "backward" &&
+            target.column > Math.ceil((nextTabStop + expandedColumn) / 2));
+        return Point(target.row, unexpandedColumn + (forward ? 1 : 0));
+      }
+      expandedColumn = nextTabStop;
+      unexpandedColumn++;
+      bufferColumn++;
+      tabCount--;
+    } else {
+      // Ordinary UTF-16 runs have identical buffer and screen extents. Bound
+      // the search by the target and next fold; a tab far beyond an early
+      // target must not make a cursor query scan the rest of a huge line.
+      let endColumn = Math.min(line.length, bufferColumn + remaining);
+      if (hunk && hunk.oldStart.row === bufferRow) {
+        endColumn = Math.min(endColumn, hunk.oldStart.column);
+      }
+      const nextTabOffset = line.slice(bufferColumn, endColumn).indexOf("\t");
+      if (nextTabOffset >= 0) endColumn = bufferColumn + nextTabOffset;
+      const distance = endColumn - bufferColumn;
+      unexpandedColumn += distance;
+      expandedColumn += distance;
+      bufferColumn = endColumn;
+    }
+  }
+
+  const column = expanding
+    ? expandedColumn + target.column - unexpandedColumn
+    : unexpandedColumn + target.column - expandedColumn;
+  return column === target.column ? target : Point(target.row, column);
 }
 
 function createEmptyLayoutState() {
