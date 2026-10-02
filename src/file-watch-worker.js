@@ -277,10 +277,23 @@ class FileWatchWorker {
   }
 
   refreshMember(logical, source) {
-    const descriptors = new Map([
-      ...(logical.bindings.get(source) || []),
-      ...(logical.acquiring?.bindings.get(source) || []),
-    ]);
+    const committed = logical.bindings.get(source);
+    const pending = logical.acquiring?.bindings.get(source);
+    const descriptors =
+      committed && pending ? new Map([...committed, ...pending]) : committed || pending;
+    if (!descriptors?.size) {
+      source.members.delete(logical);
+      return;
+    }
+    // Plans own these immutable descriptors. A single binding map can also
+    // serve membership unless a wider physical root adds relocation guards.
+    if (
+      !source.recursive ||
+      [...descriptors.values()].every((descriptor) => descriptor.directory === source.path)
+    ) {
+      source.members.set(logical, descriptors);
+      return;
+    }
     const bindings = new Map();
     for (const [key, descriptor] of descriptors) {
       const guardPaths = new Set(descriptor.guardPaths);
@@ -314,15 +327,24 @@ class FileWatchWorker {
           (source.path !== descriptor.directory || source.identity === descriptor.identity),
       );
     for (const source of candidates) {
-      const read = this.stat(source.path, this.planningFilesystem());
-      const stat = logical ? await this.waitFor(logical, read) : await read;
-      if (
-        stat?.isDirectory() &&
-        identity(stat) === source.identity &&
-        !source.invalid &&
-        this.sources.get(source.key) === source
-      )
-        return source;
+      const descriptors = logical?.acquiring?.plan?.descriptors;
+      const planned =
+        descriptors?.get(sourceKey(source.path, false, false)) ||
+        descriptors?.get(sourceKey(source.path, true, false)) ||
+        descriptors?.get(sourceKey(source.path, false, true));
+      let matches;
+      if (planned) {
+        // Preliminary directory identities are already fresh enough to choose
+        // a candidate. Final verification and migration still read afresh.
+        matches = planned.identity === source.identity;
+      } else {
+        // macOS plans can omit a covering ancestor; late native readiness has
+        // no logical plan at all. Both still need their own metadata probe.
+        const read = this.stat(source.path, this.planningFilesystem());
+        const stat = logical ? await this.waitFor(logical, read) : await read;
+        matches = stat?.isDirectory() && identity(stat) === source.identity;
+      }
+      if (matches && !source.invalid && this.sources.get(source.key) === source) return source;
     }
     return null;
   }
@@ -513,6 +535,33 @@ class FileWatchWorker {
       return;
     }
     if (message.type !== "changes" || source.invalid) return;
+    const directoryActions = new Map();
+    if (message.events.some((event) => event.action === "created")) {
+      // FSEvents can retain ItemCreated on a later write after a recursive
+      // source replaces a missing-path guard. Fixed-file baselines already
+      // establish that those paths are present; use that knowledge without
+      // inventorying the subtree. Capture it before processing any member so
+      // classification does not depend on subscription order.
+      const presentFiles = new Set(
+        [...source.members.keys()]
+          .filter(
+            (logical) =>
+              logical.kind === "file" &&
+              !logical.cancelled &&
+              logical.plan?.stat &&
+              logical.fingerprint !== null &&
+              logical.nativePresence !== false,
+          )
+          .map((logical) => logical.plan?.canonicalTarget)
+          .filter(Boolean),
+      );
+      for (const event of message.events) {
+        if (event.action === "deleted") presentFiles.delete(event.path);
+        else if (event.action === "created" && presentFiles.has(event.path)) {
+          directoryActions.set(event, "updated");
+        }
+      }
+    }
     for (const [logical, bindings] of source.members) {
       if (logical.cancelled) continue;
       const descriptors = [...bindings.values()];
@@ -531,6 +580,10 @@ class FileWatchWorker {
         }
         if (logical.kind === "file") {
           if (main.length && event.path === logical.plan?.canonicalTarget) {
+            if (event.action === "deleted" || event.action === "created") {
+              logical.nativePresence = event.action === "created";
+              logical.presenceVersion = (logical.presenceVersion || 0) + 1;
+            }
             logical.checkFile = true;
             if (event.contentChanged === true) {
               logical.contentVersion = (logical.contentVersion || 0) + 1;
@@ -545,7 +598,10 @@ class FileWatchWorker {
           if (!descriptor) continue;
           const relative = relativePath(descriptor.directory, event.path);
           const eventPath = relative ? path.join(logical.path, relative) : logical.path;
-          mergeChange(logical.events, { action: event.action, path: eventPath });
+          mergeChange(logical.events, {
+            action: directoryActions.get(event) || event.action,
+            path: eventPath,
+          });
           if (logical.events.size > MAX_QUEUED_EVENTS) {
             logical.events.clear();
             logical.invalidation = {
@@ -644,6 +700,7 @@ class FileWatchWorker {
         // must start fresh after every source is armed, so an earlier read
         // can never hide a topology change in the observation gap.
         next = await this.waitFor(logical, this.plan(logical, true));
+        attempt.plan = next;
         this.trace?.("rebind-plan", {
           id: logical.id,
           path: logical.path,
@@ -757,6 +814,7 @@ class FileWatchWorker {
 
   async reconcileFile(logical, initial = false, contentChanged = false) {
     const contentVersion = logical.contentVersion || 0;
+    const presenceVersion = logical.presenceVersion || 0;
     let stat = await this.waitFor(logical, this.stat(logical.path));
     if (!stat && logical.fingerprint !== null && !initial) {
       // Editors commonly replace a file via rename. A short second check keeps
@@ -797,6 +855,9 @@ class FileWatchWorker {
       mergeChange(logical.events, { action, path: logical.path });
     }
     logical.fingerprint = current;
+    if (presenceVersion === (logical.presenceVersion || 0)) {
+      logical.nativePresence = current !== null;
+    }
   }
 
   async update(logical) {
@@ -858,6 +919,8 @@ class FileWatchWorker {
       bindings: new Map(),
       events: new Map(),
       fingerprint: null,
+      nativePresence: null,
+      presenceVersion: 0,
       rebind: false,
       checkFile: false,
       invalidation: null,

@@ -203,6 +203,154 @@ describe("File watch runtime", () => {
     expect(changes(1)).toEqual([{ action: "created", path: target }]);
   });
 
+  it("uses a restored fixed-file baseline for a retained FSEvents creation hint", async () => {
+    worker.platform = "darwin";
+    const root = path.join(directory, "repository");
+    const metadata = path.join(root, ".git");
+    const head = path.join(metadata, "HEAD");
+    fs.mkdirSync(metadata, { recursive: true });
+    fs.writeFileSync(head, "ref: refs/heads/main\n");
+    await subscribe(1, "file", head);
+    await subscribe(2, "directory", root, true);
+    const source = [...engine.sources].find((candidate) => candidate.directory === root);
+    fs.renameSync(root, path.join(directory, "moved"));
+    source.callback({ type: "invalidate", reason: "root-changed" });
+    await until(() => changes(1).some(({ action }) => action === "deleted"));
+    await until(() => changes(2).some(({ action }) => action === "deleted"));
+    events.length = 0;
+
+    fs.mkdirSync(metadata, { recursive: true });
+    fs.writeFileSync(head, "ref: refs/heads/main\n");
+    engine.emit({ action: "created", path: root });
+    await until(() => changes(1).some(({ action }) => action === "created"));
+    await until(() => changes(2).some(({ action }) => action === "created"));
+    events.length = 0;
+
+    // FSEvents retains ItemCreated from the copy preceding the new stream.
+    // The fixed file was already confirmed present before this later write.
+    fs.writeFileSync(head, "ref: refs/heads/recreated\n");
+    engine.emit({ action: "created", path: head, contentChanged: true });
+    await until(() => changes(1).length && changes(2).length);
+    expect(changes(1)).toEqual([{ action: "updated", path: head }]);
+    expect(changes(2)).toEqual([{ action: "updated", path: head }]);
+  });
+
+  for (const fileFirst of [true, false]) {
+    it(`normalizes known-file creation hints without losing content hints (file first: ${fileFirst})`, async () => {
+      worker.platform = "darwin";
+      const target = path.join(directory, "HEAD");
+      fs.writeFileSync(target, "unchanged metadata");
+      if (fileFirst) {
+        await subscribe(1, "file", target);
+        await subscribe(2, "directory", directory, true);
+      } else {
+        await subscribe(2, "directory", directory, true);
+        await subscribe(1, "file", target);
+      }
+      // An authoritative native content hint must survive action correction,
+      // even when the stat fingerprint stays identical.
+      engine.emit({ action: "created", path: target, contentChanged: true });
+      await until(() => changes(1).length && changes(2).length);
+      expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+      expect(changes(2)).toEqual([{ action: "updated", path: target }]);
+    });
+  }
+
+  it("keeps an absent fixed-file creation and an unobserved tree entry as creations", async () => {
+    worker.platform = "darwin";
+    const target = path.join(directory, "HEAD");
+    const unknown = path.join(directory, "unknown");
+    await subscribe(1, "file", target);
+    await subscribe(2, "directory", directory, true);
+    fs.writeFileSync(target, "created");
+    fs.writeFileSync(unknown, "created");
+    engine.emit({ action: "created", path: target });
+    engine.emit({ action: "created", path: unknown });
+    await until(() => changes(1).length && changes(2).length === 2);
+    expect(changes(1)).toEqual([{ action: "created", path: target }]);
+    expect(changes(2)).toEqual([
+      { action: "created", path: target },
+      { action: "created", path: unknown },
+    ]);
+  });
+
+  it("retains delete/create transitions for a known file within one native batch", async () => {
+    worker.platform = "darwin";
+    const target = path.join(directory, "HEAD");
+    fs.writeFileSync(target, "previous");
+    await subscribe(1, "file", target);
+    await subscribe(2, "directory", directory, true);
+    fs.unlinkSync(target);
+    fs.writeFileSync(target, "replacement");
+    const source = [...engine.sources].find((candidate) => candidate.recursive);
+    source.callback({
+      type: "changes",
+      events: [
+        { action: "deleted", path: target },
+        { action: "created", path: target, contentChanged: true },
+      ],
+    });
+    await until(() => changes(1).length && changes(2).length);
+    expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+    expect(changes(2)).toEqual([{ action: "updated", path: target }]);
+  });
+
+  it("keeps deletion evidence when creation arrives before the file stat reconciles", async () => {
+    worker.platform = "darwin";
+    const target = path.join(directory, "HEAD");
+    fs.writeFileSync(target, "previous");
+    await subscribe(1, "file", target);
+    await subscribe(2, "directory", directory, true);
+    fs.unlinkSync(target);
+    engine.emit({ action: "deleted", path: target });
+    fs.writeFileSync(target, "replacement");
+    engine.emit({ action: "created", path: target, contentChanged: true });
+    await until(() => changes(1).length && changes(2).length);
+    expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+    expect(changes(2)).toEqual([{ action: "updated", path: target }]);
+  });
+
+  it("does not overwrite a newer deletion hint with a stale file stat", async () => {
+    worker.platform = "darwin";
+    const target = path.join(directory, "HEAD");
+    fs.writeFileSync(target, "previous");
+    await subscribe(1, "file", target);
+    await subscribe(2, "directory", directory, true);
+    spyOn(worker, "schedule");
+    const entered = deferred();
+    const finish = deferred();
+    const filesystem = worker.fs;
+    let held = false;
+    worker.fs = {
+      ...filesystem,
+      async stat(filePath, options) {
+        const stat = await filesystem.stat(filePath, options);
+        if (filePath === target && !held) {
+          held = true;
+          entered.resolve();
+          await finish.promise;
+        }
+        return stat;
+      },
+    };
+    const logical = worker.subscriptions.get(1);
+    const reconcile = worker.reconcileFile(logical);
+    await entered.promise;
+    fs.unlinkSync(target);
+    engine.emit({ action: "deleted", path: target });
+    finish.resolve();
+    await reconcile;
+    expect(logical.nativePresence).toBe(false);
+
+    fs.writeFileSync(target, "replacement");
+    engine.emit({ action: "created", path: target, contentChanged: true });
+    worker.fs = filesystem;
+    await worker.update(logical);
+    await worker.update(worker.subscriptions.get(2));
+    expect(changes(1)).toEqual([{ action: "updated", path: target }]);
+    expect(changes(2)).toEqual([{ action: "updated", path: target }]);
+  });
+
   it("invalidates when a single native batch exactly overflows the subscription queue", async () => {
     await subscribe(1, "directory", directory, true);
     const source = [...engine.sources].find(
