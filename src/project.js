@@ -655,7 +655,7 @@ module.exports = class Project extends Model {
     }
 
     this.repositoryRegistry.setProjectRoots(this.rootDirectories);
-    this.emitter.emit("did-change-paths", projectPaths);
+    this.emitter.emit("did-change-paths", this.getPaths());
 
     if (options.mustExist === true && missingProjectPaths.length > 0) {
       const err = new Error("One or more project directories do not exist");

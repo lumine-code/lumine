@@ -57,9 +57,13 @@ function setCandidates(matcherOrCandidates, candidates, _options) {
 }
 
 /**
- * The result from a call to `fuzzyMatcher.setCandidates`.
+ * @public
+ * @status essential
  *
- * @private
+ * A reusable candidate set returned by {@link fuzzyMatcher.setCandidates}.
+ * Query it with {@link #match}, or replace its candidates with
+ * {@link #setCandidates}. The `ignoreDiacritics` flag is fixed when the matcher
+ * is created.
  */
 class Matcher {
   constructor(fuzzyMatcher) {
@@ -67,6 +71,9 @@ class Matcher {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Matches the current candidates to a string query.
    *
    * Each returned object contains the candidate `id`, its original `value`, and
@@ -92,7 +99,6 @@ class Matcher {
    * @param {Boolean} [options.useExtensionBonus=false] - With `fuzzaldrin`,
    *   prefer matching file extensions.
    * @returns {Array<Object>} Matching candidates ordered by relevance.
-   * @private
    */
   match(query, options = {}) {
     let { numThreads, algorithm } = options;
@@ -102,11 +108,13 @@ class Matcher {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Replaces this matcher's candidates.
    *
    * @param {Array<String>} candidates - The new candidates.
    * @returns {Matcher} This matcher.
-   * @private
    */
   setCandidates(candidates) {
     return setCandidates(this, candidates);
@@ -117,31 +125,70 @@ class Matcher {
  * @public
  * @status essential
  *
- * The `fuzzyMatcher` API, the same used in the autocomplete,
- *   fuzzy file search, command palette, etc.
- *   An instance of this API is available via the `lumine.tools.fuzzyMatcher` global.
+ * Fuzzy matching utilities used by autocomplete, file search and the command
+ * palette. Available as `lumine.tools.fuzzyMatcher`.
  *
- *   This API have two parts - the filtering of an array of candidates, and the
- *   scoring. Scoring is done via `fuzzyMatcher.score`, and filtering is done
- *   by returning a new `Matcher` using `fuzzyMatcher.setCandidates`, then
- *   calling `Matcher#match`. You can _also use_ `fuzzyMatcher.match` to match
- *   a single candidate; it uses the same API and options as `Matcher#match`.
+ * Use {@link .setCandidates} to create a reusable {@link Matcher} for an array
+ * of candidates. {@link .match} and {@link .score} match one candidate without
+ * creating a matcher yourself.
+ *
+ * @memberof lumine.tools
  */
 const fuzzyMatcher = {
+  /**
+   * @public
+   * @status essential
+   *
+   * Create a matcher for string candidates, or replace the candidates of an
+   * existing {@link Matcher}. The replacement preserves its construction
+   * options.
+   *
+   * ```js
+   * const matcher = lumine.tools.fuzzyMatcher.setCandidates(['hello', 'world'])
+   * matcher.match('he')
+   * lumine.tools.fuzzyMatcher.setCandidates(matcher, ['hello', 'hope'])
+   * ```
+   *
+   * @param {Matcher|Array<String>} matcherOrCandidates - An existing matcher or
+   *   candidates for a new one.
+   * @param {Array<String>|Object} [candidates] - Replacement candidates when the
+   *   first argument is a matcher; construction options when it is an array.
+   *   Set `ignoreDiacritics: true` in those options for accent-insensitive matching.
+   * @param {Object} [_options] - Retained for compatibility; ignored.
+   * @returns {Matcher} The created or updated matcher.
+   */
   setCandidates: setCandidates,
 
-  // Same as `setCandidates` passing a single candidate, and returning only
-  // the score. It can return `0` if there's no match. Accepts the same
-  // options as `Matcher#match` plus `ignoreDiacritics`.
+  /**
+   * @public
+   * @status essential
+   *
+   * Score a single candidate against a query.
+   *
+   * @param {String} candidate - The candidate to match.
+   * @param {String} query - The search query.
+   * @param {Object} [opts] - The options accepted by {@link Matcher#match}, plus
+   *   `ignoreDiacritics` for accent-insensitive matching.
+   * @returns {Number} The score from 0 to 1, or 0 when there is no match.
+   */
   score(candidate, query, opts = {}) {
     return this.match(candidate, query, opts)?.score || 0;
   },
 
-  // The same as `setCandidates` with a single candidate. Returns just the
-  // match, if there's one (can return `undefined`).
-  //
-  // Accepts `ignoreDiacritics` in `opts` to fold accents before matching
-  // (e.g. "cafe" matches "café"); indexes are reported against the original.
+  /**
+   * @public
+   * @status essential
+   *
+   * Match a single candidate against a query. Accent-insensitive matching
+   * reports character indexes against the original candidate.
+   *
+   * @param {String} candidate - The candidate to match.
+   * @param {String} query - The search query.
+   * @param {Object} [opts] - The options accepted by {@link Matcher#match}, plus
+   *   `ignoreDiacritics` for accent-insensitive matching.
+   * @returns {Object|undefined} The match with `id`, `value`, `score` and optional
+   *   character indexes, or `undefined` when there is no match.
+   */
   match(candidate, query, opts = {}) {
     const key = !!opts.ignoreDiacritics;
     let matcher = singleCandidateMatchers.get(key);

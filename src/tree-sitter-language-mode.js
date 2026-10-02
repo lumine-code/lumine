@@ -1061,6 +1061,9 @@ class TreeSitterLanguageMode {
   }
 
   repopulateInjections() {
+    // Grammar removal can arrive before the root is ready or after this mode
+    // was destroyed while its buffer still refers to it.
+    if (this.destroyed || !this.rootLanguageLayer) return;
     // Grammar removal/replacement must cancel any plan holding the old target
     // grammar, including plans that have not published their child layers yet.
     for (const layer of this.getAllLanguageLayers()) layer.injectionPointVersion++;

@@ -108,14 +108,15 @@ class DisplayMarkerLayer {
    * @public
    * @status public
    *
-   * Subscribe to be notified asynchronously whenever markers are
+   * Subscribe to be notified whenever markers are
    * created, updated, or destroyed on this layer. *Prefer this method for
    * optimal performance when interacting with layers that could contain large
    * numbers of markers.*
    *
    *
-   * Subscribers are notified once, asynchronously when any number of changes
-   * occur in a given tick of the event loop. You should re-query the layer
+   * Changes made within a {@link TextBuffer#transact} block are batched: subscribers
+   * are notified once, at the end of the transaction. Changes made outside a
+   * transaction notify subscribers synchronously per change. You should re-query the layer
    * to determine the state of markers in which you're interested in. It may
    * be counter-intuitive, but this is much more efficient than subscribing to
    * events on individual markers, which are expensive to deliver.

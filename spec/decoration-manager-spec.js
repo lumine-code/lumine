@@ -210,6 +210,9 @@ describe("DecorationManager", function () {
         );
         expect(layer1MarkerDecoration.isType("line-number")).toBe(true);
         expect(layer1MarkerDecoration.isType("gutter")).toBe(true);
+        expect(layer1MarkerDecoration.isType(["highlight", "gutter"])).toBe(true);
+        expect(layer1MarkerDecoration.isType(["highlight", "overlay"])).toBe(false);
+        expect(layer1MarkerDecoration.isType([])).toBe(false);
         expect(layer1MarkerDecoration.getProperties().gutterName).toBe("line-number");
         expect(layer1MarkerDecoration.getProperties().class).toBe("one");
       });
@@ -230,4 +233,15 @@ describe("DecorationManager", function () {
         expect(layer1MarkerDecoration.getProperties().class).toBe("one");
       });
     }));
+
+  it("matches any requested type when the decoration itself has multiple types", function () {
+    const marker = markerLayer1.markBufferPosition([0, 0]);
+    const decoration = decorationManager.decorateMarker(marker, {
+      type: ["line", "line-number"],
+      class: "multi-type",
+    });
+    expect(decoration.isType(["highlight", "line"])).toBe(true);
+    expect(decoration.isType(["overlay", "gutter"])).toBe(true);
+    expect(decoration.isType(["highlight", "overlay"])).toBe(false);
+  });
 });

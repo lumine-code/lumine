@@ -210,6 +210,48 @@ describe("ServiceHub", () => {
       expect(consume).not.toHaveBeenCalled();
     });
 
+    it("removes a provider before cleanup and keeps it removed when cleanup throws", () => {
+      const lateConsume = jasmine.createSpy("lateConsume");
+      const healthyDispose = jasmine.createSpy("healthyDispose");
+      const cleanupError = new Error("cleanup failed");
+      hub.consume("terminal", "^1.0.0", () => ({
+        dispose() {
+          expect(hub.hasProvider("terminal", "^1.0.0")).toBe(false);
+          hub.consume("terminal", "^1.0.0", lateConsume);
+          throw cleanupError;
+        },
+      }));
+      hub.consume("terminal", "^1.0.0", () => ({ dispose: healthyDispose }));
+      const provider = hub.provide("terminal", "1.0.0", {});
+
+      expect(() => provider.dispose()).toThrow(cleanupError);
+
+      expect(healthyDispose).toHaveBeenCalledTimes(1);
+      expect(hub.hasProvider("terminal", "^1.0.0")).toBe(false);
+      hub.consume("terminal", "^1.0.0", lateConsume);
+      expect(lateConsume).not.toHaveBeenCalled();
+      provider.dispose();
+      expect(healthyDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("unregisters a consumer even when its cleanup throws", () => {
+      const cleanupError = new Error("cleanup failed");
+      const consume = jasmine.createSpy("consume").and.returnValue({
+        dispose() {
+          throw cleanupError;
+        },
+      });
+      hub.provide("terminal", "1.0.0", {});
+      const consumer = hub.consume("terminal", "^1.0.0", consume);
+
+      expect(() => consumer.dispose()).toThrow(cleanupError);
+
+      expect(hub.consumers).toEqual([]);
+      expect(hub.consumersByKeyPath.has("terminal")).toBe(false);
+      hub.provide("terminal", "1.0.0", {});
+      expect(consume).toHaveBeenCalledTimes(1);
+    });
+
     // The mirror of the case above, and the one that used to be missing: a
     // package that deactivates has to unregister itself from the services it
     // took, or the provider keeps a live registration for a package that is
@@ -265,6 +307,56 @@ describe("ServiceHub", () => {
       hub.provide("terminal", "1.0.0", {});
       hub.consume("terminal", "^1.0.0", consume);
       expect(consume.calls.count()).toBe(1);
+    });
+
+    it("clear() removes every resource and finishes cleanup before reporting failures", () => {
+      const firstError = new Error("first cleanup failed");
+      const secondError = new Error("second cleanup failed");
+      const healthyDispose = jasmine.createSpy("healthyDispose");
+      hub.provide("terminal", "1.0.0", {});
+      hub.provide("outline", "1.0.0", {});
+      hub.provide("status-bar", "1.0.0", {});
+      hub.consume("terminal", "^1.0.0", () => ({
+        dispose() {
+          throw firstError;
+        },
+      }));
+      hub.consume("outline", "^1.0.0", () => ({
+        dispose() {
+          throw secondError;
+        },
+      }));
+      hub.consume("status-bar", "^1.0.0", () => ({ dispose: healthyDispose }));
+
+      let error;
+      try {
+        hub.clear();
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toEqual(jasmine.any(AggregateError));
+      expect(error.errors).toEqual([firstError, secondError]);
+      expect(healthyDispose).toHaveBeenCalledTimes(1);
+      expect(hub.providers).toEqual([]);
+      expect(hub.consumers).toEqual([]);
+      expect(hub.consumersByKeyPath.size).toBe(0);
+      const consume = jasmine.createSpy("consume");
+      hub.consume("terminal", "^1.0.0", consume);
+      hub.provide("terminal", "1.0.0", {});
+      expect(consume).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposing a consumer cleared earlier does not remove a new consumer's index", () => {
+      const oldConsumer = hub.consume("terminal", "^1.0.0", () => {});
+      hub.clear();
+      const consume = jasmine.createSpy("consume");
+      hub.consume("terminal", "^1.0.0", consume);
+
+      oldConsumer.dispose();
+      hub.provide("terminal", "1.0.0", {});
+
+      expect(consume).toHaveBeenCalledTimes(1);
     });
   });
 

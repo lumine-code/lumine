@@ -722,9 +722,8 @@ class Config {
    *
    * @param keyPath - The `String` name of the key to retrieve
    * @param {Object} [options] - see the `options` argument to {@link #get}
-   * @param options.scopeDescriptor - The {@link ScopeDescriptor} with which the value is associated
-   * @param options.value - The value for the key-path
-   * @returns {Array} of `Objects` with the following keys:
+   * @param {ScopeDescriptor|Array} [options.scope] - The scope with which the values are associated.
+   * @returns {Array} of objects containing a `scopeSelector` string and its corresponding `value`, ordered from the most specific matching selector to the global `*` value.
    */
   getAll(keyPath, options) {
     let globalValue, result, scope;

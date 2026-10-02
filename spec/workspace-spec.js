@@ -1255,6 +1255,25 @@ describe("Workspace", () => {
       };
     });
 
+    it("keeps its Boolean result and reports asynchronous close failures", async () => {
+      workspace.getActivePane().addItem(item);
+      const error = new Error("close hook failed");
+      const addError = spyOn(lumine.notifications, "addError");
+      const subscription = workspace.onWillDestroyPaneItem(() => Promise.reject(error));
+      try {
+        expect(workspace.hide(item)).toBe(true);
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(workspace.paneForItem(item)).toBeDefined();
+        expect(addError).toHaveBeenCalledOnceWith("Unable to close workspace item", {
+          detail: error.message,
+          stack: error.stack,
+        });
+      } finally {
+        subscription.dispose();
+      }
+    });
+
     describe("when called with a URI", () => {
       it("if the item for the given URI is in the center, removes it", () => {
         const pane = lumine.workspace.getActivePane();
@@ -1297,6 +1316,65 @@ describe("Workspace", () => {
   });
 
   describe("::toggle(itemOrUri)", () => {
+    it("waits for an asynchronous center-item close hook", async () => {
+      const editor = await workspace.open();
+      let release;
+      const closingGate = new Promise((resolve) => (release = resolve));
+      const subscription = workspace.onWillDestroyPaneItem(() => closingGate);
+      try {
+        let settled = false;
+        const closing = workspace.toggle(editor).then(() => (settled = true));
+        await Promise.resolve();
+
+        expect(settled).toBe(false);
+        expect(workspace.paneForItem(editor)).toBeDefined();
+        release();
+        await closing;
+        expect(editor.isDestroyed()).toBe(true);
+      } finally {
+        release();
+        subscription.dispose();
+      }
+    });
+
+    it("resolves to false when a center-item close is prevented", async () => {
+      const editor = await workspace.open();
+      const subscription = workspace.onWillDestroyPaneItem((event) => event.prevent());
+      try {
+        expect(await workspace.toggle(editor)).toBe(false);
+        expect(workspace.paneForItem(editor)).toBeDefined();
+        expect(editor.isDestroyed()).toBe(false);
+      } finally {
+        subscription.dispose();
+      }
+    });
+
+    it("resolves to false when saving is cancelled", async () => {
+      const editor = await workspace.open(temp.openSync().path);
+      jasmine.unspy(editor, "shouldPromptToSave");
+      lumine.config.set("core.promptOnCloseDirtyBuffer", true);
+      editor.setText("Unsaved changes");
+      lumine.applicationDelegate.confirm.and.returnValue(Promise.resolve(1));
+
+      expect(editor.shouldPromptToSave()).toBe(true);
+      expect(await workspace.toggle(editor)).toBe(false);
+      expect(lumine.applicationDelegate.confirm).toHaveBeenCalled();
+      expect(workspace.paneForItem(editor)).toBeDefined();
+      expect(editor.isDestroyed()).toBe(false);
+    });
+
+    it("rejects when a center-item close hook fails", async () => {
+      const editor = await workspace.open();
+      const error = new Error("close hook failed");
+      const subscription = workspace.onWillDestroyPaneItem(() => Promise.reject(error));
+      try {
+        await expectAsync(workspace.toggle(editor)).toBeRejectedWith(error);
+        expect(workspace.paneForItem(editor)).toBeDefined();
+      } finally {
+        subscription.dispose();
+      }
+    });
+
     describe("when the location resolves to a dock", () => {
       it("adds or shows the item and its dock if it is not currently visible, and otherwise hides the containing dock", async () => {
         const item1 = {
@@ -3730,6 +3808,17 @@ describe("Workspace", () => {
             await scan(/aaaa/, {}, ({ filePath }) => resultPaths.push(filePath));
 
             expect(resultPaths.sort()).toEqual([file1, file2].sort());
+          });
+
+          it("adds progress from roots handled by the same built-in searcher", async () => {
+            const resultPaths = [];
+            const onPathsSearched = jasmine.createSpy("onPathsSearched");
+
+            await scan(/aaaa/, { onPathsSearched }, ({ filePath }) => resultPaths.push(filePath));
+
+            expect(resultPaths.sort()).toEqual([file1, file2].sort());
+            expect(onPathsSearched.calls.count()).toBe(2);
+            expect(onPathsSearched.calls.allArgs().map(([count]) => count)).toEqual([1, 2]);
           });
 
           describe("when an inclusion path starts with the basename of a root directory", () => {

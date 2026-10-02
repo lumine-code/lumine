@@ -38,7 +38,11 @@ function proseFromComment(value) {
 }
 
 function checkDocumentationSyntax(api) {
-  const referenceNames = [...primitiveReferences, ...api.classes.map(({ name }) => name)]
+  const referenceNames = [
+    ...primitiveReferences,
+    ...api.classes.map(({ name }) => name),
+    ...(api.objects || []).map(({ name }) => name),
+  ]
     .sort((left, right) => right.length - left.length)
     .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
@@ -132,5 +136,5 @@ const api = extractApi({ editorRoot, parser });
 checkDocumentationSyntax(api);
 validateDocumentationExamples(api, parser);
 console.log(
-  `API documentation is valid: ${api.classes.length} classes, ${api.memberCount} members, ${api.functions.length} functions`,
+  `API documentation is valid: ${api.classes.length} classes, ${api.objects.length} objects, ${api.memberCount} members, ${api.functions.length} functions`,
 );

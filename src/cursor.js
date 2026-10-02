@@ -115,7 +115,7 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
-   * @returns {Array} current buffer position as an Array.
+   * @returns {Point} The current buffer position.
    */
   getBufferPosition() {
     return this.marker.getHeadBufferPosition();
@@ -165,7 +165,7 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
-   * @returns {Number} cursor's current buffer row of text excluding its line ending.
+   * @returns {String} The text of the cursor's current buffer row, excluding its line ending.
    */
   getCurrentBufferLine() {
     return this.editor.lineTextForBufferRow(this.getBufferRow());
@@ -310,7 +310,7 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
-   * @returns {Boolean} true if this cursor has no non-whitespace characters before its current position.
+   * @returns {Boolean} true if this cursor has non-whitespace characters before its current position.
    */
   hasPrecedingCharactersOnLine() {
     const bufferPosition = this.getBufferPosition();
@@ -764,7 +764,7 @@ module.exports = class Cursor extends Model {
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @param options.includeNonWordCharacters - A `Boolean` indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
    * @param options.allowPrevious - A `Boolean` indicating whether the beginning of the previous word can be returned.
-   * @returns {Range}
+   * @returns {Point}
    */
   getBeginningOfCurrentWordBufferPosition(options = {}) {
     const allowPrevious = options.allowPrevious !== false;
@@ -798,7 +798,7 @@ module.exports = class Cursor extends Model {
    * @param {Object} [options] - with the following keys:
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
    * @param options.includeNonWordCharacters - A Boolean indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
-   * @returns {Range}
+   * @returns {Point}
    */
   getEndOfCurrentWordBufferPosition(options = {}) {
     const allowNext = options.allowNext !== false;
@@ -829,7 +829,7 @@ module.exports = class Cursor extends Model {
    *
    * @param {Object} [options]
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
-   * @returns {Range}
+   * @returns {Point}
    */
   getBeginningOfNextWordBufferPosition(options = {}) {
     const currentBufferPosition = this.getBufferPosition();

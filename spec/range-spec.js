@@ -5,6 +5,67 @@ describe("Range", function () {
     jasmine.addCustomEqualityTester(require("@lumine-code/underscore-plus").isEqual),
   );
 
+  describe("range-compatible arrays", function () {
+    it("unions ranges supplied as arrays", function () {
+      expect(
+        new Range([1, 2], [3, 4]).union([
+          [2, 0],
+          [4, 1],
+        ]),
+      ).toEqual(new Range([1, 2], [4, 1]));
+    });
+
+    it("compares the rows covered by an array range", function () {
+      const range = new Range([1, 2], [3, 4]);
+      expect(
+        range.coversSameRows([
+          [1, 0],
+          [3, 9],
+        ]),
+      ).toBe(true);
+      expect(
+        range.coversSameRows([
+          [1, 0],
+          [2, 9],
+        ]),
+      ).toBe(false);
+    });
+
+    it("tests array intersections with inclusive and exclusive endpoints", function () {
+      const range = new Range([1, 2], [3, 4]);
+      expect(
+        range.intersectsWith([
+          [3, 4],
+          [4, 1],
+        ]),
+      ).toBe(true);
+      expect(
+        range.intersectsWith(
+          [
+            [3, 4],
+            [4, 1],
+          ],
+          true,
+        ),
+      ).toBe(false);
+      expect(
+        range.intersectsWith(
+          [
+            [2, 0],
+            [4, 1],
+          ],
+          true,
+        ),
+      ).toBe(true);
+      expect(
+        range.intersectsWith([
+          [4, 0],
+          [4, 1],
+        ]),
+      ).toBe(false);
+    });
+  });
+
   describe("::intersectsWith(other, [exclusive])", function () {
     const intersectsWith = function (range1, range2, exclusive) {
       range1 = Range.fromObject(range1);

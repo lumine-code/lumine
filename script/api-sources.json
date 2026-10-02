@@ -2,5 +2,12 @@
   "dependencySources": {
     "@lumine-code/event-kit": ["lib/composite-disposable.js", "lib/disposable.js", "lib/emitter.js"]
   },
-  "requiredClasses": ["CompositeDisposable", "Disposable", "Emitter", "TreeSitterGrammar"]
+  "requiredClasses": [
+    "CompositeDisposable",
+    "Disposable",
+    "Emitter",
+    "TreeSitterGrammar",
+    "Matcher"
+  ],
+  "requiredObjects": ["Icon", "fuzzyMatcher"]
 }

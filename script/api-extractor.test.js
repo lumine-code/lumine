@@ -9,6 +9,11 @@ const parser = require("@babel/parser");
 const { SCHEMA_VERSION, extractApi } = require("./api-extractor");
 
 const fixturePath = path.join(__dirname, "fixtures", "api-extractor", "modern-api.js");
+const objectFixturePath = path.join(__dirname, "fixtures", "api-extractor", "object-api.js");
+
+function sourceWithObjects() {
+  return `${fs.readFileSync(fixturePath, "utf8")}\n${fs.readFileSync(objectFixturePath, "utf8")}`;
+}
 
 function editorFixture(source = fs.readFileSync(fixturePath, "utf8")) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-api-extractor-"));
@@ -293,4 +298,105 @@ test("rejects duplicate documented members", (context) => {
   const root = editorFixture(source);
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   assert.throws(() => extractApi({ editorRoot: root, parser }), /Duplicate documented member/);
+});
+
+test("preserves source defaults when parameter documentation does not repeat them", (context) => {
+  const source = fs
+    .readFileSync(fixturePath, "utf8")
+    .replace('@param {String} [input=""] - Input value.', "@param {String} input - Input value.")
+    .replace("@param {Object} [options={}]", "@param {Object} [options]");
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const api = extractApi({ editorRoot: root, parser });
+  const input = api.functions[0].parameters[0];
+  assert.equal(input.optional, true);
+  assert.equal(input.defaultValue, '""');
+  const options = api.classes
+    .find(({ name }) => name === "FixtureService")
+    .members.find(({ name }) => name === "transform").parameters[1];
+  assert.equal(options.optional, true);
+  assert.equal(options.defaultValue, "{}");
+});
+
+test("uses callable aliases and access paths without treating option fields as arguments", (context) => {
+  const root = editorFixture(sourceWithObjects());
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const api = extractApi({ editorRoot: root, parser });
+  const render = api.functions.find(({ name }) => name === "render");
+  assert.equal(render.accessPath, "lumine.tools.markdown.render");
+  assert.equal(render.signature, 'lumine.tools.markdown.render(input = "", options = {})');
+  assert.equal(render.parameters.length, 3);
+  assert.equal(render.parameters[2].nested, true);
+  assert.equal(
+    api.functions.some(({ name }) => name === "renderFixture"),
+    false,
+  );
+});
+
+test("keeps a rest wrapper's real signature separate from its logical parameter documentation", (context) => {
+  const source = fs
+    .readFileSync(fixturePath, "utf8")
+    .replace('function normalize(input = "")', "function normalize(...args)");
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fn = extractApi({ editorRoot: root, parser }).functions[0];
+  assert.equal(fn.signature, "normalize(...args)");
+  assert.equal(fn.parameters[0].name, "input");
+});
+
+test("extracts public object methods, accessors and properties with their access path", (context) => {
+  const root = editorFixture(sourceWithObjects());
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const api = extractApi({ editorRoot: root, parser });
+  assert.equal(api.objects.length, 1);
+  const object = api.objects[0];
+  assert.equal(object.name, "fixtureTools");
+  assert.equal(object.accessPath, "lumine.tools.fixtureTools");
+  assert.deepEqual(
+    object.members.map(({ name }) => name),
+    ["version", "normalize", "ready"],
+  );
+  assert.equal(object.members[0].kind, "property");
+  assert.equal(object.members[0].signature, ".version");
+  assert.equal(object.members[0].propertyType, "String");
+  assert.equal(object.members[1].signature, '.normalize(input = "")');
+  assert.equal(object.members[1].parameters[0].optional, true);
+  assert.equal(object.members[2].kind, "get");
+  assert.equal(object.members[2].signature, ".ready");
+  assert.ok(object.members.every(({ static: isStatic }) => isStatic));
+  assert.equal(api.memberCount, 11);
+});
+
+test("validates links within public objects", (context) => {
+  const source = sourceWithObjects().replace("{@link .normalize}", "{@link .missing}");
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.throws(() => extractApi({ editorRoot: root, parser }), /Unresolved JSDoc link/);
+});
+
+test("rejects duplicate public object members", (context) => {
+  const source = sourceWithObjects().replace("normalize: normalize", "ready: normalize");
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.throws(
+    () => extractApi({ editorRoot: root, parser }),
+    /Duplicate documented member "fixtureTools.ready"/,
+  );
+});
+
+test("requires registered public objects to remain in the extracted API", (context) => {
+  const root = editorFixture(sourceWithObjects());
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(root, "script", "api-sources.json"),
+    JSON.stringify({
+      dependencySources: {},
+      requiredClasses: [],
+      requiredObjects: ["fixtureTools", "missing"],
+    }),
+  );
+  assert.throws(
+    () => extractApi({ editorRoot: root, parser }),
+    /Required API objects were not extracted: missing/,
+  );
 });

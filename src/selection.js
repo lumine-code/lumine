@@ -546,8 +546,6 @@ module.exports = class Selection {
    * @status public
    *
    * Modifies the selection to encompass the current subword.
-   *
-   * @returns {Range}
    */
   selectSubword(options = {}) {
     options.wordRegex = this.cursor.subwordRegExp();
@@ -561,8 +559,6 @@ module.exports = class Selection {
    * @status public
    *
    * Modifies the selection to encompass the current word.
-   *
-   * @returns {Range}
    */
   selectWord(options = {}) {
     if (this.cursor.isSurroundedByWhitespace()) options.wordRegex = /[\t ]*/;
@@ -1451,8 +1447,25 @@ module.exports = class Selection {
       newHeadBufferPosition,
       newTailBufferPosition,
     } = e;
-    const { oldHeadScreenPosition, oldTailScreenPosition, newHeadScreenPosition } = e;
+    const {
+      oldHeadScreenPosition,
+      oldTailScreenPosition,
+      newHeadScreenPosition,
+      newTailScreenPosition,
+    } = e;
     const { textChanged } = e;
+
+    // Marker metadata and an empty marker's tail can change without moving
+    // the selection. Keep validity changes observable as they were before.
+    if (
+      e.wasValid === e.isValid &&
+      oldHeadBufferPosition.isEqual(newHeadBufferPosition) &&
+      oldTailBufferPosition.isEqual(newTailBufferPosition) &&
+      oldHeadScreenPosition.isEqual(newHeadScreenPosition) &&
+      oldTailScreenPosition.isEqual(newTailScreenPosition)
+    ) {
+      return;
+    }
 
     // Do not let a search-result flash land on a range selected before the
     // renderer consumes it. A text edit may move the same logical selection.

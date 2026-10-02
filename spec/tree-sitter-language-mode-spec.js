@@ -256,6 +256,63 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 
+  describe("grammar removal lifecycle", () => {
+    function registerInjectionGrammar() {
+      const injectedGrammar = new TreeSitterGrammar(lumine.grammars, jsRegexGrammarPath, {
+        ...jsRegexConfig,
+        scopeName: "source.grammar-removal-lifecycle",
+        injectionNames: ["grammar-removal-lifecycle"],
+      });
+      return {
+        grammar: injectedGrammar,
+        registration: lumine.grammars.addGrammar(injectedGrammar),
+      };
+    }
+
+    function buildLanguageMode() {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
+      buffer.setLanguageMode(languageMode);
+      return languageMode;
+    }
+
+    it("allows an injection grammar to be removed before the root layer is ready", async () => {
+      const injected = registerInjectionGrammar();
+      try {
+        const languageMode = buildLanguageMode();
+        expect(languageMode.rootLanguageLayer).toBeNull();
+
+        expect(() => injected.registration.dispose()).not.toThrow();
+        await languageMode.ready;
+        expect(languageMode.rootLanguageLayer).not.toBeNull();
+      } finally {
+        injected.registration.dispose();
+        injected.grammar.subscriptions.dispose();
+      }
+    });
+
+    it("allows an injection grammar to be removed after the buffer's mode is destroyed", async () => {
+      const injected = registerInjectionGrammar();
+      try {
+        const languageMode = buildLanguageMode();
+        await languageMode.ready;
+        languageMode.destroy();
+        expect(buffer.getLanguageMode()).toBe(languageMode);
+        expect(languageMode.rootLanguageLayer).toBeNull();
+
+        expect(() => injected.registration.dispose()).not.toThrow();
+        expect(lumine.grammars.grammarForId(injected.grammar.scopeName)).toBeUndefined();
+      } finally {
+        injected.registration.dispose();
+        injected.grammar.subscriptions.dispose();
+      }
+    });
+  });
+
   describe("query reload lifecycle", () => {
     async function buildLanguageLayer() {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

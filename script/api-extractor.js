@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const API_STATUS_VALUES = new Map([
   ["essential", "Essential"],
   ["extended", "Extended"],
@@ -357,6 +357,8 @@ function parseJsdoc(raw, context, strict) {
   const propertyType = parseTypeTag(typeTag?.value || "");
   return {
     visibility: status,
+    alias: tagValue(tags, "alias") || null,
+    memberOf: tagValue(tags, "memberof") || null,
     description: explicitDescription,
     summary: firstParagraph(explicitDescription),
     category: tagValue(tags, "category") || null,
@@ -466,7 +468,12 @@ function mergeParameters(ast, documented, { strict, context }) {
       continue;
     }
     if (doc.name === rootName) {
-      Object.assign(target, doc, { source: target.source, rest: target.rest });
+      Object.assign(target, doc, {
+        source: target.source,
+        rest: target.rest,
+        optional: target.optional || doc.optional,
+        defaultValue: doc.defaultValue ?? target.defaultValue,
+      });
     } else {
       result.push({
         ...doc,
@@ -496,6 +503,17 @@ function inferredVisibility(members) {
     if (members.some((member) => member.visibility === status)) return status;
   }
   return "Public";
+}
+
+function callablePath(name, doc) {
+  const publicName = doc.alias || name;
+  return doc.memberOf ? `${doc.memberOf}.${publicName}` : publicName;
+}
+
+function functionSignature(node, source, name) {
+  return `${name}(${(node.params || [])
+    .map((parameter) => source.slice(parameter.start, parameter.end))
+    .join(", ")})`;
 }
 
 function constructorProperties(classNode, options) {
@@ -576,7 +594,86 @@ function parseFile(filePath, sourceInput, options) {
 
   const classes = [];
   const functions = [];
+  const objects = [];
+  const declaredFunctions = new Map(
+    ast.program.body
+      .filter((node) => node.type === "FunctionDeclaration")
+      .map((node) => [node.id.name, node]),
+  );
   visit(ast, [], (node, parent, ancestors) => {
+    if (node.type === "VariableDeclarator" && node.init?.type === "ObjectExpression") {
+      const name = node.id.name;
+      if (!name) return;
+      const doc = parseDoc(ownComments(node, ancestors), { ...options, context: name });
+      if (!doc?.documented) return;
+      const members = [];
+      let category = "Methods";
+      for (const member of node.init.properties) {
+        const memberName = propertyName(member.key);
+        const context = `${name}.${memberName}`;
+        const memberDoc = parseDoc(member.leadingComments || [], { ...options, context });
+        if (!memberDoc) continue;
+        if (memberDoc.category) category = memberDoc.category;
+        if (!memberDoc.documented) continue;
+        const implementation =
+          member.type === "ObjectMethod"
+            ? member
+            : member.value?.type === "Identifier"
+              ? declaredFunctions.get(member.value.name)
+              : member.value;
+        const isFunction = Boolean(implementation && Array.isArray(implementation.params));
+        const kind = isFunction ? member.kind || "method" : "property";
+        const publicName = memberDoc.alias || memberName;
+        members.push({
+          name: publicName,
+          kind,
+          static: true,
+          async: Boolean(implementation?.async),
+          signature:
+            kind === "property" || kind === "get"
+              ? `.${publicName}`
+              : kind === "set"
+                ? `.${publicName} = value`
+                : functionSignature(implementation, source, `.${publicName}`),
+          category,
+          visibility: memberDoc.visibility,
+          description: memberDoc.description,
+          summary: memberDoc.summary,
+          parameters: mergeParameters(
+            isFunction ? astParameters(implementation, source) : [],
+            memberDoc.parameters,
+            {
+              strict: options.strict,
+              context,
+            },
+          ),
+          returnType: memberDoc.returns?.type || null,
+          returnDescription: memberDoc.returns?.description || "",
+          propertyType: memberDoc.propertyType,
+          line: member.loc.start.line,
+        });
+      }
+      const memberNames = new Set();
+      for (const member of members) {
+        if (memberNames.has(member.name)) {
+          throw new Error(`Duplicate documented member "${name}.${member.name}" in ${filePath}.`);
+        }
+        memberNames.add(member.name);
+      }
+      const sourcePath = path.relative(sourceInput.root, filePath).replaceAll("\\", "/");
+      objects.push({
+        name: doc.alias || name,
+        accessPath: callablePath(name, doc),
+        visibility: doc.visibility,
+        description: doc.description,
+        summary: doc.summary,
+        source: sourcePath,
+        sourcePath,
+        repository: sourceInput.repository,
+        line: node.loc.start.line,
+        members,
+      });
+    }
     if (node.type === "ClassDeclaration" || node.type === "ClassExpression") {
       const name = node.id?.name || classNameFromFile(filePath);
       const own = commentText(ownComments(node, ancestors));
@@ -656,8 +753,9 @@ function parseFile(filePath, sourceInput, options) {
       });
       const sourcePath = path.relative(sourceInput.root, filePath).replaceAll("\\", "/");
       functions.push({
-        name: node.id.name,
-        signature: `${node.id.name}(${parameters.map((item) => item.source).join(", ")})`,
+        name: doc.alias || node.id.name,
+        accessPath: callablePath(node.id.name, doc),
+        signature: functionSignature(node, source, callablePath(node.id.name, doc)),
         visibility: doc.visibility,
         description: doc.description,
         summary: doc.summary,
@@ -671,7 +769,7 @@ function parseFile(filePath, sourceInput, options) {
       });
     }
   });
-  return { classes, functions };
+  return { classes, functions, objects };
 }
 
 function uniqueByName(items, kind) {
@@ -736,13 +834,15 @@ function validateLinks(classes, functions) {
   const membersByClass = new Map(
     classes.map((cls) => [cls.name, new Set(cls.members.map((member) => member.name))]),
   );
-  const functionsByName = new Set(functions.map((fn) => fn.name));
+  const functionsByName = new Set(functions.flatMap((fn) => [fn.name, fn.accessPath]));
   for (const entry of documentationEntries(classes, functions)) {
     for (const match of entry.text.matchAll(/\{@link\s+([^}\s]+)(?:\s+[^}]*)?\}/g)) {
       const target = match[1].split("|", 1)[0];
       if (/^(?:https?:|mailto:)/.test(target)) continue;
       let resolved;
-      if (target.startsWith("#") || target.startsWith(".")) {
+      if (functionsByName.has(target)) {
+        resolved = true;
+      } else if (target.startsWith("#") || target.startsWith(".")) {
         resolved = Boolean(
           entry.className && membersByClass.get(entry.className)?.has(target.slice(1)),
         );
@@ -788,14 +888,27 @@ function extractApi({ editorRoot, parser, strict = true }) {
     parsed.flatMap((item) => item.functions),
     "function",
   ).sort((left, right) => left.name.localeCompare(right.name));
-  if (strict) validateLinks(classes, functions);
+  const objects = uniqueByName(
+    parsed.flatMap((item) => item.objects),
+    "object",
+  ).sort((left, right) => left.name.localeCompare(right.name));
+  const requiredObjects = sourceConfiguration.requiredObjects || [];
+  const objectNames = new Set(objects.map(({ name }) => name));
+  const missingObjects = requiredObjects.filter((name) => !objectNames.has(name));
+  if (missingObjects.length) {
+    throw new Error(`Required API objects were not extracted: ${missingObjects.join(", ")}.`);
+  }
+  if (strict) validateLinks([...classes, ...objects], functions);
   return {
     schemaVersion: SCHEMA_VERSION,
     name: packageMetadata.productName || packageMetadata.name,
     version: packageMetadata.version,
     classes,
+    objects,
     functions,
-    memberCount: classes.reduce((count, item) => count + item.members.length, 0) + functions.length,
+    memberCount:
+      [...classes, ...objects].reduce((count, item) => count + item.members.length, 0) +
+      functions.length,
   };
 }
 

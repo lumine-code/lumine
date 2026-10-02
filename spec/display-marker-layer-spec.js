@@ -6,6 +6,132 @@ describe("DisplayMarkerLayer", function () {
     jasmine.addCustomEqualityTester(require("@lumine-code/underscore-plus").isEqual),
   );
 
+  it("matches custom properties and every spatial filter through the display layer", function () {
+    const buffer = new TextBuffer("ab\tc\nxyz");
+    const layer = buffer.addDisplayLayer({ tabLength: 4 }).addMarkerLayer();
+    const marker = layer.markBufferRange(
+      [
+        [0, 3],
+        [1, 2],
+      ],
+      { kind: { name: "diagnostic" } },
+    );
+    const matching = [
+      { kind: { name: "diagnostic" } },
+      { startBufferPosition: [0, 3] },
+      { endBufferPosition: [1, 2] },
+      { startScreenPosition: [0, 4] },
+      {
+        startsInBufferRange: [
+          [0, 2],
+          [0, 4],
+        ],
+      },
+      {
+        startsInScreenRange: [
+          [0, 4],
+          [0, 5],
+        ],
+      },
+      { containsBufferPosition: [1, 1] },
+      {
+        containsBufferRange: [
+          [0, 4],
+          [1, 1],
+        ],
+      },
+      {
+        containedInScreenRange: [
+          [0, 3],
+          [1, 3],
+        ],
+      },
+      {
+        intersectsBufferRange: [
+          [1, 1],
+          [1, 3],
+        ],
+      },
+      {
+        intersectsScreenRange: [
+          [0, 4],
+          [0, 5],
+        ],
+      },
+      { startScreenRow: 0, endBufferRow: 1, valid: true },
+    ];
+    for (const params of matching) expect(marker.matchesProperties(params)).toBe(true);
+    expect(marker.matchesProperties({ kind: { name: "other" } })).toBe(false);
+    expect(
+      marker.matchesProperties({
+        startsInScreenRange: [
+          [0, 0],
+          [0, 3],
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      marker.matchesProperties({
+        intersectsBufferRange: [
+          [1, 3],
+          [1, 3],
+        ],
+      }),
+    ).toBe(false);
+    expect(marker.matchesProperties({ containsBufferPosition: [1, 1], valid: false })).toBe(false);
+    buffer.destroy();
+  });
+
+  it("reports property and tail changes even when the positions stay the same", function () {
+    const buffer = new TextBuffer("abc");
+    const marker = buffer
+      .addDisplayLayer()
+      .addMarkerLayer()
+      .markBufferPosition([0, 1], { kind: "a" });
+    const events = [];
+    marker.onDidChange((event) => events.push(event));
+
+    marker.setProperties({ kind: "b" });
+    expect(events.length).toBe(1);
+    expect(events[0].oldProperties).toEqual({ kind: "a" });
+    expect(events[0].newProperties).toEqual({ kind: "b" });
+    expect(events[0].hadTail).toBe(false);
+    expect(events[0].hasTail).toBe(false);
+    expect(events[0].newHeadBufferPosition).toEqual(events[0].oldHeadBufferPosition);
+    marker.setProperties({ kind: "b" });
+    expect(events.length).toBe(1);
+
+    marker.plantTail();
+    expect(events.length).toBe(2);
+    expect(events[1].hadTail).toBe(false);
+    expect(events[1].hasTail).toBe(true);
+    marker.clearTail();
+    expect(events.length).toBe(3);
+    expect(events[2].hadTail).toBe(true);
+    expect(events[2].hasTail).toBe(false);
+    buffer.destroy();
+  });
+
+  it("preserves property snapshots across reentrant changes", function () {
+    const buffer = new TextBuffer("abc");
+    const marker = buffer
+      .addDisplayLayer()
+      .addMarkerLayer()
+      .markBufferPosition([0, 1], { kind: "a" });
+    const events = [];
+    marker.onDidChange((event) => {
+      events.push(event);
+      if (event.newProperties.kind === "b") marker.setProperties({ kind: "c" });
+    });
+    marker.setProperties({ kind: "b" });
+    expect(events.map((event) => [event.oldProperties.kind, event.newProperties.kind])).toEqual([
+      ["a", "b"],
+      ["b", "c"],
+    ]);
+    expect(marker.getProperties()).toEqual({ kind: "c" });
+    buffer.destroy();
+  });
+
   it("allows DisplayMarkers to be created and manipulated in screen coordinates", function () {
     const buffer = new TextBuffer({ text: "abc\ndef\nghi\nj\tk\tl\nmno" });
     const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
@@ -51,6 +177,10 @@ describe("DisplayMarkerLayer", function () {
       newTailScreenPosition: [3, 8],
       wasValid: true,
       isValid: true,
+      hadTail: true,
+      hasTail: true,
+      oldProperties: {},
+      newProperties: {},
       textChanged: false,
     });
 
@@ -76,6 +206,10 @@ describe("DisplayMarkerLayer", function () {
       newTailScreenPosition: [3, 8],
       wasValid: true,
       isValid: true,
+      hadTail: true,
+      hasTail: true,
+      oldProperties: {},
+      newProperties: {},
       textChanged: true,
     });
 
@@ -106,6 +240,10 @@ describe("DisplayMarkerLayer", function () {
       newTailScreenPosition: [1, 8],
       wasValid: true,
       isValid: true,
+      hadTail: true,
+      hasTail: true,
+      oldProperties: {},
+      newProperties: {},
       textChanged: false,
     });
 
@@ -131,6 +269,10 @@ describe("DisplayMarkerLayer", function () {
       newTailScreenPosition: [3, 8],
       wasValid: true,
       isValid: true,
+      hadTail: true,
+      hasTail: true,
+      oldProperties: {},
+      newProperties: {},
       textChanged: false,
     });
 
@@ -156,6 +298,10 @@ describe("DisplayMarkerLayer", function () {
       newTailScreenPosition: [3, 6],
       wasValid: true,
       isValid: true,
+      hadTail: true,
+      hasTail: true,
+      oldProperties: {},
+      newProperties: {},
       textChanged: false,
     });
   });

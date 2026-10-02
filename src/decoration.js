@@ -49,11 +49,14 @@ module.exports = class Decoration {
    * Check if the `decorationProperties.type` matches `type`
    *
    * @param {Object} decorationProperties - eg. `{type: 'line-number', class: 'my-new-class'}`
-   * @param {String} type - type like `'line-number'`, `'line'`, etc. `type` can also be an `Array` of `Strings`, where it will return true if the decoration's type matches any in the array.
+   * @param {String|Array<String>} type - type like `'line-number'`, `'line'`, etc. When given an array, returns true if the decoration matches any listed type.
    * @returns {Boolean} Note: 'line-number' is a special subtype of the 'gutter' type. I.e., a 'line-number' is a 'gutter', but a 'gutter' is not a 'line-number'.
    * @private
    */
   static isType(decorationProperties, type) {
+    if (Array.isArray(type)) {
+      return type.some((candidate) => Decoration.isType(decorationProperties, candidate));
+    }
     // 'line-number' is a special case of 'gutter'.
     if (Array.isArray(decorationProperties.type)) {
       if (decorationProperties.type.includes(type)) {
@@ -176,7 +179,7 @@ module.exports = class Decoration {
    *
    * Check if this decoration is of type `type`
    *
-   * @param {String} type - type like `'line-number'`, `'line'`, etc. `type` can also be an `Array` of `Strings`, where it will return true if the decoration's type matches any in the array.
+   * @param {String|Array<String>} type - type like `'line-number'`, `'line'`, etc. When given an array, returns true if the decoration matches any listed type.
    * @returns {Boolean}
    */
   isType(type) {

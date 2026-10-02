@@ -1,4 +1,5 @@
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
+const { isEqual } = require("@lumine-code/underscore-plus");
 const Range = require("./range");
 
 /**
@@ -135,6 +136,8 @@ class DisplayMarker {
       this.oldTailBufferPosition = this.getTailBufferPosition().freeze();
       this.oldTailScreenPosition = this.getTailScreenPosition().freeze();
       this.wasValid = this.isValid();
+      this.hadTail = this.hasTail();
+      this.oldProperties = this.getProperties();
       this.stampPositionCacheGenerations();
       this.bufferMarkerSubscription = this.bufferMarker.onDidChange((event) =>
         this.notifyObservers(event),
@@ -260,8 +263,7 @@ class DisplayMarker {
    * @returns {Boolean} whether this marker matches the given parameters. The parameters are the same as {@link DisplayMarkerLayer#findMarkers}.
    */
   matchesProperties(attributes) {
-    attributes = this.layer.translateToBufferMarkerParams(attributes);
-    return this.bufferMarker.matchesParams(attributes);
+    return this.layer.findMarkers(attributes).includes(this);
   }
 
   /**
@@ -675,9 +677,13 @@ class DisplayMarker {
         ? this.oldTailScreenPosition
         : this.layer.translateBufferPosition(newTailBufferPosition);
     const isValid = this.isValid();
+    const hasTail = this.hasTail();
+    const newProperties = this.getProperties();
 
     if (
       isValid === this.wasValid &&
+      hasTail === this.hadTail &&
+      isEqual(newProperties, this.oldProperties) &&
       newHeadBufferPosition.isEqual(this.oldHeadBufferPosition) &&
       newHeadScreenPosition.isEqual(this.oldHeadScreenPosition) &&
       newTailBufferPosition.isEqual(this.oldTailBufferPosition) &&
@@ -699,6 +705,10 @@ class DisplayMarker {
       textChanged,
       wasValid: this.wasValid,
       isValid,
+      hadTail: this.hadTail,
+      hasTail,
+      oldProperties: this.oldProperties,
+      newProperties,
     };
 
     // Cached positions are also returned by the public getters. Keep them
@@ -709,6 +719,8 @@ class DisplayMarker {
     this.oldTailBufferPosition = newTailBufferPosition.freeze();
     this.oldTailScreenPosition = newTailScreenPosition.freeze();
     this.wasValid = isValid;
+    this.hadTail = hasTail;
+    this.oldProperties = newProperties;
     this.stampPositionCacheGenerations();
 
     return this.emitter.emit("did-change", changeEvent);

@@ -277,6 +277,7 @@ class Range {
    * @returns {Range} new range that contains this range and the given range.
    */
   union(otherRange) {
+    otherRange = this.constructor.fromObject(otherRange);
     const start = this.start.isLessThan(otherRange.start) ? this.start : otherRange.start;
     const end = this.end.isGreaterThan(otherRange.end) ? this.end : otherRange.end;
     return new this.constructor(start, end);
@@ -362,6 +363,7 @@ class Range {
    * @returns {Boolean} indicating whether this range starts and ends on the same row as the argument.
    */
   coversSameRows(other) {
+    other = this.constructor.fromObject(other);
     return this.start.row === other.start.row && this.end.row === other.end.row;
   }
 
@@ -376,6 +378,7 @@ class Range {
    * @returns {Boolean}
    */
   intersectsWith(otherRange, exclusive) {
+    otherRange = this.constructor.fromObject(otherRange);
     if (exclusive) {
       return !(
         this.end.isLessThanOrEqual(otherRange.start) ||

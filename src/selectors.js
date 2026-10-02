@@ -17,8 +17,7 @@ function parse(selector) {
 const always = (_scope) => true;
 
 /**
- * @public
- * @status essential
+ * @private
  *
  * Build a reusable test for a scope selector.
  *
@@ -35,8 +34,7 @@ function matcherForSelector(selector) {
 }
 
 /**
- * @public
- * @status essential
+ * @private
  *
  * Whether any of the given scopes matches a selector.
  *

@@ -3748,6 +3748,62 @@ three\
       ]);
     }));
 
+  describe("searching range-compatible arrays", function () {
+    it("restricts synchronous and asynchronous regex searches to the given range", async function () {
+      buffer = new TextBuffer("abc def abc");
+      const range = [
+        [0, 8],
+        [0, 11],
+      ];
+      const expected = Range([0, 8], [0, 11]);
+      expect(buffer.findInRangeSync(/abc/, range)).toEqual(expected);
+      expect(buffer.findAllInRangeSync(/abc/g, range)).toEqual([expected]);
+      expect(await buffer.findInRange(/abc/, range)).toEqual(expected);
+      expect(await buffer.findAllInRange(/abc/g, range)).toEqual([expected]);
+      expect(buffer.findInRangeSync(/def/, range)).toBeNull();
+      expect(await buffer.findAllInRange(/def/g, range)).toEqual([]);
+    });
+
+    it("resolves fuzzy matches within an array of point-compatible positions", async function () {
+      buffer = new TextBuffer("ghi def ghi");
+      const results = await buffer.findWordsWithSubsequenceInRange("ghi", "", 10, [
+        Point(0, 8),
+        Point(0, 11),
+      ]);
+      expect(results.length).toBe(1);
+      expect(results[0].word).toBe("ghi");
+      expect(results[0].positions.length).toBe(1);
+    });
+  });
+
+  describe("::findAndMarkAllInRangeSync marker exclusivity", function () {
+    for (const options of [
+      {},
+      { invalidate: "inside" },
+      { exclusive: true },
+      { invalidate: "inside", exclusive: false },
+      { invalidate: "touch", exclusive: false },
+    ]) {
+      it(`uses consistent reported and indexed exclusivity for ${JSON.stringify(options)}`, function () {
+        buffer = new TextBuffer(" abc ");
+        const layer = buffer.addMarkerLayer();
+        const [marker] = buffer.findAndMarkAllInRangeSync(
+          layer,
+          /abc/g,
+          buffer.getRange(),
+          options,
+        );
+        const exclusive = options.exclusive ?? options.invalidate === "inside";
+        expect(marker.isExclusive()).toBe(exclusive);
+
+        buffer.insert([0, 1], "x");
+        expect(marker.getRange()).toEqual(Range([0, exclusive ? 2 : 1], [0, 5]));
+        buffer.insert([0, 5], "y");
+        expect(marker.getRange()).toEqual(Range([0, exclusive ? 2 : 1], [0, exclusive ? 5 : 6]));
+      });
+    }
+  });
+
   describe("::findAndMarkAllInRangeSync(markerLayer, regex, range, options)", () =>
     it("populates the marker index with the matching ranges", function () {
       buffer = new TextBuffer("abc def\nghi jkl\n");

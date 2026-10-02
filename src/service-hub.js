@@ -217,11 +217,12 @@ module.exports = class ServiceHub {
     }
 
     return new Disposable(() => {
-      provider.destroy();
+      // Unpublish before cleanup can throw or register another consumer.
       const index = this.providers.indexOf(provider);
       if (index >= 0) {
         this.providers.splice(index, 1);
       }
+      provider.destroy();
     });
   }
 
@@ -277,19 +278,29 @@ module.exports = class ServiceHub {
       }
       const keyIndex = consumersForKey.indexOf(consumer);
       if (keyIndex >= 0) consumersForKey.splice(keyIndex, 1);
-      if (consumersForKey.length === 0) this.consumersByKeyPath.delete(keyPath);
+      if (
+        consumersForKey.length === 0 &&
+        this.consumersByKeyPath.get(keyPath) === consumersForKey
+      ) {
+        this.consumersByKeyPath.delete(keyPath);
+      }
       rethrowAfterRollback(error, rollbackError);
     }
 
     return new Disposable(() => {
-      consumer.destroy();
       const index = this.consumers.indexOf(consumer);
       if (index >= 0) {
         this.consumers.splice(index, 1);
       }
       const keyIndex = consumersForKey.indexOf(consumer);
       if (keyIndex >= 0) consumersForKey.splice(keyIndex, 1);
-      if (consumersForKey.length === 0) this.consumersByKeyPath.delete(keyPath);
+      if (
+        consumersForKey.length === 0 &&
+        this.consumersByKeyPath.get(keyPath) === consumersForKey
+      ) {
+        this.consumersByKeyPath.delete(keyPath);
+      }
+      consumer.destroy();
     });
   }
 
@@ -335,14 +346,23 @@ module.exports = class ServiceHub {
    * disposables returned by previous consumers.
    */
   clear() {
-    for (const provider of this.providers.slice()) {
-      provider.destroy();
-    }
-    for (const consumer of this.consumers.slice()) {
-      consumer.destroy();
-    }
+    const resources = [...this.providers, ...this.consumers];
+    // Clear lookup first, then let every old resource finish its cleanup even
+    // when a package throws. New registrations made during cleanup stay live.
     this.providers = [];
     this.consumers = [];
     this.consumersByKeyPath.clear();
+    const errors = [];
+    for (const resource of resources) {
+      try {
+        resource.destroy();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "Multiple service resources failed to dispose");
+    }
   }
 };

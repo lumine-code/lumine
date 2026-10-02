@@ -7,6 +7,7 @@ const Diacritics = require("diacritic");
  * Removes diacritical marks from a string, so that "café" can be matched by
  * typing "cafe".
  *
+ * @memberof lumine.tools
  * @param {string} text - The string to fold.
  * @returns {string} The same string with its diacritics removed.
  */

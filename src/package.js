@@ -70,7 +70,7 @@ module.exports = class Package {
    * @public
    * @status essential
    *
-   * Invoke the given callback when all packages have been activated.
+   * Invoke the given callback when this package has been deactivated.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.

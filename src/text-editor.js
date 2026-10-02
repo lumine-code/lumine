@@ -4057,7 +4057,7 @@ module.exports = class TextEditor {
    * Get all {@link Cursor Cursors}, ordered by their position in the buffer
    * instead of the order in which they were added.
    *
-   * @returns {Array} of {@link Selection Selections}.
+   * @returns {Array<Cursor>} The cursors ordered by buffer position.
    */
   getCursorsOrderedByBufferPosition() {
     return this.getCursors().sort((a, b) => a.compare(b));

@@ -842,6 +842,37 @@ describe("Project", () => {
   });
 
   describe(".setPaths(paths, options)", () => {
+    it("reports normalized roots without duplicate file inputs", () => {
+      const filePath = require.resolve("./fixtures/dir/a");
+      const didChangePaths = jasmine.createSpy("didChangePaths");
+      const subscription = lumine.project.onDidChangePaths(didChangePaths);
+      try {
+        lumine.project.setPaths([filePath, filePath]);
+
+        expect(didChangePaths).toHaveBeenCalledOnceWith([path.dirname(filePath)]);
+        expect(didChangePaths.calls.mostRecent().args[0]).toEqual(lumine.project.getPaths());
+      } finally {
+        subscription.dispose();
+      }
+    });
+
+    it("reports accepted roots before rejecting missing paths", () => {
+      const root = temp.mkdirSync("exists");
+      const missing = path.join(root, "missing", "child");
+      const didChangePaths = jasmine.createSpy("didChangePaths");
+      const subscription = lumine.project.onDidChangePaths(didChangePaths);
+      try {
+        expect(() =>
+          lumine.project.setPaths([root, missing], { mustExist: true, exact: true }),
+        ).toThrowError("One or more project directories do not exist");
+
+        expect(didChangePaths).toHaveBeenCalledOnceWith([root]);
+        expect(didChangePaths.calls.mostRecent().args[0]).toEqual(lumine.project.getPaths());
+      } finally {
+        subscription.dispose();
+      }
+    });
+
     describe("when path is a file", () => {
       it("sets its path to the file's parent directory and updates the root directory", () => {
         const filePath = require.resolve("./fixtures/dir/a");

@@ -293,7 +293,7 @@ module.exports = class PackageManager {
    * Resolve the given package name to a path on disk.
    *
    * @param name - The `String` package name.
-   * @returns {String} folder path or undefined if it could not be resolved.
+   * @returns {String|null} folder path or `null` if it could not be resolved.
    */
   resolvePackagePath(name) {
     const availablePackage = this.resolveAvailablePackage(name);
@@ -623,7 +623,7 @@ module.exports = class PackageManager {
    * @public
    * @status public
    *
-   * @returns {Array} of `Strings` of all the available package metadata.
+   * @returns {Array} of manifest metadata objects for all available packages.
    */
   getAvailablePackageMetadata() {
     const packages = [];

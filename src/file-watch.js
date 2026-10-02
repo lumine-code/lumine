@@ -12,6 +12,7 @@ function activeClient() {
  * renames never change the observed path. Changes are hints to reread the file;
  * an invalidation requires a reread after observation has recovered.
  *
+ * @memberof require('lumine')
  * @param {String} filePath - The path to observe, resolved to an absolute path.
  * @returns {FileWatchHandle} A synchronous handle with ready and closed promises.
  */
@@ -26,6 +27,7 @@ function watchFile(filePath) {
  * Observe a fixed directory and its direct children, or its entire tree.
  * Missing directories remain observed through their nearest existing ancestor.
  *
+ * @memberof require('lumine')
  * @param {String} directoryPath - The directory path to observe.
  * @param {Object} options - Observation options.
  * @param {Boolean} [options.recursive=false] - Whether to include descendants.

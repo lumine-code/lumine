@@ -1832,12 +1832,29 @@ module.exports = class Workspace extends Model {
    * @status essential
    *
    * Search the workspace for items matching the given URI and hide them.
+   * Center items are closed asynchronously and can remain open if closing is
+   * prevented or cancelled. Use {@link #toggle} to await the closing result.
    *
    * @param itemOrURI - The item to hide or a `String` containing the URI of the item to hide.
-   * @returns {Boolean} indicating whether any items were found (and hidden).
+   * @returns {Boolean} indicating whether any visible matching items were found and hiding or closing was requested.
    */
   hide(itemOrURI) {
+    const { foundItems, closingItems } = this.hideItems(itemOrURI);
+    for (const closing of closingItems) {
+      closing.catch((error) => {
+        this.notificationManager.addError("Unable to close workspace item", {
+          detail: error?.message ?? String(error),
+          stack: error?.stack,
+        });
+      });
+    }
+    return foundItems;
+  }
+
+  /** @private */
+  hideItems(itemOrURI) {
     let foundItems = false;
+    const closingItems = [];
 
     // If any visible item has the given URI, hide it
     for (const container of this.getPaneContainers()) {
@@ -1853,7 +1870,7 @@ module.exports = class Workspace extends Model {
             foundItems = true;
             // We can't really hide the center so we just destroy the item.
             if (isCenter) {
-              pane.destroyItem(activeItem);
+              closingItems.push(pane.destroyItem(activeItem));
             } else {
               container.hide();
             }
@@ -1862,7 +1879,7 @@ module.exports = class Workspace extends Model {
       }
     }
 
-    return foundItems;
+    return { foundItems, closingItems };
   }
 
   /**
@@ -1873,11 +1890,14 @@ module.exports = class Workspace extends Model {
    * Otherwise, open the URL.
    *
    * @param [itemOrURI] - The item to toggle or a `String` containing the URI of the item to toggle.
-   * @returns {Promise} Promise that resolves when the item is shown or hidden.
+   * @returns {Promise} that resolves when the item is shown or hidden, or to `false` if closing a center item is prevented or cancelled. Rejects if closing fails.
    */
   toggle(itemOrURI) {
-    if (this.hide(itemOrURI)) {
-      return Promise.resolve();
+    const { foundItems, closingItems } = this.hideItems(itemOrURI);
+    if (foundItems) {
+      return Promise.all(closingItems).then((results) =>
+        results.includes(false) ? false : undefined,
+      );
     } else {
       return this.open(itemOrURI, { searchAllPanes: true });
     }
@@ -3342,17 +3362,17 @@ module.exports = class Workspace extends Model {
     // Define the onPathsSearched callback.
     let onPathsSearched;
     if (_.isFunction(options.onPathsSearched)) {
-      // Maintain a map of directories to the number of search results. When notified of a new count,
-      // replace the entry in the map and update the total.
+      // Each directory search reports its own cumulative count, even when
+      // several roots use the same searcher.
       const onPathsSearchedOption = options.onPathsSearched;
       let totalNumberOfPathsSearched = 0;
-      const numberOfPathsSearchedForSearcher = new Map();
-      onPathsSearched = function (searcher, numberOfPathsSearched) {
-        const oldValue = numberOfPathsSearchedForSearcher.get(searcher);
+      const numberOfPathsSearchedForDirectory = new Map();
+      onPathsSearched = function (directory, numberOfPathsSearched) {
+        const oldValue = numberOfPathsSearchedForDirectory.get(directory);
         if (oldValue) {
           totalNumberOfPathsSearched -= oldValue;
         }
-        numberOfPathsSearchedForSearcher.set(searcher, numberOfPathsSearched);
+        numberOfPathsSearchedForDirectory.set(directory, numberOfPathsSearched);
         totalNumberOfPathsSearched += numberOfPathsSearched;
         return onPathsSearchedOption(totalNumberOfPathsSearched);
       };
@@ -3376,19 +3396,20 @@ module.exports = class Workspace extends Model {
         didError(error) {
           return iterator(null, error);
         },
-        didSearchPaths(count) {
-          return onPathsSearched(searcher, count);
-        },
       };
       // When there are multiple roots, we build separate `inclusions` for each
       // root. If those were set earlier, we should use them now.
       //
-      // Even though several of these roots can theoretically share a searcher,
-      // we must pass different inclusions to each one — meaning we must create
-      // a different instance of the searcher for each directory.
+      // Several roots can share a searcher, but each directory needs a
+      // separate search with its own inclusions and progress callback.
       let directorySearchers = directories.map((dir) => {
         let customInclusions = customInclusionsForDirectory.get(dir);
-        let customSearchOptions = { ...searchOptions };
+        let customSearchOptions = {
+          ...searchOptions,
+          didSearchPaths(count) {
+            return onPathsSearched(dir, count);
+          },
+        };
         if (customInclusions) {
           customSearchOptions.inclusions = customInclusions;
         }

@@ -29,7 +29,7 @@ const mdComponents = {
  * @status public
  *
  * @function renderMarkdown
- * @memberof markdown
+ * @memberof lumine.tools.markdown
  * @alias render
  * @desc Takes a Markdown document and renders it as HTML.
  * @param {string} content - The Markdown source material.
@@ -453,7 +453,7 @@ function renderMarkdown(content, givenOpts = {}) {
  * @status public
  *
  * @function applySyntaxHighlighting
- * @memberof markdown
+ * @memberof lumine.tools.markdown
  * @async
  * @desc Uses Lumine's built-in Syntax Highlighting system to apply the same syntax
  * highlighting to code blocks within markdown. Modifies the existing object passed.
@@ -545,7 +545,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
  * @status public
  *
  * @function convertToDOM
- * @memberof markdown
+ * @memberof lumine.tools.markdown
  * @desc Takes a raw HTML string of data and returns a proper HTMLFragment.
  * This should be done if you need access to APIs available on the DOM itself.
  * @param {string} content - The HTML String.

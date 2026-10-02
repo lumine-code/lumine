@@ -2172,7 +2172,7 @@ class TextBuffer {
    * @returns {Promise} that resolves with the first {@link Range} of text that matches the given regex.
    */
   findInRange(regex, range) {
-    return this.buffer.findInRange(regex, range);
+    return this.buffer.findInRange(regex, Range.fromObject(range));
   }
 
   /**
@@ -2199,7 +2199,7 @@ class TextBuffer {
    * @returns {Range} first {@link Range} of text that matches the given regex.
    */
   findInRangeSync(regex, range) {
-    return this.buffer.findInRangeSync(regex, range);
+    return this.buffer.findInRangeSync(regex, Range.fromObject(range));
   }
 
   /**
@@ -2226,7 +2226,7 @@ class TextBuffer {
    * @returns {Promise} that resolves with an `Array` containing every {@link Range} of text that matches the given regex.
    */
   findAllInRange(regex, range) {
-    return this.buffer.findAllInRange(regex, range);
+    return this.buffer.findAllInRange(regex, Range.fromObject(range));
   }
 
   /**
@@ -2253,7 +2253,7 @@ class TextBuffer {
    * @returns {Array} containing every {@link Range} of text that matches the given regex.
    */
   findAllInRangeSync(regex, range) {
-    return this.buffer.findAllInRangeSync(regex, range);
+    return this.buffer.findAllInRangeSync(regex, Range.fromObject(range));
   }
 
   /**
@@ -2270,7 +2270,8 @@ class TextBuffer {
    */
   findAndMarkAllInRangeSync(markerLayer, regex, range, options = {}) {
     const startId = this.nextMarkerId;
-    const exclusive = options.invalidate === "inside" || !options.tailed;
+    const exclusive =
+      options.exclusive ?? (options.invalidate === "inside" || options.tailed === false);
     this.nextMarkerId += this.buffer.findAndMarkAllSync(
       markerLayer.index,
       startId,
@@ -2296,7 +2297,7 @@ class TextBuffer {
    * @param query - A `String` to search for.
    * @param extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
    * @param maxCount - A `Number` that limits the number of matches returned
-   * @returns {Array} containing every `SubsequenceMatch` of text that matches the given query.
+   * @returns {Promise<Array>} Resolves with every `SubsequenceMatch` of text that matches the given query.
    */
   findWordsWithSubsequence(query, extraWordCharacters, maxCount) {
     return this.buffer.findWordsWithSubsequence(query, extraWordCharacters, maxCount);
@@ -2312,10 +2313,15 @@ class TextBuffer {
    * @param extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
    * @param maxCount - A `Number` that limits the number of matches returned
    * @param range - A {@link Range} that specifies the portion of the buffer to search
-   * @returns {Array} containing every `SubsequenceMatch` of text that matches the given query in the given range.
+   * @returns {Promise<Array>} Resolves with every `SubsequenceMatch` of text that matches the given query in the given range.
    */
   findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range) {
-    return this.buffer.findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range);
+    return this.buffer.findWordsWithSubsequenceInRange(
+      query,
+      extraWordCharacters,
+      maxCount,
+      Range.fromObject(range),
+    );
   }
 
   /**

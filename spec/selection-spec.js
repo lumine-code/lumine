@@ -110,6 +110,37 @@ describe("Selection", () => {
   });
 
   describe("when the selection's range is moved", () => {
+    it("does not report range changes for marker metadata or an empty marker's tail", () => {
+      selection.cursor.setBufferPosition([0, 1]);
+      selection.marker.clearTail();
+      const rangeChanged = jasmine.createSpy("rangeChanged");
+      const editorRangeChanged = jasmine.createSpy("editorRangeChanged");
+      selection.onDidChangeRange(rangeChanged);
+      editor.onDidChangeSelectionRange(editorRangeChanged);
+
+      selection.marker.setProperties({ kind: "selection" });
+      selection.marker.plantTail();
+      selection.marker.clearTail();
+      expect(rangeChanged).not.toHaveBeenCalled();
+      expect(editorRangeChanged).not.toHaveBeenCalled();
+
+      selection.cursor.setBufferPosition([0, 2]);
+      expect(rangeChanged.calls.count()).toBe(1);
+      expect(editorRangeChanged.calls.count()).toBe(1);
+    });
+
+    it("continues to report a marker validity change with unchanged positions", () => {
+      const rangeChanged = jasmine.createSpy("rangeChanged");
+      selection.onDidChangeRange(rangeChanged);
+      const marker = selection.marker.bufferMarker;
+      marker.update(marker.getRange(), { valid: false });
+
+      expect(rangeChanged.calls.count()).toBe(1);
+      const event = rangeChanged.calls.mostRecent().args[0];
+      expect(event.newBufferRange).toEqual(event.oldBufferRange);
+      expect(selection.marker.isValid()).toBe(false);
+    });
+
     it("notifies ::onDidChangeRange observers", () => {
       selection.setBufferRange([
         [2, 0],

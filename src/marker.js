@@ -11,12 +11,19 @@ const OptionKeys = new Set(["reversed", "tailed", "invalidate", "exclusive"]);
 const TranslationOptionKeys = new Set(["clipDirection", "skipSoftWrapIndentation"]);
 
 /**
+ * @public
+ * @status extended
+ *
  * Represents a buffer annotation that remains logically stationary
  * even as the buffer changes. This is used to represent cursors, folds, snippet
  * targets, misspelled words, and anything else that needs to track a logical
  * location in the buffer over time.
  *
- * Head and Tail:
+ * Create markers with {@link TextBuffer#markRange}, {@link TextBuffer#markPosition},
+ * or the corresponding {@link MarkerLayer} methods rather than constructing them directly.
+ * For screen coordinates and editor decorations, use {@link DisplayMarker} instead.
+ *
+ * ### Head and Tail
  * Markers always have a *head* and sometimes have a *tail*. If you think of a
  * marker as an editor selection, the tail is the part that's stationary and the
  * head is the part that moves when the mouse is moved. A marker without a tail
@@ -24,13 +31,11 @@ const TranslationOptionKeys = new Set(["clipDirection", "skipSoftWrapIndentation
  * greater than the tail is in a "normal" orientation. If the head precedes the
  * tail the marker is in a "reversed" orientation.
  *
- * Validity:
+ * ### Validity
  * Markers are considered *valid* when they are first created. Depending on the
  * invalidation strategy you choose, certain changes to the buffer can cause a
  * marker to become invalid, for example if the text surrounding the marker is
  * deleted. See {@link TextBuffer#markRange} for invalidation strategies.
- *
- * @private
  */
 class Marker {
   static extractParams(inputParams) {
