@@ -193,7 +193,7 @@ module.exports = class MenuManager {
    * ```javascript
    *   lumine.menu.add([
    *     {
-   *       label: 'Hello'
+   *       label: 'Hello',
    *       submenu : [{label: 'World!', id: 'World!', command: 'hello:world'}]
    *     }
    *   ]);

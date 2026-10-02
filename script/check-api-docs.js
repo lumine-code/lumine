@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const parser = require("@babel/parser");
 const { apiSourceFiles, extractApi } = require("./api-extractor");
+const { validateDocumentationExamples } = require("./api-doc-examples");
 
 const editorRoot = path.resolve(__dirname, "..");
 const primitiveReferences = [
@@ -129,6 +130,7 @@ function checkDocumentationSyntax(api) {
 
 const api = extractApi({ editorRoot, parser });
 checkDocumentationSyntax(api);
+validateDocumentationExamples(api, parser);
 console.log(
   `API documentation is valid: ${api.classes.length} classes, ${api.memberCount} members, ${api.functions.length} functions`,
 );

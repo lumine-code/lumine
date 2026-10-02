@@ -49,6 +49,7 @@ module.exports = class PasteProviderRegistry {
   }
 
   clear() {
+    for (const registration of this.providers || []) registration.active = false;
     this.providers = [];
     this.nextRegistrationOrder = 0;
   }
@@ -81,6 +82,7 @@ module.exports = class PasteProviderRegistry {
       provider,
       priority,
       order: this.nextRegistrationOrder++,
+      active: true,
     };
     this.providers.push(registration);
     this.providers.sort(
@@ -88,6 +90,7 @@ module.exports = class PasteProviderRegistry {
     );
 
     return new Disposable(() => {
+      registration.active = false;
       const index = this.providers.indexOf(registration);
       if (index !== -1) this.providers.splice(index, 1);
     });
@@ -102,6 +105,8 @@ module.exports = class PasteProviderRegistry {
    * The text editor calls this for you. Call it directly when your own package
    * is somewhere a paste can land: the tree-view does, so that pasting onto a
    * directory row reaches the same providers an editor paste would.
+   * Providers are captured when dispatch starts. Removed providers are skipped,
+   * and newly registered providers participate in the next paste.
    *
    * @param context - An `Object` describing the paste, with the following keys:
    * @param context.target - An `Object` naming where the paste lands. Today that is `{type: 'text-editor', editor}`, `{type: 'directory', path}`, or `{type: 'terminal', model, path}` — where `path` is the directory the terminal was launched in. Always branch on `type` and return `false` for one you do not recognize — the set grows as more of the workspace offers its pastes here.
@@ -111,10 +116,13 @@ module.exports = class PasteProviderRegistry {
    * @returns {Boolean|Promise} `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did, or a `Promise` resolving to either value when a provider decides asynchronously.
    */
   handlePaste(context) {
+    const providers = this.providers.slice();
     let index = 0;
     const offerNext = () => {
-      while (index < this.providers.length) {
-        const result = this.providers[index++].provider.handlePaste(context);
+      while (index < providers.length) {
+        const registration = providers[index++];
+        if (!registration.active) continue;
+        const result = registration.provider.handlePaste(context);
         if (result != null && typeof result.then === "function") {
           return result.then((handled) => (handled === true ? true : offerNext()));
         }

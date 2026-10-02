@@ -103,11 +103,11 @@ module.exports = class ContextMenuManager {
    *
    * ```javascript
    * lumine.contextMenu.add({
-   *   'lumine-workspace': [{label: 'Help', command: 'application:open-documentation'}]
-   *   'lumine-text-editor': [{
+   *   'lumine-workspace': [{label: 'Help', command: 'application:open-documentation'}],
+   *   'lumine-text-editor:not([mini])': [{
    *     label: 'History',
    *     submenu: [
-   *       {label: 'Undo', command:'core:undo'}
+   *       {label: 'Undo', command:'core:undo'},
    *       {label: 'Redo', command:'core:redo'}
    *     ]
    *   }]
@@ -127,11 +127,9 @@ module.exports = class ContextMenuManager {
    * @param itemsBySelector.created.event - The click event that deployed the context menu.
    * @param [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:
    * @param itemsBySelector.shouldDisplay.event - The click event that deployed the context menu.
+   * @param {Boolean} [throwOnInvalidSelector=true] - Throw for an invalid selector.
+   * @returns {Disposable} Removes the added context-menu items.
    */
-
-  //   * `id` (internal) A `String` containing the menu item's id.
-  // Returns a `Disposable` on which `.dispose()` can be called to remove the
-  // added menu items.
   add(itemsBySelector, throwOnInvalidSelector = true) {
     const addedItemSets = [];
     for (let selector in itemsBySelector) {

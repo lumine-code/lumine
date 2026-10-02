@@ -13,12 +13,12 @@ const path = require("path");
  * ## Examples
  *
  * ```js
- * {BufferedProcess} = require('lumine')
+ * const {BufferedProcess} = require('lumine')
  *
  * const command = 'ps'
  * const args = ['-ef']
  * const stdout = (output) => console.log(output)
- * const exit = (code) => console.log("ps -ef exited with #{code}")
+ * const exit = (code) => console.log(`ps -ef exited with ${code}`)
  * const process = new BufferedProcess({command, args, stdout, exit})
  * ```
  */

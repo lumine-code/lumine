@@ -46,7 +46,7 @@ const SerializationVersion = 1;
  *
  * `package.json`:
  *
- * ```javascript
+ * ```json
  * {
  *   "name": "my-package",
  *   "main": "./lib/my-package.js",
@@ -60,7 +60,7 @@ const SerializationVersion = 1;
  * module.exports = {
  *   activate: function() {
  *     // code to activate your package
- *   }
+ *   },
  *
  *   handleURI(parsedUri, rawUri) {
  *     // parse and handle uri
