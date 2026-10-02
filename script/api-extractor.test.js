@@ -192,7 +192,7 @@ test("uses a grammatical article for synthesized property descriptions", (contex
   const fixture = fs.readFileSync(fixturePath, "utf8").replace(/\r\n/g, "\n");
   for (const input of [fixture, fixture.replace(/\n/g, "\r\n")]) {
     const source = input
-      .replace(/     \* The fixture service\.\r?\n     \*\r?\n/, "")
+      .replace(/ {5}\* The fixture service\.\r?\n {5}\*\r?\n/, "")
       .replaceAll("FixtureService", "ApplicationService");
     const root = editorFixture(source);
     context.after(() => fs.rmSync(root, { recursive: true, force: true }));
