@@ -441,6 +441,125 @@ describe("git-host real process", () => {
     expect(chunks.filter(({ items }) => typeof items === "string").length).toBeGreaterThan(1);
   });
 
+  it("rejects a partial real read on worker crash and recovers with a fresh worker", async () => {
+    const descriptor = copyRepository();
+    const host = GitHost.instance();
+    const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x63);
+    const { stdout } = await host.request("execRepository", {
+      descriptor,
+      args: ["hash-object", "-w", "--stdin"],
+      options: { stdin: content },
+    });
+    const crashedChild = host.child;
+    const handleMessage = host.handleMessage.bind(host);
+    let interrupted = false;
+    host.handleMessage = (message, child) => {
+      if (!interrupted && message?.event === "git:reply-chunk") {
+        interrupted = true;
+        child.kill();
+      }
+      return handleMessage(message, child);
+    };
+
+    await expectAsync(
+      host.request("readObjects", {
+        descriptor,
+        requests: [{ oid: stdout.trim() }],
+        encoding: "buffer",
+      }),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }));
+    expect(interrupted).toBe(true);
+    expect(host.pending.size).toBe(0);
+
+    const [recovered] = await host.request("readObjects", {
+      descriptor,
+      requests: [{ oid: stdout.trim() }],
+      encoding: "buffer",
+    });
+    expect(host.child).not.toBe(crashedChild);
+    expect(recovered.content).toEqual(content);
+  });
+
+  it("cancels a partial real read without blocking a second large reply", async () => {
+    const descriptor = copyRepository();
+    const host = GitHost.instance();
+    const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x61);
+    const { stdout } = await host.request("execRepository", {
+      descriptor,
+      args: ["hash-object", "-w", "--stdin"],
+      options: { stdin: content },
+    });
+    const originalChild = host.child;
+    const controller = new AbortController();
+    const handleMessage = host.handleMessage.bind(host);
+    let cancelled = false;
+    host.handleMessage = (message, child) => {
+      const result = handleMessage(message, child);
+      if (!cancelled && message?.event === "git:reply-chunk") {
+        cancelled = true;
+        controller.abort();
+      }
+      return result;
+    };
+    const payload = {
+      descriptor,
+      requests: [{ oid: stdout.trim() }],
+      encoding: "buffer",
+    };
+
+    await expectAsync(
+      host.request("readObjects", payload, { signal: controller.signal }),
+    ).toBeRejectedWith(jasmine.objectContaining({ name: "AbortError", code: "ABORT_ERR" }));
+    const [completed] = await host.request("readObjects", payload);
+
+    expect(cancelled).toBe(true);
+    expect(host.child).toBe(originalChild);
+    expect(completed.content).toEqual(content);
+    expect(host.pending.size).toBe(0);
+  });
+
+  it("reads through an index lock, reports a blocked write and recovers after removal", async () => {
+    const descriptor = copyRepository();
+    const host = GitHost.instance();
+    const lockPath = path.join(descriptor.gitDirectory, "index.lock");
+    const lockContents = "external Git operation owns this lock\n";
+    fs.writeFileSync(path.join(descriptor.workingDirectory, "a.txt"), "changed\n");
+    fs.writeFileSync(lockPath, lockContents);
+    try {
+      const snapshot = await host.request("snapshot", {
+        descriptor,
+        request: { status: true, refs: true, generations: { status: 1, refs: 1 } },
+        options: {},
+      });
+      expect(snapshot.status.value.files.some(({ path: filePath }) => filePath === "a.txt")).toBe(
+        true,
+      );
+      await expectAsync(
+        host.request("execRepository", {
+          descriptor,
+          args: ["add", "--", "a.txt"],
+          options: { priority: "interactive" },
+        }),
+      ).toBeRejectedWith(
+        jasmine.objectContaining({
+          code: "ERR_GIT_COMMAND_FAILED",
+          stderr: jasmine.stringContaining("index.lock"),
+        }),
+      );
+      expect(fs.readFileSync(lockPath, "utf8")).toBe(lockContents);
+    } finally {
+      fs.unlinkSync(lockPath);
+    }
+
+    const staged = await host.request("execRepository", {
+      descriptor,
+      args: ["add", "--", "a.txt"],
+      options: { priority: "interactive" },
+    });
+    expect(staged.exitCode).toBe(0);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
   it("streams 32 MiB command stdin out of the renderer in bounded messages", async () => {
     const descriptor = copyRepository();
     const host = GitHost.instance();

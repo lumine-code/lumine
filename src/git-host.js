@@ -1,4 +1,5 @@
 const ChildProcess = require("child_process");
+const Timers = require("timers");
 const {
   GIT_HOST_PROTOCOL_VERSION,
   GitHostMessageEvents,
@@ -15,6 +16,7 @@ const {
   validateStreamManifest,
 } = require("./git-host-stream");
 const { normalizeGitOperationError } = require("./git-error");
+const STARTUP_TIMEOUT_MS = 30_000;
 
 // Renderer-side transport for the git-host worker: one long-lived forked process
 // per window that runs every Git `git` command and its output off the
@@ -108,6 +110,7 @@ class GitHost {
     this.readyPromise = null;
     this.resolveReady = null;
     this.rejectReady = null;
+    this.startupTimeout = null;
     this.pending = new Map(); // id -> { resolve, reject, signal, onAbort }
     this.nextId = 0;
     this.inProcessOps = null; // op table when running without a forked worker
@@ -167,7 +170,9 @@ class GitHost {
     this.readyPromise = new Promise((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;
-
+    });
+    const readyPromise = this.readyPromise;
+    try {
       const fork = childFactoryOverride || ((p, argv, opts) => ChildProcess.fork(p, argv, opts));
       const child = fork(require.resolve("./git-host-bootstrap"), ["--no-deprecation"], {
         env: this.childEnv(),
@@ -180,17 +185,30 @@ class GitHost {
       child.on("message", (message) => this.handleMessage(message, child));
       child.on("exit", () => this.handleExit(child));
       child.on("error", () => this.handleExit(child, { kill: true }));
+      child.on("disconnect", () => this.handleExit(child, { kill: true }));
       child.stdout?.on("data", (data) => console.log(String(data)));
       child.stderr?.on("data", (data) => console.error(String(data)));
-    });
+      // Readiness is bounded independently of Git commands. Once READY
+      // arrives, fetches, hooks and other legitimate long jobs have no deadline.
+      this.startupTimeout = Timers.setTimeout(
+        () => this.handleExit(child, { kill: true }),
+        STARTUP_TIMEOUT_MS,
+      );
+    } catch {
+      // A fork can throw before there is a child (for example EAGAIN under
+      // process pressure). Clear the rejected handshake so a later read can
+      // recover without requiring a window reload.
+      this.handleExit(this.child, { kill: true });
+    }
 
-    return this.readyPromise;
+    return readyPromise;
   }
 
   handleMessage(message, sourceChild = this.child) {
     if (!message || sourceChild !== this.child) return;
     switch (message.event) {
       case GitHostMessageEvents.READY:
+        this.clearStartupTimeout();
         if (message.protocolVersion !== GIT_HOST_PROTOCOL_VERSION) {
           const error = new Error(
             `git-host protocol mismatch: expected ${GIT_HOST_PROTOCOL_VERSION}, received ${message.protocolVersion ?? "unknown"}`,
@@ -407,11 +425,7 @@ class GitHost {
       // releasing the worker's global chunk lane. A retired worker never gets
       // an ACK intended for its replacement (or vice versa).
       if (!sourceChild || this.child !== sourceChild || sourceChild.connected === false) return;
-      try {
-        sourceChild.send({ event: GitHostMessageEvents.CHUNK_ACK, id, sequence });
-      } catch {
-        this.handleExit(sourceChild, { kill: true });
-      }
+      this.sendWorkerMessage(sourceChild, { event: GitHostMessageEvents.CHUNK_ACK, id, sequence });
     });
   }
 
@@ -465,6 +479,7 @@ class GitHost {
 
   handleExit(sourceChild = this.child, { kill = false } = {}) {
     if (sourceChild !== this.child) return;
+    this.clearStartupTimeout();
     // Reject a start that never reached readiness, then fail every pending
     // request with a retriable error and drop state so the next request forks a
     // fresh worker. Background refreshes already swallow rejections; while the
@@ -665,12 +680,38 @@ class GitHost {
     if (signal?.aborted) throw abortError();
     if (isUnloading()) return abandonedRequest();
 
-    await this.ensureStarted();
+    const started = this.ensureStarted();
+    if (signal) {
+      await new Promise((resolve, reject) => {
+        const onAbort = () => {
+          signal.removeEventListener("abort", onAbort);
+          reject(abortError());
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        started.then(
+          () => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          },
+          (error) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+        if (signal.aborted) onAbort();
+      });
+    } else {
+      await started;
+    }
     // AbortSignal does not replay an abort event to a listener attached after
     // it fired. Recheck after startup so cancellation during the ready
     // handshake cannot accidentally execute the operation.
     if (signal?.aborted) throw abortError();
     if (isUnloading()) return abandonedRequest();
+    // READY only belongs to the worker that produced this handshake. A reset
+    // can replace it before this continuation runs; never dispatch the old
+    // request on its replacement (which may not even be ready yet).
+    if (started !== this.readyPromise) throw restartError();
     if (this.fatalError) throw this.fatalError;
 
     // In-process mode (spec harness): run the op directly, translating the
@@ -735,7 +776,7 @@ class GitHost {
       if (this.child.connected === false) {
         // The channel closed before the exit handler ran; fail this request
         // (and any others) as retriable instead of throwing out of send.
-        this.handleExit();
+        this.handleExit(this.child, { kill: true });
       } else {
         if (requestStream) {
           this.sendStreamingRequest(id, op, requestStream, entry).catch((error) => {
@@ -743,11 +784,12 @@ class GitHost {
             this.failOutboundRequest(id, entry, error);
           });
         } else {
-          try {
-            this.child.send({ event: GitHostMessageEvents.REQUEST, id, op, payload });
-          } catch {
-            this.handleExit(this.child, { kill: true });
-          }
+          this.sendWorkerMessage(this.child, {
+            event: GitHostMessageEvents.REQUEST,
+            id,
+            op,
+            payload,
+          });
         }
       }
     });
@@ -755,15 +797,30 @@ class GitHost {
 
   sendCancel(id, child = this.child) {
     if (child && child.connected !== false) {
-      try {
-        child.send({ event: GitHostMessageEvents.CANCEL, id });
-      } catch {
-        this.handleExit(child, { kill: true });
-      }
+      this.sendWorkerMessage(child, { event: GitHostMessageEvents.CANCEL, id });
     }
   }
 
+  sendWorkerMessage(child, message) {
+    try {
+      // IPC failures may arrive in the callback after send() returns. Using a
+      // callback also prevents Node from emitting an unhandled channel error
+      // after a retired child's listeners have been removed.
+      child.send(message, (error) => {
+        if (error) this.handleExit(child, { kill: true });
+      });
+    } catch {
+      this.handleExit(child, { kill: true });
+    }
+  }
+
+  clearStartupTimeout() {
+    if (this.startupTimeout !== null) Timers.clearTimeout(this.startupTimeout);
+    this.startupTimeout = null;
+  }
+
   terminate() {
+    this.clearStartupTimeout();
     // Requests waiting for the initial ready handshake are not in `pending`
     // yet. A settings-driven reset must settle them before dropping the
     // resolver; unload remains intentionally silent because its renderer is

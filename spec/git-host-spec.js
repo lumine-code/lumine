@@ -1,4 +1,5 @@
 const EventEmitter = require("events");
+const Timers = require("timers");
 const v8 = require("v8");
 const GitHost = require("../src/git-host");
 const { GIT_HOST_PROTOCOL_VERSION } = require("../src/git-host-protocol");
@@ -615,6 +616,180 @@ describe("GitHost transport", () => {
     expect(await replacement).toBe("OK");
   });
 
+  it("settles pending reads when a live worker disconnects without exiting", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    const failure = pending.catch((error) => error);
+    ready();
+    await flush();
+    const disconnectedChild = current();
+
+    disconnectedChild.connected = false;
+    disconnectedChild.emit("disconnect");
+    await flush();
+
+    expect(host.pending.size).toBe(0);
+    expect(disconnectedChild.killed).toBe(true);
+    expect(host.child).toBeNull();
+    host.terminate();
+    expect(await failure).toEqual(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
+    );
+
+    const replacement = host.request("exec", { args: ["--version"] });
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: "recovered" });
+    expect(await replacement).toBe("recovered");
+  });
+
+  it("retires the worker when a plain request send fails asynchronously", async () => {
+    const started = host.ensureStarted();
+    ready();
+    await started;
+    const failedChild = current();
+    failedChild.send = (message, callback) => {
+      failedChild.sent.push(message);
+      setImmediate(() => callback?.(new Error("IPC write failed")));
+    };
+    const failure = host.request("exec", { args: ["--version"] }).catch((error) => error);
+    await nextImmediate();
+    await nextImmediate();
+
+    expect(host.pending.size).toBe(0);
+    expect(failedChild.killed).toBe(true);
+    host.terminate();
+    expect(await failure).toEqual(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
+    );
+  });
+
+  it("rejects other pending reads when a cancellation send fails asynchronously", async () => {
+    const controller = new AbortController();
+    const cancelled = host
+      .request("snapshot", {}, { signal: controller.signal })
+      .catch((error) => error);
+    const other = host.request("exec", { args: ["--version"] }).catch((error) => error);
+    ready();
+    await flush();
+    const failedChild = current();
+    const send = failedChild.send.bind(failedChild);
+    failedChild.send = (message, callback) => {
+      send(message);
+      if (message.event === "git:cancel") {
+        setImmediate(() => callback?.(new Error("cancel IPC write failed")));
+      }
+    };
+
+    controller.abort();
+    await nextImmediate();
+    await nextImmediate();
+
+    expect((await cancelled).name).toBe("AbortError");
+    expect(host.pending.size).toBe(0);
+    expect(failedChild.killed).toBe(true);
+    host.terminate();
+    expect((await other).code).toBe("ERR_GIT_HOST_RESTART");
+  });
+
+  it("retires the worker when a streamed reply ACK fails asynchronously", async () => {
+    const failure = host.request("readObjects", {}).catch((error) => error);
+    ready();
+    await flush();
+    const failedChild = current();
+    const { id } = failedChild.sent[0];
+    const send = failedChild.send.bind(failedChild);
+    failedChild.send = (message, callback) => {
+      send(message);
+      if (message.event === "git:chunk-ack") {
+        setImmediate(() => callback?.(new Error("chunk ACK IPC write failed")));
+      }
+    };
+    failedChild.emit("message", {
+      event: "git:reply-start",
+      id,
+      result: [{ content: null }],
+      streams: [
+        {
+          name: "readObjects.0.content",
+          path: [0, "content"],
+          kind: "buffer",
+          length: 1,
+        },
+      ],
+    });
+    failedChild.emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 0,
+      stream: "readObjects.0.content",
+      offset: 0,
+      items: Buffer.from("x"),
+    });
+    await nextImmediate();
+    await nextImmediate();
+
+    expect(host.pending.size).toBe(0);
+    expect(failedChild.killed).toBe(true);
+    host.terminate();
+    expect((await failure).code).toBe("ERR_GIT_HOST_RESTART");
+  });
+
+  it("ignores a retired child's delayed send error after a replacement starts", async () => {
+    const first = host.request("exec", { args: ["--version"] }).catch((error) => error);
+    const retiredChild = current();
+    let finishSend;
+    retiredChild.send = (message, callback) => {
+      retiredChild.sent.push(message);
+      finishSend = callback;
+    };
+    ready();
+    await flush();
+    retiredChild.emit("exit");
+    expect((await first).code).toBe("ERR_GIT_HOST_RESTART");
+
+    const replacement = host.request("exec", { args: ["--version"] });
+    ready();
+    await flush();
+    finishSend?.(new Error("late IPC write failure"));
+
+    expect(host.child).toBe(current());
+    expect(current().killed).toBe(false);
+    expect(host.pending.size).toBe(1);
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: "still running" });
+    expect(await replacement).toBe("still running");
+  });
+
+  it("retries startup after a synchronous fork failure", async () => {
+    const forkFailure = Object.assign(new Error("temporary process limit"), { code: "EAGAIN" });
+    GitHost.setChildFactoryForTesting(() => {
+      throw forkFailure;
+    });
+    await expectAsync(host.request("exec", { args: ["--version"] })).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
+    );
+    expect(host.readyPromise).toBeNull();
+
+    GitHost.setChildFactoryForTesting(() => {
+      const child = new FakeChild();
+      children.push(child);
+      return child;
+    });
+    const recovered = host.request("exec", { args: ["--version"] });
+    await flush();
+    expect(children).toHaveSize(1);
+    if (children.length === 0) {
+      await recovered.catch(() => {});
+      return;
+    }
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: "recovered" });
+    expect(await recovered).toBe("recovered");
+  });
+
   it("rejects a request when reset interrupts the ready handshake", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
     expect(children.length).toBe(1);
@@ -630,6 +805,88 @@ describe("GitHost transport", () => {
     expect(error.code).toBe("ERR_GIT_HOST_RESTART");
     expect(error.retriable).toBe(true);
     expect(current().killed).toBe(true);
+  });
+
+  it("never sends a resumed old request to a replacement worker before readiness", async () => {
+    const failure = host.request("exec", { args: ["old"] }).catch((error) => error);
+    ready();
+    host.terminate();
+    const replacement = host.request("exec", { args: ["new"] });
+    await flush();
+
+    expect(children).toHaveSize(2);
+    expect(current().sent).toEqual([]);
+    expect(host.pending.size).toBe(0);
+    ready();
+    await flush();
+    // Reply to anything the broken transport sent so a failed regression can
+    // finish without leaving either request or the Jasmine harness hanging.
+    for (const { id, payload } of current().sent) {
+      current().emit("message", { event: "git:reply", id, result: payload.args[0] });
+    }
+    expect((await failure).code).toBe("ERR_GIT_HOST_RESTART");
+    expect(await replacement).toBe("new");
+  });
+
+  it("bounds a never-ready worker and allows the next request to recover", async () => {
+    const timers = [];
+    spyOn(Timers, "setTimeout").and.callFake((callback, delay) => {
+      const timer = { callback, delay };
+      timers.push(timer);
+      return timer;
+    });
+    const clearTimeout = spyOn(Timers, "clearTimeout");
+    const failure = host.request("exec", { args: ["old"] }).catch((error) => error);
+    const stalledChild = current();
+
+    expect(timers).toHaveSize(1);
+    expect(timers[0].delay).toBe(30_000);
+    timers[0].callback();
+    const error = await failure;
+    expect(error.code).toBe("ERR_GIT_HOST_RESTART");
+    expect(error.retriable).toBe(true);
+    expect(stalledChild.killed).toBe(true);
+    expect(host.readyPromise).toBeNull();
+    expect(host.startupTimeout).toBeNull();
+    expect(clearTimeout).toHaveBeenCalledWith(timers[0]);
+
+    const replacement = host.request("exec", { args: ["new"] });
+    ready();
+    await flush();
+    // Even a previously queued timeout callback belongs to its old worker.
+    timers[0].callback();
+    expect(current().killed).toBe(false);
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: "recovered" });
+    expect(await replacement).toBe("recovered");
+  });
+
+  it("clears the startup deadline on readiness, exit and reset", async () => {
+    const timers = [];
+    spyOn(Timers, "setTimeout").and.callFake((callback) => {
+      const timer = { callback };
+      timers.push(timer);
+      return timer;
+    });
+    const clearTimeout = spyOn(Timers, "clearTimeout");
+    let started = host.ensureStarted();
+    ready();
+    await started;
+    expect(clearTimeout).toHaveBeenCalledWith(timers[0]);
+    expect(host.startupTimeout).toBeNull();
+
+    host.terminate();
+    started = host.ensureStarted().catch((error) => error);
+    current().emit("exit");
+    expect((await started).code).toBe("ERR_GIT_HOST_RESTART");
+    expect(clearTimeout).toHaveBeenCalledWith(timers[1]);
+    expect(host.startupTimeout).toBeNull();
+
+    started = host.ensureStarted().catch((error) => error);
+    host.terminate();
+    expect((await started).code).toBe("ERR_GIT_HOST_RESTART");
+    expect(clearTimeout).toHaveBeenCalledWith(timers[2]);
+    expect(host.startupTimeout).toBeNull();
   });
 
   it("abandons requests instead of rejecting them while the window is unloading", async () => {
@@ -725,6 +982,26 @@ describe("GitHost transport", () => {
     }
     expect(error.name).toBe("AbortError");
     expect(current().sent).toEqual([]);
+  });
+
+  it("cancels a read while the ready handshake remains stalled", async () => {
+    const controller = new AbortController();
+    const failure = host
+      .request("snapshot", {}, { signal: controller.signal })
+      .catch((error) => error);
+    const settled = jasmine.createSpy("settled");
+    failure.then(settled);
+
+    controller.abort();
+    await flush();
+
+    expect(settled).toHaveBeenCalled();
+    expect(host.pending.size).toBe(0);
+    expect(current().sent).toEqual([]);
+    ready();
+    const error = await failure;
+    expect(error.name).toBe("AbortError");
+    expect(error.code).toBe("ABORT_ERR");
   });
 
   it("rejects a mismatched worker protocol before dispatching", async () => {
