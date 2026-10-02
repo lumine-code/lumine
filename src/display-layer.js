@@ -1408,6 +1408,8 @@ class DisplayLayer {
       }
 
       currentScreenLineTabColumns.length = 0;
+      let asciiRunEvents = asciiRunEventsForLine(this, bufferLine, asciiWrapBoundaryMode);
+      let nextAsciiRunEventColumn = -1;
       let screenLineWidth = 0;
       let lastWrapBoundaryUnexpandedScreenColumn = 0;
       let lastWrapBoundaryExpandedScreenColumn = 0;
@@ -1598,6 +1600,8 @@ class DisplayLayer {
               bufferLine,
               bufferLineLength,
             );
+            asciiRunEvents = asciiRunEventsForLine(this, bufferLine, asciiWrapBoundaryMode);
+            nextAsciiRunEventColumn = -1;
           }
         } else {
           // If there is no fold at this position, check if we need to handle
@@ -1617,6 +1621,44 @@ class DisplayLayer {
           }
           unexpandedScreenColumn++;
           bufferColumn++;
+
+          // A Unicode event needs the full width, boundary and paired-character
+          // logic, but it does not make the ordinary ASCII around it special.
+          // Consume the event's first successor normally, then jump over the
+          // rest of its run. Keep the next event cached across wrap points so
+          // a distant Unicode character is searched for only once.
+          if (
+            asciiRunEvents &&
+            character &&
+            character.charCodeAt(0) < 128 &&
+            character !== " " &&
+            character !== "\t" &&
+            character !== "-" &&
+            character !== "/" &&
+            Number.isInteger(screenLineWidth) &&
+            Number.isInteger(unexpandedScreenColumn) &&
+            Number.isInteger(expandedScreenColumn)
+          ) {
+            if (bufferColumn >= nextAsciiRunEventColumn) {
+              asciiRunEvents.lastIndex = bufferColumn;
+              nextAsciiRunEventColumn = asciiRunEvents.exec(bufferLine)?.index ?? Infinity;
+            }
+            let runEndColumn = Math.min(
+              bufferLineLength,
+              nextAsciiRunEventColumn,
+              bufferColumn + Math.max(0, Math.floor(this.softWrapColumn - screenLineWidth)),
+            );
+            if (nextFoldEvent?.bufferRow === bufferRow) {
+              runEndColumn = Math.min(runEndColumn, nextFoldEvent.bufferColumn);
+            }
+            const runLength = runEndColumn - bufferColumn;
+            if (runLength > 0) {
+              bufferColumn = runEndColumn;
+              unexpandedScreenColumn += runLength;
+              expandedScreenColumn += runLength;
+              screenLineWidth += runLength;
+            }
+          }
         }
       }
 
@@ -2146,7 +2188,30 @@ function canUseAsciiBoundaryFastPath(displayLayer, line, asciiWrapBoundaryMode) 
   );
 }
 
-function canUseAsciiEventFastPath(displayLayer, line, asciiWrapBoundaryMode) {
+function asciiRunEventsForLine(displayLayer, line, asciiWrapBoundaryMode) {
+  if (
+    line.length < SIMPLE_LINE_FAST_PATH_MIN_LENGTH ||
+    asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE ||
+    !displayLayer.hasStandardCharacterWidth() ||
+    !displayLayer.hasStandardWrapBoundary()
+  ) {
+    return null;
+  }
+  const mode =
+    displayLayer.isWrapBoundary === defaultIsWrapBoundary
+      ? ASCII_WRAP_BOUNDARY_STANDARD
+      : ASCII_WRAP_BOUNDARY_WHITESPACE;
+  return canUseAsciiEventFastPath(displayLayer, line, mode, true)
+    ? /[\t \x2d\x2f\u0080-\uffff]/g
+    : null;
+}
+
+function canUseAsciiEventFastPath(
+  displayLayer,
+  line,
+  asciiWrapBoundaryMode,
+  includeUnicode = false,
+) {
   if (
     asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_WHITESPACE &&
     asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_STANDARD
@@ -2185,8 +2250,9 @@ function canUseAsciiEventFastPath(displayLayer, line, asciiWrapBoundaryMode) {
         // A tab is both a width-changing event and a possible wrap delimiter.
         eventCount += 2;
       } else if (
+        (includeUnicode && character.charCodeAt(0) > 127) ||
         character === " " ||
-        (asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD &&
+        ((includeUnicode || asciiWrapBoundaryMode === ASCII_WRAP_BOUNDARY_STANDARD) &&
           (character === "-" || character === "/"))
       ) {
         eventCount++;
@@ -2519,7 +2585,7 @@ function populateSpatialIndexForAsciiEventLine(
 }
 
 function canUseUnwrappedLineFastPath(displayLayer, line, lineLength) {
-  if (displayLayer.ratioForCharacter === unitRatio) return true;
+  if (displayLayer.hasStandardCharacterWidth()) return true;
   if (lineLength < SIMPLE_LINE_FAST_PATH_MIN_LENGTH || !ASCII_ONLY_REGEXP.test(line)) return false;
   return asciiCharactersHaveUnitWidth(displayLayer.ratioForCharacter);
 }
