@@ -189,14 +189,16 @@ test("rejects missing required dependency classes", (context) => {
 });
 
 test("uses a grammatical article for synthesized property descriptions", (context) => {
-  const source = fs
-    .readFileSync(fixturePath, "utf8")
-    .replace("     * The fixture service.\n     *\n", "")
-    .replaceAll("FixtureService", "ApplicationService");
-  const root = editorFixture(source);
-  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const api = extractApi({ editorRoot: root, parser });
-  assert.equal(api.classes[0].members[0].description, "An {@link ApplicationService} instance");
+  const fixture = fs.readFileSync(fixturePath, "utf8").replace(/\r\n/g, "\n");
+  for (const input of [fixture, fixture.replace(/\n/g, "\r\n")]) {
+    const source = input
+      .replace(/     \* The fixture service\.\r?\n     \*\r?\n/, "")
+      .replaceAll("FixtureService", "ApplicationService");
+    const root = editorFixture(source);
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const api = extractApi({ editorRoot: root, parser });
+    assert.equal(api.classes[0].members[0].description, "An {@link ApplicationService} instance");
+  }
 });
 
 test("rejects invalid API status values", (context) => {
