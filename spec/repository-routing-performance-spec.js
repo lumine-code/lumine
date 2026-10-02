@@ -175,6 +175,25 @@ describe("Repository routing across large filesystem batches", () => {
     expect(matches[0].relativePath).toBe("root-routing/refs");
   });
 
+  it("translates private worktree metadata through an alias of a shared filesystem root", () => {
+    const filesystemRoot = path.parse(root).root;
+    const alias = path.join(root, "root-metadata-alias");
+    const main = new RoutingRepository(null, filesystemRoot);
+    main.gitDirectoryAliases.push(alias);
+    const worktree = new RoutingRepository(
+      path.join(root, "root-common-worktree"),
+      path.join(filesystemRoot, "worktrees", "root-common-worktree"),
+      filesystemRoot,
+    );
+    registry.register(main, { emit: false });
+    registry.register(worktree, { emit: false });
+    const plan = registry.repositoryRefreshPlanForFileChanges([
+      { action: "updated", path: path.join(alias, "worktrees", "root-common-worktree", "HEAD") },
+    ]);
+    expect(plan.pending.get(worktree)).toBe("both");
+    expect(plan.pending.get(main)).toBe("refs");
+  });
+
   if (process.platform === "win32") {
     it("routes UNC share roots and their closest nested metadata domains", () => {
       const share = "\\\\routing-server\\routing-share\\";

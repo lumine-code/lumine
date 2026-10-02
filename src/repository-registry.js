@@ -185,11 +185,9 @@ function pathDepth(relativePath) {
 function relativeToAny(parentPaths, childPath) {
   for (const parent of parentPaths) {
     if (childPath === parent) return "";
-    if (childPath.startsWith(`${parent}${path.sep}`)) {
-      return childPath
-        .slice(parent.length + 1)
-        .split(path.sep)
-        .join("/");
+    const prefix = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`;
+    if (childPath.startsWith(prefix)) {
+      return childPath.slice(prefix.length).split(path.sep).join("/");
     }
   }
   return null;
