@@ -1,4 +1,8 @@
-const { conditionPromise, timeoutPromise: wait } = require("./helpers/async-spec-helpers");
+const {
+  conditionPromise,
+  timeoutPromise: wait,
+  waitForFrames,
+} = require("./helpers/async-spec-helpers");
 
 const Random = require("random-seed");
 const { getRandomBufferRange, buildRandomLines } = require("./helpers/random");
@@ -4235,6 +4239,89 @@ describe("TextEditorComponent", () => {
         clientTopForLine(component, 5),
       );
     });
+
+    for (const initialHeight of [0, 20]) {
+      it(`fits an initially ${initialHeight}px overlay after its first real size notification`, async () => {
+        const { component, element, editor } = buildComponent({
+          width: 200,
+          height: 300,
+          attach: false,
+          updatedSynchronously: true,
+        });
+        element.style.lineHeight = "16px";
+        let windowInnerHeight = 100000;
+        const contentTop = attachWithWindowHeight(component, () => windowInnerHeight);
+        windowInnerHeight = contentTop() + 200;
+
+        const item = buildOverlayItem(initialHeight);
+        editor.decorateMarker(editor.markScreenPosition([10, 0]), {
+          type: "overlay",
+          item,
+        });
+        const overlayComponent = component.overlayComponentsByElement.get(item);
+        expect(item.parentElement.dataset.overlayPosition).toBe("below");
+        expect(overlayComponent.currentContentRect).toBeNull();
+
+        // A synchronous caret measurement can mount the popup before its
+        // queued content is written. Grow it in this same task, so the first
+        // observer delivery already carries the final size, not a resize
+        // relative to an earlier notification. No wheel or editor update is
+        // allowed to repair the placement on the observer's behalf.
+        item.style.height = "40px";
+        await waitForFrames(() => overlayComponent.currentContentRect?.height === 40, {
+          frames: 60,
+          description: "the overlay's first real size notification",
+        });
+
+        expect(item.parentElement.dataset.overlayPosition).toBe("above");
+        expect(item.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+        expect(item.getBoundingClientRect().bottom).toBeLessThanOrEqual(windowInnerHeight);
+      });
+    }
+
+    for (const lifecycle of ["destruction", "detachment"]) {
+      it(`does not reobserve overlay content after ${lifecycle} during resize delivery`, async () => {
+        const { component, element, editor } = buildComponent({
+          width: 200,
+          height: 300,
+          attach: false,
+          updatedSynchronously: true,
+        });
+        element.style.lineHeight = "16px";
+        attachWithWindowHeight(component, () => 100000);
+
+        const item = buildOverlayItem();
+        const decoration = editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+          type: "overlay",
+          item,
+        });
+        const overlayComponent = component.overlayComponentsByElement.get(item);
+        await waitForFrames(() => overlayComponent.currentContentRect?.height === 20, {
+          frames: 60,
+          description: "the overlay's initial size notification",
+        });
+
+        const observe = spyOn(overlayComponent.resizeObserver, "observe").and.callThrough();
+        const originalDidResize = overlayComponent.props.didResize;
+        const resize = spyOn(overlayComponent.props, "didResize").and.callFake((resized) => {
+          originalDidResize(resized);
+          if (lifecycle === "destruction") decoration.destroy();
+          else overlayComponent.didDetach();
+        });
+        item.style.height = "40px";
+        await waitForFrames(() => resize.calls.any(), {
+          frames: 60,
+          description: `overlay ${lifecycle} during real resize delivery`,
+        });
+        await new Promise((resolve) => process.nextTick(resolve));
+
+        expect(observe).not.toHaveBeenCalled();
+        if (lifecycle === "destruction") {
+          expect(component.overlayComponentsByElement.has(item)).toBe(false);
+          expect(item.isConnected).toBe(false);
+        }
+      });
+    }
 
     it("re-places every overlay when one of them resizes", async () => {
       const { component, element, editor } = buildComponent({

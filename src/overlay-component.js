@@ -18,17 +18,23 @@ module.exports = class OverlayComponent {
     // potentially mutating the DOM, and then reconnect it on the next tick.
     // Note: ResizeObserver calls its callback when .observe is called
     this.resizeObserver = new ResizeObserver((entries) => {
+      if (!this.attached || this.destroyed) return;
       const { contentRect } = entries[0];
 
       if (
-        this.currentContentRect &&
-        (this.currentContentRect.width !== contentRect.width ||
-          this.currentContentRect.height !== contentRect.height)
+        (!this.currentContentRect && (contentRect.width > 0 || contentRect.height > 0)) ||
+        (this.currentContentRect &&
+          (this.currentContentRect.width !== contentRect.width ||
+            this.currentContentRect.height !== contentRect.height))
       ) {
+        // The first placement may have measured empty content before its
+        // queued render. Its first real size must refit the overlay too.
         this.resizeObserver.disconnect();
         this.props.didResize(this);
         process.nextTick(() => {
-          this.resizeObserver.observe(this.props.element);
+          if (this.attached && !this.destroyed) {
+            this.resizeObserver.observe(this.props.element);
+          }
         });
       }
 
@@ -39,6 +45,8 @@ module.exports = class OverlayComponent {
   }
 
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.props.overlayComponents.delete(this);
     this.didDetach();
   }
@@ -90,10 +98,14 @@ module.exports = class OverlayComponent {
   }
 
   didAttach() {
+    if (this.destroyed) return;
+    this.attached = true;
+    this.currentContentRect = null;
     this.resizeObserver.observe(this.props.element);
   }
 
   didDetach() {
+    this.attached = false;
     this.resizeObserver.disconnect();
   }
 };
