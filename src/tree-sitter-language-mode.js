@@ -1302,6 +1302,21 @@ class TreeSitterLanguageMode {
     return oldTree;
   }
 
+  getTextInputChunk(index, chunkSize) {
+    const length = this.buffer.getLength();
+    if (index >= length) return "";
+
+    const start = this.buffer.positionForCharacterIndex(index);
+    const startIndex = this.buffer.characterIndexForPosition(start);
+    // Buffer positions cannot point between CR and LF. Either endpoint can
+    // therefore clip back one code unit: include one extra unit at the end,
+    // then trim by the actual start offset to preserve the parser's indices.
+    const end = this.buffer.positionForCharacterIndex(Math.min(index + chunkSize + 1, length));
+    return this.buffer
+      .getTextInRange(new Range(start, end))
+      .slice(index - startIndex, index - startIndex + chunkSize);
+  }
+
   parseAsync(
     language,
     oldTree,
@@ -1342,23 +1357,20 @@ class TreeSitterLanguageMode {
     // nowhere near the injection layer's extent. This lets us get away with
     // deferring the re-parsing of such layers until much later.
     //
-    // There's one catch, though: the buffer text being parsed should not
-    // change _during the parse job_. Since parsing can go async, we must keep
-    // the value constant until the parse is done, at which point we can
-    // consult the latest version of the buffer text for the purpose of
-    // accurate captures.
+    // A synchronous parser slice runs without yielding, so bounded reads of
+    // the live buffer stay consistent. Only a parse that actually goes async
+    // needs a frozen full-buffer copy, taken before its first yield. Small
+    // incremental parses otherwise paid for copying the entire file on every
+    // keystroke even when Tree-sitter read only a few characters near the edit.
     let parseDone = false;
-    let text = this.buffer.getText();
+    let text = null;
     let callback = (index) => {
-      // Stick with a frozen copy of the text at parse time… until parsing is
-      // done, at which point we should use the latest buffer text. (The
-      // buffer caches the result of `getText` until its next change, so this
-      // does not re-build the string on every lookup.)
-      let currentText = parseDone ? this.buffer.getText() : text;
       const chunkSize = parseDone
         ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
         : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
-      return currentText.slice(index, index + chunkSize);
+      return text === null
+        ? this.getTextInputChunk(index, chunkSize)
+        : text.slice(index, index + chunkSize);
     };
 
     let tree;
@@ -1370,6 +1382,7 @@ class TreeSitterLanguageMode {
       if (cleanedUp) return;
       cleanedUp = true;
       parseDone = true;
+      text = null;
       if (devMode && tag) {
         console.timeEnd(tag);
         if (batchCount > 0) {
@@ -1395,6 +1408,12 @@ class TreeSitterLanguageMode {
       // The parse couldn't be completed in the allotted time, so we'll go
       // async and return a promise. Each batch resumes the previous partial
       // parse rather than starting over.
+      try {
+        text = this.buffer.getText();
+      } catch (error) {
+        cleanup();
+        throw this.describeParseFailure(error, { scopeName, includedRanges });
+      }
       return new Promise((resolve, reject) => {
         const parseJob = () => {
           // The buffer can be destroyed between batches — closing a window
@@ -1450,7 +1469,7 @@ class TreeSitterLanguageMode {
       const chunkSize = parseDone
         ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
         : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
-      return this.buffer.getText().slice(index, index + chunkSize);
+      return this.getTextInputChunk(index, chunkSize);
     };
 
     if (devMode && tag) {
