@@ -1,5 +1,5 @@
 const fs = require("fs");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 
 describe("Git repository discovery in the renderer", () => {
   // Repeated real discoveries cross renderer callbacks and spec teardown. A

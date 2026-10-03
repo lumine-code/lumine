@@ -1,7 +1,7 @@
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 const fs = require("fs");
 const path = require("path");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const Environment = require("../src/environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");

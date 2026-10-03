@@ -1,4 +1,4 @@
-const temp = require("@lumine-code/temp");
+const temp = require("@lumine-code/fs-temp");
 const fs = require("fs");
 const path = require("path");
 const { watchFile, watchDirectory } = require("../src/file-watch");

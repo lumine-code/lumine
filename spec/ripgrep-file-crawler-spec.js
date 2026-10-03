@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 
 const RipgrepFileCrawler = require("../src/ripgrep-file-crawler");
 

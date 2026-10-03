@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { Emitter } = require("@lumine-code/event-kit");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 
 const fsPlus = require("@lumine-code/fs-plus");
 const FileIndex = require("../src/file-index");

@@ -3,7 +3,7 @@ const v8 = require("v8");
 const ChildProcess = require("child_process");
 const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const GitHost = require("../src/git-host");
 const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 const {

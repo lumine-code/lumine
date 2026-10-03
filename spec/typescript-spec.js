@@ -1,5 +1,5 @@
 const path = require("path");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const CompileCache = require("../src/compile-cache");
 
 describe("TypeScript transpiler support", function () {

@@ -1,6 +1,6 @@
 const path = require("path");
 const etch = require("@lumine-code/etch");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");

@@ -165,7 +165,7 @@ let options = {
     "!**/node_modules/native-mate",
     // node_modules of the fuzzy-native package are only required for building it
     "!node_modules/@lumine-code/fuzzy-native/node_modules",
-    "!**/node_modules/@lumine-code/spellchecker/vendor/hunspell/.*",
+    "!**/node_modules/@lumine-code/native-spelling/vendor/hunspell/.*",
     "!**/get-parameter-names/node_modules/testla",
     "!**/get-parameter-names/node_modules/.bin/testla",
     "!**/jasmine-reporters/ext",
@@ -367,7 +367,7 @@ let options = {
   asarUnpack: [
     "node_modules/github/bin/*",
     "node_modules/github/lib/*", // Resolves error in console
-    "**/node_modules/@lumine-code/spellchecker/**", // Includes native bindings and dictionaries
+    "**/node_modules/@lumine-code/native-spelling/**", // Includes native bindings and dictionaries
     "**/node_modules/@vscode/ripgrep*/**", // rg binary must be spawnable outside asar
     "node_modules/symbol-ctags/vendor/**", // ctags binaries must be spawnable outside asar
   ],

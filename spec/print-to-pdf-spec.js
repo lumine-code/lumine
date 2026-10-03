@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 
 // End to end on purpose: this crosses IPC into the main process, opens a real
 // offscreen window and asks Chromium for a real PDF. A stub either side of that

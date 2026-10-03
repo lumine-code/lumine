@@ -1,6 +1,6 @@
 const Grim = require("@lumine-code/grim");
 const fs = require("@lumine-code/fs-plus");
-const temp = require("@lumine-code/temp");
+const temp = require("@lumine-code/fs-temp");
 const path = require("path");
 const { ConsoleReporter } = require("@jasminejs/reporters");
 const ListReporter = require("../helpers/jasmine-list-reporter");

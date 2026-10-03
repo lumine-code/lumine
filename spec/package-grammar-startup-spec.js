@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const Package = require("../src/package");
 const GrammarRegistry = require("../src/grammar-registry");
 

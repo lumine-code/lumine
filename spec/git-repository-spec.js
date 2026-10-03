@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const CoreGitRepository = require("../src/git-repository");
 const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 const Project = require("../src/project");

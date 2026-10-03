@@ -1,7 +1,7 @@
 const path = require("path");
 const Package = require("../src/package");
 const PackageManager = require("../src/package-manager");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const fs = require("@lumine-code/fs-plus");
 const { Disposable } = require("lumine");
 const { buildKeydownEvent } = require("../src/keymap-extensions");

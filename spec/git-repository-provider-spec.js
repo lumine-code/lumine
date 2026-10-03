@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const temp = require("@lumine-code/temp").track();
+const temp = require("@lumine-code/fs-temp").track();
 const ProjectDirectory = require("../src/project-directory");
 const GitRepository = require("../src/git-repository");
 const GitRepositoryProvider = require("../src/git-repository-provider");
