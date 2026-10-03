@@ -1822,7 +1822,7 @@ module.exports = class TextEditorComponent {
 
     decorations.push({
       className: "decoration" + (decoration.class ? " " + decoration.class : ""),
-      element: TextEditor.viewForItem(decoration.item),
+      element: decoration.item == null ? null : TextEditor.viewForItem(decoration.item),
       top,
       height,
     });
