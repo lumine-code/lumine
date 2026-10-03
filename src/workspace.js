@@ -148,6 +148,13 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  *
  * Returns the URI associated with the item.
  *
+ * #### `onDidChangeURI(callback)`
+ *
+ * Notifies the workspace when the item begins representing a different URI.
+ * Emit after committing the new document, and return a `Disposable`.
+ * The workspace publishes {@link Workspace#onDidChangePaneItemURI} for consumers
+ * whose context depends on the document rather than the item identity.
+ *
  * #### `getLongTitle()`
  *
  * Returns a `String` containing a longer version of the title to display in
@@ -307,6 +314,11 @@ module.exports = class Workspace extends Model {
 
     this.emitter = new Emitter();
     this.openers = [];
+    this.openerReuseCapabilities = new Map();
+    this.pendingItemOpenRequests = new Map();
+    this.paneOpenSequences = new WeakMap();
+    this.openRequestSequence = 0;
+    this.paneItemURIs = new WeakMap();
     this.destroyedItemURIs = [];
     this.longTitles = null;
     this.stoppedChangingActivePaneItemTimeout = null;
@@ -556,6 +568,7 @@ module.exports = class Workspace extends Model {
     };
 
     this.openers = [];
+    this.openerReuseCapabilities.clear();
     this.destroyedItemURIs = [];
     this.invalidateLongTitles();
     if (this.element) {
@@ -1125,6 +1138,16 @@ module.exports = class Workspace extends Model {
   subscribeToMovedItems() {
     for (const paneContainer of this.getPaneContainers()) {
       paneContainer.observePanes((pane) => {
+        pane.observeItems((item) => {
+          this.paneItemURIs.set(item, this.getItemURI(item));
+          if (typeof item.onDidChangeURI !== "function") return;
+          const subscriptions = new CompositeDisposable(
+            item.onDidChangeURI(() => this.didChangePaneItemURI(item, pane)),
+            pane.onDidRemoveItem(({ item: removedItem }) => {
+              if (removedItem === item) subscriptions.dispose();
+            }),
+          );
+        });
         pane.onDidAddItem(({ item }) => {
           if (typeof item.getURI === "function" && this.enablePersistence) {
             const uri = item.getURI();
@@ -1197,6 +1220,46 @@ module.exports = class Workspace extends Model {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.observePaneItems(callback)),
     );
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Invoke the callback when an existing pane item changes its document URI.
+   * The item and pane identities are unchanged. This includes preview reuse
+   * and navigation performed by the item itself.
+   *
+   * @param {Function} callback - Receives `{item, pane, oldURI, newURI}`.
+   * @returns {Disposable} Subscription to the URI changes.
+   */
+  onDidChangePaneItemURI(callback) {
+    return this.emitter.on("did-change-pane-item-uri", callback);
+  }
+
+  getItemURI(item) {
+    return item?.getURI?.() ?? item?.getUri?.();
+  }
+
+  didChangePaneItemURI(item, pane) {
+    if (!pane.getItems().includes(item)) return;
+    const oldURI = this.paneItemURIs.get(item);
+    const newURI = this.getItemURI(item);
+    if (oldURI === newURI) return;
+    this.paneItemURIs.set(item, newURI);
+    const reuseRequest = this.pendingItemOpenRequests.get(pane);
+    if (reuseRequest?.item === item) this.recordReusedPendingItemURI(reuseRequest);
+    this.invalidateLongTitles();
+    this.itemOpened(item);
+    if (newURI && this.enablePersistence) {
+      const location = pane.getContainer().getLocation();
+      if (location === defaultLocationForItem(item)) this.itemLocationStore.delete(newURI);
+      else this.itemLocationStore.save(newURI, location);
+    }
+    if (this.getActivePaneItem() === item) this.didChangeActivePaneItem(item);
+    if (this.getCenter().getActivePaneItem() === item)
+      this.didChangeCenterTextEditorResolutions(item);
+    this.emitter.emit("did-change-pane-item-uri", { item, pane, oldURI, newURI });
   }
 
   /**
@@ -1583,23 +1646,60 @@ module.exports = class Workspace extends Model {
       item = itemOrURI;
       if (typeof item.getURI === "function") uri = item.getURI();
     }
+    const providedItem = item;
 
+    // Prepare a possible destination without cancelling work there: an opener
+    // can still choose a different default location. The request is registered
+    // only when an opener accepts reuse or the new item's destination is known.
+    const openSequence = ++this.openRequestSequence;
+    let preferredLocation = options.location;
+    let reuseRequest;
+    if (!options.split) {
+      const searchPane =
+        options.pane ||
+        (options.searchAllPanes
+          ? item
+            ? this.paneForItem(item)
+            : this.paneForURI(uri)
+          : (this.paneContainerForURI(uri) || this.getActivePaneContainer()).getActivePane());
+      const existingItem = item
+        ? searchPane?.getItems().includes(item)
+        : uri && searchPane?.itemForURI(uri);
+      if (
+        !existingItem &&
+        !item &&
+        !options.pane &&
+        !preferredLocation &&
+        uri &&
+        this.enablePersistence
+      ) {
+        preferredLocation = await this.itemLocationStore.load(uri);
+      }
+      const destinationPane = existingItem
+        ? searchPane
+        : options.pane ||
+          (this.paneContainers[preferredLocation] || this.getCenter()).getActivePane();
+      reuseRequest = this.preparePendingItemOpen(destinationPane, options, openSequence, uri);
+      const incomingReuse = this.pendingItemOpenRequests.get(destinationPane);
+      if (existingItem || incomingReuse?.uri === uri) this.activatePendingItemOpen(reuseRequest);
+      if (reuseRequest?.controller.signal.aborted) return;
+    }
     let resolveItem = () => {};
+    let incomingPromise;
     if (uri) {
       const incomingItem = this.incoming.get(uri);
       if (!incomingItem) {
-        this.incoming.set(
-          uri,
-          new Promise((resolve) => {
-            resolveItem = resolve;
-          }),
-        );
+        incomingPromise = new Promise((resolve) => {
+          resolveItem = resolve;
+        });
+        this.incoming.set(uri, incomingPromise);
       } else {
         await incomingItem;
       }
     }
 
     try {
+      if (reuseRequest?.controller.signal.aborted) return;
       if (!lumine.config.get("core.allowPendingPaneItems")) {
         options.pending = false;
       }
@@ -1665,7 +1765,32 @@ module.exports = class Workspace extends Model {
 
       if (!itemExistsInWorkspace) {
         const itemWasProvided = item != null;
-        item = item || (await this.createItemForURI(uri, options));
+        if (reuseRequest?.controller.signal.aborted) return;
+        if (!item && !options.split) {
+          if (reuseRequest && options.pending && options.activateItem !== false) {
+            const destinationPane = reuseRequest.pane;
+            const candidate = destinationPane.getPendingItem();
+            const location = destinationPane.getContainer().getLocation();
+            const defaultLocation = defaultLocationForItem(candidate);
+            if (
+              candidate &&
+              (!preferredLocation || preferredLocation === location) &&
+              (options.pane || preferredLocation || defaultLocation === location) &&
+              allowedLocationsForItem(candidate).includes(location) &&
+              !candidate.isModified?.() &&
+              (typeof candidate.getFileState !== "function" ||
+                candidate.getFileState() === "unmodified")
+            ) {
+              reuseRequest.item = candidate;
+              reuseRequest.oldURI = this.getItemURI(candidate);
+            }
+          }
+        }
+        item = item || (await this.createItemForURI(uri, options, reuseRequest));
+        if (reuseRequest?.controller.signal.aborted) {
+          if (item && !itemWasProvided && !this.paneForItem(item)) item.destroy?.();
+          return;
+        }
         if (!item) return;
 
         // An opener may return an item that is already in the workspace, e.g.
@@ -1680,10 +1805,7 @@ module.exports = class Workspace extends Model {
             pendingSplit = { pane, direction: options.split };
           }
         } else {
-          let location = options.location;
-          if (!location && !options.split && uri && this.enablePersistence) {
-            location = await this.itemLocationStore.load(uri);
-          }
+          let location = preferredLocation;
           const defaultLocation = defaultLocationForItem(item);
           if (!location) location = defaultLocation;
 
@@ -1736,6 +1858,16 @@ module.exports = class Workspace extends Model {
           return;
         }
       }
+
+      this.activatePendingItemOpen(reuseRequest, pane);
+      if (reuseRequest?.controller.signal.aborted) {
+        if (item && item !== providedItem && !this.paneForItem(item)) item.destroy?.();
+        return;
+      }
+      if (reuseRequest?.reused) this.recordReusedPendingItemURI(reuseRequest);
+      // Presentation can clear or replace pending state. Stop observing before
+      // our own successful open changes it, so only external changes cancel us.
+      this.finishPendingItemOpen(reuseRequest);
 
       // A split is a presentation detail, so materialize it only after the
       // opener has produced an item and every refusal path has passed. Passing
@@ -1793,9 +1925,6 @@ module.exports = class Workspace extends Model {
 
       const index = pane.getActiveItemIndex();
       this.emitter.emit("did-open", { uri, pane, item, index });
-      if (uri) {
-        this.incoming.delete(uri);
-      }
 
       // After emitting the open event, notify package-owned lazy features.
       let hookItem;
@@ -1822,9 +1951,76 @@ module.exports = class Workspace extends Model {
         this.packageManager.hooks.trigger(`${hookItem}:${hookName}`);
       }
     } finally {
+      this.finishPendingItemOpen(reuseRequest);
+      if (incomingPromise && this.incoming.get(uri) === incomingPromise) this.incoming.delete(uri);
       resolveItem();
     }
     return item;
+  }
+
+  preparePendingItemOpen(pane, options, sequence, uri) {
+    if (!pane) return;
+    const controller = new AbortController();
+    return {
+      pane,
+      uri,
+      sequence,
+      controller,
+      subscriptions: new CompositeDisposable(),
+      track:
+        options.pending &&
+        options.activateItem !== false &&
+        this.config.get("core.allowPendingPaneItems"),
+    };
+  }
+
+  activatePendingItemOpen(request, pane = request?.pane) {
+    if (!request || request.controller.signal.aborted || (request.active && request.pane === pane))
+      return;
+    const { controller, sequence } = request;
+    if ((this.paneOpenSequences.get(pane) || 0) > sequence) {
+      controller.abort();
+      return;
+    }
+    if (request.active) {
+      this.finishPendingItemOpen(request);
+      request.subscriptions = new CompositeDisposable();
+    }
+    request.active = true;
+    request.pane = pane;
+    this.paneOpenSequences.set(pane, sequence);
+    const previousRequest = this.pendingItemOpenRequests.get(pane);
+    previousRequest?.controller.abort();
+    this.finishPendingItemOpen(previousRequest);
+    if (!request.track) return;
+    request.subscriptions.add(
+      pane.onItemDidTerminatePendingState(() => controller.abort()),
+      pane.onItemDidBecomePendingState((item) => {
+        if (request.item && item !== request.item) controller.abort();
+      }),
+      pane.onWillDestroyItem(({ item }) => {
+        if (item === request.item) controller.abort();
+      }),
+      pane.onWillRemoveItem(({ item }) => {
+        if (item === request.item) controller.abort();
+      }),
+      pane.onWillDestroy(() => controller.abort()),
+    );
+    this.pendingItemOpenRequests.set(pane, request);
+  }
+
+  finishPendingItemOpen(request) {
+    if (!request) return;
+    request.subscriptions.dispose();
+    if (this.pendingItemOpenRequests.get(request.pane) === request) {
+      this.pendingItemOpenRequests.delete(request.pane);
+    }
+  }
+
+  recordReusedPendingItemURI(request) {
+    if (request.historyRecorded || request.oldURI == null) return;
+    request.historyRecorded = true;
+    this.destroyedItemURIs.push(request.oldURI);
   }
 
   /**
@@ -2017,14 +2213,45 @@ module.exports = class Workspace extends Model {
    * @param uri - A `String` containing a URI.
    * @returns {Promise} that resolves to the {@link TextEditor} (or other item) for the given URI.
    */
-  async createItemForURI(uri, options) {
+  async createItemForURI(uri, options, reuseRequest) {
     if (uri != null) {
       for (const opener of this.getOpeners()) {
+        if (reuseRequest?.controller.signal.aborted) return;
+        const reuse = this.openerReuseCapabilities.get(opener);
+        const candidate = reuseRequest?.item;
+        if (
+          candidate &&
+          reuseRequest.pane.getPendingItem() === candidate &&
+          !candidate.isDestroyed?.() &&
+          reuse?.canReusePendingItem?.(candidate, uri, options)
+        ) {
+          this.activatePendingItemOpen(reuseRequest);
+          if (reuseRequest.controller.signal.aborted) return;
+          let result;
+          try {
+            result = await reuse.reusePendingItem(candidate, uri, options, {
+              signal: reuseRequest.controller.signal,
+            });
+          } catch (error) {
+            if (reuseRequest.controller.signal.aborted) return;
+            throw error;
+          }
+          if (reuseRequest.controller.signal.aborted) return;
+          if (result !== false) {
+            reuseRequest.reused = true;
+            this.didChangePaneItemURI(candidate, reuseRequest.pane);
+            return candidate;
+          }
+        }
         const item = opener(uri, options);
         if (item != null) return item;
       }
     }
 
+    // The fallback is a center text editor, so its destination no longer
+    // depends on an opener's default location.
+    this.activatePendingItemOpen(reuseRequest, options?.pane || this.getCenter().getActivePane());
+    if (reuseRequest?.controller.signal.aborted) return;
     try {
       const item = await this.openTextFile(uri, options);
       return item;
@@ -2378,12 +2605,20 @@ module.exports = class Workspace extends Model {
    * can check the protocol for quux-preview and only handle those URIs that match.
    *
    * @param opener - A `Function` to be called when a path is being opened.
+   * @param {Object} [options] - Optional preview reuse capabilities.
+   * @param {Function} [options.canReusePendingItem] - Synchronously checks `(item, uri, openOptions)` without changing the item. It is checked at this opener's position in the opener order, before constructing a new item.
+   * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
    * @returns {Disposable} on which `.dispose()` can be called to remove the opener.
    */
-  addOpener(opener) {
+  addOpener(opener, options = {}) {
+    if (options.canReusePendingItem && typeof options.reusePendingItem !== "function") {
+      throw new TypeError("A reusable opener must provide reusePendingItem");
+    }
     this.openers.push(opener);
+    this.openerReuseCapabilities.set(opener, options);
     return new Disposable(() => {
       _.remove(this.openers, opener);
+      this.openerReuseCapabilities.delete(opener);
     });
   }
 
@@ -2838,6 +3073,11 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    for (const request of this.pendingItemOpenRequests.values()) {
+      request.controller.abort();
+      request.subscriptions.dispose();
+    }
+    this.pendingItemOpenRequests.clear();
     this.registeredTextEditorGrammarSubscription?.dispose();
     this.registeredTextEditorGrammarSubscription = null;
     for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();

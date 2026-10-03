@@ -1235,6 +1235,10 @@ describe("RepositoryRegistry", () => {
         return this.center;
       }
 
+      onDidChangePaneItemURI(callback) {
+        return this.emitter.on("did-change-pane-item-uri", callback);
+      }
+
       setActiveItem(item) {
         this.activeItem = item;
         this.emitter.emit("did-change-active-pane-item", item);
@@ -1311,6 +1315,25 @@ describe("RepositoryRegistry", () => {
         [null, terminalDir],
         [repoA, workdirA],
       ]);
+    });
+
+    it("follows a new resource in the same active item and ignores inactive resources", () => {
+      registry.attachWorkspace(workspace);
+      let filePath = path.join(workdirA, "first.png");
+      const item = { getPath: () => filePath };
+      workspace.setActiveItem(item);
+      expect(registry.getActiveRepository()).toBe(repoA);
+
+      const oldURI = filePath;
+      filePath = path.join(workdirB, "second.png");
+      workspace.emitter.emit("did-change-pane-item-uri", { item, oldURI, newURI: filePath });
+      expect(registry.getActiveRepository()).toBe(repoB);
+      expect(registry.getActiveRepositoryContext().workingDirectory).toBe(workdirB);
+
+      workspace.emitter.emit("did-change-pane-item-uri", {
+        item: itemFor(path.join(workdirA, "inactive.png")),
+      });
+      expect(registry.getActiveRepository()).toBe(repoB);
     });
 
     it("anchors an out-of-repository path inside a project root to that root", () => {

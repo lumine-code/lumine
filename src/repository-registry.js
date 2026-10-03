@@ -407,6 +407,11 @@ module.exports = class RepositoryRegistry {
       workspace.getCenter().onDidChangeActivePaneItem((item) => {
         this.updateActiveRepositoryFromPaneItem(item);
       }),
+      workspace.onDidChangePaneItemURI?.(({ item }) => {
+        if (item === workspace.getCenter().getActivePaneItem()) {
+          this.updateActiveRepositoryFromPaneItem(item);
+        }
+      }) ?? new Disposable(),
     );
     this.updateActiveRepositoryFromPaneItem(workspace.getCenter().getActivePaneItem());
   }
