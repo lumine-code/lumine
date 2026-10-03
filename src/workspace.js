@@ -2233,7 +2233,9 @@ module.exports = class Workspace extends Model {
               signal: reuseRequest.controller.signal,
             });
           } catch (error) {
-            if (reuseRequest.controller.signal.aborted) return;
+            // A view can also cancel its own operation when explicit
+            // navigation or reload supersedes the workspace's preview.
+            if (reuseRequest.controller.signal.aborted || error?.name === "AbortError") return;
             throw error;
           }
           if (reuseRequest.controller.signal.aborted) return;
@@ -2607,7 +2609,7 @@ module.exports = class Workspace extends Model {
    * @param opener - A `Function` to be called when a path is being opened.
    * @param {Object} [options] - Optional preview reuse capabilities.
    * @param {Function} [options.canReusePendingItem] - Synchronously checks `(item, uri, openOptions)` without changing the item. It is checked at this opener's position in the opener order, before constructing a new item.
-   * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
+   * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Throw `AbortError` to cancel an open superseded by item-owned navigation or reload. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
    * @returns {Disposable} on which `.dispose()` can be called to remove the opener.
    */
   addOpener(opener, options = {}) {

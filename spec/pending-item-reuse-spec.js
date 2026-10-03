@@ -249,6 +249,34 @@ describe("Pending pane item reuse", () => {
     expect(workspace.incoming.size).toBe(0);
   });
 
+  it("settles package-owned cancellation without constructing or opening another item", async () => {
+    const item = await workspace.open("preview://a", { pending: true });
+    const opened = jasmine.createSpy("opened");
+    const subscription = workspace.onDidOpen(opened);
+    workspace.openerReuseCapabilities.get(opener).reusePendingItem = async (
+      _item,
+      _uri,
+      _options,
+      { signal },
+    ) => {
+      expect(signal.aborted).toBe(false);
+      const error = new Error("Explicit navigation superseded the preview");
+      error.name = "AbortError";
+      throw error;
+    };
+
+    expect(await workspace.open("preview://b", { pending: true })).toBeUndefined();
+    expect(opener.calls.count()).toBe(1);
+    expect(opened).not.toHaveBeenCalled();
+    expect(pane.getPendingItem()).toBe(item);
+    expect(item.getURI()).toBe("preview://a");
+    expect(item.isDestroyed()).toBe(false);
+    expect(workspace.destroyedItemURIs).not.toContain("preview://a");
+    expect(workspace.incoming.size).toBe(0);
+    expect(workspace.pendingItemOpenRequests.size).toBe(0);
+    subscription.dispose();
+  });
+
   it("honors earlier openers before offering reuse to a later opener", async () => {
     const item = await workspace.open("preview://a", { pending: true });
     const earlierItem = makeItem("preview://b");
