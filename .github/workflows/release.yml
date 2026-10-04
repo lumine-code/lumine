@@ -71,6 +71,8 @@ jobs:
       # release is created explicitly in the release job below.
       - name: Build distributable binaries
         run: npm run dist
+      - name: Check packaged application
+        run: node script/check-built-app.js dist
       - name: Upload binaries
         uses: actions/upload-artifact@v6
         with:

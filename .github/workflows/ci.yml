@@ -63,6 +63,10 @@ jobs:
         run: npm run test:eslint-jsx
       - name: Test Electron download retries
         run: node --test script/install-electron.test.js
+      - name: Test application packaging
+        run: node --test script/check-built-app.test.js
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract
