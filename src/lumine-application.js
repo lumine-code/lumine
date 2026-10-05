@@ -10,6 +10,7 @@ const FileRecoveryService = require("./file-recovery-service");
 const ProjectStateCoordinator = require("./project-state-coordinator");
 const SessionStateMaintenance = require("./session-state-maintenance");
 const XdgShellInvoker = require("./xdg-shell-invoker");
+const applicationLauncher = require("./application-launcher");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
 const { getConfigFilePath } = require("./get-app-details.js");
@@ -619,6 +620,13 @@ const handleAppAction = async (event, action, ...args) => {
     case "restart":
       application.restart();
       return;
+    case "openApplication":
+      try {
+        const result = await applicationLauncher.openApplication(...args);
+        return { outcome: "success", result };
+      } catch (error) {
+        return { outcome: "failure", error: { message: error.message, code: error.code } };
+      }
     case "trashItem":
     case "showItemInFolder":
     case "openPath":

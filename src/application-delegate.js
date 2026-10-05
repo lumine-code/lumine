@@ -235,6 +235,10 @@ module.exports = class ApplicationDelegate {
     return this.invokeShellMethod("openPath", filePath);
   }
 
+  openApplication(executablePath, args = [], options = {}) {
+    return this.invokeShellMethod("openApplication", executablePath, args, options);
+  }
+
   trashItem(filePath) {
     return this.invokeShellMethod("trashItem", filePath);
   }

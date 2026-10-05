@@ -51,6 +51,24 @@ class ShellService {
    * @public
    * @status public
    *
+   * Launch a GUI application directly from the main process, independently of
+   * the editor's lifetime. Arguments are passed literally without a shell.
+   *
+   * @param {String} executablePath - Absolute path to the application executable.
+   * @param {Array<String>} [args] - Literal application arguments.
+   * @param {Object} [options] - An optional absolute working directory in `cwd`.
+   * @returns {Promise<Number>} resolving to the process ID when the application
+   * starts, or rejecting if it cannot start. Window activation remains subject
+   * to the operating system and the application's own behavior.
+   */
+  openApplication(executablePath, args = [], options = {}) {
+    return this.applicationDelegate.openApplication(executablePath, args, options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Open an HTTP, HTTPS, or mailto URL with its operating system default handler.
    *
    * Relative, malformed, and other-scheme URLs are rejected before they reach

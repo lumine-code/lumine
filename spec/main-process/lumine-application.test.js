@@ -9,6 +9,7 @@ const electron = require("electron");
 const sandbox = require("sinon").createSandbox();
 
 const LumineApplication = require("../../src/lumine-application");
+const applicationLauncher = require("../../src/application-launcher");
 const parseCommandLine = require("../../src/parse-command-line");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
@@ -1193,6 +1194,39 @@ describe("LumineApplication", function () {
           ),
         /eventName must be a non-empty string/,
       );
+    });
+
+    it("launches applications only for a registered sender and preserves the shell IPC result shape", async function () {
+      const event = { sender: w1.browserWindow.webContents };
+      const executablePath = path.resolve("applications", "GUI application.exe");
+      const args = ["a file & more.gra", "%PATH%"];
+      const options = { cwd: path.resolve("project with spaces") };
+      const launch = sinon.stub(applicationLauncher, "openApplication").resolves(123);
+
+      assert.deepEqual(
+        await LumineApplication.handleAppAction(
+          event,
+          "openApplication",
+          executablePath,
+          args,
+          options,
+        ),
+        { outcome: "success", result: 123 },
+      );
+      assert.isTrue(launch.calledWithExactly(executablePath, args, options));
+
+      const error = Object.assign(new Error("Executable is missing"), { code: "ENOENT" });
+      launch.rejects(error);
+      assert.deepEqual(
+        await LumineApplication.handleAppAction(event, "openApplication", executablePath),
+        { outcome: "failure", error: { message: error.message, code: "ENOENT" } },
+      );
+
+      launch.resetHistory();
+      await assert.rejects(
+        LumineApplication.handleAppAction({ sender: {} }, "openApplication", executablePath),
+      );
+      assert.isFalse(launch.called);
     });
 
     it("returns the existing IPC result shape for Electron shell operations", async function () {
