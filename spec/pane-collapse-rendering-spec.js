@@ -58,8 +58,8 @@ describe("text editor rendering after a split pane closes", () => {
     expectPaintedViewport(editor);
 
     // disconnect() removes observation targets but does not clear queued
-    // entries. A zero-intersection entry sampled during the pane reparent can
-    // therefore arrive after its replacement observer has shown the editor.
+    // entries. A queued zero-intersection entry can arrive after the
+    // replacement observer has shown the editor.
     deliverQueuedEntry(
       [{ target: element, intersectionRect: { width: 0, height: 0 }, isIntersecting: false }],
       disconnectedObserver,
