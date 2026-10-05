@@ -2,7 +2,7 @@ const PaneContainer = require("../src/pane-container");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const { roundToPhysicalPixelBoundary } = require("../src/text-editor-component-helpers");
-const { timeoutPromise } = require("./helpers/async-spec-helpers");
+const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
 
 describe("text editor rendering after a split pane closes", () => {
   let container;
@@ -88,7 +88,7 @@ describe("text editor rendering after a split pane closes", () => {
     survivingPane.addItem(editor);
     const closingPane = survivingPane.splitRight();
     closingPane.addItem(buildEditor(false));
-    await timeoutPromise(50);
+    await waitForEditorLayout(editor);
 
     const element = editor.getElement();
     const component = element.component;
@@ -158,7 +158,7 @@ describe("text editor rendering after a split pane closes", () => {
           const secondPane = firstPane[splitMethod]();
           const secondEditor = buildEditor(softWrapped);
           secondPane.addItem(secondEditor);
-          await timeoutPromise(50);
+          await waitForEditorLayout(firstEditor, secondEditor);
 
           const panes = [firstPane, secondPane];
           const editors = [firstEditor, secondEditor];
@@ -213,6 +213,26 @@ function buildEditor(softWrapped) {
   });
   editor.getElement().component.updatedSynchronously = true;
   return editor;
+}
+
+async function waitForEditorLayout(...editors) {
+  // The initial split needs browser resize delivery before the test starts
+  // scrolling. A fixed delay can expire before that delivery on a busy runner.
+  await conditionPromise(
+    () =>
+      editors.every((editor) => {
+        const component = editor.getElement().component;
+        const client = component.refs.clientContainer;
+        return (
+          component.visible &&
+          client.offsetWidth > 0 &&
+          client.offsetHeight > 0 &&
+          component.getClientContainerWidth() === client.offsetWidth &&
+          component.getClientContainerHeight() === client.offsetHeight
+        );
+      }),
+    "initial split editor measurements",
+  );
 }
 
 function expectPaintedViewport(editor) {
