@@ -147,16 +147,24 @@
         margin-right: var(--ui-padding-icon);
       }
 
-      > li.active::before {
+      > li:is(.active, .auto-selected)::before {
         font-family: "Octicons Regular";
         font-weight: normal;
         font-style: normal;
         display: inline-block;
         -webkit-font-smoothing: antialiased;
         text-decoration: none;
-        content: "\f03a"; /* @check octicon */
         margin-right: var(--ui-padding-icon);
+      }
+
+      > li.active::before {
+        content: "\f03a"; /* @check octicon */
         color: var(--text-color-success);
+      }
+
+      > li.auto-selected::before {
+        content: "\f0e4"; /* @italic octicon */
+        color: var(--text-color-info);
       }
     }
   }

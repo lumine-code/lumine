@@ -570,7 +570,145 @@ describe("SelectList", () => {
     }
   });
 
+  describe("overflow sections", () => {
+    const naturalItems = ["Auto", "one", "two", "three"];
+    const overflowSections = [
+      { id: "current", items: ["Auto", "three"] },
+      { id: "available", items: ["one", "two"] },
+    ];
+
+    async function openList(maxHeight) {
+      view = createSelectList({
+        items: naturalItems,
+        overflowSections,
+        selection: { initial: { id: "three" } },
+        renderItem: (item) => {
+          const row = document.createElement("li");
+          row.textContent = item;
+          row.style.cssText =
+            "height: 30px; line-height: 30px; padding: 0; margin: 0; border: 0; box-sizing: border-box";
+          return row;
+        },
+      });
+      const scroller = find("ol.list-group");
+      scroller.style.maxHeight = `${maxHeight}px`;
+      addHost().show();
+      await view.update({});
+      return scroller;
+    }
+
+    it("preserves the natural order without a separator when the viewport fits", async () => {
+      const scroller = await openList(1000);
+
+      expect(scroller.scrollHeight).toBe(scroller.clientHeight);
+      expect(view.getDisplayedItems()).toEqual(naturalItems);
+      expect(find(".select-list-separator")).toBeNull();
+      expect(view.getSelectedItemId()).toBe("three");
+      expect(listElement().querySelectorAll("li.selected").length).toBe(1);
+    });
+
+    it("hoists only an overflowing list and restores its order after resizing", async () => {
+      const scroller = await openList(80);
+      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+      expect(view.getDisplayedItems()).toEqual(["Auto", "three", "one", "two"]);
+      expect(find(".select-list-separator").previousElementSibling.textContent).toBe("three");
+      await view.selectItemById("two");
+      const selectionChanged = jasmine.createSpy("selectionChanged");
+      view.onDidChangeSelection(selectionChanged);
+
+      scroller.style.maxHeight = "1000px";
+      await conditionPromise(() => view.getDisplayedItems()[1] === "one");
+
+      expect(view.getDisplayedItems()).toEqual(naturalItems);
+      expect(find(".select-list-separator")).toBeNull();
+      expect(view.getSelectedItemId()).toBe("two");
+      expect(selectionChanged).not.toHaveBeenCalled();
+      expect(listElement().querySelectorAll("li.selected").length).toBe(1);
+    });
+
+    it("does not let its own separator create or perpetuate overflow", async () => {
+      const scroller = await openList(1000);
+      const naturalHeight = scroller.getBoundingClientRect().height;
+      scroller.style.maxHeight = `${naturalHeight}px`;
+      await view.update({});
+      expect(scroller.scrollHeight).toBe(scroller.clientHeight);
+      expect(find(".select-list-separator")).toBeNull();
+
+      scroller.style.maxHeight = `${naturalHeight - 1}px`;
+      await view.update({});
+      expect(find(".select-list-separator")).not.toBeNull();
+      scroller.style.maxHeight = `${naturalHeight}px`;
+      await view.update({});
+
+      expect(view.getDisplayedItems()).toEqual(naturalItems);
+      expect(find(".select-list-separator")).toBeNull();
+      expect(scroller.scrollHeight).toBe(scroller.clientHeight);
+    });
+
+    it("filters the natural source and restores overflow sections after clearing the query", async () => {
+      await openList(80);
+      view.getQueryEditor().setText("t");
+      await view.update({});
+
+      expect(view.getDisplayedItems()).toEqual(["two", "three", "Auto"]);
+      expect(find(".select-list-separator")).toBeNull();
+      view.getQueryEditor().setText("");
+      await view.update({});
+
+      expect(view.getDisplayedItems()).toEqual(["Auto", "three", "one", "two"]);
+      expect(find(".select-list-separator")).not.toBeNull();
+    });
+
+    it("removes the alternative explicitly while retaining the flat source and selection", async () => {
+      await openList(80);
+      await view.update({ overflowSections: null });
+
+      expect(view.getDisplayedItems()).toEqual(naturalItems);
+      expect(view.getSelectedItemId()).toBe("three");
+      expect(find(".select-list-separator")).toBeNull();
+    });
+
+    it("rejects alternatives that replace or omit source items without changing the list", async () => {
+      await openList(1000);
+      expect(() =>
+        view.update({ overflowSections: [{ id: "current", items: ["Auto", "other"] }] }),
+      ).toThrowError("overflowSections must contain exactly the same items as items.");
+      expect(view.getDisplayedItems()).toEqual(naturalItems);
+      expect(view.getSelectedItemId()).toBe("three");
+    });
+  });
+
   describe("rendering and filtering", () => {
+    it("distinguishes the automatic result icon from the mode checkmark without indenting rows", async () => {
+      view = createSelectList({
+        items: ["Auto", "JavaScript"],
+        itemsClassList: ["mark-active"],
+        renderItem: (item) => ({
+          className: item === "Auto" ? "active" : "auto-selected",
+          primary: item,
+          trailing: item === "JavaScript" ? [{ text: "source.js", className: "badge" }] : [],
+        }),
+      });
+      addHost().show();
+      await nextUpdate();
+      const active = find("li.active");
+      const automatic = find("li.auto-selected");
+      const checkmark = getComputedStyle(active, "::before").content;
+      const resultIcon = getComputedStyle(automatic, "::before").content;
+
+      expect(checkmark).toContain(String.fromCodePoint(0xf03a));
+      expect(resultIcon).toContain(String.fromCodePoint(0xf0e4));
+      expect(resultIcon).not.toBe(checkmark);
+      expect(
+        Math.abs(
+          active.querySelector(".primary-line").getBoundingClientRect().left -
+            automatic.querySelector(".primary-line").getBoundingClientRect().left,
+        ),
+      ).toBeLessThan(1);
+      expect(automatic.querySelector(".badge").textContent).toBe("source.js");
+      expect(listElement().querySelectorAll("li.selected").length).toBe(1);
+    });
+
     it("renders all items initially and filters them as the query changes", async () => {
       view = textItemView();
       expect(listTexts()).toEqual(["one", "two", "three"]);

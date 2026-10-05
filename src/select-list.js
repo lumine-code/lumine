@@ -31,6 +31,11 @@ let nextSelectListId = 1;
  * filtering, selection and list rendering. Call {@link InputDialog#getElement} to lazily
  * create its unmounted surface, or use {@link Workspace#addSelectList} to give
  * it a modal host.
+ *
+ * A flat `items` source may also supply `overflowSections`, an alternative
+ * grouping of exactly the same items. It applies only while the unfiltered
+ * list actually overflows its viewport; shorter lists retain their natural
+ * order without section separators. Pass `null` to remove this alternative.
  */
 class SelectList extends InputDialog {
   createComponent() {
@@ -41,6 +46,10 @@ class SelectList extends InputDialog {
     this.sessionSelectionGeneration = 0;
     this.pendingSourceSelectionGeneration = null;
     this.showMoreSelected = false;
+    this.overflowSectionsActive = false;
+    this.overflowUpdatePromise = null;
+    this.overflowResizeObserver = null;
+    this.overflowViewport = null;
     this.listBoxId = `select-list-${nextSelectListId++}`;
     this.itemDomIds = new Map();
     this.recentBoundaryIndex = -1;
@@ -120,7 +129,28 @@ class SelectList extends InputDialog {
     });
 
     this.props.items = this.model.getItems();
+    this.validateOverflowSections(this.props);
     this.syncModelState();
+  }
+
+  validateOverflowSections(props) {
+    if (props.overflowSections == null) return;
+    if (Object.prototype.hasOwnProperty.call(props, "sections")) {
+      throw new TypeError("overflowSections requires a flat items source.");
+    }
+    const natural = new SelectListModel({ items: props.items, getItemId: props.getItemId });
+    const alternative = new SelectListModel({
+      sections: props.overflowSections,
+      getItemId: props.getItemId,
+    });
+    if (
+      natural.getItems().length !== alternative.getItems().length ||
+      alternative
+        .getItems()
+        .some((item) => natural.getItemById(alternative.getItemId(item)) !== item)
+    ) {
+      throw new Error("overflowSections must contain exactly the same items as items.");
+    }
   }
 
   normalizeRecents(recents) {
@@ -278,9 +308,84 @@ class SelectList extends InputDialog {
     this.updateActiveDescendant();
   }
 
+  didAttachElement() {
+    super.didAttachElement();
+    if (this.props.overflowSections != null) void this.updateComponent();
+  }
+
   didChangeHostVisible(visible) {
     super.didChangeHostVisible(visible);
     this.updateComboboxAttributes();
+    if (visible && this.props.overflowSections != null) void this.updateComponent();
+  }
+
+  updateComponent() {
+    const update = super.updateComponent();
+    if (this.props.overflowSections == null) {
+      this.observeOverflowViewport();
+      return update;
+    }
+    const previous = this.overflowUpdatePromise;
+    const overflowUpdate = Promise.all([update, previous]).then(() =>
+      this.updateOverflowSections(),
+    );
+    this.overflowUpdatePromise = overflowUpdate;
+    return overflowUpdate.finally(() => {
+      if (this.overflowUpdatePromise === overflowUpdate) this.overflowUpdatePromise = null;
+    });
+  }
+
+  async updateOverflowSections() {
+    if (this.destroyed) return;
+    this.observeOverflowViewport();
+    if (this.props.overflowSections == null) return;
+    const scroller = this.component?.refs?.items;
+    if (!scroller?.isConnected || scroller.clientHeight === 0) return;
+
+    let overflow = false;
+    if (this.props.overflowSections != null && this.getParsedQuery().text === "") {
+      // Measure the flat baseline: an added section rule must never be the
+      // thing that makes this alternative overflow and keeps itself enabled.
+      const separators = Array.from(scroller.querySelectorAll("[data-overflow-section]"));
+      const scrollTop = scroller.scrollTop;
+      const displays = separators.map((element) => element.style.display);
+      separators.forEach((element) => {
+        element.style.display = "none";
+      });
+      overflow = scroller.scrollHeight > scroller.clientHeight;
+      separators.forEach((element, index) => {
+        element.style.display = displays[index];
+      });
+      scroller.scrollTop = scrollTop;
+    }
+    if (overflow === this.overflowSectionsActive) return;
+
+    const previousSelection = this.selectionSnapshot();
+    const displayedCount = this.model.getDisplayedCount();
+    this.model.update(
+      overflow ? { sections: this.props.overflowSections } : { items: this.props.items },
+    );
+    while (this.model.getDisplayedCount() < displayedCount && this.model.hasMore()) {
+      this.model.showMore();
+    }
+    this.overflowSectionsActive = overflow;
+    this.resetRenderedItems();
+    this.syncModelState();
+    this.publishSelectionChange(previousSelection, "layout");
+    await super.updateComponent();
+    if (!this.destroyed) this.observeOverflowViewport();
+  }
+
+  observeOverflowViewport() {
+    const viewport = this.props.overflowSections != null ? this.component?.refs?.items : null;
+    if (viewport === this.overflowViewport) return;
+    this.overflowResizeObserver?.disconnect();
+    this.overflowViewport = viewport ?? null;
+    if (!viewport) return;
+    this.overflowResizeObserver ??= new ResizeObserver(() => {
+      if (!this.destroyed) void this.updateComponent();
+    });
+    this.overflowResizeObserver.observe(viewport);
   }
 
   /** @private */
@@ -381,6 +486,8 @@ class SelectList extends InputDialog {
   async destroyNow() {
     this.filterMatcher = null;
     this.indexMatcher = null;
+    this.overflowResizeObserver?.disconnect();
+    this.overflowViewport = null;
     try {
       await super.destroyNow();
     } finally {
@@ -596,6 +703,15 @@ class SelectList extends InputDialog {
   updateProps(props) {
     const previousSelection = this.selectionSnapshot();
     const nextProps = { ...this.props, ...props };
+    if ("items" in props && !("sections" in props)) delete nextProps.sections;
+    if (
+      "items" in props ||
+      "sections" in props ||
+      "overflowSections" in props ||
+      "getItemId" in props
+    ) {
+      this.validateOverflowSections(nextProps);
+    }
     const modelChanges = {};
     const itemsChanged = "items" in props || "sections" in props;
     const recentItemIdsChanged = "recentItemIds" in props;
@@ -604,6 +720,19 @@ class SelectList extends InputDialog {
 
     if ("items" in props) modelChanges.items = props.items;
     if ("sections" in props) modelChanges.sections = props.sections;
+    const resetOverflow =
+      "overflowSections" in props ||
+      itemsChanged ||
+      identityChanged ||
+      searchChanged ||
+      "query" in props;
+    if (
+      resetOverflow &&
+      (nextProps.overflowSections != null || (this.overflowSectionsActive && !itemsChanged))
+    ) {
+      modelChanges.items = nextProps.items;
+      delete modelChanges.sections;
+    }
 
     let nextGetItemId = this.modelGetItemId;
     if (identityChanged) {
@@ -636,10 +765,12 @@ class SelectList extends InputDialog {
 
     const changesModel = Object.keys(modelChanges).length > 0;
     if (changesModel) this.model.update(modelChanges);
+    if (resetOverflow) this.overflowSectionsActive = false;
 
     const listProps = [
       "items",
       "sections",
+      "overflowSections",
       "getItemId",
       "search",
       "renderItem",
@@ -789,7 +920,7 @@ class SelectList extends InputDialog {
   refresh(options = {}) {
     return "sections" in this.props
       ? this.update({ sections: this.props.sections, itemUpdateOptions: options })
-      : this.setItems(this.model.getItems(), options);
+      : this.setItems(this.props.items, options);
   }
 
   /**
@@ -883,7 +1014,13 @@ class SelectList extends InputDialog {
               key,
               className: "select-list-separator",
               role: "separator",
-              "aria-hidden": "true",
+              attributes: {
+                "aria-hidden": "true",
+                "data-overflow-section":
+                  this.overflowSectionsActive && index !== this.recentBoundaryIndex
+                    ? "true"
+                    : undefined,
+              },
             }),
           );
         }
@@ -902,7 +1039,11 @@ class SelectList extends InputDialog {
     let previousSelection = null;
     if (this.model && !this.suppressModelQueryUpdate) {
       previousSelection = this.selectionSnapshot();
-      this.model.update({ query: this.modelQuery(this.getQuery()) });
+      this.model.update({
+        query: this.modelQuery(this.getQuery()),
+        ...(this.overflowSectionsActive ? { items: this.props.items } : {}),
+      });
+      this.overflowSectionsActive = false;
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
