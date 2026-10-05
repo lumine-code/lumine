@@ -2354,7 +2354,11 @@ module.exports = class TextEditorComponent {
   didAttach() {
     if (!this.attached) {
       this.attached = true;
-      this.intersectionObserver = new IntersectionObserver((entries) => {
+      this.intersectionObserver = new IntersectionObserver((entries, observer) => {
+        // Disconnecting stops observation but leaves already-queued entries.
+        // A pane collapse reparents this editor and creates a new observer;
+        // the old observer must not hide that newly attached view afterwards.
+        if (!this.attached || observer !== this.intersectionObserver) return;
         const { intersectionRect } = entries[entries.length - 1];
         if (intersectionRect.width > 0 || intersectionRect.height > 0) {
           this.didShow();
