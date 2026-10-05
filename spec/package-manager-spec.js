@@ -1267,6 +1267,77 @@ describe("PackageManager", () => {
     });
   });
 
+  describe("::restoreActivePackageStates", () => {
+    const restoredModules = [];
+
+    afterEach(() => {
+      for (const mainModule of restoredModules.splice(0)) delete mainModule.restoreState;
+    });
+
+    it("awaits active opt-in hooks without activating or serializing packages", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-serialization");
+      const inactive = lumine.packages.loadPackage("package-with-deactivate");
+      inactive.requireMainModule();
+      restoredModules.push(pack.mainModule, inactive.mainModule);
+      let complete;
+      const pending = new Promise((resolve) => (complete = resolve));
+      pack.mainModule.restoreState = jasmine
+        .createSpy("restoreState")
+        .and.callFake(function (state) {
+          this.someNumber = state.someNumber;
+          return pending;
+        });
+      inactive.mainModule.restoreState = jasmine.createSpy("inactive restoreState");
+      const activate = spyOn(lumine.packages, "activatePackage").and.callThrough();
+      const serialize = spyOn(pack, "serialize").and.callThrough();
+      const windowState = { inactive: { value: "window" } };
+      lumine.packages.packageStates = windowState;
+      const incoming = { [pack.name]: { someNumber: 42 }, [inactive.name]: { someNumber: 99 } };
+      let finished = false;
+      const restoring = lumine.packages
+        .restoreActivePackageStates(incoming)
+        .then(() => (finished = true));
+      await Promise.resolve();
+      expect(pack.mainModule.restoreState).toHaveBeenCalledWith(incoming[pack.name]);
+      expect(pack.mainModule.someNumber).toBe(42);
+      expect(finished).toBe(false);
+      expect(inactive.mainModule.restoreState).not.toHaveBeenCalled();
+      expect(activate).not.toHaveBeenCalled();
+      expect(serialize).not.toHaveBeenCalled();
+      expect(lumine.packages.packageStates).toBe(windowState);
+      complete();
+      await restoring;
+      expect(finished).toBe(true);
+      expect(lumine.packages.getActivePackage(pack.name)).toBe(pack);
+    });
+
+    it("resets omitted namespaces and propagates failures to the restoration caller", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-serialization");
+      restoredModules.push(pack.mainModule);
+      pack.mainModule.restoreState = jasmine.createSpy("restoreState").and.resolveTo();
+      await lumine.packages.restoreActivePackageStates({ [pack.name]: null });
+      expect(pack.mainModule.restoreState).toHaveBeenCalledWith({});
+      pack.mainModule.restoreState.and.rejectWith(new Error("Restore failed"));
+      await expectAsync(lumine.packages.restoreActivePackageStates({})).toBeRejectedWithError(
+        "Restore failed",
+      );
+    });
+
+    it("skips a package generation withdrawn by an earlier restore hook", async () => {
+      const first = await lumine.packages.activatePackage("package-with-serialization");
+      const second = await lumine.packages.activatePackage("package-with-deactivate");
+      restoredModules.push(first.mainModule, second.mainModule);
+      first.mainModule.restoreState = jasmine
+        .createSpy("first restoreState")
+        .and.callFake(() => lumine.packages.deactivatePackage(second.name, { serialize: false }));
+      second.mainModule.restoreState = jasmine.createSpy("second restoreState");
+      await lumine.packages.restoreActivePackageStates({});
+      expect(first.mainModule.restoreState).toHaveBeenCalled();
+      expect(second.mainModule.restoreState).not.toHaveBeenCalled();
+      expect(lumine.packages.getActivePackage(second.name)).toBeUndefined();
+    });
+  });
+
   describe("::serialize", () => {
     it("does not serialize packages that threw an error during activation", async () => {
       spyOn(lumine.window, "isSpecMode").and.returnValue(false);

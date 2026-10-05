@@ -1569,6 +1569,7 @@ class Environment {
           await this.restoreStateIntoThisEnvironment(loaded.state, restoreOptions);
           this.project.destroyUnretainedBuffers();
         } else {
+          await this.packages.restoreActivePackageStates({});
           this.project.setPaths(folders, { mustExist: true, exact: true });
           if (this.config.get("core.openEmptyEditorOnStart")) {
             await this.workspace.open(null, { pending: true });
@@ -1682,6 +1683,7 @@ class Environment {
         this.packages.initializePackages();
       }
     }
+    await this.packages.restoreActivePackageStates(state.packageStates || {});
     this.uriHandlers.deserialize(state.uriHistory);
 
     let startTime = Date.now();

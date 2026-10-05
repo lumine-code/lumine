@@ -1140,6 +1140,24 @@ describe("Environment", () => {
       return { buffer, dockEditor, dockItem };
     };
 
+    const addProjectStatePackage = (state) => {
+      const mainModule = {
+        state,
+        restoreState: jasmine.createSpy("restoreState").and.callFake(async function (incoming) {
+          await Promise.resolve();
+          this.state = structuredClone(incoming);
+        }),
+      };
+      const pack = {
+        name: "project-state-package",
+        mainModule,
+        serialize: () => structuredClone(mainModule.state),
+      };
+      env.packages.activePackages[pack.name] = pack;
+      env.packages.packageLifecycles.set(pack.name, { pack, state: "active" });
+      return pack;
+    };
+
     beforeEach(async () => {
       jasmine.useRealClock();
 
@@ -1523,6 +1541,75 @@ describe("Environment", () => {
       expect(await env.project.setState([dirA])).toBe(true);
       expect(env.packages.packageStates).toBe(windowPackageStates);
       expect(env.packages.getPackageState("inactive-package")).toEqual({ value: "current window" });
+    });
+
+    it("restores opt-in package state across projects while preserving its live dock", async () => {
+      const stateA = { documentSources: [[fileA, "symbol-tree-sitter"]] };
+      const stateB = { documentSources: [[fileB, "language-server"]] };
+      const pack = addProjectStatePackage(stateA);
+      const dockItem = {
+        element: document.createElement("div"),
+        getTitle: () => "Live Package Panel",
+        getURI: () => "lumine://project-state-package-panel",
+        getDefaultLocation: () => "bottom",
+      };
+      await env.workspace.open(dockItem, { activatePane: false });
+      env.workspace.getBottomDock().show();
+      await env.workspace.open(fileA);
+      const dockPane = env.workspace.paneForItem(dockItem);
+      const activate = spyOn(env.packages, "activatePackage").and.callThrough();
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(pack.mainModule.restoreState).toHaveBeenCalledWith({});
+      expect(pack.mainModule.state).toEqual({});
+      pack.mainModule.state = stateB;
+      await env.workspace.open(fileB);
+      const windowStates = { "inactive-package": { value: "window" } };
+      env.packages.packageStates = windowStates;
+      const deserializeWorkspace = env.workspace.deserialize.bind(env.workspace);
+      spyOn(env.workspace, "deserialize").and.callFake((...args) => {
+        expect(pack.mainModule.state).toEqual(stateA);
+        return deserializeWorkspace(...args);
+      });
+
+      expect(await env.project.setState([dirA])).toBe(true);
+      expect(pack.mainModule.restoreState).toHaveBeenCalledWith(stateA);
+      expect(pack.mainModule.state).toEqual(stateA);
+      expect(env.packages.getActivePackage(pack.name)).toBe(pack);
+      expect(activate).not.toHaveBeenCalled();
+      expect(env.packages.packageStates).toBe(windowStates);
+      expect(env.packages.getPackageState("inactive-package")).toEqual({ value: "window" });
+      expect(env.workspace.paneForItem(dockItem)).toBe(dockPane);
+      expect(dockPane.getActiveItem()).toBe(dockItem);
+      expect(env.workspace.getBottomDock().isVisible()).toBe(true);
+      expect(openPaths(env)).toEqual([fileA]);
+    });
+
+    it("rolls active package state back when an incoming restore hook rejects", async () => {
+      const stateA = { documentSources: [[fileA, "symbol-tree-sitter"]] };
+      const stateB = { documentSources: [[fileB, "language-server"]] };
+      const pack = addProjectStatePackage(stateA);
+      await env.workspace.open(fileA);
+      expect(await env.project.setState([dirB])).toBe(true);
+      pack.mainModule.state = stateB;
+      await env.workspace.open(fileB);
+      let rejectIncoming = true;
+      pack.mainModule.restoreState.and.callFake(async function (state) {
+        this.state = structuredClone(state);
+        if (rejectIncoming) {
+          rejectIncoming = false;
+          throw new Error("Package state restoration failed");
+        }
+      });
+
+      await expectAsync(env.project.setState([dirA])).toBeRejectedWithError(
+        "Package state restoration failed",
+      );
+      expect(pack.mainModule.restoreState.calls.mostRecent().args).toEqual([stateB]);
+      expect(pack.mainModule.state).toEqual(stateB);
+      expect(env.packages.getActivePackage(pack.name)).toBe(pack);
+      expect(env.project.getPaths()).toEqual([dirB]);
+      expect(openPaths(env)).toEqual([fileB]);
     });
   });
 
