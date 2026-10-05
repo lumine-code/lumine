@@ -27,6 +27,53 @@ describe("text editor rendering after a split pane closes", () => {
     container.destroy();
   });
 
+  for (const smoothScrolling of [false, true]) {
+    it(`renders a ${smoothScrolling ? "smooth" : "direct"} wheel scroll when a visible editor still has stale hidden state`, () => {
+      const editor = buildEditor(false);
+      editor.update({ smoothScrolling });
+      container.getActivePane().addItem(editor);
+      const element = editor.getElement();
+      const component = element.component;
+      editor.setCursorBufferPosition([80, 12]);
+      element.setScrollTop(78 * component.getLineHeight());
+      expectPaintedViewport(editor);
+
+      // Advance smooth scrolling explicitly so this also runs in an occluded
+      // test window whose requestAnimationFrame callbacks are paused.
+      component.scrollAnimator.raf = () => null;
+      component.scrollAnimator.caf = () => {};
+
+      // An asynchronous visibility sample can lag behind the live layout. A
+      // wheel event received by the actual editor must not scroll its model
+      // while leaving the visible text and gutter frozen at the previous rows.
+      component.didHide();
+      const didScroll = jasmine.createSpy("didScroll");
+      const subscription = element.onDidChangeScrollTop(didScroll);
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: 2000, cancelable: true }));
+      for (let frame = 0; frame < 100 && component.scrollAnimator.isAnimating(); frame++) {
+        component.scrollAnimator.advance(1000);
+      }
+      subscription.dispose();
+      expect(component.scrollAnimator.isAnimating()).toBe(false);
+      expect(didScroll).toHaveBeenCalled();
+      expect(component.renderedScrollTop).toBe(
+        roundToPhysicalPixelBoundary(component.getScrollTop()),
+      );
+      expectPaintedViewport(editor);
+
+      element.style.display = "none";
+      component.didHide();
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, cancelable: true }));
+      expect(component.visible).toBe(false);
+
+      element.remove();
+      element.style.display = "";
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, cancelable: true }));
+      expect(component.attached).toBe(false);
+      expect(component.visible).toBe(false);
+    });
+  }
+
   it("ignores a queued visibility entry from the observer disconnected during pane collapse", async () => {
     const NativeIntersectionObserver = window.IntersectionObserver;
     const callbacks = new WeakMap();

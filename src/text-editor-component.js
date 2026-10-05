@@ -2533,6 +2533,10 @@ module.exports = class TextEditorComponent {
   }
 
   didMouseWheel(event) {
+    // Visibility notifications are asynchronous. Input on the live editor
+    // must reconcile a stale hidden state before scrolling its viewport,
+    // just as focus does, so the model and rendered lines advance together.
+    if (!this.visible) this.didShow();
     const { x, y } = this.normalizedWheelDeltas(event);
     if (this.applyWheelScroll(x, y)) event.preventDefault();
   }
