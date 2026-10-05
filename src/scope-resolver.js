@@ -171,6 +171,7 @@ class ScopeResolver {
     this.boundaries = new Map();
     this.rangeData = new Map();
     this.patternCache = new Map();
+    this.fieldIndexCache = new Map();
     this.configCache = ConfigCache.forConfig(this.config).getCacheForGrammar(this.grammar);
   }
 
@@ -618,6 +619,7 @@ class ScopeResolver {
   reset() {
     this.boundaries.clear();
     this.rangeData.clear();
+    this.fieldIndexCache.clear();
   }
 
   destroy() {
@@ -853,6 +855,32 @@ ScopeResolver.TESTS = {
       if (node.parent.childForFieldName(fieldName)?.id === node.id) return true;
     }
     return false;
+  },
+
+  // Zero-based position among a parent's named values of a repeated field.
+  // Comments and other extras do not occupy field values. Cache each field's
+  // index for this resolver pass so a large flat collection stays linear.
+  fieldIndex(node, rawValue, existingData, instance) {
+    if (!node.parent || typeof rawValue !== "string") return false;
+    const match = /^(\S+)\s+(even|odd|\d+)$/.exec(rawValue.trim());
+    if (!match) return false;
+    const [, field, wanted] = match;
+    const parent = node.parent;
+    if (typeof parent.childrenForFieldName !== "function") return false;
+    const key = `${parent.id}:${field}`;
+    let indices = instance?.fieldIndexCache.get(key);
+    if (!indices) {
+      indices = new Map();
+      for (const child of parent.childrenForFieldName(field)) {
+        if (child.isNamed) indices.set(child.id, indices.size);
+      }
+      instance?.fieldIndexCache.set(key, indices);
+    }
+    const index = indices.get(node.id);
+    if (index === undefined) return false;
+    if (wanted === "even") return index % 2 === 0;
+    if (wanted === "odd") return index % 2 === 1;
+    return index === Number(wanted);
   },
 
   // Passes when the node at a relative descriptor has one of the given types.

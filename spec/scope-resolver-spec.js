@@ -481,6 +481,37 @@ describe("ScopeResolver", () => {
   });
 
   describe("tests", () => {
+    it("selects zero-based repeated field indices without counting extras", () => {
+      const children = [0, 1, 2, 3].map((id) => ({ id, isNamed: true }));
+      const parent = {
+        id: 10,
+        childrenForFieldName: jasmine
+          .createSpy("field values")
+          .and.callFake((field) =>
+            field === "value"
+              ? [children[0], { id: 99, isNamed: false }, ...children.slice(1)]
+              : [],
+          ),
+      };
+      const instance = { fieldIndexCache: new Map() };
+      const test = (id, wanted) =>
+        ScopeResolver.TESTS.fieldIndex({ id, parent }, wanted, null, instance);
+      expect(children.filter((child) => test(child.id, "value even")).map(({ id }) => id)).toEqual([
+        0, 2,
+      ]);
+      expect(children.filter((child) => test(child.id, "value odd")).map(({ id }) => id)).toEqual([
+        1, 3,
+      ]);
+      expect(test(2, "value 2")).toBe(true);
+      expect(test(2, "value 0")).toBe(false);
+      expect(test(99, "value even")).toBe(false);
+      expect(test(2, "missing even")).toBe(false);
+      expect(test(2, "value -1")).toBe(false);
+      expect(test(2, "value other")).toBe(false);
+      expect(parent.childrenForFieldName).toHaveBeenCalledTimes(2);
+      expect(ScopeResolver.TESTS.fieldIndex({ id: 2 }, "value even")).toBe(false);
+    });
+
     it("rejects scopes for ranges that have already been claimed by another capture with (#set! capture.final)", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",
