@@ -136,7 +136,10 @@ describe("Application launcher", () => {
       while (!fs.existsSync(output) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      assert.deepEqual(JSON.parse(fs.readFileSync(output, "utf8")), { argv: args, cwd: directory });
+      assert.deepEqual(JSON.parse(fs.readFileSync(output, "utf8")), {
+        argv: args,
+        cwd: fs.realpathSync(directory),
+      });
     } finally {
       if (pid) {
         try {
