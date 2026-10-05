@@ -72,10 +72,6 @@
     "sha": "809e5c8a82a42f8656420e3e6901740f7293dab7"
   },
   {
-    "repo": "symbol-ctags",
-    "sha": "f9ecec6449977e76901a80c2a217dbfd67ddf064"
-  },
-  {
     "repo": "git-panel",
     "sha": "6b04ec8612c28a29fb47c35adf510b2e606402a9"
   },

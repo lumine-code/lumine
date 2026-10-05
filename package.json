@@ -29,7 +29,6 @@
     "@babel/core": "8.0.6",
     "@jasminejs/reporters": "1.1.0",
     "@lumine-code/babel-preset": "github:lumine-code/babel-preset#65a40b108cccf570c804d91643803e0a28134e1c",
-    "@lumine-code/ctags-reader": "github:lumine-code/ctags-reader#a9da22b2ca6c7993a2e6986dddbd9b37eeca9a57",
     "@lumine-code/etch": "github:lumine-code/etch#a823441dcf10e786f36915f88422fd0c95d33374",
     "@lumine-code/event-kit": "github:lumine-code/event-kit#cf575e66486d6aeaa1515167963aeb583146246d",
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f",
@@ -181,7 +180,6 @@
     "github:lumine-code/superstring#f2b73f4b87cc5e21625d3413dcecc583a8a291b9": true,
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#4973ceff85dbf308f5d3ed771b16589e37ba473f": true,
-    "github:lumine-code/ctags-reader#a9da22b2ca6c7993a2e6986dddbd9b37eeca9a57": true,
     "github:lumine-code/watcher#fc9107a80b3d9af7f0328702f026f0ba094ee722": true
   }
 }

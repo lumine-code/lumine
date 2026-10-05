@@ -369,7 +369,6 @@ let options = {
     "node_modules/github/lib/*", // Resolves error in console
     "**/node_modules/@lumine-code/native-spelling/**", // Includes native bindings and dictionaries
     "**/node_modules/@vscode/ripgrep*/**", // rg binary must be spawnable outside asar
-    "node_modules/symbol-ctags/vendor/**", // ctags binaries must be spawnable outside asar
   ],
 };
 

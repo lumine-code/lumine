@@ -166,10 +166,7 @@ async function main() {
       await retryInstall(() =>
         run("npm ci --ignore-scripts --no-audit --no-fund", [], { ...options, shell: true }),
       );
-      if (
-        result.repo === "symbol-ctags" ||
-        (result.repo === "native-clip" && process.platform !== "linux")
-      ) {
+      if (result.repo === "native-clip" && process.platform !== "linux") {
         phase("native-build");
         await run(
           process.execPath,
