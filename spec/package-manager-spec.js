@@ -1475,6 +1475,172 @@ describe("PackageManager", () => {
       expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
     });
 
+    for (const listenerThrows of [false, true]) {
+      it(`preserves reactivation from a deactivation listener${listenerThrows ? " that throws" : ""}`, async () => {
+        const pack = await lumine.packages.activatePackage("package-with-deactivate");
+        let reactivation;
+        const subscription = lumine.packages.onDidDeactivatePackage((deactivatedPackage) => {
+          if (deactivatedPackage !== pack) return;
+          subscription.dispose();
+          expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+          expect(lumine.packages.getActivePackages()).not.toContain(pack);
+          reactivation = lumine.packages.activatePackage(pack.name);
+          if (listenerThrows) throw new Error("Deactivation listener failed");
+        });
+
+        const deactivation = lumine.packages.deactivatePackage(pack.name);
+        if (listenerThrows) {
+          await expectAsync(deactivation).toBeRejectedWithError("Deactivation listener failed");
+        } else {
+          await deactivation;
+        }
+        await reactivation;
+
+        expect(lumine.packages.getActivePackage(pack.name)).toBe(pack);
+        expect(lumine.packages.getActivePackages()).toContain(pack);
+      });
+    }
+
+    it("preserves reactivation from a failed activation's rollback listener", async () => {
+      const pack = lumine.packages.loadPackage("package-with-deactivate");
+      const activationError = new Error("First activation failed");
+      const activateMain = pack.activateMain.bind(pack);
+      let firstActivation = true;
+      spyOn(pack, "activateMain").and.callFake((...args) => {
+        if (firstActivation) {
+          firstActivation = false;
+          throw activationError;
+        }
+        return activateMain(...args);
+      });
+      spyOn(pack, "handleError");
+      let reactivation;
+      const subscription = lumine.packages.onDidDeactivatePackage((deactivatedPackage) => {
+        if (deactivatedPackage !== pack) return;
+        subscription.dispose();
+        expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+        expect(lumine.packages.getActivePackages()).not.toContain(pack);
+        reactivation = lumine.packages.activatePackage(pack.name);
+      });
+
+      await expectAsync(lumine.packages.activatePackage(pack.name)).toBeRejectedWith(
+        activationError,
+      );
+      await reactivation;
+
+      expect(lumine.packages.getActivePackage(pack.name)).toBe(pack);
+      expect(lumine.packages.getActivePackages()).toContain(pack);
+    });
+
+    it("tears down a self-cancelled activation once when its bootstrap also throws", async () => {
+      const pack = lumine.packages.loadPackage("package-with-deactivate");
+      const activateMain = pack.activateMain.bind(pack);
+      let firstActivation = true;
+      let deactivation, reactivation, finishTeardown;
+      let teardownCalls = 0;
+      spyOn(pack, "activateMain").and.callFake((...args) => {
+        if (firstActivation) {
+          firstActivation = false;
+          deactivation = lumine.packages.deactivatePackage(pack.name, { serialize: false });
+          throw new Error("Bootstrap threw after cancelling itself");
+        }
+        return activateMain(...args);
+      });
+      spyOn(pack, "deactivate").and.callFake(() => {
+        teardownCalls++;
+        if (teardownCalls > 1) return Promise.resolve();
+        return new Promise((resolve) => (finishTeardown = resolve));
+      });
+      spyOn(pack, "handleError");
+      let deactivationEvents = 0;
+      const subscription = lumine.packages.onDidDeactivatePackage((deactivatedPackage) => {
+        if (deactivatedPackage !== pack) return;
+        deactivationEvents++;
+        if (deactivationEvents === 1) reactivation = lumine.packages.activatePackage(pack.name);
+      });
+
+      await expectAsync(lumine.packages.activatePackage(pack.name)).toBeRejectedWith(
+        jasmine.objectContaining({ code: "PACKAGE_ACTIVATION_CANCELLED" }),
+      );
+      expect(teardownCalls).toBe(1);
+      finishTeardown();
+      await deactivation;
+      await reactivation;
+
+      expect(deactivationEvents).toBe(1);
+      expect(lumine.packages.getActivePackage(pack.name)).toBe(pack);
+      expect(lumine.packages.getActivePackages()).toContain(pack);
+      subscription.dispose();
+    });
+
+    for (const resourcesFail of [false, true]) {
+      it(`finishes deactivation after an activation observer throws and resources ${resourcesFail ? "reject" : "resolve"}`, async () => {
+        const pack = lumine.packages.loadPackage("package-with-deactivate");
+        let finishResources;
+        const resourceError = new Error("Resource discovery failed");
+        spyOn(pack, "loadGrammars").and.returnValue(
+          new Promise((resolve, reject) => {
+            finishResources = () => (resourcesFail ? reject(resourceError) : resolve());
+          }),
+        );
+        spyOn(pack, "deactivate").and.callThrough();
+        spyOn(pack, "handleError");
+        const subscription = lumine.packages.onDidActivatePackage((activatedPackage) => {
+          if (activatedPackage !== pack) return;
+          subscription.dispose();
+          throw new Error("Activation observer failed");
+        });
+
+        expect(() => lumine.packages.activatePackage(pack.name)).toThrowError(
+          "Activation observer failed",
+        );
+        const deactivation = lumine.packages.deactivatePackage(pack.name, { serialize: false });
+        await Promise.resolve();
+        expect(pack.deactivate).not.toHaveBeenCalled();
+        finishResources();
+        await deactivation;
+
+        expect(pack.deactivate).toHaveBeenCalledTimes(1);
+        expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+        expect(lumine.packages.getActivePackages()).not.toContain(pack);
+        if (resourcesFail) {
+          expect(pack.handleError).toHaveBeenCalledWith(
+            `Failed to finish loading the ${pack.name} package resources`,
+            resourceError,
+          );
+        }
+      });
+    }
+
+    it("does not withdraw a replacement package when an old generation finishes deactivating", async () => {
+      const manager = new PackageManager({});
+      let finishTeardown;
+      const pack = {
+        name: "replaced-package",
+        mainInitialized: true,
+        disposeActivationEntryPoints() {},
+        deactivate: () => new Promise((resolve) => (finishTeardown = resolve)),
+        finishDeactivation: jasmine.createSpy("finishDeactivation"),
+      };
+      const record = manager.registerPackageLifecycle(pack);
+      manager.loadedPackages[pack.name] = pack;
+      manager.activePackages[pack.name] = pack;
+      manager.setPackageLifecycleState(record, "active");
+      const deactivation = manager.deactivatePackage(pack.name, { serialize: false });
+
+      const replacement = { name: pack.name };
+      const replacementRecord = manager.registerPackageLifecycle(replacement);
+      manager.loadedPackages[pack.name] = replacement;
+      manager.activePackages[pack.name] = replacement;
+      manager.setPackageLifecycleState(replacementRecord, "active");
+      finishTeardown();
+      await deactivation;
+
+      expect(pack.finishDeactivation).toHaveBeenCalledTimes(1);
+      expect(manager.getActivePackage(pack.name)).toBe(replacement);
+      expect(manager.getActivePackages()).toEqual([replacement]);
+    });
+
     it("absorbs exceptions that are thrown by the package module's deactivate method", async () => {
       spyOn(console, "error");
       await lumine.packages.activatePackage("package-that-throws-on-deactivate");

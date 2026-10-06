@@ -501,8 +501,6 @@ module.exports = class PackageManager {
       generation: 0,
       abortController: null,
       activationPromise: null,
-      activationTask: null,
-      rawActivationPromise: null,
       rejectCancellation: null,
       deactivationPromise: null,
       unloadRequested: false,
@@ -1623,7 +1621,6 @@ module.exports = class PackageManager {
     });
     readiness.catch(() => {});
     record.activationPromise = readiness;
-    record.activationTask = readiness;
     record.rejectCancellation = rejectActivation;
 
     // Package activation is intentionally synchronous. Invoke the package
@@ -1638,6 +1635,17 @@ module.exports = class PackageManager {
         generation: activationGeneration,
       });
     } catch (error) {
+      if (
+        this.packageLifecycles.get(pack.name) !== record ||
+        record.state !== "activating" ||
+        record.generation !== activationGeneration
+      ) {
+        // Package code can cancel its own activation before throwing. Its
+        // current teardown owns cleanup; a second rollback would later tear
+        // down a generation reactivated by the first deactivation's observers.
+        rejectActivation(error);
+        return readiness;
+      }
       const rollbackPromise = this.rollbackFailedActivation(record, error);
       record.deactivationPromise = rollbackPromise;
       const failed = rollbackPromise.then(
@@ -1647,7 +1655,6 @@ module.exports = class PackageManager {
       failed.catch(() => {});
       // Keep the published promise stable for re-entrant callers; the
       // rollback continuation rejects it with the original activation error.
-      record.rawActivationPromise = null;
       return readiness;
     }
 
@@ -1667,8 +1674,6 @@ module.exports = class PackageManager {
     this.setPackageLifecycleState(record, "active");
     this.activePackages[pack.name] = pack;
     record.abortController = null;
-    record.rawActivationPromise = null;
-    this.emitter.emit("did-activate-package", pack);
 
     // The package hook itself is synchronous, but grammar/settings discovery
     // started by the bootstrap still forms the lifecycle completion boundary.
@@ -1694,14 +1699,8 @@ module.exports = class PackageManager {
           const rollbackPromise = this.rollbackFailedActivation(record, error);
           record.deactivationPromise = rollbackPromise;
           rollbackPromise.then(
-            () => {
-              record.rejectCancellation = null;
-              rejectActivation(error);
-            },
-            () => {
-              record.rejectCancellation = null;
-              rejectActivation(error);
-            },
+            () => rejectActivation(error),
+            () => rejectActivation(error),
           );
         },
       );
@@ -1709,6 +1708,9 @@ module.exports = class PackageManager {
       record.rejectCancellation = null;
       resolveActivation(pack);
     }
+    // Wire readiness before invoking observers. If one throws, later teardown
+    // must still be able to await the resources instead of a pending orphan.
+    this.emitter.emit("did-activate-package", pack);
     return readiness;
   }
 
@@ -1721,21 +1723,26 @@ module.exports = class PackageManager {
     try {
       await pack.deactivate();
     } finally {
-      pack.finishDeactivation();
-      if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
-        this.setPackageLifecycleState(record, "loaded");
-      }
-      delete this.activePackages[pack.name];
-      record.abortController = null;
-      record.activationPromise = null;
-      record.activationTask = null;
-      record.rawActivationPromise = null;
-      record.rejectCancellation = null;
-      record.deactivationPromise = null;
-      this.emitter.emit("did-deactivate-package", pack);
+      this.finishPackageDeactivation(record);
     }
 
     this.reportPackageActivationError(pack, error);
+  }
+
+  finishPackageDeactivation(record) {
+    const { pack } = record;
+    pack.finishDeactivation();
+    if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
+      this.setPackageLifecycleState(record, "loaded");
+    }
+    if (this.activePackages[pack.name] === pack) delete this.activePackages[pack.name];
+    record.abortController = null;
+    record.activationPromise = null;
+    record.rejectCancellation = null;
+    record.deactivationPromise = null;
+    // Finalize before notifying observers: a listener may reactivate this
+    // package or replace its lifecycle record, even if it then throws.
+    this.emitter.emit("did-deactivate-package", pack);
   }
 
   reportPackageActivationError(pack, error) {
@@ -1847,14 +1854,6 @@ module.exports = class PackageManager {
     const deactivationPromise = (async () => {
       let deactivationError;
       try {
-        if (record.rawActivationPromise) {
-          try {
-            await record.rawActivationPromise;
-          } catch {
-            // Activation failures are reported on the activation path. Teardown
-            // must still run and reach a stable state.
-          }
-        }
         if (record.activationPromise) {
           try {
             await record.activationPromise;
@@ -1868,26 +1867,12 @@ module.exports = class PackageManager {
       } catch (error) {
         deactivationError = error;
       } finally {
-        pack.finishDeactivation();
-        if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
-          this.setPackageLifecycleState(record, "loaded");
-        }
-        record.abortController = null;
-        record.activationPromise = null;
-        record.activationTask = null;
-        record.rawActivationPromise = null;
-        record.rejectCancellation = null;
-        record.deactivationPromise = null;
-        this.emitter.emit("did-deactivate-package", pack);
+        this.finishPackageDeactivation(record);
       }
       if (deactivationError) throw deactivationError;
     })();
     record.deactivationPromise = deactivationPromise;
-    try {
-      await deactivationPromise;
-    } finally {
-      delete this.activePackages[pack.name];
-    }
+    await deactivationPromise;
   }
 
   handleMetadataError(error, packagePath) {
