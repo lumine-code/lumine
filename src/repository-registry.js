@@ -33,8 +33,8 @@ const REPOSITORY_METADATA_NAMES = new Set([
 // which read snapshots the just-finished operation can have invalidated.
 const OPERATION_REFRESH_HINTS = new Set(["none", "status", "refs", "both"]);
 
-function completeCleanup(actions, message) {
-  const failures = [];
+function completeCleanup(actions, message, initialFailures = []) {
+  const failures = [...initialFailures];
   const collectError = (error) => failures.push(error);
   for (const action of actions) {
     try {
@@ -297,6 +297,8 @@ function mergeRefreshHints(current, next) {
  * a window with no provider installed can answer nothing.
  */
 module.exports = class RepositoryRegistry {
+  #operationProviderTokens = [];
+
   constructor({ project, config, notificationManager, packageManager }) {
     this.project = null;
     this.config = config;
@@ -831,6 +833,7 @@ module.exports = class RepositoryRegistry {
     this.routingDirectoryOwners.clear();
     this.gitDirectoryOwners.clear();
     this.operationProviders = [];
+    this.#operationProviderTokens = [];
     for (const entry of entries) {
       entry.removing = true;
       this.entryByRepository.delete(entry.repository);
@@ -1486,19 +1489,35 @@ module.exports = class RepositoryRegistry {
       );
     }
 
-    if (fallback) this.operationProviders.push(provider);
-    else this.operationProviders.unshift(provider);
-    this.emitOperationProviderChange();
+    const token = Symbol("operation-provider");
+    if (fallback) {
+      this.operationProviders.push(provider);
+      this.#operationProviderTokens.push(token);
+    } else {
+      this.operationProviders.unshift(provider);
+      this.#operationProviderTokens.unshift(token);
+    }
 
-    return new Disposable(() => {
-      const index = this.operationProviders.indexOf(provider);
-      if (index < 0) return;
+    const removeRegistration = (initialFailures = []) => {
+      const message = initialFailures.length
+        ? "Unable to roll back repository operation provider registration"
+        : "Unable to remove the repository operation provider cleanly";
+      const index = this.#operationProviderTokens.indexOf(token);
+      if (index < 0) {
+        completeCleanup([], message, initialFailures);
+        return;
+      }
+      this.#operationProviderTokens.splice(index, 1);
       this.operationProviders.splice(index, 1);
       const records = [];
-      for (const entry of this.entriesById.values()) {
-        if (entry.operationImplementations.has(provider)) {
-          records.push(entry.operationImplementations.get(provider));
-          entry.operationImplementations.delete(provider);
+      // Registrations of the same provider share implementations. Removing one
+      // registration must preserve the records owned by the remaining ones.
+      if (!this.operationProviders.includes(provider)) {
+        for (const entry of this.entriesById.values()) {
+          if (entry.operationImplementations.has(provider)) {
+            records.push(entry.operationImplementations.get(provider));
+            entry.operationImplementations.delete(provider);
+          }
         }
       }
       completeCleanup(
@@ -1506,9 +1525,17 @@ module.exports = class RepositoryRegistry {
           ...records.map((record) => () => this.disposeOperationImplementation(record)),
           (collectError) => this.emitOperationProviderChange(collectError),
         ],
-        "Unable to remove the repository operation provider cleanly",
+        message,
+        initialFailures,
       );
-    });
+    };
+    const subscription = new Disposable(() => removeRegistration());
+    try {
+      this.emitOperationProviderChange();
+    } catch (error) {
+      removeRegistration([error]);
+    }
+    return subscription;
   }
 
   /**
@@ -1670,19 +1697,19 @@ module.exports = class RepositoryRegistry {
    * @param {Object} [options] - passed through to the provider.
    * @returns {Promise} for the provider's result. It rejects with a `TypeError` if `args` is not an array, and with an `Error` whose `code` is `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
    */
-  executeGit(args, workingDirectory, options) {
+  async executeGit(args, workingDirectory, options) {
     if (this.destroyed) {
-      return Promise.reject(new Error("Cannot execute Git with a destroyed RepositoryRegistry"));
+      throw new Error("Cannot execute Git with a destroyed RepositoryRegistry");
     }
     if (!Array.isArray(args)) {
-      return Promise.reject(new TypeError("Git arguments must be an array"));
+      throw new TypeError("Git arguments must be an array");
     }
 
     const provider = this.findGitCommandProvider();
     if (!provider) {
       const error = new Error("No provider implements raw Git command execution");
       error.code = "ERR_GIT_EXECUTION_UNAVAILABLE";
-      return Promise.reject(error);
+      throw error;
     }
     return provider.executeGit(args, workingDirectory, options);
   }

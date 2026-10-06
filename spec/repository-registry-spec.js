@@ -688,6 +688,269 @@ describe("RepositoryRegistry", () => {
     expect(entry.operationImplementations.has(provider)).toBe(false);
   });
 
+  describe("operation provider registration failures", () => {
+    let repository, operations, fallbackCommit, fallbackDestroy;
+
+    beforeEach(() => {
+      repository = new FakeRepository(temp.mkdirSync("failed-provider-registration"));
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(repository.getWorkingDirectory())]);
+      operations = repository.getOperations();
+      fallbackCommit = jasmine.createSpy("fallback commit").and.resolveTo("fallback");
+      fallbackDestroy = jasmine.createSpy("fallback implementation cleanup");
+      registry.addOperationProvider(
+        {
+          createRepositoryOperations: () => ({
+            commit: fallbackCommit,
+            destroy: fallbackDestroy,
+          }),
+        },
+        { fallback: true },
+      );
+    });
+
+    it("rolls a throwing registration observer back, disposes its implementation once, and restores fallback", async () => {
+      expect(await operations.commit("before")).toBe("fallback");
+      const original = Object.freeze(new Error("Provider registration observer failed"));
+      const destroy = jasmine.createSpy("failed provider cleanup");
+      const commit = jasmine.createSpy("failed provider commit").and.resolveTo("must not run");
+      const subscription = registry.onDidChange(() => {
+        operations.getCapabilities();
+        subscription.dispose();
+        throw original;
+      });
+      let registration, failure;
+      try {
+        registration = registry.addOperationProvider({
+          createRepositoryOperations: () => ({ commit, destroy }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(registration).toBeUndefined();
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(commit).not.toHaveBeenCalled();
+      expect(fallbackDestroy).not.toHaveBeenCalled();
+      expect(await operations.commit("after")).toBe("fallback");
+      expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("attempts every failed registration cleanup and preserves the observer before both destructor errors", async () => {
+      const second = new FakeRepository(temp.mkdirSync("failed-provider-registration-second"));
+      repositories.push(second);
+      registry.setProjectRoots([
+        directoryFor(repository.getWorkingDirectory()),
+        directoryFor(second.getWorkingDirectory()),
+      ]);
+      const original = Object.freeze(new Error("Provider registration observer failed"));
+      const firstFailure = new Error("First implementation cleanup failed");
+      const secondFailure = new Error("Second implementation cleanup failed");
+      const firstDestroy = jasmine.createSpy("first cleanup").and.throwError(firstFailure);
+      const secondDestroy = jasmine.createSpy("second cleanup").and.throwError(secondFailure);
+      const subscription = registry.onDidChange(() => {
+        operations.getCapabilities();
+        second.getOperations().getCapabilities();
+        subscription.dispose();
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider({
+          createRepositoryOperations: ({ repository: current }) => ({
+            commit: async () => "must not run",
+            destroy: current === repository ? firstDestroy : secondDestroy,
+          }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure instanceof AggregateError).toBe(true);
+      expect(failure.errors).toEqual([original, firstFailure, secondFailure]);
+      expect(failure.errors[0]).toBe(original);
+      expect(failure.cause).toBe(original);
+      expect(firstDestroy).toHaveBeenCalledTimes(1);
+      expect(secondDestroy).toHaveBeenCalledTimes(1);
+      expect(await operations.commit("after")).toBe("fallback");
+      expect(await second.getOperations().commit("after")).toBe("fallback");
+      expect(fallbackDestroy).not.toHaveBeenCalled();
+    });
+
+    it("uses fallback for a public write queued reentrantly by the observer that rejects a provider", async () => {
+      const original = new Error("Provider registration observer failed");
+      const destroy = jasmine.createSpy("failed provider cleanup");
+      const commit = jasmine.createSpy("failed provider commit").and.resolveTo("must not run");
+      let writing;
+      const subscription = registry.onDidChange(() => {
+        operations.getCapabilities();
+        writing = operations.commit("queued by observer");
+        subscription.dispose();
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider({
+          createRepositoryOperations: () => ({ commit, destroy }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(await writing).toBe("fallback");
+      expect(commit).not.toHaveBeenCalled();
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(operations.getPendingOperations()).toEqual([]);
+    });
+
+    it("defers registration rollback disposal until a real internal execution and status refresh finish", async () => {
+      const original = new Error("Provider registration observer failed");
+      let finishWrite, startRefresh, finishRefresh;
+      const writing = new Promise((resolve) => (finishWrite = resolve));
+      const refreshStarted = new Promise((resolve) => (startRefresh = resolve));
+      spyOn(repository, "refreshStatusSnapshot").and.callFake(() => {
+        startRefresh();
+        return new Promise((resolve) => (finishRefresh = resolve));
+      });
+      const commit = jasmine.createSpy("active provider commit").and.returnValue(writing);
+      const destroy = jasmine.createSpy("active provider cleanup");
+      let execution;
+      const subscription = registry.onDidChange(() => {
+        subscription.dispose();
+        // The public facade reserves a microtask queue slot. Enter the real
+        // provider adapter directly to cover an already-active record rollback.
+        execution = registry.executeRepositoryOperation(
+          registry.entryByRepository.get(repository),
+          "commit",
+          ["internal execution", undefined],
+        );
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider({
+          createRepositoryOperations: () => ({
+            commit,
+            destroy,
+            getOperationRefreshHint: () => "status",
+          }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(destroy).not.toHaveBeenCalled();
+      finishWrite("completed write");
+      await refreshStarted;
+      expect(destroy).not.toHaveBeenCalled();
+      finishRefresh();
+      expect(await execution).toBe("completed write");
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(operations.isAvailable("commit")).toBe(true);
+    });
+
+    it("preserves the registration observer error after that observer destroys the registry", () => {
+      const original = Object.freeze(new Error("Observer failed after registry destruction"));
+      const destroy = jasmine.createSpy("failed provider cleanup");
+      const subscription = registry.onDidChange(() => {
+        operations.getCapabilities();
+        subscription.dispose();
+        registry.destroy();
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider({
+          createRepositoryOperations: () => ({ commit: async () => "unused", destroy }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(fallbackDestroy).toHaveBeenCalledTimes(1);
+      expect(repository.isDestroyed()).toBe(true);
+      expect(repository.getOperations()).toBeNull();
+      expect(registry.getRepositories()).toEqual([]);
+      registry.destroy();
+      expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves an earlier same-object registration and cached implementation after a failed duplicate", async () => {
+      const commit = jasmine.createSpy("shared provider commit").and.resolveTo("shared");
+      const destroy = jasmine.createSpy("shared provider cleanup");
+      const create = jasmine
+        .createSpy("shared provider factory")
+        .and.returnValue({ commit, destroy });
+      const shared = { createRepositoryOperations: create };
+      const earlier = registry.addOperationProvider(shared);
+      expect(await operations.commit("before")).toBe("shared");
+      const original = new Error("Duplicate provider observer failed");
+      const subscription = registry.onDidChange(() => {
+        operations.getCapabilities();
+        subscription.dispose();
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider(shared);
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(destroy).not.toHaveBeenCalled();
+      expect(await operations.commit("after")).toBe("shared");
+      expect(create).toHaveBeenCalledTimes(1);
+      earlier.dispose();
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(await operations.commit("after last registration")).toBe("fallback");
+    });
+
+    it("keeps a reentrant newer same-object registration at its own priority after an older rollback", async () => {
+      const sharedCommit = jasmine.createSpy("shared provider commit").and.resolveTo("shared");
+      const destroy = jasmine.createSpy("shared provider cleanup");
+      const create = jasmine
+        .createSpy("shared provider factory")
+        .and.returnValue({ commit: sharedCommit, destroy });
+      const shared = { createRepositoryOperations: create };
+      const earlier = registry.addOperationProvider(shared);
+      expect(await operations.commit("before")).toBe("shared");
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({ commit: async () => "other" }),
+      });
+      expect(await operations.commit("before duplicate")).toBe("other");
+      const original = new Error("Older duplicate registration failed");
+      let newer;
+      const subscription = registry.onDidChange(() => {
+        subscription.dispose();
+        newer = registry.addOperationProvider(shared);
+        throw original;
+      });
+      let failure;
+      try {
+        registry.addOperationProvider(shared);
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(original);
+      expect(await operations.commit("after rollback")).toBe("shared");
+      earlier.dispose();
+      expect(await operations.commit("newer still registered")).toBe("shared");
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(destroy).not.toHaveBeenCalled();
+      newer.dispose();
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(await operations.commit("after shared registrations")).toBe("other");
+    });
+  });
+
   it("dispatches writes through a provider that arrives after discovery", async () => {
     const workdir = temp.mkdirSync("late-operation-provider");
     const repository = new FakeRepository(workdir);
@@ -1917,6 +2180,71 @@ describe("RepositoryRegistry", () => {
         options: { stdin: "input" },
       },
     ]);
+  });
+
+  for (const asynchronous of [false, true]) {
+    it(`returns a rejected Promise with the original raw Git ${asynchronous ? "Promise rejection" : "synchronous exception"}`, async () => {
+      const original = Object.freeze(new Error("Raw Git execution failed"));
+      const execute = jasmine.createSpy("execute Git").and.callFake(() => {
+        if (asynchronous) return Promise.reject(original);
+        throw original;
+      });
+      registry.addOperationProvider({ executeGit: execute });
+      let execution;
+
+      expect(() => {
+        execution = registry.executeGit(["status"], temp.dir);
+      }).not.toThrow();
+      expect(typeof execution?.then).toBe("function");
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(await Promise.resolve(execution).catch((error) => error)).toBe(original);
+      expect(registry.getPendingOperations()).toEqual([]);
+    });
+  }
+
+  it("normalizes a synchronous raw Git result to a Promise while preserving invocation timing and provider context", async () => {
+    const args = ["status", "--short"];
+    const workingDirectory = temp.mkdirSync("synchronous-raw-git-result");
+    const options = { stdin: "input", customOption: true };
+    const result = { exitCode: 0, stdout: "ok", stderr: "" };
+    let receiver, forwarded;
+    const execute = jasmine.createSpy("execute Git").and.callFake(function (...values) {
+      receiver = this;
+      forwarded = values;
+      return result;
+    });
+    const provider = { executeGit: execute };
+    registry.addOperationProvider(provider);
+
+    const execution = registry.executeGit(args, workingDirectory, options);
+
+    expect(typeof execution?.then).toBe("function");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(receiver).toBe(provider);
+    expect(forwarded[0]).toBe(args);
+    expect(forwarded[1]).toBe(workingDirectory);
+    expect(forwarded[2]).toBe(options);
+    expect(await execution).toBe(result);
+  });
+
+  it("keeps raw Git unavailable, argument validation, and destroyed-registry failures as Promise rejections", async () => {
+    const unavailable = await registry.executeGit(["status"], temp.dir).catch((error) => error);
+    expect(unavailable.code).toBe("ERR_GIT_EXECUTION_UNAVAILABLE");
+    const execute = jasmine.createSpy("execute Git").and.resolveTo("must not run");
+    registry.addOperationProvider({ executeGit: execute });
+    let invalid;
+    expect(() => {
+      invalid = registry.executeGit("status", temp.dir);
+    }).not.toThrow();
+    expect(typeof invalid?.then).toBe("function");
+    const invalidFailure = await invalid.catch((error) => error);
+    expect(invalidFailure.message).toBe("Git arguments must be an array");
+    expect(execute).not.toHaveBeenCalled();
+    registry.destroy();
+    const destroyed = await registry.executeGit(["status"], temp.dir).catch((error) => error);
+    expect(destroyed.message).toContain("destroyed RepositoryRegistry");
+    expect(execute).not.toHaveBeenCalled();
+    expect(registry.getPendingOperations()).toEqual([]);
   });
 
   describe("active repository", () => {

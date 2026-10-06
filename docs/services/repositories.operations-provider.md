@@ -85,6 +85,10 @@ Providers are stored **newest first** by default, so a later registration takes 
 
 `createRepositoryOperations` is called lazily, the first time a repository needs an operation, and the result is cached per repository per provider. Registering a provider fires a change notification so consumers can re-read capabilities.
 
+If that registration notification fails, core withdraws the attempted registration and cleans up implementations that no remaining registration owns. Registrations of the same provider object share cached implementations until the last registration is removed. Active implementations follow the deferred disposal policy below. Rollback also attempts a change notification so consumers can restore the previous capability set. The original registration failure is rethrown unchanged when rollback succeeds; additional cleanup or notification failures become an `AggregateError`, with the original failure first and as its `cause`.
+
+Raw `executeGit` always returns a Promise, including when the provider returns a synchronous value. Synchronous provider exceptions become rejections with the same error. Core calls the method with the provider as `this` and forwards `args`, `workingDirectory` and `options` unchanged; fulfillment values and rejection reasons keep their identity.
+
 Writes to one repository run sequentially, while writes to different repositories can run in parallel. Provider selection happens when an operation starts, so a queued operation uses the provider available at that time. The registry emits `did-queue-operation`, `did-start-operation` and `did-finish-operation`; pending state is removed before the finish notification, while repository retention lasts through that notification and final cleanup.
 
 Observer exceptions reject the affected operation without leaving pending state or blocking later writes. A finish observer or cleanup can fail after a write has already completed; callers must distinguish that outcome before retrying. A primary failure remains unchanged when cleanup succeeds. Additional completion failures are combined in an `AggregateError`, with the primary failure first and as its `cause`.
