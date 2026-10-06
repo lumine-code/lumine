@@ -41,6 +41,7 @@ describe("TextEditorComponent hidden input", () => {
 
     const scrolled = [];
     for (const target of [
+      component.refs.clientContainer,
       component.refs.scrollContainer,
       component.refs.content,
       component.refs.lineTiles,
@@ -67,6 +68,8 @@ describe("TextEditorComponent hidden input", () => {
     // via transforms; the native scroll positions of its containers must not
     // move at all.
     expect(scrolled).toEqual([]);
+    expect(component.refs.clientContainer.scrollTop).toBe(0);
+    expect(component.refs.clientContainer.scrollLeft).toBe(0);
     expect(component.refs.scrollContainer.scrollTop).toBe(0);
     expect(component.refs.scrollContainer.scrollLeft).toBe(0);
 
@@ -119,6 +122,7 @@ describe("TextEditorComponent hidden input", () => {
       const component = new TextEditorComponent({
         model: editor,
         updatedSynchronously: true,
+        rowsPerTile: 6,
       });
       const element = component.element;
       element.style.height = "200px";
@@ -133,13 +137,15 @@ describe("TextEditorComponent hidden input", () => {
       const hiddenInput = component.refs.cursorsAndInput.refs.hiddenInput;
       const { scrollContainer } = component.refs;
 
-      // Park the hidden input far below the viewport: it tracks the last
-      // cursor's content-coordinate position, so move the cursor to the bottom
-      // and then synthetically scroll back to the top.
-      editor.setCursorBufferPosition([399, 0]);
+      // Keep the cursor in rendered overscan below the visible viewport. A
+      // cursor outside the rendered range correctly clears its input anchor,
+      // so it cannot supply an off-screen position for this focus regression.
+      const cursorRow = component.getLastVisibleRow() + 2;
+      editor.setCursorBufferPosition([cursorRow, 0]);
       component.updateSync();
       component.setScrollTop(0);
       component.updateSync();
+      expect(component.hiddenInputPosition).not.toBeNull();
       const containerRect = scrollContainer.getBoundingClientRect();
       expect(hiddenInput.getBoundingClientRect().top).toBeGreaterThan(containerRect.bottom);
 
@@ -147,11 +153,15 @@ describe("TextEditorComponent hidden input", () => {
       // preventScroll option our own focus() calls pass. The clipping viewport
       // must reject Chromium's attempt to reveal the off-screen input rather
       // than natively scroll and shear the transform-scrolled lines.
+      hiddenInput.blur();
       hiddenInput.focus();
       for (let i = 0; i < 5; i++) await frame();
 
-      expect(scrollContainer.scrollTop).toBe(0);
-      expect(scrollContainer.scrollLeft).toBe(0);
+      for (const name of ["clientContainer", "scrollContainer", "content", "lineTiles"]) {
+        expect(component.refs[name].scrollTop).toBe(0);
+        expect(component.refs[name].scrollLeft).toBe(0);
+      }
+      expect(component.getScrollTop()).toBe(0);
 
       editor.destroy();
     },
