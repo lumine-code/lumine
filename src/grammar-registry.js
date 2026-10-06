@@ -9,6 +9,8 @@ const fs = require("@lumine-code/fs-plus");
 const { Point, Range } = require("./text-buffer");
 
 const PATH_SPLIT_REGEX = new RegExp("[/.]");
+const GRAMMAR_SELECTION_SLICE_MS = 5;
+const MISSING_FILE_ERRORS = new Set(["ENOENT", "ENOTDIR", "EISDIR"]);
 
 /**
  * @public
@@ -28,6 +30,7 @@ module.exports = class GrammarRegistry {
   }
 
   clear() {
+    this.grammarSelectionRevision = (this.grammarSelectionRevision ?? 0) + 1;
     this.treeSitterGrammarsById = {};
     this.treeSitterGrammarsByInjectionName = new Map();
 
@@ -342,13 +345,91 @@ module.exports = class GrammarRegistry {
     return this.selectGrammarWithScore(filePath, fileContents).grammar;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Select a grammar for a file on disk without synchronously reading it.
+   * Scoring yields between grammars when its current slice exceeds 5 ms.
+   * Missing files are scored by path alone. Cancellation rejects with an
+   * `AbortError` and can be used to discard work when its consumer unloads.
+   *
+   * @param {String} filePath - The file path to read and match.
+   * @param {Object} [options] - Selection options.
+   * @param {AbortSignal} [options.signal] - Cancels reading and scoring.
+   * @returns {Promise} Resolves to a Tree-sitter grammar or the null grammar sentinel.
+   */
+  async selectGrammarAsync(filePath, { signal } = {}) {
+    signal?.throwIfAborted();
+    let fileContents;
+    if (filePath) {
+      try {
+        fileContents = await fs.promises.readFile(filePath, { encoding: "utf8", signal });
+      } catch (error) {
+        signal?.throwIfAborted();
+        if (!MISSING_FILE_ERRORS.has(error.code)) throw error;
+      }
+    }
+
+    let sliceStart = performance.now();
+    let revision = this.grammarSelectionRevision;
+    let customFileTypes = this.config.get("core.customFileTypes") ?? null;
+    let selection = this.selectGrammarWithScoreFromContents(
+      filePath,
+      fileContents,
+      customFileTypes,
+    );
+    for (;;) {
+      signal?.throwIfAborted();
+      if (revision !== this.grammarSelectionRevision) {
+        // A package can reload during a scoring slice. Reuse the single read
+        // but start over, so a discarded grammar generation cannot escape.
+        revision = this.grammarSelectionRevision;
+        selection = this.selectGrammarWithScoreFromContents(
+          filePath,
+          fileContents,
+          customFileTypes,
+        );
+      }
+      const result = selection.next();
+      if (result.done) return result.value.grammar;
+      if (performance.now() - sliceStart >= GRAMMAR_SELECTION_SLICE_MS) {
+        await new Promise((resolve) => setImmediate(resolve));
+        sliceStart = performance.now();
+        const currentFileTypes = this.config.get("core.customFileTypes") ?? null;
+        if (!_.isEqual(customFileTypes, currentFileTypes)) {
+          // Config returns a copy, so compare values rather than identities.
+          customFileTypes = currentFileTypes;
+          selection = this.selectGrammarWithScoreFromContents(
+            filePath,
+            fileContents,
+            customFileTypes,
+          );
+        }
+      }
+    }
+  }
+
   selectGrammarWithScore(filePath, fileContents) {
+    fileContents = this.readGrammarSelectionContentsSync(filePath, fileContents);
+    const selection = this.selectGrammarWithScoreFromContents(filePath, fileContents);
+    for (;;) {
+      const result = selection.next();
+      if (result.done) return result.value;
+    }
+  }
+
+  *selectGrammarWithScoreFromContents(
+    filePath,
+    fileContents,
+    customFileTypes = this.config.get("core.customFileTypes") ?? null,
+  ) {
     let bestMatch = NullGrammar;
-    let highestScore = this.getGrammarScore(NullGrammar, filePath, fileContents);
+    let highestScore = this.scoreGrammarWithContents(NullGrammar, filePath, fileContents);
     let plainTextGrammar = null;
     let plainTextScore = -Infinity;
-    this.forEachGrammar((grammar) => {
-      const score = this.getGrammarScore(grammar, filePath, fileContents);
+    for (const grammar of this.getGrammars()) {
+      const score = this.scoreGrammarWithContents(grammar, filePath, fileContents, customFileTypes);
       if (grammar.scopeName === "text.plain") {
         plainTextGrammar = grammar;
         plainTextScore = score;
@@ -357,13 +438,25 @@ module.exports = class GrammarRegistry {
         bestMatch = grammar;
         highestScore = score;
       }
-    });
+      yield;
+    }
     // The null sentinel is the unmatched baseline. Prefer the registered
     // plain-text grammar when no more specific grammar matched.
     if (bestMatch === NullGrammar && plainTextGrammar) {
       return { grammar: plainTextGrammar, score: plainTextScore };
     }
     return { grammar: bestMatch, score: highestScore };
+  }
+
+  readGrammarSelectionContentsSync(filePath, contents) {
+    if (contents != null || !fs.isFileSync(filePath)) return contents;
+    try {
+      return fs.readFileSync(filePath, "utf8");
+    } catch (error) {
+      // A watcher can remove or replace the file between the stat and read.
+      if (MISSING_FILE_ERRORS.has(error.code)) return contents;
+      throw error;
+    }
   }
 
   /**
@@ -385,18 +478,21 @@ module.exports = class GrammarRegistry {
    * @returns {Number}
    */
   getGrammarScore(grammar, filePath, contents) {
+    if (grammar !== NullGrammar) {
+      contents = this.readGrammarSelectionContentsSync(filePath, contents);
+    }
+    return this.scoreGrammarWithContents(grammar, filePath, contents);
+  }
+
+  scoreGrammarWithContents(grammar, filePath, contents, customFileTypes) {
     // The null grammar is a last-resort sentinel, not a configurable language.
     // Keep its score fixed so a custom file-type entry cannot make it win over
     // a registered grammar.
     if (grammar === NullGrammar) return filePath ? 0 : -1;
 
-    if (contents == null && fs.isFileSync(filePath)) {
-      contents = fs.readFileSync(filePath, "utf8");
-    }
-
     // Initially identify matching grammars based on the filename and the first
     // line of the file.
-    let score = this.getGrammarPathScore(grammar, filePath);
+    let score = this.getGrammarPathScore(grammar, filePath, customFileTypes);
     if (this.grammarMatchesPrefix(grammar, contents)) score += 0.5;
 
     // If multiple grammars match by one of the above criteria, break ties.
@@ -431,7 +527,11 @@ module.exports = class GrammarRegistry {
     return score;
   }
 
-  getGrammarPathScore(grammar, filePath) {
+  getGrammarPathScore(
+    grammar,
+    filePath,
+    customFileTypes = this.config.get("core.customFileTypes"),
+  ) {
     if (!filePath) return -1;
     if (process.platform === "win32") {
       filePath = filePath.replace(/\\/g, "/");
@@ -440,14 +540,11 @@ module.exports = class GrammarRegistry {
     const pathComponents = filePath.toLowerCase().split(PATH_SPLIT_REGEX);
     let pathScore = 0;
 
-    let customFileTypes;
-    if (this.config.get("core.customFileTypes")) {
-      customFileTypes = this.config.get("core.customFileTypes")[grammar.scopeName];
-    }
+    const grammarCustomFileTypes = customFileTypes?.[grammar.scopeName];
 
     let { fileTypes } = grammar;
-    if (customFileTypes) {
-      fileTypes = fileTypes.concat(customFileTypes);
+    if (grammarCustomFileTypes) {
+      fileTypes = fileTypes.concat(grammarCustomFileTypes);
     }
 
     for (let i = 0; i < fileTypes.length; i++) {
@@ -485,10 +582,14 @@ module.exports = class GrammarRegistry {
         }
       }
 
-      const prefix = contents
-        .split("\n")
-        .slice(0, numberOfNewlinesInRegex + 1)
-        .join("\n");
+      // Only inspect the needed prefix. Splitting the whole document for every
+      // first-line pattern makes large files expensive even after one read.
+      let end = -1;
+      for (let i = 0; i <= numberOfNewlinesInRegex; i++) {
+        end = contents.indexOf("\n", end + 1);
+        if (end === -1) break;
+      }
+      const prefix = end === -1 ? contents : contents.slice(0, end);
       grammar.firstLineRegex.lastIndex = 0;
       const matches = grammar.firstLineRegex.test(prefix);
       grammar.firstLineRegex.lastIndex = 0;
@@ -510,6 +611,7 @@ module.exports = class GrammarRegistry {
   }
 
   grammarAddedOrUpdated(grammar) {
+    this.grammarSelectionRevision++;
     if (grammar.scopeName && !grammar.id) grammar.id = grammar.scopeName;
 
     this.grammarScoresByBuffer.forEach((score, buffer) => {
@@ -725,6 +827,7 @@ module.exports = class GrammarRegistry {
     if (!(grammar instanceof TreeSitterGrammar)) return false;
     this.unregisterTreeSitterInjectionNames(grammar);
     if (this.treeSitterGrammarsById[grammar.scopeName] === grammar) {
+      this.grammarSelectionRevision++;
       delete this.treeSitterGrammarsById[grammar.scopeName];
     }
     this.grammarScoresByBuffer.forEach((_score, buffer) => {

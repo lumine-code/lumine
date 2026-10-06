@@ -530,9 +530,71 @@ describe("GrammarRegistry", () => {
 
       const filePath = require.resolve("./fixtures/shebang");
       const filePathContents = fs.readFileSync(filePath, "utf8");
-      spyOn(fs, "read").and.callThrough();
+      spyOn(fs, "readFileSync").and.callThrough();
       expect(lumine.grammars.selectGrammar(filePath, filePathContents).name).toBe("Python");
-      expect(fs.read).not.toHaveBeenCalled();
+      expect(fs.readFileSync).not.toHaveBeenCalled();
+    });
+
+    it("reads omitted contents only once for all candidate grammars", () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-c/grammars/c.json"));
+      grammarRegistry.loadGrammarSync(require.resolve("language-c/grammars/cpp.json"));
+      grammarRegistry.loadGrammarSync(require.resolve("language-python/grammars/python.json"));
+      const filePath = require.resolve("./fixtures/shebang");
+      const read = spyOn(fs, "readFileSync").and.callThrough();
+      const stat = spyOn(fs, "isFileSync").and.callThrough();
+
+      expect(grammarRegistry.selectGrammar(filePath).scopeName).toBe("source.python");
+      expect(read.calls.count()).toBe(1);
+      expect(stat.calls.count()).toBe(1);
+    });
+
+    it("keeps explicitly empty contents without reading the file", () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/content-regex.json"),
+      );
+      grammar.contentRegex = /^$/;
+      const read = spyOn(fs, "readFileSync").and.callThrough();
+      const stat = spyOn(fs, "isFileSync").and.callThrough();
+      const existingPath = require.resolve("./fixtures/shebang");
+
+      expect(grammarRegistry.selectGrammar(existingPath, "").scopeName).toBe(
+        "text.plain.null-grammar",
+      );
+      const emptyScore = grammarRegistry.getGrammarScore(
+        grammar,
+        "test.content-regex-sentinel",
+        "",
+      );
+      const missingScore = grammarRegistry.getGrammarScore(
+        grammar,
+        "/no/such/file.content-regex-sentinel",
+      );
+      expect(emptyScore).toBeGreaterThan(missingScore);
+      expect(read).not.toHaveBeenCalled();
+      expect(stat.calls.count()).toBe(1);
+    });
+
+    it("preserves standalone grammar scoring with omitted disk contents", () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("language-python/grammars/python.json"),
+      );
+      const filePath = require.resolve("./fixtures/shebang");
+      const contents = fs.readFileSync(filePath, "utf8");
+      const score = grammarRegistry.getGrammarScore(grammar, filePath, contents);
+      const read = spyOn(fs, "readFileSync").and.callThrough();
+
+      expect(grammarRegistry.getGrammarScore(grammar, filePath)).toBe(score);
+      expect(read.calls.count()).toBe(1);
+    });
+
+    it("falls back to path scoring if the file disappears between stat and read", () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-python/grammars/python.json"));
+      spyOn(fs, "isFileSync").and.returnValue(true);
+      spyOn(fs, "readFileSync").and.callFake(() => {
+        throw Object.assign(new Error("File was removed"), { code: "ENOENT" });
+      });
+
+      expect(grammarRegistry.selectGrammar("removed.py").scopeName).toBe("source.python");
     });
 
     describe("when multiple grammars have matching fileTypes", () => {
@@ -745,6 +807,224 @@ describe("GrammarRegistry", () => {
         expect(grammar.name).toBe("Shell Script");
         expect(grammar instanceof TreeSitterGrammar).toBeTruthy();
       });
+    });
+  });
+
+  describe(".selectGrammarAsync(filePath, options)", () => {
+    it("reads once asynchronously and uses the same scorer without synchronous filesystem calls", async () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-c/grammars/c.json"));
+      grammarRegistry.loadGrammarSync(require.resolve("language-c/grammars/cpp.json"));
+      grammarRegistry.loadGrammarSync(require.resolve("language-python/grammars/python.json"));
+      const filePath = require.resolve("./fixtures/shebang");
+      const read = spyOn(fs.promises, "readFile").and.callThrough();
+      const syncRead = spyOn(fs, "readFileSync").and.callThrough();
+      const syncStat = spyOn(fs, "isFileSync").and.callThrough();
+
+      expect((await grammarRegistry.selectGrammarAsync(filePath)).scopeName).toBe("source.python");
+      expect(read.calls.count()).toBe(1);
+      expect(syncRead).not.toHaveBeenCalled();
+      expect(syncStat).not.toHaveBeenCalled();
+    });
+
+    it("matches multiline prefixes, whole-document content, custom types and installed preference", async () => {
+      grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
+      grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/two-line-prefix.json"));
+      const contentGrammar = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/content-regex.json"),
+      );
+      const fallbackGrammar = grammarRegistry.createGrammar(contentGrammar.grammarFilePath, {
+        ...CSON.readFileSync(contentGrammar.grammarFilePath),
+        name: "Fallback",
+        scopeName: "source.content-fallback",
+        contentRegex: undefined,
+        fileTypes: ["content-regex-sentinel"],
+      });
+      grammarRegistry.addGrammar(fallbackGrammar);
+      lumine.config.set("core.customFileTypes", {
+        [contentGrammar.scopeName]: ["custom-sentinel"],
+      });
+      contentGrammar.bundledPackage = true;
+      fallbackGrammar.bundledPackage = false;
+      const read = spyOn(fs.promises, "readFile");
+      const cases = [
+        ["prefix.unknown", "TWO-LINE-SENTINEL\nSECOND-LINE\nignored"],
+        ["content.content-regex-sentinel", "first line\nCONTENT-REGEX-SENTINEL"],
+        ["content.custom-sentinel", "no matching content"],
+        ["content.content-regex-sentinel", "no matching content"],
+        ["unmatched.unknown", ""],
+      ];
+      for (const [filePath, contents] of cases) {
+        read.and.returnValue(Promise.resolve(contents));
+        expect(await grammarRegistry.selectGrammarAsync(filePath)).toBe(
+          grammarRegistry.selectGrammar(filePath, contents),
+        );
+      }
+    });
+
+    it("scores missing files and directories by path and preserves the plain-text fallback", async () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-python/grammars/python.json"));
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
+
+      expect((await grammarRegistry.selectGrammarAsync("/no/such/file.py")).scopeName).toBe(
+        "source.python",
+      );
+      expect(await grammarRegistry.selectGrammarAsync(temp.mkdirSync("grammar-selection"))).toBe(
+        plainText,
+      );
+      expect(await grammarRegistry.selectGrammarAsync()).toBe(plainText);
+    });
+
+    it("keeps empty file contents distinct from missing contents", async () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/content-regex.json"),
+      );
+      grammar.contentRegex = /^$/;
+      const contents = [];
+      const score = grammarRegistry.scoreGrammarWithContents.bind(grammarRegistry);
+      spyOn(grammarRegistry, "scoreGrammarWithContents").and.callFake(
+        (candidate, filePath, text) => {
+          if (candidate === grammar) contents.push(text);
+          return score(candidate, filePath, text);
+        },
+      );
+      const filePath = path.join(
+        temp.mkdirSync("empty-grammar-file"),
+        "empty.content-regex-sentinel",
+      );
+      fs.writeFileSync(filePath, "");
+
+      expect(await grammarRegistry.selectGrammarAsync(filePath)).toBe(grammar);
+      expect(
+        await grammarRegistry.selectGrammarAsync(
+          path.join(path.dirname(filePath), "missing", "empty.content-regex-sentinel"),
+        ),
+      ).toBe(grammar);
+      expect(contents).toEqual(["", undefined]);
+    });
+
+    it("propagates read errors other than missing or non-file paths", async () => {
+      const error = Object.assign(new Error("Access denied"), { code: "EACCES" });
+      spyOn(fs.promises, "readFile").and.returnValue(Promise.reject(error));
+      await expectAsync(grammarRegistry.selectGrammarAsync("restricted.py")).toBeRejectedWith(
+        error,
+      );
+    });
+
+    it("rejects an already aborted selection before reading", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const read = spyOn(fs.promises, "readFile").and.callThrough();
+
+      await expectAsync(
+        grammarRegistry.selectGrammarAsync("unused.py", { signal: controller.signal }),
+      ).toBeRejectedWith(controller.signal.reason);
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("does not score a file when aborted during its pending read", async () => {
+      const controller = new AbortController();
+      let finishRead;
+      spyOn(fs.promises, "readFile").and.returnValue(
+        new Promise((resolve) => {
+          finishRead = resolve;
+        }),
+      );
+      const score = spyOn(grammarRegistry, "scoreGrammarWithContents").and.callThrough();
+      const selection = grammarRegistry.selectGrammarAsync("pending.py", {
+        signal: controller.signal,
+      });
+      controller.abort();
+      finishRead("#!/usr/bin/env python");
+
+      await expectAsync(selection).toBeRejectedWith(controller.signal.reason);
+      expect(score).not.toHaveBeenCalled();
+    });
+
+    it("yields and observes cancellation between scoring slices", async () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("language-python/grammars/python.json"),
+      );
+      spyOn(grammarRegistry, "getGrammars").and.returnValue(new Array(20).fill(grammar));
+      spyOn(fs.promises, "readFile").and.returnValue(Promise.resolve(""));
+      const controller = new AbortController();
+      const originalScore = grammarRegistry.scoreGrammarWithContents.bind(grammarRegistry);
+      let scored = 0;
+      spyOn(grammarRegistry, "scoreGrammarWithContents").and.callFake((...args) => {
+        if (args[0] === grammar) {
+          scored++;
+          if (scored === 1) setImmediate(() => controller.abort());
+          const start = performance.now();
+          while (performance.now() - start < 6) {
+            // Ensure this individual score exceeds the slice budget.
+          }
+        }
+        return originalScore(...args);
+      });
+
+      const selection = grammarRegistry.selectGrammarAsync("many.py", {
+        signal: controller.signal,
+      });
+      expect(await selection.catch((error) => error)).toBe(controller.signal.reason);
+      expect(scored).toBe(1);
+    });
+
+    it("rescans current grammars after a package unloads during a scoring slice without rereading", async () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("language-python/grammars/python.json"),
+      );
+      const plainText = grammarRegistry.loadGrammarSync(
+        require.resolve("./fixtures/grammars/plain-text.json"),
+      );
+      const read = spyOn(fs.promises, "readFile").and.returnValue(Promise.resolve(""));
+      const originalScore = grammarRegistry.scoreGrammarWithContents.bind(grammarRegistry);
+      let scored = false;
+      spyOn(grammarRegistry, "scoreGrammarWithContents").and.callFake((...args) => {
+        if (args[0] === grammar && !scored) {
+          scored = true;
+          setImmediate(() => grammarRegistry.removeGrammar(grammar));
+          const start = performance.now();
+          while (performance.now() - start < 6) {
+            // Let the scheduled unload run before selection finishes.
+          }
+        }
+        return originalScore(...args);
+      });
+
+      expect(await grammarRegistry.selectGrammarAsync("removed.py")).toBe(plainText);
+      expect(read.calls.allArgs().filter(([filePath]) => filePath === "removed.py").length).toBe(1);
+    });
+
+    it("restarts scoring if custom file types change during a slice", async () => {
+      const python = grammarRegistry.loadGrammarSync(
+        require.resolve("language-python/grammars/python.json"),
+      );
+      const javascript = grammarRegistry.loadGrammarSync(
+        require.resolve("language-javascript/grammars/javascript.json"),
+      );
+      lumine.config.set("core.customFileTypes", { "source.python": ["custom-change"] });
+      const read = spyOn(fs.promises, "readFile").and.returnValue(Promise.resolve(""));
+      const originalScore = grammarRegistry.scoreGrammarWithContents.bind(grammarRegistry);
+      let changed = false;
+      spyOn(grammarRegistry, "scoreGrammarWithContents").and.callFake((...args) => {
+        if (args[0] === python && !changed) {
+          changed = true;
+          setImmediate(() =>
+            lumine.config.set("core.customFileTypes", { "source.js": ["custom-change"] }),
+          );
+          const start = performance.now();
+          while (performance.now() - start < 6) {
+            // Let the configuration change run after Python already scored.
+          }
+        }
+        return originalScore(...args);
+      });
+
+      expect(await grammarRegistry.selectGrammarAsync("test.custom-change")).toBe(javascript);
+      expect(
+        read.calls.allArgs().filter(([filePath]) => filePath === "test.custom-change").length,
+      ).toBe(1);
     });
   });
 
