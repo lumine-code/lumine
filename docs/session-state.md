@@ -4,6 +4,14 @@ Lumine keeps an independent snapshot for each window and set of project roots. S
 
 Separate snapshots let two windows keep their own pane layout, editors and package settings. An active window's snapshots for other projects remain available when it switches back, and restoring previous windows reuses their saved identities.
 
+## Project changes
+
+`lumine.project.setState(paths)` runs changes sequentially in the current window. It saves the outgoing session before confirming closure and captures changes made by Save or Save As during that confirmation. Restoring a project replaces the workspace center while keeping docks and their retained buffers alive.
+
+Resetting or closing the window invalidates pending changes. Once an outstanding asynchronous step settles, the cancelled transition rejects with `ABORT_ERR` and releases any unused reservation. Requests queued before the reset are cancelled too; later requests wait for the old operation to finish before using the new generation.
+
+If restoration fails, rollback attempts to recover the outgoing documents and configuration. A single failure is returned unchanged. Additional rollback or reservation cleanup failures are reported together as an `AggregateError`, with the original failure first and as its `cause`.
+
 ## Retention
 
 The application schedules cleanup after a window finishes loading, changes project roots or closes. A separate Node process reads the database so large historical snapshots do not block the renderer or the main event loop.

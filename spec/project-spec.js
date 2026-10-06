@@ -238,6 +238,247 @@ describe("Project", () => {
       expect(lumine.project.bufferForIdSync(savedId)).toBe(buffer);
     });
 
+    it("refuses obsolete restoration before starting buffer reads", async () => {
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: lumine.grammars,
+      });
+      const retiredBufferIDs = deserializedProject.retiredBufferIDs;
+      const retiredBufferPaths = deserializedProject.retiredBufferPaths;
+      const aliases = deserializedProject.restoredBufferAliases;
+      const cancelled = Object.assign(new Error("Restoration cancelled"), { code: "ABORT_ERR" });
+      spyOn(TextBuffer, "deserialize");
+
+      await expectAsync(
+        deserializedProject.deserialize(
+          { paths: [__dirname], buffers: [{ id: "obsolete" }] },
+          lumine.deserializers,
+          {},
+          () => {
+            throw cancelled;
+          },
+        ),
+      ).toBeRejectedWith(cancelled);
+
+      expect(TextBuffer.deserialize).not.toHaveBeenCalled();
+      expect(deserializedProject.getPaths()).toEqual([]);
+      expect(deserializedProject.retiredBufferIDs).toBe(retiredBufferIDs);
+      expect(deserializedProject.retiredBufferPaths).toBe(retiredBufferPaths);
+      expect(deserializedProject.restoredBufferAliases).toBe(aliases);
+    });
+
+    it("ignores buffers serialized with an unsupported version", async () => {
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: lumine.grammars,
+      });
+
+      await deserializedProject.deserialize({
+        paths: [],
+        buffers: [{ id: "unsupported", version: TextBuffer.version + 1 }],
+      });
+
+      expect(deserializedProject.getBuffers()).toEqual([]);
+      expect([...deserializedProject.retiredBufferIDs]).toEqual([]);
+    });
+
+    it("disposes obsolete buffer reads without changing reset roots, bookkeeping or retained buffers", async () => {
+      const maintainLanguageMode = jasmine.createSpy("maintainLanguageMode");
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: { maintainLanguageMode },
+      });
+      deserializedProject.setPaths([__dirname]);
+      const retained = new TextBuffer({ text: "retained by a dock" });
+      retained.retain();
+      deserializedProject.buffers = [retained];
+      const completedBuffer = new TextBuffer({ text: "completed obsolete read" });
+      const lateBuffer = new TextBuffer({ text: "late obsolete read" });
+      const currentBuffer = new TextBuffer({ text: "new generation" });
+      spyOn(completedBuffer, "destroy").and.callThrough();
+      spyOn(lateBuffer, "destroy").and.callThrough();
+      const completedDestroyed = new Promise((resolve) => completedBuffer.onDidDestroy(resolve));
+      let rejectRead, completeLateRead, completeUnsupportedRead;
+      const failedRead = new Promise((_resolve, reject) => (rejectRead = reject));
+      const lateRead = new Promise((resolve) => (completeLateRead = resolve));
+      const lateUnsupportedRead = new Promise((resolve) => (completeUnsupportedRead = resolve));
+      spyOn(TextBuffer, "deserialize").and.callFake(({ id }) => {
+        if (id === "completed") return Promise.resolve(completedBuffer);
+        if (id === "unsupported") return Promise.resolve(undefined);
+        if (id === "late-unsupported") return lateUnsupportedRead;
+        if (id === "failed") return failedRead;
+        return lateRead;
+      });
+      let current = true;
+      const cancelled = Object.assign(new Error("Restoration cancelled"), { code: "ABORT_ERR" });
+      const restoration = deserializedProject
+        .deserialize(
+          {
+            paths: [path.join(__dirname, "fixtures")],
+            buffers: [
+              { id: retained.getId() },
+              { id: "completed" },
+              { id: "unsupported", version: TextBuffer.version + 1 },
+              { id: "failed", filePath: "obsolete-path" },
+              { id: "late" },
+              { id: "late-unsupported", version: TextBuffer.version + 1 },
+            ],
+          },
+          lumine.deserializers,
+          { preserveRetainedBuffers: true },
+          () => {
+            if (!current) throw cancelled;
+          },
+        )
+        .catch((error) => error);
+      await Promise.resolve();
+
+      const retiredBufferIDs = new Set(["current-id"]);
+      const retiredBufferPaths = new Set(["current-path"]);
+      const aliases = new Map([["current-alias", { buffer: currentBuffer }]]);
+      current = false;
+      deserializedProject.buffers = [retained, currentBuffer];
+      deserializedProject.retiredBufferIDs = retiredBufferIDs;
+      deserializedProject.retiredBufferPaths = retiredBufferPaths;
+      deserializedProject.restoredBufferAliases = aliases;
+      spyOn(deserializedProject, "subscribeToBuffer").and.callThrough();
+      spyOn(deserializedProject, "setPaths").and.callThrough();
+      rejectRead(new Error("Old read failed after reset"));
+
+      try {
+        await completedDestroyed;
+        expect(completedBuffer.destroy).toHaveBeenCalledTimes(1);
+        expect(lateBuffer.isDestroyed()).toBe(false);
+        completeUnsupportedRead(undefined);
+        completeLateRead(lateBuffer);
+        expect(await restoration).toBe(cancelled);
+
+        expect(lateBuffer.destroy).toHaveBeenCalledTimes(1);
+        expect(deserializedProject.getPaths()).toEqual([__dirname]);
+        expect(deserializedProject.getBuffers()).toEqual([retained, currentBuffer]);
+        expect(deserializedProject.retiredBufferIDs).toBe(retiredBufferIDs);
+        expect([...retiredBufferIDs]).toEqual(["current-id"]);
+        expect(deserializedProject.retiredBufferPaths).toBe(retiredBufferPaths);
+        expect([...retiredBufferPaths]).toEqual(["current-path"]);
+        expect(deserializedProject.restoredBufferAliases).toBe(aliases);
+        expect([...aliases.keys()]).toEqual(["current-alias"]);
+        expect(maintainLanguageMode).not.toHaveBeenCalled();
+        expect(deserializedProject.subscribeToBuffer).not.toHaveBeenCalled();
+        expect(deserializedProject.setPaths).not.toHaveBeenCalled();
+        expect(retained.isDestroyed()).toBe(false);
+        expect(currentBuffer.isDestroyed()).toBe(false);
+      } finally {
+        completeUnsupportedRead(undefined);
+        completeLateRead(lateBuffer);
+        completedBuffer.destroy();
+        lateBuffer.destroy();
+      }
+    });
+
+    it("observes late cleanup failures and disposes every owned buffer while preserving cancellation", async () => {
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: lumine.grammars,
+      });
+      const cancelled = Object.assign(new Error("Restoration cancelled"), { code: "ABORT_ERR" });
+      const firstCleanupError = new Error("First buffer disposal failed");
+      const lateCleanupError = new Error("Late buffer disposal failed");
+      let cleanupStarted, rejectRead, completeLateRead;
+      const cleaning = new Promise((resolve) => (cleanupStarted = resolve));
+      const failedRead = new Promise((_resolve, reject) => (rejectRead = reject));
+      const lateRead = new Promise((resolve) => (completeLateRead = resolve));
+      const firstBuffer = {
+        destroy: jasmine.createSpy("first buffer destroy").and.throwError(firstCleanupError),
+      };
+      const secondBuffer = {
+        destroy: jasmine.createSpy("second buffer destroy").and.callFake(() => cleanupStarted()),
+      };
+      const lateBuffer = {
+        destroy: jasmine.createSpy("late buffer destroy").and.throwError(lateCleanupError),
+      };
+      spyOn(TextBuffer, "deserialize").and.callFake(({ id }) => {
+        if (id === "first") return Promise.resolve(firstBuffer);
+        if (id === "second") return Promise.resolve(secondBuffer);
+        if (id === "failed") return failedRead;
+        return lateRead;
+      });
+      let current = true;
+      const restoration = deserializedProject
+        .deserialize(
+          {
+            paths: [],
+            buffers: [{ id: "first" }, { id: "second" }, { id: "failed" }, { id: "late" }],
+          },
+          lumine.deserializers,
+          {},
+          () => {
+            if (!current) throw cancelled;
+          },
+        )
+        .catch((error) => error);
+      await Promise.resolve();
+      current = false;
+      rejectRead(new Error("Old read failed"));
+      await cleaning;
+      completeLateRead(lateBuffer);
+
+      const error = await restoration;
+      expect(error instanceof AggregateError).toBe(true);
+      expect(error.errors).toEqual([cancelled, firstCleanupError, lateCleanupError]);
+      expect(error.cause).toBe(cancelled);
+      expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
+      expect(secondBuffer.destroy).toHaveBeenCalledTimes(1);
+      expect(lateBuffer.destroy).toHaveBeenCalledTimes(1);
+      expect(deserializedProject.getBuffers()).toEqual([]);
+    });
+
+    it("stops subscribing or changing roots when grammar maintenance invalidates restoration", async () => {
+      const buffer = new TextBuffer({ text: "obsolete" });
+      const replacement = new TextBuffer({ text: "current" });
+      let current = true;
+      const maintainLanguageMode = jasmine.createSpy("maintainLanguageMode").and.callFake(() => {
+        current = false;
+        deserializedProject.buffers = [replacement];
+      });
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: { maintainLanguageMode },
+      });
+      deserializedProject.setPaths([__dirname]);
+      spyOn(TextBuffer, "deserialize").and.returnValue(Promise.resolve(buffer));
+      spyOn(deserializedProject, "subscribeToBuffer").and.callThrough();
+      spyOn(deserializedProject, "setPaths").and.callThrough();
+      const cancelled = Object.assign(new Error("Restoration cancelled"), { code: "ABORT_ERR" });
+
+      try {
+        await expectAsync(
+          deserializedProject.deserialize(
+            { paths: [path.join(__dirname, "fixtures")], buffers: [{ id: "obsolete" }] },
+            lumine.deserializers,
+            {},
+            () => {
+              if (!current) throw cancelled;
+            },
+          ),
+        ).toBeRejectedWith(cancelled);
+
+        expect(maintainLanguageMode).toHaveBeenCalledWith(buffer);
+        expect(deserializedProject.subscribeToBuffer).not.toHaveBeenCalled();
+        expect(deserializedProject.setPaths).not.toHaveBeenCalled();
+        expect(deserializedProject.getPaths()).toEqual([__dirname]);
+        expect(deserializedProject.getBuffers()).toEqual([replacement]);
+        expect(buffer.isDestroyed()).toBe(true);
+        expect(replacement.isDestroyed()).toBe(false);
+      } finally {
+        buffer.destroy();
+      }
+    });
+
     it("serializes marker layers and history only if Lumine is quitting", async () => {
       await lumine.workspace.open("a");
 

@@ -4,6 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const temp = require("@lumine-code/fs-temp").track();
 const Environment = require("../src/environment");
+const Clipboard = require("../src/clipboard");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");
 
@@ -650,6 +651,34 @@ describe("Environment", () => {
       expect(await environment.projectStateIndex.load(projectKey)).toBeNull();
     });
 
+    it("preserves a delegated project-state read failure when releasing its reservation also fails", async () => {
+      const projectPath = temp.mkdirSync("failed-project-adoption-");
+      const environment = buildPersistentEnvironment(crypto.randomUUID());
+      const readError = new Error("Could not read adopted project state");
+      const releaseError = new Error("Could not release project-state reservation");
+      environment.applicationDelegate.reserveProjectStateAdoption.and.returnValue(
+        Promise.resolve({ allowed: true, reservationId: "failed-adoption" }),
+      );
+      spyOn(environment.stateStore, "load").and.returnValue(Promise.resolve(null));
+      spyOn(environment.projectStateIndex, "load").and.callFake(async () => {
+        throw readError;
+      });
+      environment.applicationDelegate.releaseProjectStateAdoption.and.callFake(async () => {
+        throw releaseError;
+      });
+      let failure;
+
+      await environment.loadProjectState([projectPath]).catch((error) => (failure = error));
+
+      expect(failure instanceof AggregateError).toBe(true);
+      expect(failure.errors).toEqual([readError, releaseError]);
+      expect(failure.errors[0]).toBe(readError);
+      expect(failure.cause).toBe(readError);
+      expect(environment.applicationDelegate.releaseProjectStateAdoption).toHaveBeenCalledOnceWith(
+        "failed-adoption",
+      );
+    });
+
     it("saves state when the CPU is idle after a keydown or mousedown event", async () => {
       jasmine.useRealClock();
       const lumineEnv = new Environment({
@@ -1147,6 +1176,30 @@ describe("Environment", () => {
     const openPaths = (environment) =>
       environment.workspace.getTextEditors().map((editor) => editor.getPath());
 
+    const prepareForReset = () => {
+      const { resourcePath, devMode } = env.applicationDelegate.getWindowLoadSettings();
+      env.clipboard = new Clipboard();
+      env.initialStyleElements = env.styles.getSnapshot();
+      env.keymaps.resourcePath = resourcePath;
+      env.keymaps.devMode = devMode;
+      env.menu.resourcePath = resourcePath;
+      env.contextMenu.initialize({ resourcePath, devMode });
+    };
+
+    const savedIncomingState = async () => {
+      await env.workspace.open(fileA);
+      expect(await env.project.setState([dirB])).toBe(true);
+      await env.workspace.open(fileB);
+      const state = env.serialize({ isUnloading: true });
+      state.uriHistory = {
+        version: 1,
+        history: [{ id: 91, uri: "lumine://core/obsolete-project", handled: true, host: "core" }],
+        nextId: 91,
+      };
+      expect(await env.project.setState([dirA])).toBe(true);
+      return state;
+    };
+
     const addDockEditor = async (filePath) => {
       const buffer = await env.project.bufferForPath(filePath);
       const dockEditor = env.workspace.buildTextEditor({ buffer });
@@ -1333,6 +1386,142 @@ describe("Environment", () => {
       expect(await backToA).toBe(true);
       expect(env.project.getPaths()).toEqual([dirA]);
       expect(env.workspace.getActiveTextEditor().getText()).toBe("unsaved outgoing text");
+    });
+
+    it("invalidates pending and queued switches on destruction and releases a late reservation", async () => {
+      await env.workspace.open(fileA);
+      const project = env.project;
+      let startLoad, finishLoad;
+      const loadStarted = new Promise((resolve) => (startLoad = resolve));
+      spyOn(env, "loadProjectState").and.callFake(() => {
+        startLoad();
+        return new Promise((resolve) => (finishLoad = resolve));
+      });
+      spyOn(env, "restoreStateIntoThisEnvironment").and.callThrough();
+      spyOn(env, "releaseUnusedProjectStateReservation").and.returnValue(Promise.resolve());
+      const pending = project.setState([dirB]).catch((error) => error);
+      await loadStarted;
+      const queued = project.setState([dirA]).catch((error) => error);
+      env.destroy();
+      const future = project.setState([dirB]).catch((error) => error);
+      finishLoad({ state: { project: { paths: [dirB] } }, reservationId: "late-adoption" });
+
+      for (const result of [pending, queued, future]) expect((await result).code).toBe("ABORT_ERR");
+      expect(env.loadProjectState).toHaveBeenCalledTimes(1);
+      expect(env.restoreStateIntoThisEnvironment).not.toHaveBeenCalled();
+      expect(env.releaseUnusedProjectStateReservation).toHaveBeenCalledOnceWith("late-adoption", [
+        dirB,
+      ]);
+    });
+
+    it("does not resume an old restore into the new project after reset during the fullscreen read", async () => {
+      const incoming = await savedIncomingState();
+      prepareForReset();
+      spyOn(env, "loadProjectState").and.returnValue(
+        Promise.resolve({ state: incoming, reservationId: null }),
+      );
+      let startFullscreen, finishFullscreen;
+      const fullscreenStarted = new Promise((resolve) => (startFullscreen = resolve));
+      spyOn(env.window, "isFullScreen").and.callFake(() => {
+        startFullscreen();
+        return new Promise((resolve) => (finishFullscreen = resolve));
+      });
+      spyOn(env, "deserialize").and.callThrough();
+      const transition = env.project.setState([dirB]).catch((error) => error);
+      await fullscreenStarted;
+      await env.reset();
+      env.config.set("core.openEmptyEditorOnStart", false);
+      env.project.setPaths([dirA]);
+      const editor = await env.workspace.open(fileA);
+      editor.setText("Current generation after reset");
+      const currentHistory = env.uriHandlers.serialize();
+      finishFullscreen(false);
+
+      expect((await transition).code).toBe("ABORT_ERR");
+      expect(env.deserialize).not.toHaveBeenCalled();
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(openPaths(env)).toEqual([fileA]);
+      expect(env.workspace.getActiveTextEditor()).toBe(editor);
+      expect(editor.getText()).toBe("Current generation after reset");
+      expect(editor.isDestroyed()).toBe(false);
+      expect(env.uriHandlers.serialize()).toEqual(currentHistory);
+    });
+
+    for (const invalidation of ["reset", "destroy"]) {
+      it(`does not deserialize URI, project, or workspace state after ${invalidation} during package restoration`, async () => {
+        const incoming = await savedIncomingState();
+        if (invalidation === "reset") prepareForReset();
+        spyOn(env, "loadProjectState").and.returnValue(
+          Promise.resolve({ state: incoming, reservationId: null }),
+        );
+        spyOn(env.window, "isFullScreen").and.resolveTo(false);
+        spyOn(env.window, "setFullScreen").and.resolveTo();
+        let startPackages, finishPackages;
+        const packagesStarted = new Promise((resolve) => (startPackages = resolve));
+        spyOn(env.packages, "restoreActivePackageStates").and.callFake(() => {
+          startPackages();
+          return new Promise((resolve) => (finishPackages = resolve));
+        });
+        const project = env.project;
+        const workspace = env.workspace;
+        const uriHandlers = env.uriHandlers;
+        spyOn(uriHandlers, "deserialize").and.callThrough();
+        spyOn(project, "deserialize").and.callThrough();
+        spyOn(workspace, "deserialize").and.callThrough();
+        const transition = project.setState([dirB]).catch((error) => error);
+        await packagesStarted;
+        let editor;
+        if (invalidation === "reset") {
+          await env.reset();
+          env.config.set("core.openEmptyEditorOnStart", false);
+          project.setPaths([dirA]);
+          editor = await workspace.open(fileA);
+          editor.setText("Current generation after package reset");
+        } else {
+          env.destroy();
+        }
+        const currentHistory = uriHandlers.serialize();
+        const currentPaths = project.getPaths();
+        finishPackages();
+
+        expect((await transition).code).toBe("ABORT_ERR");
+        expect(uriHandlers.deserialize).not.toHaveBeenCalled();
+        expect(project.deserialize).not.toHaveBeenCalled();
+        expect(workspace.deserialize).not.toHaveBeenCalled();
+        expect(uriHandlers.serialize()).toEqual(currentHistory);
+        expect(project.getPaths()).toEqual(currentPaths);
+        if (invalidation === "reset") {
+          expect(openPaths(env)).toEqual([fileA]);
+          expect(workspace.getActiveTextEditor()).toBe(editor);
+          expect(editor.getText()).toBe("Current generation after package reset");
+          expect(editor.isDestroyed()).toBe(false);
+        }
+      });
+    }
+
+    it("refuses a new project switch while an environment reset is still pending", async () => {
+      await env.workspace.open(fileA);
+      prepareForReset();
+      let startReset, finishReset;
+      const resetStarted = new Promise((resolve) => (startReset = resolve));
+      const unwatch = env.themes.unwatchUserStylesheet.bind(env.themes);
+      const unwatchSpy = spyOn(env.themes, "unwatchUserStylesheet").and.callFake(async () => {
+        startReset();
+        await new Promise((resolve) => (finishReset = resolve));
+        await unwatch();
+      });
+      spyOn(env, "saveState").and.callThrough();
+      spyOn(env, "loadProjectState").and.callThrough();
+      const resetting = env.reset();
+      await resetStarted;
+      const transition = await env.project.setState([dirB]).catch((error) => error);
+
+      expect(transition.code).toBe("ABORT_ERR");
+      expect(env.saveState).not.toHaveBeenCalled();
+      expect(env.loadProjectState).not.toHaveBeenCalled();
+      finishReset();
+      await resetting;
+      unwatchSpy.and.callThrough();
     });
 
     it("rejects files and missing folders before changing the outgoing session", async () => {
@@ -1548,6 +1737,39 @@ describe("Environment", () => {
       expect(env.project.getPaths()).toEqual([dirB]);
       expect(openPaths(env)).toEqual([fileB]);
       expect(env.workspace.getActiveTextEditor().getText()).toBe("unsaved B");
+      expect(env.config.get("editor.tabLength")).toBe(7);
+      expect(env.config.get("editor.tabLength", { scope: ["source.js"] })).toBe(5);
+      expect(env.config.projectFile).toBe(projectFile);
+    });
+
+    it("preserves project configuration and both errors when incoming and outgoing restoration fail", async () => {
+      await env.workspace.open(fileA);
+      const projectFile = path.join(dirA, "project.json");
+      env.config.resetProjectSettings(
+        {
+          "*": { editor: { tabLength: 7 } },
+          ".source.js": { editor: { tabLength: 5 } },
+        },
+        projectFile,
+      );
+      spyOn(env, "loadProjectState").and.returnValue(
+        Promise.resolve({ state: { project: { paths: [dirB] } }, reservationId: null }),
+      );
+      const incomingError = new Error("Incoming project restoration failed");
+      const outgoingError = new Error("Outgoing project rollback failed");
+      let restoration = 0;
+      spyOn(env, "restoreStateIntoThisEnvironment").and.callFake(async () => {
+        throw ++restoration === 1 ? incomingError : outgoingError;
+      });
+      let failure;
+
+      await env.project.setState([dirB]).catch((error) => (failure = error));
+
+      expect(failure instanceof AggregateError).toBe(true);
+      expect(failure.errors).toEqual([incomingError, outgoingError]);
+      expect(failure.errors[0]).toBe(incomingError);
+      expect(failure.cause).toBe(incomingError);
+      expect(env.restoreStateIntoThisEnvironment).toHaveBeenCalledTimes(2);
       expect(env.config.get("editor.tabLength")).toBe(7);
       expect(env.config.get("editor.tabLength", { scope: ["source.js"] })).toBe(5);
       expect(env.config.projectFile).toBe(projectFile);

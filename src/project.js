@@ -173,13 +173,39 @@ module.exports = class Project extends Model {
    * @category Serialization
    */
 
-  deserialize(state, _deserializers, { preserveRetainedBuffers = false } = {}) {
-    this.retiredBufferIDs = new Set();
-    this.retiredBufferPaths = new Set();
-    this.restoredBufferAliases = new Map();
+  async deserialize(state, _deserializers, options = {}, assertCurrent = () => {}) {
+    const { preserveRetainedBuffers = false } = options;
+    let cancelled = false;
+    const checkCurrent = () => {
+      try {
+        assertCurrent();
+      } catch (error) {
+        cancelled = true;
+        throw error;
+      }
+    };
+    checkCurrent();
+
+    // Buffer reads can finish after reset replaces this bookkeeping. Keep each
+    // restoration's metadata local until its buffers can be adopted together.
+    const retiredBufferIDs = new Set();
+    const retiredBufferPaths = new Set();
+    const restoredBufferAliases = new Map();
     const retainedBuffers = preserveRetainedBuffers
       ? this.buffers.filter((buffer) => buffer.isRetained())
       : [];
+    const ownedBuffers = new Set();
+    const cleanupFailures = [];
+    const disposeOwnedBuffer = (buffer) => {
+      ownedBuffers.delete(buffer);
+      try {
+        buffer.destroy();
+      } catch (error) {
+        cleanupFailures.push(error);
+      }
+    };
+    let abandoned = false;
+    let adopted = false;
 
     const handleBufferState = (bufferState) => {
       // Docks remain in this window when only the center follows the project.
@@ -190,7 +216,7 @@ module.exports = class Project extends Model {
           (bufferState.filePath && buffer.getPath() === bufferState.filePath),
       );
       if (retained) {
-        this.restoredBufferAliases.set(bufferState.id, { buffer: retained, state: bufferState });
+        restoredBufferAliases.set(bufferState.id, { buffer: retained, state: bufferState });
         return Promise.resolve(retained);
       }
       // Use a little guilty knowledge of the way TextBuffers are serialized.
@@ -204,27 +230,76 @@ module.exports = class Project extends Model {
       return TextBuffer.deserialize({
         ...bufferState,
         fileWatchClient: this.fileWatchClient,
-      }).catch((_) => {
-        this.retiredBufferIDs.add(bufferState.id);
-        this.retiredBufferPaths.add(bufferState.filePath);
-        return null;
-      });
+      }).then(
+        (buffer) => {
+          // Unsupported serialized versions intentionally produce no buffer.
+          if (!buffer) {
+            if (!abandoned && !cancelled) checkCurrent();
+            return buffer;
+          }
+          // Another read may have cancelled the aggregate before this one
+          // finishes. Such a buffer never belonged to the current project.
+          if (abandoned || cancelled) {
+            disposeOwnedBuffer(buffer);
+            return null;
+          }
+          ownedBuffers.add(buffer);
+          checkCurrent();
+          return buffer;
+        },
+        () => {
+          if (abandoned || cancelled) return null;
+          checkCurrent();
+          retiredBufferIDs.add(bufferState.id);
+          retiredBufferPaths.add(bufferState.filePath);
+          return null;
+        },
+      );
     };
 
     const bufferPromises = [];
-    for (let bufferState of state.buffers) {
-      bufferPromises.push(handleBufferState(bufferState));
-    }
-
-    return Promise.all(bufferPromises).then((buffers) => {
+    try {
+      for (let bufferState of state.buffers) {
+        checkCurrent();
+        bufferPromises.push(handleBufferState(bufferState));
+      }
+      const buffers = await Promise.all(bufferPromises);
+      checkCurrent();
+      this.retiredBufferIDs = retiredBufferIDs;
+      this.retiredBufferPaths = retiredBufferPaths;
+      this.restoredBufferAliases = restoredBufferAliases;
       this.buffers = [...new Set([...retainedBuffers, ...buffers.filter(Boolean)])];
+      adopted = true;
       for (let buffer of this.buffers) {
         if (retainedBuffers.includes(buffer)) continue;
+        checkCurrent();
         this.grammarRegistry.maintainLanguageMode(buffer);
+        checkCurrent();
         this.subscribeToBuffer(buffer);
       }
+      checkCurrent();
       this.setPaths(state.paths || [], { mustExist: true, exact: true });
-    });
+      checkCurrent();
+    } catch (error) {
+      if (cancelled || !adopted) {
+        abandoned = true;
+        for (const buffer of ownedBuffers) disposeOwnedBuffer(buffer);
+        // Every started read still owns its eventual result. Observe late
+        // completions and their cleanup before this aggregate releases ownership.
+        await Promise.allSettled(bufferPromises);
+        for (const buffer of ownedBuffers) disposeOwnedBuffer(buffer);
+        if (cleanupFailures.length > 0) {
+          throw new AggregateError(
+            [error, ...cleanupFailures],
+            "Unable to cancel project restoration and dispose its buffers",
+            { cause: error },
+          );
+        }
+      }
+      throw error;
+    } finally {
+      ownedBuffers.clear();
+    }
   }
 
   serialize(options = {}) {
@@ -696,6 +771,7 @@ module.exports = class Project extends Model {
    * first. Every requested path must name an available directory; a missing
    * folder or a file rejects the change before the current editors are closed.
    * Editors retained by docks keep their live buffers and edit history.
+   * Resetting or closing the window cancels pending changes with `ABORT_ERR`.
    *
    * @param {Array} projectPaths - of `String` paths to the directories the window should have open.
    * @returns {Promise} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.

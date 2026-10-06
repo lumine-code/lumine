@@ -1315,6 +1315,104 @@ describe("Workspace", () => {
     });
   });
 
+  describe("::clear", () => {
+    let environment, isolatedWorkspace;
+
+    beforeEach(() => {
+      environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      isolatedWorkspace = environment.workspace;
+    });
+
+    afterEach(() => environment.destroy());
+
+    const buildItem = (title, persistent = false) => ({
+      element: document.createElement("div"),
+      getTitle: () => title,
+      isPersistentDockItem: () => persistent,
+      destroy: jasmine.createSpy(`${title} destroy`),
+    });
+
+    it("checks the transition guard before detaching or destroying any item", async () => {
+      const pane = isolatedWorkspace.getCenter().getActivePane();
+      const persistent = buildItem("Persistent item", true);
+      pane.addItem(persistent);
+      const destroyItem = spyOn(pane, "destroyItem").and.callThrough();
+      const cancelled = Object.assign(new Error("Transition cancelled"), { code: "ABORT_ERR" });
+
+      await expectAsync(
+        isolatedWorkspace.clear({ locations: ["center"] }, () => {
+          throw cancelled;
+        }),
+      ).toBeRejectedWith(cancelled);
+
+      expect(pane.isDestroyed()).toBe(false);
+      expect(pane.getItems()).toEqual([persistent]);
+      expect(destroyItem).not.toHaveBeenCalled();
+      expect(persistent.destroy).not.toHaveBeenCalled();
+    });
+
+    for (const adoptPersistentItem of [false, true]) {
+      it(`preserves the replacement pane and ${adoptPersistentItem ? "its adopted persistent item" : "disposes detached old items"} after cancellation during clear`, async () => {
+        const oldPane = isolatedWorkspace.getCenter().getActivePane();
+        const persistent = buildItem("Persistent item", true);
+        const outgoing = buildItem("Outgoing item");
+        oldPane.addItem(persistent);
+        oldPane.addItem(outgoing);
+        let release;
+        const destroying = new Promise((resolve) => (release = resolve));
+        spyOn(oldPane, "destroyItem").and.returnValue(destroying);
+        const cancelled = Object.assign(new Error("Transition cancelled"), { code: "ABORT_ERR" });
+        let current = true;
+        const assertCurrent = () => {
+          if (!current) throw cancelled;
+        };
+        const clearing = isolatedWorkspace.clear({ locations: ["center"] }, assertCurrent);
+        const rejected = expectAsync(clearing).toBeRejectedWith(cancelled);
+        expect(oldPane.destroyItem).toHaveBeenCalledWith(outgoing, true);
+        expect(isolatedWorkspace.paneForItem(persistent)).toBeUndefined();
+
+        current = false;
+        isolatedWorkspace.reset(environment.packages);
+        const newPane = isolatedWorkspace.getCenter().getActivePane();
+        const incoming = buildItem("New generation item");
+        if (adoptPersistentItem) newPane.addItem(persistent);
+        newPane.addItem(incoming);
+        isolatedWorkspace.destroyedItemURIs = ["new-generation-history"];
+        release(true);
+        await rejected;
+
+        expect(newPane).not.toBe(oldPane);
+        expect(newPane.isDestroyed()).toBe(false);
+        expect(newPane.getItems()).toContain(incoming);
+        expect(incoming.destroy).not.toHaveBeenCalled();
+        expect(isolatedWorkspace.destroyedItemURIs).toEqual(["new-generation-history"]);
+        if (adoptPersistentItem) {
+          expect(isolatedWorkspace.paneForItem(persistent)).toBe(newPane);
+          expect(persistent.destroy).not.toHaveBeenCalled();
+        } else {
+          expect(isolatedWorkspace.paneForItem(persistent)).toBeUndefined();
+          expect(persistent.destroy).toHaveBeenCalledTimes(1);
+        }
+      });
+    }
+
+    it("reattaches persistent items when destruction fails in the current generation", async () => {
+      const pane = isolatedWorkspace.getCenter().getActivePane();
+      const persistent = buildItem("Persistent item", true);
+      const outgoing = buildItem("Outgoing item");
+      pane.addItem(persistent);
+      pane.addItem(outgoing);
+      const error = new Error("Item destruction failed");
+      spyOn(pane, "destroyItem").and.returnValue(Promise.reject(error));
+
+      await expectAsync(isolatedWorkspace.clear({ locations: ["center"] })).toBeRejectedWith(error);
+
+      expect(isolatedWorkspace.paneForItem(persistent)).toBe(pane);
+      expect(persistent.destroy).not.toHaveBeenCalled();
+      expect(pane.isDestroyed()).toBe(false);
+    });
+  });
+
   describe("::toggle(itemOrUri)", () => {
     it("waits for an asynchronous center-item close hook", async () => {
       const editor = await workspace.open();

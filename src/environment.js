@@ -9,6 +9,7 @@ const { mapSourcePosition } = require("source-map-support");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
 const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
+const ProjectStateController = require("./project-state-controller");
 const registerDefaultCommands = require("./register-default-commands");
 const { updateProcessEnv } = require("./update-process-env");
 const ConfigSchema = require("./config-schema");
@@ -62,10 +63,6 @@ const createFileWatchClient = require("./file-watch-renderer");
 const GitHost = require("./git-host");
 const stat = util.promisify(fs.stat);
 
-// Only the workspace center follows the project: the docks belong to the
-// window, so a terminal or a panel keeps running across a project change.
-const PROJECT_STATE_LOCATIONS = ["center"];
-
 // How long any one package may take to deactivate while the window is going
 // away. Generous, because a package doing real work on the way out — writing a
 // file, asking a language server to leave — should be allowed to finish; the
@@ -86,12 +83,14 @@ let nextId = 0;
 class Environment {
   // Wiring the environment owns and nothing outside it may reach. Everything a
   // package is meant to use is a namespace carrying a `@type` annotation below;
-  // these four are the machinery behind them, so they are hard-private rather
+  // these helpers are the machinery behind them, so they are hard-private rather
   // than merely undocumented.
   #commandInstaller;
   #protocolHandlerInstaller;
   #gitAuthBroker;
   #windowEventHandler;
+  #projectStateController;
+  #resetting = 0;
 
   #getLoadSettings() {
     return this.applicationDelegate.getWindowLoadSettings();
@@ -417,9 +416,8 @@ class Environment {
       config: this.config,
       applicationDelegate: this.applicationDelegate,
       repositoryRegistry: this.repositories,
-      // `Project::setState` is the public face of this; the mechanics live
-      // here because only the environment can reach the window state store and
-      // the workspace.
+      // `Project::setState` delegates to the transition controller wired after
+      // the workspace below. Persistence remains owned by the environment.
       restoreState: (projectPaths) => this.restoreProjectState(projectPaths),
     });
     // A Git window will need the worker for its first snapshot. Fork it only
@@ -476,6 +474,21 @@ class Environment {
       textEditorFactory: this.textEditorFactory,
       styleManager: this.styles,
       enablePersistence: this.enablePersistence,
+    });
+
+    this.#projectStateController = new ProjectStateController({
+      project: this.project,
+      workspace: this.workspace,
+      config: this.config,
+      packages: this.packages,
+      saveState: (options) => this.saveState(options),
+      serialize: (options) => this.serialize(options),
+      loadProjectState: (projectPaths) => this.loadProjectState(projectPaths),
+      restoreState: (state, options, assertCurrent) =>
+        this.restoreStateIntoThisEnvironment(state, options, assertCurrent),
+      releaseReservation: (id, projectPaths) =>
+        this.releaseUnusedProjectStateReservation(id, projectPaths),
+      isAvailable: () => !this.isDestroying && !this.unloading && this.#resetting === 0,
     });
 
     /**
@@ -764,65 +777,73 @@ class Environment {
   }
 
   async reset() {
-    // Config::clear replaces its emitter, so observers held by ThemeManager
-    // must be disposed before the reset and recreated on the next activation.
-    this.themes.stopObservingThemeChanges();
-    await this.themes.unwatchUserStylesheet();
-    this.deserializers.clear();
-    this.registerDefaultDeserializers();
+    this.#projectStateController.reset();
+    this.#resetting++;
+    try {
+      // Config::clear replaces its emitter, so observers held by ThemeManager
+      // must be disposed before the reset and recreated on the next activation.
+      this.themes.stopObservingThemeChanges();
+      await this.themes.unwatchUserStylesheet();
+      this.deserializers.clear();
+      this.registerDefaultDeserializers();
 
-    this.config.clear();
-    this.config.setSchema(null, {
-      type: "object",
-      properties: _.clone(ConfigSchema),
-    });
+      this.config.clear();
+      this.config.setSchema(null, {
+        type: "object",
+        properties: _.clone(ConfigSchema),
+      });
 
-    // Clear all three registries before rebuilding them. KeymapManager::clear
-    // replaces its emitter, so the menu managers' startup subscriptions no
-    // longer receive `did-load-bundled-keymaps`; reload their platform items
-    // explicitly after the key bindings they derive accelerators from.
-    this.keymaps.clear();
-    this.menu.clear();
-    this.contextMenu.clear();
-    this.keymaps.loadBundledKeymaps();
-    this.menu.loadPlatformItems();
-    this.contextMenu.loadPlatformItems();
+      // Clear all three registries before rebuilding them. KeymapManager::clear
+      // replaces its emitter, so the menu managers' startup subscriptions no
+      // longer receive `did-load-bundled-keymaps`; reload their platform items
+      // explicitly after the key bindings they derive accelerators from.
+      this.keymaps.clear();
+      this.menu.clear();
+      this.contextMenu.clear();
+      this.keymaps.loadBundledKeymaps();
+      this.menu.loadPlatformItems();
+      this.contextMenu.loadPlatformItems();
 
-    this.commands.clear();
-    this.registerDefaultCommands();
+      this.commands.clear();
+      this.registerDefaultCommands();
 
-    this.styles.restoreSnapshot(this.initialStyleElements);
+      this.styles.restoreSnapshot(this.initialStyleElements);
 
-    this.clipboard.reset();
+      this.clipboard.reset();
 
-    this.notifications.clear();
+      this.notifications.clear();
 
-    await this.packages.reset();
-    this.hooks.clear();
-    this.workspace.reset(this.packages);
-    this.registerDefaultOpeners();
-    this.project.reset(this.packages);
-    this.workspace.observeFileDocuments();
-    // The reset recreated the pane containers, so the registry's active-item
-    // subscription must be rebuilt against the new center.
-    this.repositories.attachWorkspace(this.workspace);
-    this.repositories.consumeServices(this.packages);
-    this.icons.clear();
-    this.icons.attachProject(this.project);
-    this.grammars.clear();
-    this.textEditorFactory.clear();
-    this.textEditors.clear();
-    // TextEditorRegistry::clear replaces its emitter. Reattach workspace
-    // observers only after that reset so fragment and viewer registrations
-    // remain visible for the duration of the next window lifecycle.
-    this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
-    this.pasteProviders.clear();
-    this.views.clear();
-    this.pathsWithWaitSessions.clear();
+      await this.packages.reset();
+      this.hooks.clear();
+      this.workspace.reset(this.packages);
+      this.registerDefaultOpeners();
+      this.project.reset(this.packages);
+      this.workspace.observeFileDocuments();
+      // The reset recreated the pane containers, so the registry's active-item
+      // subscription must be rebuilt against the new center.
+      this.repositories.attachWorkspace(this.workspace);
+      this.repositories.consumeServices(this.packages);
+      this.icons.clear();
+      this.icons.attachProject(this.project);
+      this.grammars.clear();
+      this.textEditorFactory.clear();
+      this.textEditors.clear();
+      // TextEditorRegistry::clear replaces its emitter. Reattach workspace
+      // observers only after that reset so fragment and viewer registrations
+      // remain visible for the duration of the next window lifecycle.
+      this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
+      this.pasteProviders.clear();
+      this.views.clear();
+      this.pathsWithWaitSessions.clear();
+    } finally {
+      this.#resetting--;
+    }
   }
 
   destroy() {
     if (!this.project) return;
+
+    this.#projectStateController.destroy();
 
     // Set this flag and then don't reset it after `destroy` is done, since we
     // need other disposing objects to be able to check it. We won't need to
@@ -1457,145 +1478,24 @@ class Environment {
     }
   }
 
-  async restoreStateIntoThisEnvironment(state, options) {
-    state.fullScreen = await this.window.isFullScreen();
+  async restoreStateIntoThisEnvironment(state, options, assertCurrent = () => {}) {
+    assertCurrent();
+    const fullScreen = await this.window.isFullScreen();
+    assertCurrent();
+    state.fullScreen = fullScreen;
     // The current panes are destroyed by Workspace::deserialize, which carries
     // persistent items over to the restored layout without flicker.
-    return this.deserialize(state, options);
+    return this.deserialize(state, options, assertCurrent);
   }
 
   /**
-   * Implements {@link Project#setState}, which is where this is
-   * documented. It lives here because the project can reach neither the window
-   * state store nor the workspace.
+   * Delegate {@link Project#setState} to the private transition controller.
    *
    * @returns {Promise} that resolves to whether the window changed.
    * @private
    */
   restoreProjectState(projectPaths) {
-    // Several commands can arrive while a save dialog or state read is pending.
-    // Each change must finish before the next one snapshots the outgoing project.
-    const requestedPaths = Array.isArray(projectPaths) ? projectPaths.slice() : projectPaths;
-    const changing = (this.projectStateChangePromise || Promise.resolve()).then(() =>
-      this.performProjectStateChange(requestedPaths),
-    );
-    this.projectStateChangePromise = changing.catch(() => {});
-    return changing;
-  }
-
-  resolveProjectStateFolders(projectPaths) {
-    if (!Array.isArray(projectPaths)) throw new TypeError("Project paths must be an array");
-    return [
-      ...new Set(
-        projectPaths.map((projectPath) => {
-          if (typeof projectPath !== "string" || projectPath.length === 0) {
-            throw new TypeError("Each project path must be a non-empty string");
-          }
-          const provided = this.project.getProvidedDirectoryForProjectPath(projectPath);
-          const normalized = provided
-            ? provided.getPath()
-            : this.project.defaultDirectoryProvider.normalizePath(projectPath);
-          // The ordinary directory resolver accepts a file or a missing child by
-          // returning its parent. Switching projects must never open that parent.
-          if (provided ? !provided.existsSync() : !fs.isDirectorySync(normalized)) {
-            const error = new Error(`Project directory ${projectPath} does not exist`);
-            error.missingProjectPaths = [projectPath];
-            throw error;
-          }
-          return this.project.getDirectoryForProjectPath(normalized).getPath();
-        }),
-      ),
-    ];
-  }
-
-  async performProjectStateChange(projectPaths) {
-    // Resolve the same way ::openLocations does before hashing: the state key
-    // is a hash of the path strings, so an unresolved path would miss its own
-    // saved session.
-    const folders = this.resolveProjectStateFolders(projectPaths);
-    if (folders.length === 0) return false;
-
-    const currentPaths = this.project.getPaths();
-    if (getProjectStateKey(folders) === getProjectStateKey(currentPaths)) return false;
-
-    // Flush the outgoing session before anything is torn down. `isUnloading`
-    // carries marker layers and undo history with it, so coming back lands on
-    // the window as it is now.
-    await this.saveState({ isUnloading: true });
-
-    // The same question ::prepareToUnloadEditorWindow asks, and for the same
-    // reason: with a project and a working state store, only a file that
-    // conflicts with what is on disk still prompts, because everything else
-    // was just persisted.
-    const closing = await this.workspace.confirmClose({
-      windowCloseRequested: true,
-      projectHasPaths: currentPaths.length > 0,
-      locations: PROJECT_STATE_LOCATIONS,
-    });
-    if (!closing) return false;
-
-    // Save/Save As in the prompt can change both text and project paths. Keep
-    // the resulting state rather than restoring the pre-prompt snapshot later.
-    this.resolveProjectStateFolders(folders);
-    await this.saveState({ isUnloading: true });
-    const outgoingState = this.serialize({ isUnloading: true });
-    const outgoingProjectFile = this.config.projectFile;
-    const outgoingProjectSettings = {
-      "*": this.config.projectSettings,
-      ...(outgoingProjectFile
-        ? this.config.scopedSettingsStore.propertiesForSource(outgoingProjectFile)
-        : {}),
-    };
-
-    const loaded = await this.loadProjectState(folders);
-    try {
-      const locations = PROJECT_STATE_LOCATIONS;
-
-      // State reads and native save dialogs yield to other filesystem work.
-      // Refuse a disappeared root while the outgoing editors still exist.
-      this.resolveProjectStateFolders(folders);
-
-      const restoreOptions = {
-        locations,
-        preservePackageState: true,
-        preserveRetainedBuffers: true,
-        throwProjectErrors: true,
-      };
-      try {
-        await this.workspace.clear({ locations });
-        this.project.destroyUnretainedBuffers();
-        // Project-file settings are resolved only at window launch.
-        this.config.clearProjectSettings();
-
-        if (loaded.state) {
-          await this.restoreStateIntoThisEnvironment(loaded.state, restoreOptions);
-          this.project.destroyUnretainedBuffers();
-        } else {
-          await this.packages.restoreActivePackageStates({});
-          this.project.setPaths(folders, { mustExist: true, exact: true });
-          if (this.config.get("core.openEmptyEditorOnStart")) {
-            await this.workspace.open(null, { pending: true });
-          }
-        }
-      } catch (error) {
-        // Deserialization can still fail after preflight, for example when a
-        // folder disappears during asynchronous buffer loading. Recover the
-        // outgoing center from the snapshot kept before teardown.
-        await this.workspace.clear({ locations });
-        this.project.destroyUnretainedBuffers();
-        await this.restoreStateIntoThisEnvironment(outgoingState, restoreOptions);
-        this.config.resetProjectSettings(outgoingProjectSettings, outgoingProjectFile);
-        throw error;
-      } finally {
-        // Buffer aliases and their saved marker/history state are needed only
-        // while the center's editors are being deserialized.
-        this.project.restoredBufferAliases.clear();
-      }
-    } finally {
-      await this.releaseUnusedProjectStateReservation(loaded.reservationId, folders);
-    }
-
-    return true;
+    return this.#projectStateController.setState(projectPaths);
   }
 
   async saveState(options) {
@@ -1656,8 +1556,20 @@ class Environment {
       await this.stateStore.save(windowProjectKey, state);
       return { state, reservationId: access.reservationId };
     } catch (error) {
+      const failures = [error];
       if (access.reservationId && this.applicationDelegate.releaseProjectStateAdoption) {
-        await this.applicationDelegate.releaseProjectStateAdoption(access.reservationId);
+        try {
+          await this.applicationDelegate.releaseProjectStateAdoption(access.reservationId);
+        } catch (releaseError) {
+          failures.push(releaseError);
+        }
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures,
+          "Unable to load project state and release its reservation",
+          { cause: error },
+        );
       }
       throw error;
     }
@@ -1672,10 +1584,12 @@ class Environment {
 
   // * `options` An optional `Object` passed on to {@link Workspace#deserialize},
   //   which reads `locations` from it.
-  async deserialize(state, options = {}) {
+  async deserialize(state, options = {}, assertCurrent = () => {}) {
+    assertCurrent();
     if (!state) return Promise.resolve();
 
     await this.window.setFullScreen(Boolean(state.fullScreen));
+    assertCurrent();
 
     const missingProjectPaths = [];
 
@@ -1686,13 +1600,16 @@ class Environment {
       }
     }
     await this.packages.restoreActivePackageStates(state.packageStates || {});
+    assertCurrent();
     this.uriHandlers.deserialize(state.uriHistory);
 
     let startTime = Date.now();
     if (state.project) {
       try {
-        await this.project.deserialize(state.project, this.deserializers, options);
+        await this.project.deserialize(state.project, this.deserializers, options, assertCurrent);
+        assertCurrent();
       } catch (error) {
+        assertCurrent(error);
         if (options.throwProjectErrors) throw error;
         // We handle the missingProjectPaths case in openLocations().
         if (!error.missingProjectPaths) {
@@ -1704,9 +1621,11 @@ class Environment {
       }
     }
 
+    assertCurrent();
     this.deserializeTimings.project = Date.now() - startTime;
 
     if (state.grammars) this.grammars.deserialize(state.grammars);
+    assertCurrent();
 
     startTime = Date.now();
     if (state.workspace) this.workspace.deserialize(state.workspace, this.deserializers, options);

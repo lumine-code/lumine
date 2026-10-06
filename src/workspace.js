@@ -701,17 +701,55 @@ module.exports = class Workspace extends Model {
    * @param options.locations - An `Array` of the pane container locations to empty. Defaults to all four.
    * @returns {Promise} that resolves once they are empty.
    */
-  async clear(options = {}) {
+  async clear(options = {}, assertCurrent = () => {}) {
+    assertCurrent();
     const locations = options.locations || ALL_LOCATIONS;
     const persistentItems = this.detachPersistentDockItems(locations);
-    for (const pane of this.getPanesIn(locations)) {
-      await Promise.all(pane.getItems().map((item) => pane.destroyItem(item, true)));
+    try {
+      for (const pane of this.getPanesIn(locations)) {
+        assertCurrent();
+        await Promise.all(pane.getItems().map((item) => pane.destroyItem(item, true)));
+        assertCurrent();
+      }
+      assertCurrent();
+      this.destroyPanes(locations);
+      for (const entry of persistentItems) {
+        assertCurrent();
+        this.attachPersistentDockItems([entry]);
+      }
+      assertCurrent();
+      this.destroyedItemURIs = [];
+      this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+      this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
+    } catch (error) {
+      const failures = [error];
+      for (const entry of persistentItems) {
+        let current = true;
+        try {
+          assertCurrent();
+        } catch {
+          current = false;
+        }
+        try {
+          if (current) {
+            this.attachPersistentDockItems([entry]);
+          } else if (!this.paneForItem(entry.item)) {
+            // Reset cannot dispose an item detached from its old pane. Dispose
+            // that orphan without reviving it in the replacement layout, while
+            // preserving an item the new generation has already adopted.
+            entry.item.destroy?.();
+          }
+        } catch (cleanupError) {
+          failures.push(cleanupError);
+        }
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Unable to clear the workspace and recover its items", {
+          cause: error,
+        });
+      }
+      throw error;
     }
-    this.destroyPanes(locations);
-    this.attachPersistentDockItems(persistentItems);
-    this.destroyedItemURIs = [];
-    this.hasActiveTextEditor = this.getActiveTextEditor() != null;
-    this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
   }
 
   /**
