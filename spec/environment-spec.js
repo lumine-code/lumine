@@ -1,6 +1,7 @@
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const temp = require("@lumine-code/fs-temp").track();
 const Environment = require("../src/environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
@@ -533,6 +534,26 @@ describe("Environment", () => {
       extraEnvironments.push(environment);
       return environment;
     };
+
+    it("reports an automatic settings write failure without leaving an unhandled rejection", async () => {
+      const environment = buildPersistentEnvironment(crypto.randomUUID());
+      const error = new Error("Cannot save settings");
+      const configPath = path.join(lumine.getConfigDirPath(), "config.json");
+      spyOn(environment.config, "getUserConfigPath").and.returnValue(configPath);
+      environment.applicationDelegate.setUserSettings = jasmine
+        .createSpy("setUserSettings")
+        .and.rejectWith(error);
+      spyOn(console, "error");
+      const settings = { "*": { example: true } };
+
+      await environment.config.saveCallback(settings);
+
+      expect(environment.applicationDelegate.setUserSettings).toHaveBeenCalledWith(
+        settings,
+        configPath,
+      );
+      expect(console.error).toHaveBeenCalledWith("Failed to save user settings", error);
+    });
 
     beforeEach(() => {
       jasmine.useRealClock();

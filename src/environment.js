@@ -205,7 +205,9 @@ class Environment {
     this.config = new Config({
       saveCallback: (settings) => {
         if (this.enablePersistence) {
-          this.applicationDelegate.setUserSettings(settings, this.config.getUserConfigPath());
+          return this.applicationDelegate
+            .setUserSettings(settings, this.config.getUserConfigPath())
+            .catch((error) => console.error("Failed to save user settings", error));
         }
       },
     });

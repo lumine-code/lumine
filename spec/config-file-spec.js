@@ -194,15 +194,22 @@ describe("ConfigFile", () => {
     });
 
     it("completes update callbacks only after the newest read succeeds", async () => {
-      spyOn(configFile, "requestSave");
+      const written = new Promise((resolve) => {
+        spyOn(CSON, "writeFile").and.callFake((_path, _value, callback) => {
+          callback();
+          resolve();
+        });
+      });
       const updated = jasmine.createSpy("update completed");
       const update = configFile.update({ value: "saved" }).then(updated);
+      await written;
       const older = configFile.reload();
       const newer = configFile.reload();
       reads[0](null, { value: "obsolete" });
+      reads[1](null, { value: "obsolete" });
       await older;
       expect(updated).not.toHaveBeenCalled();
-      reads[1](null, { value: "saved" });
+      reads[2](null, { value: "saved" });
       await Promise.all([newer, update]);
       expect(updated).toHaveBeenCalledTimes(1);
     });

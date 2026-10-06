@@ -110,7 +110,7 @@ module.exports = class ApplicationDelegate {
   }
 
   onDidFailToReadUserSettings(callback) {
-    return this.ipcMessageEmitter().on("did-fail-to-read-user-setting", callback);
+    return this.ipcMessageEmitter().on("did-fail-to-read-user-settings", callback);
   }
 
   confirm(options) {

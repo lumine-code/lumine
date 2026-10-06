@@ -830,7 +830,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.config = new Config({
       saveCallback: (settings) => {
         if (!this.quitting) {
-          return this.configFile.update(settings);
+          return this.configFile
+            .update(settings)
+            .catch((error) => console.error("Failed to save user settings", error));
         }
       },
     });

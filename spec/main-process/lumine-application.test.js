@@ -1296,6 +1296,18 @@ describe("LumineApplication", function () {
       );
     });
 
+    it("reports an automatic settings write failure without leaving an unhandled rejection", async function () {
+      const error = new Error("Cannot save settings");
+      const update = sinon.stub(app.configFile, "update").rejects(error);
+      const report = sinon.stub(console, "error");
+      const settings = { "*": { example: true } };
+
+      await app.config.saveCallback(settings);
+
+      assert.isTrue(update.calledOnceWithExactly(settings));
+      assert.isTrue(report.calledOnceWithExactly("Failed to save user settings", error));
+    });
+
     // This is the IPC message used to handle:
     // * application:reopen-project
     // * choosing "open in new window" when adding a folder that has previously saved state

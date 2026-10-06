@@ -28,28 +28,44 @@ module.exports = class ConfigFile {
     this.fileWatchClient = fileWatchClient;
     this.emitter = new Emitter();
     this.value = {};
+    this.pendingUpdates = [];
     this.reloadCallbacks = [];
     this.loadGeneration = 0;
 
     // Use a queue to prevent multiple concurrent write to the same file.
-    const writeQueue = asyncQueue((data, callback) =>
-      CSON.writeFile(this.path, data, (error) => {
-        if (error) {
-          this.emitter.emit(
-            "did-error",
-            dedent`
-              Failed to write \`${Path.basename(this.path)}\`.
+    const writeQueue = asyncQueue(async ({ data, updates }) => {
+      try {
+        await new Promise((resolve, reject) => {
+          CSON.writeFile(this.path, data, (error) => (error ? reject(error) : resolve()));
+        });
+      } catch (error) {
+        for (const update of updates) update.reject(error);
+        this.emitter.emit(
+          "did-error",
+          dedent`
+            Failed to write \`${Path.basename(this.path)}\`.
 
-              ${error.message}
-            `,
-          );
-        }
-        callback();
-      }),
-    );
+            ${error.message}
+          `,
+        );
+        return;
+      }
+      // A watcher read before this write finishes must not complete its updates.
+      // Read explicitly as well, so a missing watcher notification cannot leave
+      // a successful write waiting forever.
+      this.reloadCallbacks.push(...updates);
+      await this.reload();
+    });
 
     this.requestLoad = _.debounce(() => this.reload(), 200);
-    this.requestSave = _.debounce((data) => writeQueue.push(data), 200);
+    this.requestSave = _.debounce((data) => {
+      const updates = this.pendingUpdates.splice(0);
+      writeQueue.push({ data, updates }, (error) => {
+        // I/O has already settled the update promises. An observer throwing
+        // while reporting that outcome must not be presented as a failed write.
+        if (error) console.error("Failed to notify configuration observers", error);
+      });
+    }, 200);
   }
 
   get() {
@@ -57,9 +73,9 @@ module.exports = class ConfigFile {
   }
 
   update(value) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      this.pendingUpdates.push({ resolve, reject });
       this.requestSave(value);
-      this.reloadCallbacks.push(resolve);
     });
   }
 
@@ -111,30 +127,38 @@ module.exports = class ConfigFile {
     return this.emitter.on("did-error", callback);
   }
 
-  reload() {
+  async reload() {
     const generation = ++this.loadGeneration;
-    return new Promise((resolve) => {
-      CSON.readFile(this.path, (error, data) => {
-        // A delayed read must not overwrite a newer filesystem observation or
-        // report an error for contents that have already been read successfully.
-        if (generation !== this.loadGeneration) {
-          resolve();
-          return;
-        }
-        if (error) {
-          this.emitter.emit(
-            "did-error",
-            `Failed to load \`${Path.basename(this.path)}\` - ${error.message}`,
-          );
-        } else {
-          this.value = data || {};
-          this.emitter.emit("did-change", this.value);
-
-          for (const callback of this.reloadCallbacks) callback();
-          this.reloadCallbacks.length = 0;
-        }
-        resolve();
+    let data, error;
+    try {
+      data = await new Promise((resolve, reject) => {
+        CSON.readFile(this.path, (readError, value) =>
+          readError ? reject(readError) : resolve(value),
+        );
       });
-    });
+    } catch (readError) {
+      error = readError;
+    }
+    // A delayed read must not overwrite a newer filesystem observation or
+    // report an error for contents that have already been read successfully.
+    if (generation !== this.loadGeneration) return;
+
+    // Observers can request another update while handling this read. Only
+    // writes already completed before it may settle against these contents.
+    const updates = this.reloadCallbacks.splice(0);
+    if (error) {
+      for (const update of updates) update.reject(error);
+      this.emitter.emit(
+        "did-error",
+        `Failed to load \`${Path.basename(this.path)}\` - ${error.message}`,
+      );
+    } else {
+      this.value = data || {};
+      try {
+        this.emitter.emit("did-change", this.value);
+      } finally {
+        for (const update of updates) update.resolve();
+      }
+    }
   }
 };
