@@ -7,6 +7,11 @@ const NullLanguageMode = require("./null-language-mode");
 const NullGrammar = require("./null-grammar");
 const fs = require("@lumine-code/fs-plus");
 const { Point, Range } = require("./text-buffer");
+const {
+  appendLifecycleError,
+  captureLifecycleError,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 
 const PATH_SPLIT_REGEX = new RegExp("[/.]");
 const GRAMMAR_SELECTION_SLICE_MS = 5;
@@ -33,6 +38,7 @@ module.exports = class GrammarRegistry {
     this.grammarSelectionRevision = (this.grammarSelectionRevision ?? 0) + 1;
     this.treeSitterGrammarsById = {};
     this.treeSitterGrammarsByInjectionName = new Map();
+    this.grammarRegistrations = new WeakMap();
 
     if (this.subscriptions) this.subscriptions.dispose();
     this.subscriptions = new CompositeDisposable();
@@ -610,11 +616,12 @@ module.exports = class GrammarRegistry {
     return grammar instanceof TreeSitterGrammar ? grammar : undefined;
   }
 
-  grammarAddedOrUpdated(grammar) {
+  grammarAddedOrUpdated(grammar, isCurrent = () => true) {
     this.grammarSelectionRevision++;
     if (grammar.scopeName && !grammar.id) grammar.id = grammar.scopeName;
 
     this.grammarScoresByBuffer.forEach((score, buffer) => {
+      if (!isCurrent()) return;
       const languageMode = buffer.getLanguageMode();
       const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
       const overriddenGrammar = this.grammarForId(languageOverride);
@@ -651,7 +658,7 @@ module.exports = class GrammarRegistry {
           (score === currentScore && isPlainTextFallback)
         ) {
           buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
-          this.grammarScoresByBuffer.set(buffer, score);
+          if (isCurrent()) this.grammarScoresByBuffer.set(buffer, score);
           return;
         }
       }
@@ -805,45 +812,178 @@ module.exports = class GrammarRegistry {
     if (!(grammar instanceof TreeSitterGrammar)) {
       throw new TypeError("Only Tree-sitter grammars can be registered");
     }
-    const existingParams = this.treeSitterGrammarsById[grammar.scopeName] || {};
+    const grammarsById = this.treeSitterGrammarsById;
+    const grammarsByInjectionName = this.treeSitterGrammarsByInjectionName;
+    const registrations = this.grammarRegistrations;
+    const previousRegistration = registrations.get(grammar);
+    const registration = { disposed: false };
+    const activationToken = grammar.activationToken;
+    const transferredInjectionPoints = [];
+    const hadPreviousGrammar = Object.hasOwn(grammarsById, grammar.scopeName);
+    const previousGrammar = grammarsById[grammar.scopeName];
+    const existingParams = previousGrammar || {};
     const replacedGrammar = existingParams instanceof TreeSitterGrammar ? existingParams : null;
+    const replacedRegistration = replacedGrammar && registrations.get(replacedGrammar);
     this.validateTreeSitterInjectionNames(grammar, replacedGrammar);
-    if (replacedGrammar && replacedGrammar !== grammar) {
-      this.unregisterTreeSitterInjectionNames(replacedGrammar);
-    }
-    if (grammar.scopeName) this.treeSitterGrammarsById[grammar.scopeName] = grammar;
-    this.registerTreeSitterInjectionNames(grammar);
-    if (existingParams.injectionPoints) {
-      for (const injectionPoint of existingParams.injectionPoints) {
-        grammar.addInjectionPoint(injectionPoint);
+    const previousInjectionNames = new Map(
+      [...new Set([...grammar.injectionNames, ...(replacedGrammar?.injectionNames || [])])].map(
+        (name) => [name, grammarsByInjectionName.get(name)],
+      ),
+    );
+    const isCurrent = () =>
+      this.treeSitterGrammarsById === grammarsById &&
+      this.treeSitterGrammarsByInjectionName === grammarsByInjectionName &&
+      this.grammarRegistrations === registrations &&
+      registrations.get(grammar) === registration &&
+      (!grammar.scopeName || grammarsById[grammar.scopeName] === grammar);
+    const disposable = new Disposable(() => {
+      registration.disposed = true;
+      if (
+        this.grammarRegistrations === registrations &&
+        registrations.get(grammar) === registration
+      ) {
+        this.removeGrammar(grammar);
       }
+    });
+    const withdrawTransferredInjectionPoints = () => {
+      const currentRegistration = this.grammarRegistrations.get(grammar);
+      if (
+        (grammar.activationToken && grammar.activationToken !== activationToken) ||
+        (currentRegistration &&
+          currentRegistration !== registration &&
+          currentRegistration !== previousRegistration)
+      ) {
+        return [];
+      }
+      const removed = [];
+      for (const point of transferredInjectionPoints.splice(0)) {
+        const points = grammar.injectionPointsByType[point.type];
+        const index = points?.indexOf(point) ?? -1;
+        if (index === -1) continue;
+        points.splice(index, 1);
+        if (points.length === 0) delete grammar.injectionPointsByType[point.type];
+        removed.push(point);
+      }
+      return removed;
+    };
+    const notifyTransferredInjectionPointsRemoved = (points, failures) => {
+      for (const point of points) {
+        captureLifecycleError(failures, () =>
+          grammar.emitter.emit("did-remove-injection-point", point),
+        );
+      }
+    };
+    const cancelRegistration = () => {
+      const points = withdrawTransferredInjectionPoints();
+      const failures = [];
+      captureLifecycleError(failures, () => disposable.dispose());
+      notifyTransferredInjectionPointsRemoved(points, failures);
+      throwLifecycleErrors(failures, "Cancelled grammar registration cleanup failed");
+      return disposable;
+    };
+    registrations.set(grammar, registration);
+    try {
+      if (replacedGrammar && replacedGrammar !== grammar) {
+        this.unregisterTreeSitterInjectionNames(replacedGrammar);
+      }
+      if (grammar.scopeName) grammarsById[grammar.scopeName] = grammar;
+      this.registerTreeSitterInjectionNames(grammar);
+      if (existingParams.injectionPoints) {
+        for (const injectionPoint of existingParams.injectionPoints) {
+          if (!grammar.injectionPointsByType[injectionPoint.type]?.includes(injectionPoint)) {
+            // addInjectionPoint publishes before its observers run, so retain
+            // ownership even if one of those observers throws.
+            transferredInjectionPoints.push(injectionPoint);
+            grammar.addInjectionPoint(injectionPoint);
+          }
+          if (!isCurrent()) return cancelRegistration();
+        }
+      }
+      this.grammarAddedOrUpdated(grammar, isCurrent);
+      if (!isCurrent()) return cancelRegistration();
+      this.emitter.emit("did-add-grammar", grammar);
+      if (!isCurrent()) return cancelRegistration();
+    } catch (error) {
+      const cleanupFailures = [];
+      const removedInjectionPoints = withdrawTransferredInjectionPoints();
+      if (isCurrent()) {
+        // Withdraw this registration before notifying consumers. An observer
+        // may install a replacement, including a new activation of this object.
+        this.grammarSelectionRevision++;
+        const restorePreviousGrammar =
+          !replacedGrammar ||
+          (replacedRegistration &&
+            !replacedRegistration.disposed &&
+            (replacedGrammar === grammar ||
+              registrations.get(replacedGrammar) === replacedRegistration));
+        if (previousRegistration && !previousRegistration.disposed)
+          registrations.set(grammar, previousRegistration);
+        else registrations.delete(grammar);
+        if (grammar.scopeName) {
+          if (hadPreviousGrammar && restorePreviousGrammar)
+            grammarsById[grammar.scopeName] = previousGrammar;
+          else delete grammarsById[grammar.scopeName];
+        }
+        for (const [name, previousGrammar] of previousInjectionNames) {
+          const currentGrammar = grammarsByInjectionName.get(name);
+          if (currentGrammar && currentGrammar !== grammar) continue;
+          if (previousGrammar && restorePreviousGrammar)
+            grammarsByInjectionName.set(name, previousGrammar);
+          else grammarsByInjectionName.delete(name);
+        }
+        if (replacedGrammar !== grammar || !restorePreviousGrammar) {
+          this.updateBuffersAfterGrammarRemoval(grammar, cleanupFailures, true);
+          captureLifecycleError(cleanupFailures, () =>
+            this.emitter.emit("did-remove-grammar", grammar),
+          );
+        }
+      }
+      notifyTransferredInjectionPointsRemoved(removedInjectionPoints, cleanupFailures);
+      if (cleanupFailures.length === 0) throw error;
+      const failures = [];
+      appendLifecycleError(failures, error);
+      for (const failure of cleanupFailures) appendLifecycleError(failures, failure);
+      throwLifecycleErrors(failures, "Grammar registration and rollback failed");
     }
-    this.grammarAddedOrUpdated(grammar);
-    this.emitter.emit("did-add-grammar", grammar);
-    return new Disposable(() => this.removeGrammar(grammar));
+    return disposable;
   }
 
   removeGrammar(grammar) {
     if (!(grammar instanceof TreeSitterGrammar)) return false;
+    const registration = this.grammarRegistrations.get(grammar);
+    if (registration) registration.disposed = true;
+    this.grammarRegistrations.delete(grammar);
     this.unregisterTreeSitterInjectionNames(grammar);
     if (this.treeSitterGrammarsById[grammar.scopeName] === grammar) {
       this.grammarSelectionRevision++;
       delete this.treeSitterGrammarsById[grammar.scopeName];
     }
-    this.grammarScoresByBuffer.forEach((_score, buffer) => {
-      const languageMode = buffer.getLanguageMode();
-      if (languageMode.grammar === grammar) {
-        if (this.languageOverridesByBufferId.has(buffer.id)) {
-          this.assignFallbackLanguageMode(buffer);
-        } else {
-          this.autoAssignLanguageMode(buffer);
-        }
-      } else {
-        languageMode.repopulateInjections?.();
-      }
-    });
-    this.emitter.emit("did-remove-grammar", grammar);
+    const failures = [];
+    this.updateBuffersAfterGrammarRemoval(grammar, failures);
+    captureLifecycleError(failures, () => this.emitter.emit("did-remove-grammar", grammar));
+    throwLifecycleErrors(failures, "Grammar removal failed");
     return true;
+  }
+
+  updateBuffersAfterGrammarRemoval(grammar, failures, restoreOverrides = false) {
+    this.grammarScoresByBuffer.forEach((_score, buffer) => {
+      const update = () => {
+        const languageMode = buffer.getLanguageMode();
+        if (languageMode.grammar === grammar) {
+          if (this.languageOverridesByBufferId.has(buffer.id)) {
+            const override = this.languageOverridesByBufferId.get(buffer.id);
+            if (!restoreOverrides || !this.assignLanguageMode(buffer, override)) {
+              this.assignFallbackLanguageMode(buffer);
+            }
+          } else {
+            this.autoAssignLanguageMode(buffer);
+          }
+        } else {
+          languageMode.repopulateInjections?.();
+        }
+      };
+      captureLifecycleError(failures, update);
+    });
   }
 
   removeGrammarForScopeName(scopeName) {

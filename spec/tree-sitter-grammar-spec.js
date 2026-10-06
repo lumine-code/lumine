@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const CSON = require("@lumine-code/season");
 const { Language: WebLanguage } = require("web-tree-sitter");
+const { Disposable } = require("@lumine-code/event-kit");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
@@ -65,6 +66,132 @@ describe("TreeSitterGrammar", () => {
   }
 
   describe("WASM runtime", () => {
+    it("finishes subscriptions and query cleanup when a removal observer throws", async () => {
+      const queryPath = writeQueryFile("highlights.scm", "(identifier) @variable");
+      const grammar = makeGrammar({ highlightsQuery: path.basename(queryPath) });
+      grammar.activate();
+      const query = await grammar.getQuery("highlightsQuery");
+      const internalQuery = grammar._getOrCreateInternalQuerySync("(identifier) @internal");
+      const queryDeleted = spyOn(query, "delete").and.callThrough();
+      const internalDeleted = spyOn(internalQuery, "delete").and.callThrough();
+      const subscriptions = grammar.subscriptions;
+      const subscriptionCleanup = jasmine.createSpy("subscriptionCleanup");
+      subscriptions.add(new Disposable(subscriptionCleanup));
+      const generation = grammar.queryLoadGeneration;
+      const primary = new Error("Grammar removal observer failed");
+      const observer = lumine.grammars.onDidRemoveGrammar((removed) => {
+        if (removed !== grammar) return;
+        expect(grammar.registration).toBeNull();
+        expect(grammar.subscriptions).toBeNull();
+        expect(grammar.queryLoadGeneration).toBe(generation + 1);
+        expect(grammar.queryCache.size).toBe(0);
+        expect(grammar.internalQueryCache.size).toBe(0);
+        throw primary;
+      });
+
+      let failure;
+      try {
+        grammar.deactivate();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(primary);
+      expect(subscriptionCleanup).toHaveBeenCalledTimes(1);
+      expect(subscriptions.disposed).toBe(true);
+      expect(queryDeleted).toHaveBeenCalledTimes(1);
+      expect(internalDeleted).toHaveBeenCalledTimes(1);
+      expect(grammar.queryReferenceCounts.size).toBe(0);
+      expect(grammar.getLanguageSync()).toBeNull();
+      expect(lumine.grammars.grammarForId(grammar.scopeName)).toBeUndefined();
+      observer.dispose();
+      expect(() => grammar.deactivate()).not.toThrow();
+    });
+
+    it("keeps cleanup errors in order and attempts later query deletion", async () => {
+      const grammar = makeGrammar();
+      grammar.activate();
+      await grammar.getLanguage();
+      const first = grammar._getOrCreateInternalQuerySync("(identifier) @first");
+      const later = grammar._getOrCreateInternalQuerySync("(identifier) @later");
+      const primary = new Error("Grammar removal observer failed");
+      const subscriptionError = new Error("Grammar subscription cleanup failed");
+      const queryError = new Error("Grammar query cleanup failed");
+      const originalDelete = first.delete.bind(first);
+      spyOn(first, "delete").and.callFake(() => {
+        originalDelete();
+        throw queryError;
+      });
+      const laterDeleted = spyOn(later, "delete").and.callThrough();
+      grammar.subscriptions.add(
+        new Disposable(() => {
+          throw subscriptionError;
+        }),
+      );
+      const observer = lumine.grammars.onDidRemoveGrammar((removed) => {
+        if (removed === grammar) throw primary;
+      });
+
+      let failure;
+      try {
+        grammar.deactivate();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure.errors).toEqual([primary, subscriptionError, queryError]);
+      expect(failure.cause).toBe(primary);
+      expect(laterDeleted).toHaveBeenCalledTimes(1);
+      expect(grammar.internalQueryCache.size).toBe(0);
+      expect(grammar.subscriptions).toBeNull();
+      observer.dispose();
+      expect(() => grammar.deactivate()).not.toThrow();
+    });
+
+    it("preserves a reentrant activation and its subscriptions during old teardown", async () => {
+      const grammar = makeGrammar();
+      grammar.activate();
+      await grammar.getLanguage();
+      const oldQuery = grammar._getOrCreateInternalQuerySync("(identifier) @old");
+      const oldDeleted = spyOn(oldQuery, "delete").and.callThrough();
+      const oldSubscriptions = grammar.subscriptions;
+      const oldCleanup = jasmine.createSpy("oldCleanup");
+      const currentCleanup = jasmine.createSpy("currentCleanup");
+      oldSubscriptions.add(new Disposable(oldCleanup));
+      const primary = new Error("Old grammar removal observer failed");
+      const observer = lumine.grammars.onDidRemoveGrammar((removed) => {
+        if (removed !== grammar) return;
+        grammar.activate();
+        grammar.subscriptions.add(new Disposable(currentCleanup));
+        throw primary;
+      });
+
+      let failure;
+      try {
+        grammar.deactivate();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(primary);
+      expect(lumine.grammars.grammarForId(grammar.scopeName)).toBe(grammar);
+      expect(grammar.registration).not.toBeNull();
+      expect(grammar.subscriptions).not.toBe(oldSubscriptions);
+      expect(grammar.subscriptions.disposed).toBe(false);
+      expect(oldCleanup).toHaveBeenCalledTimes(1);
+      expect(currentCleanup).not.toHaveBeenCalled();
+      expect(oldDeleted).toHaveBeenCalledTimes(1);
+      await grammar.getLanguage();
+      const current = grammar._getOrCreateInternalQuerySync("(identifier) @current");
+      const currentDeleted = spyOn(current, "delete").and.callThrough();
+
+      observer.dispose();
+      grammar.deactivate();
+      expect(currentCleanup).toHaveBeenCalledTimes(1);
+      expect(currentDeleted).toHaveBeenCalledTimes(1);
+      expect(lumine.grammars.grammarForId(grammar.scopeName)).toBeUndefined();
+    });
+
     it("requires a grammar asset path", () => {
       expect(() => makeGrammar({ grammar: undefined })).toThrowError(/treeSitter.grammar/);
     });
@@ -143,6 +270,46 @@ describe("TreeSitterGrammar", () => {
       expect(
         loaded.calls.allArgs().filter(([name]) => name === "did-load-query-files").length,
       ).toBe(1);
+      grammar.deactivate();
+    });
+
+    it("invalidates a pending query-file read even when the removal observer throws", async () => {
+      const queryPath = writeQueryFile("highlights.scm", "(identifier) @current");
+      const originalRead = fs.promises.readFile;
+      let resolveOldRead;
+      const oldRead = new Promise((resolve) => (resolveOldRead = resolve));
+      let reads = 0;
+      spyOn(fs.promises, "readFile").and.callFake((file, ...args) => {
+        if (file === queryPath && reads++ === 0) return oldRead;
+        return originalRead.call(fs.promises, file, ...args);
+      });
+      const grammar = makeGrammar({ highlightsQuery: "highlights.scm" });
+      grammar.activate();
+      const loading = grammar.getLanguage();
+      const rejected = expectAsync(loading).toBeRejectedWithError(/invalidated/);
+      await conditionPromise(() => reads === 1);
+      const primary = new Error("Pending grammar removal observer failed");
+      const observer = lumine.grammars.onDidRemoveGrammar((removed) => {
+        if (removed === grammar) throw primary;
+      });
+
+      let failure;
+      try {
+        grammar.deactivate();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBe(primary);
+      observer.dispose();
+      grammar.activate();
+      const currentLanguage = await grammar.getLanguage();
+      resolveOldRead("(identifier) @discarded");
+      await rejected;
+
+      expect(grammar.getLanguageSync()).toBe(currentLanguage);
+      expect(grammar.highlightsQuery).toContain("@current");
+      expect(grammar.highlightsQuery).not.toContain("@discarded");
+      expect(grammar.subscriptions.disposed).toBe(false);
       grammar.deactivate();
     });
 

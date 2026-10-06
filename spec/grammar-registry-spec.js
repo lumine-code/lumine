@@ -1125,6 +1125,352 @@ describe("GrammarRegistry", () => {
     });
   });
 
+  describe("grammar registration failures", () => {
+    const grammarPath = require.resolve("language-javascript/grammars/javascript.json");
+
+    function makeGrammar(scopeName, injectionNames = []) {
+      return new TreeSitterGrammar(grammarRegistry, grammarPath, {
+        ...CSON.readFileSync(grammarPath),
+        scopeName,
+        injectionNames,
+      });
+    }
+
+    function activateFailure(grammar) {
+      try {
+        grammar.activate();
+      } catch (error) {
+        return error;
+      }
+      throw new Error("Expected grammar activation to fail");
+    }
+
+    it("withdraws the second grammar when its did-add observer throws", () => {
+      const first = makeGrammar("source.test-first", ["first"]);
+      const second = makeGrammar("source.test-second", ["second"]);
+      const primary = Object.freeze(new Error("Second grammar observer failed"));
+      const observer = grammarRegistry.onDidAddGrammar((grammar) => {
+        if (grammar === second) throw primary;
+      });
+      first.activate();
+
+      expect(activateFailure(second)).toBe(primary);
+      expect(grammarRegistry.grammarForId(first.scopeName)).toBe(first);
+      expect(grammarRegistry.grammarForId(second.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("second")).toBeNull();
+      expect(second.subscriptions).toBeNull();
+
+      observer.dispose();
+      first.deactivate();
+      second.deactivate();
+      expect(grammarRegistry.grammarForId(first.scopeName)).toBeUndefined();
+      expect(grammarRegistry.grammarForId(second.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("first")).toBeNull();
+    });
+
+    it("restores the replaced grammar and its aliases when registration fails", () => {
+      const previous = makeGrammar("source.test-replaced", ["previous", "shared"]);
+      const failed = makeGrammar(previous.scopeName, ["failed", "shared"]);
+      previous.activate();
+      const primary = new Error("Replacement observer failed");
+      const observer = grammarRegistry.onDidAddGrammar((grammar) => {
+        if (grammar === failed) throw primary;
+      });
+
+      expect(activateFailure(failed)).toBe(primary);
+      expect(grammarRegistry.grammarForId(previous.scopeName)).toBe(previous);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("previous")).toBe(previous);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("shared")).toBe(previous);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("failed")).toBeNull();
+
+      observer.dispose();
+      previous.deactivate();
+      failed.deactivate();
+      expect(grammarRegistry.grammarForId(previous.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("shared")).toBeNull();
+    });
+
+    it("restores an overridden buffer to the previous grammar after a failed replacement", async () => {
+      const previous = makeGrammar("source.test-buffer-replaced");
+      const failed = makeGrammar(previous.scopeName);
+      await previous.getLanguage();
+      await failed.getLanguage();
+      previous.activate();
+      const buffer = createBuffer({ text: "const value = 1;" });
+      grammarRegistry.assignGrammar(buffer, previous);
+      const primary = new Error("Replacement observer failed");
+      const observer = grammarRegistry.onDidAddGrammar((grammar) => {
+        if (grammar === failed) {
+          expect(buffer.getLanguageMode().grammar).toBe(failed);
+          throw primary;
+        }
+      });
+
+      expect(activateFailure(failed)).toBe(primary);
+      expect(buffer.getLanguageMode().grammar).toBe(previous);
+      expect(grammarRegistry.getAssignedLanguageId(buffer)).toBe(previous.scopeName);
+      expect(grammarRegistry.languageOverridesByBufferId.get(buffer.id)).toBe(previous.scopeName);
+
+      observer.dispose();
+      buffer.destroy();
+      previous.deactivate();
+    });
+
+    it("preserves a replacement installed by the failing observer", () => {
+      const failed = makeGrammar("source.test-reentrant-replacement", ["failed", "shared"]);
+      const replacement = makeGrammar(failed.scopeName, ["replacement", "shared"]);
+      const primary = new Error("Outer registration observer failed");
+      const observer = grammarRegistry.onDidAddGrammar((grammar) => {
+        if (grammar === failed) {
+          replacement.activate();
+          throw primary;
+        }
+      });
+
+      expect(activateFailure(failed)).toBe(primary);
+      expect(grammarRegistry.grammarForId(replacement.scopeName)).toBe(replacement);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("shared")).toBe(replacement);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("failed")).toBeNull();
+      expect(replacement.subscriptions).not.toBeNull();
+      failed.deactivate();
+      expect(grammarRegistry.grammarForId(replacement.scopeName)).toBe(replacement);
+
+      observer.dispose();
+      replacement.deactivate();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("shared")).toBeNull();
+    });
+
+    it("preserves a new activation of the same grammar from the failing observer", () => {
+      const grammar = makeGrammar("source.test-reentrant-generation", ["generation"]);
+      const primary = new Error("Outer generation observer failed");
+      let reentered = false;
+      const observer = grammarRegistry.onDidAddGrammar(() => {
+        if (reentered) return;
+        reentered = true;
+        grammar.deactivate();
+        grammar.activate();
+        throw primary;
+      });
+
+      expect(activateFailure(grammar)).toBe(primary);
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBe(grammar);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("generation")).toBe(grammar);
+      expect(grammar.registration).not.toBeNull();
+      expect(grammar.subscriptions).not.toBeNull();
+
+      observer.dispose();
+      grammar.deactivate();
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("generation")).toBeNull();
+    });
+
+    it("does not restore an activation retired by the failing observer", () => {
+      const grammar = makeGrammar("source.test-retired-generation", ["retired"]);
+      grammar.activate();
+      const primary = new Error("Repeated activation observer failed");
+      const observer = grammarRegistry.onDidAddGrammar(() => {
+        grammar.deactivate();
+        throw primary;
+      });
+
+      expect(activateFailure(grammar)).toBe(primary);
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("retired")).toBeNull();
+      expect(grammar.registration).toBeNull();
+      expect(grammar.subscriptions).toBeNull();
+
+      observer.dispose();
+      grammar.activate();
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBe(grammar);
+      grammar.deactivate();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("retired")).toBeNull();
+    });
+
+    it("stops publishing after an injection callback replaces the registry generation", async () => {
+      const scopeName = "source.test-injection-replacement";
+      const point = { type: "identifier", language: () => null, content: (node) => node };
+      const injection = grammarRegistry.addInjectionPoint(scopeName, point);
+      const stale = makeGrammar(scopeName);
+      const replacement = makeGrammar(scopeName);
+      await replacement.getLanguage();
+      let buffer;
+      const observed = [];
+      const added = grammarRegistry.onDidAddGrammar((grammar) => observed.push(grammar));
+      const transferred = stale.onDidAddInjectionPoint(() => {
+        grammarRegistry.clear();
+        replacement.activate();
+        buffer = createBuffer({ text: "const value = 1;" });
+        grammarRegistry.assignGrammar(buffer, replacement);
+      });
+
+      stale.activate();
+
+      expect(grammarRegistry.grammarForId(scopeName)).toBe(replacement);
+      expect(buffer.getLanguageMode().grammar).toBe(replacement);
+      expect(observed).toEqual([replacement]);
+      expect(stale.registration).toBeNull();
+      expect(stale.subscriptions).toBeNull();
+      expect(replacement.subscriptions).not.toBeNull();
+
+      transferred.dispose();
+      added.dispose();
+      injection.dispose();
+      buffer.destroy();
+      replacement.deactivate();
+    });
+
+    it("copies a transferred injection point only once across a failed registration and retry", () => {
+      const scopeName = "source.test-injection-retry";
+      const point = { type: "identifier", language: () => null, content: (node) => node };
+      const injection = grammarRegistry.addInjectionPoint(scopeName, point);
+      const grammar = makeGrammar(scopeName);
+      const primary = new Error("Transferred grammar observer failed");
+      const observer = grammarRegistry.onDidAddGrammar(() => {
+        throw primary;
+      });
+
+      expect(activateFailure(grammar)).toBe(primary);
+      expect(grammar.injectionPointsByType.identifier).toBeUndefined();
+      observer.dispose();
+      grammar.activate();
+      expect(grammar.injectionPointsByType.identifier).toEqual([point]);
+
+      injection.dispose();
+      expect(grammar.injectionPointsByType.identifier).toBeUndefined();
+      grammar.deactivate();
+    });
+
+    it("withdraws an early transfer before its provider is removed and activation retried", () => {
+      const scopeName = "source.test-early-injection-failure";
+      const point = { type: "identifier", language: () => null, content: (node) => node };
+      const provider = grammarRegistry.addInjectionPoint(scopeName, point);
+      const grammar = makeGrammar(scopeName);
+      const primary = new Error("Early injection observer failed");
+      const observer = grammar.onDidAddInjectionPoint(() => {
+        throw primary;
+      });
+
+      expect(activateFailure(grammar)).toBe(primary);
+      expect(grammar.injectionPointsByType.identifier).toBeUndefined();
+      provider.dispose();
+      observer.dispose();
+      grammar.activate();
+      expect(grammarRegistry.grammarForId(scopeName)).toBe(grammar);
+      expect(grammar.injectionPointsByType.identifier).toBeUndefined();
+      grammar.deactivate();
+    });
+
+    it("withdraws every owned transfer while preserving existing points and cleanup errors", () => {
+      const scopeName = "source.test-injection-cleanup-failure";
+      const existing = { type: "identifier", language: () => null, content: (node) => node };
+      const first = { type: "identifier", language: () => null, content: (node) => node };
+      const second = { type: "number", language: () => null, content: (node) => node };
+      const firstProvider = grammarRegistry.addInjectionPoint(scopeName, first);
+      const secondProvider = grammarRegistry.addInjectionPoint(scopeName, second);
+      const grammar = makeGrammar(scopeName);
+      grammar.addInjectionPoint(existing);
+      const primary = new Error("Second transfer observer failed");
+      const cleanup = new Error("Transfer removal observer failed");
+      const added = grammar.onDidAddInjectionPoint((point) => {
+        if (point === second) throw primary;
+      });
+      const removed = [];
+      const removal = grammar.onDidRemoveInjectionPoint((point) => {
+        removed.push(point);
+        expect(grammar.injectionPointsByType.identifier).toEqual([existing]);
+        expect(grammar.injectionPointsByType.number).toBeUndefined();
+        if (point === first) throw cleanup;
+      });
+
+      const failure = activateFailure(grammar);
+      expect(failure.errors).toEqual([primary, cleanup]);
+      expect(failure.cause).toBe(primary);
+      expect(removed).toEqual([first, second]);
+      expect(grammar.injectionPointsByType.identifier).toEqual([existing]);
+      expect(grammar.injectionPointsByType.number).toBeUndefined();
+
+      added.dispose();
+      removal.dispose();
+      firstProvider.dispose();
+      secondProvider.dispose();
+      grammar.activate();
+      expect(grammar.injectionPointsByType.identifier).toEqual([existing]);
+      expect(grammar.injectionPointsByType.number).toBeUndefined();
+      grammar.deactivate();
+    });
+
+    it("preserves a transferred point adopted by a reentrant activation", () => {
+      const scopeName = "source.test-reentrant-injection-transfer";
+      const point = { type: "identifier", language: () => null, content: (node) => node };
+      const provider = grammarRegistry.addInjectionPoint(scopeName, point);
+      const grammar = makeGrammar(scopeName);
+      const primary = new Error("Outer transfer observer failed");
+      let reentered = false;
+      const observer = grammar.onDidAddInjectionPoint(() => {
+        if (reentered) return;
+        reentered = true;
+        grammar.activate();
+        throw primary;
+      });
+
+      expect(activateFailure(grammar)).toBe(primary);
+      expect(grammarRegistry.grammarForId(scopeName)).toBe(grammar);
+      expect(grammar.injectionPointsByType.identifier).toEqual([point]);
+      expect(grammar.registration).not.toBeNull();
+      expect(grammar.subscriptions).not.toBeNull();
+
+      observer.dispose();
+      provider.dispose();
+      expect(grammar.injectionPointsByType.identifier).toBeUndefined();
+      grammar.deactivate();
+    });
+
+    it("does not restore retired maps after the observer clears the registry", () => {
+      const failed = makeGrammar("source.test-registry-cleared", ["shared"]);
+      const replacement = makeGrammar(failed.scopeName, ["shared"]);
+      const primary = new Error("Retired registry observer failed");
+      const observer = grammarRegistry.onDidAddGrammar((grammar) => {
+        if (grammar === failed) {
+          grammarRegistry.clear();
+          replacement.activate();
+          throw primary;
+        }
+      });
+
+      expect(activateFailure(failed)).toBe(primary);
+      expect(grammarRegistry.grammarForId(replacement.scopeName)).toBe(replacement);
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("shared")).toBe(replacement);
+      failed.deactivate();
+      expect(grammarRegistry.grammarForId(replacement.scopeName)).toBe(replacement);
+
+      observer.dispose();
+      replacement.deactivate();
+    });
+
+    it("retains the registration failure when rollback notification also throws", () => {
+      const grammar = makeGrammar("source.test-rollback-notification", ["rollback"]);
+      const primary = new Error("Registration observer failed");
+      const cleanup = new Error("Rollback observer failed");
+      const added = grammarRegistry.onDidAddGrammar(() => {
+        throw primary;
+      });
+      const removed = grammarRegistry.onDidRemoveGrammar(() => {
+        throw cleanup;
+      });
+
+      const failure = activateFailure(grammar);
+      expect(failure.errors).toEqual([primary, cleanup]);
+      expect(failure.cause).toBe(primary);
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBeUndefined();
+      expect(grammarRegistry.treeSitterGrammarForLanguageString("rollback")).toBeNull();
+      expect(grammar.subscriptions).toBeNull();
+      expect(grammar.registration).toBeNull();
+
+      added.dispose();
+      removed.dispose();
+    });
+  });
+
   describe(".addInjectionPoint(languageId, {type, language, content})", () => {
     const injectionPoint = {
       type: "some_node_type",

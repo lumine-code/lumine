@@ -5,6 +5,11 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
 const { compileInjectionQuery } = require("./tree-sitter-injections");
+const {
+  appendLifecycleError,
+  captureLifecycleError,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 
 // Load the runtime Wasm through Node's `fs` rather than letting the emscripten
 // module `fetch` it. In Electron's renderer, `web-tree-sitter` takes its
@@ -875,14 +880,38 @@ module.exports = class TreeSitterGrammar {
   }
 
   activate() {
+    const previousActivation = this.activationToken;
+    const previousRegistration = this.registration;
+    const activation = {};
+    this.activationToken = activation;
     this.subscriptions ??= new CompositeDisposable();
-    this.registration = this.registry.addGrammar(this);
+    try {
+      const registration = this.registry.addGrammar(this);
+      if (this.activationToken === activation && !registration.disposed)
+        this.registration = registration;
+      else if (this.activationToken === activation) this.deactivate();
+      else registration.dispose();
+    } catch (error) {
+      const cleanupFailures = [];
+      if (this.activationToken === activation) {
+        if (previousRegistration) this.activationToken = previousActivation;
+        else captureLifecycleError(cleanupFailures, () => this.deactivate());
+      }
+      if (cleanupFailures.length === 0) throw error;
+      const failures = [];
+      appendLifecycleError(failures, error);
+      for (const failure of cleanupFailures) appendLifecycleError(failures, failure);
+      throwLifecycleErrors(failures, "Grammar activation and cleanup failed");
+    }
   }
 
   deactivate() {
-    this.registration?.dispose();
+    const registration = this.registration;
+    const subscriptions = this.subscriptions;
+    const cachedQueries = [...this.queryCache.values()];
+    const internalQueries = [...this.internalQueryCache.values()];
+    this.activationToken = null;
     this.registration = null;
-    this.subscriptions?.dispose();
     this.subscriptions = null;
     this.queryLoadGeneration++;
     this._queryFilesLoaded = false;
@@ -890,16 +919,21 @@ module.exports = class TreeSitterGrammar {
     this.promisesForQueryFiles.clear();
     this.promisesForQueries.clear();
     this.requestedQueryTypes.clear();
-    // A new query object gets instantiated for each kind of query every time a
-    // grammar activates. WASM queries need explicit cleanup.
-    for (let queryType of [...this.queryCache.keys()]) {
-      this.uncacheQuery(queryType);
-    }
-    for (let value of this.internalQueryCache.values()) {
-      value.delete();
-    }
+    this.queryCache.clear();
     this.internalQueryCache.clear();
     this._language = null;
+    const failures = [];
+    captureLifecycleError(failures, () => registration?.dispose());
+    captureLifecycleError(failures, () => subscriptions?.dispose());
+    // A new query object gets instantiated for each kind of query every time a
+    // grammar activates. WASM queries need explicit cleanup.
+    for (const query of cachedQueries) {
+      captureLifecycleError(failures, () => this.releaseQuery(query));
+    }
+    for (const query of internalQueries) {
+      captureLifecycleError(failures, () => query.delete());
+    }
+    throwLifecycleErrors(failures, "Grammar failed to deactivate cleanly");
   }
 
   /**
