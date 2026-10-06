@@ -201,7 +201,7 @@ async function runInRenderer(manifest) {
     throw new Error(`${label} timed out after ${manifest.timeout}ms`);
   };
 
-  await lumine.packages.activatePackage("ide-client");
+  await lumine.packages.activatePackage("ide");
   await lumine.packages.activatePackage(manifest.adapter);
   for (const [keyPath, value] of Object.entries(manifest.config || {})) {
     lumine.config.set(keyPath, value);
@@ -218,9 +218,9 @@ async function runInRenderer(manifest) {
     );
   }
 
-  const clientPackage = lumine.packages.getActivePackage("ide-client");
+  const clientPackage = lumine.packages.getActivePackage("ide");
   const manager = clientPackage?.mainModule?.manager;
-  if (!manager) throw new Error("ide-client did not expose its active language-server manager");
+  if (!manager) throw new Error("ide did not expose its active language-server manager");
   let session = await waitFor(async () => {
     const sessions = await manager.activeSessionsForEditor(editor);
     return sessions.find(

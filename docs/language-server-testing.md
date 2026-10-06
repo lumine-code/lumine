@@ -7,14 +7,14 @@ Every `ide-*` adapter needs both automated specs and a real-window conformance m
 Run these commands from the `lumine` checkout. Use one unused port for the whole session:
 
 ```powershell
-node script/drive.js launch --fresh --port 9344 --link ..\ide-client --link ..\ide-yaml
+node script/drive.js launch --fresh --port 9344 --link ..\ide --link ..\ide-yaml
 node script/drive.js lsp --port 9344 -f ..\ide-yaml\spec\drive.json
 node script/drive.js console --port 9344 --ms 3000
 node script/drive.js issues --port 9344 --ms 3000
 node script/drive.js quit --port 9344
 ```
 
-`launch` creates an isolated `LUMINE_HOME` and links the package checkouts into it. Link `ide-client` whenever its current checkout is part of the test. The `lsp` command does not launch a window of its own; it drives the already-running instance.
+`launch` creates an isolated `LUMINE_HOME` and links the package checkouts into it. Link `ide` whenever its current checkout is part of the test. The `lsp` command does not launch a window of its own; it drives the already-running instance.
 
 Keep a second terminal streaming `console` or `issues` while reproducing an asynchronous failure. Renderer exceptions and rejected promises reach `console`; Chromium deprecations and other DevTools findings reach `issues`.
 
@@ -126,7 +126,7 @@ LSP implementations frequently accept or emit shapes that are looser than the sp
 
 - Advertise only client capabilities that have an implementation, but include the complete truthful object for each one. Some servers dereference optional nested fields without guarding them.
 - Ask `session.supports()` and `session.capabilityOptions()` instead of reading static server capabilities directly. Servers may register features dynamically after initialize.
-- Support server-initiated standard requests that correspond to advertised capabilities. In particular, `ide-client` answers `workspace/workspaceFolders` with the current project-folder list.
+- Support server-initiated standard requests that correspond to advertised capabilities. In particular, `ide` answers `workspace/workspaceFolders` with the current project-folder list.
 - Match custom request and notification payloads exactly. Extension protocols often differ in array nesting, URI placement, and whether a command returns `null` or no value.
 - Exercise every request/resolve pair through the same session. Opaque `data` belongs to the server that returned it.
 - Verify multi-root adoption, configuration refresh, cancellation, diagnostics, and restart behavior where the server declares them.
