@@ -3,6 +3,7 @@ const path = require("path");
 
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
+const RepositoryOperationQueue = require("./repository-operation-queue");
 const { isRepositoryUnavailableError } = require("./git-error");
 const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
@@ -30,6 +31,22 @@ const REPOSITORY_METADATA_NAMES = new Set([
 // Valid answers from an operation implementation's getOperationRefreshHint():
 // which read snapshots the just-finished operation can have invalidated.
 const OPERATION_REFRESH_HINTS = new Set(["none", "status", "refs", "both"]);
+
+function completeCleanup(actions, message) {
+  const failures = [];
+  const collectError = (error) => failures.push(error);
+  for (const action of actions) {
+    try {
+      action(collectError);
+    } catch (error) {
+      collectError(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, message, { cause: failures[0] });
+  }
+}
 
 function normalizePath(filePath) {
   const resolved = path.resolve(filePath);
@@ -791,32 +808,46 @@ module.exports = class RepositoryRegistry {
     this.scanGeneration++;
     this.fileChangeGeneration++;
     this.activeResolutionGeneration++;
-    this.subscriptions.dispose();
-    this.serviceSubscription?.dispose();
-    this.projectSubscriptions.dispose();
-    this.workspaceSubscriptions.dispose();
+    const serviceSubscription = this.serviceSubscription;
+    const activeRepositoryPin = this.activeRepositoryPin;
+    const owners = [...this.bufferOwners.values()];
+    const entries = [...this.entriesById.values()];
+    this.serviceSubscription = null;
     this.workspace = null;
     this.activeRepository = null;
     this.activeWorkingDirectory = null;
+    this.activeRepositoryPinned = false;
     this.activeRepositoryPin = null;
-
-    for (const owner of this.bufferOwners.values()) owner.subscriptions.dispose();
     this.bufferOwners.clear();
-
-    const entries = Array.from(this.entriesById.values());
     this.entriesById.clear();
     this.routingDirectoryOwners.clear();
     this.gitDirectoryOwners.clear();
-    for (const entry of entries) {
-      entry.destroySubscription.dispose();
-      entry.unavailableSubscription.dispose();
-      this.disposeOperationImplementations(entry, { force: true });
-      entry.repository.setOperations?.(null);
-      if (!entry.repository.isDestroyed?.()) entry.repository.destroy();
-    }
     this.operationProviders = [];
-
-    this.emitter.dispose();
+    for (const entry of entries) {
+      entry.removing = true;
+      this.entryByRepository.delete(entry.repository);
+    }
+    completeCleanup(
+      [
+        () => this.subscriptions.dispose(),
+        () => serviceSubscription?.dispose(),
+        () => this.projectSubscriptions.dispose(),
+        () => this.workspaceSubscriptions.dispose(),
+        () => activeRepositoryPin?.dispose(),
+        ...owners.map((owner) => () => owner.subscriptions.dispose()),
+        ...entries.flatMap((entry) => [
+          () => entry.destroySubscription.dispose(),
+          () => entry.unavailableSubscription.dispose(),
+          () => this.disposeOperationImplementations(entry),
+          () => entry.repository.setOperations?.(null),
+          () => {
+            if (!entry.repository.isDestroyed?.()) entry.repository.destroy();
+          },
+        ]),
+        () => this.emitter.dispose(),
+      ],
+      "Unable to destroy the repository registry cleanly",
+    );
   }
 
   resetProjectSubscriptions() {
@@ -1380,12 +1411,33 @@ module.exports = class RepositoryRegistry {
 
     const token = Symbol("operation");
     entry.operationOwners.add(token);
+    let result, operationError;
+    let failed = false;
     try {
-      return await operation(entry.repository);
-    } finally {
+      result = await operation(entry.repository);
+    } catch (error) {
+      operationError = error;
+      failed = true;
+    }
+    let releaseError;
+    let releaseFailed = false;
+    try {
       entry.operationOwners.delete(token);
       this.prune(entry);
+    } catch (error) {
+      releaseError = error;
+      releaseFailed = true;
     }
+    if (releaseFailed) {
+      if (failed) {
+        throw new AggregateError([operationError, releaseError], "Operation and release failed", {
+          cause: operationError,
+        });
+      }
+      throw releaseError;
+    }
+    if (failed) throw operationError;
+    return result;
   }
 
   /**
@@ -1434,14 +1486,20 @@ module.exports = class RepositoryRegistry {
       const index = this.operationProviders.indexOf(provider);
       if (index < 0) return;
       this.operationProviders.splice(index, 1);
+      const records = [];
       for (const entry of this.entriesById.values()) {
         if (entry.operationImplementations.has(provider)) {
-          const record = entry.operationImplementations.get(provider);
+          records.push(entry.operationImplementations.get(provider));
           entry.operationImplementations.delete(provider);
-          this.disposeOperationImplementation(record);
         }
       }
-      this.emitOperationProviderChange();
+      completeCleanup(
+        [
+          ...records.map((record) => () => this.disposeOperationImplementation(record)),
+          (collectError) => this.emitOperationProviderChange(collectError),
+        ],
+        "Unable to remove the repository operation provider cleanly",
+      );
     });
   }
 
@@ -1531,11 +1589,7 @@ module.exports = class RepositoryRegistry {
     const entries = repository
       ? [this.entryByRepository.get(repository)].filter(Boolean)
       : Array.from(this.entriesById.values());
-    const operations = entries.flatMap((entry) =>
-      Array.from(entry.pendingOperations.values(), (operation) =>
-        this.operationSnapshot(operation),
-      ),
-    );
+    const operations = entries.flatMap((entry) => entry.operationQueue.getPendingOperations());
     if (!repository) {
       operations.push(
         ...Array.from(this.pendingWorkspaceOperations.values(), (operation) =>
@@ -1772,96 +1826,90 @@ module.exports = class RepositoryRegistry {
     if (typeof operationName !== "string" || operationName.length === 0) {
       return Promise.reject(new TypeError("Repository operation name must be a non-empty string"));
     }
+    try {
+      if (this.destroyed) this.assertOperationEntry(null, operationName);
+      const entry = this.entryByRepository.get(repository) || this.register(repository);
+      this.assertOperationEntry(entry, operationName);
+      return entry.operationQueue.enqueue(operationName, args);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
 
-    return this.runOperation(repository, () => {
-      const entry = this.entryByRepository.get(repository);
-      const operation = {
-        id: this.nextOperationId++,
-        repository,
-        name: operationName,
-        status: "queued",
-        queuedAt: Date.now(),
-        startedAt: null,
-      };
-      entry.pendingOperations.set(operation.id, operation);
-      if (!this.destroyed) {
-        this.emitter.emit("did-queue-operation", this.operationSnapshot(operation));
+  assertOperationEntry(entry, operationName) {
+    if (
+      this.destroyed ||
+      !entry ||
+      entry.removing ||
+      this.entriesById.get(entry.id) !== entry ||
+      entry.repository.isDestroyed?.()
+    ) {
+      throw Object.assign(new Error("Repository has been destroyed"), {
+        code: "ERR_GIT_REPOSITORY_DESTROYED",
+        operation: operationName,
+      });
+    }
+  }
+
+  async executeRepositoryOperation(entry, operationName, args) {
+    const repository = entry.repository;
+    const failures = [];
+    let result, record;
+    let acquired = false;
+    try {
+      this.assertOperationEntry(entry, operationName);
+      record = this.findOperationImplementation(repository, operationName);
+      this.assertOperationEntry(entry, operationName);
+      if (!record) {
+        throw Object.assign(
+          new Error(`No provider implements repository operation: ${operationName}`),
+          { code: "ERR_REPOSITORY_OPERATION_UNAVAILABLE", operation: operationName },
+        );
       }
-
-      const execute = async () => {
-        operation.status = "running";
-        operation.startedAt = Date.now();
-        if (!this.destroyed) {
-          this.emitter.emit("did-start-operation", this.operationSnapshot(operation));
-        }
-
-        let operationError = null;
+      record.activeOperations++;
+      acquired = true;
+      result = await record.implementation[operationName](...args);
+      // The write has succeeded. A read-cache or notification failure must not
+      // turn that completed write into a failure that invites an unsafe retry.
+      try {
+        await this.refreshRepositoryAfterOperation(
+          repository,
+          this.operationRefreshHint(record.implementation, operationName, args),
+        );
+      } catch (error) {
+        this.reportRefreshFailure(repository, error);
+      }
+    } catch (error) {
+      failures.push(error);
+      if (isRepositoryUnavailableError(error)) {
         try {
-          if (
-            this.destroyed ||
-            entry.removing ||
-            this.entriesById.get(entry.id) !== entry ||
-            repository.isDestroyed?.()
-          ) {
-            throw Object.assign(new Error("Repository has been destroyed"), {
-              code: "ERR_GIT_REPOSITORY_DESTROYED",
-              operation: operationName,
-            });
+          if (typeof repository.signalRepositoryUnavailable === "function") {
+            repository.signalRepositoryUnavailable(error);
+          } else {
+            this.removeUnavailableEntry(entry);
           }
-          const record = this.findOperationImplementation(repository, operationName);
-          if (!record) {
-            const error = new Error(
-              `No provider implements repository operation: ${operationName}`,
-            );
-            error.code = "ERR_REPOSITORY_OPERATION_UNAVAILABLE";
-            error.operation = operationName;
-            throw error;
-          }
-
-          record.activeOperations++;
-          try {
-            const result = await record.implementation[operationName](...args);
-            await this.refreshRepositoryAfterOperation(
-              repository,
-              this.operationRefreshHint(record.implementation, operationName, args),
-            );
-            return result;
-          } finally {
-            record.activeOperations--;
-            if (record.pendingDisposal && record.activeOperations === 0) {
-              record.implementation.destroy?.();
-            }
-          }
-        } catch (error) {
-          operationError = error;
-          if (isRepositoryUnavailableError(error)) {
-            if (typeof repository.signalRepositoryUnavailable === "function") {
-              repository.signalRepositoryUnavailable(error);
-            } else {
-              this.removeUnavailableEntry(entry);
-            }
-          }
-          throw error;
-        } finally {
-          entry.pendingOperations.delete(operation.id);
-          if (!this.destroyed) {
-            this.emitter.emit(
-              "did-finish-operation",
-              Object.freeze({
-                ...this.operationSnapshot(operation),
-                status: operationError ? "failed" : "succeeded",
-                finishedAt: Date.now(),
-                error: operationError,
-              }),
-            );
-          }
+        } catch (unavailableError) {
+          failures.push(unavailableError);
         }
-      };
-
-      const result = entry.operationTail.then(execute);
-      entry.operationTail = result.catch(() => {});
-      return result;
-    });
+      }
+    }
+    if (acquired) {
+      record.activeOperations--;
+      if (record.pendingDisposal && record.activeOperations === 0) {
+        try {
+          this.disposeOperationImplementation(record);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Repository operation and its cleanup failed", {
+        cause: failures[0],
+      });
+    }
+    return result;
   }
 
   operationSnapshot(operation) {
@@ -1877,9 +1925,16 @@ module.exports = class RepositoryRegistry {
   }
 
   findOperationImplementation(repository, operationName) {
-    for (const provider of this.operationProviders) {
+    for (const provider of this.operationProviders.slice()) {
       const record = this.getOperationImplementation(repository, provider);
-      if (record && this.operationImplementationSupports(record, operationName)) return record;
+      if (
+        record &&
+        this.operationImplementationSupports(record, operationName) &&
+        !record.disposed &&
+        this.operationProviders.includes(provider) &&
+        this.entryByRepository.get(repository)?.operationImplementations.get(provider) === record
+      )
+        return record;
     }
     return null;
   }
@@ -1914,26 +1969,52 @@ module.exports = class RepositoryRegistry {
       gitDirectory: repository.getPath?.() || null,
     });
     const record = implementation
-      ? { implementation, activeOperations: 0, pendingDisposal: false }
+      ? { implementation, activeOperations: 0, pendingDisposal: false, disposed: false }
       : null;
+    // A synchronous factory can remove its provider or repository. Its returned
+    // implementation must not escape the registration that owned its creation.
+    if (
+      this.destroyed ||
+      entry.removing ||
+      this.entriesById.get(entry.id) !== entry ||
+      repository.isDestroyed?.() ||
+      !this.operationProviders.includes(provider)
+    ) {
+      this.disposeOperationImplementation(record);
+      return null;
+    }
     entry.operationImplementations.set(provider, record);
     return record;
   }
 
-  disposeOperationImplementation(record, { force = false } = {}) {
-    if (!record) return;
-    if (!force && record.activeOperations > 0) {
+  disposeOperationImplementation(record) {
+    if (!record || record.disposed) return;
+    if (record.activeOperations > 0) {
       record.pendingDisposal = true;
     } else {
+      record.disposed = true;
+      record.pendingDisposal = false;
       record.implementation.destroy?.();
     }
   }
 
-  disposeOperationImplementations(entry, options) {
-    for (const record of entry.operationImplementations.values()) {
-      this.disposeOperationImplementation(record, options);
-    }
+  disposeOperationImplementations(entry) {
+    const records = [...entry.operationImplementations.values()];
     entry.operationImplementations.clear();
+    const failures = [];
+    for (const record of records) {
+      try {
+        this.disposeOperationImplementation(record);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Unable to dispose repository operation implementations", {
+        cause: failures[0],
+      });
+    }
   }
 
   // Ask the operation implementation which snapshots the operation can have
@@ -1994,33 +2075,40 @@ module.exports = class RepositoryRegistry {
   }
 
   reportRefreshFailure(repository, error) {
-    if (repository.isDestroyed?.()) return;
-    // GitRepository owns the once-per-repository reporting policy. Route
-    // post-operation failures through the same gate so a combined status+refs
-    // refresh cannot produce duplicate warnings.
-    if (typeof repository.reportBackgroundSnapshotError === "function") {
-      repository.reportBackgroundSnapshotError(error);
-      return;
+    try {
+      if (repository.isDestroyed?.()) return;
+      // GitRepository owns the once-per-repository reporting policy. Route
+      // post-operation failures through the same gate so a combined status+refs
+      // refresh cannot produce duplicate warnings.
+      if (typeof repository.reportBackgroundSnapshotError === "function") {
+        repository.reportBackgroundSnapshotError(error);
+        return;
+      }
+      // The Git command has already succeeded. Never report it as failed (and
+      // invite a dangerous retry) merely because the read cache did not refresh.
+      this.notificationManager?.addWarning("Repository refresh failed after Git operation", {
+        detail: error.message,
+        dismissable: true,
+      });
+    } catch (reportError) {
+      console.error("Unable to report a repository refresh failure", error, reportError);
     }
-    // The Git command has already succeeded. Never report it as failed (and
-    // invite a dangerous retry) merely because the read cache did not refresh.
-    this.notificationManager?.addWarning("Repository refresh failed after Git operation", {
-      detail: error.message,
-      dismissable: true,
-    });
   }
 
-  emitOperationProviderChange() {
+  emitOperationProviderChange(collectError) {
     if (this.destroyed || this.entriesById.size === 0) return;
     const repositories = this.getRepositories();
-    this.emitChange({
-      added: [],
-      removed: [],
-      updated: repositories,
-      rootsAdded: [],
-      rootsRemoved: [],
-      routingChangedPrefixes: [],
-    });
+    this.emitChange(
+      {
+        added: [],
+        removed: [],
+        updated: repositories,
+        rootsAdded: [],
+        rootsRemoved: [],
+        routingChangedPrefixes: [],
+      },
+      collectError,
+    );
   }
 
   /**
@@ -3787,8 +3875,7 @@ module.exports = class RepositoryRegistry {
       manualOwners: new Set(),
       pins: new Set(),
       operationOwners: new Set(),
-      operationTail: Promise.resolve(),
-      pendingOperations: new Map(),
+      operationQueue: null,
       operationImplementations: new Map(),
       operations: null,
       missing: false,
@@ -3797,6 +3884,28 @@ module.exports = class RepositoryRegistry {
       destroySubscription: null,
       unavailableSubscription: null,
     };
+
+    entry.operationQueue = new RepositoryOperationQueue({
+      repository,
+      nextId: () => this.nextOperationId++,
+      snapshot: (operation) => this.operationSnapshot(operation),
+      emit: (event, operation) => {
+        if (!this.destroyed) this.emitter.emit(event, operation);
+      },
+      acquire: () => {
+        this.assertOperationEntry(entry);
+        const token = Symbol("operation");
+        entry.operationOwners.add(token);
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          entry.operationOwners.delete(token);
+          this.prune(entry);
+        };
+      },
+      execute: (name, args) => this.executeRepositoryOperation(entry, name, args),
+    });
 
     for (const rootPath of this.rootPaths) {
       if (this.repositoryRelatesToRoot(entry, rootPath)) entry.rootOwners.add(rootPath);
@@ -3985,58 +4094,91 @@ module.exports = class RepositoryRegistry {
         this.gitDirectoryOwners.delete(directory);
       }
     }
-    entry.destroySubscription.dispose();
-    entry.unavailableSubscription.dispose();
-    this.disposeOperationImplementations(entry);
-    entry.repository.setOperations?.(null);
-
-    if (entry.repository === this.activeRepository) {
-      this.applyActiveRepository(null, { pinned: false });
-      queueMicrotask(() => {
-        if (!this.destroyed && !this.activeRepository) {
-          this.recomputeActiveRepository({ emitOnPinChange: true });
-        }
-      });
+    const wasActive = entry.repository === this.activeRepository;
+    const activePin = wasActive ? this.activeRepositoryPin : null;
+    if (wasActive) {
+      this.activeRepositoryPin = null;
+      this.activeRepository = null;
+      this.activeWorkingDirectory = null;
+      this.activeRepositoryPinned = false;
     }
-
-    let destroyError = null;
-    let emitError = null;
-    try {
-      if (destroy && !entry.repository.isDestroyed?.()) entry.repository.destroy();
-    } catch (error) {
-      destroyError = error;
-    } finally {
-      if (emit && !this.destroyed) {
-        try {
-          this.emitChange({
-            added: [],
-            removed: [entry.repository],
-            updated: [],
-            rootsAdded: [],
-            rootsRemoved: [],
-            routingChangedPrefixes: [...entry.routingDirectories, ...entry.gitDirectoryAliases],
-          });
-        } catch (error) {
-          emitError = error;
-        }
-      }
-    }
-    if (destroyError) throw destroyError;
-    if (emitError) throw emitError;
+    const activeCleanup = wasActive
+      ? [
+          () => activePin?.dispose(),
+          () => {
+            if (
+              !this.destroyed &&
+              !this.activeRepository &&
+              !this.activeWorkingDirectory &&
+              !this.activeRepositoryPinned
+            ) {
+              this.emitter.emit(
+                "did-change-active-repository",
+                Object.freeze({ repository: null, workingDirectory: null, pinned: false }),
+              );
+            }
+          },
+          () =>
+            queueMicrotask(() => {
+              if (!this.destroyed && !this.activeRepository) {
+                this.recomputeActiveRepository({ emitOnPinChange: true });
+              }
+            }),
+        ]
+      : [];
+    completeCleanup(
+      [
+        () => entry.destroySubscription.dispose(),
+        () => entry.unavailableSubscription.dispose(),
+        () => this.disposeOperationImplementations(entry),
+        () => entry.repository.setOperations?.(null),
+        ...activeCleanup,
+        () => {
+          if (destroy && !entry.repository.isDestroyed?.()) entry.repository.destroy();
+        },
+        (collectError) => {
+          if (emit && !this.destroyed) {
+            this.emitChange(
+              {
+                added: [],
+                removed: [entry.repository],
+                updated: [],
+                rootsAdded: [],
+                rootsRemoved: [],
+                routingChangedPrefixes: [...entry.routingDirectories, ...entry.gitDirectoryAliases],
+              },
+              collectError,
+            );
+          }
+        },
+      ],
+      "Unable to remove the repository cleanly",
+    );
   }
 
-  emitChange(change) {
+  emitChange(change, collectError) {
     if (this.destroyed) return;
-    this.project?.invalidateRepositoryPathCache?.(change.routingChangedPrefixes);
-    this.synchronizeConsumersForRoutingChange(change.routingChangedPrefixes);
+    const notify = collectError
+      ? (callback) => {
+          try {
+            callback();
+          } catch (error) {
+            collectError(error);
+          }
+        }
+      : (callback) => callback();
+    notify(() => this.project?.invalidateRepositoryPathCache?.(change.routingChangedPrefixes));
+    notify(() => this.synchronizeConsumersForRoutingChange(change.routingChangedPrefixes));
     this.version++;
     const event = Object.freeze({ version: this.version, ...change });
 
-    for (const repository of change.added) this.emitter.emit("did-add-repository", repository);
-    for (const repository of change.removed) {
-      this.emitter.emit("did-remove-repository", repository);
+    for (const repository of change.added) {
+      notify(() => this.emitter.emit("did-add-repository", repository));
     }
-    this.emitter.emit("did-change", event);
+    for (const repository of change.removed) {
+      notify(() => this.emitter.emit("did-remove-repository", repository));
+    }
+    notify(() => this.emitter.emit("did-change", event));
   }
 
   synchronizeConsumersForRoutingChange(prefixes) {

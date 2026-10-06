@@ -9,7 +9,7 @@ Supplies the _write_ half of version control: commit, stage, branch, clone, and 
 | Consumed by | core, in `src/repository-registry.js`                          |
 | Owner       | the editor itself                                              |
 
-**Nothing provides this today.** Core's repository registry reads state on its own; anything that _changes_ a repository comes through here. A provider can implement as much or as little as it likes, and consumers ask before acting via `canPerformOperation`.
+The registry routes repository writes through operation providers. A provider can implement as much or as little as it likes, and consumers ask before acting via `canPerformOperation`.
 
 ## Registration
 
@@ -29,11 +29,18 @@ In your `package.json`:
 
 ```ts
 type OperationsProvider = {
-  createRepositoryOperations?(repository: Repository): OperationImplementation;
-  initializeRepository?(directoryPath: string): Promise<void>;
+  createRepositoryOperations?(context: {
+    repository: Repository;
+    workingDirectory: string;
+    gitDirectory: string | null;
+  }): OperationImplementation;
+  initializeRepository?(directoryPath: string, options?: object): Promise<void>;
   cloneRepository?(url: string, directoryPath: string, options?: object): Promise<void>;
-  executeGit?(args: string[], options?: object): Promise<{ stdout: string; stderr: string }>;
-  getCapabilities?(): string[];
+  executeGit?(
+    args: string[],
+    workingDirectory: string,
+    options?: object,
+  ): Promise<{ stdout: string; stderr: string }>;
 };
 
 type OperationImplementation = {
@@ -46,13 +53,12 @@ type OperationImplementation = {
 
 **At least one of the four operation members must be a function**, or registration throws a `TypeError`. They split by scope:
 
-| Member                                   | Scope                                                                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `createRepositoryOperations(repository)` | Per-repository operations — stage, commit, branch, push, worktree. Called lazily, once per repository. |
-| `initializeRepository(path)`             | Workspace-level: create a repository at a path.                                                        |
-| `cloneRepository(url, path)`             | Workspace-level: clone into a path.                                                                    |
-| `executeGit(args)`                       | Raw transport, for operations no structured method covers.                                             |
-| `getCapabilities()`                      | Extra operation names beyond the standard set, so consumers can discover them.                         |
+| Member                                | Scope                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `createRepositoryOperations(context)` | Per-repository operations — stage, commit, branch, push, worktree. Called lazily, once per repository and provider. |
+| `initializeRepository(path)`          | Workspace-level: create a repository at a path.                                                                     |
+| `cloneRepository(url, path)`          | Workspace-level: clone into a path.                                                                                 |
+| `executeGit(args)`                    | Raw transport, for operations no structured method covers.                                                          |
 
 ## Minimal example
 
@@ -60,15 +66,14 @@ type OperationImplementation = {
 module.exports = {
   provideRepositoriesOperationsProvider() {
     return {
-      createRepositoryOperations(repository) {
-        const root = repository.getWorkingDirectory();
+      createRepositoryOperations({ workingDirectory: root }) {
         return {
-          stagePaths: (paths) => this.run(root, ["add", "--", ...paths]),
+          stageFiles: (paths) => this.run(root, ["add", "--", ...paths]),
           commit: (message) => this.run(root, ["commit", "-m", message]),
-          getCapabilities: () => ["stagePaths", "commit"],
+          getCapabilities: () => ["stageFiles", "commit"],
         };
       },
-      executeGit: (args, options) => this.run(options?.cwd, args),
+      executeGit: (args, root, options) => this.run(root, args, options),
     };
   },
 };
@@ -80,6 +85,10 @@ Providers are stored **newest first** by default, so a later registration takes 
 
 `createRepositoryOperations` is called lazily, the first time a repository needs an operation, and the result is cached per repository per provider. Registering a provider fires a change notification so consumers can re-read capabilities.
 
+Writes to one repository run sequentially, while writes to different repositories can run in parallel. Provider selection happens when an operation starts, so a queued operation uses the provider available at that time. The registry emits `did-queue-operation`, `did-start-operation` and `did-finish-operation`; pending state is removed before the finish notification, while repository retention lasts through that notification and final cleanup.
+
+Observer exceptions reject the affected operation without leaving pending state or blocking later writes. A finish observer or cleanup can fail after a write has already completed; callers must distinguish that outcome before retrying. A primary failure remains unchanged when cleanup succeeds. Additional completion failures are combined in an `AggregateError`, with the primary failure first and as its `cause`.
+
 After a successful per-repository operation the registry refreshes the repository's read snapshots. The implementation right-sizes that refresh by declaring `getOperationRefreshHint(name, args)`: `"none"` skips it (object-database or unrelated-config writes), `"status"` refreshes the status snapshot, `"refs"` the refs snapshot, `"both"` both. The status refresh is awaited — a `"status"`/`"both"` operation resolves with a fresh status snapshot — while the refs refresh always runs detached, so code that needs post-operation refs must subscribe to `onDidChangeRefsSnapshot` rather than read synchronously after the await. A missing, unknown, or throwing hint refreshes both.
 
 The worktree operations (`worktreeAdd`, `worktreeRemove`, `worktreeMove`, `worktreeLock`, `worktreeUnlock`, `worktreePrune`) are the clearest case for `"refs"`: they act on a checkout other than the one the repository represents, so its index and working tree cannot change, while the worktree list the refs snapshot carries always can.
@@ -89,6 +98,10 @@ Capability discovery is the intended way to drive a UI: `canPerformOperation(rep
 ## Teardown
 
 Core returns a `Disposable` that removes the provider **and** disposes every per-repository implementation it created, then notifies consumers so they can re-read capabilities. A provider does not need to track its own implementations.
+
+An implementation used by an active operation remains alive until its write and required status refresh settle, including when the provider or registry is removed. Deferred disposal runs once after the last active operation. An implementation returned by a factory whose registration disappeared during creation is disposed immediately and never selected for work.
+
+If an implementation's destructor throws, teardown still attempts the remaining cleanup and change notifications before reporting the error. A single failure is rethrown unchanged; multiple failures become an `AggregateError` with the first failure as its `cause`.
 
 Adding a provider to a destroyed registry throws rather than failing quietly.
 

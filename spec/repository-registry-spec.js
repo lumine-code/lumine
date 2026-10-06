@@ -599,6 +599,36 @@ describe("RepositoryRegistry", () => {
     expect(repository.isDestroyed()).toBe(true);
   });
 
+  it("preserves a generic operation failure alongside an error pruning its last repository lease", async () => {
+    const workdir = temp.mkdirSync("failed-generic-operation-prune");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const operationFailure = Object.freeze(new Error("Generic operation failed"));
+    const pruneFailure = new Error("Repository destruction failed");
+    const destroy = repository.destroy.bind(repository);
+    spyOn(repository, "destroy").and.callFake(() => {
+      destroy();
+      throw pruneFailure;
+    });
+
+    const failure = await registry
+      .runOperation(repository, async () => {
+        registry.setProjectRoots([]);
+        throw operationFailure;
+      })
+      .catch((error) => error);
+
+    expect(failure instanceof AggregateError).toBe(true);
+    expect(failure.errors).toEqual([operationFailure, pruneFailure]);
+    expect(failure.errors[0]).toBe(operationFailure);
+    expect(failure.cause).toBe(operationFailure);
+    expect(repository.destroy).toHaveBeenCalledTimes(1);
+    expect(repository.isDestroyed()).toBe(true);
+    expect(repository.getOperations()).toBeNull();
+    expect(registry.getRepositories()).toEqual([]);
+  });
+
   it("assigns a stable write facade when a repository is registered", () => {
     const workdir = temp.mkdirSync("repository-operations-facade");
     const repository = new FakeRepository(workdir);
@@ -960,6 +990,49 @@ describe("RepositoryRegistry", () => {
     expect(await repository.getOperations().commit("Subject")).toBe("created-commit");
   });
 
+  for (const reporter of ["repository", "notification"]) {
+    it(`preserves a successful write when both the read cache and its ${reporter} reporter fail`, async () => {
+      const workdir = temp.mkdirSync("throwing-cache-refresh-reporter");
+      const repository = new FakeRepository(workdir);
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(workdir)]);
+      const cacheFailure = new Error("Status cache refresh failed");
+      const reporterFailure = new Error("Refresh failure reporter failed");
+      spyOn(repository, "refreshStatusSnapshot").and.callFake(async () => {
+        throw cacheFailure;
+      });
+      const report = jasmine.createSpy("refresh reporter").and.throwError(reporterFailure);
+      if (reporter === "repository") repository.reportBackgroundSnapshotError = report;
+      else registry.notificationManager = { addWarning: report };
+      const logError = spyOn(console, "error");
+      const commit = jasmine.createSpy("commit").and.resolveTo("created-commit");
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          commit,
+          getOperationRefreshHint: () => "status",
+        }),
+      });
+      const operations = repository.getOperations();
+      const finished = [];
+      operations.onDidFinishOperation((event) => finished.push(event));
+
+      expect(await operations.commit("Subject")).toBe("created-commit");
+
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(logError).toHaveBeenCalledTimes(1);
+      const [message, reportedCacheFailure, reportedReporterFailure] =
+        logError.calls.mostRecent().args;
+      expect(typeof message).toBe("string");
+      expect(reportedCacheFailure).toBe(cacheFailure);
+      expect(reportedReporterFailure).toBe(reporterFailure);
+      expect(finished.length).toBe(1);
+      expect(finished[0].status).toBe("succeeded");
+      expect(finished[0].error).toBeNull();
+      expect(operations.getPendingOperations()).toEqual([]);
+    });
+  }
+
   it("reports an unavailable operation with a stable error code", async () => {
     const workdir = temp.mkdirSync("unavailable-operation");
     const repository = new FakeRepository(workdir);
@@ -1110,16 +1183,345 @@ describe("RepositoryRegistry", () => {
     expect(await second).toBe("second-commit");
   });
 
+  for (const stage of ["Queue", "Start", "Finish"]) {
+    it(`cleans up a throwing ${stage.toLowerCase()} observer and permits the next repository write`, async () => {
+      const workdir = temp.mkdirSync("throwing-operation-observer");
+      const repository = new FakeRepository(workdir);
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(workdir)]);
+      const commit = jasmine.createSpy("commit").and.callFake(async (message) => message);
+      const destroy = jasmine.createSpy("destroy implementation");
+      const create = jasmine
+        .createSpy("create implementation")
+        .and.returnValue({ commit, destroy });
+      registry.addOperationProvider({ createRepositoryOperations: create });
+      const operations = repository.getOperations();
+      const completions = [];
+      operations.onDidFinishOperation((operation) => {
+        completions.push({
+          operation,
+          pending: operations.getPendingOperations(),
+          destroyed: repository.isDestroyed(),
+        });
+      });
+      const failure = Object.freeze(new Error(`${stage} observer failed`));
+      const subscription = operations[`onDid${stage}Operation`](() => {
+        subscription.dispose();
+        throw failure;
+      });
+
+      expect(await operations.commit("fault").catch((error) => error)).toBe(failure);
+
+      expect(operations.getPendingOperations()).toEqual([]);
+      expect(completions.length).toBe(1);
+      expect(completions[0].pending).toEqual([]);
+      expect(completions[0].destroyed).toBe(false);
+      expect(completions[0].operation.status).toBe(stage === "Finish" ? "succeeded" : "failed");
+      expect(completions[0].operation.error).toBe(stage === "Finish" ? null : failure);
+      if (stage !== "Finish") {
+        expect(create).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+      }
+      expect(await operations.commit("recovery")).toBe("recovery");
+      expect(operations.getPendingOperations()).toEqual([]);
+      registry.setProjectRoots([]);
+      expect(repository.isDestroyed()).toBe(true);
+      expect(destroy).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("selects the current provider when a queued write starts after its predecessor's provider was removed", async () => {
+    const workdir = temp.mkdirSync("provider-changed-before-queued-write");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    let finishFirst, startFirst;
+    const started = new Promise((resolve) => (startFirst = resolve));
+    const destroy = jasmine.createSpy("destroy old implementation");
+    const oldCommit = jasmine.createSpy("old commit").and.callFake(() => {
+      startFirst();
+      return new Promise((resolve) => (finishFirst = resolve));
+    });
+    const oldProvider = registry.addOperationProvider({
+      createRepositoryOperations: () => ({ commit: oldCommit, destroy }),
+    });
+    const operations = repository.getOperations();
+    const first = operations.commit("first");
+    await started;
+    const second = operations.commit("second");
+    oldProvider.dispose();
+    const currentCommit = jasmine.createSpy("current commit").and.resolveTo("current-provider");
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({ commit: currentCommit }),
+    });
+    expect(destroy).not.toHaveBeenCalled();
+    finishFirst("old-provider");
+
+    expect(await first).toBe("old-provider");
+    expect(await second).toBe("current-provider");
+    expect(oldCommit).toHaveBeenCalledOnceWith("first", undefined);
+    expect(currentCommit).toHaveBeenCalledOnceWith("second", undefined);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(operations.getPendingOperations()).toEqual([]);
+  });
+
+  it("preserves a write failure alongside a failing deferred provider destructor", async () => {
+    const workdir = temp.mkdirSync("failed-deferred-provider-cleanup");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const writeFailure = Object.freeze(new Error("Provider write failed"));
+    const cleanupFailure = new Error("Provider cleanup failed");
+    let startWrite, rejectWrite;
+    const started = new Promise((resolve) => (startWrite = resolve));
+    const destroy = jasmine.createSpy("destroy implementation").and.throwError(cleanupFailure);
+    const provider = registry.addOperationProvider({
+      createRepositoryOperations: () => ({
+        commit() {
+          startWrite();
+          return new Promise((_resolve, reject) => (rejectWrite = reject));
+        },
+        destroy,
+      }),
+    });
+    const operations = repository.getOperations();
+    const failed = operations.commit("fault").catch((error) => error);
+    await started;
+    provider.dispose();
+    expect(destroy).not.toHaveBeenCalled();
+    rejectWrite(writeFailure);
+
+    const failure = await failed;
+
+    expect(failure instanceof AggregateError).toBe(true);
+    expect(failure.errors).toEqual([writeFailure, cleanupFailure]);
+    expect(failure.errors[0]).toBe(writeFailure);
+    expect(failure.cause).toBe(writeFailure);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(operations.getPendingOperations()).toEqual([]);
+    registry.setProjectRoots([]);
+    expect(repository.isDestroyed()).toBe(true);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers active provider disposal when the entire registry is destroyed", async () => {
+    const workdir = temp.mkdirSync("destroyed-registry-active-provider");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    let startWrite, finishWrite;
+    const started = new Promise((resolve) => (startWrite = resolve));
+    const destroy = jasmine.createSpy("destroy implementation");
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({
+        commit() {
+          startWrite();
+          return new Promise((resolve) => (finishWrite = resolve));
+        },
+        destroy,
+      }),
+    });
+    const operation = repository.getOperations().commit("active");
+    await started;
+    registry.destroy();
+    expect(destroy).not.toHaveBeenCalled();
+    finishWrite("completed write");
+
+    expect(await operation).toBe("completed write");
+    expect(destroy).toHaveBeenCalledTimes(1);
+    registry.destroy();
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes and never executes an implementation whose factory unregisters its own provider", async () => {
+    const workdir = temp.mkdirSync("self-unregistered-operation-provider");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const commit = jasmine.createSpy("obsolete commit").and.resolveTo("must not run");
+    const destroy = jasmine.createSpy("destroy obsolete implementation");
+    let provider;
+    provider = registry.addOperationProvider({
+      createRepositoryOperations() {
+        provider.dispose();
+        return { commit, destroy };
+      },
+    });
+    const operations = repository.getOperations();
+    const failure = await operations.commit("obsolete").catch((error) => error);
+
+    expect(failure.code).toBe("ERR_REPOSITORY_OPERATION_UNAVAILABLE");
+    expect(commit).not.toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(operations.getPendingOperations()).toEqual([]);
+    registry.setProjectRoots([]);
+    expect(repository.isDestroyed()).toBe(true);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  for (const multipleFailures of [false, true]) {
+    it(`destroys every repository and facade after ${multipleFailures ? "multiple provider destructors throw" : "the first provider destructor throws"}`, () => {
+      const first = new FakeRepository(temp.mkdirSync("destroy-all-first"));
+      const second = new FakeRepository(temp.mkdirSync("destroy-all-second"));
+      repositories.push(first, second);
+      registry.setProjectRoots([
+        directoryFor(first.getWorkingDirectory()),
+        directoryFor(second.getWorkingDirectory()),
+      ]);
+      const firstFailure = new Error("First implementation cleanup failed");
+      const secondFailure = new Error("Second implementation cleanup failed");
+      const firstCleanup = jasmine.createSpy("first cleanup").and.throwError(firstFailure);
+      const secondCleanup = jasmine.createSpy("second cleanup").and.callFake(() => {
+        if (multipleFailures) throw secondFailure;
+      });
+      registry.addOperationProvider({
+        createRepositoryOperations: ({ repository }) => ({
+          commit: async () => "unused",
+          destroy: repository === first ? firstCleanup : secondCleanup,
+        }),
+      });
+      expect(first.getOperations().getCapabilities()).toContain("commit");
+      expect(second.getOperations().getCapabilities()).toContain("commit");
+      const firstDestroyed = jasmine.createSpy("first repository destroyed");
+      const secondDestroyed = jasmine.createSpy("second repository destroyed");
+      first.onDidDestroy(firstDestroyed);
+      second.onDidDestroy(secondDestroyed);
+      let failure;
+      try {
+        registry.destroy();
+      } catch (error) {
+        failure = error;
+      }
+
+      if (multipleFailures) {
+        expect(failure instanceof AggregateError).toBe(true);
+        expect(failure.errors).toEqual([firstFailure, secondFailure]);
+        expect(failure.cause).toBe(firstFailure);
+      } else {
+        expect(failure).toBe(firstFailure);
+      }
+      expect(firstCleanup).toHaveBeenCalledTimes(1);
+      expect(secondCleanup).toHaveBeenCalledTimes(1);
+      expect(firstDestroyed).toHaveBeenCalledTimes(1);
+      expect(secondDestroyed).toHaveBeenCalledTimes(1);
+      expect(first.isDestroyed()).toBe(true);
+      expect(second.isDestroyed()).toBe(true);
+      expect(first.getOperations()).toBeNull();
+      expect(second.getOperations()).toBeNull();
+      expect(registry.getRepositories()).toEqual([]);
+      expect(registry.getForPath(path.join(first.getWorkingDirectory(), "file.txt"))).toBeNull();
+      expect(registry.getForPath(path.join(second.getWorkingDirectory(), "file.txt"))).toBeNull();
+      registry.destroy();
+      expect(firstCleanup).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("removes every implementation and facade and publishes change even when cleanup and removal observers throw", () => {
+    const workdir = temp.mkdirSync("failed-entry-cleanup-notifications");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const cleanupFailure = new Error("Implementation cleanup failed");
+    const observerFailure = new Error("Removal observer failed");
+    const laterCleanup = jasmine.createSpy("later implementation cleanup");
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({ commit: async () => "unused", destroy: laterCleanup }),
+    });
+    const firstCleanup = jasmine
+      .createSpy("first implementation cleanup")
+      .and.throwError(cleanupFailure);
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({ commit: async () => "unused", destroy: firstCleanup }),
+    });
+    expect(repository.getOperations().getCapabilities()).toContain("commit");
+    registry.setActiveRepository(repository, { pin: true });
+    const activeChanged = jasmine.createSpy("active repository cleared");
+    const changed = jasmine.createSpy("routing changed");
+    const removed = jasmine.createSpy("repository removed").and.throwError(observerFailure);
+    registry.onDidChangeActiveRepository(activeChanged);
+    registry.onDidRemoveRepository(removed);
+    registry.onDidChange(changed);
+    let failure;
+    try {
+      repository.becomeUnavailable();
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure instanceof AggregateError).toBe(true);
+    expect(failure.errors).toEqual([cleanupFailure, observerFailure]);
+    expect(failure.cause).toBe(cleanupFailure);
+    expect(firstCleanup).toHaveBeenCalledTimes(1);
+    expect(laterCleanup).toHaveBeenCalledTimes(1);
+    expect(repository.getOperations()).toBeNull();
+    expect(repository.isDestroyed()).toBe(true);
+    expect(registry.getActiveRepository()).toBeNull();
+    expect(activeChanged).toHaveBeenCalledTimes(1);
+    expect(activeChanged.calls.mostRecent().args[0].repository).toBeNull();
+    expect(removed).toHaveBeenCalledOnceWith(repository);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed.calls.mostRecent().args[0].removed).toEqual([repository]);
+    expect(registry.getRepositories()).toEqual([]);
+    expect(registry.getForPath(path.join(workdir, "file.txt"))).toBeNull();
+  });
+
+  it("removes a provider from every entry and publishes its removal after the first destructor throws", () => {
+    const first = new FakeRepository(temp.mkdirSync("remove-provider-first"));
+    const second = new FakeRepository(temp.mkdirSync("remove-provider-second"));
+    repositories.push(first, second);
+    registry.setProjectRoots([
+      directoryFor(first.getWorkingDirectory()),
+      directoryFor(second.getWorkingDirectory()),
+    ]);
+    const cleanupFailure = new Error("First implementation cleanup failed");
+    const firstCleanup = jasmine.createSpy("first cleanup").and.throwError(cleanupFailure);
+    const secondCleanup = jasmine.createSpy("second cleanup");
+    const provider = registry.addOperationProvider({
+      createRepositoryOperations: ({ repository }) => ({
+        commit: async () => "unused",
+        destroy: repository === first ? firstCleanup : secondCleanup,
+      }),
+    });
+    const firstOperations = first.getOperations();
+    const secondOperations = second.getOperations();
+    expect(firstOperations.getCapabilities()).toContain("commit");
+    expect(secondOperations.getCapabilities()).toContain("commit");
+    const changed = jasmine.createSpy("provider removal published");
+    registry.onDidChange(changed);
+    let failure;
+    try {
+      provider.dispose();
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBe(cleanupFailure);
+    expect(firstCleanup).toHaveBeenCalledTimes(1);
+    expect(secondCleanup).toHaveBeenCalledTimes(1);
+    expect(firstOperations.getCapabilities()).toEqual([]);
+    expect(secondOperations.getCapabilities()).toEqual([]);
+    expect(first.isDestroyed()).toBe(false);
+    expect(second.isDestroyed()).toBe(false);
+    expect(first.getOperations()).toBe(firstOperations);
+    expect(second.getOperations()).toBe(secondOperations);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed.calls.mostRecent().args[0].updated).toEqual([first, second]);
+    provider.dispose();
+    expect(firstCleanup).toHaveBeenCalledTimes(1);
+  });
+
   it("runs writes to different repositories in parallel", async () => {
     const firstPath = temp.mkdirSync("parallel-repository-one");
     const secondPath = temp.mkdirSync("parallel-repository-two");
     const firstRepository = new FakeRepository(firstPath);
     const secondRepository = new FakeRepository(secondPath);
     const started = [];
+    const operationIds = [];
     let finishWrites;
     const writes = new Promise((resolve) => (finishWrites = resolve));
     repositories.push(firstRepository, secondRepository);
     registry.setProjectRoots([directoryFor(firstPath), directoryFor(secondPath)]);
+    registry.onDidQueueOperation(({ id }) => operationIds.push(id));
     registry.addOperationProvider({
       createRepositoryOperations({ workingDirectory }) {
         return {
@@ -1136,6 +1538,7 @@ describe("RepositoryRegistry", () => {
     await Promise.resolve();
 
     expect(started).toEqual([firstPath, secondPath]);
+    expect(operationIds).toEqual([1, 2]);
     finishWrites();
     await Promise.all([first, second]);
   });
