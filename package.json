@@ -34,7 +34,7 @@
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#4d08dbfc1acfe6d6226e31db2e1ce976e25b1fd3",
     "@lumine-code/fs-plus": "github:lumine-code/fs-plus#83486ac8a670adb4381a9d4e2df3eb999f670ad1",
     "@lumine-code/fs-temp": "github:lumine-code/fs-temp#f81b8d8cef089b525881432dd42efaf16b919bcb",
-    "@lumine-code/fuzzy-native": "github:lumine-code/fuzzy-native#c2cce68ff8fdc00eee31e41713bf7951a05f6241",
+    "@lumine-code/fuzzy-native": "github:lumine-code/fuzzy-native#b515d1d5213a3a53232ea9c06161c6270e809505",
     "@lumine-code/grim": "github:lumine-code/grim#544e9ad2890445b8b7dca20a838915e0a980da68",
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#71abc9b16fc7f3863ee2afa554f6762a1844214b",
     "@lumine-code/season": "github:lumine-code/season#14913f7d0c2cbc304fbcaf98a9ea0299c2b5166a",
@@ -175,7 +175,7 @@
     "yargs": "18.2.0"
   },
   "allowScripts": {
-    "github:lumine-code/fuzzy-native#c2cce68ff8fdc00eee31e41713bf7951a05f6241": true,
+    "github:lumine-code/fuzzy-native#b515d1d5213a3a53232ea9c06161c6270e809505": true,
     "github:lumine-code/keyboard-layout#71abc9b16fc7f3863ee2afa554f6762a1844214b": true,
     "github:lumine-code/superstring#f2b73f4b87cc5e21625d3413dcecc583a8a291b9": true,
     "electron-winstaller@5.4.0": true,

@@ -939,6 +939,31 @@ describe("SelectList", () => {
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
+    it("matches Unicode case without removing accents or changing displayed text", async () => {
+      view = createSelectList({ items: ["🙂ŻÓŁĆ.txt", "🙂żółć.txt", "zolc.txt"] });
+
+      view.getQueryEditor().setText("żółć");
+      await nextUpdate();
+
+      expect([...view.getDisplayedItems()].sort()).toEqual(["🙂ŻÓŁĆ.txt", "🙂żółć.txt"].sort());
+      expect(listTexts().sort()).toEqual(["🙂ŻÓŁĆ.txt", "🙂żółć.txt"].sort());
+      expect(
+        Array.from(listElement().querySelectorAll(".character-match"), (m) => m.textContent).sort(),
+      ).toEqual(["ŻÓŁĆ", "żółć"].sort());
+    });
+
+    it("matches an ASCII candidate with a Unicode case variant in the query", async () => {
+      view = createSelectList({ items: ["Kb", "kb"] });
+
+      view.getQueryEditor().setText("Kb");
+      await nextUpdate();
+
+      expect(listTexts().sort()).toEqual(["Kb", "kb"].sort());
+      expect(
+        Array.from(listElement().querySelectorAll(".character-match"), (m) => m.textContent).sort(),
+      ).toEqual(["Kb", "kb"].sort());
+    });
+
     it("highlights a folded character once even when it matches multiple query characters", async () => {
       view = createSelectList({
         items: ["Straße"],
