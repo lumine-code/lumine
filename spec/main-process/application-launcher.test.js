@@ -116,6 +116,13 @@ describe("Application launcher", () => {
       "require('fs').writeFileSync(process.argv[2], JSON.stringify({argv: process.argv.slice(3), cwd: process.cwd()}));",
     );
     const originalRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
+    const spawn = childProcess.spawn.bind(childProcess);
+    let launched, closed;
+    sandbox.stub(childProcess, "spawn").callsFake((...spawnArgs) => {
+      launched = spawn(...spawnArgs);
+      closed = new Promise((resolve) => launched.once("close", resolve));
+      return launched;
+    });
     let pid;
 
     try {
@@ -141,13 +148,10 @@ describe("Application launcher", () => {
         cwd: fs.realpathSync(directory),
       });
     } finally {
-      if (pid) {
-        try {
-          process.kill(pid);
-        } catch (error) {
-          assert.strictEqual(error.code, "ESRCH");
-        }
-      }
+      if (launched && launched.exitCode === null && launched.signalCode === null) launched.kill();
+      // Windows keeps a live process's working directory open. A kill request
+      // does not release it until the child has actually closed.
+      if (closed) await closed;
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
