@@ -10,6 +10,12 @@ const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
 const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
 const ProjectStateController = require("./project-state-controller");
+const {
+  appendLifecycleError,
+  awaitLifecycleCleanup,
+  captureLifecycleError,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 const registerDefaultCommands = require("./register-default-commands");
 const { updateProcessEnv } = require("./update-process-env");
 const ConfigSchema = require("./config-schema");
@@ -91,6 +97,7 @@ class Environment {
   #windowEventHandler;
   #projectStateController;
   #resetting = 0;
+  #destroyed = false;
 
   #getLoadSettings() {
     return this.applicationDelegate.getWindowLoadSettings();
@@ -777,110 +784,136 @@ class Environment {
   }
 
   async reset() {
-    this.#projectStateController.reset();
+    if (this.#destroyed) {
+      throw Object.assign(new Error("Environment reset was cancelled"), { code: "ABORT_ERR" });
+    }
+    const failures = [];
+    const capture = (callback) => {
+      if (!this.#destroyed) return captureLifecycleError(failures, callback);
+    };
+    const cleanup = async (callback) => {
+      if (!this.#destroyed) return awaitLifecycleCleanup(failures, callback);
+    };
     this.#resetting++;
     try {
+      capture(() => this.#projectStateController.reset());
       // Config::clear replaces its emitter, so observers held by ThemeManager
       // must be disposed before the reset and recreated on the next activation.
-      this.themes.stopObservingThemeChanges();
-      await this.themes.unwatchUserStylesheet();
-      this.deserializers.clear();
-      this.registerDefaultDeserializers();
+      capture(() => this.themes.stopObservingThemeChanges());
+      await cleanup(() => this.themes.unwatchUserStylesheet());
+      capture(() => this.deserializers.clear());
+      capture(() => this.registerDefaultDeserializers());
 
-      this.config.clear();
-      this.config.setSchema(null, {
-        type: "object",
-        properties: _.clone(ConfigSchema),
-      });
+      capture(() => this.config.clear());
+      capture(() =>
+        this.config.setSchema(null, {
+          type: "object",
+          properties: _.clone(ConfigSchema),
+        }),
+      );
 
       // Clear all three registries before rebuilding them. KeymapManager::clear
       // replaces its emitter, so the menu managers' startup subscriptions no
       // longer receive `did-load-bundled-keymaps`; reload their platform items
       // explicitly after the key bindings they derive accelerators from.
-      this.keymaps.clear();
-      this.menu.clear();
-      this.contextMenu.clear();
-      this.keymaps.loadBundledKeymaps();
-      this.menu.loadPlatformItems();
-      this.contextMenu.loadPlatformItems();
+      capture(() => this.keymaps.clear());
+      capture(() => this.menu.clear());
+      capture(() => this.contextMenu.clear());
+      capture(() => this.keymaps.loadBundledKeymaps());
+      capture(() => this.menu.loadPlatformItems());
+      capture(() => this.contextMenu.loadPlatformItems());
 
-      this.commands.clear();
-      this.registerDefaultCommands();
+      capture(() => this.commands.clear());
+      capture(() => this.registerDefaultCommands());
 
-      this.styles.restoreSnapshot(this.initialStyleElements);
+      capture(() => this.styles.restoreSnapshot(this.initialStyleElements));
 
-      this.clipboard.reset();
+      capture(() => this.clipboard.reset());
 
-      this.notifications.clear();
+      capture(() => this.notifications.clear());
 
-      await this.packages.reset();
-      this.hooks.clear();
-      this.workspace.reset(this.packages);
-      this.registerDefaultOpeners();
-      this.project.reset(this.packages);
-      this.workspace.observeFileDocuments();
+      await cleanup(() => this.packages.reset());
+      capture(() => this.hooks.clear());
+      capture(() => this.workspace.reset(this.packages));
+      capture(() => this.registerDefaultOpeners());
+      capture(() => this.project.reset(this.packages));
+      capture(() => this.workspace.observeFileDocuments());
       // The reset recreated the pane containers, so the registry's active-item
       // subscription must be rebuilt against the new center.
-      this.repositories.attachWorkspace(this.workspace);
-      this.repositories.consumeServices(this.packages);
-      this.icons.clear();
-      this.icons.attachProject(this.project);
-      this.grammars.clear();
-      this.textEditorFactory.clear();
-      this.textEditors.clear();
+      capture(() => this.repositories.attachWorkspace(this.workspace));
+      capture(() => this.repositories.consumeServices(this.packages));
+      capture(() => this.icons.clear());
+      capture(() => this.icons.attachProject(this.project));
+      capture(() => this.grammars.clear());
+      capture(() => this.textEditorFactory.clear());
+      capture(() => this.textEditors.clear());
       // TextEditorRegistry::clear replaces its emitter. Reattach workspace
       // observers only after that reset so fragment and viewer registrations
       // remain visible for the duration of the next window lifecycle.
-      this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
-      this.pasteProviders.clear();
-      this.views.clear();
-      this.pathsWithWaitSessions.clear();
+      capture(() => this.workspace.initialize({ configDirPath: this.getConfigDirPath() }));
+      capture(() => this.pasteProviders.clear());
+      capture(() => this.views.clear());
+      capture(() => this.pathsWithWaitSessions.clear());
+      if (this.#destroyed) {
+        appendLifecycleError(
+          failures,
+          Object.assign(new Error("Environment reset was cancelled"), { code: "ABORT_ERR" }),
+        );
+      }
     } finally {
       this.#resetting--;
     }
+    throwLifecycleErrors(failures, "Unable to reset the environment cleanly");
   }
 
   destroy() {
-    if (!this.project) return;
-
-    this.#projectStateController.destroy();
+    if (this.#destroyed) return;
+    this.#destroyed = true;
+    const failures = [];
+    const capture = (callback) => captureLifecycleError(failures, callback);
+    const destroyField = (name) => {
+      const object = this[name];
+      capture(() => object?.destroy());
+      // Later stages can read the environment while a preceding object's
+      // callbacks run. Drop its reference only after its own attempt finishes.
+      this[name] = null;
+    };
 
     // Set this flag and then don't reset it after `destroy` is done, since we
     // need other disposing objects to be able to check it. We won't need to
     // reset it because another environment will be created.
     this.isDestroying = true;
-    this.emitter.emit("will-destroy");
-    this.hooks.clear();
+    capture(() => this.#projectStateController.destroy());
+    capture(() => this.emitter.emit("will-destroy"));
+    capture(() => this.hooks.clear());
 
-    this.menu.destroy();
-    this.tooltips.destroy();
-    this.disposables.dispose();
-    if (this.themes) this.themes.destroy();
-    this.themes = null;
-    if (this.workspaceDrops) this.workspaceDrops.destroy();
-    this.workspaceDrops = null;
-    if (this.workspace) this.workspace.destroy();
-    this.workspace = null;
-    if (this.textEditorFactory) this.textEditorFactory.destroy();
-    this.textEditorFactory = null;
-    if (this.textEditors) this.textEditors.destroy();
-    this.textEditors = null;
-    if (this.project) this.project.destroy();
-    this.project = null;
-    if (this.repositories) this.repositories.destroy();
-    this.repositories = null;
-    if (this.icons) this.icons.destroy();
-    this.icons = null;
-    this.commands.clear();
-    if (this.stylesElement) this.stylesElement.remove();
-    this.uriHandlers.destroy();
+    capture(() => this.menu.destroy());
+    capture(() => this.tooltips.destroy());
+    capture(() => this.disposables.dispose());
+    destroyField("themes");
+    destroyField("workspaceDrops");
+    destroyField("workspace");
+    destroyField("textEditorFactory");
+    destroyField("textEditors");
+    destroyField("project");
+    destroyField("repositories");
+    destroyField("icons");
+    capture(() => this.commands.clear());
+    capture(() => this.stylesElement?.remove());
+    capture(() => this.uriHandlers.destroy());
 
-    this.secrets?.dispose();
-    void this.fileWatchClient.close();
-    this.stateStore.close();
-    this.projectStateIndex.close();
+    capture(() => this.secrets?.dispose());
+    capture(() => {
+      const closing = this.fileWatchClient.close();
+      void closing?.catch((error) =>
+        console.error("Failed to close environment file watchers", error),
+      );
+    });
+    capture(() => this.stateStore.close());
+    capture(() => this.projectStateIndex.close());
 
-    this.uninstallWindowEventHandler();
+    capture(() => this.uninstallWindowEventHandler());
+    throwLifecycleErrors(failures, "Unable to destroy the environment cleanly");
   }
 
   // TODO: Make this part of the public API. We should make onDidThrowError

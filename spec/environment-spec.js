@@ -5,6 +5,8 @@ const crypto = require("crypto");
 const temp = require("@lumine-code/fs-temp").track();
 const Environment = require("../src/environment");
 const Clipboard = require("../src/clipboard");
+const { Disposable } = require("@lumine-code/event-kit");
+const { combineLifecycleErrors } = require("../src/package-lifecycle-errors");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");
 
@@ -2006,6 +2008,198 @@ describe("Environment", () => {
       expect(env.stateStore.clear).toHaveBeenCalled();
       expect(env.projectStateIndex.clear).toHaveBeenCalled();
     });
+  });
+
+  describe("environment lifecycle cleanup", () => {
+    let environment;
+
+    beforeEach(() => {
+      jasmine.useRealClock();
+      environment = new Environment({
+        applicationDelegate: lumine.applicationDelegate,
+        clipboard: new Clipboard(),
+      });
+      const { resourcePath, devMode } = environment.applicationDelegate.getWindowLoadSettings();
+      environment.configDirPath = lumine.getConfigDirPath();
+      environment.initialStyleElements = environment.styles.getSnapshot();
+      environment.keymaps.resourcePath = resourcePath;
+      environment.keymaps.devMode = devMode;
+      environment.menu.resourcePath = resourcePath;
+      environment.contextMenu.initialize({ resourcePath, devMode });
+      environment.workspace.initialize({ configDirPath: environment.configDirPath });
+    });
+
+    afterEach(() => environment.destroy());
+
+    it("resets the workspace, project, editor factory and registries after package reset rejects, then permits retry", async () => {
+      const editor = await environment.workspace.open();
+      const buffer = editor.getBuffer();
+      const previousPane = environment.workspace.getCenter().getActivePane();
+      environment.pathsWithWaitSessions.add("previous-session");
+      const failure = Object.freeze(new Error("Package reset failed"));
+      const packageReset = spyOn(environment.packages, "reset").and.rejectWith(failure);
+      const factory = spyOn(environment.textEditorFactory, "clear").and.callThrough();
+      const editors = spyOn(environment.textEditors, "clear").and.callThrough();
+      const attach = spyOn(environment.repositories, "attachWorkspace").and.callThrough();
+      const providers = spyOn(environment.repositories, "consumeServices").and.callThrough();
+      const icons = spyOn(environment.icons, "clear").and.callThrough();
+      const views = spyOn(environment.views, "clear").and.callThrough();
+
+      await expectAsync(environment.reset()).toBeRejectedWith(failure);
+
+      expect(previousPane.isDestroyed()).toBe(true);
+      expect(editor.isDestroyed()).toBe(true);
+      expect(buffer.isDestroyed()).toBe(true);
+      expect(environment.workspace.getPaneItems()).toEqual([]);
+      expect(environment.project.getBuffers()).toEqual([]);
+      expect(environment.project.getPaths()).toEqual([]);
+      expect(environment.textEditorFactory.managedEditors.size).toBe(0);
+      expect(environment.textEditors.getEditors()).toEqual([]);
+      for (const stage of [factory, editors, attach, providers, icons, views]) {
+        expect(stage).toHaveBeenCalled();
+      }
+      expect(environment.pathsWithWaitSessions.size).toBe(0);
+      expect(await environment.project.setState([])).toBe(false);
+
+      packageReset.and.callThrough();
+      const currentEditor = await environment.workspace.open();
+      await environment.reset();
+      expect(currentEditor.isDestroyed()).toBe(true);
+      expect(environment.workspace.getPaneItems()).toEqual([]);
+      expect(environment.project.getBuffers()).toEqual([]);
+    });
+
+    it("retains errors from early and late reset stages while still running final cleanup", async () => {
+      const first = Object.freeze(new Error("Theme cleanup failed"));
+      const second = new Error("First package reset failure");
+      const third = new Error("Second package reset failure");
+      const last = new Error("Workspace reset callback failed");
+      const stopObserving = environment.themes.stopObservingThemeChanges.bind(environment.themes);
+      const themes = spyOn(environment.themes, "stopObservingThemeChanges").and.callFake(() => {
+        stopObserving();
+        throw first;
+      });
+      spyOn(environment.packages, "reset").and.rejectWith(
+        combineLifecycleErrors([second, third], "Package reset failed"),
+      );
+      const resetWorkspace = environment.workspace.reset.bind(environment.workspace);
+      spyOn(environment.workspace, "reset").and.callFake((...args) => {
+        resetWorkspace(...args);
+        throw last;
+      });
+      const views = spyOn(environment.views, "clear").and.callThrough();
+      const paste = spyOn(environment.pasteProviders, "clear").and.callThrough();
+      environment.pathsWithWaitSessions.add("previous-session");
+      const failure = await environment.reset().catch((error) => error);
+      themes.and.callThrough();
+
+      expect(failure instanceof AggregateError).toBe(true);
+      expect(failure.errors).toEqual([first, second, third, last]);
+      expect(failure.cause).toBe(first);
+      expect(views).toHaveBeenCalled();
+      expect(paste).toHaveBeenCalled();
+      expect(environment.pathsWithWaitSessions.size).toBe(0);
+      expect(await environment.project.setState([])).toBe(false);
+    });
+
+    it("does not resume reset stages or revive models after destruction during package reset", async () => {
+      let started, finishReset;
+      const entered = new Promise((resolve) => (started = resolve));
+      const pending = new Promise((resolve) => (finishReset = resolve));
+      spyOn(environment.packages, "reset").and.callFake(() => {
+        started();
+        return pending;
+      });
+      const workspace = environment.workspace;
+      const project = environment.project;
+      const factory = environment.textEditorFactory;
+      const resetWorkspace = spyOn(workspace, "reset").and.callThrough();
+      const resetProject = spyOn(project, "reset").and.callThrough();
+      const clearFactory = spyOn(factory, "clear").and.callThrough();
+      const reset = environment.reset().catch((error) => error);
+      await entered;
+      environment.destroy();
+      finishReset();
+
+      expect((await reset).code).toBe("ABORT_ERR");
+      expect(resetWorkspace).not.toHaveBeenCalled();
+      expect(resetProject).not.toHaveBeenCalled();
+      expect(clearFactory).not.toHaveBeenCalled();
+      expect(workspace.isDestroyed()).toBe(true);
+      expect(project.isDestroyed()).toBe(true);
+      expect(factory.destroyed).toBe(true);
+      expect(environment.workspace).toBeNull();
+      expect(environment.project).toBeNull();
+      await expectAsync(environment.reset()).toBeRejectedWithError(
+        "Environment reset was cancelled",
+      );
+    });
+
+    for (const failDisposables of [false, true]) {
+      it(`destroys every owned surface after a reentrant will-destroy failure${failDisposables ? " and composite cleanup failure" : ""}`, async () => {
+        const editor = await environment.workspace.open();
+        const buffer = editor.getBuffer();
+        const workspace = environment.workspace;
+        const project = environment.project;
+        const factory = environment.textEditorFactory;
+        const registry = environment.repositories;
+        const primary = Object.freeze(new Error("Will-destroy callback failed"));
+        const cleanup = new Error("Subscription cleanup failed");
+        const willDestroy = jasmine.createSpy("will destroy").and.callFake(() => {
+          expect(environment.workspace).toBe(workspace);
+          expect(environment.project).toBe(project);
+          environment.destroy();
+          throw primary;
+        });
+        environment.emitter.on("will-destroy", willDestroy);
+        if (failDisposables) {
+          environment.disposables.add(
+            new Disposable(() => {
+              throw cleanup;
+            }),
+          );
+        }
+        const remaining = jasmine.createSpy("remaining subscription cleanup");
+        environment.disposables.add(new Disposable(remaining));
+        const stages = [
+          spyOn(workspace, "destroy").and.callThrough(),
+          spyOn(project, "destroy").and.callThrough(),
+          spyOn(factory, "destroy").and.callThrough(),
+          spyOn(registry, "destroy").and.callThrough(),
+          spyOn(environment.fileWatchClient, "close").and.callThrough(),
+          spyOn(environment.stateStore, "close").and.callThrough(),
+          spyOn(environment.projectStateIndex, "close").and.callThrough(),
+          spyOn(environment, "uninstallWindowEventHandler").and.callThrough(),
+        ];
+        let failure;
+        try {
+          environment.destroy();
+        } catch (error) {
+          failure = error;
+        }
+
+        if (failDisposables) {
+          expect(failure instanceof AggregateError).toBe(true);
+          expect(failure.errors).toEqual([primary, cleanup]);
+          expect(failure.cause).toBe(primary);
+        } else {
+          expect(failure).toBe(primary);
+        }
+        expect(willDestroy).toHaveBeenCalledTimes(1);
+        expect(remaining).toHaveBeenCalledTimes(1);
+        expect(editor.isDestroyed()).toBe(true);
+        expect(buffer.isDestroyed()).toBe(true);
+        expect(workspace.isDestroyed()).toBe(true);
+        expect(project.isDestroyed()).toBe(true);
+        expect(factory.destroyed).toBe(true);
+        expect(registry.destroyed).toBe(true);
+        expect(environment.workspace).toBeNull();
+        expect(environment.project).toBeNull();
+        expect(environment.isDestroying).toBe(true);
+        expect(() => environment.destroy()).not.toThrow();
+        for (const stage of stages) expect(stage).toHaveBeenCalledTimes(1);
+      });
+    }
   });
 
   describe("::destroy()", () => {
