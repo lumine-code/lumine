@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
+const { Disposable } = require("@lumine-code/event-kit");
 const Package = require("../src/package");
 const ThemePackage = require("../src/theme-package");
 const { mockLocalStorage } = require("./helpers/mock-local-storage");
@@ -494,7 +495,185 @@ describe("Package", function () {
       expect(metadata.name).toBe("package-with-a-totally-different-name"));
   });
 
+  describe("teardown failures", function () {
+    it("attempts main, config, initialization and event cleanup after resource cleanup fails", async function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      const resourceError = new Error("Resource cleanup failed");
+      const keymapError = new Error("Keymap cleanup failed");
+      const mainError = new Error("Main cleanup failed");
+      const configError = new Error("Config cleanup failed");
+      const initializationError = new Error("Initialization cleanup failed");
+      const laterCleanup = jasmine.createSpy("laterCleanup");
+      const deactivated = jasmine.createSpy("deactivated");
+      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+        context.subscriptions.add(
+          new Disposable(() => {
+            throw initializationError;
+          }),
+          new Disposable(laterCleanup),
+        );
+      });
+      spyOn(pack.mainModule, "deactivate").and.callFake(() => {
+        expect(pack.activationDisposables).toBeNull();
+        expect(pack.keymapDisposables).toBeNull();
+        throw mainError;
+      });
+      pack.mainModule.deactivateConfig = jasmine
+        .createSpy("deactivateConfig")
+        .and.callFake(() => Promise.reject(configError));
+      pack.activateMain({ signal: new AbortController().signal });
+      await pack.resourceLoadPromise;
+      pack.activationDisposables.add(
+        new Disposable(() => {
+          throw resourceError;
+        }),
+      );
+      pack.keymapDisposables.add(
+        new Disposable(() => {
+          throw keymapError;
+        }),
+      );
+      pack.onDidDeactivate(deactivated);
+
+      let failure;
+      try {
+        await pack.deactivate();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure.errors).toEqual([
+        resourceError,
+        keymapError,
+        mainError,
+        configError,
+        initializationError,
+      ]);
+      expect(failure.cause).toBe(resourceError);
+      expect(pack.mainModule.deactivate).toHaveBeenCalledTimes(1);
+      expect(pack.mainModule.deactivateConfig).toHaveBeenCalledTimes(1);
+      expect(laterCleanup).toHaveBeenCalledTimes(1);
+      expect(deactivated).toHaveBeenCalledTimes(1);
+      expect(pack.mainInitialized).toBe(false);
+      expect(pack.mainActivated).toBe(false);
+      expect(pack.initializationDisposables).toBeNull();
+      pack.unload();
+    });
+
+    it("removes view proxies, schema and module cache after a deserializer disposer fails", async function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      pack.mainModule.config = { cleanupFlag: { type: "boolean", default: true } };
+      pack.initializeIfNeeded();
+      await pack.settingsPromise;
+      const modulePath = require.resolve("./fixtures/packages/package-with-view-providers");
+      const primary = new Error("Deserializer cleanup failed");
+      const viewCleanup = jasmine.createSpy("viewCleanup");
+      pack.deserializerDisposables.add(
+        new Disposable(() => {
+          expect(pack.deserializerDisposables).toBeNull();
+          expect(pack.viewProviderDisposables).toBeNull();
+          throw primary;
+        }),
+      );
+      pack.viewProviderDisposables.add(new Disposable(viewCleanup));
+      let failure;
+      try {
+        pack.unload();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBe(primary);
+      expect(viewCleanup).toHaveBeenCalledTimes(1);
+      expect(
+        lumine.deserializers.deserialize({
+          deserializer: "DeserializerFromPackageWithViewProviders",
+        }),
+      ).toBeUndefined();
+      expect(() => lumine.views.getView({ worksWithViewProvider1: true })).toThrow();
+      expect(Object.hasOwn(lumine.config.schema.properties, pack.name)).toBe(false);
+      expect(require.cache[modulePath]).toBeUndefined();
+      expect(pack.moduleCacheRegistered).toBe(false);
+      expect(() => pack.unload()).not.toThrow();
+    });
+  });
+
   describe("the initialize() hook", function () {
+    it("preserves the initialize failure while finishing every subscription cleanup", async function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      const primary = Object.freeze(new Error("Initialization failed"));
+      const cleanup = new Error("Initialization subscription failed");
+      const lateHook = jasmine.createSpy("lateHook");
+      const laterCleanup = jasmine.createSpy("laterCleanup");
+      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+        context.subscriptions.add(
+          new Disposable(() => {
+            expect(pack.initializationDisposables).toBeNull();
+            expect(pack.hooks).toBeNull();
+            context.hooks.on("spec:after-failed-initialize", lateHook);
+            throw cleanup;
+          }),
+          new Disposable(laterCleanup),
+        );
+        throw primary;
+      });
+      let failure;
+      try {
+        pack.initializeIfNeeded();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure.errors).toEqual([primary, cleanup]);
+      expect(failure.cause).toBe(primary);
+      expect(laterCleanup).toHaveBeenCalledTimes(1);
+      expect(pack.mainInitialized).toBe(false);
+      await lumine.packages.hooks.trigger("spec:after-failed-initialize");
+      expect(lateHook).not.toHaveBeenCalled();
+      pack.unload();
+    });
+
+    it("preserves an initialize failure if the error reporter also fails", function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      const primary = Object.freeze(new Error("Initialization failed"));
+      const reporting = new Error("Notification failed");
+      spyOn(pack.mainModule, "initialize").and.callFake(() => {
+        throw primary;
+      });
+      spyOn(pack, "handleError").and.callFake(() => {
+        throw reporting;
+      });
+      let failure;
+      try {
+        pack.initializeForExternalUse("spec");
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure.errors).toEqual([primary, reporting]);
+      expect(failure.cause).toBe(primary);
+      pack.unload();
+    });
+
     it("gets called when the package is activated", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]

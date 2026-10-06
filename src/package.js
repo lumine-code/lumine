@@ -2,13 +2,22 @@ const path = require("path");
 const asyncEach = require("async/each");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { Disposable, Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const dedent = require("dedent");
 
 const CompileCache = require("./compile-cache");
 const ModuleCache = require("./module-cache");
 const BufferedProcess = require("./buffered-process");
 const { requireModule } = require("./module-utils");
+const {
+  appendLifecycleError,
+  awaitLifecycleCleanup,
+  captureLifecycleError,
+  combineLifecycleErrors,
+  isLifecycleErrorReported,
+  markLifecycleErrorReported,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 // Lists a directory, carrying each entry's type with it. The native-module walk
 // below asks "what is in here, and which of those are directories" for every
 // module in every package's dependency tree, and answers it here in one syscall
@@ -167,7 +176,7 @@ module.exports = class Package {
       } catch (error) {
         this.loadScopeActive = false;
         this.loadError = error;
-        error.packageLoadReported = true;
+        markLifecycleErrorReported(error);
         this.handleError(`Failed to load the ${this.name} package`, error);
       }
     });
@@ -227,28 +236,41 @@ module.exports = class Package {
 
   unload({ preserveModuleCache = false } = {}) {
     this.loadScopeActive = false;
-    this.disposeActivationEntryPoints();
-    this.deactivateResources();
-    this.disposeInitializationScope();
-    this.deactivateKeymaps();
-    this.unregisterURIHandler();
-    this.deserializerDisposables?.dispose();
+    const deserializers = this.deserializerDisposables;
+    const views = this.viewProviderDisposables;
+    const startupServices = this.coreStartupServiceDisposables;
+    const hasSchema = this.configSchemaRegisteredOnLoad || this.configSchemaRegisteredOnActivate;
+    const hasModuleCache = this.moduleCacheRegistered;
     this.deserializerDisposables = null;
-    this.viewProviderDisposables?.dispose();
     this.viewProviderDisposables = null;
-    this.coreStartupServiceDisposables?.dispose();
     this.coreStartupServiceDisposables = null;
     this.registeredViewProviders = false;
-    if (this.configSchemaRegisteredOnLoad || this.configSchemaRegisteredOnActivate) {
-      this.config.unsetSchema(this.name);
-      this.configSchemaRegisteredOnLoad = false;
-      this.configSchemaRegisteredOnActivate = false;
+    this.configSchemaRegisteredOnLoad = false;
+    this.configSchemaRegisteredOnActivate = false;
+    this.moduleCacheRegistered = false;
+    const failures = [];
+    const cleanup = [
+      () => this.disposeActivationEntryPoints(),
+      () => this.deactivateResources(),
+      () => this.disposeInitializationScope(),
+      () => this.deactivateKeymaps(),
+      () => deserializers?.dispose(),
+      () => views?.dispose(),
+      () => startupServices?.dispose(),
+      () => {
+        if (hasSchema) this.config.unsetSchema(this.name);
+      },
+      () => {
+        if (hasModuleCache) ModuleCache.remove(this.path);
+      },
+      () => {
+        if (hasModuleCache && !preserveModuleCache) this.clearRequireCache();
+      },
+    ];
+    for (const dispose of cleanup) {
+      captureLifecycleError(failures, dispose);
     }
-    if (this.moduleCacheRegistered) {
-      ModuleCache.remove(this.path);
-      this.moduleCacheRegistered = false;
-      if (!preserveModuleCache) this.clearRequireCache();
-    }
+    throwLifecycleErrors(failures, `Package '${this.name}' failed to unload cleanly`);
   }
 
   clearRequireCache() {
@@ -303,7 +325,11 @@ module.exports = class Package {
   prepareToUnload() {
     this.loadScopeActive = false;
     if (this.settingsLoad) this.settingsLoad.cancelled = true;
-    return Promise.allSettled([this.settingsPromise, this.resourceLoadPromise]).then(() => {});
+    return Promise.allSettled([
+      this.settingsPromise,
+      this.grammarsPromise,
+      this.resourceLoadPromise,
+    ]).then(() => {});
   }
 
   initializeIfNeeded(context = {}) {
@@ -312,8 +338,13 @@ module.exports = class Package {
     this.initializationDisposables = initializationDisposables;
     const hooks = {
       on: (...args) => {
+        if (this.initializationDisposables !== initializationDisposables) return new Disposable();
         const disposable = this.packageManager.hooks.on(...args);
-        initializationDisposables.add(disposable);
+        if (this.initializationDisposables === initializationDisposables) {
+          initializationDisposables.add(disposable);
+        } else {
+          disposable.dispose();
+        }
         return disposable;
       },
       when: (...args) => this.packageManager.hooks.when(...args),
@@ -352,10 +383,14 @@ module.exports = class Package {
         this.mainInitialized = true;
       });
     } catch (error) {
-      initializationDisposables.dispose();
-      this.initializationDisposables = null;
-      this.hooks = null;
-      throw error;
+      const failures = [];
+      appendLifecycleError(failures, error);
+      if (this.initializationDisposables === initializationDisposables) {
+        this.initializationDisposables = null;
+        this.hooks = null;
+      }
+      captureLifecycleError(failures, () => initializationDisposables.dispose());
+      throwLifecycleErrors(failures, `Package '${this.name}' initialization and cleanup failed`);
     }
   }
 
@@ -366,11 +401,21 @@ module.exports = class Package {
     try {
       return this.initializeIfNeeded(initializationContext);
     } catch (error) {
-      error.packageActivationReported = true;
+      markLifecycleErrorReported(error);
       try {
         this.handleError(`Failed to initialize the ${this.name} package for ${reason}`, error);
-      } catch {
-        // Test mode throws the same failure; the caller below still receives it.
+      } catch (reportError) {
+        if (!Object.is(reportError, error)) {
+          const failures = [];
+          appendLifecycleError(failures, error);
+          appendLifecycleError(failures, reportError);
+          const failure = combineLifecycleErrors(
+            failures,
+            `Package '${this.name}' initialization reporting failed`,
+          );
+          markLifecycleErrorReported(failure);
+          throw failure;
+        }
       }
       throw error;
     }
@@ -411,11 +456,11 @@ module.exports = class Package {
 
       if (this.mainModule && !this.mainActivated) {
         this.initializeIfNeeded();
+        this.mainActivationStarted = true;
         if (typeof this.mainModule.activateConfig === "function") {
           this.mainModule.activateConfig();
         }
 
-        this.mainActivationStarted = true;
         let activationResult;
         if (typeof this.mainModule.activate === "function") {
           activationResult = this.mainModule.activate(
@@ -457,15 +502,26 @@ module.exports = class Package {
 
     const resourceLoads = [this.grammarsPromise, this.settingsPromise].filter(Boolean);
     if (resourceLoads.length > 0) {
-      this.resourceLoadPromise = Promise.all(resourceLoads);
-      this.resourceLoadPromise.catch((error) => {
-        if (error?.packageLoadReported) return;
-        try {
-          this.handleError(`Failed to finish loading the ${this.name} package resources`, error);
-        } catch (reportedError) {
-          console.error(reportedError);
+      this.resourceLoadPromise = Promise.all(resourceLoads).catch((error) => {
+        const failures = [];
+        appendLifecycleError(failures, error);
+        if (!isLifecycleErrorReported(error)) {
+          markLifecycleErrorReported(error);
+          try {
+            this.handleError(`Failed to finish loading the ${this.name} package resources`, error);
+          } catch (reportError) {
+            // Spec-mode handleError rethrows the very failure it reports.
+            if (!Object.is(reportError, error)) appendLifecycleError(failures, reportError);
+          }
         }
+        const failure = combineLifecycleErrors(
+          failures,
+          `Package '${this.name}' resource reporting failed`,
+        );
+        markLifecycleErrorReported(failure);
+        throw failure;
       });
+      this.resourceLoadPromise.catch(() => {});
     }
     return this;
   }
@@ -543,17 +599,18 @@ module.exports = class Package {
     }
 
     if (!this.grammarsActivated) {
+      // Own the whole attempt before callbacks can fail midway through it.
+      this.grammarsActivated = true;
       for (let grammar of this.grammars) {
         grammar.activate();
       }
-      this.grammarsActivated = true;
     }
 
     if (!this.settingsActivated) {
+      this.settingsActivated = true;
       for (let settings of this.settings) {
         settings.activate(this.config);
       }
-      this.settingsActivated = true;
     }
   }
 
@@ -572,12 +629,14 @@ module.exports = class Package {
   }
 
   deactivateKeymaps() {
-    if (!this.keymapActivated) return;
-    if (this.keymapDisposables) {
-      this.keymapDisposables.dispose();
-    }
-    this.menuManager.update();
+    const keymaps = this.keymapDisposables;
+    const wasActivated = this.keymapActivated;
+    this.keymapDisposables = null;
     this.keymapActivated = false;
+    const failures = [];
+    captureLifecycleError(failures, () => keymaps?.dispose());
+    if (wasActivated) captureLifecycleError(failures, () => this.menuManager.update());
+    throwLifecycleErrors(failures, `Package '${this.name}' keymaps failed to deactivate`);
   }
 
   hasKeymaps() {
@@ -676,8 +735,9 @@ module.exports = class Package {
   }
 
   unregisterURIHandler() {
-    this.uriHandlerSubscription?.dispose();
+    const subscription = this.uriHandlerSubscription;
     this.uriHandlerSubscription = null;
+    subscription?.dispose();
   }
 
   loadKeymaps() {
@@ -1034,38 +1094,23 @@ module.exports = class Package {
   }
 
   async deactivate() {
-    this.disposeActivationEntryPoints();
-    this.deactivateResources();
-    this.deactivateKeymaps();
-
-    if (!this.mainActivationStarted && !this.mainInitialized) {
-      this.disposeInitializationScope();
-      this.emitter.emit("did-deactivate");
-      return;
+    const mainModule = this.mainModule;
+    const wasInitialized = this.mainInitialized;
+    const activationStarted = this.mainActivationStarted;
+    const failures = [];
+    captureLifecycleError(failures, () => this.disposeActivationEntryPoints());
+    captureLifecycleError(failures, () => this.deactivateResources());
+    captureLifecycleError(failures, () => this.deactivateKeymaps());
+    if ((activationStarted || wasInitialized) && typeof mainModule?.deactivate === "function") {
+      await awaitLifecycleCleanup(failures, () => mainModule.deactivate());
     }
-
-    if (typeof this.mainModule?.deactivate === "function") {
-      try {
-        const deactivationResult = this.mainModule.deactivate();
-        if (deactivationResult && typeof deactivationResult.then === "function") {
-          await deactivationResult;
-        }
-      } catch (error) {
-        console.error(`Error deactivating package '${this.name}'`, error.stack);
-      }
+    if (activationStarted && typeof mainModule?.deactivateConfig === "function") {
+      await awaitLifecycleCleanup(failures, () => mainModule.deactivateConfig());
     }
-
-    if (this.mainActivationStarted && typeof this.mainModule?.deactivateConfig === "function") {
-      try {
-        await this.mainModule.deactivateConfig();
-      } catch (error) {
-        console.error(`Error deactivating package '${this.name}'`, error.stack);
-      }
-    }
-
-    this.disposeInitializationScope();
-    this.finishDeactivation();
-    this.emitter.emit("did-deactivate");
+    captureLifecycleError(failures, () => this.disposeInitializationScope());
+    captureLifecycleError(failures, () => this.finishDeactivation());
+    captureLifecycleError(failures, () => this.emitter.emit("did-deactivate"));
+    throwLifecycleErrors(failures, `Package '${this.name}' failed to deactivate cleanly`);
   }
 
   finishDeactivation() {
@@ -1075,9 +1120,10 @@ module.exports = class Package {
   }
 
   disposeInitializationScope() {
-    this.initializationDisposables?.dispose();
+    const subscriptions = this.initializationDisposables;
     this.initializationDisposables = null;
     this.hooks = null;
+    subscriptions?.dispose();
   }
 
   disposeActivationEntryPoints() {
@@ -1085,32 +1131,34 @@ module.exports = class Package {
   }
 
   deactivateResources() {
-    for (let grammar of this.grammars) {
-      grammar.deactivate();
-    }
-    for (let settings of this.settings) {
-      settings.deactivate(this.config);
-    }
-
-    this.deactivateStylesheets();
-    if (this.activationDisposables) this.activationDisposables.dispose();
-    // Null rather than keep the disposed composite: CompositeDisposable
-    // silently ignores adds after disposal, so a re-activated package would
-    // register its services and menus into a dead composite and the *next*
-    // deactivation could never tear them down — a disabled icon package's
-    // provider stayed in the chain forever after one off/on cycle.
+    const subscriptions = this.activationDisposables;
+    const grammarsActivated = this.grammarsActivated;
+    const settingsActivated = this.settingsActivated;
     this.activationDisposables = null;
-    if (this.keymapDisposables) this.keymapDisposables.dispose();
-
     this.grammarsActivated = false;
     this.settingsActivated = false;
     this.menusActivated = false;
+    const failures = [];
+    if (grammarsActivated) {
+      for (const grammar of this.grammars.slice()) {
+        captureLifecycleError(failures, () => grammar.deactivate());
+      }
+    }
+    if (settingsActivated) {
+      for (const settings of this.settings.slice()) {
+        captureLifecycleError(failures, () => settings.deactivate(this.config));
+      }
+    }
+    captureLifecycleError(failures, () => this.deactivateStylesheets());
+    captureLifecycleError(failures, () => subscriptions?.dispose());
+    throwLifecycleErrors(failures, `Package '${this.name}' resources failed to deactivate`);
   }
 
   deactivateStylesheets() {
-    if (this.stylesheetDisposables) this.stylesheetDisposables.dispose();
+    const stylesheets = this.stylesheetDisposables;
     this.stylesheetDisposables = null;
     this.stylesheetsActivated = false;
+    stylesheets?.dispose();
   }
 
   reloadStylesheets() {
@@ -1437,15 +1485,15 @@ module.exports = class Package {
     if (lumine.window.isSpecMode()) throw error;
 
     let detail, location, stack;
-    if (error.filename && error.location && error instanceof SyntaxError) {
+    if (error?.filename && error?.location && error instanceof SyntaxError) {
       location = `${error.filename}:${error.location.first_line + 1}:${
         error.location.first_column + 1
       }`;
       detail = `${error.message} in ${location}`;
       stack = "SyntaxError: " + error.message + "\n" + "at " + location;
     } else {
-      detail = error.message;
-      stack = error.stack || error;
+      detail = error?.message ?? String(error);
+      stack = error?.stack || error;
     }
 
     this.notificationManager.addFatalError(message, {

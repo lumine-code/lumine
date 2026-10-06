@@ -8,6 +8,14 @@ const CSON = require("@lumine-code/season");
 const ServiceHub = require("./service-hub");
 const ActivationHooks = require("./activation-hooks");
 const Package = require("./package");
+const {
+  appendLifecycleError,
+  awaitLifecycleCleanup,
+  captureLifecycleError,
+  combineLifecycleErrors,
+  isLifecycleErrorReported,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 const ThemePackage = require("./theme-package");
 const { scanBundledPackageNames } = require("./bundled-packages");
 const packageJSON = require("../package.json");
@@ -133,10 +141,11 @@ module.exports = class PackageManager {
   }
 
   async reset() {
-    this.serviceHub.clear();
-    await this.unloadPackages({ serialize: false });
-    this.unobserveDisabledPackages();
-    this.unobservePackagesWithKeymapsDisabled();
+    const failures = [];
+    captureLifecycleError(failures, () => this.serviceHub.clear());
+    await awaitLifecycleCleanup(failures, () => this.unloadPackages({ serialize: false }));
+    captureLifecycleError(failures, () => this.unobserveDisabledPackages());
+    captureLifecycleError(failures, () => this.unobservePackagesWithKeymapsDisabled());
     this.packageManifestCache.clear();
     this.packageRootEntriesCache.clear();
     this.availablePackagesByNameDuringLoad = null;
@@ -154,11 +163,12 @@ module.exports = class PackageManager {
     this.virtualThemeOwnerByName.clear();
     this.packagesCache = packageJSON._luminePackages != null ? packageJSON._luminePackages : {};
     this.bundledPackageNames = null;
-    this.hooks.clear();
+    captureLifecycleError(failures, () => this.hooks.clear());
     this.serviceProviders.clear();
     this.activatePromise = null;
-    this.emitter.dispose();
+    captureLifecycleError(failures, () => this.emitter.dispose());
     this.emitter = new Emitter();
+    throwLifecycleErrors(failures, "Package manager failed to reset cleanly");
   }
 
   /**
@@ -1184,8 +1194,8 @@ module.exports = class PackageManager {
   unregisterThemePacksForPackage(packageName) {
     const registrations = this.themePackRegistrationsByPackageName.get(packageName);
     if (!registrations) return;
-    registrations.dispose();
     this.themePackRegistrationsByPackageName.delete(packageName);
+    registrations.dispose();
   }
 
   // Register one virtual ThemePackage per entry of a `themes` array. Each
@@ -1317,14 +1327,16 @@ module.exports = class PackageManager {
     return path.join(packagePath, ...staticSegments);
   }
 
-  unloadPackages({ serialize = true } = {}) {
-    return Promise.all(
-      _.keys(this.loadedPackages).map((name) =>
-        this.unloadPackage(name, { serialize }).catch((error) => {
-          console.error(`Error unloading package '${name}'`, error);
-        }),
-      ),
+  async unloadPackages({ serialize = true } = {}) {
+    const results = await Promise.allSettled(
+      _.keys(this.loadedPackages).map((name) => this.unloadPackage(name, { serialize })),
     );
+    const failures = [];
+    for (const result of results) {
+      if (result.status === "rejected") appendLifecycleError(failures, result.reason);
+    }
+    throwLifecycleErrors(failures, "Packages failed to unload cleanly");
+    return results.map((result) => result.value);
   }
 
   /**
@@ -1374,10 +1386,12 @@ module.exports = class PackageManager {
         try {
           await finish();
         } catch (finishError) {
-          throw new AggregateError(
-            [error, finishError],
+          const failures = [];
+          appendLifecycleError(failures, error);
+          appendLifecycleError(failures, finishError);
+          throw combineLifecycleErrors(
+            failures,
             `Package '${name}' failed to deactivate and unload cleanly`,
-            { cause: finishError },
           );
         }
         throw error;
@@ -1398,33 +1412,29 @@ module.exports = class PackageManager {
       }),
     );
     for (const result of results) {
-      if (result.status === "rejected") errors.push(result.reason);
+      if (result.status === "rejected") appendLifecycleError(errors, result.reason);
     }
 
     let pack;
     try {
       pack = this.finishUnloadPackage(record, { preserveModuleCache });
     } catch (error) {
-      errors.push(error);
+      appendLifecycleError(errors, error);
     }
-    if (errors.length === 1) throw errors[0];
-    if (errors.length > 1) {
-      throw new AggregateError(errors, `Package '${record.pack.name}' failed to unload cleanly`);
-    }
+    throwLifecycleErrors(errors, `Package '${record.pack.name}' failed to unload cleanly`);
     return pack;
   }
 
   finishUnloadPackage(record, { preserveModuleCache = false } = {}) {
     const { pack } = record;
     if (this.packageLifecycles.get(pack.name) !== record) return pack;
-    let unloadError;
-    try {
+    const failures = [];
+    captureLifecycleError(failures, () => {
       if (pack.isTheme()) this.themeManager?.removeActiveThemeClasses([pack]);
-      this.unregisterThemePacksForPackage(pack.name);
-      pack.unload({ preserveModuleCache });
-    } catch (error) {
-      unloadError = error;
-    } finally {
+    });
+    captureLifecycleError(failures, () => this.unregisterThemePacksForPackage(pack.name));
+    captureLifecycleError(failures, () => pack.unload({ preserveModuleCache }));
+    captureLifecycleError(failures, () => {
       const ownerName = this.virtualThemeOwnerByName.get(pack.name);
       if (ownerName) {
         this.virtualThemeOwnerByName.delete(pack.name);
@@ -1433,15 +1443,16 @@ module.exports = class PackageManager {
         if (names?.size === 0) this.virtualThemeNamesByPackageName.delete(ownerName);
       }
       this.virtualThemeNamesByPackageName.delete(pack.name);
-      delete this.activePackages[pack.name];
+      if (this.activePackages[pack.name] === pack) delete this.activePackages[pack.name];
       if (this.loadedPackages[pack.name] === pack) delete this.loadedPackages[pack.name];
-      this.packageLifecycles.delete(pack.name);
+      if (this.packageLifecycles.get(pack.name) === record)
+        this.packageLifecycles.delete(pack.name);
       record.generation++;
       this.setPackageLifecycleState(record, "unloaded");
-      this.rebuildServiceProviders();
-      this.emitter.emit("did-unload-package", pack);
-    }
-    if (unloadError) throw unloadError;
+    });
+    captureLifecycleError(failures, () => this.rebuildServiceProviders());
+    captureLifecycleError(failures, () => this.emitter.emit("did-unload-package", pack));
+    throwLifecycleErrors(failures, `Package '${pack.name}' failed to unload cleanly`);
     return pack;
   }
 
@@ -1592,7 +1603,7 @@ module.exports = class PackageManager {
     if (this.isPackageDisabled(pack.name)) {
       return Promise.reject(new Error(`Cannot activate disabled package '${pack.name}'`));
     }
-    if (record.state === "active") return Promise.resolve(pack);
+    if (record.state === "active") return record.activationPromise || Promise.resolve(pack);
     if (record.state === "activating") return record.activationPromise;
     if (record.state === "deactivating") {
       if (generation != null) return Promise.reject(new PackageActivationCancelledError(pack.name));
@@ -1647,14 +1658,10 @@ module.exports = class PackageManager {
         return readiness;
       }
       const rollbackPromise = this.rollbackFailedActivation(record, error);
-      record.deactivationPromise = rollbackPromise;
-      const failed = rollbackPromise.then(
-        () => rejectActivation(error),
-        () => rejectActivation(error),
-      );
+      const failed = rollbackPromise.catch(rejectActivation);
       failed.catch(() => {});
       // Keep the published promise stable for re-entrant callers; the
-      // rollback continuation rejects it with the original activation error.
+      // rollback continuation rejects it with the activation and cleanup errors.
       return readiness;
     }
 
@@ -1673,7 +1680,6 @@ module.exports = class PackageManager {
 
     this.setPackageLifecycleState(record, "active");
     this.activePackages[pack.name] = pack;
-    record.abortController = null;
 
     // The package hook itself is synchronous, but grammar/settings discovery
     // started by the bootstrap still forms the lifecycle completion boundary.
@@ -1684,7 +1690,13 @@ module.exports = class PackageManager {
     if (resourceLoad) {
       resourceLoad.then(
         () => {
-          record.rejectCancellation = null;
+          if (
+            this.packageLifecycles.get(pack.name) === record &&
+            record.state === "active" &&
+            record.generation === activationGeneration
+          ) {
+            record.rejectCancellation = null;
+          }
           resolveActivation(pack);
         },
         (error) => {
@@ -1697,11 +1709,7 @@ module.exports = class PackageManager {
             return;
           }
           const rollbackPromise = this.rollbackFailedActivation(record, error);
-          record.deactivationPromise = rollbackPromise;
-          rollbackPromise.then(
-            () => rejectActivation(error),
-            () => rejectActivation(error),
-          );
+          rollbackPromise.catch(rejectActivation);
         },
       );
     } else {
@@ -1714,24 +1722,63 @@ module.exports = class PackageManager {
     return readiness;
   }
 
-  async rollbackFailedActivation(record, error) {
+  rollbackFailedActivation(record, error) {
     const { pack } = record;
+    let resolveDeactivation, rejectDeactivation;
+    const deactivation = new Promise((resolve, reject) => {
+      resolveDeactivation = resolve;
+      rejectDeactivation = reject;
+    });
+    deactivation.catch(() => {});
+    record.deactivationPromise = deactivation;
     this.setPackageLifecycleState(record, "deactivating");
     record.generation++;
-    pack.disposeActivationEntryPoints();
-    record.abortController?.abort();
-    try {
-      await pack.deactivate();
-    } finally {
-      this.finishPackageDeactivation(record);
-    }
-
-    this.reportPackageActivationError(pack, error);
+    const rollback = (async () => {
+      const cleanupFailures = [];
+      captureLifecycleError(cleanupFailures, () => pack.disposeActivationEntryPoints());
+      captureLifecycleError(cleanupFailures, () => record.abortController?.abort());
+      await awaitLifecycleCleanup(cleanupFailures, () => pack.deactivate());
+      captureLifecycleError(cleanupFailures, () => this.finishPackageDeactivation(record));
+      if (cleanupFailures.length > 0) {
+        rejectDeactivation(
+          combineLifecycleErrors(
+            cleanupFailures,
+            `Package '${pack.name}' activation rollback failed`,
+          ),
+        );
+      } else {
+        resolveDeactivation();
+      }
+      const failures = [];
+      if (cleanupFailures.length === 0) failures.push(error);
+      else appendLifecycleError(failures, error);
+      for (const failure of cleanupFailures) appendLifecycleError(failures, failure);
+      const failure = combineLifecycleErrors(
+        failures,
+        `Package '${pack.name}' activation and rollback failed`,
+      );
+      const reportingFailures = [];
+      captureLifecycleError(reportingFailures, () =>
+        this.reportPackageActivationError(pack, failure),
+      );
+      if (reportingFailures.length === 0) throw failure;
+      const reportedFailures = [];
+      appendLifecycleError(reportedFailures, failure);
+      for (const reportingFailure of reportingFailures)
+        appendLifecycleError(reportedFailures, reportingFailure);
+      throw combineLifecycleErrors(
+        reportedFailures,
+        `Package '${pack.name}' activation reporting failed`,
+      );
+    })();
+    rollback.catch(() => {});
+    return rollback;
   }
 
   finishPackageDeactivation(record) {
     const { pack } = record;
-    pack.finishDeactivation();
+    const failures = [];
+    captureLifecycleError(failures, () => pack.finishDeactivation());
     if (this.packageLifecycles.get(pack.name) === record && !record.unloadRequested) {
       this.setPackageLifecycleState(record, "loaded");
     }
@@ -1742,23 +1789,21 @@ module.exports = class PackageManager {
     record.deactivationPromise = null;
     // Finalize before notifying observers: a listener may reactivate this
     // package or replace its lifecycle record, even if it then throws.
-    this.emitter.emit("did-deactivate-package", pack);
+    captureLifecycleError(failures, () => this.emitter.emit("did-deactivate-package", pack));
+    throwLifecycleErrors(failures, `Package '${pack.name}' deactivation completion failed`);
   }
 
   reportPackageActivationError(pack, error) {
-    if (
-      error?.code === "PACKAGE_ACTIVATION_CANCELLED" ||
-      error?.packageLoadReported ||
-      error?.packageActivationReported
-    ) {
+    if (error?.code === "PACKAGE_ACTIVATION_CANCELLED" || isLifecycleErrorReported(error)) {
       return;
     }
     try {
       const kind = pack.getType() === "theme" ? "theme" : "package";
       pack.handleError(`Failed to activate the ${pack.name} ${kind}`, error);
-    } catch {
+    } catch (reportError) {
       // Spec mode intentionally throws from handleError; activation still
       // rejects with the original failure after lifecycle rollback.
+      if (!Object.is(reportError, error)) throw reportError;
     }
   }
 
@@ -1835,43 +1880,45 @@ module.exports = class PackageManager {
     }
     if (record.state === "deactivating") return record.deactivationPromise;
 
-    if (serialize && record.state === "active") {
-      this.serializePackage(pack);
-    }
-
+    const failures = [];
+    const wasActive = record.state === "active";
     const wasActivating = record.state === "activating";
+    let resolveDeactivation, rejectDeactivation;
+    const deactivationPromise = new Promise((resolve, reject) => {
+      resolveDeactivation = resolve;
+      rejectDeactivation = reject;
+    });
+    deactivationPromise.catch(() => {});
+    record.deactivationPromise = deactivationPromise;
     this.setPackageLifecycleState(record, "deactivating");
     record.generation++;
+    if (serialize && wasActive) {
+      captureLifecycleError(failures, () => this.serializePackage(pack));
+    }
     // Remove URI registrations immediately; arbitrary package code is then
     // allowed to finish/abort before teardown.
-    pack.disposeActivationEntryPoints();
-    record.abortController?.abort();
+    captureLifecycleError(failures, () => pack.disposeActivationEntryPoints());
+    captureLifecycleError(failures, () => record.abortController?.abort());
     if (wasActivating) {
       record.rejectCancellation?.(new PackageActivationCancelledError(pack.name));
     }
-    delete this.activePackages[pack.name];
+    if (this.activePackages[pack.name] === pack) delete this.activePackages[pack.name];
 
-    const deactivationPromise = (async () => {
-      let deactivationError;
-      try {
-        if (record.activationPromise) {
-          try {
-            await record.activationPromise;
-          } catch {
-            // Activation/resource failures are reported on their own path;
-            // teardown still has to reach a stable loaded state.
-          }
+    const deactivation = (async () => {
+      if (record.activationPromise) {
+        try {
+          await record.activationPromise;
+        } catch {
+          // Activation/resource failures are reported on their own path;
+          // teardown still has to reach a stable loaded state.
         }
-        this.unregisterThemePacksForPackage(pack.name);
-        await pack.deactivate();
-      } catch (error) {
-        deactivationError = error;
-      } finally {
-        this.finishPackageDeactivation(record);
       }
-      if (deactivationError) throw deactivationError;
+      captureLifecycleError(failures, () => this.unregisterThemePacksForPackage(pack.name));
+      await awaitLifecycleCleanup(failures, () => pack.deactivate());
+      captureLifecycleError(failures, () => this.finishPackageDeactivation(record));
+      throwLifecycleErrors(failures, `Package '${pack.name}' failed to deactivate cleanly`);
     })();
-    record.deactivationPromise = deactivationPromise;
+    deactivation.then(resolveDeactivation, rejectDeactivation);
     await deactivationPromise;
   }
 

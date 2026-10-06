@@ -19,6 +19,35 @@ describe("PackageManager", () => {
     spyOn(ModuleCache, "add");
   });
 
+  it("completes reset after a service cleanup error and unloads every package", async () => {
+    const primary = new Error("Service cleanup failed during reset");
+    const provider = await lumine.packages.activatePackage("package-with-provided-services");
+    const consumer = lumine.packages.loadPackage("package-with-consumed-services");
+    consumer.requireMainModule();
+    const cleanup = jasmine.createSpy("cleanup").and.callFake(() => {
+      throw primary;
+    });
+    spyOn(consumer.mainModule, "consumeFirstServiceV3").and.callFake(() => new Disposable(cleanup));
+    await lumine.packages.activatePackage(consumer.name);
+    spyOn(provider.mainModule, "deactivate").and.callThrough();
+    spyOn(consumer.mainModule, "deactivate").and.callThrough();
+    const oldHook = jasmine.createSpy("oldHook");
+    lumine.packages.hooks.on("spec:after-package-reset", oldHook);
+
+    await expectAsync(lumine.packages.reset()).toBeRejectedWith(primary);
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(provider.mainModule.deactivate).toHaveBeenCalledTimes(1);
+    expect(consumer.mainModule.deactivate).toHaveBeenCalledTimes(1);
+    expect(lumine.packages.getLoadedPackages()).toEqual([]);
+    expect(lumine.packages.getActivePackages()).toEqual([]);
+    expect(lumine.packages.serviceHub.hasProvider("service-1", "^0.4.1")).toBe(false);
+    expect(provider.lifecycleState).toBe("unloaded");
+    expect(consumer.lifecycleState).toBe("unloaded");
+    await lumine.packages.hooks.trigger("spec:after-package-reset");
+    expect(oldHook).not.toHaveBeenCalled();
+  });
+
   describe("initialize", () => {
     it("adds regular package path", () => {
       const packageManger = new PackageManager({});
@@ -498,10 +527,81 @@ describe("PackageManager", () => {
       await lumine.packages.unloadPackage("package-with-main");
       expect(unloadedPackage.name).toBe("package-with-main");
     });
+
+    it("preserves deactivation, unload and observer failures after removing all package ownership", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-view-providers");
+      const primary = new Error("Main teardown failed");
+      const proxyCleanup = new Error("View proxy cleanup failed");
+      const observer = new Error("Unload observer failed");
+      spyOn(pack.mainModule, "deactivate").and.callFake(() => {
+        throw primary;
+      });
+      pack.viewProviderDisposables.add(
+        new Disposable(() => {
+          throw proxyCleanup;
+        }),
+      );
+      const subscription = lumine.packages.onDidUnloadPackage((unloaded) => {
+        if (unloaded === pack) throw observer;
+      });
+
+      const failure = await lumine.packages.unloadPackage(pack.name).catch((error) => error);
+
+      expect(failure.errors).toEqual([primary, proxyCleanup, observer]);
+      expect(failure.cause).toBe(primary);
+      expect(pack.mainModule.deactivate).toHaveBeenCalledTimes(1);
+      expect(lumine.packages.isPackageLoaded(pack.name)).toBe(false);
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
+      expect(pack.lifecycleState).toBe("unloaded");
+      expect(
+        lumine.deserializers.deserialize({
+          deserializer: "DeserializerFromPackageWithViewProviders",
+        }),
+      ).toBeUndefined();
+      expect(() => lumine.views.getView({ worksWithViewProvider1: true })).toThrow();
+      subscription.dispose();
+    });
   });
 
   describe("::activatePackage(id)", () => {
     describe("when called multiple times", () => {
+      for (const resourcesFail of [false, true]) {
+        it(`shares pending resource readiness when discovery ${resourcesFail ? "rejects" : "resolves"}`, async () => {
+          const pack = lumine.packages.loadPackage("package-with-main");
+          await pack.settingsPromise;
+          const primary = new Error("Grammar discovery failed");
+          let finishResources;
+          spyOn(pack, "loadGrammars").and.returnValue(
+            new Promise((resolve, reject) => {
+              finishResources = () => (resourcesFail ? reject(primary) : resolve());
+            }),
+          );
+          spyOn(pack, "handleError");
+          const first = lumine.packages.activatePackage(pack.name);
+          const second = lumine.packages.activatePackage(pack.name);
+          const third = lumine.packages.activatePackage(pack.name);
+          expect(second).toBe(first);
+          expect(third).toBe(first);
+          let settled = false;
+          second.then(
+            () => (settled = true),
+            () => (settled = true),
+          );
+          await Promise.resolve();
+          expect(settled).toBe(false);
+
+          finishResources();
+          if (resourcesFail) {
+            await expectAsync(first).toBeRejectedWith(primary);
+            await expectAsync(second).toBeRejectedWith(primary);
+            expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+          } else {
+            expect(await first).toBe(pack);
+            expect(await second).toBe(pack);
+          }
+        });
+      }
+
       it("it only calls activate on the package once", async () => {
         spyOn(Package.prototype, "activateMain").and.callThrough();
         await lumine.packages.activatePackage("package-with-index");
@@ -710,6 +810,106 @@ describe("PackageManager", () => {
       );
       expect(lumine.packages.isPackageActive("package-that-throws-on-initialize")).toBe(false);
       expect(notifications.calls.count()).toBe(1);
+    });
+
+    it("preserves activation and cleanup failures and rejects a reentrant teardown with its cleanup error", async () => {
+      const pack = lumine.packages.loadPackage("package-with-view-providers");
+      pack.requireMainModule();
+      const primary = Object.freeze(new Error("Activation failed"));
+      const cleanup = new Error("Initialization subscription failed");
+      let reentrantDeactivation;
+      const laterCleanup = jasmine.createSpy("laterCleanup");
+      const deactivated = jasmine.createSpy("deactivated");
+      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+        context.subscriptions.add(
+          new Disposable(() => {
+            reentrantDeactivation = lumine.packages.deactivatePackage(pack.name, {
+              serialize: false,
+            });
+            throw cleanup;
+          }),
+          new Disposable(laterCleanup),
+        );
+      });
+      spyOn(pack.mainModule, "activate").and.callFake(() => {
+        throw primary;
+      });
+      spyOn(pack.mainModule, "deactivate").and.callThrough();
+      spyOn(pack, "handleError");
+      const subscription = lumine.packages.onDidDeactivatePackage(deactivated);
+
+      const failure = await lumine.packages.activatePackage(pack.name).catch((error) => error);
+      await expectAsync(reentrantDeactivation).toBeRejectedWith(cleanup);
+
+      expect(failure.errors).toEqual([primary, cleanup]);
+      expect(failure.cause).toBe(primary);
+      expect(laterCleanup).toHaveBeenCalledTimes(1);
+      expect(pack.mainModule.deactivate).toHaveBeenCalledTimes(1);
+      expect(deactivated).toHaveBeenCalledTimes(1);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+      expect(lumine.packages.getActivePackage(pack.name)).toBeUndefined();
+      subscription.dispose();
+    });
+
+    it("retains a resource failure and its reporter failure without reporting it twice", async () => {
+      const pack = lumine.packages.loadPackage("package-with-main");
+      const primary = new Error("Grammar discovery failed");
+      const reporting = new Error("Resource notification failed");
+      spyOn(pack, "loadGrammars").and.returnValue(Promise.reject(primary));
+      spyOn(pack, "handleError").and.callFake(() => {
+        throw reporting;
+      });
+
+      const failure = await lumine.packages.activatePackage(pack.name).catch((error) => error);
+
+      expect(failure.errors).toEqual([primary, reporting]);
+      expect(failure.cause).toBe(primary);
+      expect(pack.handleError).toHaveBeenCalledTimes(1);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+    });
+
+    it("rolls back a registered grammar when a later grammar activation fails", async () => {
+      const pack = lumine.packages.loadPackage("package-with-grammars");
+      await pack.loadGrammars();
+      const [firstGrammar, secondGrammar] = pack.grammars;
+      const primary = new Error("Second grammar activation failed");
+      spyOn(firstGrammar, "deactivate").and.callThrough();
+      spyOn(secondGrammar, "activate").and.callFake(() => {
+        expect(lumine.grammars.grammarForScopeName(firstGrammar.scopeName)).toBe(firstGrammar);
+        throw primary;
+      });
+      spyOn(pack, "handleError");
+
+      await expectAsync(lumine.packages.activatePackage(pack.name)).toBeRejectedWith(primary);
+
+      expect(firstGrammar.deactivate).toHaveBeenCalledTimes(1);
+      expect(lumine.grammars.grammarForScopeName(firstGrammar.scopeName)).toBeUndefined();
+      expect(pack.grammarsActivated).toBe(false);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+    });
+
+    it("rolls back scoped settings when a later settings activation fails", async () => {
+      const pack = lumine.packages.loadPackage("package-with-settings");
+      await pack.settingsPromise;
+      const [firstSettings] = pack.settings;
+      const secondSettings = new firstSettings.constructor(`${firstSettings.path}.second`, {
+        ".source.second": { editor: { commentStart: "#" } },
+      });
+      pack.settings.push(secondSettings);
+      const primary = new Error("Second settings activation failed");
+      spyOn(firstSettings, "deactivate").and.callThrough();
+      spyOn(secondSettings, "activate").and.callFake(() => {
+        expect(lumine.config.get("editor.commentStart", { scope: [".source.omg"] })).toBe("//");
+        throw primary;
+      });
+      spyOn(pack, "handleError");
+
+      await expectAsync(lumine.packages.activatePackage(pack.name)).toBeRejectedWith(primary);
+
+      expect(firstSettings.deactivate).toHaveBeenCalledTimes(1);
+      expect(lumine.config.get("editor.commentStart", { scope: [".source.omg"] })).toBeUndefined();
+      expect(pack.settingsActivated).toBe(false);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
     });
 
     describe("when the package is not found", () => {
@@ -1160,6 +1360,39 @@ describe("PackageManager", () => {
     });
 
     describe("service registration", () => {
+      it("unpublishes its own services and finishes unload when a consumed service disposer throws", async () => {
+        const dependency = lumine.packages.serviceHub.provide("service-1", "0.4.1", "dependency");
+        const pack = lumine.packages.loadPackage("package-with-service-dependency");
+        pack.requireMainModule();
+        const primary = new Error("Consumed service cleanup failed");
+        const consumerCleanup = jasmine.createSpy("consumerCleanup").and.callFake(() => {
+          expect(pack.activationDisposables).toBeNull();
+          throw primary;
+        });
+        spyOn(pack.mainModule, "consumeDependency").and.callFake(() => {
+          return new Disposable(consumerCleanup);
+        });
+        // This fixture only needs consumption for its usual tests. Register
+        // the dependent facade from the same delivered dependency here.
+        spyOn(pack.mainModule, "provideDependentService").and.returnValue("dependent-service");
+        pack.mainModule.deactivate = jasmine.createSpy("deactivate");
+        await lumine.packages.activatePackage(pack.name);
+        expect(lumine.packages.serviceHub.hasProvider("dependent-service", "^1.0.0")).toBe(true);
+
+        await expectAsync(lumine.packages.unloadPackage(pack.name)).toBeRejectedWith(primary);
+
+        expect(consumerCleanup).toHaveBeenCalledTimes(1);
+        expect(pack.mainModule.deactivate).toHaveBeenCalledTimes(1);
+        expect(lumine.packages.serviceHub.hasProvider("dependent-service", "^1.0.0")).toBe(false);
+        expect(lumine.packages.isPackageLoaded(pack.name)).toBe(false);
+        const currentPackage = await lumine.packages.activatePackage(pack.name);
+        expect(currentPackage).not.toBe(pack);
+        expect(currentPackage.mainModule).not.toBe(pack.mainModule);
+        expect(lumine.packages.serviceHub.hasProvider("dependent-service", "^1.0.0")).toBe(true);
+        await lumine.packages.unloadPackage(currentPackage.name);
+        dependency.dispose();
+      });
+
       it("consumes a package's dependencies before publishing its services", async () => {
         const consumeDependentService = jasmine.createSpy("consumeDependentService");
         const subscription = lumine.packages.serviceHub.consume(
@@ -1425,9 +1658,8 @@ describe("PackageManager", () => {
 
     // One package refusing to deactivate must not answer for the rest: the
     // reply this feeds decides whether the window may unload at all. Spied on
-    // the {Package} rather than its main module, because `Package#deactivate`
-    // already absorbs whatever the main module throws — this is the rejection
-    // that gets past it.
+    // the {Package} rather than its main module to cover rejection from any
+    // stage of teardown.
     it("deactivates the rest when one rejects", async () => {
       const pack = await lumine.packages.activatePackage("package-with-deactivate");
       const other = await lumine.packages.activatePackage("package-with-serialization");
@@ -1641,15 +1873,18 @@ describe("PackageManager", () => {
       expect(manager.getActivePackages()).toEqual([replacement]);
     });
 
-    it("absorbs exceptions that are thrown by the package module's deactivate method", async () => {
-      spyOn(console, "error");
-      await lumine.packages.activatePackage("package-that-throws-on-deactivate");
-      await lumine.packages.deactivatePackage("package-that-throws-on-deactivate");
-      expect(console.error).toHaveBeenCalled();
+    it("propagates a main module's deactivate exception after finalizing the lifecycle", async () => {
+      const pack = await lumine.packages.activatePackage("package-that-throws-on-deactivate");
+      await expectAsync(lumine.packages.deactivatePackage(pack.name)).toBeRejectedWithError(
+        "Top that",
+      );
+      expect(pack.mainInitialized).toBe(false);
+      expect(pack.mainActivated).toBe(false);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
     });
 
-    // `Package#deactivate` absorbs what the main module throws; this is a
-    // failure that gets past it. Nothing retries one, so a package left listed
+    // Nothing retries a failed teardown, so a package left listed
     // as active would stay that way for the session — refused by
     // `unloadPackage` and handed straight back by `activatePackage`.
     it("stops treating a package as active when deactivation itself fails", async () => {
@@ -1665,6 +1900,58 @@ describe("PackageManager", () => {
       subscription.dispose();
       // No longer refused, which is the state this is really about.
       await lumine.packages.unloadPackage(pack.name);
+    });
+
+    it("keeps the activation signal alive until its generation is deactivated", async () => {
+      const pack = lumine.packages.loadPackage("package-with-view-providers");
+      pack.requireMainModule();
+      let activationSignal;
+      spyOn(pack.mainModule, "activate").and.callFake((_state, { signal }) => {
+        activationSignal = signal;
+      });
+      await lumine.packages.activatePackage(pack.name);
+      expect(activationSignal.aborted).toBe(false);
+
+      await lumine.packages.deactivatePackage(pack.name);
+
+      expect(activationSignal.aborted).toBe(true);
+    });
+
+    it("shares teardown ownership before calling a reentrant serializer", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-serialization");
+      let reentrantDeactivation;
+      spyOn(pack.mainModule, "serialize").and.callFake(() => {
+        reentrantDeactivation = lumine.packages.deactivatePackage(pack.name);
+        return { someNumber: 77 };
+      });
+      spyOn(pack, "deactivate").and.callThrough();
+
+      await lumine.packages.deactivatePackage(pack.name);
+      await reentrantDeactivation;
+
+      expect(pack.mainModule.serialize).toHaveBeenCalledTimes(1);
+      expect(pack.deactivate).toHaveBeenCalledTimes(1);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+    });
+
+    it("preserves main teardown and observer failures while withdrawing the active package", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-view-providers");
+      const primary = new Error("Main teardown failed");
+      const observer = new Error("Deactivation observer failed");
+      spyOn(pack.mainModule, "deactivate").and.callFake(() => {
+        throw primary;
+      });
+      const subscription = lumine.packages.onDidDeactivatePackage((deactivated) => {
+        if (deactivated === pack) throw observer;
+      });
+
+      const failure = await lumine.packages.deactivatePackage(pack.name).catch((error) => error);
+
+      expect(failure.errors).toEqual([primary, observer]);
+      expect(failure.cause).toBe(primary);
+      expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
+      subscription.dispose();
     });
 
     it("removes the package's grammars", async () => {
