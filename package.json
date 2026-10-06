@@ -30,7 +30,7 @@
     "@jasminejs/reporters": "1.1.0",
     "@lumine-code/babel-preset": "github:lumine-code/babel-preset#65a40b108cccf570c804d91643803e0a28134e1c",
     "@lumine-code/etch": "github:lumine-code/etch#a823441dcf10e786f36915f88422fd0c95d33374",
-    "@lumine-code/event-kit": "github:lumine-code/event-kit#cf575e66486d6aeaa1515167963aeb583146246d",
+    "@lumine-code/event-kit": "github:lumine-code/event-kit#581c32c43a965b6a5eff933293471de392c1cf46",
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#4d08dbfc1acfe6d6226e31db2e1ce976e25b1fd3",
     "@lumine-code/fs-plus": "github:lumine-code/fs-plus#83486ac8a670adb4381a9d4e2df3eb999f670ad1",
     "@lumine-code/fs-temp": "github:lumine-code/fs-temp#f81b8d8cef089b525881432dd42efaf16b919bcb",
@@ -59,7 +59,6 @@
     "git-diff": "github:lumine-code/git-diff#19c6f43f333785c06d517067ba45fc59190531f0",
     "go-to-line": "github:lumine-code/go-to-line#f77c34663834e945ece2822f4989b1d8a8d4edac",
     "grammar-selector": "github:lumine-code/grammar-selector#9bdde35d421b2467e236ba34bcef4c0f73412543",
-    "gray-matter": "^4.0.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#e0f3172d1da8cdca0b0b1fa82bd08adc7c9de910",
     "jasmine": "7.0.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#cc269e20c6d44c9495e2a5fe27c10aae51977f81",
@@ -116,7 +115,8 @@
     "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#876eca2f8da8cba58aaa532f39742016f77c1bea",
     "winattr": "^4.0.0",
-    "window-title": "github:lumine-code/window-title#bf3bd53c8c98c59d2a3c773fcb016160894d1ce7"
+    "window-title": "github:lumine-code/window-title#bf3bd53c8c98c59d2a3c773fcb016160894d1ce7",
+    "yaml": "^2.9.1"
   },
   "private": true,
   "scripts": {

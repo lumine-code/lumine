@@ -30,6 +30,63 @@ describe("Renders Markdown", () => {
     expect(lumine.tools.markdown.render(input).trim()).toBe(expected);
   });
 
+  describe("front matter", () => {
+    it("renders YAML variables and preserves the document body", () => {
+      const output = lumine.tools.markdown.render("---\nvars:\n  title: Hello\n---\n**Body**");
+      expect(output).toContain("<th>title</th>");
+      expect(output).toContain("<td>Hello</td>");
+      expect(output).toContain("<strong>Body</strong>");
+    });
+
+    it("accepts JSON data and CRLF delimiters", () => {
+      const output = lumine.tools.markdown.render('---json\r\n{"vars":{"count":2}}\r\n---\r\nBody');
+      expect(output).toContain("<td>2</td>");
+      expect(output).toContain("<p>Body</p>");
+    });
+
+    it("handles empty data and null variables", () => {
+      expect(lumine.tools.markdown.render("---\n---\nBody")).toBe("<p>Body</p>\n");
+      expect(lumine.tools.markdown.render("---\nvars: null\n...\nBody")).toBe("<p>Body</p>\n");
+      const output = lumine.tools.markdown.render("---yaml\nvars:\n  empty: null\n---\nBody");
+      expect(output).toContain("<th>empty</th>");
+      expect(output).toContain("<p>Body</p>");
+    });
+
+    for (const language of ["javascript", "js"]) {
+      it(`does not execute ${language} front matter`, () => {
+        const execute = jasmine.createSpy("front matter execution");
+        window.frontMatterExecutionProbe = execute;
+        try {
+          const output = lumine.tools.markdown.render(
+            `---${language}\n(window.frontMatterExecutionProbe(), {vars:{title:123}})\n---\nBody`,
+          );
+          expect(execute).not.toHaveBeenCalled();
+          expect(output).toContain("Body");
+        } finally {
+          delete window.frontMatterExecutionProbe;
+        }
+      });
+    }
+
+    it("leaves incomplete delimiters and disabled parsing as Markdown", () => {
+      const source = "---\nvars: title\nBody";
+      const output = lumine.tools.markdown.render(source);
+      expect(output).toContain("vars: title");
+      expect(output).toContain("Body");
+      expect(
+        lumine.tools.markdown.render("---\nvars: title\n---\nBody", {
+          handleFrontMatter: false,
+        }),
+      ).toContain("vars: title");
+    });
+
+    it("rejects recursive YAML variables without recursing indefinitely", () => {
+      expect(() =>
+        lumine.tools.markdown.render("---\nvars: &vars\n  loop: *vars\n---\nBody"),
+      ).toThrowError(SyntaxError, "Front matter contains cyclic variables");
+    });
+  });
+
   describe("transforms links correctly", () => {
     it("makes no changes to a fqdn link", () => {
       expect(lumine.tools.markdown.render("[Hello World](https://github.com)")).toBe(

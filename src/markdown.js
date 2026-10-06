@@ -7,7 +7,7 @@ const MarkdownIt = require("markdown-it");
 const mdComponents = {
   deps: {
     domPurify: null,
-    grayMatter: null,
+    yaml: null,
     markdownItEmoji: null,
     markdownItGitHubHeadings: null,
     markdownItTaskCheckbox: null,
@@ -23,6 +23,24 @@ const mdComponents = {
     },
   },
 };
+
+function parseFrontMatter(content) {
+  const opening = /^\uFEFF?---(?:(yaml|yml|json))?[ \t]*\r?\n/.exec(content);
+  if (!opening) return { content, data: null };
+  const remainder = content.slice(opening[0].length);
+  const closing = /^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/m.exec(remainder);
+  if (!closing) return { content, data: null };
+
+  const source = remainder.slice(0, closing.index);
+  let data;
+  if (opening[1] === "json") {
+    data = source.trim() ? JSON.parse(source) : null;
+  } else {
+    mdComponents.deps.yaml ??= require("yaml");
+    data = mdComponents.deps.yaml.parse(source);
+  }
+  return { content: remainder.slice(closing.index + closing[0].length), data };
+}
 
 /**
  * @public
@@ -44,8 +62,8 @@ const mdComponents = {
  * own option of 'ALLOW_SELF_CLOSE'
  * @param {boolean} givenOpts.breaks - If newlines should always be converted
  * into breaklines.
- * @param {boolean} givenOpts.handleFrontMatter - Whether frontmatter data should
- * processed and displayed.
+ * @param {boolean} givenOpts.handleFrontMatter - Whether YAML or JSON frontmatter
+ * data should be processed and displayed. Other language headers remain Markdown.
  * @param {boolean} givenOpts.useDefaultEmoji - Whether `markdown-it-emoji` should be enabled.
  * @param {boolean} givenOpts.useGitHubHeadings - Whether `markdown-it-github-headings`
  * should be enabled. False by default.
@@ -398,18 +416,21 @@ function renderMarkdown(content, givenOpts = {}) {
   let textContent;
 
   if (opts.handleFrontMatter) {
-    mdComponents.deps.grayMatter ??= require("gray-matter");
-    const { content: __content, data } = mdComponents.deps.grayMatter(content);
-    const vars = data.vars;
+    const { content: body, data } = parseFrontMatter(content);
+    const vars = data?.vars;
+    const ancestors = new Set();
 
     const renderYamlTable = (variables) => {
-      if (typeof variables === "undefined") {
+      if (variables == null || typeof variables !== "object") {
         return "";
       }
+      if (ancestors.has(variables)) throw new SyntaxError("Front matter contains cyclic variables");
+      ancestors.add(variables);
 
       const entries = Object.entries(variables);
 
       if (!entries.length) {
+        ancestors.delete(variables);
         return "";
       }
 
@@ -417,7 +438,7 @@ function renderMarkdown(content, givenOpts = {}) {
         entries.map((entry) => entry[0]),
         entries.map((_entry) => "--"),
         entries.map((entry) => {
-          if (typeof entry[1] === "object" && !Array.isArray(entry[1])) {
+          if (entry[1] !== null && typeof entry[1] === "object" && !Array.isArray(entry[1])) {
             // Remove all newlines, or they ruin formatting of parent table
             return md.render(renderYamlTable(entry[1])).replace(/\n/g, "");
           } else {
@@ -426,10 +447,11 @@ function renderMarkdown(content, givenOpts = {}) {
         }),
       ];
 
+      ancestors.delete(variables);
       return markdownRows.map((row) => "| " + row.join(" | ") + " |").join("\n") + "\n";
     };
 
-    textContent = renderYamlTable(vars) + __content;
+    textContent = renderYamlTable(vars) + "\n" + body;
   } else {
     textContent = content;
   }
