@@ -249,6 +249,38 @@ describe("InputDialog", () => {
       expect(view.getElement().querySelector(".status-message").textContent).toBe("background");
     });
 
+    it("preserves status and query-source work during typography changes, then responds to text edits", async () => {
+      const load = jasmine.createSpy("load");
+      createHostedInputDialog({ source: { mode: "query", debounceMs: 0, load } });
+      await host.show({ query: "initial" });
+      const status = { type: "info", message: "Query confirmed." };
+      await view.setStatus(status);
+      const changes = [];
+      const subscription = view.onDidChangeQuery(({ query }) => changes.push(query));
+      const editor = view.getQueryEditor();
+
+      editor.setTabLength(editor.getTabLength() + 1);
+      await view.update({});
+
+      expect(view.getQuery()).toBe("initial");
+      expect(view.getStatus()).toEqual(status);
+      expect(view.getElement().querySelector(".status-message").textContent).toBe(
+        "Query confirmed.",
+      );
+      expect(changes).toEqual([]);
+      expect(load).toHaveBeenCalledTimes(1);
+
+      editor.setText("changed");
+      expect(view.getStatus()).toBeNull();
+      expect(changes).toEqual(["changed"]);
+      await conditionPromise(() => !view.isLoading(), "the edited query source to finish");
+
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(load.calls.mostRecent().args[0].query).toBe("changed");
+      expect(view.getElement().querySelector(".status-message")).toBeNull();
+      subscription.dispose();
+    });
+
     it("renders a header element above the query editor", () => {
       const header = document.createElement("label");
       header.textContent = "Prompt";

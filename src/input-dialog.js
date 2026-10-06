@@ -88,7 +88,10 @@ class InputDialog {
     if (this.props.placeholderText) {
       this.queryEditor.setPlaceholderText(this.props.placeholderText);
     }
-    this.disposables.add(this.queryEditor.onDidChange(() => this.didChangeQuery()));
+    // TextEditor changes also include display resets, such as font metrics or
+    // tab-width changes. Only edits to the query text invalidate its status,
+    // selection and source, so observe completed buffer transactions directly.
+    this.disposables.add(this.queryEditor.getBuffer().onDidChangeText(() => this.didChangeQuery()));
     this.initializeState();
     this.component = null;
     this.scheduleStatusExpiry();
