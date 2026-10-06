@@ -10,6 +10,8 @@ Separate snapshots let two windows keep their own pane layout, editors and packa
 
 Resetting or closing the window invalidates pending changes. Once an outstanding asynchronous step settles, the cancelled transition rejects with `ABORT_ERR` and releases any unused reservation. Requests queued before the reset are cancelled too; later requests wait for the old operation to finish before using the new generation.
 
+Asynchronous workspace opens have their own lifetime. Resetting or destroying the workspace cancels preview, permanent and split opens, including requests still reading their saved location. A cancelled `workspace.open()` resolves to `undefined`; late opener-owned results are disposed while caller-supplied and already-attached items retain their ownership. Opens in the new generation do not wait for an obsolete URI request.
+
 If restoration fails, rollback attempts to recover the outgoing documents and configuration. A single failure is returned unchanged. Additional rollback or reservation cleanup failures are reported together as an `AggregateError`, with the original failure first and as its `cause`.
 
 ## Retention

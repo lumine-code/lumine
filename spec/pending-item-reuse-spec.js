@@ -1,12 +1,17 @@
 const { Emitter } = require("@lumine-code/event-kit");
+const Environment = require("../src/environment");
+const { flushMicrotasks } = require("./helpers/async-spec-helpers");
 
 describe("Pending pane item reuse", () => {
   let workspace, pane, opener, registration, requests, created, originalPersistence;
 
   const deferred = () => {
-    let resolve;
-    const promise = new Promise((callback) => (resolve = callback));
-    return { promise, resolve };
+    let resolve, reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
   };
 
   function makeItem(uri) {
@@ -38,6 +43,28 @@ describe("Pending pane item reuse", () => {
     };
   }
 
+  function registerPreviewOpener() {
+    registration = workspace.addOpener(opener, {
+      canReusePendingItem: (item, uri) => created.includes(item) && uri.startsWith("preview://"),
+      reusePendingItem: async (item, uri, options, { signal }) => {
+        const gate = deferred();
+        requests.push({ item, uri, options, signal, gate });
+        await gate.promise;
+        if (signal.aborted) return false;
+        item.setURI(uri);
+      },
+    });
+  }
+
+  function resetWorkspace() {
+    registration.dispose();
+    workspace.reset(lumine.packages);
+    workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
+    workspace.enablePersistence = false;
+    pane = workspace.getCenter().getActivePane();
+    registerPreviewOpener();
+  }
+
   beforeEach(() => {
     workspace = lumine.workspace;
     originalPersistence = workspace.enablePersistence;
@@ -52,16 +79,7 @@ describe("Pending pane item reuse", () => {
       created.push(item);
       return item;
     });
-    registration = workspace.addOpener(opener, {
-      canReusePendingItem: (item, uri) => created.includes(item) && uri.startsWith("preview://"),
-      reusePendingItem: async (item, uri, options, { signal }) => {
-        const gate = deferred();
-        requests.push({ item, uri, options, signal, gate });
-        await gate.promise;
-        if (signal.aborted) return false;
-        item.setURI(uri);
-      },
-    });
+    registerPreviewOpener();
   });
 
   afterEach(() => {
@@ -273,7 +291,13 @@ describe("Pending pane item reuse", () => {
     expect(item.isDestroyed()).toBe(false);
     expect(workspace.destroyedItemURIs).not.toContain("preview://a");
     expect(workspace.incoming.size).toBe(0);
-    expect(workspace.pendingItemOpenRequests.size).toBe(0);
+    workspace.openerReuseCapabilities.get(opener).reusePendingItem = async (pendingItem, uri) => {
+      pendingItem.setURI(uri);
+    };
+    expect(await workspace.open("preview://c", { pending: true })).toBe(item);
+    expect(item.getURI()).toBe("preview://c");
+    expect(opener.calls.count()).toBe(1);
+    expect(opened.calls.count()).toBe(1);
     subscription.dispose();
   });
 
@@ -397,6 +421,304 @@ describe("Pending pane item reuse", () => {
     expect(await earlier).toBeUndefined();
     expect(provided.isDestroyed()).toBe(false);
     expect(pane.getItems()).not.toContain(provided);
+  });
+
+  it("disposes a limit-refused item once and preserves a throwing destroy without isDestroyed", async () => {
+    const uri = "opening://refused-limit";
+    const item = makeItem(uri);
+    delete item.isDestroyed;
+    const cleanupError = Object.freeze(new Error("Refused item cleanup failed"));
+    const destroy = spyOn(item, "destroy").and.throwError(cleanupError);
+    const custom = workspace.addOpener((requested) => (requested === uri ? item : undefined));
+    spyOn(workspace, "textEditorLimitReached").and.returnValue(true);
+    spyOn(workspace, "reportTextEditorLimit");
+    const opened = jasmine.createSpy("opened");
+    const subscription = workspace.onDidOpen(opened);
+
+    const failure = await workspace.open(uri, { pending: false, pane }).catch((error) => error);
+
+    expect(failure).toBe(cleanupError);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(workspace.getPaneItems()).not.toContain(item);
+    expect(opened).not.toHaveBeenCalled();
+    subscription.dispose();
+    custom.dispose();
+  });
+
+  it("preserves an open observer's synchronous error when that observer also resets the workspace", async () => {
+    const uri = "preview://observer-reset";
+    const observerError = Object.freeze(new Error("Open observer failed after reset"));
+    const hook = spyOn(lumine.packages.hooks, "trigger").and.callThrough();
+    const subscription = workspace.onDidOpen((event) => {
+      if (event.uri !== uri) return;
+      subscription.dispose();
+      resetWorkspace();
+      throw observerError;
+    });
+
+    const failure = await workspace.open(uri, { pending: false, pane }).catch((error) => error);
+
+    expect(failure).toBe(observerError);
+    expect(workspace.getPaneItems()).toEqual([]);
+    expect(created[0].isDestroyed()).toBe(true);
+    expect(hook.calls.allArgs().map(([name]) => name)).not.toContain(`${uri}:uri-opened`);
+  });
+
+  it("preserves a supplied URI provider's synchronous error after it resets the workspace", async () => {
+    const provided = makeItem("supplied://uri-provider-reset");
+    const providerError = Object.freeze(new Error("URI provider failed after reset"));
+    spyOn(provided, "getURI").and.callFake(() => {
+      resetWorkspace();
+      throw providerError;
+    });
+
+    const failure = await workspace
+      .open(provided, { pending: false, pane })
+      .catch((error) => error);
+
+    expect(failure).toBe(providerError);
+    expect(provided.isDestroyed()).toBe(false);
+    expect(workspace.getPaneItems()).toEqual([]);
+    provided.destroy();
+  });
+
+  it("quietly cancels an ordinary opener's deferred rejection after workspace reset", async () => {
+    const uri = "opening://late-rejection";
+    const entered = deferred();
+    const result = deferred();
+    const custom = workspace.addOpener((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return result.promise;
+    });
+    const opening = workspace.open(uri, { pending: false, pane });
+    await entered.promise;
+    resetWorkspace();
+    const opened = jasmine.createSpy("opened");
+    const subscription = workspace.onDidOpen(opened);
+    result.reject(Object.freeze(new Error("Obsolete asynchronous opener failed")));
+
+    expect(await opening).toBeUndefined();
+    expect(workspace.getPaneItems()).toEqual([]);
+    expect(opened).not.toHaveBeenCalled();
+    expect(workspace.destroyedItemURIs).not.toContain(uri);
+    subscription.dispose();
+    custom.dispose();
+  });
+
+  for (const split of [false, true]) {
+    it(`disposes a late ${split ? "split" : "permanent"} opener result after workspace reset without presenting it`, async () => {
+      const uri = "opening://late-reset";
+      const item = makeItem(uri);
+      const destroy = spyOn(item, "destroy").and.callThrough();
+      const entered = deferred();
+      const result = deferred();
+      const custom = workspace.addOpener((requested) => {
+        if (requested !== uri) return;
+        entered.resolve();
+        return result.promise;
+      });
+      const opening = workspace.open(uri, {
+        pane,
+        pending: split,
+        ...(split ? { split: "right" } : {}),
+      });
+      await entered.promise;
+      resetWorkspace();
+      const opened = jasmine.createSpy("opened");
+      const subscription = workspace.onDidOpen(opened);
+      const hook = spyOn(lumine.packages.hooks, "trigger").and.callThrough();
+      const panes = workspace.getCenter().getPanes().slice();
+      result.resolve(item);
+
+      expect(await opening).toBeUndefined();
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(workspace.getPaneItems()).not.toContain(item);
+      expect(workspace.getCenter().getPanes()).toEqual(panes);
+      expect(opened).not.toHaveBeenCalled();
+      expect(hook).not.toHaveBeenCalled();
+      expect(workspace.destroyedItemURIs).not.toContain(uri);
+      subscription.dispose();
+      custom.dispose();
+    });
+  }
+
+  it("does not destroy a provided item when reset cancels its deferred presentation", async () => {
+    const provided = makeItem("supplied://reset");
+    const opening = workspace.open(provided, { pane, pending: false });
+    resetWorkspace();
+
+    expect(await opening).toBeUndefined();
+    expect(provided.isDestroyed()).toBe(false);
+    expect(workspace.getPaneItems()).not.toContain(provided);
+    provided.destroy();
+  });
+
+  it("preserves a late owned result already adopted by the new generation", async () => {
+    const uri = "opening://adopted";
+    const item = makeItem(uri);
+    const destroy = spyOn(item, "destroy").and.callThrough();
+    const entered = deferred();
+    const result = deferred();
+    const custom = workspace.addOpener((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return result.promise;
+    });
+    const previous = workspace.open(uri, { pending: false, pane });
+    await entered.promise;
+    resetWorkspace();
+    expect(await workspace.open(item, { pending: false, pane })).toBe(item);
+    result.resolve(item);
+
+    expect(await previous).toBeUndefined();
+    expect(destroy).not.toHaveBeenCalled();
+    expect(workspace.paneForItem(item)).toBe(pane);
+    expect(pane.getActiveItem()).toBe(item);
+    custom.dispose();
+  });
+
+  it("cancels an ordinary opener when its explicit destination pane is destroyed", async () => {
+    const destination = pane.splitRight();
+    const uri = "opening://closed-pane";
+    const item = makeItem(uri);
+    const entered = deferred();
+    const result = deferred();
+    const custom = workspace.addOpener((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return result.promise;
+    });
+    const opened = jasmine.createSpy("opened");
+    const subscription = workspace.onDidOpen(opened);
+    const opening = workspace.open(uri, { pending: false, pane: destination });
+    await entered.promise;
+    destination.destroy();
+    result.resolve(item);
+
+    expect(await opening).toBeUndefined();
+    expect(item.isDestroyed()).toBe(true);
+    expect(workspace.getPaneItems()).not.toContain(item);
+    expect(opened).not.toHaveBeenCalled();
+    expect(workspace.destroyedItemURIs).not.toContain(uri);
+    subscription.dispose();
+    custom.dispose();
+  });
+
+  it("does not start an opener after reset while the persisted location lookup is pending", async () => {
+    workspace.enablePersistence = true;
+    const location = deferred();
+    spyOn(workspace.itemLocationStore, "load").and.returnValue(location.promise);
+    const opening = workspace.open("preview://located", { pending: true });
+    expect(workspace.itemLocationStore.load).toHaveBeenCalled();
+    resetWorkspace();
+    const opened = jasmine.createSpy("opened");
+    const subscription = workspace.onDidOpen(opened);
+    location.resolve("right");
+
+    expect(await opening).toBeUndefined();
+    expect(opener).not.toHaveBeenCalled();
+    expect(workspace.getPaneItems()).toEqual([]);
+    expect(opened).not.toHaveBeenCalled();
+    expect(workspace.destroyedItemURIs).not.toContain("preview://located");
+    subscription.dispose();
+  });
+
+  it("opens the same URI in a new generation without waiting for or being detached by the old one", async () => {
+    const uri = "opening://same-uri";
+    const entered = deferred();
+    const oldResult = deferred();
+    const currentResult = deferred();
+    const oldItem = makeItem(uri);
+    const currentItem = makeItem(uri);
+    const customOpener = jasmine.createSpy("same URI opener").and.callFake((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return customOpener.calls.count() === 1 ? oldResult.promise : currentResult.promise;
+    });
+    let custom = workspace.addOpener(customOpener);
+    const previous = workspace.open(uri, { pending: false, pane });
+    await entered.promise;
+    resetWorkspace();
+    custom.dispose();
+    custom = workspace.addOpener(customOpener);
+    const current = workspace.open(uri, { pending: false, pane });
+    await flushMicrotasks();
+    expect(customOpener.calls.count()).toBe(2);
+    oldResult.resolve(oldItem);
+    expect(await previous).toBeUndefined();
+    expect(oldItem.isDestroyed()).toBe(true);
+    const duplicate = workspace.open(uri, { pending: false, pane });
+    await flushMicrotasks();
+    expect(customOpener.calls.count()).toBe(2);
+    currentResult.resolve(currentItem);
+
+    expect(await current).toBe(currentItem);
+    expect(await duplicate).toBe(currentItem);
+    expect(currentItem.isDestroyed()).toBe(false);
+    expect(pane.getItems()).toEqual([currentItem]);
+    custom.dispose();
+  });
+
+  it("serializes duplicate URI retries after their first opener rejects", async () => {
+    const uri = "opening://retry";
+    const entered = deferred();
+    const failedResult = deferred();
+    const retryResult = deferred();
+    const failure = new Error("First opener failed");
+    const replacement = makeItem(uri);
+    const customOpener = jasmine.createSpy("retry opener").and.callFake((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return customOpener.calls.count() === 1 ? failedResult.promise : retryResult.promise;
+    });
+    const custom = workspace.addOpener(customOpener);
+    const failed = workspace.open(uri, { pending: false, pane }).catch((error) => error);
+    await entered.promise;
+    const firstWaiter = workspace.open(uri, { pending: false, pane });
+    const secondWaiter = workspace.open(uri, { pending: false, pane });
+    failedResult.reject(failure);
+    expect(await failed).toBe(failure);
+    await flushMicrotasks();
+    expect(customOpener.calls.count()).toBe(2);
+    retryResult.resolve(replacement);
+
+    expect(await firstWaiter).toBe(replacement);
+    expect(await secondWaiter).toBe(replacement);
+    expect(customOpener.calls.count()).toBe(2);
+    expect(pane.getItems()).toEqual([replacement]);
+    custom.dispose();
+  });
+
+  it("disposes an ordinary opener's late result after its environment is destroyed", async () => {
+    const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+    const localWorkspace = environment.workspace;
+    localWorkspace.enablePersistence = false;
+    const uri = "opening://destroyed-environment";
+    const item = makeItem(uri);
+    const entered = deferred();
+    const result = deferred();
+    const emit = spyOn(localWorkspace.emitter, "emit").and.callThrough();
+    const hook = spyOn(environment.packages.hooks, "trigger").and.callThrough();
+    localWorkspace.addOpener((requested) => {
+      if (requested !== uri) return;
+      entered.resolve();
+      return result.promise;
+    });
+    try {
+      const opening = localWorkspace.open(uri, { pending: false });
+      await entered.promise;
+      environment.destroy();
+      result.resolve(item);
+
+      expect(await opening).toBeUndefined();
+      expect(item.isDestroyed()).toBe(true);
+      expect(emit).not.toHaveBeenCalledWith("did-open", jasmine.anything());
+      expect(hook).not.toHaveBeenCalled();
+      expect(localWorkspace.destroyedItemURIs).not.toContain(uri);
+    } finally {
+      environment.destroy();
+    }
   });
 
   it("uses the explicit destination and updates persisted URI location", async () => {

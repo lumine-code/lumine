@@ -20,6 +20,7 @@ const layoutDrag = require("./layout-drag");
 // window's services.
 const ModalDialogFactory = require("./modal-dialog-factory");
 const FileDocumentRegistry = require("./file-document-registry");
+const ItemOpenRequestManager = require("./item-open-request-manager");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 
@@ -270,6 +271,9 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * when the user closes or reloads the window. Returns a boolean.
  */
 module.exports = class Workspace extends Model {
+  #itemOpenRequests;
+  #resettingItemOpens = 0;
+
   constructor(params) {
     super(...arguments);
 
@@ -315,9 +319,9 @@ module.exports = class Workspace extends Model {
     this.emitter = new Emitter();
     this.openers = [];
     this.openerReuseCapabilities = new Map();
-    this.pendingItemOpenRequests = new Map();
-    this.paneOpenSequences = new WeakMap();
-    this.openRequestSequence = 0;
+    this.#itemOpenRequests = new ItemOpenRequestManager({
+      isAvailable: () => this.isAlive() && this.#resettingItemOpens === 0,
+    });
     this.paneItemURIs = new WeakMap();
     this.destroyedItemURIs = [];
     this.longTitles = null;
@@ -494,88 +498,95 @@ module.exports = class Workspace extends Model {
   }
 
   reset(packageManager) {
-    this.packageManager = packageManager;
-    this.fileMoveReadiness = Promise.resolve();
-    void this.modalDialogFactory.destroy();
-    this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
-    this.emitter.dispose();
-    this.emitter = new Emitter();
+    this.#resettingItemOpens++;
+    try {
+      this.#itemOpenRequests.reset();
+      this.incoming.clear();
+      this.packageManager = packageManager;
+      this.fileMoveReadiness = Promise.resolve();
+      void this.modalDialogFactory.destroy();
+      this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
+      this.emitter.dispose();
+      this.emitter = new Emitter();
 
-    this.registeredTextEditorGrammarSubscription?.dispose();
-    this.registeredTextEditorGrammarSubscription = null;
-    for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
-    this.registeredGrammarUsageLeases.clear();
+      this.registeredTextEditorGrammarSubscription?.dispose();
+      this.registeredTextEditorGrammarSubscription = null;
+      for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
+      this.registeredGrammarUsageLeases.clear();
 
-    if (this.activeItemTextEditorsSubscription) {
-      this.activeItemTextEditorsSubscription.dispose();
-      this.activeItemTextEditorsSubscription = null;
+      if (this.activeItemTextEditorsSubscription) {
+        this.activeItemTextEditorsSubscription.dispose();
+        this.activeItemTextEditorsSubscription = null;
+      }
+      for (const lease of this.activeItemGrammarUsageLeases.values()) lease.dispose();
+      this.activeItemGrammarUsageLeases.clear();
+
+      this.paneContainers.center.destroy();
+      this.paneContainers.left.destroy();
+      this.paneContainers.right.destroy();
+      this.paneContainers.bottom.destroy();
+
+      _.values(this.panelContainers).forEach((panelContainer) => {
+        panelContainer.destroy();
+      });
+
+      this.paneContainers = {
+        center: this.createCenter(),
+        left: this.createDock("left"),
+        right: this.createDock("right"),
+        bottom: this.createDock("bottom"),
+      };
+      this.activePaneContainer = this.paneContainers.center;
+      this.hasActiveTextEditor = false;
+      this.previousActiveFileTextEditor = undefined;
+      this.previousActiveEmbeddedTextEditor = undefined;
+
+      this.panelContainers = {
+        top: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "top",
+        }),
+        left: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "left",
+          dock: this.paneContainers.left,
+        }),
+        right: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "right",
+          dock: this.paneContainers.right,
+        }),
+        bottom: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "bottom",
+          dock: this.paneContainers.bottom,
+        }),
+        header: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "header",
+        }),
+        footer: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "footer",
+        }),
+        modal: new PanelContainer({
+          viewRegistry: this.viewRegistry,
+          location: "modal",
+        }),
+      };
+
+      this.openers = [];
+      this.openerReuseCapabilities.clear();
+      this.destroyedItemURIs = [];
+      this.invalidateLongTitles();
+      if (this.element) {
+        this.element.destroy();
+        this.element = null;
+      }
+      this.consumeServices(this.packageManager);
+    } finally {
+      this.#resettingItemOpens--;
     }
-    for (const lease of this.activeItemGrammarUsageLeases.values()) lease.dispose();
-    this.activeItemGrammarUsageLeases.clear();
-
-    this.paneContainers.center.destroy();
-    this.paneContainers.left.destroy();
-    this.paneContainers.right.destroy();
-    this.paneContainers.bottom.destroy();
-
-    _.values(this.panelContainers).forEach((panelContainer) => {
-      panelContainer.destroy();
-    });
-
-    this.paneContainers = {
-      center: this.createCenter(),
-      left: this.createDock("left"),
-      right: this.createDock("right"),
-      bottom: this.createDock("bottom"),
-    };
-    this.activePaneContainer = this.paneContainers.center;
-    this.hasActiveTextEditor = false;
-    this.previousActiveFileTextEditor = undefined;
-    this.previousActiveEmbeddedTextEditor = undefined;
-
-    this.panelContainers = {
-      top: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "top",
-      }),
-      left: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "left",
-        dock: this.paneContainers.left,
-      }),
-      right: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "right",
-        dock: this.paneContainers.right,
-      }),
-      bottom: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "bottom",
-        dock: this.paneContainers.bottom,
-      }),
-      header: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "header",
-      }),
-      footer: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "footer",
-      }),
-      modal: new PanelContainer({
-        viewRegistry: this.viewRegistry,
-        location: "modal",
-      }),
-    };
-
-    this.openers = [];
-    this.openerReuseCapabilities.clear();
-    this.destroyedItemURIs = [];
-    this.invalidateLongTitles();
-    if (this.element) {
-      this.element.destroy();
-      this.element = null;
-    }
-    this.consumeServices(this.packageManager);
   }
 
   initialize({ configDirPath }) {
@@ -1285,7 +1296,7 @@ module.exports = class Workspace extends Model {
     const newURI = this.getItemURI(item);
     if (oldURI === newURI) return;
     this.paneItemURIs.set(item, newURI);
-    const reuseRequest = this.pendingItemOpenRequests.get(pane);
+    const reuseRequest = this.#itemOpenRequests.getForPane(pane);
     if (reuseRequest?.item === item) this.recordReusedPendingItemURI(reuseRequest);
     this.invalidateLongTitles();
     this.itemOpened(item);
@@ -1662,6 +1673,10 @@ module.exports = class Workspace extends Model {
    * If the URI is already open, the existing item for that URI will be
    * activated. If no URI is given, or no registered opener can open
    * the URI, a new empty {@link TextEditor} will be created.
+   * Resetting or destroying the workspace, or closing an explicit destination
+   * pane, cancels an unfinished open and resolves it to `undefined`. A late
+   * opener-owned item is disposed if it remains unattached; an item supplied
+   * by the caller stays caller-owned.
    *
    * @param [itemOrURI] - An item to open or a `String` containing a URI.
    * @param {Object} [options]
@@ -1674,70 +1689,115 @@ module.exports = class Workspace extends Model {
    * @param options.pane - A {@link Pane} in which to open the item. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
    * @param options.searchAllPanes - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
    * @param [options.location] - A `String` containing the name of the location in which this item should be opened (one of "left", "right", "bottom", or "center"). If omitted, Lumine will fall back to the last location in which a user has placed an item with the same URI or, if this is a new URI, the default location specified by the item. NOTE: This option should almost always be omitted to honor user preference.
-   * @returns {Promise} that resolves to the {@link TextEditor} for the file URI.
+   * @returns {Promise} that resolves to the opened item, or `undefined` when cancelled or refused.
    */
   async open(itemOrURI, options = {}) {
-    let uri, item;
-    if (typeof itemOrURI === "string") {
-      uri = this.project.resolvePath(itemOrURI);
-    } else if (itemOrURI) {
-      item = itemOrURI;
-      if (typeof item.getURI === "function") uri = item.getURI();
-    }
-    const providedItem = item;
-
-    // Prepare a possible destination without cancelling work there: an opener
-    // can still choose a different default location. The request is registered
-    // only when an opener accepts reuse or the new item's destination is known.
-    const openSequence = ++this.openRequestSequence;
-    let preferredLocation = options.location;
-    let reuseRequest;
-    if (!options.split) {
-      const searchPane =
-        options.pane ||
-        (options.searchAllPanes
-          ? item
-            ? this.paneForItem(item)
-            : this.paneForURI(uri)
-          : (this.paneContainerForURI(uri) || this.getActivePaneContainer()).getActivePane());
-      const existingItem = item
-        ? searchPane?.getItems().includes(item)
-        : uri && searchPane?.itemForURI(uri);
-      if (
-        !existingItem &&
-        !item &&
-        !options.pane &&
-        !preferredLocation &&
-        uri &&
-        this.enablePersistence
-      ) {
-        preferredLocation = await this.itemLocationStore.load(uri);
-      }
-      const destinationPane = existingItem
-        ? searchPane
-        : options.pane ||
-          (this.paneContainers[preferredLocation] || this.getCenter()).getActivePane();
-      reuseRequest = this.preparePendingItemOpen(destinationPane, options, openSequence, uri);
-      const incomingReuse = this.pendingItemOpenRequests.get(destinationPane);
-      if (existingItem || incomingReuse?.uri === uri) this.activatePendingItemOpen(reuseRequest);
-      if (reuseRequest?.controller.signal.aborted) return;
-    }
+    const openRequest = this.#itemOpenRequests.begin({ pane: options.pane });
+    const providedItem = typeof itemOrURI === "string" ? undefined : itemOrURI;
+    let uri, item, reuseRequest, incomingPromise;
     let resolveItem = () => {};
-    let incomingPromise;
-    if (uri) {
-      const incomingItem = this.incoming.get(uri);
-      if (!incomingItem) {
+    let openFailure;
+    let failed = false;
+    let opened = false;
+    let discardedItem, itemDisposalFailure;
+    const waitForOpen = async (operation) => {
+      try {
+        return await operation;
+      } catch (error) {
+        const synchronousFailure = openRequest.synchronousFailure;
+        if (
+          !this.#itemOpenRequests.isCurrent(openRequest) &&
+          !(synchronousFailure && synchronousFailure.error === error)
+        ) {
+          return;
+        }
+        throw error;
+      }
+    };
+    const discardUnpresentedItem = () => {
+      if (
+        item &&
+        item !== providedItem &&
+        item !== discardedItem &&
+        !item.isDestroyed?.() &&
+        !this.paneForItem(item)
+      ) {
+        discardedItem = item;
+        try {
+          item.destroy?.();
+        } catch (error) {
+          itemDisposalFailure = error;
+          throw error;
+        }
+      }
+    };
+    const performOpen = async () => {
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
+      if (typeof itemOrURI === "string") {
+        uri = this.project.resolvePath(itemOrURI);
+      } else if (itemOrURI) {
+        item = itemOrURI;
+        if (typeof item.getURI === "function") uri = item.getURI();
+      }
+      openRequest.uri = uri;
+
+      // Prepare a possible destination without cancelling work there: an opener
+      // can still choose a different default location. The request is registered
+      // only when an opener accepts reuse or the new item's destination is known.
+      let preferredLocation = options.location;
+      if (!options.split) {
+        const searchPane =
+          options.pane ||
+          (options.searchAllPanes
+            ? item
+              ? this.paneForItem(item)
+              : this.paneForURI(uri)
+            : (this.paneContainerForURI(uri) || this.getActivePaneContainer()).getActivePane());
+        const existingItem = item
+          ? searchPane?.getItems().includes(item)
+          : uri && searchPane?.itemForURI(uri);
+        if (
+          !existingItem &&
+          !item &&
+          !options.pane &&
+          !preferredLocation &&
+          uri &&
+          this.enablePersistence
+        ) {
+          preferredLocation = await waitForOpen(this.itemLocationStore.load(uri));
+          if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
+        }
+        const destinationPane = existingItem
+          ? searchPane
+          : options.pane ||
+            (this.paneContainers[preferredLocation] || this.getCenter()).getActivePane();
+        reuseRequest = openRequest;
+        this.#itemOpenRequests.prepare(
+          reuseRequest,
+          destinationPane,
+          options.pending &&
+            options.activateItem !== false &&
+            this.config.get("core.allowPendingPaneItems"),
+        );
+        const incomingReuse = this.#itemOpenRequests.getForPane(destinationPane);
+        if (existingItem || incomingReuse?.uri === uri)
+          this.#itemOpenRequests.activate(reuseRequest);
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
+      }
+      if (uri) {
+        // Every waiter must acquire its own slot after the prior open settles.
+        // Otherwise several waiters can race to construct the same missing URI.
+        while (this.incoming.has(uri)) {
+          await waitForOpen(this.incoming.get(uri));
+          if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
+        }
         incomingPromise = new Promise((resolve) => {
           resolveItem = resolve;
         });
         this.incoming.set(uri, incomingPromise);
-      } else {
-        await incomingItem;
       }
-    }
 
-    try {
-      if (reuseRequest?.controller.signal.aborted) return;
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
       if (!lumine.config.get("core.allowPendingPaneItems")) {
         options.pending = false;
       }
@@ -1800,10 +1860,11 @@ module.exports = class Workspace extends Model {
       // lookup of the URI, so we yield the event loop to ensure this method
       // is consistently asynchronous.
       if (item) await Promise.resolve();
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       if (!itemExistsInWorkspace) {
         const itemWasProvided = item != null;
-        if (reuseRequest?.controller.signal.aborted) return;
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (!item && !options.split) {
           if (reuseRequest && options.pending && options.activateItem !== false) {
             const destinationPane = reuseRequest.pane;
@@ -1824,9 +1885,11 @@ module.exports = class Workspace extends Model {
             }
           }
         }
-        item = item || (await this.createItemForURI(uri, options, reuseRequest));
-        if (reuseRequest?.controller.signal.aborted) {
-          if (item && !itemWasProvided && !this.paneForItem(item)) item.destroy?.();
+        item =
+          item ||
+          (await waitForOpen(this.createItemForURI(uri, options, reuseRequest, openRequest)));
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) {
+          discardUnpresentedItem();
           return;
         }
         if (!item) return;
@@ -1892,20 +1955,21 @@ module.exports = class Workspace extends Model {
           this.reportTextEditorLimit(itemOrURI, options);
           // Built a moment ago and never shown; leaving it would strand its
           // buffer in the project.
-          if (!itemWasProvided) item.destroy?.();
+          if (!itemWasProvided) discardUnpresentedItem();
           return;
         }
       }
 
-      this.activatePendingItemOpen(reuseRequest, pane);
-      if (reuseRequest?.controller.signal.aborted) {
-        if (item && item !== providedItem && !this.paneForItem(item)) item.destroy?.();
+      if (options.split) this.#itemOpenRequests.bindPane(openRequest, pane);
+      else this.#itemOpenRequests.activate(openRequest, pane);
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) {
+        discardUnpresentedItem();
         return;
       }
       if (reuseRequest?.reused) this.recordReusedPendingItemURI(reuseRequest);
       // Presentation can clear or replace pending state. Stop observing before
       // our own successful open changes it, so only external changes cancel us.
-      this.finishPendingItemOpen(reuseRequest);
+      this.#itemOpenRequests.stopTracking(openRequest);
 
       // A split is a presentation detail, so materialize it only after the
       // opener has produced an item and every refusal path has passed. Passing
@@ -1917,24 +1981,37 @@ module.exports = class Workspace extends Model {
           items: [item],
           activate: options.activatePane !== false,
         });
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) {
+          discardUnpresentedItem();
+          return;
+        }
+        this.#itemOpenRequests.bindPane(openRequest, pane);
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) {
+          discardUnpresentedItem();
+          return;
+        }
         if (options.pending) pane.setPendingItem(item);
       }
 
       if (!options.pending && pane.getPendingItem() === item) {
         pane.clearPendingItem();
       }
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       this.itemOpened(item);
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       if (options.activateItem === false) {
         pane.addItem(item, { pending: options.pending });
       } else {
         pane.activateItem(item, { pending: options.pending });
       }
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       if (options.activatePane !== false) {
         pane.activate();
       }
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       const hasInitialLine =
         typeof options.initialLine === "number" &&
@@ -1951,18 +2028,22 @@ module.exports = class Workspace extends Model {
         if (typeof item.setCursorBufferPosition === "function") {
           item.setCursorBufferPosition([initialLine, initialColumn]);
         }
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (typeof item.unfoldBufferRow === "function") {
           item.unfoldBufferRow(initialLine);
         }
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (typeof item.scrollToBufferPosition === "function") {
           item.scrollToBufferPosition([initialLine, initialColumn], {
             center: true,
           });
         }
+        if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
       }
 
       const index = pane.getActiveItemIndex();
       this.emitter.emit("did-open", { uri, pane, item, index });
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       // After emitting the open event, notify package-owned lazy features.
       let hookItem;
@@ -1985,74 +2066,54 @@ module.exports = class Workspace extends Model {
         }
       }
 
+      if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
       if (hookName?.length > 1 && hookItem?.length > 1) {
         this.packageManager.hooks.trigger(`${hookItem}:${hookName}`);
       }
-    } finally {
-      this.finishPendingItemOpen(reuseRequest);
-      if (incomingPromise && this.incoming.get(uri) === incomingPromise) this.incoming.delete(uri);
-      resolveItem();
-    }
-    return item;
-  }
-
-  preparePendingItemOpen(pane, options, sequence, uri) {
-    if (!pane) return;
-    const controller = new AbortController();
-    return {
-      pane,
-      uri,
-      sequence,
-      controller,
-      subscriptions: new CompositeDisposable(),
-      track:
-        options.pending &&
-        options.activateItem !== false &&
-        this.config.get("core.allowPendingPaneItems"),
+      opened = true;
     };
-  }
-
-  activatePendingItemOpen(request, pane = request?.pane) {
-    if (!request || request.controller.signal.aborted || (request.active && request.pane === pane))
-      return;
-    const { controller, sequence } = request;
-    if ((this.paneOpenSequences.get(pane) || 0) > sequence) {
-      controller.abort();
-      return;
+    let cleanupFailure;
+    try {
+      await performOpen();
+    } catch (error) {
+      failed = true;
+      openFailure = error;
+    } finally {
+      cleanupFailure = itemDisposalFailure;
+      try {
+        if (failed || !this.#itemOpenRequests.isCurrent(openRequest)) {
+          discardUnpresentedItem();
+        }
+      } catch (error) {
+        cleanupFailure = error;
+      }
+      try {
+        this.#itemOpenRequests.finish(openRequest);
+      } catch (error) {
+        cleanupFailure = cleanupFailure
+          ? new AggregateError([cleanupFailure, error], "Unable to dispose an open request", {
+              cause: cleanupFailure,
+            })
+          : error;
+      } finally {
+        if (incomingPromise && this.incoming.get(uri) === incomingPromise)
+          this.incoming.delete(uri);
+        resolveItem();
+      }
     }
-    if (request.active) {
-      this.finishPendingItemOpen(request);
-      request.subscriptions = new CompositeDisposable();
+    if (cleanupFailure) {
+      if (failed && openFailure !== cleanupFailure) {
+        throw new AggregateError(
+          [openFailure, cleanupFailure],
+          "Opening an item and its cleanup failed",
+          { cause: openFailure },
+        );
+      }
+      throw cleanupFailure;
     }
-    request.active = true;
-    request.pane = pane;
-    this.paneOpenSequences.set(pane, sequence);
-    const previousRequest = this.pendingItemOpenRequests.get(pane);
-    previousRequest?.controller.abort();
-    this.finishPendingItemOpen(previousRequest);
-    if (!request.track) return;
-    request.subscriptions.add(
-      pane.onItemDidTerminatePendingState(() => controller.abort()),
-      pane.onItemDidBecomePendingState((item) => {
-        if (request.item && item !== request.item) controller.abort();
-      }),
-      pane.onWillDestroyItem(({ item }) => {
-        if (item === request.item) controller.abort();
-      }),
-      pane.onWillRemoveItem(({ item }) => {
-        if (item === request.item) controller.abort();
-      }),
-      pane.onWillDestroy(() => controller.abort()),
-    );
-    this.pendingItemOpenRequests.set(pane, request);
-  }
-
-  finishPendingItemOpen(request) {
-    if (!request) return;
-    request.subscriptions.dispose();
-    if (this.pendingItemOpenRequests.get(request.pane) === request) {
-      this.pendingItemOpenRequests.delete(request.pane);
-    }
+    if (failed) throw openFailure;
+    if (!opened || this.#itemOpenRequests.isCancelled(openRequest)) return;
+    return item;
   }
 
   recordReusedPendingItemURI(request) {
@@ -2251,9 +2312,10 @@ module.exports = class Workspace extends Model {
    * @param uri - A `String` containing a URI.
    * @returns {Promise} that resolves to the {@link TextEditor} (or other item) for the given URI.
    */
-  async createItemForURI(uri, options, reuseRequest) {
+  async createItemForURI(uri, options, reuseRequest, openRequest = reuseRequest) {
     if (uri != null) {
       for (const opener of this.getOpeners()) {
+        if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (reuseRequest?.controller.signal.aborted) return;
         const reuse = this.openerReuseCapabilities.get(opener);
         const candidate = reuseRequest?.item;
@@ -2263,7 +2325,7 @@ module.exports = class Workspace extends Model {
           !candidate.isDestroyed?.() &&
           reuse?.canReusePendingItem?.(candidate, uri, options)
         ) {
-          this.activatePendingItemOpen(reuseRequest);
+          this.#itemOpenRequests.activate(reuseRequest);
           if (reuseRequest.controller.signal.aborted) return;
           let result;
           try {
@@ -2283,19 +2345,36 @@ module.exports = class Workspace extends Model {
             return candidate;
           }
         }
-        const item = opener(uri, options);
+        let item;
+        try {
+          item = opener(uri, options);
+        } catch (error) {
+          if (openRequest) openRequest.synchronousFailure = { error };
+          throw error;
+        }
         if (item != null) return item;
       }
     }
 
     // The fallback is a center text editor, so its destination no longer
     // depends on an opener's default location.
-    this.activatePendingItemOpen(reuseRequest, options?.pane || this.getCenter().getActivePane());
+    if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
+    this.#itemOpenRequests.activate(
+      reuseRequest,
+      options?.pane || this.getCenter().getActivePane(),
+    );
     if (reuseRequest?.controller.signal.aborted) return;
     try {
-      const item = await this.openTextFile(uri, options);
+      const item = await this.openTextFile(uri, options, openRequest);
       return item;
     } catch (error) {
+      const synchronousFailure = openRequest?.synchronousFailure;
+      if (
+        openRequest &&
+        !this.#itemOpenRequests.isCurrent(openRequest) &&
+        !(synchronousFailure && synchronousFailure.error === error)
+      )
+        return;
       switch (error.code) {
         case "CANCELLED":
           return Promise.resolve();
@@ -2324,7 +2403,7 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  async openTextFile(uri, options) {
+  async openTextFile(uri, options, openRequest) {
     const filePath = this.project.resolvePath(uri);
 
     if (filePath != null) {
@@ -2347,6 +2426,7 @@ module.exports = class Workspace extends Model {
         detail: "Do you still want to load this file?",
         buttons: ["Proceed", "Cancel"],
       });
+      if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
       if (response === 1) {
         const error = new Error();
         error.code = "CANCELLED";
@@ -2355,7 +2435,12 @@ module.exports = class Workspace extends Model {
     }
 
     const buffer = await this.project.bufferForPath(filePath, options);
-    return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
+    try {
+      return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
+    } catch (error) {
+      if (openRequest) openRequest.synchronousFailure = { error };
+      throw error;
+    }
   }
 
   handleGrammarUsed(grammar, { root = true } = {}) {
@@ -3113,11 +3198,8 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
-    for (const request of this.pendingItemOpenRequests.values()) {
-      request.controller.abort();
-      request.subscriptions.dispose();
-    }
-    this.pendingItemOpenRequests.clear();
+    this.#itemOpenRequests.destroy();
+    this.incoming.clear();
     this.registeredTextEditorGrammarSubscription?.dispose();
     this.registeredTextEditorGrammarSubscription = null;
     for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
