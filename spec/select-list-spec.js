@@ -939,6 +939,39 @@ describe("SelectList", () => {
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
+    it("highlights a folded character once even when it matches multiple query characters", async () => {
+      view = createSelectList({
+        items: ["Straße"],
+        search: { ignoreDiacritics: true },
+      });
+
+      for (const query of ["ss", "strasse"]) {
+        view.getQueryEditor().setText(query);
+        await nextUpdate();
+
+        expect(view.getDisplayedItems()).toEqual(["Straße"]);
+        expect(listTexts()).toEqual(["Straße"]);
+        expect(
+          Array.from(listElement().querySelectorAll(".character-match"), (m) => m.textContent),
+        ).toEqual([query === "ss" ? "ß" : "Straße"]);
+      }
+    });
+
+    it("keeps Unicode row text intact when highlighting matches after and inside surrogate pairs", async () => {
+      view = createSelectList({
+        items: ["😀éx😀"],
+        search: { ignoreDiacritics: true },
+      });
+
+      view.getQueryEditor().setText("😀x");
+      await nextUpdate();
+
+      expect(view.getDisplayedItems()).toEqual(["😀éx😀"]);
+      expect(listTexts()).toEqual(["😀éx😀"]);
+      const matches = listElement().querySelectorAll(".character-match");
+      expect(Array.from(matches, (m) => m.textContent)).toEqual(["😀", "x"]);
+    });
+
     it("lets highlight take explicit indices, for callers that shift offsets", async () => {
       view = createSelectList({
         items: ["abc"],

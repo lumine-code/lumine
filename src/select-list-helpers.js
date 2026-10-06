@@ -49,6 +49,8 @@ function highlightMatches(text, matchIndices, options = {}) {
   let matchChars = "";
 
   for (const index of validIndices) {
+    // Folding can map multiple query characters to the same original character.
+    if (index < lastIndex) continue;
     if (index > lastIndex) {
       if (matchChars) {
         const span = document.createElement("span");
