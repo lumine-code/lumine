@@ -119,9 +119,12 @@ describe("Application launcher", () => {
     const spawn = childProcess.spawn.bind(childProcess);
     let launched, closed;
     sandbox.stub(childProcess, "spawn").callsFake((...spawnArgs) => {
-      launched = spawn(...spawnArgs);
-      closed = new Promise((resolve) => launched.once("close", resolve));
-      return launched;
+      const spawned = spawn(...spawnArgs);
+      if (spawnArgs[2]?.cwd === directory) {
+        launched = spawned;
+        closed = new Promise((resolve) => launched.once("close", resolve));
+      }
+      return spawned;
     });
     let pid;
 
