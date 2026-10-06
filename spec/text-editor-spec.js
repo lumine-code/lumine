@@ -212,6 +212,7 @@ describe("TextEditor", () => {
 
   describe(".copy()", () => {
     it("returns a different editor with the same initial state", async () => {
+      editor.setSoftWrapped(false);
       expect(editor.getAutoHeight()).toBeFalsy();
       expect(editor.getAutoWidth()).toBeFalsy();
 
@@ -9923,12 +9924,12 @@ describe("TextEditor", () => {
   });
 
   describe("scroll past end", () => {
-    it("returns false by default but can be customized", () => {
-      expect(editor.getScrollPastEnd()).toBe(false);
-      editor.update({ scrollPastEnd: true });
+    it("returns true by default but can be customized", () => {
       expect(editor.getScrollPastEnd()).toBe(true);
       editor.update({ scrollPastEnd: false });
       expect(editor.getScrollPastEnd()).toBe(false);
+      editor.update({ scrollPastEnd: true });
+      expect(editor.getScrollPastEnd()).toBe(true);
     });
 
     it("always returns false when autoHeight is on", () => {
@@ -10374,6 +10375,7 @@ describe("TextEditor", () => {
 
   describe("setMaxScreenLineLength", () => {
     it("sets the maximum line length in the editor before soft wrapping is forced", () => {
+      editor.setSoftWrapped(false);
       expect(editor.getSoftWrapColumn()).toBe(500);
       editor.update({
         maxScreenLineLength: 1500,
