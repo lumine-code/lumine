@@ -105,7 +105,7 @@
     "settings-view": "github:lumine-code/settings-view#c149415ecc96cf30e2321fc89a872bf3a3066dac",
     "snippets": "github:lumine-code/snippets#e3f0a42b46e838697f2c17181ac033f84f0c3fd2",
     "source-map-support": "^0.5.21",
-    "status-bar": "github:lumine-code/status-bar#f513a9579387559a3b9cfcd05a5d34c8b2ed1c57",
+    "status-bar": "github:lumine-code/status-bar#6197d1167a14d2210bcde32dc5ba2e7340a25da0",
     "styleguide": "github:lumine-code/styleguide#4b398bd6dbb9e52979399e71381454269972df9b",
     "tabs": "github:lumine-code/tabs#d1461811919674f7ef6d590f2a2a93265fcf3cb4",
     "tar": "7.5.22",
