@@ -151,7 +151,7 @@ describe("FileIndex", () => {
     if (paths.length > 0) crawl.didFindPaths(paths);
     crawl.resolve();
     // The crawl promise's `.then` runs on a microtask.
-    return Promise.resolve().then(() => Promise.resolve());
+    return Promise.resolve().then(() => index.whenIdle());
   };
 
   const attach = async (paths = []) => {
@@ -160,6 +160,7 @@ describe("FileIndex", () => {
   };
 
   const waitForPendingAdmissions = async () => {
+    await index.whenIdle();
     for (let attempt = 0; attempt < 100; attempt++) {
       if (Array.from(index.entries.values()).every((entry) => entry.pendingAdmissions.size === 0)) {
         return;
@@ -439,6 +440,22 @@ describe("FileIndex", () => {
       advanceClock(200);
     };
 
+    it("removes a deleted directory from both an enclosing and nested root", async () => {
+      const nested = under("src");
+      project.setRoots([ROOT, nested]);
+      const shared = under("src", "a.js");
+      await completeCrawl([shared], nested);
+      index.refresh({ rootPaths: [ROOT] });
+      await completeCrawl([shared, under("keep.js")]);
+      expect(index.refCounts.get(shared)).toBe(2);
+
+      await emit([{ action: "deleted", path: nested }]);
+
+      expect(index.has(shared)).toBe(false);
+      expect(index.getPathsForRoot(nested)).toEqual([]);
+      expect(index.getPaths()).toEqual([under("keep.js")]);
+    });
+
     it("adds a created file", async () => {
       const created = touch("new.js");
       await emit([{ action: "created", path: created }]);
@@ -474,6 +491,100 @@ describe("FileIndex", () => {
       expect(index.has(under("src", "one.js"))).toBe(false);
       expect(index.has(under("src", "two.js"))).toBe(false);
       expect(index.has(under("keep.js"))).toBe(true);
+    });
+
+    it("does not iterate the root's file set for unknown deletions", async () => {
+      const entry = index.entries.get(ROOT);
+      spyOn(entry.paths, Symbol.iterator).and.throwError("Unexpected full-root scan");
+      const events = Array.from({ length: 2000 }, (_, i) => ({
+        action: "deleted",
+        path: under("uncached", `gone-${i}.tmp`),
+      }));
+
+      await emit(events);
+
+      expect(index.has(under("a.js"))).toBe(true);
+      expect(index.getPathCount()).toBe(1);
+    });
+
+    it("removes only the addressed directory, including its deeper descendants", async () => {
+      index.refresh();
+      await completeCrawl([
+        under("src", "one.js"),
+        under("src", "deep", "two.js"),
+        under("src-other", "keep.js"),
+      ]);
+
+      await emit([{ action: "deleted", path: under("src") }]);
+
+      expect(index.getPaths()).toEqual([under("src-other", "keep.js")]);
+    });
+
+    it("deletes staged paths and suppresses unseen late crawl results for the subtree", async () => {
+      index.refresh();
+      const crawl = project.crawlFor(ROOT);
+      crawl.didFindPaths([under("src", "staged.js"), under("keep.js")]);
+
+      await emit([{ action: "deleted", path: under("src") }]);
+      crawl.didFindPaths([under("src", "staged.js"), under("src", "late.js")]);
+      crawl.resolve();
+      await Promise.resolve().then(() => index.whenIdle());
+
+      expect(index.getPaths()).toEqual([under("keep.js")]);
+    });
+
+    it("suppresses an unseen deleted file returned later by the first crawl", async () => {
+      index.refresh();
+      await emit([{ action: "deleted", path: under("late.js") }]);
+      await completeCrawl([under("a.js"), under("late.js")]);
+      expect(index.has(under("late.js"))).toBe(false);
+    });
+
+    it("cancels admissions inside a deleted directory while repository status is loading", async () => {
+      let resolveStatus;
+      project.repository = {
+        refreshStatusSnapshot: () => new Promise((resolve) => (resolveStatus = resolve)),
+        isPathIgnored: () => false,
+      };
+      const created = touch("src", "new.js");
+      project.emitFileEvents([{ action: "created", path: created }]);
+      for (let i = 0; !resolveStatus && i < 100; i++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(resolveStatus).toBeDefined();
+
+      project.emitFileEvents([{ action: "deleted", path: under("src") }]);
+      resolveStatus();
+      await index.whenIdle();
+
+      expect(index.has(created)).toBe(false);
+      expect(index.entries.get(ROOT).pendingAdmissions.size).toBe(0);
+    });
+
+    it("keeps create and delete order within the same watcher batch", async () => {
+      const deletedLast = touch("deleted-last.js");
+      const createdLast = touch("created-last.js");
+      await emit([
+        { action: "created", path: deletedLast },
+        { action: "deleted", path: deletedLast },
+        { action: "deleted", path: createdLast },
+        { action: "created", path: createdLast },
+      ]);
+
+      expect(index.has(deletedLast)).toBe(false);
+      expect(index.has(createdLast)).toBe(true);
+    });
+
+    it("allows a recreated file while suppressing old siblings returned by the crawl", async () => {
+      index.refresh();
+      const recreated = touch("src", "recreated.js");
+      await emit([
+        { action: "deleted", path: under("src") },
+        { action: "created", path: recreated },
+      ]);
+      await completeCrawl([recreated, under("src", "old.js")]);
+
+      expect(index.getPaths()).toEqual([recreated]);
     });
 
     it("ignores an updated event", async () => {
@@ -535,6 +646,107 @@ describe("FileIndex", () => {
 
       expect(refreshStatusSnapshot).not.toHaveBeenCalled();
       expect(index.has(created)).toBe(true);
+    });
+  });
+
+  describe("cooperative reconciliation", () => {
+    const forceSlices = () => {
+      let now = 0;
+      spyOn(performance, "now").and.callFake(() => (now += 6));
+    };
+
+    const manyPaths = (directory = "src") =>
+      Array.from({ length: 2000 }, (_, i) => under(directory, `f${i}.js`));
+
+    it("yields during a subtree deletion and applies subsequent batches in order", async () => {
+      const paths = manyPaths();
+      await attach([...paths, under("keep.js")]);
+      forceSlices();
+      let yielded = false;
+      setImmediate(() => (yielded = true));
+
+      project.emitFileEvents([{ action: "deleted", path: under("src") }]);
+      expect(index.getPathCount()).toBeGreaterThan(1);
+      const recreated = touch("src", "after.js");
+      project.emitFileEvents([{ action: "created", path: recreated }]);
+      await index.whenIdle();
+
+      expect(yielded).toBe(true);
+      expect(index.getPaths().sort()).toEqual([recreated, under("keep.js")].sort());
+    });
+
+    it("keeps indexing true until deferred reconciliation is included in refresh's promise", async () => {
+      await attach(manyPaths());
+      forceSlices();
+      const refresh = index.refresh();
+      project.crawlFor(ROOT).didFindPaths([under("new.js")]);
+      project.crawlFor(ROOT).resolve();
+      await Promise.resolve();
+
+      expect(index.isIndexing()).toBe(true);
+      await refresh;
+
+      expect(index.isIndexing()).toBe(false);
+      expect(index.getPaths()).toEqual([under("new.js")]);
+    });
+
+    it("abandons an old reconciliation when a newer refresh supersedes it", async () => {
+      await attach(manyPaths());
+      forceSlices();
+      index.refresh();
+      project.crawlFor(ROOT).didFindPaths([under("obsolete.js")]);
+      project.crawlFor(ROOT).resolve();
+      await Promise.resolve();
+      const latest = index.refresh();
+      project.crawlFor(ROOT).didFindPaths([under("fresh.js")]);
+      project.crawlFor(ROOT).resolve();
+      await latest;
+      await index.whenIdle();
+
+      expect(index.getPaths()).toEqual([under("fresh.js")]);
+    });
+
+    it("does not apply queued events to a root removed and added again", async () => {
+      await attach(manyPaths());
+      forceSlices();
+      project.emitFileEvents([{ action: "deleted", path: under("src") }]);
+      const stale = touch("stale.js");
+      project.emitFileEvents([{ action: "created", path: stale }]);
+      project.setRoots([]);
+      project.setRoots([ROOT]);
+      await completeCrawl([under("src", "f1999.js"), under("fresh.js")]);
+      await index.whenIdle();
+
+      expect(index.getPaths().sort()).toEqual([under("fresh.js"), under("src", "f1999.js")]);
+      expect(index.has(stale)).toBe(false);
+    });
+
+    it("keeps a newer crawl authoritative when refresh interrupts a deletion", async () => {
+      await attach(manyPaths());
+      forceSlices();
+      const fresh = under("src", "fresh.js");
+      project.emitFileEvents([{ action: "deleted", path: under("src") }]);
+      project.emitFileEvents([{ action: "deleted", path: fresh }]);
+      const latest = index.refresh();
+      project.crawlFor(ROOT).didFindPaths([fresh]);
+      project.crawlFor(ROOT).resolve();
+      await latest;
+      await index.whenIdle();
+
+      // The new crawl began after both filesystem events. Old deletion work
+      // must neither change its contents nor apply an obsolete queued batch.
+      expect(index.getPaths()).toEqual([fresh]);
+    });
+
+    it("stops deferred work after destroy", async () => {
+      await attach(manyPaths());
+      forceSlices();
+      project.emitFileEvents([{ action: "deleted", path: under("src") }]);
+      index.destroy();
+      await index.whenIdle();
+
+      expect(index.getPathCount()).toBe(0);
+      expect(index.isIndexing()).toBe(false);
     });
   });
 
@@ -687,6 +899,19 @@ describe("FileIndex", () => {
       // filesystem gave it.
       expect(index.has(under("Deep", "File.JS"))).toBe(true);
       expect(index.has(path.join(realRoot, "Deep", "File.JS"))).toBe(false);
+    });
+
+    it("removes a subtree reached through the root's realpath alias", async () => {
+      await attach([under("Deep", "File.JS"), under("Other", "Keep.JS")]);
+      const entry = index.entries.get(ROOT);
+      const realRoot = path.join(path.dirname(ROOT), "real-root");
+      entry.foldedReal = fold(realRoot);
+      entry.foldedRealPrefix = fold(realRoot + path.sep);
+
+      project.emitFileEvents([{ action: "deleted", path: path.join(realRoot, "Deep") }]);
+      await index.whenIdle();
+
+      expect(index.getPaths()).toEqual([under("Other", "Keep.JS")]);
     });
   });
 });

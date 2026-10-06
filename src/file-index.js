@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const { AlwaysIgnoredNames, compile } = require("./ignored-names");
+const FileIndexDirectoryTree = require("./file-index-directory-tree");
 
 // ripgrep hands over 100 paths at a time, so a 100k-file crawl would fire a
 // thousand callbacks. Deltas are coalesced into one emission per window. The
@@ -23,6 +24,8 @@ const ReconcileDebounceMs = 2000;
 // root is re-crawled instead, which is cheaper AND exact. See `admitCreated`.
 const CreatedBurstLimit = 100;
 const CreatedAdmissionConcurrency = 8;
+const WorkSliceMs = 5;
+const WorkClockCheckInterval = 64;
 
 // A safety valve, not a policy. No real project reaches this; a root pointed at
 // `C:\` or `/` does, and retaining that would take the window down.
@@ -79,6 +82,10 @@ module.exports = class FileIndex {
     this.pendingAdded = new Set();
     this.pendingRemoved = new Set();
     this.emitTimer = null;
+    this.fileEventQueue = [];
+    this.fileEventsRunning = false;
+    this.eventWork = null;
+    this.rootRemovalWork = new Set();
 
     this.ignoredNamesMatcher = null;
     this.ignoreSource = null;
@@ -132,6 +139,7 @@ module.exports = class FileIndex {
     this.pendingRemoved.clear();
     this.emitter.dispose();
     this.project = null;
+    this.fileEventQueue.length = 0;
   }
 
   getConfig() {
@@ -238,14 +246,21 @@ module.exports = class FileIndex {
       directory,
       rootPath,
       paths: new Set(),
+      pathTree: new FileIndexDirectoryTree(rootPath),
       cachedPaths: null,
       seeded: false,
       truncated: false,
       crawl: null,
       generation: 0,
       staging: null,
+      stagingTree: null,
       suppressed: null,
+      revived: null,
+      changeSequence: 0,
       pendingAdmissions: new Map(),
+      pendingTree: new FileIndexDirectoryTree(rootPath),
+      admissionWork: new Set(),
+      finishWork: null,
       dirty: false,
       reconcileTimer: null,
     };
@@ -267,9 +282,20 @@ module.exports = class FileIndex {
 
   dropEntry(entry) {
     this.teardownEntry(entry);
-    for (const filePath of Array.from(entry.paths)) {
-      this.removeFromRoot(entry, filePath);
+    const work = this.runWork(this.removeRootPaths(entry));
+    if (work) {
+      this.rootRemovalWork.add(work);
+      work.finally(() => this.rootRemovalWork.delete(work));
     }
+  }
+
+  *removeRootPaths(entry) {
+    for (const filePath of entry.paths) {
+      if (this.destroyed) return;
+      this.removeFromRoot(entry, filePath);
+      yield;
+    }
+    this.scheduleEmit();
   }
 
   teardownEntry(entry) {
@@ -277,8 +303,11 @@ module.exports = class FileIndex {
     if (entry.crawl) entry.crawl.cancel();
     entry.crawl = null;
     entry.staging = null;
+    entry.stagingTree = null;
     entry.suppressed = null;
+    entry.revived = null;
     entry.pendingAdmissions.clear();
+    entry.pendingTree = new FileIndexDirectoryTree(entry.rootPath);
     if (entry.reconcileTimer != null) {
       clearTimeout(entry.reconcileTimer);
       entry.reconcileTimer = null;
@@ -297,8 +326,11 @@ module.exports = class FileIndex {
 
     this.resolveEntryPaths(entry);
     entry.staging = new Set();
-    entry.suppressed = new Set();
+    entry.stagingTree = new FileIndexDirectoryTree(entry.rootPath);
+    entry.suppressed = new Map();
+    entry.revived = new Map();
     entry.pendingAdmissions.clear();
+    entry.pendingTree = new FileIndexDirectoryTree(entry.rootPath);
     entry.dirty = false;
     entry.truncated = false;
 
@@ -317,14 +349,15 @@ module.exports = class FileIndex {
       didFindPaths: (paths) => {
         // A cancelled crawl still flushes its partial batch, so every handler
         // here has to be generation-guarded. This is a live path, not caution.
-        if (entry.generation !== generation) return;
+        if (entry.generation !== generation || !entry.staging) return;
         for (const filePath of paths) {
-          if (entry.suppressed.has(filePath)) continue;
+          if (this.isSuppressed(entry, filePath)) continue;
           if (entry.staging.size >= PathLimitPerRoot) {
             this.truncate(entry);
             return;
           }
           entry.staging.add(filePath);
+          entry.stagingTree.add(filePath);
           if (streaming) this.addToRoot(entry, filePath);
         }
         if (streaming) this.scheduleEmit();
@@ -334,23 +367,30 @@ module.exports = class FileIndex {
     entry.crawl = crawl;
     crawl.then(() => {
       if (entry.generation !== generation) return;
-      this.finishCrawl(entry);
+      entry.finishWork = this.runWork(this.finishCrawl(entry, generation));
     });
   }
 
-  finishCrawl(entry) {
+  *finishCrawl(entry, generation) {
     const staging = entry.staging ?? new Set();
-    entry.crawl = null;
-    entry.staging = null;
-    entry.suppressed = null;
-    entry.seeded = true;
 
-    for (const filePath of Array.from(entry.paths)) {
+    for (const filePath of entry.paths) {
+      if (this.destroyed || entry.generation !== generation) return;
       if (!staging.has(filePath)) this.removeFromRoot(entry, filePath);
+      yield;
     }
     for (const filePath of staging) {
+      if (this.destroyed || entry.generation !== generation) return;
       this.addToRoot(entry, filePath);
+      yield;
     }
+
+    if (this.destroyed || entry.generation !== generation) return;
+    entry.crawl = null;
+    entry.staging = null;
+    entry.stagingTree = null;
+    entry.seeded = true;
+    this.clearSuppressionIfIdle(entry);
 
     // Flush rather than schedule, so `indexing` going false always arrives with
     // an emission and a consumer's spinner clears in exactly one place.
@@ -379,7 +419,9 @@ module.exports = class FileIndex {
       ? options.rootPaths.map((rootPath) => this.entries.get(rootPath)).filter(Boolean)
       : Array.from(this.entries.values());
     for (const entry of entries) this.startCrawl(entry);
-    return Promise.all(entries.map((entry) => entry.crawl).filter(Boolean)).then(() => undefined);
+    return Promise.all(entries.map((entry) => entry.crawl?.then(() => entry.finishWork))).then(
+      () => undefined,
+    );
   }
 
   refreshForPolicyChange() {
@@ -405,21 +447,42 @@ module.exports = class FileIndex {
 
   handleFileEvents(events) {
     if (this.destroyed || this.entries.size === 0) return;
+    this.fileEventQueue.push({
+      events,
+      generations: new Map(Array.from(this.entries.values(), (entry) => [entry, entry.generation])),
+    });
+    if (this.fileEventsRunning) return;
+    this.fileEventsRunning = true;
+    this.eventWork = this.runWork(this.processFileEventQueue());
+  }
 
-    const repositoryBoundaryPaths = events.flatMap((event) =>
-      [event.path, event.oldPath].filter(
-        (eventPath) => eventPath && path.basename(eventPath) === ".git",
-      ),
-    );
-    if (repositoryBoundaryPaths.length > 0) {
+  *processFileEventQueue() {
+    try {
+      while (!this.destroyed && this.fileEventQueue.length > 0) {
+        const { events, generations } = this.fileEventQueue.shift();
+        yield* this.processFileEvents(events, generations);
+      }
+    } finally {
+      this.fileEventsRunning = false;
+    }
+  }
+
+  *processFileEvents(events, generations) {
+    let clearedRepositoryCache = false;
+    for (const event of events) {
       // A sibling in this same watcher batch must not reuse the enclosing
       // repository cached before a nested repository appeared (or vanished).
       // Clearing is memory-only; each affected root is also reconciled by its
       // authoritative crawl.
-      this.project.clearRepositoryPathCache?.();
-      for (const boundaryPath of repositoryBoundaryPaths) {
-        this.markRootsContainingPathDirty(boundaryPath);
+      for (const eventPath of [event.path, event.oldPath]) {
+        if (!eventPath || path.basename(eventPath) !== ".git") continue;
+        if (!clearedRepositoryCache) {
+          this.project?.clearRepositoryPathCache?.();
+          clearedRepositoryCache = true;
+        }
+        this.markRootsContainingPathDirty(eventPath);
       }
+      yield;
     }
 
     // Attribution and the ignore decision are both properties of the event's
@@ -431,6 +494,7 @@ module.exports = class FileIndex {
     const created = new Map();
 
     for (const event of events) {
+      if (this.destroyed) return;
       const eventPath = event.path;
       if (!eventPath) continue;
 
@@ -440,21 +504,22 @@ module.exports = class FileIndex {
 
       switch (event.action) {
         case "created":
-          this.collectCreated(eventPath, directoryCache, created);
+          this.collectCreated(eventPath, directoryCache, created, generations);
           break;
         case "deleted":
-          this.handleDeleted(eventPath, directoryCache);
+          yield* this.handleDeleted(eventPath, directoryCache, generations);
           break;
         case "renamed":
           // Never emitted for a recursive project root — a move arrives as a
           // delete and a create. A custom directory provider may still send one.
-          if (event.oldPath) this.handleDeleted(event.oldPath, directoryCache);
-          this.collectCreated(eventPath, directoryCache, created);
+          if (event.oldPath) yield* this.handleDeleted(event.oldPath, directoryCache, generations);
+          this.collectCreated(eventPath, directoryCache, created, generations);
           break;
         default:
           // "updated" changes contents, never membership.
           break;
       }
+      yield;
     }
 
     this.admitCreated(created);
@@ -521,18 +586,23 @@ module.exports = class FileIndex {
     return null;
   }
 
-  collectCreated(eventPath, directoryCache, created) {
+  collectCreated(eventPath, directoryCache, created, generations) {
     const matches = this.attribute(eventPath, directoryCache);
     if (!matches) return;
     const basename = path.basename(eventPath);
     for (const match of matches) {
+      if (!this.isCurrentEventEntry(match.entry, generations)) continue;
       if (this.isIgnoredLeaf(basename, match.relativeDirectory)) continue;
       let batch = created.get(match.entry);
       if (!batch) {
         batch = [];
         created.set(match.entry, batch);
       }
-      batch.push(match.prefix + basename);
+      const indexPath = match.prefix + basename;
+      const token = { sequence: ++match.entry.changeSequence };
+      match.entry.pendingAdmissions.set(indexPath, token);
+      match.entry.pendingTree.add(indexPath);
+      batch.push({ indexPath, token });
     }
   }
 
@@ -541,31 +611,26 @@ module.exports = class FileIndex {
   admitCreated(created) {
     for (const [entry, batch] of created) {
       if (batch.length > CreatedBurstLimit) {
+        for (const candidate of batch) this.clearPendingAdmission(entry, candidate);
         this.markDirty(entry);
         continue;
       }
 
       const generation = entry.generation;
-      const candidates = [];
-      for (const indexPath of batch) {
-        const token = {};
-        entry.pendingAdmissions.set(indexPath, token);
-        candidates.push({ indexPath, token });
-      }
+      const candidates = batch;
 
-      this.prepareAndAdmitCreatedPaths(entry, candidates, generation)
+      const work = this.prepareAndAdmitCreatedPaths(entry, candidates, generation)
         .catch(() => {
           // A crawl remains the authority when repository discovery or Git
           // status fails; never turn unchecked paths into blind admissions.
           if (entry.generation === generation) this.markDirty(entry);
         })
         .finally(() => {
-          for (const { indexPath, token } of candidates) {
-            if (entry.pendingAdmissions.get(indexPath) === token) {
-              entry.pendingAdmissions.delete(indexPath);
-            }
-          }
+          for (const candidate of candidates) this.clearPendingAdmission(entry, candidate);
+          entry.admissionWork.delete(work);
+          this.clearSuppressionIfIdle(entry);
         });
+      entry.admissionWork.add(work);
     }
   }
 
@@ -706,7 +771,12 @@ module.exports = class FileIndex {
 
   async admitCreatedPath(entry, { indexPath, token }, generation) {
     if (this.destroyed || entry.generation !== generation) return;
-    if (entry.pendingAdmissions.get(indexPath) !== token) return;
+    if (
+      entry.pendingAdmissions.get(indexPath) !== token ||
+      this.deletionSequence(entry, indexPath) > token.sequence
+    ) {
+      return;
+    }
 
     // The file can disappear while repository discovery or status is loading.
     // Re-check its kind at the point of mutation.
@@ -720,7 +790,8 @@ module.exports = class FileIndex {
       !stats.isFile() ||
       this.destroyed ||
       entry.generation !== generation ||
-      entry.pendingAdmissions.get(indexPath) !== token
+      entry.pendingAdmissions.get(indexPath) !== token ||
+      this.deletionSequence(entry, indexPath) > token.sequence
     ) {
       return;
     }
@@ -728,42 +799,139 @@ module.exports = class FileIndex {
     this.addToRoot(entry, indexPath);
     if (entry.staging) {
       entry.staging.add(indexPath);
-      entry.suppressed.delete(indexPath);
+      entry.stagingTree.add(indexPath);
+      entry.revived.set(indexPath, token.sequence);
     }
     this.scheduleEmit();
   }
 
-  handleDeleted(eventPath, directoryCache) {
-    const matches = this.attribute(eventPath, directoryCache);
-    if (!matches) return;
+  *handleDeleted(eventPath, directoryCache, generations) {
+    const matches = [...(this.attribute(eventPath, directoryCache) ?? [])];
+    // The deleted path can itself be a registered (including nested) root. Its
+    // parent lies outside that root, so directory attribution cannot find it.
+    for (const entry of this.entries.values()) {
+      if (this.toIndexPath(entry, eventPath) === entry.rootPath) {
+        matches.push({ entry, indexPath: entry.rootPath });
+      }
+    }
     const basename = path.basename(eventPath);
 
     for (const match of matches) {
-      const indexPath = match.prefix + basename;
-      match.entry.pendingAdmissions.delete(indexPath);
-      if (match.entry.paths.has(indexPath)) {
-        this.removeFromRoot(match.entry, indexPath);
-        match.entry.staging?.delete(indexPath);
-        match.entry.suppressed?.add(indexPath);
+      if (!this.isCurrentEventEntry(match.entry, generations)) continue;
+      const indexPath = match.indexPath ?? match.prefix + basename;
+      if (
+        !match.indexPath &&
+        !match.entry.paths.has(indexPath) &&
+        !match.entry.staging?.has(indexPath) &&
+        this.isIgnoredLeaf(basename, match.relativeDirectory)
+      ) {
         continue;
       }
-      if (this.isIgnoredLeaf(basename, match.relativeDirectory)) continue;
-      // Not an indexed file, so it may have been a directory — and a recursive
-      // delete arrives as one event for the directory, not one per file.
-      this.removeSubtree(match.entry, indexPath);
+      const entry = match.entry;
+      const generation = entry.generation;
+      if (entry.crawl || entry.pendingAdmissions.size > 0) {
+        entry.suppressed ??= new Map();
+        entry.suppressed.set(indexPath, ++entry.changeSequence);
+      }
+      // A directory delete also covers staged results and pending admissions;
+      // neither is necessarily present in the live set yet.
+      yield* this.removeSubtree(entry, indexPath, generation);
+      this.clearSuppressionIfIdle(entry);
     }
   }
 
-  removeSubtree(entry, indexPath) {
-    const prefix = indexPath + path.sep;
-    for (const pendingPath of entry.pendingAdmissions.keys()) {
-      if (pendingPath.startsWith(prefix)) entry.pendingAdmissions.delete(pendingPath);
+  *removeSubtree(entry, indexPath, generation) {
+    for (const tree of [entry.pathTree, entry.stagingTree, entry.pendingTree]) {
+      if (!tree) continue;
+      for (const filePath of tree.pathsUnder(indexPath)) {
+        if (this.destroyed || entry.generation !== generation) return;
+        entry.pendingAdmissions.delete(filePath);
+        entry.pendingTree.delete(filePath);
+        this.removeFromRoot(entry, filePath);
+        entry.staging?.delete(filePath);
+        entry.stagingTree?.delete(filePath);
+        yield;
+      }
     }
-    for (const filePath of Array.from(entry.paths)) {
-      if (!filePath.startsWith(prefix)) continue;
-      this.removeFromRoot(entry, filePath);
-      entry.staging?.delete(filePath);
-      entry.suppressed?.add(filePath);
+  }
+
+  isCurrentEventEntry(entry, generations) {
+    return (
+      !this.destroyed &&
+      this.entries.get(entry.rootPath) === entry &&
+      generations.get(entry) === entry.generation
+    );
+  }
+
+  clearPendingAdmission(entry, { indexPath, token }) {
+    if (entry.pendingAdmissions.get(indexPath) !== token) return;
+    entry.pendingAdmissions.delete(indexPath);
+    entry.pendingTree.delete(indexPath);
+  }
+
+  deletionSequence(entry, filePath) {
+    let sequence = 0;
+    if (!entry.suppressed) return sequence;
+    for (let ancestor = filePath; ; ancestor = path.dirname(ancestor)) {
+      sequence = Math.max(sequence, entry.suppressed.get(ancestor) ?? 0);
+      if (ancestor === entry.rootPath || path.dirname(ancestor) === ancestor) break;
+    }
+    return sequence;
+  }
+
+  isSuppressed(entry, filePath) {
+    return this.deletionSequence(entry, filePath) > (entry.revived?.get(filePath) ?? 0);
+  }
+
+  clearSuppressionIfIdle(entry) {
+    if (entry.crawl || entry.pendingAdmissions.size > 0) return;
+    entry.suppressed = null;
+    entry.revived = null;
+  }
+
+  // Run the common small update before returning. Large operations continue on
+  // later turns so paint and input can run between slices, rather than between
+  // microtasks in one uninterrupted renderer turn.
+  runWork(iterator) {
+    const runSlice = () => {
+      const deadline = performance.now() + WorkSliceMs;
+      let steps = 0;
+      while (!iterator.next().done) {
+        if (++steps % WorkClockCheckInterval === 0 && performance.now() >= deadline) return false;
+      }
+      return true;
+    };
+    if (runSlice()) return null;
+    return new Promise((resolve, reject) => {
+      const resume = () => {
+        try {
+          if (runSlice()) resolve();
+          else setImmediate(resume);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      setImmediate(resume);
+    });
+  }
+
+  async whenIdle() {
+    while (true) {
+      const work = [
+        this.eventWork,
+        ...this.rootRemovalWork,
+        ...Array.from(this.entries.values()).flatMap((entry) => [
+          entry.finishWork,
+          ...entry.admissionWork,
+        ]),
+      ].filter(Boolean);
+      await Promise.all(work);
+      if (
+        !this.fileEventsRunning &&
+        Array.from(this.entries.values()).every((entry) => entry.admissionWork.size === 0)
+      ) {
+        return;
+      }
     }
   }
 
@@ -821,6 +989,7 @@ module.exports = class FileIndex {
   addToRoot(entry, filePath) {
     if (entry.paths.has(filePath)) return;
     entry.paths.add(filePath);
+    entry.pathTree.add(filePath);
     entry.cachedPaths = null;
 
     const count = this.refCounts.get(filePath);
@@ -836,6 +1005,7 @@ module.exports = class FileIndex {
 
   removeFromRoot(entry, filePath) {
     if (!entry.paths.delete(filePath)) return;
+    entry.pathTree.delete(filePath);
     entry.cachedPaths = null;
 
     const count = this.refCounts.get(filePath);
