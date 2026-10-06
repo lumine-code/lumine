@@ -84,6 +84,7 @@ module.exports = class Project extends Model {
   }
 
   destroyed() {
+    this.loadPromisesByPath = {};
     for (let buffer of this.buffers.slice()) {
       buffer.destroy();
     }
@@ -100,6 +101,7 @@ module.exports = class Project extends Model {
   }
 
   reset(packageManager) {
+    this.loadPromisesByPath = {};
     // Reset is the test environment's reusable lifecycle boundary. A project
     // destroyed by a preceding spec must become destroyable again; otherwise
     // every later destroy is a no-op and any watchers created after the reset
@@ -128,7 +130,6 @@ module.exports = class Project extends Model {
     // resets the registry's project subscriptions against the fresh emitter).
     if (!this.repositoryRegistry.destroyed) this.repositoryRegistry.attachProject(this);
     this.setPaths([]);
-    this.loadPromisesByPath = {};
     this.retiredBufferIDs = new Set();
     this.retiredBufferPaths = new Set();
     this.restoredBufferAliases = new Map();
@@ -1475,37 +1476,117 @@ module.exports = class Project extends Model {
   //
   // Returns a `Promise` that resolves to the {@link TextBuffer}.
   async buildBuffer(absoluteFilePath) {
-    let buffer;
-    if (absoluteFilePath != null) {
-      if (this.loadPromisesByPath[absoluteFilePath] == null) {
-        this.loadPromisesByPath[absoluteFilePath] = TextBuffer.load(absoluteFilePath, {
-          fileWatchClient: this.fileWatchClient,
-        })
-          .then((result) => {
-            delete this.loadPromisesByPath[absoluteFilePath];
-            return result;
-          })
-          .catch((error) => {
-            delete this.loadPromisesByPath[absoluteFilePath];
-            throw error;
-          });
+    const loads = this.loadPromisesByPath;
+    const isCurrent = () => this.isAlive() && this.loadPromisesByPath === loads;
+    const cancellationError = (cause) =>
+      Object.assign(new Error("Project buffer load was cancelled", { cause }), {
+        code: "ABORT_ERR",
+      });
+    if (!isCurrent()) throw cancellationError();
+
+    const publishBuffer = (buffer) => {
+      let disposed = false;
+      const assertCurrent = (cause) => {
+        if (isCurrent()) return;
+        const error = cancellationError(cause);
+        if (!disposed && !buffer.isDestroyed()) {
+          disposed = true;
+          let cleanupFailure;
+          try {
+            buffer.destroy();
+          } catch (cleanupError) {
+            cleanupFailure = cleanupError;
+          }
+          if (cleanupFailure) {
+            throw new AggregateError(
+              [error, cleanupFailure],
+              "Unable to dispose a cancelled buffer",
+              {
+                cause: error,
+              },
+            );
+          }
+        }
+        throw error;
+      };
+      try {
+        assertCurrent();
+        this.grammarRegistry.autoAssignLanguageMode(buffer);
+        assertCurrent();
+        return this.addBuffer(buffer, {}, assertCurrent);
+      } catch (error) {
+        if (error?.code !== "ABORT_ERR" && error?.errors?.[0]?.code !== "ABORT_ERR") {
+          assertCurrent(error);
+        }
+        throw error;
       }
-      buffer = await this.loadPromisesByPath[absoluteFilePath];
-    } else {
-      buffer = new TextBuffer({ fileWatchClient: this.fileWatchClient });
+    };
+
+    if (absoluteFilePath == null) {
+      return publishBuffer(new TextBuffer({ fileWatchClient: this.fileWatchClient }));
     }
+    if (loads[absoluteFilePath] != null) return loads[absoluteFilePath];
 
-    this.grammarRegistry.autoAssignLanguageMode(buffer);
-
-    this.addBuffer(buffer);
-    return buffer;
+    // Publish the shared slot before starting native loading. Every consumer
+    // shares publication too, so concurrent requests register one buffer once.
+    let resolveLoad, rejectLoad;
+    const loading = new Promise((resolve, reject) => {
+      resolveLoad = resolve;
+      rejectLoad = reject;
+    });
+    loads[absoluteFilePath] = loading;
+    const clearSlot = () => {
+      if (loads[absoluteFilePath] === loading) delete loads[absoluteFilePath];
+    };
+    const rejectLoading = (error) => {
+      clearSlot();
+      rejectLoad(isCurrent() ? error : cancellationError(error));
+    };
+    try {
+      Promise.resolve(
+        TextBuffer.load(absoluteFilePath, { fileWatchClient: this.fileWatchClient }),
+      ).then((buffer) => {
+        try {
+          const published = publishBuffer(buffer);
+          clearSlot();
+          resolveLoad(published);
+        } catch (error) {
+          clearSlot();
+          rejectLoad(error);
+        }
+      }, rejectLoading);
+    } catch (error) {
+      rejectLoading(error);
+    }
+    return loading;
   }
 
-  addBuffer(buffer, _options = {}) {
+  addBuffer(buffer, _options = {}, assertCurrent = () => {}) {
+    assertCurrent();
     this.buffers.push(buffer);
-    this.subscriptions.add(this.grammarRegistry.maintainLanguageMode(buffer));
+    const grammarSubscription = this.grammarRegistry.maintainLanguageMode(buffer);
+    try {
+      assertCurrent();
+    } catch (error) {
+      let cleanupFailure;
+      try {
+        grammarSubscription?.dispose();
+      } catch (cleanupError) {
+        cleanupFailure = cleanupError;
+      }
+      if (cleanupFailure) {
+        throw new AggregateError([error, cleanupFailure], "Unable to cancel buffer registration", {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+    this.subscriptions.add(grammarSubscription);
+    assertCurrent();
     this.subscribeToBuffer(buffer);
+    assertCurrent();
     this.emitter.emit("did-add-buffer", buffer);
+    assertCurrent();
     return buffer;
   }
 

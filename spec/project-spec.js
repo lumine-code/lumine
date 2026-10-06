@@ -6,6 +6,7 @@ const path = require("path");
 const ProjectDirectory = require("../src/project-directory");
 const GitRepository = require("../src/git-repository");
 const RepositoryRegistry = require("../src/repository-registry");
+const { Disposable } = require("@lumine-code/event-kit");
 
 describe("Project", () => {
   const standaloneRegistries = [];
@@ -928,6 +929,156 @@ describe("Project", () => {
         buffer.release();
         expect(await lumine.project.bufferForPath("b")).not.toBe(buffer);
       });
+    });
+  });
+
+  describe("asynchronous buffer load ownership", () => {
+    const filePath = path.join(__dirname, "fixtures", "sample.js");
+    let project, grammarRegistry, buffers;
+    const deferred = () => {
+      let resolve, reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      return { promise, resolve, reject };
+    };
+    const createBuffer = () => {
+      const buffer = new TextBuffer({ text: "loaded contents" });
+      spyOn(buffer, "getPath").and.returnValue(filePath);
+      spyOn(buffer, "destroy").and.callThrough();
+      buffers.push(buffer);
+      return buffer;
+    };
+
+    beforeEach(() => {
+      buffers = [];
+      grammarRegistry = {
+        autoAssignLanguageMode: jasmine.createSpy("autoAssignLanguageMode"),
+        maintainLanguageMode: jasmine
+          .createSpy("maintainLanguageMode")
+          .and.callFake(() => new Disposable()),
+      };
+      project = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry,
+      });
+    });
+
+    afterEach(() => {
+      for (const buffer of buffers) {
+        if (!buffer.isDestroyed()) buffer.destroy();
+      }
+    });
+
+    for (const oldResult of ["success", "failure"]) {
+      it(`keeps the new same-path load when an obsolete load ends with ${oldResult}`, async () => {
+        const oldRead = deferred();
+        const newRead = deferred();
+        const oldBuffer = createBuffer();
+        const newBuffer = createBuffer();
+        const readError = new Error("Old load failed");
+        spyOn(TextBuffer, "load").and.returnValues(oldRead.promise, newRead.promise);
+        spyOn(project, "addBuffer").and.callThrough();
+        const added = jasmine.createSpy("buffer added");
+        const previous = project.bufferForPath(filePath).catch((error) => error);
+        const oldLoads = project.loadPromisesByPath;
+        project.reset(lumine.packages);
+        project.onDidAddBuffer(added);
+        const current = project.bufferForPath(filePath);
+        const currentSlot = project.loadPromisesByPath[filePath];
+        expect(project.loadPromisesByPath).not.toBe(oldLoads);
+        if (oldResult === "success") oldRead.resolve(oldBuffer);
+        else oldRead.reject(readError);
+
+        const cancellation = await previous;
+        expect(cancellation.code).toBe("ABORT_ERR");
+        if (oldResult === "failure") expect(cancellation.cause).toBe(readError);
+        else expect(oldBuffer.destroy).toHaveBeenCalledTimes(1);
+        expect(project.loadPromisesByPath[filePath]).toBe(currentSlot);
+        expect(project.getBuffers()).toEqual([]);
+        expect(project.getPaths()).toEqual([]);
+        expect(grammarRegistry.autoAssignLanguageMode).not.toHaveBeenCalled();
+        const concurrent = project.bufferForPath(filePath);
+        expect(TextBuffer.load).toHaveBeenCalledTimes(2);
+        newRead.resolve(newBuffer);
+
+        expect(await current).toBe(newBuffer);
+        expect(await concurrent).toBe(newBuffer);
+        expect(project.getBuffers()).toEqual([newBuffer]);
+        expect(project.addBuffer).toHaveBeenCalledTimes(1);
+        expect(grammarRegistry.autoAssignLanguageMode).toHaveBeenCalledTimes(1);
+        expect(grammarRegistry.maintainLanguageMode).toHaveBeenCalledTimes(1);
+        expect(added).toHaveBeenCalledTimes(1);
+        expect(added).toHaveBeenCalledWith(newBuffer);
+        expect(project.loadPromisesByPath[filePath]).toBeUndefined();
+      });
+    }
+
+    it("disposes a late buffer after destruction and rejects future loads without starting them", async () => {
+      const read = deferred();
+      const buffer = createBuffer();
+      spyOn(TextBuffer, "load").and.returnValue(read.promise);
+      const loading = project.bufferForPath(filePath).catch((error) => error);
+      const oldLoads = project.loadPromisesByPath;
+      project.destroy();
+      expect(project.loadPromisesByPath).not.toBe(oldLoads);
+      read.resolve(buffer);
+
+      expect((await loading).code).toBe("ABORT_ERR");
+      expect(buffer.destroy).toHaveBeenCalledTimes(1);
+      expect(project.getBuffers()).toEqual([]);
+      expect(project.getPaths()).toEqual([]);
+      expect(grammarRegistry.autoAssignLanguageMode).not.toHaveBeenCalled();
+      expect(grammarRegistry.maintainLanguageMode).not.toHaveBeenCalled();
+      const future = await project.bufferForPath(filePath).catch((error) => error);
+      expect(future.code).toBe("ABORT_ERR");
+      expect(TextBuffer.load).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes a buffer once for concurrent consumers in the current generation", async () => {
+      const read = deferred();
+      const buffer = createBuffer();
+      spyOn(TextBuffer, "load").and.returnValue(read.promise);
+      spyOn(project, "addBuffer").and.callThrough();
+      const added = jasmine.createSpy("buffer added");
+      project.onDidAddBuffer(added);
+      const first = project.bufferForPath(filePath);
+      const second = project.bufferForPath(filePath);
+      expect(TextBuffer.load).toHaveBeenCalledTimes(1);
+      read.resolve(buffer);
+
+      expect(await first).toBe(buffer);
+      expect(await second).toBe(buffer);
+      expect(project.getBuffers()).toEqual([buffer]);
+      expect(project.addBuffer).toHaveBeenCalledTimes(1);
+      expect(grammarRegistry.autoAssignLanguageMode).toHaveBeenCalledTimes(1);
+      expect(grammarRegistry.maintainLanguageMode).toHaveBeenCalledTimes(1);
+      expect(added).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not subscribe or publish a buffer when grammar maintenance resets its project", async () => {
+      const buffer = createBuffer();
+      const disposeGrammar = jasmine.createSpy("dispose obsolete grammar observation");
+      grammarRegistry.maintainLanguageMode.and.callFake(() => {
+        project.reset(lumine.packages);
+        return new Disposable(disposeGrammar);
+      });
+      spyOn(TextBuffer, "load").and.returnValue(Promise.resolve(buffer));
+      spyOn(project, "subscribeToBuffer").and.callThrough();
+      const added = jasmine.createSpy("buffer added");
+      project.onDidAddBuffer(added);
+
+      const cancellation = await project.bufferForPath(filePath).catch((error) => error);
+
+      expect(cancellation.code).toBe("ABORT_ERR");
+      expect(buffer.destroy).toHaveBeenCalledTimes(1);
+      expect(disposeGrammar).toHaveBeenCalledTimes(1);
+      expect(project.subscribeToBuffer).not.toHaveBeenCalled();
+      expect(added).not.toHaveBeenCalled();
+      expect(project.getBuffers()).toEqual([]);
+      expect(project.getPaths()).toEqual([]);
     });
   });
 
