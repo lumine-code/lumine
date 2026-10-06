@@ -52,11 +52,13 @@ describe("the system accent color", () => {
 
       const element = accentStyleElement();
       expect(element).not.toBeUndefined();
-      expect(element.textContent).toContain("--accent-color: #0078d4;");
-      expect(element.textContent).toContain("--accent-bg-color: #0078d4;");
-      expect(element.textContent).toContain("--accent-text-color: lch(from var(--accent-color)");
+      expect(element.textContent).toContain("--accent-indicator-color: #0078d4;");
+      expect(element.textContent).toContain("--accent-background-color: #0078d4;");
       expect(element.textContent).toContain(
-        "--accent-bg-text-color: lch(from var(--accent-bg-color)",
+        "--accent-indicator-text-color: lch(from var(--accent-indicator-color)",
+      );
+      expect(element.textContent).toContain(
+        "--accent-foreground-color: lch(from var(--accent-background-color)",
       );
     });
 
@@ -66,16 +68,48 @@ describe("the system accent color", () => {
       lumine.themes.systemAccentColor = "#0078d4";
       lumine.themes.applyAccentColor();
 
-      expect(accentStyleElement().textContent).not.toContain("--accent-only-text-color");
+      expect(accentStyleElement().textContent).not.toContain("--accent-link-color");
     });
 
-    // Above every theme stylesheet (0), still below the user stylesheet (2), so
-    // a user's own `--accent-color` keeps winning.
+    // Above every theme stylesheet (1), still below the user stylesheet (2), so
+    // a user's own `--accent-indicator-color` keeps winning.
     it("sits between the themes and the user stylesheet", () => {
       lumine.themes.systemAccentColor = "#0078d4";
       lumine.themes.applyAccentColor();
 
-      expect(accentStyleElement().priority).toBe(1);
+      expect(accentStyleElement().priority).toBe(1.5);
+    });
+
+    it("keeps the system accent above newly attached themes and below user overrides", () => {
+      lumine.themes.systemAccentColor = "#0078d4";
+      lumine.themes.applyAccentColor();
+      const probe = document.createElement("span");
+      probe.style.color = "var(--accent-indicator-color)";
+      jasmine.attachToDOM(probe);
+      let theme;
+      let user;
+      try {
+        theme = lumine.styles.addStyleSheet(":root { --accent-indicator-color: #ff0000; }", {
+          priority: 1,
+        });
+        expect(getComputedStyle(probe).color).toBe("rgb(0, 120, 212)");
+        theme.dispose();
+        theme = lumine.styles.addStyleSheet(":root { --accent-indicator-color: #00ff00; }", {
+          priority: 1,
+        });
+        expect(getComputedStyle(probe).color).toBe("rgb(0, 120, 212)");
+        lumine.themes.systemAccentColor = "#123456";
+        lumine.themes.applyAccentColor();
+        expect(getComputedStyle(probe).color).toBe("rgb(18, 52, 86)");
+        user = lumine.styles.addStyleSheet(":root { --accent-indicator-color: #112233; }", {
+          priority: 2,
+        });
+        expect(getComputedStyle(probe).color).toBe("rgb(17, 34, 51)");
+      } finally {
+        user?.dispose();
+        theme?.dispose();
+        probe.remove();
+      }
     });
 
     it("reuses the same style element when the color changes", () => {
@@ -87,7 +121,7 @@ describe("the system accent color", () => {
       lumine.themes.applyAccentColor();
 
       expect(accentStyleElement()).toBe(first);
-      expect(first.textContent).toContain("--accent-color: #3a3a3a;");
+      expect(first.textContent).toContain("--accent-indicator-color: #3a3a3a;");
     });
 
     it("adds nothing when the platform reports no accent color", () => {
@@ -124,7 +158,7 @@ describe("the system accent color", () => {
       await lumine.themes.refreshSystemAccentColor();
 
       expect(lumine.themes.applicationDelegate.invokeApp).toHaveBeenCalledWith("getAccentColor");
-      expect(accentStyleElement().textContent).toContain("--accent-color: #0078d4;");
+      expect(accentStyleElement().textContent).toContain("--accent-indicator-color: #0078d4;");
     });
 
     it("keeps the theme's accent when the main process cannot answer", async () => {

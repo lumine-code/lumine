@@ -10,7 +10,7 @@
     position: relative;
     overflow-y: auto;
     max-height: 312px;
-    margin: var(--component-padding) 0 0 0;
+    margin: var(--ui-spacing) 0 0 0;
     padding: 0;
 
     li {
@@ -32,15 +32,15 @@
         float: right;
         display: flex;
         align-items: baseline;
-        gap: var(--component-padding);
-        margin-left: var(--component-padding);
+        gap: var(--ui-spacing);
+        margin-left: var(--ui-spacing);
       }
 
       /* An icon belongs to the primary line, so the secondary line begins
          under the primary text rather than under the icon. This also covers
          icons applied by a renderer's didRender hook. */
       > .primary-line.icon + .secondary-line {
-        padding-inline-start: calc(var(--component-icon-size) + var(--component-icon-padding));
+        padding-inline-start: calc(var(--ui-icon-size) + var(--ui-icon-spacing));
       }
 
       /* Hover is a translucent layer over the row rather than a background
@@ -72,7 +72,7 @@
       width: auto;
       height: 1px;
       min-height: 0;
-      margin: calc(var(--component-padding) / 2) var(--select-list-separator-inset, 0);
+      margin: calc(var(--ui-spacing) / 2) var(--select-list-separator-inset, 0);
       padding: 0;
       border: 0;
       border-radius: 0;
@@ -134,8 +134,8 @@
         right: auto;
         width: var(--active-icon-size);
         font-size: var(--active-icon-size);
-        height: var(--component-icon-size);
-        line-height: var(--component-icon-size);
+        height: var(--ui-icon-size);
+        line-height: var(--ui-icon-size);
         text-align: center;
         vertical-align: text-bottom;
         grid-column: 1;
@@ -144,7 +144,7 @@
       }
 
       > li:not(.active, .select-list-separator, .show-more-item)::before {
-        margin-right: var(--ui-padding-icon);
+        margin-right: var(--ui-panel-icon-spacing);
       }
 
       > li:is(.active, .auto-selected)::before {
@@ -154,7 +154,7 @@
         display: inline-block;
         -webkit-font-smoothing: antialiased;
         text-decoration: none;
-        margin-right: var(--ui-padding-icon);
+        margin-right: var(--ui-panel-icon-spacing);
       }
 
       > li.active::before {
@@ -181,7 +181,7 @@
   /* One shared absolute size: em-based UI variables resolve again inside the
      mini editor at its larger input font size, which would reserve more room
      for the text than the button actually occupies. */
-  --item-actions-indicator-size: calc(var(--component-line-height) + 1px);
+  --item-actions-indicator-size: calc(var(--ui-control-height) + 1px);
 
   position: relative;
 
@@ -204,7 +204,7 @@
     height: var(--item-actions-indicator-size);
     padding: 0;
     border: 0;
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     color: var(--text-color-subtle);
     background-color: transparent;
     opacity: 0.65;
@@ -253,7 +253,7 @@
 
 .input-dialog {
   .message-line {
-    margin-top: var(--component-padding);
+    margin-top: var(--ui-spacing);
     /* Errors arrive pre-joined with newlines, and a plain div would run them
        together into one sentence. */
     white-space: pre-line;
@@ -272,7 +272,7 @@
   .loading {
     display: flex;
     align-items: center;
-    gap: var(--component-padding);
+    gap: var(--ui-spacing);
 
     .loading-message {
       color: var(--text-color-subtle);
@@ -302,14 +302,14 @@
 /* The list's own fallback, shown in place of the rows. It stands down while the
    message line is occupied, so it never restates a failure as an absence. */
 .select-list .empty-message {
-  margin-top: var(--component-padding);
+  margin-top: var(--ui-spacing);
   color: var(--text-color-subtle);
 }
 
 /* A prompt label rendered above the query editor needs room below it. */
 .input-dialog > label.icon {
   display: block;
-  margin-bottom: calc(var(--component-padding) / 2);
+  margin-bottom: calc(var(--ui-spacing) / 2);
 }
 
 /* Popover List */
@@ -322,7 +322,7 @@
 }
 
 .select-list.popover-list {
-  --popover-list-padding: calc(var(--ui-padding) / 4);
+  --popover-list-padding: calc(var(--ui-panel-padding) / 4);
 
   width: 200px;
   min-width: 200px;
@@ -331,7 +331,7 @@
   background-color: var(--overlay-background-color);
   box-shadow: 0 2px 8px 1px rgba(0, 0, 0, 0.3);
   padding: var(--popover-list-padding);
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
 
   lumine-text-editor[mini] {
     margin-bottom: var(--popover-list-padding);

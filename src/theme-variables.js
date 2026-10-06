@@ -1,205 +1,727 @@
-// Single source of truth for the theme variable contract.
-//
-// Every name is a CSS custom property `--<name>`, defined by a theme in its
-// styles/variables.css and by the fallbacks in static/variables/base-variables.css.
-//
-// UI_VARIABLES and SYNTAX_VARIABLES are the contract a theme is expected to
-// define. UI_VARIABLES_EXTENDED is derived: base-variables.css computes those
-// from the core contract, so a theme gets them for free and may override any
-// of them with an exact value.
+// Public CSS variables: roles, value types, ownership and defaults live here.
+// Theme overrides use :root; editor typography is supplied on lumine-workspace.
 
-const UI_VARIABLES = [
-  // Text
-  "text-color",
-  "text-color-subtle",
-  "text-color-highlight",
-  "text-color-selected",
-  "text-color-info",
-  "text-color-success",
-  "text-color-warning",
-  "text-color-error",
+function define(group, owner, role, entries) {
+  return entries.map(([name, type, defaultValue, description]) =>
+    Object.freeze({
+      name,
+      type,
+      role,
+      owner,
+      scope: role === "runtime" ? "lumine-workspace" : ":root",
+      default: defaultValue,
+      group,
+      description,
+    }),
+  );
+}
 
-  // Background
-  "background-color-info",
-  "background-color-success",
-  "background-color-warning",
-  "background-color-error",
-  "background-color-highlight",
-  "background-color-selected",
-  "app-background-color",
+const THEME_VARIABLES = Object.freeze([
+  ...define("Text colors", "ui", "semantic", [
+    ["text-color", "color", "#333", "Primary foreground for interface text."],
+    [
+      "text-color-subtle",
+      "color",
+      "#777",
+      "Secondary foreground for paths, placeholders and descriptions.",
+    ],
+    [
+      "text-color-highlight",
+      "color",
+      "#111",
+      "Emphasized foreground for headings and highlighted text.",
+    ],
+    [
+      "text-color-selected",
+      "color",
+      "var(--text-color-highlight)",
+      "Foreground of selected list items.",
+    ],
+    [
+      "text-color-faded",
+      "color",
+      "rgb(from var(--text-color) r g b / 20%)",
+      "Low-emphasis foreground for disabled or faded text.",
+    ],
+  ]),
+  ...define("Diagnostics", "ui", "semantic", [
+    ["text-color-info", "color", "#5293d8", "Foreground for info diagnostics and status messages."],
+    [
+      "text-color-success",
+      "color",
+      "#1fe977",
+      "Foreground for success diagnostics and status messages.",
+    ],
+    [
+      "text-color-warning",
+      "color",
+      "#f78a46",
+      "Foreground for warning diagnostics and status messages.",
+    ],
+    ["text-color-error", "color", "#c00", "Foreground for error diagnostics and status messages."],
+    [
+      "background-color-info",
+      "color",
+      "#0098ff",
+      "Filled background for info messages and controls.",
+    ],
+    [
+      "background-color-success",
+      "color",
+      "#17ca65",
+      "Filled background for success messages and controls.",
+    ],
+    [
+      "background-color-warning",
+      "color",
+      "#ff4800",
+      "Filled background for warning messages and controls.",
+    ],
+    [
+      "background-color-error",
+      "color",
+      "#c00",
+      "Filled background for error messages and controls.",
+    ],
+    [
+      "text-color-hint",
+      "color",
+      "var(--text-color-subtle)",
+      "Foreground for hint diagnostics and status messages.",
+    ],
+  ]),
+  ...define("Surface colors", "ui", "semantic", [
+    [
+      "background-color-highlight",
+      "color",
+      "hsla(0, 0%, 0%, 0.1)",
+      "Fill of hovered or highlighted interface items.",
+    ],
+    [
+      "background-color-selected",
+      "color",
+      "var(--background-color-highlight)",
+      "Fill of selected list items.",
+    ],
+    ["app-background-color", "color", "#fff", "Background of application chrome and tool panels."],
+    [
+      "base-background-color",
+      "color",
+      "#fff",
+      "Background of the main interface surface and pane items.",
+    ],
+    ["base-border-color", "color", "#eee", "Default color of interface borders and separators."],
+    [
+      "level-1-color",
+      "color",
+      "hsl(from var(--base-background-color) h s calc(l + 6))",
+      "Background of raised interface surfaces.",
+    ],
+    [
+      "level-2-color",
+      "color",
+      "var(--base-background-color)",
+      "Background of the main interface surface.",
+    ],
+    [
+      "level-3-color",
+      "color",
+      "hsl(from var(--base-background-color) h s calc(l - 3))",
+      "Background of recessed interface surfaces.",
+    ],
+    [
+      "level-3-color-hover",
+      "color",
+      "hsl(from var(--level-3-color) h s calc(l + 6))",
+      "Hovered background of recessed interface surfaces.",
+    ],
+    [
+      "level-3-color-active",
+      "color",
+      "hsl(from var(--level-3-color) h s calc(l + 3))",
+      "Active background of recessed interface surfaces.",
+    ],
+  ]),
+  ...define("Component colors", "ui", "component", [
+    [
+      "pane-item-background-color",
+      "color",
+      "var(--base-background-color)",
+      "Pane item background color.",
+    ],
+    ["pane-item-border-color", "color", "var(--base-border-color)", "Pane item border color."],
+    ["input-background-color", "color", "#fff", "Input background color."],
+    ["input-border-color", "color", "var(--base-border-color)", "Input border color."],
+    [
+      "tool-panel-background-color",
+      "color",
+      "var(--app-background-color)",
+      "Tool panel background color.",
+    ],
+    ["tool-panel-border-color", "color", "var(--base-border-color)", "Tool panel border color."],
+    ["inset-panel-background-color", "color", "#eee", "Inset panel background color."],
+    ["inset-panel-border-color", "color", "var(--base-border-color)", "Inset panel border color."],
+    ["panel-heading-background-color", "color", "#ddd", "Panel heading background color."],
+    [
+      "panel-heading-border-color",
+      "color",
+      "var(--base-border-color)",
+      "Panel heading border color.",
+    ],
+    ["overlay-background-color", "color", "#f4f4f4", "Overlay background color."],
+    ["overlay-border-color", "color", "var(--base-border-color)", "Overlay border color."],
+    ["button-background-color", "color", "#ccc", "Button background color."],
+    [
+      "button-background-color-hover",
+      "color",
+      "hsl(from var(--button-background-color) h s calc(l + 5))",
+      "Button background color hover.",
+    ],
+    [
+      "button-background-color-selected",
+      "color",
+      "var(--accent-background-color)",
+      "Button background color selected.",
+    ],
+    ["button-border-color", "color", "#aaa", "Button border color."],
+    ["tab-bar-background-color", "color", "#fff", "Tab bar background color."],
+    ["tab-bar-border-color", "color", "var(--base-border-color)", "Tab bar border color."],
+    ["tab-background-color", "color", "var(--tab-bar-background-color)", "Tab background color."],
+    [
+      "tab-background-color-active",
+      "color",
+      "var(--base-background-color)",
+      "Tab background color active.",
+    ],
+    ["tab-border-color", "color", "var(--base-border-color)", "Tab border color."],
+    [
+      "tree-view-background-color",
+      "color",
+      "var(--tool-panel-background-color)",
+      "Tree view background color.",
+    ],
+    ["scrollbar-color", "color", "var(--background-color-highlight)", "Scrollbar color."],
+    [
+      "scrollbar-background-color",
+      "color",
+      "var(--app-background-color)",
+      "Scrollbar background color.",
+    ],
+    [
+      "badge-background-color",
+      "color",
+      "hsl(from var(--background-color-highlight) h s calc(l + 6) / alpha)",
+      "Badge background color.",
+    ],
+    [
+      "button-text-color-selected",
+      "color",
+      "var(--accent-foreground-color)",
+      "Button text color selected.",
+    ],
+    [
+      "button-border-color-selected",
+      "color",
+      "var(--base-border-color)",
+      "Button border color selected.",
+    ],
+    [
+      "input-background-color-focus",
+      "color",
+      "color-mix( in srgb, var(--accent-background-color) 10%, var(--input-background-color) )",
+      "Input background color focus.",
+    ],
+    [
+      "input-selection-color",
+      "color",
+      "color-mix( in srgb, var(--accent-indicator-color) 25%, var(--input-background-color) )",
+      "Input selection color.",
+    ],
+    [
+      "input-selection-color-focus",
+      "color",
+      "color-mix( in srgb, var(--accent-indicator-color) 50%, var(--input-background-color) )",
+      "Input selection color focus.",
+    ],
+    [
+      "overlay-backdrop-color",
+      "color",
+      "hsl(from var(--base-background-color) h s calc(l * 0.2))",
+      "Overlay backdrop color.",
+    ],
+    ["overlay-backdrop-opacity", "number", "0.75", "Overlay backdrop opacity."],
+    [
+      "progress-background-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Progress background color.",
+    ],
+    ["tab-text-color", "color", "var(--text-color-subtle)", "Tab text color."],
+    ["tab-text-color-active", "color", "var(--text-color-highlight)", "Tab text color active."],
+    [
+      "tab-inactive-status-added",
+      "color",
+      "rgb(from var(--text-color-success) r g b / 55%)",
+      "Tab inactive status added.",
+    ],
+    [
+      "tab-inactive-status-modified",
+      "color",
+      "rgb(from var(--text-color-warning) r g b / 55%)",
+      "Tab inactive status modified.",
+    ],
+    [
+      "tab-inactive-status-conflicted",
+      "color",
+      "rgb(from var(--text-color-error) r g b / 55%)",
+      "Tab inactive status conflicted.",
+    ],
+    [
+      "tooltip-background-color",
+      "color",
+      "var(--accent-background-color)",
+      "Tooltip background color.",
+    ],
+    ["tooltip-text-color", "color", "var(--accent-foreground-color)", "Tooltip text color."],
+    [
+      "tooltip-text-key-color",
+      "color",
+      "var(--tooltip-background-color)",
+      "Tooltip text key color.",
+    ],
+    [
+      "tooltip-background-key-color",
+      "color",
+      "var(--tooltip-text-color)",
+      "Tooltip background key color.",
+    ],
+  ]),
+  ...define("Category colors", "ui", "semantic", [
+    [
+      "ui-site-color-1",
+      "color",
+      "var(--background-color-success)",
+      "Color of category 1 in multicolor interface indicators.",
+    ],
+    [
+      "ui-site-color-2",
+      "color",
+      "var(--background-color-info)",
+      "Color of category 2 in multicolor interface indicators.",
+    ],
+    [
+      "ui-site-color-3",
+      "color",
+      "var(--background-color-warning)",
+      "Color of category 3 in multicolor interface indicators.",
+    ],
+    [
+      "ui-site-color-4",
+      "color",
+      "#db2ff4",
+      "Color of category 4 in multicolor interface indicators.",
+    ],
+    [
+      "ui-site-color-5",
+      "color",
+      "#f5e11d",
+      "Color of category 5 in multicolor interface indicators.",
+    ],
+  ]),
+  ...define("UI typography", "ui", "semantic", [
+    ["ui-font-size", "length", "13px", "Base size of interface text."],
+    [
+      "ui-input-font-size",
+      "length",
+      "calc(var(--ui-font-size) * 1.15)",
+      "Font size of input controls.",
+    ],
+    ["ui-font-family", "font-family", "system-ui", "Font family of interface text."],
+  ]),
+  ...define("UI geometry", "ui", "semantic", [
+    ["ui-disclosure-size", "length", "12px", "Size of disclosure arrows."],
+    ["ui-spacing", "length", "10px", "General spacing unit for compact components."],
+    ["ui-icon-spacing", "length", "5px", "Spacing beside component icons and disclosure arrows."],
+    ["ui-icon-size", "length", "16px", "Width and height of the shared icon box."],
+    [
+      "ui-control-height",
+      "length",
+      "25px",
+      "Content height of standard buttons and controls, excluding borders.",
+    ],
+    ["ui-border-radius", "length", "2px", "Corner radius of interface components."],
+    [
+      "ui-tab-height",
+      "length",
+      "calc(var(--ui-unit) * 2.5)",
+      "Height of tabs and their drag placeholders.",
+    ],
+    [
+      "ui-unit",
+      "length",
+      "1em",
+      "An em-based unit for sizing relative to the current interface text.",
+    ],
+    [
+      "ui-panel-padding",
+      "length",
+      "calc(var(--ui-unit) * 1.5)",
+      "Interior spacing of panels and popovers.",
+    ],
+    [
+      "ui-panel-icon-spacing",
+      "length",
+      "calc(var(--ui-panel-padding) / 3.3)",
+      "Spacing beside icons in panel headings and picker rows.",
+    ],
+    [
+      "ui-row-height",
+      "length",
+      "calc(var(--ui-unit) * 2)",
+      "Line height of picker and settings rows.",
+    ],
+  ]),
+  ...define("Controls", "ui", "semantic", [
+    [
+      "use-custom-controls",
+      "boolean",
+      "true",
+      "Whether native form controls receive custom presentation.",
+    ],
+  ]),
+  ...define("Git status colors", "ui", "semantic", [
+    ["text-color-added", "color", "var(--text-color-success)", "Foreground for added Git items."],
+    [
+      "text-color-ignored",
+      "color",
+      "var(--text-color-subtle)",
+      "Foreground for ignored Git items.",
+    ],
+    [
+      "text-color-modified",
+      "color",
+      "var(--text-color-warning)",
+      "Foreground for modified Git items.",
+    ],
+    ["text-color-removed", "color", "var(--text-color-error)", "Foreground for removed Git items."],
+    ["text-color-renamed", "color", "var(--text-color-info)", "Foreground for renamed Git items."],
+    [
+      "text-color-conflicted",
+      "color",
+      "var(--text-color-error)",
+      "Foreground for conflicted Git items.",
+    ],
+  ]),
+  ...define("Text on diagnostic backgrounds", "ui", "semantic", [
+    [
+      "text-color-on-info",
+      "color",
+      "lch(from var(--background-color-info) calc((49.44 - l) * infinity) 0 0)",
+      "Readable foreground on the info background.",
+    ],
+    [
+      "text-color-on-success",
+      "color",
+      "lch( from var(--background-color-success) calc((49.44 - l) * infinity) 0 0 )",
+      "Readable foreground on the success background.",
+    ],
+    [
+      "text-color-on-warning",
+      "color",
+      "lch( from var(--background-color-warning) calc((49.44 - l) * infinity) 0 0 )",
+      "Readable foreground on the warning background.",
+    ],
+    [
+      "text-color-on-error",
+      "color",
+      "lch(from var(--background-color-error) calc((49.44 - l) * infinity) 0 0)",
+      "Readable foreground on the error background.",
+    ],
+  ]),
+  ...define("Accent colors", "ui", "semantic", [
+    [
+      "accent-indicator-color",
+      "color",
+      "var(--background-color-info)",
+      "Accent used for focus rings and small indicators.",
+    ],
+    [
+      "accent-indicator-text-color",
+      "color",
+      "lch(from var(--accent-indicator-color) calc((49.44 - l) * infinity) 0 0)",
+      "Foreground on the indicator accent.",
+    ],
+    [
+      "accent-background-color",
+      "color",
+      "var(--background-color-info)",
+      "Accent used to fill prominent controls.",
+    ],
+    [
+      "accent-foreground-color",
+      "color",
+      "lch(from var(--accent-background-color) calc((49.44 - l) * infinity) 0 0)",
+      "Foreground on the accent fill.",
+    ],
+    [
+      "accent-link-color",
+      "color",
+      "var(--text-color-info)",
+      "Accent used as text on interface surfaces.",
+    ],
+  ]),
+  ...define("Data grid", "ui", "component", [
+    ["data-grid-text-color", "color", "var(--text-color)", "Foreground of ordinary table cells."],
+    [
+      "data-grid-muted-color",
+      "color",
+      "var(--text-color-subtle)",
+      "Foreground of secondary table content.",
+    ],
+    [
+      "data-grid-null-color",
+      "color",
+      "var(--text-color-subtle)",
+      "Foreground of null or missing table values.",
+    ],
+    [
+      "data-grid-border-color",
+      "color",
+      "var(--base-border-color)",
+      "Color of table grid lines and boundaries.",
+    ],
+    [
+      "data-grid-header-color",
+      "color",
+      "var(--background-color-highlight)",
+      "Background of table headers.",
+    ],
+    [
+      "data-grid-accent-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Color of table focus and selection indicators.",
+    ],
+    [
+      "data-grid-highlight-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Color of table search matches.",
+    ],
+    [
+      "data-grid-current-highlight-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Color of the current table search match.",
+    ],
+    [
+      "data-grid-row-height",
+      "length",
+      "24px",
+      "Default height of table rows, resolved to pixels by canvas consumers.",
+    ],
+    [
+      "data-grid-header-height",
+      "length",
+      "24px",
+      "Height of table headers, resolved to pixels by canvas consumers.",
+    ],
+  ]),
+  ...define("Component colors", "syntax", "component", [
+    [
+      "scrollbar-color-editor",
+      "color",
+      "color-mix( in srgb, var(--syntax-background-color) 78%, var(--syntax-text-color) )",
+      "Scrollbar color editor.",
+    ],
+    [
+      "scrollbar-background-color-editor",
+      "color",
+      "var(--syntax-background-color)",
+      "Scrollbar background color editor.",
+    ],
+    [
+      "tab-text-color-editor",
+      "color",
+      "var(--syntax-text-color)",
+      "Active editor tab foreground derived from the current syntax foreground.",
+    ],
+    [
+      "tab-background-color-editor",
+      "color",
+      "var(--syntax-background-color)",
+      "Active editor tab background derived from the current syntax background.",
+    ],
+  ]),
+  ...define("Editor colors", "syntax", "semantic", [
+    ["syntax-text-color", "color", "#333", "Default foreground of editor text."],
+    ["syntax-cursor-color", "color", "#333", "Color of the editor cursor."],
+    ["syntax-selection-color", "color", "#69c", "Background of selected editor text."],
+    [
+      "syntax-selection-flash-color",
+      "color",
+      "#00f",
+      "Background used to briefly reveal an editor range.",
+    ],
+    ["syntax-background-color", "color", "#fff", "Background of the editing surface."],
+    [
+      "syntax-invisible-character-color",
+      "color",
+      "#ccc",
+      "Foreground of visible whitespace and invisible-character markers.",
+    ],
+    ["syntax-result-marker-color", "color", "#444", "Color of an editor search-result marker."],
+    [
+      "syntax-result-marker-color-selected",
+      "color",
+      "#000",
+      "Color of the current editor search-result marker.",
+    ],
+    ["syntax-gutter-text-color", "color", "#333", "Syntax gutter text color."],
+    ["syntax-gutter-text-color-selected", "color", "#000", "Syntax gutter text color selected."],
+    ["syntax-gutter-background-color", "color", "#ccc", "Syntax gutter background color."],
+    [
+      "syntax-gutter-background-color-selected",
+      "color",
+      "#eee",
+      "Syntax gutter background color selected.",
+    ],
+  ]),
+  ...define("Editor Git colors", "syntax", "semantic", [
+    ["syntax-color-added", "color", "green", "Color of added changes in editor diff surfaces."],
+    [
+      "syntax-color-modified",
+      "color",
+      "orange",
+      "Color of modified changes in editor diff surfaces.",
+    ],
+    ["syntax-color-removed", "color", "red", "Color of removed changes in editor diff surfaces."],
+    ["syntax-color-renamed", "color", "blue", "Color of renamed changes in editor diff surfaces."],
+  ]),
+  ...define("Syntax entities", "syntax", "semantic", [
+    [
+      "syntax-color-variable",
+      "color",
+      "#df6a73",
+      "Semantic foreground for variable syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-constant",
+      "color",
+      "#df6a73",
+      "Semantic foreground for constant syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-property",
+      "color",
+      "#df6a73",
+      "Semantic foreground for property syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-value",
+      "color",
+      "#d29b67",
+      "Semantic foreground for value syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-function",
+      "color",
+      "#61aeef",
+      "Semantic foreground for function syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-method",
+      "color",
+      "var(--syntax-color-function)",
+      "Semantic foreground for method syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-class",
+      "color",
+      "#e5c17c",
+      "Semantic foreground for class syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-keyword",
+      "color",
+      "#a431c4",
+      "Semantic foreground for keyword syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-tag",
+      "color",
+      "#b72424",
+      "Semantic foreground for tag syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-attribute",
+      "color",
+      "#87400d",
+      "Semantic foreground for attribute syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-import",
+      "color",
+      "#97c378",
+      "Semantic foreground for import syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-snippet",
+      "color",
+      "#97c378",
+      "Semantic foreground for snippet syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-string",
+      "color",
+      "#97c378",
+      "Semantic foreground for string syntax and completion indicators.",
+    ],
+    [
+      "syntax-color-comment",
+      "color",
+      "#888",
+      "Semantic foreground for comment syntax and completion indicators.",
+    ],
+  ]),
+  ...define("Prose typography", "ui", "semantic", [
+    [
+      "prose-font-size",
+      "length",
+      "calc(var(--ui-font-size) + 1px)",
+      "Font size of documentation and diagnostic prose.",
+    ],
+    [
+      "prose-line-height",
+      "number",
+      "1.5",
+      "Unitless line-height ratio for documentation and diagnostic prose.",
+    ],
+  ]),
+  ...define("Editor typography", "editor", "runtime", [
+    [
+      "editor-font-family",
+      "font-family",
+      null,
+      "Font family provided by editor.fontFamily on the workspace.",
+    ],
+    ["editor-font-size", "length", null, "Font size provided by editor.fontSize on the workspace."],
+    [
+      "editor-line-height",
+      "line-height",
+      null,
+      "Line height provided by editor.lineHeight, including CSS expressions and normal.",
+    ],
+  ]),
+]);
 
-  // Base
-  "base-background-color",
-  "base-border-color",
+function buildThemeVariablesStylesheet() {
+  const declarations = THEME_VARIABLES.filter((variable) => variable.default !== null).map(
+    (variable) => `  --${variable.name}: ${variable.default};`,
+  );
+  // The icon protocol is owned by core and is not a palette setting.
+  declarations.push("  --icon-contract: box;");
+  return `/* Generated from src/theme-variables.js. Run npm run generate:theme-variables. */\n:root {\n${declarations.join("\n")}\n}\n`;
+}
 
-  // Components
-  "pane-item-background-color",
-  "pane-item-border-color",
-  "input-background-color",
-  "input-border-color",
-  "tool-panel-background-color",
-  "tool-panel-border-color",
-  "inset-panel-background-color",
-  "inset-panel-border-color",
-  "panel-heading-background-color",
-  "panel-heading-border-color",
-  "overlay-background-color",
-  "overlay-border-color",
-  "button-background-color",
-  "button-background-color-hover",
-  "button-background-color-selected",
-  "button-border-color",
-  "tab-bar-background-color",
-  "tab-bar-border-color",
-  "tab-background-color",
-  "tab-background-color-active",
-  "tab-border-color",
-  "tree-view-background-color",
-  "tree-view-border-color",
-  "scrollbar-color",
-  "scrollbar-background-color",
-
-  // Site colors
-  "ui-site-color-1",
-  "ui-site-color-2",
-  "ui-site-color-3",
-  "ui-site-color-4",
-  "ui-site-color-5",
-
-  // Sizes
-  "font-size",
-  "input-font-size",
-  "disclosure-arrow-size",
-  "component-padding",
-  "component-icon-padding",
-  "component-icon-size",
-  "component-line-height",
-  "component-border-radius",
-  "tab-height",
-
-  // Other
-  "font-family",
-  "use-custom-controls",
-];
-
-const UI_VARIABLES_EXTENDED = [
-  // Text
-  "text-color-faded",
-  "text-color-hint",
-  "text-color-added",
-  "text-color-ignored",
-  "text-color-modified",
-  "text-color-removed",
-  "text-color-renamed",
-  "text-color-conflicted",
-
-  // Readable text on colored backgrounds (replaces Less contrast())
-  "text-color-on-info",
-  "text-color-on-success",
-  "text-color-on-warning",
-  "text-color-on-error",
-
-  // Background levels
-  "level-1-color",
-  "level-2-color",
-  "level-3-color",
-  "level-3-color-hover",
-  "level-3-color-active",
-
-  // Accent
-  "accent-color",
-  "accent-text-color",
-  "accent-bg-color",
-  "accent-bg-text-color",
-  "accent-only-text-color",
-
-  // Components
-  "badge-background-color",
-  "button-text-color-selected",
-  "button-border-color-selected",
-  "checkbox-background-color",
-  "data-grid-text-color",
-  "data-grid-muted-color",
-  "data-grid-null-color",
-  "data-grid-border-color",
-  "data-grid-header-color",
-  "data-grid-accent-color",
-  "data-grid-highlight-color",
-  "data-grid-current-highlight-color",
-  "input-background-color-focus",
-  "input-selection-color",
-  "input-selection-color-focus",
-  "overlay-backdrop-color",
-  "overlay-backdrop-opacity",
-  "progress-background-color",
-  "scrollbar-color-editor",
-  "scrollbar-background-color-editor",
-  "tab-text-color",
-  "tab-text-color-active",
-  "tab-text-color-editor",
-  "tab-background-color-editor",
-  "tab-inactive-status-added",
-  "tab-inactive-status-modified",
-  "tab-inactive-status-conflicted",
-  "tooltip-background-color",
-  "tooltip-text-color",
-  "tooltip-text-key-color",
-  "tooltip-background-key-color",
-
-  // Sizes
-  "ui-size",
-  "ui-input-size",
-  "ui-padding",
-  "ui-padding-pane",
-  "ui-padding-icon",
-  "ui-line-height",
-  "ui-tab-height",
-  "data-grid-row-height",
-  "data-grid-header-height",
-];
-
-const SYNTAX_VARIABLES = [
-  // General
-  "syntax-text-color",
-  "syntax-cursor-color",
-  "syntax-selection-color",
-  "syntax-selection-flash-color",
-  "syntax-background-color",
-
-  // Guides
-  "syntax-invisible-character-color",
-
-  // Find and replace markers
-  "syntax-result-marker-color",
-  "syntax-result-marker-color-selected",
-
-  // Gutter
-  "syntax-gutter-text-color",
-  "syntax-gutter-text-color-selected",
-  "syntax-gutter-background-color",
-  "syntax-gutter-background-color-selected",
-
-  // Git diff
-  "syntax-color-added",
-  "syntax-color-modified",
-  "syntax-color-removed",
-  "syntax-color-renamed",
-
-  // Language entities
-  "syntax-color-variable",
-  "syntax-color-constant",
-  "syntax-color-property",
-  "syntax-color-value",
-  "syntax-color-function",
-  "syntax-color-method",
-  "syntax-color-class",
-  "syntax-color-keyword",
-  "syntax-color-tag",
-  "syntax-color-attribute",
-  "syntax-color-import",
-  "syntax-color-snippet",
-  "syntax-color-string",
-  "syntax-color-comment",
-];
-
-module.exports = { UI_VARIABLES, UI_VARIABLES_EXTENDED, SYNTAX_VARIABLES };
+module.exports = { THEME_VARIABLES, buildThemeVariablesStylesheet };

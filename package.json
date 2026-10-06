@@ -139,6 +139,8 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "check:icons": "node script/check-icons.js",
+    "generate:theme-variables": "node script/generate-theme-variables.js",
+    "check:theme-variables": "node script/generate-theme-variables.js --check",
     "check:editors": "node script/check-editors.js",
     "check:grammar-captures": "node script/check-grammar-captures.js",
     "check:bundled-deps": "node script/check-bundled-deps.js",

@@ -1,5 +1,5 @@
 // The icon geometry contract (static/lumine-ui/styles/icons.css): every icon is
-// a fixed square of --component-icon-size whose line-height equals its height,
+// a fixed square of --ui-icon-size whose line-height equals its height,
 // pinned with vertical-align: text-bottom. Core owns the box, icon sets own
 // ink, themes own row metrics only. These specs pin the box in the base sheet
 // and prove a bundled theme no longer contests it per surface.

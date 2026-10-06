@@ -6,7 +6,7 @@
 /* File-local values derived from the Bootstrap-flavored variables.less */
 :root {
   /* floor(@font-size-base * @line-height-base) */
-  --line-height-computed: round(down, var(--font-size) * 1.428571429, 1px);
+  --line-height-computed: round(down, var(--ui-font-size) * 1.428571429, 1px);
 }
 
 /* Base class
@@ -34,7 +34,7 @@
       position: relative;
       display: block;
       padding: 10px 15px; /* @nav-link-padding */
-      border-radius: var(--component-border-radius);
+      border-radius: var(--ui-border-radius);
       &:hover,
       &:focus {
         text-decoration: none;
@@ -62,7 +62,7 @@
     &:hover,
     &:focus {
       background-color: #eee; /* @nav-link-hover-bg: @gray-lighter */
-      border-color: var(--accent-color); /* @link-color */
+      border-color: var(--accent-indicator-color); /* @link-color */
     }
   }
 

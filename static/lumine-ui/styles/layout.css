@@ -1,5 +1,5 @@
 .padded {
-  padding: var(--component-padding);
+  padding: var(--ui-spacing);
 }
 
 /* Blocks */
@@ -13,7 +13,7 @@
 /* Must be div.block so as not to affect syntax highlighting. */
 ul.block,
 div.block {
-  margin-bottom: var(--component-padding);
+  margin-bottom: var(--ui-spacing);
 }
 div > ul.block:last-child,
 div > div.block:last-child {
@@ -28,10 +28,10 @@ div > div.block:last-child {
   vertical-align: middle;
 }
 .inline-block {
-  margin-right: var(--component-padding);
+  margin-right: var(--ui-spacing);
 }
 .inline-block-tight {
-  margin-right: calc(var(--component-padding) / 2);
+  margin-right: calc(var(--ui-spacing) / 2);
 }
 div > .inline-block:last-child,
 div > .inline-block-tight:last-child {
@@ -60,11 +60,11 @@ div > .inline-block-tight:last-child {
 
   .inline-block {
     margin-right: 0;
-    margin-left: var(--component-padding);
+    margin-left: var(--ui-spacing);
   }
   .inline-block-tight {
     margin-right: 0;
-    margin-left: calc(var(--component-padding) / 2);
+    margin-left: calc(var(--ui-spacing) / 2);
   }
 
   > .inline-block:first-child,

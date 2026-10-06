@@ -105,11 +105,11 @@ button.list-group-item {
   &.active:hover,
   &.active:focus {
     z-index: 2; /* Place active items above their siblings for proper border styling */
-    color: var(--accent-bg-text-color); /* @list-group-active-color */
+    color: var(--accent-foreground-color); /* @list-group-active-color */
     background-color: var(
-      --accent-bg-color
+      --accent-background-color
     ); /* @list-group-active-bg: @component-active-bg: @brand-primary */
-    border-color: var(--accent-bg-color); /* @list-group-active-border */
+    border-color: var(--accent-background-color); /* @list-group-active-border */
 
     /* Force color to inherit for custom content */
     .list-group-item-heading,
@@ -119,7 +119,7 @@ button.list-group-item {
     }
     .list-group-item-text {
       color: hsl(
-        from var(--accent-bg-color) h s calc(l + 40)
+        from var(--accent-background-color) h s calc(l + 40)
       ); /* lighten(@list-group-active-bg, 40%) */
     }
   }
@@ -270,7 +270,7 @@ button.list-group-item {
 
   li:not(.list-nested-item),
   li.list-nested-item > .list-item {
-    line-height: var(--component-line-height);
+    line-height: var(--ui-control-height);
     text-wrap: none;
     white-space: nowrap;
   }
@@ -284,7 +284,7 @@ button.list-group-item {
     position: absolute;
     left: 0;
     right: 0;
-    height: var(--component-line-height);
+    height: var(--ui-control-height);
   }
 
   /* Make sure the background highlight is below the content. */
@@ -293,7 +293,7 @@ button.list-group-item {
   }
 
   .no-icon {
-    padding-left: calc(var(--component-icon-padding) + var(--component-icon-size));
+    padding-left: calc(var(--ui-icon-spacing) + var(--ui-icon-size));
   }
 }
 
@@ -307,12 +307,12 @@ button.list-group-item {
 .list-tree {
   .list-nested-item > .list-tree > li,
   .list-nested-item > .list-group > li {
-    padding-left: calc(var(--component-icon-size) + var(--component-icon-padding));
+    padding-left: calc(var(--ui-icon-size) + var(--ui-icon-spacing));
   }
 
   &.has-collapsable-children {
     /* File-local: @disclosure-arrow-padding */
-    --disclosure-arrow-padding: calc(var(--disclosure-arrow-size) + var(--component-icon-padding));
+    --disclosure-arrow-padding: calc(var(--ui-disclosure-size) + var(--ui-icon-spacing));
 
     li.list-item {
       margin-left: var(--disclosure-arrow-padding);
@@ -336,13 +336,13 @@ button.list-group-item {
         display: inline-block;
         -webkit-font-smoothing: antialiased;
         text-decoration: none;
-        font-size: var(--disclosure-arrow-size);
-        width: var(--disclosure-arrow-size);
-        height: var(--component-icon-size);
-        line-height: var(--component-icon-size);
+        font-size: var(--ui-disclosure-size);
+        width: var(--ui-disclosure-size);
+        height: var(--ui-icon-size);
+        line-height: var(--ui-icon-size);
         text-align: center;
         vertical-align: text-bottom;
-        margin-right: var(--component-icon-padding);
+        margin-right: var(--ui-icon-spacing);
         content: "\f0a3"; /* @chevron-down */
       }
     }

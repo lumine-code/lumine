@@ -121,7 +121,7 @@ lumine-pane-container {
       transform 0.3s ease-in-out;
     transform: translate(
       -50%,
-      calc(-100% - var(--component-padding) - var(--component-padding) - var(--component-padding))
+      calc(-100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing))
     );
   }
 }

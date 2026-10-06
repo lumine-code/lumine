@@ -53,6 +53,8 @@ jobs:
         run: npm run format:check
       - name: Check API documentation
         run: npm run check:api-docs
+      - name: Check generated theme defaults
+        run: npm run check:theme-variables
       # Timings are reported for review, while deterministic syscall and lookup
       # counts gate the known-file, warm-cache and repository-invalidation paths.
       - name: Benchmark icon resolution

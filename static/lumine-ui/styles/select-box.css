@@ -23,8 +23,8 @@
   }
 
   &:focus-visible {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 1px var(--accent-color);
+    border-color: var(--accent-indicator-color);
+    box-shadow: 0 0 0 1px var(--accent-indicator-color);
   }
 
   &:disabled,

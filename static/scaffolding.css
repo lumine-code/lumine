@@ -17,8 +17,8 @@ body {
 }
 
 html {
-  font-family: var(--font-family);
-  font-size: var(--font-size);
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size);
   line-height: 1.428571429; /* 20/14 */
   color: var(--text-color);
   background-color: var(--app-background-color);

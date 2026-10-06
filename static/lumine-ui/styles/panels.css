@@ -10,27 +10,27 @@ lumine-panel {
 }
 
 .inset-panel {
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   background-color: var(--inset-panel-background-color);
 }
 
 .panel-heading {
   margin: 0;
-  padding: var(--component-padding);
+  padding: var(--ui-spacing);
   border-radius: 0;
-  font-size: var(--font-size);
+  font-size: var(--ui-font-size);
   line-height: 1;
   background-color: var(--panel-heading-background-color);
 
   .inset-panel & {
-    border-radius: var(--component-border-radius) var(--component-border-radius) 0 0;
+    border-radius: var(--ui-border-radius) var(--ui-border-radius) 0 0;
   }
 
   .btn {
     /* @btn-height: @component-line-height - 5px */
-    height: calc(var(--component-line-height) - 5px);
-    line-height: calc(var(--component-line-height) - 5px);
-    font-size: calc(var(--font-size) - 2px);
+    height: calc(var(--ui-control-height) - 5px);
+    line-height: calc(var(--ui-control-height) - 5px);
+    font-size: calc(var(--ui-font-size) - 2px);
     position: relative;
     top: -5px;
   }

@@ -31,15 +31,15 @@
 }
 .btn-group > .btn:first-child {
   border-left: none;
-  border-top-left-radius: var(--component-border-radius);
-  border-bottom-left-radius: var(--component-border-radius);
+  border-top-left-radius: var(--ui-border-radius);
+  border-bottom-left-radius: var(--ui-border-radius);
 }
 .btn-group > .btn:last-child,
 .btn-group > .btn.selected:last-child,
 .btn-group > .dropdown-toggle {
   border-right: none;
-  border-top-right-radius: var(--component-border-radius);
-  border-bottom-right-radius: var(--component-border-radius);
+  border-top-right-radius: var(--ui-border-radius);
+  border-bottom-right-radius: var(--ui-border-radius);
 }
 
 /* Prevent double borders when buttons are next to each other */

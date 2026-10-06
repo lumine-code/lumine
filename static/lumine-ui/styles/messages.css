@@ -10,7 +10,7 @@
 }
 
 ul.background-message {
-  font-size: calc(var(--font-size) * 3);
+  font-size: calc(var(--ui-font-size) * 3);
 
   margin: 0;
   padding: 0;

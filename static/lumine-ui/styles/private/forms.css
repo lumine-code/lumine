@@ -6,11 +6,11 @@
 /* File-local values derived from the Bootstrap-flavored variables.less */
 :root {
   /* floor(@font-size-base * @line-height-base) */
-  --line-height-computed: round(down, var(--font-size) * 1.428571429, 1px);
+  --line-height-computed: round(down, var(--ui-font-size) * 1.428571429, 1px);
   /* ceil(@font-size-base * 1.25) */
-  --font-size-large: round(up, var(--font-size) * 1.25, 1px);
+  --font-size-large: round(up, var(--ui-font-size) * 1.25, 1px);
   /* ceil(@font-size-base * 0.85) */
-  --font-size-small: round(up, var(--font-size) * 0.85, 1px);
+  --font-size-small: round(up, var(--ui-font-size) * 0.85, 1px);
   /* @line-height-computed + (@padding-base-vertical * 2) + 2 */
   --input-height-base: calc(var(--line-height-computed) + 14px);
   /* ceil(@font-size-large * @line-height-large) + (@padding-large-vertical * 2) + 2 */
@@ -38,7 +38,7 @@ legend {
   width: 100%;
   padding: 0;
   margin-bottom: var(--line-height-computed);
-  font-size: calc(var(--font-size) * 1.5);
+  font-size: calc(var(--ui-font-size) * 1.5);
   line-height: inherit;
   color: #333; /* @legend-color: @gray-dark */
   border: 0;
@@ -91,7 +91,7 @@ input[type="file"]:focus,
 input[type="radio"]:focus,
 input[type="checkbox"]:focus {
   /* .tab-focus() */
-  outline: 2px auto var(--accent-color);
+  outline: 2px auto var(--accent-indicator-color);
   outline-offset: -2px;
 }
 
@@ -99,7 +99,7 @@ input[type="checkbox"]:focus {
 output {
   display: block;
   padding-top: 7px; /* (@padding-base-vertical + 1) */
-  font-size: var(--font-size);
+  font-size: var(--ui-font-size);
   line-height: 1.428571429; /* @line-height-base */
   color: #555; /* @input-color: @gray */
 }
@@ -133,7 +133,7 @@ output {
     --input-height-base
   ); /* Make inputs at least the height of their button counterpart (base line-height + padding + border) */
   padding: 6px 12px; /* @padding-base-vertical @padding-base-horizontal */
-  font-size: var(--font-size);
+  font-size: var(--ui-font-size);
   line-height: 1.428571429; /* @line-height-base */
   color: #555; /* @input-color: @gray */
   background-color: #fff; /* @input-bg */
@@ -291,7 +291,7 @@ input[type="checkbox"] {
   padding-bottom: 7px;
   /* Remove default margin from `p` */
   margin-bottom: 0;
-  min-height: calc(var(--line-height-computed) + var(--font-size));
+  min-height: calc(var(--line-height-computed) + var(--ui-font-size));
 
   &.input-lg,
   &.input-sm {

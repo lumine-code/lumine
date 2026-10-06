@@ -2,6 +2,7 @@ const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
+const { THEME_VARIABLES } = require("./theme-variables");
 
 // Keeping a reference to the entire object so that it can be mocked more
 // easily in the specs.
@@ -56,15 +57,15 @@ const BASE_STYLESHEETS = [
 ];
 
 // The accent override is a stylesheet rather than an inline style on `:root`
-// so it stays inside the cascade the rest of theming uses: priority 1 sits
-// above every theme stylesheet (0) and still below the user stylesheet (2), so
-// a user's own `--accent-color` keeps winning. An inline style would have beaten
+// so it stays inside the cascade the rest of theming uses: priority 1.5 sits
+// above every theme stylesheet (1) and still below the user stylesheet (2), so
+// a user's own `--accent-indicator-color` keeps winning. An inline style would have beaten
 // both.
 const ACCENT_STYLESHEET_PATH = "lumine://accent-color";
-const ACCENT_STYLESHEET_PRIORITY = 1;
+const ACCENT_STYLESHEET_PRIORITY = 1.5;
 const ACCENT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
 
-// Only the fills and the text that sits on them. `--accent-only-text-color` is
+// Only the fills and the text that sits on them. `--accent-link-color` is
 // accent-as-text-on-the-theme's-background, where the theme has already tuned
 // contrast and an arbitrary system color can fail it, so it stays theme-owned.
 // The two text colors reuse the contrast formula from base-variables.css rather
@@ -72,10 +73,10 @@ const ACCENT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
 function buildAccentStylesheet(accentColor) {
   return `\
 :root {
-  --accent-color: ${accentColor};
-  --accent-bg-color: ${accentColor};
-  --accent-text-color: lch(from var(--accent-color) calc((49.44 - l) * infinity) 0 0);
-  --accent-bg-text-color: lch(from var(--accent-bg-color) calc((49.44 - l) * infinity) 0 0);
+  --accent-indicator-color: ${accentColor};
+  --accent-background-color: ${accentColor};
+  --accent-indicator-text-color: lch(from var(--accent-indicator-color) calc((49.44 - l) * infinity) 0 0);
+  --accent-foreground-color: lch(from var(--accent-background-color) calc((49.44 - l) * infinity) 0 0);
 }
 `;
 }
@@ -122,6 +123,53 @@ module.exports = class ThemeManager {
     this.resourcePath = resourcePath;
     this.configDirPath = configDirPath;
     this.safeMode = safeMode;
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Get the immutable definitions of the editor's public CSS variables.
+   * Each definition specifies its bare name, type, role, owner, scope, default,
+   * documentation group and description. Runtime variables have a null default.
+   *
+   * @returns {Array<Object>} The public CSS variable definitions.
+   */
+  getVariables() {
+    return THEME_VARIABLES;
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Observe changes to the CSS variable cascade, including theme switches,
+   * system accents, user styles and runtime editor typography. Synchronous
+   * stylesheet updates are combined into one notification in a microtask.
+   *
+   * @param {Function} callback Function called after the cascade changes.
+   * @returns {Disposable} Dispose to stop observing variable changes.
+   */
+  onDidChangeVariables(callback) {
+    let scheduled = false;
+    let disposed = false;
+    const notify = () => {
+      if (scheduled || disposed) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        if (!disposed) callback();
+      });
+    };
+    return new CompositeDisposable(
+      new Disposable(() => {
+        disposed = true;
+      }),
+      this.styleManager.onDidAddStyleElement(notify),
+      this.styleManager.onDidUpdateStyleElement(notify),
+      this.styleManager.onDidRemoveStyleElement(notify),
+      this.onDidChangeActiveThemes(notify),
+    );
   }
 
   /**

@@ -1,12 +1,11 @@
 const path = require("path");
 const fs = require("fs");
 
-const { UI_VARIABLES, UI_VARIABLES_EXTENDED, SYNTAX_VARIABLES } = require("../src/theme-variables");
+const { THEME_VARIABLES, buildThemeVariablesStylesheet } = require("../src/theme-variables");
 const { resolveBundledPackageDir, scanBundledPackageNames } = require("../src/bundled-packages");
 
-// The theme variable contract exists in two places that must stay in sync:
-// the manifest in src/theme-variables.js and the CSS custom-property fallbacks
-// in static/variables/base-variables.css.
+// The public manifest owns defaults; the checked-in stylesheet is generated
+// from it so normal startup does not need development tooling.
 describe("the theme variable contract", () => {
   const repoRoot = path.join(__dirname, "..");
   const variablesDir = path.join(repoRoot, "static", "variables");
@@ -47,19 +46,148 @@ describe("the theme variable contract", () => {
 
   it("provides a CSS fallback in base-variables.css for every manifest variable", () => {
     const cssNames = cssCustomPropertyNames("base-variables.css");
-    const manifestNames = [...UI_VARIABLES, ...UI_VARIABLES_EXTENDED, ...SYNTAX_VARIABLES];
+    const manifestNames = THEME_VARIABLES.filter((variable) => variable.default !== null).map(
+      (variable) => variable.name,
+    );
     const missing = manifestNames.filter((name) => !cssNames.has(name));
     expect(missing).toEqual([]);
   });
 
-  it("contains no duplicate names within or across the manifest lists", () => {
-    const manifestNames = [...UI_VARIABLES, ...UI_VARIABLES_EXTENDED, ...SYNTAX_VARIABLES];
+  it("contains no duplicate public names", () => {
+    const manifestNames = THEME_VARIABLES.map((variable) => variable.name);
     const duplicates = manifestNames.filter((name, index) => manifestNames.indexOf(name) !== index);
     expect(duplicates).toEqual([]);
   });
 
-  it("exposes shared data-grid tokens as derived UI variables", () => {
-    expect(UI_VARIABLES_EXTENDED).toEqual(
+  it("generates the complete fallback stylesheet from the public manifest", () => {
+    const generated = fs.readFileSync(path.join(variablesDir, "base-variables.css"), "utf8");
+    expect(generated.replace(/\s/g, "")).toBe(buildThemeVariablesStylesheet().replace(/\s/g, ""));
+  });
+
+  it("publishes immutable typed definitions and identifies runtime ownership", () => {
+    const definitions = lumine.themes.getVariables();
+    expect(definitions).toBe(THEME_VARIABLES);
+    expect(Object.isFrozen(definitions)).toBe(true);
+    const supportedTypes = ["color", "length", "number", "font-family", "line-height", "boolean"];
+    for (const definition of definitions) {
+      expect(Object.isFrozen(definition)).toBe(true);
+      expect(supportedTypes).toContain(definition.type);
+      expect(["semantic", "component", "runtime"]).toContain(definition.role);
+      expect(["ui", "syntax", "editor"]).toContain(definition.owner);
+      expect(definition.description.length).toBeGreaterThan(0);
+      if (definition.role === "runtime") {
+        expect(definition.owner).toBe("editor");
+        expect(definition.scope).toBe("lumine-workspace");
+        expect(definition.default).toBeNull();
+      } else {
+        expect(definition.scope).toBe(":root");
+        expect(typeof definition.default).toBe("string");
+      }
+    }
+    expect(
+      definitions
+        .filter((definition) => definition.role === "runtime")
+        .map((definition) => definition.name),
+    ).toEqual(["editor-font-family", "editor-font-size", "editor-line-height"]);
+  });
+
+  it("coalesces cascade updates and cancels queued notifications on disposal", async () => {
+    const callback = jasmine.createSpy("variable change");
+    const subscription = lumine.themes.onDidChangeVariables(callback);
+    let first;
+    let second;
+    try {
+      first = lumine.styles.addStyleSheet(":root { --text-color: red; }");
+      second = lumine.styles.addStyleSheet(":root { --text-color: blue; }");
+      await Promise.resolve();
+      expect(callback).toHaveBeenCalledTimes(1);
+      first.dispose();
+      await Promise.resolve();
+      expect(callback).toHaveBeenCalledTimes(2);
+      second.dispose();
+      subscription.dispose();
+      await Promise.resolve();
+      expect(callback).toHaveBeenCalledTimes(2);
+    } finally {
+      subscription.dispose();
+      first?.dispose();
+      second?.dispose();
+    }
+  });
+
+  it("resolves every documented color and length to a usable CSS value", () => {
+    const sheet = lumine.styles.addStyleSheet(buildThemeVariablesStylesheet(), { priority: 2 });
+    const probe = document.createElement("span");
+    probe.style.cssText = "display:block;color:rgb(1,2,3);font-size:13px;";
+    jasmine.attachToDOM(probe);
+    try {
+      for (const definition of THEME_VARIABLES.filter((variable) => variable.default !== null)) {
+        if (definition.type === "color") {
+          probe.style.color = `var(--${definition.name}, rgb(1, 2, 3))`;
+          const resolved = getComputedStyle(probe).color;
+          expect(resolved).not.toBe("rgb(1, 2, 3)");
+          expect(CSS.supports("color", resolved)).toBe(true);
+          probe.style.color = "rgb(1, 2, 3)";
+        } else if (definition.type === "length") {
+          probe.style.width = `var(--${definition.name}, -1px)`;
+          expect(Number.parseFloat(getComputedStyle(probe).width)).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      probe.remove();
+      sheet.dispose();
+    }
+  });
+
+  it("uses the selected and diagnostic foreground tokens in base buttons", () => {
+    const sheet = lumine.styles.addStyleSheet(
+      `:root {
+      --button-text-color-selected: rgb(11, 22, 33);
+      --text-color-on-success: rgb(22, 33, 44);
+      --text-color-on-info: rgb(33, 44, 55);
+      --text-color-on-warning: rgb(44, 55, 66);
+      --text-color-on-error: rgb(55, 66, 77);
+      --accent-foreground-color: rgb(66, 77, 88);
+    }`,
+      { priority: 2 },
+    );
+    const container = document.createElement("div");
+    container.innerHTML =
+      '<button class="btn selected"></button>' +
+      ["success", "info", "warning", "error"]
+        .map((status) => `<button class="btn btn-${status}"></button>`)
+        .join("");
+    container.innerHTML += ["success", "info", "warning", "error", "primary"]
+      .map((status) => `<button class="btn btn-${status} selected active focus"></button>`)
+      .join("");
+    jasmine.attachToDOM(container);
+    try {
+      expect(
+        Array.from(container.children).map((button) => getComputedStyle(button).color),
+      ).toEqual([
+        "rgb(11, 22, 33)",
+        "rgb(22, 33, 44)",
+        "rgb(33, 44, 55)",
+        "rgb(44, 55, 66)",
+        "rgb(55, 66, 77)",
+        "rgb(22, 33, 44)",
+        "rgb(33, 44, 55)",
+        "rgb(44, 55, 66)",
+        "rgb(55, 66, 77)",
+        "rgb(66, 77, 88)",
+      ]);
+    } finally {
+      container.remove();
+      sheet.dispose();
+    }
+  });
+
+  it("exposes shared data-grid tokens as component variables", () => {
+    expect(
+      THEME_VARIABLES.filter((variable) => variable.role === "component").map(
+        (variable) => variable.name,
+      ),
+    ).toEqual(
       jasmine.arrayContaining([
         "data-grid-text-color",
         "data-grid-border-color",
@@ -72,7 +200,7 @@ describe("the theme variable contract", () => {
   });
 
   it("keeps package-owned variables out of the global theme contract", () => {
-    const manifestNames = [...UI_VARIABLES, ...UI_VARIABLES_EXTENDED, ...SYNTAX_VARIABLES];
+    const manifestNames = THEME_VARIABLES.map((variable) => variable.name);
     const cssNames = cssCustomPropertyNames("base-variables.css");
     const packagePrefixes = [
       "indent-guide-",
@@ -147,7 +275,7 @@ describe("the theme variable contract", () => {
     const redundantThemeFragments = [
       ".select-list .character-match",
       "--popover-list-padding",
-      "max-height: min(70vh, calc(var(--ui-line-height) * 24))",
+      "max-height: min(70vh, calc(var(--ui-row-height) * 24))",
       ".select-list .key-binding",
       ".select-list .primary-line",
     ];
@@ -164,7 +292,7 @@ describe("the theme variable contract", () => {
     expect(selectListSource).toContain("border-radius: 0");
     expect(selectListSource).toContain("background-color: var(--select-list-separator-color)");
     expect(selectListSource).toContain("--popover-list-padding");
-    expect(modalSource).toContain("max-height: min(70vh, calc(var(--ui-line-height) * 24))");
+    expect(modalSource).toContain("max-height: min(70vh, calc(var(--ui-row-height) * 24))");
     expect(modalSource).toContain(".select-list .key-binding");
     expect(modalSource).toContain(".select-list .primary-line");
 

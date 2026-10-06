@@ -1,6 +1,6 @@
 .badge {
   /* File-local: default .badge-size() padding, round(@font-size / 4) */
-  --badge-padding: round(var(--font-size) / 4, 1px);
+  --badge-padding: round(var(--ui-font-size) / 4, 1px);
 
   display: inline-block;
   line-height: 1;
@@ -17,8 +17,8 @@
 
   /* Size (.badge-size() inlined, default @size: @font-size) ---------------------- */
 
-  font-size: var(--font-size);
-  min-width: calc(var(--font-size) + var(--badge-padding) * 2);
+  font-size: var(--ui-font-size);
+  min-width: calc(var(--ui-font-size) + var(--badge-padding) * 2);
   padding: var(--badge-padding) round(var(--badge-padding) * 1.5, 1px);
 
   &:empty {
@@ -72,7 +72,7 @@
   /* Icon ---------------------- */
 
   &.icon {
-    font-size: round(var(--component-icon-size) * 0.8, 1px);
-    padding: var(--component-icon-padding) calc(var(--component-icon-padding) * 2);
+    font-size: round(var(--ui-icon-size) * 0.8, 1px);
+    padding: var(--ui-icon-spacing) calc(var(--ui-icon-spacing) * 2);
   }
 }

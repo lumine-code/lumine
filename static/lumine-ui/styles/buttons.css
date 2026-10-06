@@ -9,15 +9,15 @@
 .btn {
   display: inline-block;
   margin-bottom: 0; /* For input.btn */
-  height: calc(var(--component-line-height) + 2px);
-  padding: 0 var(--component-padding);
-  font-size: var(--font-size);
+  height: calc(var(--ui-control-height) + 2px);
+  padding: 0 var(--ui-spacing);
+  font-size: var(--ui-font-size);
   font-weight: normal;
-  line-height: var(--component-line-height);
+  line-height: var(--ui-control-height);
   text-align: center;
   vertical-align: middle;
   border: none;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   background-color: var(--button-background-color); /* @btn-default-bg */
   white-space: nowrap;
   cursor: default;
@@ -30,7 +30,7 @@
     &:focus,
     &.focus {
       /* .tab-focus() */
-      outline: 2px auto var(--accent-color);
+      outline: 2px auto var(--accent-indicator-color);
       outline-offset: -2px;
     }
   }
@@ -54,7 +54,7 @@
   &.selected:hover {
     /* we want the selected button to behave like the :hover button; it's on top of the other buttons. */
     z-index: 1;
-    color: var(--text-color-selected);
+    color: var(--button-text-color-selected);
     background-color: var(--button-background-color-selected);
   }
 
@@ -79,39 +79,40 @@
    (.button-variant() inlined for each modifier below) */
 
 /* Primary is the accent button — the one action a surface wants clicked. It is
-   painted from `--accent-bg-color` rather than the info colour so that a theme
+   painted from `--accent-background-color` rather than the info colour so that a theme
    setting an accent moves this button with it; the base value of that variable
    is the info colour, so a theme that sets neither is unchanged. */
 .btn-primary {
-  color: var(--accent-bg-text-color);
-  background-color: var(--accent-bg-color);
+  color: var(--accent-foreground-color);
+  background-color: var(--accent-background-color);
 
   &:focus,
   &.focus {
-    color: var(--accent-bg-text-color);
-    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
+    color: var(--accent-foreground-color);
+    background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
   &:hover {
-    color: var(--accent-bg-text-color);
-    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
+    color: var(--accent-foreground-color);
+    background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: var(--accent-bg-text-color);
-    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
+    color: var(--accent-foreground-color);
+    background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: var(--accent-bg-text-color);
-      background-color: hsl(from var(--accent-bg-color) h s calc(l - 17));
+      color: var(--accent-foreground-color);
+      background-color: hsl(from var(--accent-background-color) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     /* we want the selected button to behave like the :hover button; it's on top of the other buttons. */
     z-index: 1;
-    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
+    color: var(--accent-foreground-color);
+    background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
 
   &.disabled,
@@ -120,45 +121,46 @@
     &:hover,
     &:focus,
     &.focus {
-      background-color: var(--accent-bg-color);
+      background-color: var(--accent-background-color);
     }
   }
 
   .badge {
-    color: var(--accent-bg-color);
-    background-color: var(--accent-bg-text-color);
+    color: var(--accent-background-color);
+    background-color: var(--accent-foreground-color);
   }
 }
 
 /* Success appears as green */
 .btn-success {
-  color: #fff; /* @btn-success-color */
+  color: var(--text-color-on-success); /* @btn-success-color */
   background-color: var(--background-color-success); /* @btn-success-bg */
 
   &:focus,
   &.focus {
-    color: #fff;
+    color: var(--text-color-on-success);
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
   }
   &:hover {
-    color: #fff;
+    color: var(--text-color-on-success);
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: #fff;
+    color: var(--text-color-on-success);
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: #fff;
+      color: var(--text-color-on-success);
       background-color: hsl(from var(--background-color-success) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     z-index: 1;
+    color: var(--text-color-on-success);
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
   }
 
@@ -174,39 +176,40 @@
 
   .badge {
     color: var(--background-color-success);
-    background-color: #fff;
+    background-color: var(--text-color-on-success);
   }
 }
 
 /* Info appears as blue-green */
 .btn-info {
-  color: #fff; /* @btn-info-color */
+  color: var(--text-color-on-info); /* @btn-info-color */
   background-color: var(--background-color-info); /* @btn-info-bg */
 
   &:focus,
   &.focus {
-    color: #fff;
+    color: var(--text-color-on-info);
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
   }
   &:hover {
-    color: #fff;
+    color: var(--text-color-on-info);
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: #fff;
+    color: var(--text-color-on-info);
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: #fff;
+      color: var(--text-color-on-info);
       background-color: hsl(from var(--background-color-info) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     z-index: 1;
+    color: var(--text-color-on-info);
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
   }
 
@@ -222,39 +225,40 @@
 
   .badge {
     color: var(--background-color-info);
-    background-color: #fff;
+    background-color: var(--text-color-on-info);
   }
 }
 
 /* Warning appears as orange */
 .btn-warning {
-  color: #fff; /* @btn-warning-color */
+  color: var(--text-color-on-warning); /* @btn-warning-color */
   background-color: var(--background-color-warning); /* @btn-warning-bg */
 
   &:focus,
   &.focus {
-    color: #fff;
+    color: var(--text-color-on-warning);
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
   }
   &:hover {
-    color: #fff;
+    color: var(--text-color-on-warning);
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: #fff;
+    color: var(--text-color-on-warning);
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: #fff;
+      color: var(--text-color-on-warning);
       background-color: hsl(from var(--background-color-warning) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     z-index: 1;
+    color: var(--text-color-on-warning);
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
   }
 
@@ -270,39 +274,40 @@
 
   .badge {
     color: var(--background-color-warning);
-    background-color: #fff;
+    background-color: var(--text-color-on-warning);
   }
 }
 
 /* Danger and error appear as red */
 .btn-error {
-  color: #fff; /* @btn-error-color */
+  color: var(--text-color-on-error); /* @btn-error-color */
   background-color: var(--background-color-error); /* @btn-error-bg */
 
   &:focus,
   &.focus {
-    color: #fff;
+    color: var(--text-color-on-error);
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
   }
   &:hover {
-    color: #fff;
+    color: var(--text-color-on-error);
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: #fff;
+    color: var(--text-color-on-error);
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: #fff;
+      color: var(--text-color-on-error);
       background-color: hsl(from var(--background-color-error) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     z-index: 1;
+    color: var(--text-color-on-error);
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
   }
 
@@ -318,7 +323,7 @@
 
   .badge {
     color: var(--background-color-error);
-    background-color: #fff;
+    background-color: var(--text-color-on-error);
   }
 }
 
@@ -327,31 +332,31 @@
 
 .btn-xs,
 .btn-group-xs > .btn {
-  padding: calc(var(--component-padding) / 4) calc(var(--component-padding) / 2);
-  font-size: calc(var(--font-size) - 2px);
+  padding: calc(var(--ui-spacing) / 4) calc(var(--ui-spacing) / 2);
+  font-size: calc(var(--ui-font-size) - 2px);
   height: auto;
   line-height: 1.3em;
   &.icon:before {
-    font-size: calc(var(--font-size) - 2px);
+    font-size: calc(var(--ui-font-size) - 2px);
   }
 }
 .btn-sm,
 .btn-group-sm > .btn {
-  padding: calc(var(--component-padding) / 4) calc(var(--component-padding) / 2);
+  padding: calc(var(--ui-spacing) / 4) calc(var(--ui-spacing) / 2);
   height: auto;
   line-height: 1.3em;
   &.icon:before {
-    font-size: calc(var(--font-size) + 1px);
+    font-size: calc(var(--ui-font-size) + 1px);
   }
 }
 .btn-lg,
 .btn-group-lg > .btn {
-  font-size: calc(var(--font-size) + 2px);
-  padding: calc(var(--component-padding) - 2px) calc(var(--component-padding) + 2px);
+  font-size: calc(var(--ui-font-size) + 2px);
+  padding: calc(var(--ui-spacing) - 2px) calc(var(--ui-spacing) + 2px);
   height: auto;
   line-height: 1.3em;
   &.icon:before {
-    font-size: calc(var(--font-size) + 6px);
+    font-size: calc(var(--ui-font-size) + 6px);
   }
 }
 
@@ -360,7 +365,7 @@
 
 /* Make a button look and behave like a link */
 .btn-link {
-  color: var(--accent-only-text-color); /* @link-color */
+  color: var(--accent-link-color); /* @link-color */
   font-weight: normal;
   border-radius: 0;
   &,
@@ -373,7 +378,7 @@
   }
   &:hover,
   &:focus {
-    color: hsl(from var(--accent-only-text-color) h s calc(l - 15)); /* @link-hover-color */
+    color: hsl(from var(--accent-link-color) h s calc(l - 15)); /* @link-hover-color */
     text-decoration: underline; /* @link-hover-decoration */
     background-color: transparent;
   }
@@ -412,7 +417,7 @@ input[type="button"] {
 /* Icon buttons
    -------------------------------------------------- */
 
-/* The glyph is a fixed --component-icon-size box, but a button's label is not
+/* The glyph is a fixed --ui-icon-size box, but a button's label is not
    a fixed size: a settings card runs 14.4px, a dock toolbar 10.8px. text-bottom
    rests the box against the label's own content area, so how far it lands below
    the label's optical centre grows with the label — a single pixel constant
@@ -469,7 +474,7 @@ input[type="button"] {
     margin-left: 0;
   }
   > * {
-    margin-right: calc(var(--component-padding) / 2);
+    margin-right: calc(var(--ui-spacing) / 2);
   }
   > *:last-child {
     margin-right: 0;

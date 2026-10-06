@@ -57,7 +57,7 @@ lumine-panel.modal {
 
   .select-list ol.list-group,
   &.select-list ol.list-group {
-    max-height: min(70vh, calc(var(--ui-line-height) * 24));
+    max-height: min(70vh, calc(var(--ui-row-height) * 24));
     overflow: hidden auto;
     border: 1px solid var(--overlay-border-color);
 
@@ -67,7 +67,7 @@ lumine-panel.modal {
     }
 
     li {
-      line-height: var(--ui-line-height);
+      line-height: var(--ui-row-height);
 
       .icon::before {
         margin-left: 1px;
@@ -75,7 +75,7 @@ lumine-panel.modal {
 
       .icon.status {
         float: right;
-        margin-left: var(--ui-padding-icon);
+        margin-left: var(--ui-panel-icon-spacing);
 
         &::before {
           margin-left: 0;
@@ -91,8 +91,8 @@ lumine-panel.modal {
 
   .select-list .key-binding {
     margin-top: -1px;
-    margin-left: calc(var(--ui-padding) / 2);
-    margin-right: calc(var(--ui-padding) / -3 + 1px);
+    margin-left: calc(var(--ui-panel-padding) / 2);
+    margin-right: calc(var(--ui-panel-padding) / -3 + 1px);
   }
 
   /* The negative pull above is tuned for the command palette's row layout.

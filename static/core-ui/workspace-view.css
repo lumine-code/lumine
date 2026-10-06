@@ -10,7 +10,7 @@ lumine-workspace {
   position: relative;
   color: var(--text-color);
   background-color: var(--app-background-color);
-  font-family: var(--font-family);
+  font-family: var(--ui-font-family);
 
   lumine-workspace-axis {
     contain: size style; /* contain_except_layout_paint */

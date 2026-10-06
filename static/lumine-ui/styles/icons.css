@@ -1,5 +1,5 @@
 /* The icon geometry contract. Every icon occupies a fixed square of
- * --component-icon-size whose line-height equals its height, so ink centers in
+ * --ui-icon-size whose line-height equals its height, so ink centers in
  * the box's own content area regardless of the font's metrics. text-bottom
  * pins the box to the strut's content area, whose height (1.33em of the UI
  * font) matches the box, so the box centers in any line — tree rows, tabs,
@@ -9,10 +9,10 @@
  * line-height, heights, margins) and never restyle the ::before. */
 .icon::before {
   display: inline-block;
-  width: var(--component-icon-size);
-  height: var(--component-icon-size);
-  line-height: var(--component-icon-size);
-  font-size: var(--component-icon-size);
+  width: var(--ui-icon-size);
+  height: var(--ui-icon-size);
+  line-height: var(--ui-icon-size);
+  font-size: var(--ui-icon-size);
   text-align: center;
   vertical-align: text-bottom;
   /* A flex or grid container ignores vertical-align, and a box with a set
@@ -20,7 +20,7 @@
      Centring itself keeps the contract intact wherever a consumer lays its
      row out that way; in normal flow this is ignored. */
   align-self: center;
-  margin-right: var(--component-icon-padding);
+  margin-right: var(--ui-icon-spacing);
 }
 
 a.icon {

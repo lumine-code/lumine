@@ -44,10 +44,10 @@ input.input-toggle {
     -webkit-appearance: none;
     display: inline-block;
     position: relative;
-    width: var(--component-icon-size); /* @component-size */
-    height: var(--component-icon-size);
+    width: var(--ui-icon-size); /* @component-size */
+    height: var(--ui-icon-size);
     font-size: inherit;
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     background-color: var(--component-background-color);
     transition: background-color 0.16s cubic-bezier(0.5, 0.15, 0.2, 1);
 
@@ -55,18 +55,18 @@ input.input-toggle {
       outline: 0; /* TODO: Add it back */
     }
     &:active {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
     }
 
     &:before,
     &:after {
       content: "";
       position: absolute;
-      top: calc(var(--component-icon-size) * 0.75);
-      left: calc(var(--component-icon-size) * 0.4);
+      top: calc(var(--ui-icon-size) * 0.75);
+      left: calc(var(--ui-icon-size) * 0.4);
       height: 2px;
       border-radius: 1px;
-      background-color: var(--accent-text-color);
+      background-color: var(--accent-indicator-text-color);
       transform-origin: 0 0;
       opacity: 0;
       transition:
@@ -78,18 +78,18 @@ input.input-toggle {
        pixel off — and so its top-right tip clears a rounded corner rather than
        crowding it. */
     &:before {
-      width: calc(var(--component-icon-size) * 0.3);
+      width: calc(var(--ui-icon-size) * 0.3);
       transform: translate3d(0, 0, 0) rotate(225deg) scale(0);
     }
     &:after {
-      width: calc(var(--component-icon-size) * 0.6);
+      width: calc(var(--ui-icon-size) * 0.6);
       margin: -1px;
       transform: translate3d(0, 0, 0) rotate(-45deg) scale(0);
       transition-delay: 0.05s;
     }
 
     &:checked {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
       &:active {
         background-color: var(--component-background-color);
       }
@@ -106,15 +106,15 @@ input.input-toggle {
     }
 
     &:indeterminate {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
       &:active {
         background-color: var(--component-background-color);
       }
       &:after {
         opacity: 1;
         transform: translate3d(
-            calc(var(--component-icon-size) * -0.14),
-            calc(var(--component-icon-size) * -0.25),
+            calc(var(--ui-icon-size) * -0.14),
+            calc(var(--ui-icon-size) * -0.25),
             0
           )
           rotate(0deg) scale(1);
@@ -135,8 +135,8 @@ input.input-toggle {
   @container style(--use-custom-controls: true) {
     -webkit-appearance: none;
     padding: 0;
-    width: calc(var(--component-icon-size) * 2.5);
-    height: calc(var(--component-icon-size) * 2.5);
+    width: calc(var(--ui-icon-size) * 2.5);
+    height: calc(var(--ui-icon-size) * 2.5);
     border-radius: 50%;
     border: 2px solid var(--input-border-color);
     background-color: var(--input-background-color);
@@ -181,7 +181,7 @@ input.input-toggle {
     /* .input-field-mixin() */
     padding: 0.25em 0.4em;
     line-height: 1.5; /* line-height + padding = @text-component-height */
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     border: 1px solid var(--input-border-color);
     background-color: var(--input-background-color);
     &::-webkit-input-placeholder {
@@ -229,8 +229,8 @@ input.input-toggle {
     -webkit-appearance: none;
     display: inline-block;
     position: relative;
-    width: var(--component-icon-size); /* @component-size */
-    height: var(--component-icon-size);
+    width: var(--ui-icon-size); /* @component-size */
+    height: var(--ui-icon-size);
     font-size: inherit;
     border-radius: 50%;
     background-color: var(--component-background-color);
@@ -242,9 +242,9 @@ input.input-toggle {
       width: inherit;
       height: inherit;
       border-radius: inherit;
-      border: calc(var(--component-icon-size) / 3) solid transparent;
+      border: calc(var(--ui-icon-size) / 3) solid transparent;
       background-clip: content-box;
-      background-color: var(--accent-text-color);
+      background-color: var(--accent-indicator-text-color);
       transform: scale(0);
       transition: transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
     }
@@ -252,10 +252,10 @@ input.input-toggle {
       outline: none;
     }
     &:active {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
     }
     &:checked {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
       &:before {
         transform: scale(1);
       }
@@ -271,16 +271,16 @@ input.input-toggle {
 .input-range {
   @container style(--use-custom-controls: true) {
     -webkit-appearance: none;
-    margin: var(--component-padding) 0;
+    margin: var(--ui-spacing) 0;
     height: 4px;
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     background-color: var(--component-background-color);
     &::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: var(--component-icon-size); /* @component-size */
-      height: var(--component-icon-size);
+      width: var(--ui-icon-size); /* @component-size */
+      height: var(--ui-icon-size);
       border-radius: 50%;
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
       transition: transform 0.16s;
       &:active {
         transition-duration: 0s;
@@ -307,7 +307,7 @@ input.input-toggle {
     /* .input-field-mixin() */
     padding: 0.25em 0.4em;
     line-height: 1.5; /* line-height + padding = @text-component-height */
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     border: 1px solid var(--input-border-color);
     background-color: var(--input-background-color);
     &::-webkit-input-placeholder {
@@ -330,7 +330,7 @@ input.input-toggle {
 
   @container style(--use-custom-controls: true) {
     height: calc(2em + 2px); /* @text-component-height + 2px? Magic! */
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     border: 1px solid var(--button-border-color);
     background-color: var(--button-background-color);
   }
@@ -350,7 +350,7 @@ input.input-toggle {
     /* .input-field-mixin() */
     padding: 0.25em 0.4em;
     line-height: 1.5; /* line-height + padding = @text-component-height */
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     border: 1px solid var(--input-border-color);
     background-color: var(--input-background-color);
     &::-webkit-input-placeholder {
@@ -377,7 +377,7 @@ input.input-toggle {
     /* .input-field-mixin() */
     padding: 0.25em 0.4em;
     line-height: 1.5; /* line-height + padding = @text-component-height */
-    border-radius: var(--component-border-radius);
+    border-radius: var(--ui-border-radius);
     border: 1px solid var(--input-border-color);
     background-color: var(--input-background-color);
     &::-webkit-input-placeholder {
@@ -401,8 +401,8 @@ input.input-toggle {
     display: inline-block;
     position: relative;
     font-size: inherit;
-    width: calc(var(--component-icon-size) * 2); /* @component-size * 2 */
-    height: var(--component-icon-size);
+    width: calc(var(--ui-icon-size) * 2); /* @component-size * 2 */
+    height: var(--ui-icon-size);
     vertical-align: middle;
     border-radius: 2em;
     background-color: var(--component-background-color);
@@ -412,19 +412,19 @@ input.input-toggle {
       outline: 0;
     }
     &:checked {
-      background-color: var(--accent-color);
+      background-color: var(--accent-indicator-color);
     }
 
     /* Thumb */
     &:before {
       content: "";
       position: absolute;
-      width: var(--component-icon-size);
-      height: var(--component-icon-size);
+      width: var(--ui-icon-size);
+      height: var(--ui-icon-size);
       border-radius: inherit;
-      border: calc(var(--component-icon-size) / 4) solid transparent;
+      border: calc(var(--ui-icon-size) / 4) solid transparent;
       background-clip: content-box;
-      background-color: var(--accent-text-color);
+      background-color: var(--accent-indicator-text-color);
       transition: transform 0.2s cubic-bezier(0.5, 0.15, 0.2, 1);
     }
     &:active:before {
@@ -453,7 +453,7 @@ input.input-toggle {
 
 lumine-text-editor:is([mini], [input]) {
   border: 1px solid var(--input-border-color);
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
 }
 
 /* A field is not a document, so it does not mark which line the caret is on.
@@ -467,17 +467,17 @@ lumine-text-editor:is([mini], [input]) .line.cursor-line.cursor-line {
 }
 
 lumine-text-editor[mini] {
-  font-size: var(--ui-input-size);
-  line-height: var(--ui-line-height);
+  font-size: var(--ui-input-font-size);
+  line-height: var(--ui-row-height);
   /* One row plus the borders this rule's sibling draws. The old theme rule
      carried a five-row clamp, but it reached minis through
      `lumine-panel-container lumine-text-editor`, which the core [mini] rule
      always outranked — minis have rendered single-line all along, and a
      taller mini overflows the workspace and drags every fixed overlay with
      the scroll. */
-  height: calc(var(--ui-line-height) + 2px);
-  max-height: calc(var(--ui-line-height) + 2px);
-  padding-left: calc(var(--ui-padding) / 3);
+  height: calc(var(--ui-row-height) + 2px);
+  max-height: calc(var(--ui-row-height) + 2px);
+  padding-left: calc(var(--ui-panel-padding) / 3);
   color: var(--text-color-highlight);
   background-color: var(--input-background-color);
 }
@@ -487,5 +487,5 @@ lumine-text-editor[mini] {
    stays the widget's own business — a shared max-height would clamp the
    boxes that are meant to grow with their content. */
 lumine-text-editor[input]:where(:not([mini])) {
-  padding: calc(var(--component-padding) / 2);
+  padding: calc(var(--ui-spacing) / 2);
 }

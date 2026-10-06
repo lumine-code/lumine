@@ -6,7 +6,7 @@
 /* File-local values derived from the Bootstrap-flavored variables.less */
 :root {
   /* floor(@font-size-base * @line-height-base) */
-  --line-height-computed: round(down, var(--font-size) * 1.428571429, 1px);
+  --line-height-computed: round(down, var(--ui-font-size) * 1.428571429, 1px);
 }
 
 /* Remove focus style, be sure to add them back where useful */

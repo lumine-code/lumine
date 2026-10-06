@@ -6,9 +6,9 @@
 /* File-local values derived from the Bootstrap-flavored variables.less */
 :root {
   /* floor(@font-size-base * @line-height-base) */
-  --line-height-computed: round(down, var(--font-size) * 1.428571429, 1px);
+  --line-height-computed: round(down, var(--ui-font-size) * 1.428571429, 1px);
   /* ceil(@font-size-base * 0.85) */
-  --font-size-small: round(up, var(--font-size) * 0.85, 1px);
+  --font-size-small: round(up, var(--ui-font-size) * 0.85, 1px);
 }
 
 /* Headings
@@ -70,27 +70,27 @@ h6,
 
 h1,
 .h1 {
-  font-size: round(down, var(--font-size) * 2.6, 1px); /* @font-size-h1, ~36px */
+  font-size: round(down, var(--ui-font-size) * 2.6, 1px); /* @font-size-h1, ~36px */
 }
 h2,
 .h2 {
-  font-size: round(down, var(--font-size) * 2.15, 1px); /* @font-size-h2, ~30px */
+  font-size: round(down, var(--ui-font-size) * 2.15, 1px); /* @font-size-h2, ~30px */
 }
 h3,
 .h3 {
-  font-size: round(up, var(--font-size) * 1.7, 1px); /* @font-size-h3, ~24px */
+  font-size: round(up, var(--ui-font-size) * 1.7, 1px); /* @font-size-h3, ~24px */
 }
 h4,
 .h4 {
-  font-size: round(up, var(--font-size) * 1.25, 1px); /* @font-size-h4, ~18px */
+  font-size: round(up, var(--ui-font-size) * 1.25, 1px); /* @font-size-h4, ~18px */
 }
 h5,
 .h5 {
-  font-size: var(--font-size); /* @font-size-h5 */
+  font-size: var(--ui-font-size); /* @font-size-h5 */
 }
 h6,
 .h6 {
-  font-size: round(up, var(--font-size) * 0.85, 1px); /* @font-size-h6, ~12px */
+  font-size: round(up, var(--ui-font-size) * 0.85, 1px); /* @font-size-h6, ~12px */
 }
 
 /* Body text
@@ -109,7 +109,7 @@ small,
 .small {
   /* floor((100% * @font-size-small / @font-size-base)) — px/px division needs
      CSS typed arithmetic (Chromium 140+) */
-  font-size: round(down, 100% * (var(--font-size-small) / var(--font-size)), 1%);
+  font-size: round(down, 100% * (var(--font-size-small) / var(--ui-font-size)), 1%);
 }
 
 mark,
@@ -158,30 +158,30 @@ mark,
 /* Match renderers across lists, trees, and suggestions share one highlight.
    Consumers may add layout-specific decoration without redefining its color. */
 .character-match {
-  color: var(--accent-only-text-color, var(--text-color-highlight));
+  color: var(--accent-link-color, var(--text-color-highlight));
 }
 
 /* Primary is the theme-owned accent-as-text colour. Keep it separate from the
    informational severity even when a theme gives both the same base hue. */
 .text-primary {
-  color: var(--accent-only-text-color);
+  color: var(--accent-link-color);
   a&:hover,
   a&:focus {
-    color: hsl(from var(--accent-only-text-color) h s calc(l - 10));
+    color: hsl(from var(--accent-link-color) h s calc(l - 10));
   }
 
   code {
-    color: var(--accent-only-text-color);
-    background: rgb(from var(--accent-color) r g b / calc(alpha - 0.8));
+    color: var(--accent-link-color);
+    background: rgb(from var(--accent-indicator-color) r g b / calc(alpha - 0.8));
   }
 
   a,
   a code {
     text-decoration: underline;
-    color: hsl(from var(--accent-only-text-color) h s calc(l - 10));
+    color: hsl(from var(--accent-link-color) h s calc(l - 10));
 
     &:hover {
-      color: hsl(from var(--accent-only-text-color) h s calc(l - 15));
+      color: hsl(from var(--accent-link-color) h s calc(l - 15));
     }
   }
 }
@@ -287,11 +287,11 @@ mark,
 .bg-primary {
   /* Given the contrast here, this is the only class to have its color inverted
      automatically. */
-  color: var(--accent-bg-text-color);
-  background-color: var(--accent-bg-color); /* @brand-primary */
+  color: var(--accent-foreground-color);
+  background-color: var(--accent-background-color); /* @brand-primary */
   a&:hover,
   a&:focus {
-    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
+    background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
 }
 .bg-success {
@@ -329,7 +329,7 @@ mark,
 .highlight {
   /* .highlight() */
   font-weight: bold;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   color: var(--text-color-highlight);
   background-color: var(--background-color-highlight);
 }
@@ -337,7 +337,7 @@ mark,
 /* (.highlight-color() inlined for each modifier) */
 .highlight-info {
   font-weight: bold;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   color: #fff;
   background-color: rgb(
     from var(--background-color-info) r g b / calc(alpha - 0.5)
@@ -345,19 +345,19 @@ mark,
 }
 .highlight-warning {
   font-weight: bold;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   color: #fff;
   background-color: rgb(from var(--background-color-warning) r g b / calc(alpha - 0.5));
 }
 .highlight-error {
   font-weight: bold;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   color: #fff;
   background-color: rgb(from var(--background-color-error) r g b / calc(alpha - 0.5));
 }
 .highlight-success {
   font-weight: bold;
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
   color: #fff;
   background-color: rgb(from var(--background-color-success) r g b / calc(alpha - 0.5));
 }
@@ -407,7 +407,7 @@ abbr[data-original-title] {
 blockquote {
   padding: calc(var(--line-height-computed) / 2) var(--line-height-computed);
   margin: 0 0 var(--line-height-computed);
-  font-size: calc(var(--font-size) * 1.25); /* @blockquote-font-size */
+  font-size: calc(var(--ui-font-size) * 1.25); /* @blockquote-font-size */
   border-left: 5px solid #eee; /* @blockquote-border-color: @gray-lighter */
 
   p,

@@ -1,8 +1,8 @@
 /* Rendering for the icon descriptors that are not glyph-font classes.
  *
  * Every variant has to occupy the same box a font glyph would: list layouts in
- * lumine-ui compute their row padding as --component-icon-size plus
- * --component-icon-padding and assume the icon sits in a 16px ::before. An
+ * lumine-ui compute their row padding as --ui-icon-size plus
+ * --ui-icon-spacing and assume the icon sits in a 16px ::before. An
  * icon drawn any other way drifts the indentation of every row around it.
  *
  * These rules are deliberately unscoped. Scoping them to .tree-view and
@@ -12,8 +12,8 @@
 .icon-image::before {
   content: "";
   display: inline-block;
-  width: var(--component-icon-size);
-  height: var(--component-icon-size);
+  width: var(--ui-icon-size);
+  height: var(--ui-icon-size);
   background-image: var(--icon-image);
   background-position: center;
   background-repeat: no-repeat;
@@ -27,9 +27,9 @@
 .icon-svg > .icon-glyph,
 .icon-letter > .icon-letter-glyph {
   display: inline-block;
-  width: var(--component-icon-size);
-  height: var(--component-icon-size);
-  margin-right: var(--component-icon-padding);
+  width: var(--ui-icon-size);
+  height: var(--ui-icon-size);
+  margin-right: var(--ui-icon-spacing);
   vertical-align: text-bottom;
 }
 
@@ -38,8 +38,8 @@
 }
 
 .icon-letter > .icon-letter-glyph {
-  font-size: calc(var(--component-icon-size) * 0.75);
-  line-height: var(--component-icon-size);
+  font-size: calc(var(--ui-icon-size) * 0.75);
+  line-height: var(--ui-icon-size);
   text-align: center;
   text-transform: uppercase;
 }

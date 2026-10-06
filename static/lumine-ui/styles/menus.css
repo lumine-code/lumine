@@ -1,6 +1,6 @@
 :root {
-  --menu-font-family: var(--font-family);
-  --menu-font-size: var(--font-size);
+  --menu-font-family: var(--ui-font-family);
+  --menu-font-size: var(--ui-font-size);
   --menu-item-height: 28px;
   --menu-item-padding: 14px;
   --menu-item-margin: 3px;

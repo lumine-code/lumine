@@ -14,8 +14,8 @@
   position: absolute;
   z-index: 1070; /* @tooltip-zindex */
   display: block;
-  font-family: var(--font-family);
-  font-size: var(--font-size);
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size);
   opacity: 0;
 
   &.in {
@@ -59,7 +59,7 @@
   color: var(--tooltip-text-color); /* @tooltip-color */
   text-align: center;
   background-color: var(--tooltip-background-color); /* @tooltip-bg */
-  border-radius: var(--component-border-radius);
+  border-radius: var(--ui-border-radius);
 }
 
 .tooltip-inner:has(.tooltip-composite) {
