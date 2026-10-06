@@ -4,6 +4,7 @@ const path = require("path");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
 const RepositoryOperationQueue = require("./repository-operation-queue");
+const WorkspaceOperationQueue = require("./workspace-operation-queue");
 const { isRepositoryUnavailableError } = require("./git-error");
 const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
@@ -316,8 +317,6 @@ module.exports = class RepositoryRegistry {
     this.routingDirectoryOwners = new Map();
     this.gitDirectoryOwners = new Map();
     this.operationProviders = [];
-    this.workspaceOperationTails = new Map();
-    this.pendingWorkspaceOperations = new Map();
     this.bufferOwners = new Map();
     this.rootPaths = [];
     this.scanGeneration = 0;
@@ -338,6 +337,15 @@ module.exports = class RepositoryRegistry {
     this.nextRescanId = 1;
     this.destroyed = false;
     this.didNotifyRepositoryLimit = false;
+    this.workspaceOperationQueue = new WorkspaceOperationQueue({
+      keyForPath: normalizePath,
+      nextId: () => this.nextOperationId++,
+      snapshot: (operation) => this.operationSnapshot(operation),
+      emit: (event, operation) => {
+        if (!this.destroyed) this.emitter.emit(event, operation);
+      },
+      execute: (name, args, operation) => this.executeWorkspaceOperation(name, args, operation),
+    });
 
     if (this.config?.onDidChange) {
       this.subscriptions.add(
@@ -1591,11 +1599,7 @@ module.exports = class RepositoryRegistry {
       : Array.from(this.entriesById.values());
     const operations = entries.flatMap((entry) => entry.operationQueue.getPendingOperations());
     if (!repository) {
-      operations.push(
-        ...Array.from(this.pendingWorkspaceOperations.values(), (operation) =>
-          this.operationSnapshot(operation),
-        ),
-      );
+      operations.push(...this.workspaceOperationQueue.getPendingOperations());
     }
     return Object.freeze(operations);
   }
@@ -1721,7 +1725,9 @@ module.exports = class RepositoryRegistry {
   }
 
   async registerCreatedRepository(directoryPath, operationName) {
+    this.assertWorkspaceOperationAvailable();
     const registration = await this.add(directoryPath);
+    this.assertWorkspaceOperationAvailable();
     if (registration) return registration.repository;
 
     const error = new Error(
@@ -1734,73 +1740,39 @@ module.exports = class RepositoryRegistry {
   }
 
   performWorkspaceOperation(operationName, workingDirectory, args) {
+    try {
+      this.assertWorkspaceOperationAvailable();
+      return this.workspaceOperationQueue.enqueue(operationName, workingDirectory, args);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  assertWorkspaceOperationAvailable() {
     if (this.destroyed) {
-      return Promise.reject(new Error("Cannot run an operation on a destroyed RepositoryRegistry"));
+      throw new Error("Cannot run an operation on a destroyed RepositoryRegistry");
     }
-    const queueKey = normalizePath(workingDirectory);
-    const operation = {
-      id: this.nextOperationId++,
-      repository: null,
-      workingDirectory,
-      name: operationName,
-      status: "queued",
-      queuedAt: Date.now(),
-      startedAt: null,
-    };
-    this.pendingWorkspaceOperations.set(operation.id, operation);
-    if (!this.destroyed) {
-      this.emitter.emit("did-queue-operation", this.operationSnapshot(operation));
+  }
+
+  async executeWorkspaceOperation(operationName, args, operation) {
+    this.assertWorkspaceOperationAvailable();
+    const provider = this.findWorkspaceOperationProvider(operationName);
+    this.assertWorkspaceOperationAvailable();
+    if (!provider) {
+      throw Object.assign(
+        new Error(`No provider implements repository operation: ${operationName}`),
+        { code: "ERR_REPOSITORY_OPERATION_UNAVAILABLE", operation: operationName },
+      );
     }
-
-    const execute = async () => {
-      operation.status = "running";
-      operation.startedAt = Date.now();
-      if (!this.destroyed) {
-        this.emitter.emit("did-start-operation", this.operationSnapshot(operation));
-      }
-
-      let operationError = null;
-      try {
-        const provider = this.findWorkspaceOperationProvider(operationName);
-        if (!provider) {
-          const error = new Error(`No provider implements repository operation: ${operationName}`);
-          error.code = "ERR_REPOSITORY_OPERATION_UNAVAILABLE";
-          error.operation = operationName;
-          throw error;
-        }
-        const methodName =
-          operationName === "initialize" ? "initializeRepository" : "cloneRepository";
-        await provider[methodName](...args);
-        return await this.registerCreatedRepository(workingDirectory, operationName);
-      } catch (error) {
-        operationError = error;
-        throw error;
-      } finally {
-        this.pendingWorkspaceOperations.delete(operation.id);
-        if (!this.destroyed) {
-          this.emitter.emit(
-            "did-finish-operation",
-            Object.freeze({
-              ...this.operationSnapshot(operation),
-              status: operationError ? "failed" : "succeeded",
-              finishedAt: Date.now(),
-              error: operationError,
-            }),
-          );
-        }
-      }
-    };
-
-    const previous = this.workspaceOperationTails.get(queueKey) || Promise.resolve();
-    const result = previous.then(execute);
-    const tail = result.catch(() => {});
-    this.workspaceOperationTails.set(queueKey, tail);
-    tail.then(() => {
-      if (this.workspaceOperationTails.get(queueKey) === tail) {
-        this.workspaceOperationTails.delete(queueKey);
-      }
-    });
-    return result;
+    const methodName = operationName === "initialize" ? "initializeRepository" : "cloneRepository";
+    await provider[methodName](...args);
+    this.assertWorkspaceOperationAvailable();
+    const repository = await this.registerCreatedRepository(
+      operation.workingDirectory,
+      operationName,
+    );
+    this.assertWorkspaceOperationAvailable();
+    return repository;
   }
 
   findWorkspaceOperationProvider(operationName) {
@@ -2132,13 +2104,24 @@ module.exports = class RepositoryRegistry {
    * @param {Object} [options] - Registration options.
    * @param {Boolean} [options.persist=true] - Remember the repository across
    *   window reloads. Pass `false` to keep it for this session only.
-   * @returns {Promise} that resolves to an `Object`, or to `null` when the path is not in a repository.
+   * @returns {Promise} that resolves to an `Object`, or to `null` when no live
+   *   repository remains registered after discovery.
    */
   async add(filePath, { persist = true } = {}) {
     const repository = await this.resolveForPath(filePath);
     if (!repository) return null;
 
     const entry = this.entryByRepository.get(repository);
+    // Discovery observers can remove the entry before this await resumes.
+    // Acquire ownership only from the generation that is still registered.
+    if (
+      this.destroyed ||
+      !entry ||
+      entry.removing ||
+      this.entriesById.get(entry.id) !== entry ||
+      repository.isDestroyed?.()
+    )
+      return null;
     const token = Symbol("manual");
     if (persist) entry.manualOwners.add(token);
     else entry.pins.add(token);

@@ -1,5 +1,6 @@
-// Serializes writes to one repository. Registry-owned callbacks still choose
-// providers, execute Git, refresh snapshots, and retain the repository itself.
+// Serializes operations for one repository or workspace destination.
+// Registry callbacks own provider selection, Git execution, cache refresh and
+// any repository retention needed by the operation.
 module.exports = class RepositoryOperationQueue {
   #repository;
   #nextId;
@@ -9,8 +10,9 @@ module.exports = class RepositoryOperationQueue {
   #snapshot;
   #tail = Promise.resolve();
   #pending = new Map();
+  #outstanding = 0;
 
-  constructor({ repository, nextId, acquire, execute, emit, snapshot }) {
+  constructor({ repository, nextId, acquire = () => {}, execute, emit, snapshot }) {
     this.#repository = repository;
     this.#nextId = nextId;
     this.#acquire = acquire;
@@ -25,7 +27,11 @@ module.exports = class RepositoryOperationQueue {
     );
   }
 
-  enqueue(name, args = []) {
+  isIdle() {
+    return this.#outstanding === 0;
+  }
+
+  enqueue(name, args = [], { workingDirectory } = {}) {
     if (typeof name !== "string" || name.length === 0) {
       return Promise.reject(new TypeError("Repository operation name must be a non-empty string"));
     }
@@ -35,6 +41,7 @@ module.exports = class RepositoryOperationQueue {
       operation = {
         id: this.#nextId(),
         repository: this.#repository,
+        workingDirectory,
         name,
         status: "queued",
         queuedAt: Date.now(),
@@ -56,6 +63,7 @@ module.exports = class RepositoryOperationQueue {
     // Its caller can fail promptly, but successors must still wait for every
     // predecessor even when this slot never reaches execution.
     this.#tail = previous.then(() => completion);
+    this.#outstanding++;
     this.#pending.set(operation.id, operation);
     const settle = { release, resolveResult, rejectResult, completeTurn };
 
@@ -115,6 +123,7 @@ module.exports = class RepositoryOperationQueue {
     } catch (error) {
       failures.push(error);
     } finally {
+      this.#outstanding--;
       settle.completeTurn();
     }
 

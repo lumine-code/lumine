@@ -89,6 +89,8 @@ Writes to one repository run sequentially, while writes to different repositorie
 
 Observer exceptions reject the affected operation without leaving pending state or blocking later writes. A finish observer or cleanup can fail after a write has already completed; callers must distinguish that outcome before retrying. A primary failure remains unchanged when cleanup succeeds. Additional completion failures are combined in an `AggregateError`, with the primary failure first and as its `cause`.
 
+`initialize` and `clone` share a queue for each normalized destination path, so they cannot write to that destination simultaneously. Different destinations can run in parallel. Their pending state and lifecycle events retain the original destination spelling and a `null` repository; operation IDs share the same sequence as per-repository writes. Provider selection happens at execution time, and observer failures have the same cleanup and error-preservation behavior as per-repository operations.
+
 After a successful per-repository operation the registry refreshes the repository's read snapshots. The implementation right-sizes that refresh by declaring `getOperationRefreshHint(name, args)`: `"none"` skips it (object-database or unrelated-config writes), `"status"` refreshes the status snapshot, `"refs"` the refs snapshot, `"both"` both. The status refresh is awaited — a `"status"`/`"both"` operation resolves with a fresh status snapshot — while the refs refresh always runs detached, so code that needs post-operation refs must subscribe to `onDidChangeRefsSnapshot` rather than read synchronously after the await. A missing, unknown, or throwing hint refreshes both.
 
 The worktree operations (`worktreeAdd`, `worktreeRemove`, `worktreeMove`, `worktreeLock`, `worktreeUnlock`, `worktreePrune`) are the clearest case for `"refs"`: they act on a checkout other than the one the repository represents, so its index and working tree cannot change, while the worktree list the refs snapshot carries always can.
@@ -102,6 +104,8 @@ Core returns a `Disposable` that removes the provider **and** disposes every per
 An implementation used by an active operation remains alive until its write and required status refresh settle, including when the provider or registry is removed. Deferred disposal runs once after the last active operation. An implementation returned by a factory whose registration disappeared during creation is disposed immediately and never selected for work.
 
 If an implementation's destructor throws, teardown still attempts the remaining cleanup and change notifications before reporting the error. A single failure is rethrown unchanged; multiple failures become an `AggregateError` with the first failure as its `cause`.
+
+Destroying the registry prevents queued creation operations from starting. When an active provider completes successfully after shutdown, creation rejects with an error saying that the registry has been destroyed and skips subsequent discovery and registration. The same error is returned when discovery finishes after shutdown. Provider and discovery rejections preserve their original failure. Completed Git writes remain on disk.
 
 Adding a provider to a destroyed registry throws rather than failing quietly.
 

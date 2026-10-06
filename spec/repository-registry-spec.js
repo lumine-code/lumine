@@ -1589,6 +1589,303 @@ describe("RepositoryRegistry", () => {
     expect(registry.getForPath(path.join(destinationPath, "README.md"))).toBe(repository);
   });
 
+  describe("workspace operation queues", () => {
+    let destination, created, initialize, clone, provider;
+
+    const deferred = () => {
+      let resolve, reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      return { promise, resolve, reject };
+    };
+
+    beforeEach(() => {
+      destination = path.join(temp.mkdirSync("queued-workspace-operations"), "repository");
+      created = { created: true };
+      spyOn(registry, "registerCreatedRepository").and.resolveTo(created);
+      initialize = jasmine.createSpy("initialize provider").and.resolveTo();
+      clone = jasmine.createSpy("clone provider").and.resolveTo();
+      provider = registry.addOperationProvider({
+        initializeRepository: initialize,
+        cloneRepository: clone,
+      });
+    });
+
+    for (const stage of ["Queue", "Start", "Finish"]) {
+      it(`cleans up a throwing workspace ${stage.toLowerCase()} observer and recovers on the same path`, async () => {
+        const failure = Object.freeze(new Error(`${stage} observer failed`));
+        const finished = [];
+        registry.onDidFinishOperation((operation) => {
+          finished.push({ operation, pending: registry.getPendingOperations() });
+        });
+        const subscription = registry[`onDid${stage}Operation`](() => {
+          subscription.dispose();
+          throw failure;
+        });
+
+        expect(await registry.initialize(destination).catch((error) => error)).toBe(failure);
+
+        expect(registry.getPendingOperations()).toEqual([]);
+        expect(initialize.calls.count()).toBe(stage === "Finish" ? 1 : 0);
+        expect(registry.registerCreatedRepository.calls.count()).toBe(stage === "Finish" ? 1 : 0);
+        expect(finished.length).toBe(1);
+        expect(finished[0].operation.repository).toBeNull();
+        expect(finished[0].operation.workingDirectory).toBe(destination);
+        expect(finished[0].operation.status).toBe(stage === "Finish" ? "succeeded" : "failed");
+        expect(finished[0].operation.error).toBe(stage === "Finish" ? null : failure);
+        expect(finished[0].pending).toEqual([]);
+        expect(await registry.clone("remote", destination)).toBe(created);
+        expect(clone.calls.count()).toBe(1);
+        expect(registry.getPendingOperations()).toEqual([]);
+      });
+    }
+
+    it("keeps reentrant initialize and clone calls at aliased destinations in FIFO order", async () => {
+      const alias = `${destination}${path.sep}child${path.sep}..`;
+      const firstWrite = deferred();
+      initialize.and.callFake(() => firstWrite.promise);
+      let cloning;
+      registry.onDidQueueOperation((operation) => {
+        if (operation.name === "initialize") cloning = registry.clone("remote", alias);
+      });
+      const initializing = registry.initialize(destination);
+      await flushMicrotasks();
+
+      expect(initialize.calls.count()).toBe(1);
+      expect(clone).not.toHaveBeenCalled();
+      firstWrite.resolve();
+      expect(await initializing).toBe(created);
+      expect(await cloning).toBe(created);
+      expect(clone.calls.mostRecent().args).toEqual(["remote", alias, undefined]);
+      expect(registry.registerCreatedRepository.calls.allArgs()).toEqual([
+        [destination, "initialize"],
+        [alias, "clone"],
+      ]);
+    });
+
+    it("does not let a failed queued slot release a path queue or overtake an active initialize", async () => {
+      const firstWrite = deferred();
+      initialize.and.callFake(() => firstWrite.promise);
+      const initializing = registry.initialize(destination);
+      await flushMicrotasks();
+      const failure = new Error("Queued workspace observer failed");
+      const subscription = registry.onDidQueueOperation(() => {
+        subscription.dispose();
+        throw failure;
+      });
+      let rejected = false;
+      const failed = registry.clone("failed", destination).catch((error) => {
+        rejected = true;
+        return error;
+      });
+      await flushMicrotasks();
+      const successor = registry.clone("successor", destination);
+      await flushMicrotasks();
+
+      expect(rejected).toBe(true);
+      expect(clone).not.toHaveBeenCalled();
+      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      firstWrite.resolve();
+      expect(await failed).toBe(failure);
+      expect(await initializing).toBe(created);
+      expect(await successor).toBe(created);
+      expect(clone.calls.count()).toBe(1);
+      expect(clone.calls.mostRecent().args[0]).toBe("successor");
+    });
+
+    it("runs repository creation at different destinations in parallel", async () => {
+      const writes = deferred();
+      initialize.and.callFake(() => writes.promise);
+      clone.and.callFake(() => writes.promise);
+      const other = path.join(temp.mkdirSync("parallel-workspace-operation"), "repository");
+      const first = registry.initialize(destination);
+      const second = registry.clone("remote", other);
+      await flushMicrotasks();
+
+      expect(initialize.calls.count()).toBe(1);
+      expect(clone.calls.count()).toBe(1);
+      expect(registry.getPendingOperations().map(({ status }) => status)).toEqual([
+        "running",
+        "running",
+      ]);
+      writes.resolve();
+      expect(await first).toBe(created);
+      expect(await second).toBe(created);
+    });
+
+    it("selects the provider when a queued workspace operation starts", async () => {
+      const firstWrite = deferred();
+      initialize.and.callFake(() => firstWrite.promise);
+      const initializing = registry.initialize(destination);
+      await flushMicrotasks();
+      const cloning = registry.clone("remote", destination);
+      provider.dispose();
+      const currentClone = jasmine.createSpy("current clone provider").and.resolveTo();
+      registry.addOperationProvider({ cloneRepository: currentClone });
+      firstWrite.resolve();
+
+      expect(await initializing).toBe(created);
+      expect(await cloning).toBe(created);
+      expect(clone).not.toHaveBeenCalled();
+      expect(currentClone.calls.count()).toBe(1);
+      expect(currentClone.calls.mostRecent().args).toEqual(["remote", destination, undefined]);
+    });
+
+    it("rejects active late success and queued creation after destroy without executing or registering more work", async () => {
+      const firstWrite = deferred();
+      initialize.and.callFake(() => firstWrite.promise);
+      const initializing = registry.initialize(destination).catch((error) => error);
+      await flushMicrotasks();
+      const cloning = registry.clone("remote", destination).catch((error) => error);
+      registry.destroy();
+      firstWrite.resolve();
+
+      const firstFailure = await initializing;
+      const queuedFailure = await cloning;
+      expect(firstFailure.message).toContain("destroyed RepositoryRegistry");
+      expect(queuedFailure.message).toContain("destroyed RepositoryRegistry");
+      expect(initialize.calls.count()).toBe(1);
+      expect(clone).not.toHaveBeenCalled();
+      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.getPendingOperations()).toEqual([]);
+    });
+
+    it("preserves a provider's actual rejection after the registry is destroyed", async () => {
+      const write = deferred();
+      const original = Object.freeze(new Error("Initialize provider failed during shutdown"));
+      initialize.and.callFake(() => write.promise);
+      const initializing = registry.initialize(destination).catch((error) => error);
+      await flushMicrotasks();
+      registry.destroy();
+      write.reject(original);
+
+      expect(await initializing).toBe(original);
+      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.getPendingOperations()).toEqual([]);
+    });
+
+    it("preserves shared ids and insertion order across workspace keys and each original aliased path", async () => {
+      const writes = deferred();
+      initialize.and.callFake(() => writes.promise);
+      clone.and.callFake(() => writes.promise);
+      const repository = new FakeRepository(temp.mkdirSync("shared-operation-ids"));
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(repository.getWorkingDirectory())]);
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          async commit() {
+            await writes.promise;
+            return "repo-write";
+          },
+        }),
+      });
+      const events = [];
+      registry.onDidQueueOperation((operation) => events.push(operation));
+      registry.onDidStartOperation((operation) => events.push(operation));
+      registry.onDidFinishOperation((operation) => events.push(operation));
+      const other = path.join(temp.mkdirSync("workspace-metadata-key"), "repository");
+      const alias = `${destination}${path.sep}child${path.sep}..`;
+      const repositoryWrite = repository.getOperations().commit("held");
+      const first = registry.initialize(destination);
+      const second = registry.clone("remote", other);
+      const third = registry.clone("remote", alias);
+      await flushMicrotasks();
+      const pending = registry.getPendingOperations();
+      const workspacePending = pending.filter(({ repository }) => repository === null);
+
+      expect(pending.map(({ id }) => id)).toEqual([1, 2, 3, 4]);
+      expect(workspacePending.map(({ id }) => id)).toEqual([2, 3, 4]);
+      expect(workspacePending.map(({ workingDirectory }) => workingDirectory)).toEqual([
+        destination,
+        other,
+        alias,
+      ]);
+      expect(workspacePending.map(({ status }) => status)).toEqual([
+        "running",
+        "running",
+        "queued",
+      ]);
+      writes.resolve();
+      expect(await repositoryWrite).toBe("repo-write");
+      await Promise.all([first, second, third]);
+      for (const operation of events.filter(({ repository }) => repository === null)) {
+        expect(operation.workingDirectory).toBe([destination, other, alias][operation.id - 2]);
+      }
+      expect(registry.getPendingOperations()).toEqual([]);
+    });
+
+    it("returns rejected Promises for invalid destination paths without pending work", async () => {
+      for (const invalid of [null, undefined, 42]) {
+        let initializing, cloning;
+        expect(() => {
+          initializing = registry.initialize(invalid);
+          cloning = registry.clone("remote", invalid);
+        }).not.toThrow();
+        await expectAsync(initializing).toBeRejected();
+        await expectAsync(cloning).toBeRejected();
+        expect(registry.getPendingOperations()).toEqual([]);
+      }
+      expect(initialize).not.toHaveBeenCalled();
+      expect(clone).not.toHaveBeenCalled();
+      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+    });
+
+    for (const stage of ["provider", "discovery"]) {
+      it(`preserves a ${stage} failure when the workspace finish observer also throws`, async () => {
+        const original = Object.freeze(new Error(`${stage} failed`));
+        const finishFailure = new Error("Workspace finish observer failed");
+        const failing = stage === "provider" ? initialize : registry.registerCreatedRepository;
+        failing.and.callFake(async () => {
+          throw original;
+        });
+        registry.onDidFinishOperation(() => {
+          throw finishFailure;
+        });
+
+        const failure = await registry.initialize(destination).catch((error) => error);
+
+        expect(failure.errors).toEqual([original, finishFailure]);
+        expect(failure.errors[0]).toBe(original);
+        expect(failure.cause).toBe(original);
+        expect(initialize.calls.count()).toBe(1);
+        expect(registry.registerCreatedRepository.calls.count()).toBe(stage === "provider" ? 0 : 1);
+        expect(registry.getPendingOperations()).toEqual([]);
+      });
+    }
+  });
+
+  it("returns null from add when a newly discovered repository is destroyed before its continuation", async () => {
+    const workdir = temp.mkdirSync("destroyed-before-add-continuation");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.onDidAddRepository(() => queueMicrotask(() => registry.destroy()));
+
+    expect(await registry.add(workdir)).toBeNull();
+    expect(repository.isDestroyed()).toBe(true);
+    expect(repository.getOperations()).toBeNull();
+    expect(registry.getRepositories()).toEqual([]);
+  });
+
+  it("reports shutdown during real creation discovery without a missing-entry TypeError or discovery error", async () => {
+    const workdir = temp.mkdirSync("destroyed-during-created-repository-discovery");
+    registry.addOperationProvider({
+      initializeRepository(directory) {
+        repositories.push(new FakeRepository(directory));
+      },
+    });
+    registry.onDidAddRepository(() => queueMicrotask(() => registry.destroy()));
+
+    const failure = await registry.initialize(workdir).catch((error) => error);
+
+    expect(failure.message).toContain("destroyed RepositoryRegistry");
+    expect(failure.code).not.toBe("ERR_REPOSITORY_DISCOVERY_FAILED");
+    expect(repositories[0].isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
+    expect(registry.getPendingOperations()).toEqual([]);
+  });
+
   it("executes raw Git commands through the preferred transport provider", async () => {
     const calls = [];
     registry.addOperationProvider(

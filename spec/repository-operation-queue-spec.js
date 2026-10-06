@@ -200,4 +200,35 @@ describe("RepositoryOperationQueue", () => {
     expect(fixture.retention.held).toBe(0);
     expect(fixture.queue.getPendingOperations()).toEqual([]);
   });
+
+  it("is not idle while a finishing predecessor's release is pending even if a later queued slot fails", async () => {
+    const fixture = buildQueue();
+    const releaseStarted = deferred();
+    const release = deferred();
+    fixture.release.and.callFake(() => {
+      fixture.retention.held--;
+      if (fixture.release.calls.count() === 1) {
+        releaseStarted.resolve();
+        return release.promise;
+      }
+    });
+    const failure = new Error("Queued observer failed");
+    fixture.observer.callback = (event, operation) => {
+      if (event === "did-queue-operation" && operation.name === "failed-slot") throw failure;
+    };
+    const first = fixture.queue.enqueue("first");
+    await releaseStarted.promise;
+    const failed = fixture.queue.enqueue("failed-slot").catch((error) => error);
+    expect(await failed).toBe(failure);
+
+    expect(fixture.queue.getPendingOperations()).toEqual([]);
+    expect(fixture.queue.isIdle()).toBe(false);
+    const successor = fixture.queue.enqueue("successor");
+    await flushMicrotasks();
+    expect(fixture.execute.calls.allArgs().map(([name]) => name)).toEqual(["first"]);
+    release.resolve();
+    expect(await first).toBe("first");
+    expect(await successor).toBe("successor");
+    expect(fixture.queue.isIdle()).toBe(true);
+  });
 });
