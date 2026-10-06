@@ -57,7 +57,7 @@
     "encoding-selector": "github:lumine-code/encoding-selector#fe5faf4ccc06f4e0d1036fbce5ae5fbb9d289dc6",
     "focus-trap": "8.2.2",
     "git-diff": "github:lumine-code/git-diff#8633f3d3e395414304efab6101e67635afab8633",
-    "go-to-line": "github:lumine-code/go-to-line#740e35c89c5a27cf28f0a4f3d32b6f143f0fec87",
+    "go-to-line": "github:lumine-code/go-to-line#f77c34663834e945ece2822f4989b1d8a8d4edac",
     "grammar-selector": "github:lumine-code/grammar-selector#7e027d3c5da0a0f82ea0250e8106d43a4587080c",
     "gray-matter": "^4.0.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#e0f3172d1da8cdca0b0b1fa82bd08adc7c9de910",
