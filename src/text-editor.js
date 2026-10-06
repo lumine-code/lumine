@@ -7012,6 +7012,9 @@ module.exports = class TextEditor {
   // * bufferRow - The row `Number`.
   // * options - An `Object` of options to pass through to {@link TextEditor#setIndentationForBufferRow}.
   autoIndentBufferRow(bufferRow, options) {
+    const buffer = this.buffer;
+    const languageMode = buffer.getLanguageMode();
+    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
     const indentLevel = this.suggestedIndentForBufferRow(bufferRow, options);
     if (indentLevel?.then) {
       // The language mode may go async if it can't answer our question
@@ -7020,14 +7023,19 @@ module.exports = class TextEditor {
       // because of further changes in the same transaction, meaning we should
       // schedule an auto-indent for the entire range affected by the
       // transaction.
-      indentLevel.then((indentLevel) => {
-        if (typeof indentLevel === "number") {
-          this.setIndentationForBufferRow(bufferRow, indentLevel, options);
-          this.buffer.groupLastChanges();
-        } else if (indentLevel === undefined) {
-          this.scheduleIndentAdjustment(true);
-        }
-      });
+      return handleIndentationErrors(
+        Promise.resolve(indentLevel).then((indentLevel) => {
+          if (!isCurrent()) return;
+          if (typeof indentLevel === "number") {
+            const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
+            if (isCurrent()) buffer.groupLastChanges();
+            return range;
+          } else if (indentLevel === undefined) {
+            this.scheduleIndentAdjustment(true);
+          }
+        }),
+        isCurrent,
+      );
     } else if (typeof indentLevel === "number") {
       return this.setIndentationForBufferRow(bufferRow, indentLevel, options);
     }
@@ -7086,7 +7094,9 @@ module.exports = class TextEditor {
   }
 
   autoDecreaseIndentForBufferRow(bufferRow) {
-    const languageMode = this.buffer.getLanguageMode();
+    const buffer = this.buffer;
+    const languageMode = buffer.getLanguageMode();
+    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
     if (!languageMode.suggestedIndentForEditedBufferRow) {
       return;
     }
@@ -7095,16 +7105,21 @@ module.exports = class TextEditor {
       this.getTabLength(),
     );
     if (indentLevel?.then) {
-      indentLevel.then((indentLevel) => {
-        // We have a stricter contract than `autoIndentBufferRow`: if
-        // `suggestedIndentForEditedBufferRow` doesn't return a number, we
-        // should ignore it. Otherwise we run the risk of dedenting something
-        // that the user doesn't want dedented.
-        if (typeof indentLevel === "number") {
-          this.setIndentationForBufferRow(bufferRow, indentLevel);
-          this.buffer.groupLastChanges();
-        }
-      });
+      return handleIndentationErrors(
+        Promise.resolve(indentLevel).then((indentLevel) => {
+          if (!isCurrent()) return;
+          // We have a stricter contract than `autoIndentBufferRow`: if
+          // `suggestedIndentForEditedBufferRow` doesn't return a number, we
+          // should ignore it. Otherwise we run the risk of dedenting something
+          // that the user doesn't want dedented.
+          if (typeof indentLevel === "number") {
+            const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
+            if (isCurrent()) buffer.groupLastChanges();
+            return range;
+          }
+        }),
+        isCurrent,
+      );
     } else {
       if (indentLevel != null) this.setIndentationForBufferRow(bufferRow, indentLevel);
     }
@@ -7123,26 +7138,41 @@ module.exports = class TextEditor {
     // there's no guarantee that the existing promise won't bail early.
     if (this.autoIndentAtTransactionEndPromise && !force) return;
 
-    let languageMode = this.buffer.getLanguageMode();
+    const buffer = this.buffer;
+    const languageMode = buffer.getLanguageMode();
     if (!languageMode.atTransactionEnd) return;
     if (!languageMode.useAsyncParsing || !languageMode.useAsyncIndent) return;
 
-    let promise = languageMode.atTransactionEnd().then(({ range, autoIndentRequests }) => {
-      if (!range || this.didAdjustIndent) return;
-      // When `force` is not `true`, will only try to auto-indent this
-      // transaction's range if the language mode reports that one of its
-      // suggested-indent methods was called during the transaction.
-      if (autoIndentRequests === 0 && !force) return;
+    let pending;
+    const isCurrent = () =>
+      this.autoIndentAtTransactionEndPromise === pending &&
+      canAdjustIndentation(this, buffer, languageMode);
+    const adjustment = handleIndentationErrors(
+      Promise.resolve(languageMode.atTransactionEnd()).then(({ range, autoIndentRequests }) => {
+        if (!isCurrent() || !range || this.didAdjustIndent) return;
+        // When `force` is not `true`, will only try to auto-indent this
+        // transaction's range if the language mode reports that one of its
+        // suggested-indent methods was called during the transaction.
+        if (autoIndentRequests === 0 && !force) return;
 
-      this.transact(() => this.autoIndentBufferRows(range.start.row, range.end.row));
-      this.buffer.groupLastChanges();
-      this.didAdjustIndent = true;
+        this.transact(() => this.autoIndentBufferRows(range.start.row, range.end.row));
+        if (!isCurrent()) return;
+        buffer.groupLastChanges();
+        if (isCurrent()) this.didAdjustIndent = true;
+      }),
+      isCurrent,
+    );
+    pending = adjustment.finally(() => {
+      if (this.autoIndentAtTransactionEndPromise === pending) {
+        this.autoIndentAtTransactionEndPromise = null;
+        this.didAdjustIndent = false;
+      }
     });
-
-    this.autoIndentAtTransactionEndPromise = promise.finally(() => {
-      this.autoIndentAtTransactionEndPromise = null;
-      this.didAdjustIndent = false;
-    });
+    this.autoIndentAtTransactionEndPromise = pending;
+    // Insertion callers do not await background indentation. Keep its actual
+    // failure observable above without creating an unhandled rejection here.
+    pending.catch(() => {});
+    return pending;
   }
 
   toggleLineCommentForBufferRow(row) {
@@ -7365,6 +7395,26 @@ module.exports = class TextEditor {
 // Capture the implementation once so later prototype spies or subclass
 // overrides do not inherit the geometry-preserving replacement fast path.
 const standardRatioForCharacter = module.exports.prototype.ratioForCharacter;
+
+function canAdjustIndentation(editor, buffer, languageMode) {
+  return (
+    !editor.isDestroyed() &&
+    editor.buffer === buffer &&
+    !buffer.isDestroyed() &&
+    buffer.getLanguageMode() === languageMode &&
+    !languageMode.destroyed
+  );
+}
+
+function handleIndentationErrors(promise, isCurrent) {
+  const adjustment = promise.catch((error) => {
+    if (!isCurrent()) return;
+    console.error("Failed to adjust editor indentation", error);
+    throw error;
+  });
+  adjustment.catch(() => {});
+  return adjustment;
+}
 
 // Drops the `doomed` members from `array` in place, keeping the survivors in
 // order. In place is the requirement rather than the optimization: packages

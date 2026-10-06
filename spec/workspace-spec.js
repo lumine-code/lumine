@@ -1315,7 +1315,7 @@ describe("Workspace", () => {
     });
   });
 
-  describe("::clear", () => {
+  describe("persistent items during layout changes", () => {
     let environment, isolatedWorkspace;
 
     beforeEach(() => {
@@ -1325,12 +1325,24 @@ describe("Workspace", () => {
 
     afterEach(() => environment.destroy());
 
-    const buildItem = (title, persistent = false) => ({
-      element: document.createElement("div"),
-      getTitle: () => title,
-      isPersistentDockItem: () => persistent,
-      destroy: jasmine.createSpy(`${title} destroy`),
-    });
+    const buildItem = (title, persistent = false) => {
+      let destroyed = false;
+      return {
+        element: document.createElement("div"),
+        getTitle: () => title,
+        isPersistentDockItem: () => persistent,
+        isDestroyed: () => destroyed,
+        destroy: jasmine.createSpy(`${title} destroy`).and.callFake(() => (destroyed = true)),
+      };
+    };
+
+    const runLayoutChange = (operation) => {
+      if (operation === "clear") return isolatedWorkspace.clear({ locations: ["center"] });
+      const state = isolatedWorkspace.serialize();
+      return Promise.resolve().then(() =>
+        isolatedWorkspace.deserialize(state, environment.deserializers, { locations: ["center"] }),
+      );
+    };
 
     it("checks the transition guard before detaching or destroying any item", async () => {
       const pane = isolatedWorkspace.getCenter().getActivePane();
@@ -1410,6 +1422,169 @@ describe("Workspace", () => {
       expect(isolatedWorkspace.paneForItem(persistent)).toBe(pane);
       expect(persistent.destroy).not.toHaveBeenCalled();
       expect(pane.isDestroyed()).toBe(false);
+    });
+
+    for (const operation of ["clear", "deserialize"]) {
+      it(`recovers partially detached items when a ${operation} removal observer throws`, async () => {
+        const pane = isolatedWorkspace.getCenter().getActivePane();
+        const first = buildItem("First persistent item", true);
+        const second = buildItem("Second persistent item", true);
+        pane.addItem(first);
+        pane.addItem(second);
+        const failure = Object.freeze(new Error("Removal observer failed"));
+        const subscription = pane.onWillRemoveItem(({ item }) => {
+          if (item === second) throw failure;
+        });
+        try {
+          await expectAsync(runLayoutChange(operation)).toBeRejectedWith(failure);
+
+          expect(isolatedWorkspace.getPaneItems()).toContain(first);
+          expect(isolatedWorkspace.getPaneItems()).toContain(second);
+          expect(first.destroy).not.toHaveBeenCalled();
+          expect(second.destroy).not.toHaveBeenCalled();
+          expect(pane.isDestroyed()).toBe(false);
+        } finally {
+          subscription.dispose();
+        }
+      });
+
+      for (const adoptFirst of [false, true]) {
+        it(`cancels ${operation} after reset during detachment and ${adoptFirst ? "preserves an adopted item" : "disposes its detached orphan"}`, async () => {
+          const oldPane = isolatedWorkspace.getCenter().getActivePane();
+          const first = buildItem("First persistent item", true);
+          const second = buildItem("Second persistent item", true);
+          oldPane.addItem(first);
+          oldPane.addItem(second);
+          const incoming = buildItem("New generation item");
+          let newPane;
+          const subscription = oldPane.onWillRemoveItem(({ item }) => {
+            if (item !== second) return;
+            isolatedWorkspace.reset(environment.packages);
+            newPane = isolatedWorkspace.getCenter().getActivePane();
+            if (adoptFirst) newPane.addItem(first);
+            newPane.addItem(incoming);
+            isolatedWorkspace.destroyedItemURIs = ["new-generation-history"];
+          });
+          try {
+            const failure = await runLayoutChange(operation).catch((error) => error);
+
+            expect(failure.code).toBe("ABORT_ERR");
+            expect(newPane.isDestroyed()).toBe(false);
+            expect(newPane.getItems()).toContain(incoming);
+            expect(incoming.destroy).not.toHaveBeenCalled();
+            expect(isolatedWorkspace.destroyedItemURIs).toEqual(["new-generation-history"]);
+            if (adoptFirst) {
+              expect(isolatedWorkspace.paneForItem(first)).toBe(newPane);
+              expect(first.destroy).not.toHaveBeenCalled();
+            } else {
+              expect(isolatedWorkspace.paneForItem(first)).toBeUndefined();
+              expect(first.destroy).toHaveBeenCalledTimes(1);
+            }
+            expect(second.destroy).toHaveBeenCalledTimes(1);
+          } finally {
+            subscription.dispose();
+          }
+        });
+      }
+
+      it(`preserves ${operation} removal and orphan cleanup failures in order`, async () => {
+        const oldPane = isolatedWorkspace.getCenter().getActivePane();
+        const first = buildItem("First persistent item", true);
+        const second = buildItem("Second persistent item", true);
+        oldPane.addItem(first);
+        oldPane.addItem(second);
+        const primary = Object.freeze(new Error("Removal observer failed"));
+        const cleanup = new Error("Orphan disposal failed");
+        const destroyFirst = first.destroy;
+        first.destroy = jasmine.createSpy("dispose orphan with a failure").and.callFake(() => {
+          destroyFirst();
+          throw cleanup;
+        });
+        const incoming = buildItem("New generation item");
+        let newPane;
+        const subscription = oldPane.onWillRemoveItem(({ item }) => {
+          if (item !== second) return;
+          isolatedWorkspace.reset(environment.packages);
+          newPane = isolatedWorkspace.getCenter().getActivePane();
+          newPane.addItem(incoming);
+          throw primary;
+        });
+        try {
+          const failure = await runLayoutChange(operation).catch((error) => error);
+
+          expect(failure instanceof AggregateError).toBe(true);
+          expect(failure.errors).toEqual([primary, cleanup]);
+          expect(failure.cause).toBe(primary);
+          expect(first.destroy).toHaveBeenCalledTimes(1);
+          expect(first.isDestroyed()).toBe(true);
+          expect(second.destroy).toHaveBeenCalledTimes(1);
+          expect(newPane.isDestroyed()).toBe(false);
+          expect(newPane.getItems()).toEqual([incoming]);
+          expect(incoming.destroy).not.toHaveBeenCalled();
+        } finally {
+          subscription.dispose();
+        }
+      });
+    }
+
+    for (const transition of ["reset", "destroy"]) {
+      it(`does not build an editor from a shared buffer after workspace ${transition}`, async () => {
+        const buffer = new TextBuffer({
+          text: "Shared buffer",
+          fileWatchClient: environment.fileWatchClient,
+        });
+        buffer.retain();
+        environment.project.addBuffer(buffer);
+        const destroy = spyOn(buffer, "destroy").and.callThrough();
+        const build = spyOn(environment.textEditorFactory, "build").and.callThrough();
+        let resolveBuffer, started;
+        const entered = new Promise((resolve) => (started = resolve));
+        const loading = new Promise((resolve) => (resolveBuffer = resolve));
+        spyOn(environment.project, "bufferForPath").and.callFake(() => {
+          started();
+          return loading;
+        });
+        const opening = isolatedWorkspace.open(__filename);
+        await entered;
+        if (transition === "destroy") environment.destroy();
+        else isolatedWorkspace.reset(environment.packages);
+        const destructionCount = destroy.calls.count();
+        resolveBuffer(buffer);
+        try {
+          expect(await opening).toBeUndefined();
+          expect(build).not.toHaveBeenCalled();
+          expect(destroy.calls.count()).toBe(destructionCount);
+          if (transition === "reset") {
+            expect(buffer.isDestroyed()).toBe(false);
+            expect(environment.project.getBuffers()).toContain(buffer);
+            expect(isolatedWorkspace.getPaneItems()).toEqual([]);
+          }
+        } finally {
+          buffer.release();
+        }
+      });
+    }
+
+    it("preserves an editor factory failure for a live open without destroying its shared buffer", async () => {
+      const buffer = new TextBuffer({
+        text: "Shared buffer",
+        fileWatchClient: environment.fileWatchClient,
+      });
+      buffer.retain();
+      environment.project.addBuffer(buffer);
+      const failure = Object.freeze(new Error("Editor construction failed"));
+      const build = spyOn(environment.textEditorFactory, "build").and.throwError(failure);
+      const destroy = spyOn(buffer, "destroy").and.callThrough();
+      spyOn(environment.project, "bufferForPath").and.returnValue(Promise.resolve(buffer));
+      try {
+        await expectAsync(isolatedWorkspace.open(__filename)).toBeRejectedWith(failure);
+
+        expect(build).toHaveBeenCalledTimes(1);
+        expect(buffer.isDestroyed()).toBe(false);
+        expect(destroy).not.toHaveBeenCalled();
+      } finally {
+        buffer.release();
+      }
     });
   });
 

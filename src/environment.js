@@ -1628,7 +1628,10 @@ class Environment {
     assertCurrent();
 
     startTime = Date.now();
-    if (state.workspace) this.workspace.deserialize(state.workspace, this.deserializers, options);
+    if (state.workspace) {
+      this.workspace.deserialize(state.workspace, this.deserializers, options, assertCurrent);
+    }
+    assertCurrent();
     this.deserializeTimings.workspace = Date.now() - startTime;
 
     if (missingProjectPaths.length > 0) {

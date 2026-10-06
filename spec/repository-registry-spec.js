@@ -4257,10 +4257,10 @@ describe("RepositoryRegistry", () => {
     it("receives providers registered on the hub", () => {
       const serviceHub = new ServiceHub();
       const registry = new RepositoryRegistry({ packageManager: { serviceHub } });
-      const before = registry.operationProviders.length;
+      const provider = fakeProvider();
 
-      serviceHub.provide("repositories.operations-provider", "1.0.0", fakeProvider());
-      expect(registry.operationProviders.length).toBe(before + 1);
+      serviceHub.provide("repositories.operations-provider", "1.0.0", provider);
+      expect(registry.findWorkspaceOperationProvider("initialize")).toBe(provider);
 
       registry.destroy();
     });
@@ -4268,13 +4268,13 @@ describe("RepositoryRegistry", () => {
     it("reconnects after the hub has been cleared", () => {
       const serviceHub = new ServiceHub();
       const registry = new RepositoryRegistry({ packageManager: { serviceHub } });
-      const before = registry.operationProviders.length;
+      const provider = fakeProvider();
 
       serviceHub.clear();
       registry.consumeServices({ serviceHub });
-      serviceHub.provide("repositories.operations-provider", "1.0.0", fakeProvider());
+      serviceHub.provide("repositories.operations-provider", "1.0.0", provider);
 
-      expect(registry.operationProviders.length).toBe(before + 1);
+      expect(registry.findWorkspaceOperationProvider("initialize")).toBe(provider);
 
       registry.destroy();
     });

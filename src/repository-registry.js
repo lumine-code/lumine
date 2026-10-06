@@ -297,7 +297,7 @@ function mergeRefreshHints(current, next) {
  * a window with no provider installed can answer nothing.
  */
 module.exports = class RepositoryRegistry {
-  #operationProviderTokens = [];
+  #operationProviderRegistrations = [];
 
   constructor({ project, config, notificationManager, packageManager }) {
     this.project = null;
@@ -318,7 +318,6 @@ module.exports = class RepositoryRegistry {
     this.entryByRepository = new WeakMap();
     this.routingDirectoryOwners = new Map();
     this.gitDirectoryOwners = new Map();
-    this.operationProviders = [];
     this.bufferOwners = new Map();
     this.rootPaths = [];
     this.scanGeneration = 0;
@@ -832,8 +831,7 @@ module.exports = class RepositoryRegistry {
     this.entriesById.clear();
     this.routingDirectoryOwners.clear();
     this.gitDirectoryOwners.clear();
-    this.operationProviders = [];
-    this.#operationProviderTokens = [];
+    this.#operationProviderRegistrations = [];
     for (const entry of entries) {
       entry.removing = true;
       this.entryByRepository.delete(entry.repository);
@@ -1489,30 +1487,27 @@ module.exports = class RepositoryRegistry {
       );
     }
 
-    const token = Symbol("operation-provider");
+    const registration = { provider };
     if (fallback) {
-      this.operationProviders.push(provider);
-      this.#operationProviderTokens.push(token);
+      this.#operationProviderRegistrations.push(registration);
     } else {
-      this.operationProviders.unshift(provider);
-      this.#operationProviderTokens.unshift(token);
+      this.#operationProviderRegistrations.unshift(registration);
     }
 
     const removeRegistration = (initialFailures = []) => {
       const message = initialFailures.length
         ? "Unable to roll back repository operation provider registration"
         : "Unable to remove the repository operation provider cleanly";
-      const index = this.#operationProviderTokens.indexOf(token);
+      const index = this.#operationProviderRegistrations.indexOf(registration);
       if (index < 0) {
         completeCleanup([], message, initialFailures);
         return;
       }
-      this.#operationProviderTokens.splice(index, 1);
-      this.operationProviders.splice(index, 1);
+      this.#operationProviderRegistrations.splice(index, 1);
       const records = [];
       // Registrations of the same provider share implementations. Removing one
       // registration must preserve the records owned by the remaining ones.
-      if (!this.operationProviders.includes(provider)) {
+      if (!this.hasOperationProvider(provider)) {
         for (const entry of this.entriesById.values()) {
           if (entry.operationImplementations.has(provider)) {
             records.push(entry.operationImplementations.get(provider));
@@ -1580,7 +1575,7 @@ module.exports = class RepositoryRegistry {
    */
   getOperationCapabilities(repository) {
     const capabilities = new Set();
-    for (const provider of this.operationProviders) {
+    for (const { provider } of this.#operationProviderRegistrations) {
       const record = this.getOperationImplementation(repository, provider);
       if (!record) continue;
 
@@ -1802,6 +1797,12 @@ module.exports = class RepositoryRegistry {
     return repository;
   }
 
+  hasOperationProvider(provider) {
+    return this.#operationProviderRegistrations.some(
+      (registration) => registration.provider === provider,
+    );
+  }
+
   findWorkspaceOperationProvider(operationName) {
     const methodName =
       operationName === "initialize"
@@ -1811,13 +1812,17 @@ module.exports = class RepositoryRegistry {
           : null;
     if (!methodName) return null;
     return (
-      this.operationProviders.find((provider) => typeof provider[methodName] === "function") || null
+      this.#operationProviderRegistrations.find(
+        ({ provider }) => typeof provider[methodName] === "function",
+      )?.provider || null
     );
   }
 
   findGitCommandProvider() {
     return (
-      this.operationProviders.find((provider) => typeof provider.executeGit === "function") || null
+      this.#operationProviderRegistrations.find(
+        ({ provider }) => typeof provider.executeGit === "function",
+      )?.provider || null
     );
   }
 
@@ -1924,13 +1929,13 @@ module.exports = class RepositoryRegistry {
   }
 
   findOperationImplementation(repository, operationName) {
-    for (const provider of this.operationProviders.slice()) {
+    for (const { provider } of this.#operationProviderRegistrations.slice()) {
       const record = this.getOperationImplementation(repository, provider);
       if (
         record &&
         this.operationImplementationSupports(record, operationName) &&
         !record.disposed &&
-        this.operationProviders.includes(provider) &&
+        this.hasOperationProvider(provider) &&
         this.entryByRepository.get(repository)?.operationImplementations.get(provider) === record
       )
         return record;
@@ -1951,7 +1956,7 @@ module.exports = class RepositoryRegistry {
       entry.removing ||
       this.entriesById.get(entry.id) !== entry ||
       repository.isDestroyed?.() ||
-      !this.operationProviders.includes(provider)
+      !this.hasOperationProvider(provider)
     )
       return null;
     if (entry.operationImplementations.has(provider)) {
@@ -1977,7 +1982,7 @@ module.exports = class RepositoryRegistry {
       entry.removing ||
       this.entriesById.get(entry.id) !== entry ||
       repository.isDestroyed?.() ||
-      !this.operationProviders.includes(provider)
+      !this.hasOperationProvider(provider)
     ) {
       this.disposeOperationImplementation(record);
       return null;

@@ -12,6 +12,7 @@ const Pane = require("../src/pane");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
+const NullLanguageMode = require("../src/null-language-mode");
 
 async function languageModeReady(editor) {
   let languageMode = editor.getBuffer().getLanguageMode();
@@ -9007,6 +9008,221 @@ describe("TextEditor", () => {
       expect(events.length).toBe(1);
       expect(events[0].name).toBe("C");
     });
+  });
+
+  describe("asynchronous indentation lifetime", () => {
+    let fixtures, modes;
+    const deferred = () => {
+      let resolve, reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      return { promise, resolve, reject };
+    };
+    class DeferredIndentLanguageMode extends NullLanguageMode {
+      constructor(buffer) {
+        super({ buffer });
+        this.hints = [];
+        this.transactions = [];
+        this.useAsyncParsing = true;
+        this.useAsyncIndent = true;
+        modes.push(this);
+      }
+
+      requestHint() {
+        const request = deferred();
+        this.hints.push(request);
+        return request.promise;
+      }
+
+      suggestedIndentForBufferRow() {
+        return this.requestHint();
+      }
+
+      suggestedIndentForEditedBufferRow() {
+        return this.requestHint();
+      }
+
+      suggestedIndentForBufferRows(startRow, endRow) {
+        const indents = new Map();
+        for (let row = startRow; row <= endRow; row++) indents.set(row, 2);
+        return indents;
+      }
+
+      atTransactionEnd() {
+        const request = deferred();
+        this.transactions.push(request);
+        return request.promise;
+      }
+
+      destroy() {
+        this.destroyed = true;
+        this.emitter.dispose();
+      }
+    }
+
+    const buildFixture = () => {
+      const buffer = new TextBuffer({ text: "first\nsecond" });
+      const mode = new DeferredIndentLanguageMode(buffer);
+      buffer.setLanguageMode(mode);
+      const editor = new TextEditor({ buffer, tabLength: 2, softTabs: true });
+      const survivor = new TextEditor({ buffer, tabLength: 2, softTabs: true });
+      const fixture = { buffer, mode, editor, survivor };
+      fixtures.push(fixture);
+      return fixture;
+    };
+    const transaction = (row = 1) => ({
+      range: new TextBuffer.Range([row, 0], [row, 6]),
+      autoIndentRequests: 1,
+    });
+
+    beforeEach(() => {
+      fixtures = [];
+      modes = [];
+    });
+    afterEach(async () => {
+      for (const fixture of fixtures) {
+        fixture.editor.destroy();
+        fixture.survivor.destroy();
+      }
+      for (const mode of modes) {
+        for (const hint of mode.hints) hint.resolve(null);
+        for (const request of mode.transactions) request.resolve({ range: null });
+      }
+      await Promise.all(
+        modes
+          .flatMap((mode) => [...mode.hints, ...mode.transactions])
+          .map(({ promise }) => promise.catch(() => {})),
+      );
+    });
+
+    for (const operation of ["autoIndentBufferRow", "autoDecreaseIndentForBufferRow"]) {
+      for (const invalidation of ["close", "language change"]) {
+        it(`ignores ${operation} after ${invalidation} without changing its shared buffer`, async () => {
+          const fixture = buildFixture();
+          spyOn(fixture.buffer, "groupLastChanges").and.callThrough();
+          const adjustment = fixture.editor[operation](1);
+          if (invalidation === "close") fixture.editor.destroy();
+          else fixture.buffer.setLanguageMode(new NullLanguageMode({ buffer: fixture.buffer }));
+          fixture.mode.hints[0].resolve(2);
+          await adjustment;
+
+          expect(fixture.buffer.isDestroyed()).toBe(false);
+          expect(fixture.buffer.getText()).toBe("first\nsecond");
+          expect(fixture.buffer.groupLastChanges).not.toHaveBeenCalled();
+        });
+      }
+
+      it(`applies the current ${operation} result and groups its undo history`, async () => {
+        const fixture = buildFixture();
+        spyOn(fixture.buffer, "groupLastChanges").and.callThrough();
+        const adjustment = fixture.editor[operation](1);
+        fixture.mode.hints[0].resolve(2);
+        await adjustment;
+
+        expect(fixture.buffer.getText()).toBe("first\n    second");
+        expect(fixture.buffer.groupLastChanges).toHaveBeenCalledTimes(1);
+      });
+    }
+
+    for (const invalidation of ["close", "language change"]) {
+      it(`does not schedule fallback indentation after ${invalidation}`, async () => {
+        const fixture = buildFixture();
+        spyOn(fixture.editor, "scheduleIndentAdjustment").and.callThrough();
+        const adjustment = fixture.editor.autoIndentBufferRow(1);
+        if (invalidation === "close") fixture.editor.destroy();
+        else fixture.buffer.setLanguageMode(new DeferredIndentLanguageMode(fixture.buffer));
+        fixture.mode.hints[0].resolve(undefined);
+        await adjustment;
+
+        expect(fixture.editor.scheduleIndentAdjustment).not.toHaveBeenCalled();
+        expect(fixture.buffer.getText()).toBe("first\nsecond");
+      });
+
+      it(`does not apply a pending transaction's indentation after ${invalidation}`, async () => {
+        const fixture = buildFixture();
+        spyOn(fixture.editor, "autoIndentBufferRows").and.callThrough();
+        const adjustment = fixture.editor.scheduleIndentAdjustment();
+        if (invalidation === "close") fixture.editor.destroy();
+        else fixture.buffer.setLanguageMode(new NullLanguageMode({ buffer: fixture.buffer }));
+        fixture.mode.transactions[0].resolve(transaction());
+        await adjustment;
+
+        expect(fixture.editor.autoIndentBufferRows).not.toHaveBeenCalled();
+        expect(fixture.buffer.getText()).toBe("first\nsecond");
+        expect(fixture.editor.autoIndentAtTransactionEndPromise).toBeNull();
+      });
+    }
+
+    for (const newestFirst of [false, true]) {
+      it(`keeps a forced replacement's ownership when the ${newestFirst ? "newer" : "older"} transaction finishes first`, async () => {
+        const fixture = buildFixture();
+        const older = fixture.editor.scheduleIndentAdjustment();
+        const newer = fixture.editor.scheduleIndentAdjustment(true);
+        const previousFlag = fixture.editor.didAdjustIndent;
+        if (newestFirst) {
+          fixture.mode.transactions[1].resolve(transaction(1));
+          await newer;
+          fixture.mode.transactions[0].resolve(transaction(0));
+          await older;
+        } else {
+          fixture.mode.transactions[0].resolve(transaction(0));
+          await older;
+          expect(fixture.editor.autoIndentAtTransactionEndPromise).toBe(newer);
+          expect(fixture.editor.didAdjustIndent).toBe(previousFlag);
+          fixture.editor.scheduleIndentAdjustment();
+          expect(fixture.mode.transactions.length).toBe(2);
+          fixture.mode.transactions[1].resolve(transaction(1));
+          await newer;
+        }
+
+        expect(fixture.buffer.getText()).toBe("first\n    second");
+        expect(fixture.editor.autoIndentAtTransactionEndPromise).toBeNull();
+        expect(fixture.editor.didAdjustIndent).toBe(false);
+      });
+    }
+
+    for (const operation of [
+      "autoIndentBufferRow",
+      "autoDecreaseIndentForBufferRow",
+      "scheduleIndentAdjustment",
+    ]) {
+      it(`preserves and reports the current ${operation} failure`, async () => {
+        const fixture = buildFixture();
+        const failure = new Error("Indentation failed");
+        spyOn(console, "error");
+        const adjustment = fixture.editor[operation](1);
+        const request =
+          operation === "scheduleIndentAdjustment"
+            ? fixture.mode.transactions[0]
+            : fixture.mode.hints[0];
+        request.reject(failure);
+
+        await expectAsync(adjustment).toBeRejectedWith(failure);
+        expect(console.error).toHaveBeenCalledOnceWith(
+          "Failed to adjust editor indentation",
+          failure,
+        );
+        expect(fixture.buffer.getText()).toBe("first\nsecond");
+      });
+
+      it(`ignores the obsolete ${operation} failure after closing its editor`, async () => {
+        const fixture = buildFixture();
+        spyOn(console, "error");
+        const adjustment = fixture.editor[operation](1);
+        fixture.editor.destroy();
+        const request =
+          operation === "scheduleIndentAdjustment"
+            ? fixture.mode.transactions[0]
+            : fixture.mode.hints[0];
+        request.reject(new Error("Old indentation failed"));
+
+        await adjustment;
+        expect(console.error).not.toHaveBeenCalled();
+        expect(fixture.buffer.getText()).toBe("first\nsecond");
+      });
+    }
   });
 
   describe("editor.autoIndent", () => {

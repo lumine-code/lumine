@@ -273,6 +273,7 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
 module.exports = class Workspace extends Model {
   #itemOpenRequests;
   #resettingItemOpens = 0;
+  #layoutGeneration = 0;
 
   constructor(params) {
     super(...arguments);
@@ -498,6 +499,7 @@ module.exports = class Workspace extends Model {
   }
 
   reset(packageManager) {
+    this.#layoutGeneration++;
     this.#resettingItemOpens++;
     try {
       this.#itemOpenRequests.reset();
@@ -659,7 +661,9 @@ module.exports = class Workspace extends Model {
   //   * `locations` An `Array` of the pane container locations to restore.
   //     Defaults to all four. {@link Project#setState} passes `['center']`, because
   //     the docks belong to the window rather than to the project it has open.
-  deserialize(state, deserializerManager, options = {}) {
+  deserialize(state, deserializerManager, options = {}, assertCurrent = () => {}) {
+    const assertLayoutCurrent = this.#layoutGuard(assertCurrent);
+    assertLayoutCurrent();
     const locations = options.locations || ALL_LOCATIONS;
     const packagesWithActiveGrammars =
       state.packagesWithActiveGrammars != null ? state.packagesWithActiveGrammars : [];
@@ -667,6 +671,7 @@ module.exports = class Workspace extends Model {
       const pkg = this.packageManager.getLoadedPackage(packageName);
       if (pkg != null) {
         pkg.loadGrammarsSync();
+        assertLayoutCurrent();
       }
     }
     if (state.destroyedItemURIs != null) {
@@ -677,25 +682,31 @@ module.exports = class Workspace extends Model {
     // them with the current one. The detach, teardown, restore, and re-attach
     // all happen in the same tick so the swap causes no visible flicker.
     const restoringLayout = state.paneContainers;
-    let persistentItems = [];
-    if (restoringLayout) {
-      persistentItems = this.detachPersistentDockItems(locations);
-      this.destroyPanes(locations);
-    }
-
-    if (state.paneContainers) {
-      for (const location of locations) {
-        this.paneContainers[location].deserialize(
-          state.paneContainers[location],
-          deserializerManager,
-        );
+    const persistentItems = [];
+    try {
+      if (restoringLayout) {
+        this.detachPersistentDockItems(locations, persistentItems, assertLayoutCurrent);
+        assertLayoutCurrent();
+        this.destroyPanes(locations);
       }
+
+      if (state.paneContainers) {
+        for (const location of locations) {
+          assertLayoutCurrent();
+          this.paneContainers[location].deserialize(
+            state.paneContainers[location],
+            deserializerManager,
+          );
+        }
+      }
+
+      this.attachPersistentDockItems(persistentItems, assertLayoutCurrent);
+      assertLayoutCurrent();
+      this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+      this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
+    } catch (error) {
+      this.#recoverPersistentItems(persistentItems, assertLayoutCurrent, error);
     }
-
-    this.attachPersistentDockItems(persistentItems);
-
-    this.hasActiveTextEditor = this.getActiveTextEditor() != null;
-    this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
   }
 
   /**
@@ -713,54 +724,73 @@ module.exports = class Workspace extends Model {
    * @returns {Promise} that resolves once they are empty.
    */
   async clear(options = {}, assertCurrent = () => {}) {
-    assertCurrent();
+    const assertLayoutCurrent = this.#layoutGuard(assertCurrent);
+    assertLayoutCurrent();
     const locations = options.locations || ALL_LOCATIONS;
-    const persistentItems = this.detachPersistentDockItems(locations);
+    const persistentItems = [];
     try {
+      this.detachPersistentDockItems(locations, persistentItems, assertLayoutCurrent);
       for (const pane of this.getPanesIn(locations)) {
-        assertCurrent();
+        assertLayoutCurrent();
         await Promise.all(pane.getItems().map((item) => pane.destroyItem(item, true)));
-        assertCurrent();
+        assertLayoutCurrent();
       }
-      assertCurrent();
+      assertLayoutCurrent();
       this.destroyPanes(locations);
-      for (const entry of persistentItems) {
-        assertCurrent();
-        this.attachPersistentDockItems([entry]);
-      }
-      assertCurrent();
+      this.attachPersistentDockItems(persistentItems, assertLayoutCurrent);
+      assertLayoutCurrent();
       this.destroyedItemURIs = [];
       this.hasActiveTextEditor = this.getActiveTextEditor() != null;
       this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
     } catch (error) {
-      const failures = [error];
-      for (const entry of persistentItems) {
-        let current = true;
-        try {
-          assertCurrent();
-        } catch {
-          current = false;
-        }
-        try {
-          if (current) {
-            this.attachPersistentDockItems([entry]);
-          } else if (!this.paneForItem(entry.item)) {
-            // Reset cannot dispose an item detached from its old pane. Dispose
-            // that orphan without reviving it in the replacement layout, while
-            // preserving an item the new generation has already adopted.
-            entry.item.destroy?.();
-          }
-        } catch (cleanupError) {
-          failures.push(cleanupError);
-        }
-      }
-      if (failures.length > 1) {
-        throw new AggregateError(failures, "Unable to clear the workspace and recover its items", {
-          cause: error,
+      this.#recoverPersistentItems(persistentItems, assertLayoutCurrent, error);
+    }
+  }
+
+  #layoutGuard(assertCurrent) {
+    const generation = this.#layoutGeneration;
+    return () => {
+      assertCurrent();
+      if (!this.isAlive() || this.#layoutGeneration !== generation) {
+        throw Object.assign(new Error("Workspace layout change was cancelled"), {
+          code: "ABORT_ERR",
         });
       }
-      throw error;
+    };
+  }
+
+  #recoverPersistentItems(persistentItems, assertCurrent, error) {
+    const failures = [error];
+    for (const entry of persistentItems) {
+      let current = true;
+      try {
+        assertCurrent();
+      } catch {
+        current = false;
+      }
+      try {
+        if (current) {
+          this.attachPersistentDockItems([entry], assertCurrent);
+        } else if (!this.paneForItem(entry.item) && !entry.item.isDestroyed?.()) {
+          // Reset cannot dispose an item detached from its old pane. Dispose
+          // that orphan without reviving it in the replacement layout, while
+          // preserving an item the new generation has already adopted.
+          entry.item.destroy?.();
+        }
+      } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
     }
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        "Unable to change the workspace layout and recover its items",
+        {
+          cause: error,
+        },
+      );
+    }
+    throw error;
   }
 
   /**
@@ -779,10 +809,10 @@ module.exports = class Workspace extends Model {
    *
    * @private
    */
-  detachPersistentDockItems(locations) {
-    const persistentItems = [];
+  detachPersistentDockItems(locations, persistentItems, assertCurrent) {
     for (const pane of this.getPanesIn(locations)) {
       for (const item of pane.getItems()) {
+        assertCurrent();
         if (typeof item.isPersistentDockItem !== "function" || !item.isPersistentDockItem()) {
           continue;
         }
@@ -793,6 +823,7 @@ module.exports = class Workspace extends Model {
           visible: typeof container.isVisible === "function" ? container.isVisible() : true,
         });
         pane.removeItem(item, true);
+        assertCurrent();
       }
     }
     return persistentItems;
@@ -804,8 +835,10 @@ module.exports = class Workspace extends Model {
    *
    * @private
    */
-  attachPersistentDockItems(persistentItems) {
+  attachPersistentDockItems(persistentItems, assertCurrent = () => {}) {
     for (const { item, location, visible } of persistentItems) {
+      assertCurrent();
+      if (item.isDestroyed?.()) continue;
       let uri;
       if (typeof item.getURI === "function") uri = item.getURI();
 
@@ -815,12 +848,15 @@ module.exports = class Workspace extends Model {
       } else if (uri && this.paneForURI(uri)) {
         // The restored layout recreated its own copy of the item.
         if (typeof item.destroy === "function") item.destroy();
+        assertCurrent();
         container = this.paneContainerForURI(uri);
       } else {
         container = this.paneContainers[location] || this.paneContainers.center;
         const pane = container.getActivePane();
         pane.addItem(item);
+        assertCurrent();
         pane.activateItem(item);
+        assertCurrent();
       }
       if (visible && container && typeof container.show === "function") {
         container.show();
@@ -2404,6 +2440,12 @@ module.exports = class Workspace extends Model {
   }
 
   async openTextFile(uri, options, openRequest) {
+    const generation = this.#layoutGeneration;
+    const isCurrent = () =>
+      this.isAlive() &&
+      this.#layoutGeneration === generation &&
+      (!openRequest || this.#itemOpenRequests.isCurrent(openRequest));
+    if (!isCurrent()) return;
     const filePath = this.project.resolvePath(uri);
 
     if (filePath != null) {
@@ -2426,7 +2468,7 @@ module.exports = class Workspace extends Model {
         detail: "Do you still want to load this file?",
         buttons: ["Proceed", "Cancel"],
       });
-      if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
+      if (!isCurrent()) return;
       if (response === 1) {
         const error = new Error();
         error.code = "CANCELLED";
@@ -2435,6 +2477,10 @@ module.exports = class Workspace extends Model {
     }
 
     const buffer = await this.project.bufferForPath(filePath, options);
+    // A cached/shared buffer can resolve after reset or teardown without being
+    // owned by this request. Leave it with its current owner and stop before
+    // entering a replaced or destroyed editor factory.
+    if (!isCurrent()) return;
     try {
       return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
     } catch (error) {
@@ -3198,6 +3244,7 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    this.#layoutGeneration++;
     this.#itemOpenRequests.destroy();
     this.incoming.clear();
     this.registeredTextEditorGrammarSubscription?.dispose();
