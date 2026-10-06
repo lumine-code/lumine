@@ -10,7 +10,17 @@ const configSchema = {
         items: {
           type: "string",
         },
-        default: [".git", ".hg", ".svn", ".DS_Store", "._*", "Thumbs.db", "desktop.ini"],
+        default: [
+          ".git",
+          ".hg",
+          ".svn",
+          ".DS_Store",
+          "._*",
+          "Thumbs.db",
+          "desktop.ini",
+          "__pycache__",
+          "*.pyc",
+        ],
       },
       excludeVcsIgnoredPaths: {
         title: "Exclude VCS Ignored Paths",
@@ -86,7 +96,7 @@ const configSchema = {
         description:
           "When a window with no open tabs or panes is given the 'Close Tab' command, close that window.",
         type: "boolean",
-        default: true,
+        default: false,
       },
       promptOnSaveConflictedFile: {
         title: "Prompt on Conflict",
@@ -477,7 +487,7 @@ const configSchema = {
         description:
           "Wraps lines that exceed the width of the window. When `Soft Wrap At Preferred Line Length` is set, it will wrap to the number of characters defined by the `Preferred Line Length` setting.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       softWrapAtPreferredLineLength: {
         scopeResolution: "grammar",
@@ -553,7 +563,7 @@ const configSchema = {
         title: "Scroll Past End",
         description: "Allow the editor to be scrolled past the end of the last line.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       multiCursorOnClick: {
         title: "Multi Cursor On Click",

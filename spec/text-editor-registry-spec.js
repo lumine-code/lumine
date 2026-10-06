@@ -302,14 +302,14 @@ describe("TextEditorRegistry", function () {
       editor.setEncoding("utf16le");
       expect(editor.getEncoding()).toBe("utf16le");
 
-      expect(editor.isSoftWrapped()).toBe(false);
-      editor.setSoftWrapped(true);
       expect(editor.isSoftWrapped()).toBe(true);
+      editor.setSoftWrapped(false);
+      expect(editor.isSoftWrapped()).toBe(false);
 
       lumine.grammars.assignLanguageMode(editor, "source.js");
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
-      expect(editor.isSoftWrapped()).toBe(true);
+      expect(editor.isSoftWrapped()).toBe(false);
     });
 
     it("updates editor settings that have changed between previous and current language modes", async function () {

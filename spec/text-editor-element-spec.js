@@ -374,6 +374,7 @@ describe("TextEditorElement", () => {
 
   describe("::setScrollTop and ::setScrollLeft", () => {
     it("changes the scroll position", async () => {
+      lumine.config.set("editor.softWrap", false);
       const element = buildTextEditorElement();
       element.getModel().update({ autoHeight: false });
       element.getModel().setText("lorem\nipsum\ndolor\nsit\namet");
@@ -475,6 +476,7 @@ describe("TextEditorElement", () => {
     let element = null;
 
     beforeEach(async () => {
+      lumine.config.set("editor.softWrap", false);
       element = buildTextEditorElement();
       element.getModel().update({ autoHeight: false });
       element.getModel().setText("lorem\nipsum\ndolor\nsit\namet");

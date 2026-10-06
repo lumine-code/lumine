@@ -4461,6 +4461,7 @@ describe("Workspace", () => {
 
     it("closes the active center pane item, or the active center pane if it is empty, or the current window if there is only the empty root pane in the center", async () => {
       lumine.config.set("core.destroyEmptyPanes", false);
+      lumine.config.set("core.closeEmptyWindows", true);
 
       const pane1 = lumine.workspace.getActivePane();
       const pane2 = pane1.splitRight({ copyActiveItem: true });
