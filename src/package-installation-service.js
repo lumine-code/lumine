@@ -36,7 +36,7 @@ class PackageInstallationService {
     resolveSource,
     lumineVersion,
     fetchUrl = (url) => fetch(url, { redirect: "follow" }),
-    beforeSwap = async () => ({}),
+    beforeSwap = async () => {},
     afterSwap = async () => {},
     afterRollback = async () => {},
   }) {
@@ -91,7 +91,7 @@ class PackageInstallationService {
     let backup = null;
     let target = null;
     let packageName = null;
-    let lifecycleState = {};
+    const lifecycleState = {};
     let lifecycleStarted = false;
     let swapped = false;
 
@@ -150,7 +150,9 @@ class PackageInstallationService {
       // yet gets a new directory, and that one is named after it.
       target = existingDirectory || path.join(this.packagesDirectory, packageName);
       lifecycleStarted = true;
-      lifecycleState = (await this.beforeSwap(packageName, target)) || {};
+      // The hook records its snapshot before unloading. Its state remains
+      // available to rollback even if cleanup completes and the hook rejects.
+      await this.beforeSwap(packageName, target, lifecycleState);
       if (fs.existsSync(target)) {
         backup = path.join(
           this.packagesDirectory,

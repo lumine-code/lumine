@@ -136,6 +136,73 @@ describe("PackageInstallationService", function () {
     expect(fs.existsSync(path.join(installed.target, ".git"))).toBe(false);
   });
 
+  it("keeps the hook-owned lifecycle state for afterSwap without using a returned replacement", async () => {
+    let state;
+    const snapshot = { lifecycleState: "loaded" };
+    service.beforeSwap = async (_name, _target, lifecycleState) => {
+      state = lifecycleState;
+      lifecycleState.snapshot = snapshot;
+      return { snapshot: { lifecycleState: "active" } };
+    };
+    service.afterSwap = jasmine
+      .createSpy("afterSwap")
+      .and.callFake(async (_name, _metadata, current) => {
+        expect(current).toBe(state);
+        expect(current.snapshot).toBe(snapshot);
+      });
+
+    await service.install(pack());
+
+    expect(service.afterSwap).toHaveBeenCalledTimes(1);
+  });
+
+  for (const rollbackFails of [false, true]) {
+    it(`preserves a rejected beforeSwap snapshot and original files${rollbackFails ? " while reporting rollback failure" : ""}`, async () => {
+      const target = path.join(root, "sample-package");
+      fs.mkdirSync(target);
+      const originalManifest = JSON.stringify({
+        ...manifest,
+        version: "0.9.0",
+      });
+      fs.writeFileSync(path.join(target, "package.json"), originalManifest);
+      fs.writeFileSync(path.join(target, "old-marker"), "original files");
+      const original = new Error("Unload observer failed after cleanup");
+      const rollback = new Error("Lifecycle restoration failed");
+      const snapshot = { lifecycleState: "active", packageState: { value: "original" } };
+      let state;
+      spyOn(service, "beforeSwap").and.callFake(async (_name, _target, current) => {
+        state = current;
+        current.snapshot = snapshot;
+        throw original;
+      });
+      spyOn(service, "afterSwap").and.callThrough();
+      spyOn(service, "afterRollback").and.callFake(async (_name, current) => {
+        expect(current).toBe(state);
+        expect(current.snapshot).toBe(snapshot);
+        if (rollbackFails) throw rollback;
+      });
+      spyOn(fs.promises, "rename").and.callThrough();
+      let failure;
+
+      await service.install(pack()).catch((error) => (failure = error));
+
+      if (rollbackFails) {
+        expect(failure instanceof AggregateError).toBe(true);
+        expect(failure.errors).toEqual([original, rollback]);
+        expect(failure.cause).toBe(original);
+      } else {
+        expect(failure).toBe(original);
+      }
+      expect(service.beforeSwap).toHaveBeenCalledWith("sample-package", target, state);
+      expect(service.afterRollback).toHaveBeenCalledWith("sample-package", state);
+      expect(service.afterSwap).not.toHaveBeenCalled();
+      expect(fs.promises.rename).not.toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe(originalManifest);
+      expect(fs.readFileSync(path.join(target, "old-marker"), "utf8")).toBe("original files");
+      expect(fs.readdirSync(root)).toEqual(["sample-package"]);
+    });
+  }
+
   it("uses a temporary package.json to install a JSONC manifest", async () => {
     writeSourceFiles = (directory) => {
       fs.writeFileSync(
@@ -484,9 +551,13 @@ ${JSON.stringify(manifest, null, 2)}
         expect(error.message).toContain("swap failed");
         // The active instance was unloaded, so rollback must reload it and
         // must not run the success path.
-        expect(service.beforeSwap).toHaveBeenCalledWith("sample-package", target);
+        expect(service.beforeSwap).toHaveBeenCalledTimes(1);
+        expect(service.beforeSwap.calls.argsFor(0).slice(0, 2)).toEqual(["sample-package", target]);
         expect(service.afterRollback).toHaveBeenCalled();
         expect(service.afterRollback.calls.argsFor(0)[0]).toBe("sample-package");
+        expect(service.afterRollback.calls.argsFor(0)[1]).toBe(
+          service.beforeSwap.calls.argsFor(0)[2],
+        );
         expect(service.afterSwap).not.toHaveBeenCalled();
         // The previous directory and its receipt are restored unchanged.
         expect(fs.readFileSync(path.join(target, "old-marker"), "utf8")).toBe("old");
