@@ -2620,8 +2620,11 @@ class TextBuffer {
 
           try {
             await winattr.setAttributes(filePath, { hidden: false });
-            await this.buffer.save(filePath, this.getEncoding());
-            await winattr.setAttributes(filePath, { hidden: true });
+            try {
+              await this.buffer.save(filePath, this.getEncoding());
+            } finally {
+              await winattr.setAttributes(filePath, { hidden: true });
+            }
           } catch {
             throw error;
           }

@@ -541,6 +541,30 @@ describe("TextBuffer IO", () => {
 
     if (process.platform === "win32")
       describe("when a permission error occurs (Windows)", () => {
+        it("restores the hidden attribute when the save retry fails", async () => {
+          winattr.setAttributesSync(filePath, { hidden: true });
+          const permissionError = Object.assign(new Error("Permission denied"), { code: "EACCES" });
+          let saveAttempts = 0;
+          spyOn(NativeTextBuffer.prototype, "save").and.callFake(() => {
+            saveAttempts++;
+            if (saveAttempts === 1) return Promise.reject(permissionError);
+
+            expect(winattr.getAttributesSync(filePath).hidden).toBe(false);
+            return Promise.reject(new Error("Save retry failed"));
+          });
+          const didSave = jasmine.createSpy("didSave");
+          buffer.onDidSave(didSave);
+          buffer.setText("Unsaved changes");
+
+          await expectAsync(buffer.save()).toBeRejectedWith(permissionError);
+
+          expect(saveAttempts).toBe(2);
+          expect(winattr.getAttributesSync(filePath).hidden).toBe(true);
+          expect(buffer.getFileState()).toBe("modified");
+          expect(buffer.outstandingSaveCount).toBe(0);
+          expect(didSave).not.toHaveBeenCalled();
+        });
+
         it("can bypass hidden files", async (done) => {
           winattr.setAttributesSync(filePath, { hidden: true });
 
