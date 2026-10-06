@@ -894,6 +894,33 @@ describe("TextEditorComponent", () => {
       expect(element.contains(input)).toBe(true);
     });
 
+    it("keeps native offsets at zero when the browser focuses a cursor in the rendered overscan below the viewport", () => {
+      const { component, editor } = buildComponent({
+        text: Array.from({ length: 240 }, (_, row) => `line ${row}: some text`).join("\n"),
+        height: 300,
+        width: 600,
+        updatedSynchronously: true,
+      });
+      component.setScrollTop(80 * component.getLineHeight());
+      component.updateSync();
+      const cursorRow = component.getLastVisibleRow() + 2;
+      expect(cursorRow).toBeLessThan(component.getRenderedEndRow());
+      editor.setCursorScreenPosition([cursorRow, 12], { autoscroll: false });
+      const input = component.getHiddenInput();
+      const viewport = component.refs.clientContainer.getBoundingClientRect();
+      expect(component.hiddenInputPosition).not.toBeNull();
+      expect(input.getBoundingClientRect().top).toBeGreaterThanOrEqual(viewport.bottom);
+      const logicalScrollTop = component.getScrollTop();
+
+      input.blur();
+      input.focus();
+
+      expect(document.activeElement).toBe(input);
+      expect(component.refs.clientContainer.scrollTop).toBe(0);
+      expect(component.refs.clientContainer.scrollLeft).toBe(0);
+      expect(component.getScrollTop()).toBe(logicalScrollTop);
+    });
+
     it("soft wraps lines based on the content width when soft wrap is enabled", async () => {
       let baseCharacterWidth, gutterContainerWidth;
       {
