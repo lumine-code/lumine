@@ -718,7 +718,10 @@ module.exports = class TextEditorComponent {
     let style = clientContainer.style;
     style.position = "relative";
     style.contain = "strict";
-    style.overflow = "hidden";
+    // The client box clips both text and gutters; only the dummy scrollbars
+    // may scroll natively. Revealing the focused input must not move this box
+    // independently of the editor's transform-based scroll position.
+    style.overflow = "clip";
     style.backgroundColor = "inherit";
     this.refs.clientContainer = clientContainer;
     this.element.appendChild(clientContainer);
@@ -2106,6 +2109,10 @@ module.exports = class TextEditorComponent {
 
   updateCursorsToRender() {
     this.decorationsToRender.cursors.length = 0;
+    // A cursor outside the rendered range has no input anchor this frame.
+    // Keeping its old position can make browser focus reveal an obsolete row
+    // after a bulk edit, even beyond the newly shortened content.
+    this.hiddenInputPosition = null;
 
     this.decorationsToMeasure.cursors.forEach((cursor) => {
       const { screenPosition, className, style } = cursor;

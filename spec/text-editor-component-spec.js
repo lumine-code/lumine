@@ -796,6 +796,104 @@ describe("TextEditorComponent", () => {
       );
     });
 
+    it("clears the previous hidden-input position when its cursor scrolls out of view", async () => {
+      const { component, editor } = buildComponent({
+        text: Array.from({ length: 100 }, (_, row) => `line ${row}: some text`).join("\n"),
+        height: 60,
+        width: 400,
+        rowsPerTile: 2,
+      });
+      const { hiddenInput } = component.refs.cursorsAndInput.refs;
+      editor.setCursorBufferPosition([20, 8]);
+      await component.getNextUpdatePromise();
+      expect(hiddenInput.offsetTop).toBeGreaterThan(0);
+      expect(hiddenInput.offsetLeft).toBeGreaterThan(0);
+
+      await setScrollTop(component, 0);
+
+      expect(component.decorationsToRender.cursors).toEqual([]);
+      expect(hiddenInput.offsetTop).toBe(0);
+      expect(hiddenInput.offsetLeft).toBe(0);
+    });
+
+    it("keeps text and gutter visible when the browser refocuses the hidden input after collapsing blank lines", () => {
+      const { component, editor, element } = buildComponent({
+        text: Array.from(
+          { length: 150 },
+          (_, row) => `line ${row}: some text\n${"\n".repeat((row % 12) + 1)}`,
+        ).join("\n"),
+        height: 300,
+        width: 600,
+        updatedSynchronously: true,
+      });
+      const input = component.getHiddenInput();
+      element.focus();
+      editor.setCursorBufferPosition([440, 4]);
+      component.setScrollTop(
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+          2 * component.getLineHeight(),
+      );
+      component.updateSync();
+      expect(component.getScrollTop()).toBeGreaterThan(0);
+
+      editor.collapseBlankLines();
+      const logicalScrollTop = component.getScrollTop();
+      // Browser focus restoration does not carry the preventScroll option
+      // passed by the editor's own focus handler. Use normal DOM focus here.
+      input.blur();
+      input.focus();
+
+      expect(document.activeElement).toBe(input);
+      expect(component.refs.clientContainer.scrollTop).toBe(0);
+      expect(component.refs.clientContainer.scrollLeft).toBe(0);
+      expect(component.getScrollTop()).toBe(logicalScrollTop);
+      const visibleRow = component.getFirstVisibleRow() + 1;
+      const viewport = component.refs.clientContainer.getBoundingClientRect();
+      const line = element.querySelector(`.line[data-screen-row="${visibleRow}"]`);
+      const number = element.querySelector(`.line-number[data-screen-row="${visibleRow}"]`);
+      expect(line).not.toBeNull();
+      expect(number).not.toBeNull();
+      for (const node of [line, number]) {
+        if (!node) continue;
+        const rect = node.getBoundingClientRect();
+        expect(rect.bottom).toBeGreaterThan(viewport.top);
+        expect(rect.top).toBeLessThan(viewport.bottom);
+      }
+    });
+
+    it("keeps native offsets at zero when the browser focuses a visible cursor far into the buffer", () => {
+      const { component, editor, element } = buildComponent({
+        text: Array.from({ length: 240 }, (_, row) => `line ${row}: some text`).join("\n"),
+        height: 300,
+        width: 600,
+        updatedSynchronously: true,
+      });
+      const input = component.getHiddenInput();
+      editor.setCursorBufferPosition([180, 12]);
+      component.setScrollTop(
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+          2 * component.getLineHeight(),
+      );
+      component.updateSync();
+      const logicalScrollTop = component.getScrollTop();
+      expect(logicalScrollTop).toBeGreaterThan(0);
+
+      input.blur();
+      input.focus();
+
+      expect(document.activeElement).toBe(input);
+      expect(component.getScrollTop()).toBe(logicalScrollTop);
+      for (const name of ["clientContainer", "scrollContainer", "content", "lineTiles"]) {
+        expect(component.refs[name].scrollTop).toBe(0);
+        expect(component.refs[name].scrollLeft).toBe(0);
+      }
+      const viewport = component.refs.clientContainer.getBoundingClientRect();
+      const inputRect = input.getBoundingClientRect();
+      expect(inputRect.top).toBeGreaterThanOrEqual(viewport.top);
+      expect(inputRect.bottom).toBeLessThanOrEqual(viewport.bottom);
+      expect(element.contains(input)).toBe(true);
+    });
+
     it("soft wraps lines based on the content width when soft wrap is enabled", async () => {
       let baseCharacterWidth, gutterContainerWidth;
       {
