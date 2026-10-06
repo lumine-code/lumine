@@ -373,7 +373,7 @@ module.exports = class GrammarRegistry {
 
     let sliceStart = performance.now();
     let revision = this.grammarSelectionRevision;
-    let customFileTypes = this.config.get("core.customFileTypes") ?? null;
+    let customFileTypes = this.config?.get("core.customFileTypes") ?? null;
     let selection = this.selectGrammarWithScoreFromContents(
       filePath,
       fileContents,
@@ -396,7 +396,7 @@ module.exports = class GrammarRegistry {
       if (performance.now() - sliceStart >= GRAMMAR_SELECTION_SLICE_MS) {
         await new Promise((resolve) => setImmediate(resolve));
         sliceStart = performance.now();
-        const currentFileTypes = this.config.get("core.customFileTypes") ?? null;
+        const currentFileTypes = this.config?.get("core.customFileTypes") ?? null;
         if (!_.isEqual(customFileTypes, currentFileTypes)) {
           // Config returns a copy, so compare values rather than identities.
           customFileTypes = currentFileTypes;
@@ -422,7 +422,7 @@ module.exports = class GrammarRegistry {
   *selectGrammarWithScoreFromContents(
     filePath,
     fileContents,
-    customFileTypes = this.config.get("core.customFileTypes") ?? null,
+    customFileTypes = this.config?.get("core.customFileTypes") ?? null,
   ) {
     let bestMatch = NullGrammar;
     let highestScore = this.scoreGrammarWithContents(NullGrammar, filePath, fileContents);
@@ -530,7 +530,7 @@ module.exports = class GrammarRegistry {
   getGrammarPathScore(
     grammar,
     filePath,
-    customFileTypes = this.config.get("core.customFileTypes"),
+    customFileTypes = this.config?.get("core.customFileTypes"),
   ) {
     if (!filePath) return -1;
     if (process.platform === "win32") {

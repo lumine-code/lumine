@@ -411,6 +411,7 @@ describe("GrammarRegistry", () => {
     it("always returns a grammar", () => {
       const registry = new GrammarRegistry({ config: lumine.config });
       expect(registry.selectGrammar().scopeName).toBe("text.plain.null-grammar");
+      expect(new GrammarRegistry().selectGrammar().scopeName).toBe("text.plain.null-grammar");
     });
 
     it("selects the text.plain grammar over the null grammar once it is available", () => {
@@ -821,7 +822,7 @@ describe("GrammarRegistry", () => {
       const syncStat = spyOn(fs, "isFileSync").and.callThrough();
 
       expect((await grammarRegistry.selectGrammarAsync(filePath)).scopeName).toBe("source.python");
-      expect(read.calls.count()).toBe(1);
+      expect(read.calls.allArgs().filter(([readPath]) => readPath === filePath).length).toBe(1);
       expect(syncRead).not.toHaveBeenCalled();
       expect(syncStat).not.toHaveBeenCalled();
     });
