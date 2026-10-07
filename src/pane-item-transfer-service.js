@@ -310,6 +310,13 @@ class PaneItemTransferScope {
     const { descriptor, sourceWindowId, transferItem } = prepared;
     const itemsBeforeOpen = new Set(workspace.getPaneItems());
     this.assertNoCollision(transferItem.uri, [...itemsBeforeOpen]);
+    // Reopening an existing item emits opener hooks before its Promise resolves.
+    // Retain the destination's view state before those hooks can change it.
+    const viewStatesBeforeOpen = new Map(
+      [...itemsBeforeOpen]
+        .filter((candidate) => typeof candidate.serializeViewState === "function")
+        .map((candidate) => [candidate, candidate.serializeViewState()]),
+    );
     const targetPane = context.resolvePane({ allowSplit: prepared.allowSplit });
     this.assertLocation(targetPane, descriptor);
     const item = await workspace.open(transferItem.uri, {
@@ -336,7 +343,7 @@ class PaneItemTransferScope {
         (existedBeforeOpen || sharedBufferItem) && typeof item.getText === "function"
           ? item.getText()
           : undefined,
-      viewState: existedBeforeOpen ? item.serializeViewState?.() : undefined,
+      viewState: existedBeforeOpen ? viewStatesBeforeOpen.get(item) : undefined,
       sharedViewStates:
         typeof item.getBuffer === "function"
           ? [...itemsBeforeOpen]
@@ -346,7 +353,7 @@ class PaneItemTransferScope {
                   candidate.getBuffer?.() === item.getBuffer() &&
                   typeof candidate.serializeViewState === "function",
               )
-              .map((candidate) => ({ item: candidate, state: candidate.serializeViewState() }))
+              .map((candidate) => ({ item: candidate, state: viewStatesBeforeOpen.get(candidate) }))
           : [],
     };
     let committed = false;
