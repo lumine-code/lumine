@@ -4083,9 +4083,33 @@ class LanguageLayer {
     const seen = new Set();
     const pending = [];
     const expanded = new Set();
+    const wantedSuccessor = new Map();
+    const anchoredTypes = new Set();
     const addCapture = (capture) => {
       const key = keyFor(capture);
       if (seen.has(key)) return;
+      const { name, node } = capture;
+      if (
+        name === "parse.boundary" &&
+        node.childCount > 0 &&
+        typeof node.type === "string" &&
+        Number.isSafeInteger(node.startIndex) &&
+        Number.isSafeInteger(node.endIndex)
+      ) {
+        // Leading uncaptured padding can change without marking a group dirty.
+        // Keep its first stable anchor, then only nearby successors of edits.
+        if (!anchoredTypes.has(node.type)) {
+          anchoredTypes.add(node.type);
+          wantedSuccessor.set(node.type, node.startIndex);
+        }
+        if (node.hasChanges) wantedSuccessor.set(node.type, node.endIndex);
+        else {
+          const anchorEnd = wantedSuccessor.get(node.type);
+          if (anchorEnd === undefined || node.startIndex < anchorEnd) return;
+          if (node.endIndex >= anchorEnd + MINIMUM_BOUNDARY_DISTANCE)
+            wantedSuccessor.delete(node.type);
+        }
+      }
       seen.add(key);
       captures.push(capture);
       pending.push(capture.node);

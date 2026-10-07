@@ -237,6 +237,128 @@ describe("TreeSitterLanguageMode", () => {
       }
     });
 
+    it("keeps dirty containers and only enough successors to realign their boundaries", async () => {
+      const languageMode = await setUp("const value = 1;\n");
+      const layer = languageMode.rootLanguageLayer;
+      grammar.queryPaths.parseBoundariesMaxStartDepth = 1;
+      const container = (id, type, startIndex, endIndex, hasChanges = false) => ({
+        id,
+        type,
+        startIndex,
+        endIndex,
+        hasChanges,
+        childCount: 2,
+      });
+      const before = container(1, "document_fragment", 0, 4096);
+      const dirtyDocument = container(2, "document_fragment", 4096, 8192, true);
+      const nextDocument = container(3, "document_fragment", 8192, 12288);
+      const farDocument = container(4, "document_fragment", 12288, 16384);
+      const beforeRow = container(5, "paragraph_fragment", 4096, 4608);
+      const dirtyRow = container(6, "paragraph_fragment", 4608, 5120, true);
+      const nextRow = container(7, "paragraph_fragment", 5120, 5632);
+      const marginRow = container(8, "paragraph_fragment", 5632, 6144);
+      const farRow = container(9, "paragraph_fragment", 6144, 6656);
+      const leaf = { ...container(10, "line_fragment", 5000, 5010), childCount: 0 };
+      const missingGeometry = { id: 11, childCount: 2, hasChanges: false };
+      const boundary = (node) => ({ name: "parse.boundary", node });
+      const original = layer.queries.parseBoundariesQuery;
+      const query = {
+        captures: jasmine.createSpy("captures").and.callFake((node) => {
+          if (node === dirtyDocument)
+            return [dirtyDocument, beforeRow, dirtyRow, nextRow, marginRow, farRow].map(boundary);
+          if (node === dirtyRow)
+            return [boundary(dirtyRow), boundary(leaf), boundary(missingGeometry), boundary(leaf)];
+          return [
+            ...[before, dirtyDocument, nextDocument, farDocument].map(boundary),
+            { name: "other", node: farDocument },
+          ];
+        }),
+      };
+      layer.queries.parseBoundariesQuery = query;
+      try {
+        const captures = layer.getParseBoundaryCaptures();
+        expect(
+          captures.filter(({ name }) => name === "parse.boundary").map(({ node }) => node.id),
+        ).toEqual([1, 2, 3, 5, 6, 7, 8, 10, 11]);
+        expect(captures.find(({ name }) => name === "other").node).toBe(farDocument);
+        expect(query.captures.calls.allArgs()).toEqual([
+          [layer.tree.rootNode, { maxStartDepth: 1 }],
+          [dirtyDocument, { maxStartDepth: 2 }],
+          [dirtyRow, { maxStartDepth: 2 }],
+        ]);
+      } finally {
+        layer.queries.parseBoundariesQuery = original;
+      }
+    });
+
+    it("can accept a previously skipped container when a later dirty capture needs it", async () => {
+      const languageMode = await setUp("const value = 1;\n");
+      const layer = languageMode.rootLanguageLayer;
+      grammar.queryPaths.parseBoundariesMaxStartDepth = 1;
+      const parent = {
+        id: 1,
+        type: "document_fragment",
+        startIndex: 0,
+        endIndex: 4096,
+        hasChanges: true,
+        childCount: 2,
+      };
+      const dirty = {
+        id: 2,
+        type: "paragraph_fragment",
+        startIndex: 0,
+        endIndex: 1024,
+        hasChanges: true,
+        childCount: 2,
+      };
+      const next = {
+        id: 3,
+        type: "paragraph_fragment",
+        startIndex: 1024,
+        endIndex: 2048,
+        hasChanges: false,
+        childCount: 2,
+      };
+      const head = { ...next, id: 0, startIndex: 0, endIndex: 1024 };
+      const boundary = (node) => ({ name: "parse.boundary", node });
+      const original = layer.queries.parseBoundariesQuery;
+      layer.queries.parseBoundariesQuery = {
+        captures: (node) => {
+          if (node === parent) return [boundary(dirty), boundary(next)];
+          if (node === dirty) return [boundary(dirty), boundary(next)];
+          return [boundary(head), boundary(next), boundary(parent)];
+        },
+      };
+      try {
+        expect(layer.getParseBoundaryCaptures().map(({ node }) => node.id)).toEqual([0, 1, 2, 3]);
+      } finally {
+        layer.queries.parseBoundariesQuery = original;
+      }
+    });
+
+    it("keeps initial anchors when an edit outside captured groups leaves them unchanged", async () => {
+      const languageMode = await setUp("const value = 1;\n");
+      const layer = languageMode.rootLanguageLayer;
+      grammar.queryPaths.parseBoundariesMaxStartDepth = 1;
+      const groups = Array.from({ length: 5 }, (_, index) => ({
+        name: "parse.boundary",
+        node: {
+          id: index,
+          type: "document_fragment",
+          startIndex: index * 390,
+          endIndex: (index + 1) * 390,
+          hasChanges: false,
+          childCount: 2,
+        },
+      }));
+      const query = layer.queries.parseBoundariesQuery;
+      spyOn(query, "captures").and.returnValue(groups);
+      expect(layer.getParseBoundaryCaptures().map(({ node }) => node.endIndex)).toEqual([
+        390, 780, 1170,
+      ]);
+      expect(query.captures.calls.count()).toBe(1);
+    });
+
     it("uses one unrestricted query when the depth option is absent or invalid", async () => {
       const languageMode = await setUp("const value = 1;\n");
       const layer = languageMode.rootLanguageLayer;
