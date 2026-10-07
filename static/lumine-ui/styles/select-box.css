@@ -76,6 +76,7 @@
     }
 
     &[aria-selected="true"]:not(.disabled) {
+      color: var(--text-color-selected);
       background-color: var(--background-color-selected);
     }
 

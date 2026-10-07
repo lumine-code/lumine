@@ -201,7 +201,7 @@
       &,
       &:hover,
       &:focus {
-        color: #fff; /* @nav-pills-active-link-hover-color: @component-active-color */
+        color: var(--text-color-selected);
         background-color: var(--background-color-selected);
       }
     }

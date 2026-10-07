@@ -66,7 +66,12 @@ lumine-context-view .context-view-surface.menu-box {
     }
 
     &:active:not(.disabled) {
+      color: var(--text-color-selected);
       background-color: var(--background-color-selected);
+
+      .menu-item-keystroke {
+        color: inherit;
+      }
     }
 
     &.checked::before {

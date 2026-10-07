@@ -338,7 +338,7 @@ mark,
 .highlight-info {
   font-weight: bold;
   border-radius: var(--ui-border-radius);
-  color: #fff;
+  color: var(--text-color-on-info);
   background-color: rgb(
     from var(--background-color-info) r g b / calc(alpha - 0.5)
   ); /* fadeout(@background-color-info, 50%) */
@@ -346,19 +346,19 @@ mark,
 .highlight-warning {
   font-weight: bold;
   border-radius: var(--ui-border-radius);
-  color: #fff;
+  color: var(--text-color-on-warning);
   background-color: rgb(from var(--background-color-warning) r g b / calc(alpha - 0.5));
 }
 .highlight-error {
   font-weight: bold;
   border-radius: var(--ui-border-radius);
-  color: #fff;
+  color: var(--text-color-on-error);
   background-color: rgb(from var(--background-color-error) r g b / calc(alpha - 0.5));
 }
 .highlight-success {
   font-weight: bold;
   border-radius: var(--ui-border-radius);
-  color: #fff;
+  color: var(--text-color-on-success);
   background-color: rgb(from var(--background-color-success) r g b / calc(alpha - 0.5));
 }
 

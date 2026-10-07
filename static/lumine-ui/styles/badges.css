@@ -12,8 +12,8 @@
 
   /* Color (.badge-color() inlined) ---------------------- */
 
-  color: var(--text-color-selected);
-  background-color: var(--background-color-selected);
+  color: var(--text-color-highlight);
+  background-color: var(--badge-background-color);
 
   /* Size (.badge-size() inlined, default @size: @font-size) ---------------------- */
 
@@ -26,19 +26,19 @@
   }
 
   &.badge-info {
-    color: white;
+    color: var(--text-color-on-info);
     background-color: var(--background-color-info);
   }
   &.badge-success {
-    color: white;
+    color: var(--text-color-on-success);
     background-color: var(--background-color-success);
   }
   &.badge-warning {
-    color: white;
+    color: var(--text-color-on-warning);
     background-color: var(--background-color-warning);
   }
   &.badge-error {
-    color: white;
+    color: var(--text-color-on-error);
     background-color: var(--background-color-error);
   }
 

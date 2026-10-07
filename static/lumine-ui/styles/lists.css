@@ -270,7 +270,7 @@ button.list-group-item {
 
   li:not(.list-nested-item),
   li.list-nested-item > .list-item {
-    line-height: var(--ui-control-height);
+    line-height: var(--ui-row-height);
     text-wrap: none;
     white-space: nowrap;
   }
@@ -278,13 +278,17 @@ button.list-group-item {
   /* The background highlight uses ::before rather than the item background so
      it can span the entire width of the parent container rather than the size
      of the list item. */
+  .selected {
+    color: var(--text-color-selected);
+  }
+
   .selected::before {
     content: "";
     background-color: var(--background-color-selected);
     position: absolute;
     left: 0;
     right: 0;
-    height: var(--ui-control-height);
+    height: var(--ui-row-height);
   }
 
   /* Make sure the background highlight is below the content. */

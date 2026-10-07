@@ -189,7 +189,7 @@ input.input-toggle {
     }
     &:invalid {
       color: var(--text-color-error);
-      border-color: var(--background-color-error);
+      border-color: var(--text-color-error);
     }
 
     position: relative;
@@ -315,7 +315,7 @@ input.input-toggle {
     }
     &:invalid {
       color: var(--text-color-error);
-      border-color: var(--background-color-error);
+      border-color: var(--text-color-error);
     }
   }
 }
@@ -358,7 +358,7 @@ input.input-toggle {
     }
     &:invalid {
       color: var(--text-color-error);
-      border-color: var(--background-color-error);
+      border-color: var(--text-color-error);
     }
   }
 }
@@ -385,7 +385,7 @@ input.input-toggle {
     }
     &:invalid {
       color: var(--text-color-error);
-      border-color: var(--background-color-error);
+      border-color: var(--text-color-error);
     }
   }
 }

@@ -88,7 +88,7 @@
       }
 
       &.selected .secondary-line {
-        color: rgb(from var(--text-color-highlight) r g b / 50%);
+        color: rgb(from var(--text-color-selected) r g b / 50%);
         text-shadow: none;
       }
     }

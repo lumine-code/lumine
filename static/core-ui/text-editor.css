@@ -1,11 +1,6 @@
 /* Containment values from core-ui/utils inlined at each use site
    (e.g. `layout paint style` = contain_except_size). */
 
-:root {
-  /* Fixes specs */
-  --editor-font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
-}
-
 lumine-text-editor {
   /* No layout/paint containment here: the editor hosts position-fixed overlay
      decorations (lumine-overlay) that must position and paint in viewport space.
@@ -16,7 +11,7 @@ lumine-text-editor {
   contain: style;
   display: flex;
   cursor: text;
-  font-family: var(--editor-font-family);
+  font-family: var(--editor-font-family, Menlo, Consolas, "DejaVu Sans Mono", monospace);
   font-size: var(--editor-font-size);
   line-height: var(--editor-line-height);
 
