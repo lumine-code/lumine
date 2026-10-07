@@ -729,6 +729,9 @@ module.exports = class Pane {
    * @status public
    *
    * Add the given item to the pane.
+   * Non-mini text editors with no explicit `autoHeight` setting adopt the
+   * pane's height so their content can scroll. Explicit sizing and editors
+   * embedded within another item are preserved.
    *
    * @param item - The item to add. It can be a model with an associated view or a view.
    * @param {Object} [options]
@@ -755,6 +758,12 @@ module.exports = class Pane {
     }
 
     if (this.items.includes(item)) return;
+
+    // Detached editors grow with their content by default. Direct pane
+    // documents instead use the viewport unless their owner chose a size.
+    if (item instanceof TextEditor && !item.isMini() && item.autoHeight == null) {
+      item.update({ autoHeight: false });
+    }
 
     const itemSubscriptions = new CompositeDisposable();
     this.subscriptionsPerItem.set(item, itemSubscriptions);
