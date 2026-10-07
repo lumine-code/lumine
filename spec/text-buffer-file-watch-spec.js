@@ -232,6 +232,59 @@ describe("TextBuffer deferred file observation", () => {
     await buffer.endFileOperation();
   });
 
+  it("keeps markers and history unchanged when a pending load observes an edit and rollback", async () => {
+    const custom = source();
+    buffer = await TextBuffer.load(custom);
+    const range = [
+      [0, 1],
+      [0, 3],
+    ];
+    const marker = buffer.markRange(range);
+    const checkpoint = buffer.createCheckpoint();
+    const stream = new PassThrough();
+    custom.createReadStream = () => stream;
+    const changes = [];
+    buffer.onDidChangeText((event) => changes.push(event));
+
+    const load = buffer.load({ internal: true });
+    buffer.setText("staged source changes");
+    expect(buffer.revertToCheckpoint(checkpoint)).toBe(true);
+    marker.setRange(range);
+    changes.length = 0;
+    stream.end(custom.text);
+    await load;
+
+    expect(buffer.getText()).toBe(custom.text);
+    expect(buffer.getFileState()).toBe("unmodified");
+    expect(marker.getRange().serialize()).toEqual(range);
+    expect(changes).toEqual([]);
+    expect(buffer.undo()).toBe(false);
+  });
+
+  it("keeps markers and history unchanged when loading synchronously after an edit and rollback", () => {
+    const file = path.join(directory, "synchronous-rollback.txt");
+    fs.writeFileSync(file, "before");
+    buffer = TextBuffer.loadSync(file);
+    const range = [
+      [0, 1],
+      [0, 3],
+    ];
+    const marker = buffer.markRange(range);
+    const checkpoint = buffer.createCheckpoint();
+    buffer.setText("staged source changes");
+    expect(buffer.revertToCheckpoint(checkpoint)).toBe(true);
+    marker.setRange(range);
+    const changed = jasmine.createSpy("changed");
+    buffer.onDidChangeText(changed);
+
+    buffer.loadSync();
+
+    expect(buffer.getText()).toBe("before");
+    expect(marker.getRange().serialize()).toEqual(range);
+    expect(changed).not.toHaveBeenCalled();
+    expect(buffer.undo()).toBe(false);
+  });
+
   it("releases the pending load when a custom source cannot create its stream", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);

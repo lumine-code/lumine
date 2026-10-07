@@ -25,6 +25,15 @@ const {
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
 
+function textChangesOnlyPatch(patch) {
+  if (!patch || patch.getChangeCount() === 0) return patch;
+  // A native load can invert an edit and rollback into an identical replacement.
+  // Applying that replacement to marker layers would still move their ranges.
+  const changes = patch.getChanges();
+  const textChanges = changes.filter((change) => change.oldText !== change.newText);
+  return textChanges.length === changes.length ? patch : patchFromChanges(textChanges);
+}
+
 function advanceStringIndex(text, index, unicode) {
   if (!unicode || index + 1 >= text.length) return index + 1;
 
@@ -2804,7 +2813,7 @@ class TextBuffer {
     let checkpoint = null;
     try {
       patch = this.buffer.loadSync(this.getPath(), this.getEncoding(), (percentDone, patch) => {
-        if (patch && patch.getChangeCount() > 0) {
+        if (textChangesOnlyPatch(patch)?.getChangeCount() > 0) {
           checkpoint = this.historyProvider.createCheckpoint({
             markers: this.createMarkerSnapshot(),
             isBarrier: true,
@@ -2813,6 +2822,7 @@ class TextBuffer {
           this.emitWillChangeEvent();
         }
       });
+      patch = textChangesOnlyPatch(patch);
       this.finishLoading(checkpoint, patch, options);
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === "ENOENT") {
@@ -2868,6 +2878,8 @@ class TextBuffer {
       ) {
         return;
       }
+
+      patch = textChangesOnlyPatch(patch);
 
       // A non-forced reload can begin while the buffer is clean, then finish
       // after the user has edited it. The native buffer returns `null` in that
