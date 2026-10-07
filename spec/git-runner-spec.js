@@ -1,6 +1,8 @@
 const GitRunner = require("../src/git-runner");
 const { Semaphore } = GitRunner;
 const path = require("path");
+const fs = require("fs");
+const temp = require("@lumine-code/fs-temp").track();
 
 // Flush enough microtask turns for the semaphore's async acquire() handoffs to
 // settle before asserting on in-flight state.
@@ -328,9 +330,12 @@ describe("GitRunner repository binding", () => {
         GIT_WORK_TREE: "wrong-work-tree",
         GIT_COMMON_DIR: "wrong-common-dir",
         GIT_INDEX_FILE: "wrong-index",
+        GIT_NAMESPACE: "wrong-namespace",
         GIT_OBJECT_DIRECTORY: "temporary-objects",
         GIT_ALTERNATE_OBJECT_DIRECTORIES: "repository-objects",
-        ...(process.platform === "win32" ? { git_dir: "wrong-lowercase-git-dir" } : {}),
+        ...(process.platform === "win32"
+          ? { git_dir: "wrong-lowercase-git-dir", git_namespace: "wrong-lowercase-namespace" }
+          : {}),
       },
     });
 
@@ -339,6 +344,7 @@ describe("GitRunner repository binding", () => {
       "GIT_WORK_TREE",
       "GIT_COMMON_DIR",
       "GIT_INDEX_FILE",
+      "GIT_NAMESPACE",
       "GIT_OBJECT_DIRECTORY",
       "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     ]);
@@ -346,7 +352,11 @@ describe("GitRunner repository binding", () => {
     expect(calls[0].options.env.GIT_WORK_TREE).toBeUndefined();
     expect(calls[0].options.env.GIT_COMMON_DIR).toBeUndefined();
     expect(calls[0].options.env.GIT_INDEX_FILE).toBeUndefined();
-    if (process.platform === "win32") expect(calls[0].options.env.git_dir).toBeUndefined();
+    expect(calls[0].options.env.GIT_NAMESPACE).toBeUndefined();
+    if (process.platform === "win32") {
+      expect(calls[0].options.env.git_dir).toBeUndefined();
+      expect(calls[0].options.env.git_namespace).toBeUndefined();
+    }
     expect(calls[0].options.env.GIT_OBJECT_DIRECTORY).toBe("temporary-objects");
     expect(calls[0].options.env.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe("repository-objects");
   });
@@ -356,14 +366,82 @@ describe("GitRunner repository binding", () => {
     const runner = new GitRunner({ execute });
 
     await runner.runRawResult(["init", "new-repository"], "caller-cwd", {
-      env: { GIT_DIR: "intentional-unbound-value" },
+      env: {
+        GIT_DIR: "intentional-unbound-value",
+        GIT_NAMESPACE: "intentional-unbound-namespace",
+      },
     });
 
     expect(calls[0].args).toEqual(["init", "new-repository"]);
     expect(calls[0].cwd).toBe("caller-cwd");
     expect(calls[0].options.unsetEnv).toBeUndefined();
     expect(calls[0].options.env.GIT_DIR).toBe("intentional-unbound-value");
+    expect(calls[0].options.env.GIT_NAMESPACE).toBe("intentional-unbound-namespace");
   });
+});
+
+describe("GitRunner repository namespace binding", () => {
+  let runner, workingDirectory, remote, descriptor, publicHead, namespaceHead;
+
+  beforeEach(async () => {
+    const root = temp.mkdirSync("git-runner-namespace-");
+    workingDirectory = path.join(root, "client");
+    remote = path.join(root, "remote.git");
+    fs.mkdirSync(workingDirectory);
+    fs.mkdirSync(remote);
+    runner = new GitRunner();
+    await runner.run(["init", "--bare"], remote);
+    const tree = (
+      await runner.run(["hash-object", "-t", "tree", "-w", "--stdin"], remote, { stdin: "" })
+    ).trim();
+    const env = {
+      GIT_AUTHOR_NAME: "Namespace test",
+      GIT_AUTHOR_EMAIL: "namespace@example.test",
+      GIT_COMMITTER_NAME: "Namespace test",
+      GIT_COMMITTER_EMAIL: "namespace@example.test",
+    };
+    publicHead = (await runner.run(["commit-tree", tree, "-m", "public"], remote, { env })).trim();
+    namespaceHead = (
+      await runner.run(["commit-tree", tree, "-m", "namespaced"], remote, { env })
+    ).trim();
+    await runner.run(["update-ref", "refs/heads/main", publicHead], remote);
+    await runner.run(
+      ["update-ref", "refs/namespaces/other/refs/heads/main", namespaceHead],
+      remote,
+    );
+    await runner.run(["symbolic-ref", "HEAD", "refs/heads/main"], remote);
+    await runner.run(["init", "--initial-branch=main"], workingDirectory);
+    descriptor = { workingDirectory, gitDirectory: path.join(workingDirectory, ".git") };
+  });
+
+  for (const source of ["inherited", "options"]) {
+    it(`fetches the selected remote's public branch despite ${source === "inherited" ? "an" : "a"} ${source} Git namespace`, async () => {
+      const originalNamespace = process.env.GIT_NAMESPACE;
+      const env = source === "options" ? { GIT_NAMESPACE: "other" } : undefined;
+      if (source === "inherited") process.env.GIT_NAMESPACE = "other";
+      try {
+        // Prove the remote really exposes a different branch in this namespace.
+        const namespaced = await runner.run(["ls-remote", remote, "refs/heads/main"], remote, {
+          env,
+        });
+        expect(namespaced.trim()).toBe(`${namespaceHead}\trefs/heads/main`);
+        await runner.run(
+          ["fetch", remote, "refs/heads/main:refs/remotes/source/main"],
+          workingDirectory,
+          { repositoryDescriptor: descriptor, env, priority: "interactive" },
+        );
+        const fetched = await runner.run(
+          ["rev-parse", "refs/remotes/source/main"],
+          workingDirectory,
+          { repositoryDescriptor: descriptor },
+        );
+        expect(fetched.trim()).toBe(publicHead);
+      } finally {
+        if (originalNamespace === undefined) delete process.env.GIT_NAMESPACE;
+        else process.env.GIT_NAMESPACE = originalNamespace;
+      }
+    });
+  }
 });
 
 describe("GitRunner errors", () => {

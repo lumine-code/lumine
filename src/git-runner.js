@@ -136,13 +136,15 @@ const COLOR_CONFIG = [
 
 // Repository operations are bound with command-line arguments instead of
 // Git's repository-discovery environment. Remove variables that could redirect
-// part of that binding while retaining object-directory overrides used by the
-// diff provider (GIT_OBJECT_DIRECTORY and GIT_ALTERNATE_OBJECT_DIRECTORIES).
+// that binding or the namespace exposed by a local remote, while retaining
+// object-directory overrides used by the diff provider (GIT_OBJECT_DIRECTORY
+// and GIT_ALTERNATE_OBJECT_DIRECTORIES).
 const REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES = [
   "GIT_DIR",
   "GIT_WORK_TREE",
   "GIT_COMMON_DIR",
   "GIT_INDEX_FILE",
+  "GIT_NAMESPACE",
 ];
 const REPOSITORY_ENVIRONMENT_VARIABLES = [
   ...REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES,
