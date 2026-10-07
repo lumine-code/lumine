@@ -61,6 +61,20 @@ function withSessions(broker) {
 }
 
 describe("GitRepositoryOperationProvider", () => {
+  it("explicitly requests merging when the pull policy disables rebase", async () => {
+    const calls = [];
+    const provider = new GitRepositoryOperationProvider({
+      exec: async (args) => {
+        calls.push(args);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    const operations = provider.createRepositoryOperations(
+      await repositoryContext(temp.mkdirSync("merge-pull-policy")),
+    );
+    await operations.pull("origin", "main", { rebase: false });
+    expect(calls[0]).toEqual(["pull", "--no-rebase", "origin", "main"]);
+  });
   it("requires an exact descriptor even with an injected command transport", () => {
     const provider = new GitRepositoryOperationProvider({
       exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),

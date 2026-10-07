@@ -244,7 +244,8 @@ class GitRepositoryOperations {
 
   async pull(remote, reference, options = {}) {
     const args = ["pull"];
-    addBooleanFlag(args, options.rebase, "--rebase");
+    if (options.rebase === true) args.push("--rebase");
+    else if (options.rebase === false) args.push("--no-rebase");
     addBooleanFlag(args, options.ffOnly, "--ff-only");
     addBooleanFlag(args, options.noCommit, "--no-commit");
     if (remote) args.push(remote);
