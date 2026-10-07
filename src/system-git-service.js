@@ -15,12 +15,22 @@ const { parseRefsSnapshot } = require("./repository-refs-snapshot");
 const { parseStatusSnapshot } = require("./repository-status-snapshot");
 const { computeLineDiffHunks } = require("./line-diff");
 const { assertGitRevision } = require("./git-revision");
+const RepositoryResourceQueue = require("./repository-resource-queue");
 const {
   assertRepositoryDescriptorAvailableAsync,
+  discoverRepositoryDescriptorAsync,
   ERR_GIT_REPOSITORY_UNAVAILABLE,
 } = require("./git-repository-descriptor");
 
 const MAX_OBJECT_BYTES = 256 * 1024 * 1024;
+const WORKER_WRITE_TURN = Symbol("worker-write-turn");
+
+function writeDomain(descriptor, fallback) {
+  const directory = path.resolve(
+    descriptor?.commonDirectory || descriptor?.gitDirectory || fallback || process.cwd(),
+  );
+  return process.platform === "win32" ? directory.toLowerCase() : directory;
+}
 const MAX_SUBMODULE_CACHE_ENTRIES = 1000;
 const EMPTY_SUBMODULE_PATHS = Object.freeze([]);
 const VALIDATED_REPOSITORY_DESCRIPTOR = Symbol("validated-repository-descriptor");
@@ -194,6 +204,7 @@ module.exports = class SystemGitService {
     assertRepositoryDescriptorAvailable = assertRepositoryDescriptorAvailableAsync,
   }) {
     this.runner = runner;
+    this.writeQueue = new RepositoryResourceQueue();
     this.assertRepositoryDescriptorAvailable = assertRepositoryDescriptorAvailable;
     this.statusProvider = new GitRepositoryStatusProvider({ runner });
     this.refsProvider = new GitRepositoryRefsProvider({ runner });
@@ -568,13 +579,30 @@ module.exports = class SystemGitService {
     return Promise.resolve(computeLineDiffHunks(oldText, newText, options));
   }
 
-  exec({ workingDirectory, args, options = {}, raw }, { signal } = {}) {
+  async exec({ workingDirectory, args, options = {}, raw }, { signal } = {}) {
+    if (!options.readOnly && !options[WORKER_WRITE_TURN]) {
+      const descriptor = await discoverRepositoryDescriptorAsync(workingDirectory || process.cwd());
+      return this.writeQueue.run(writeDomain(descriptor, workingDirectory), () =>
+        this.exec(
+          { workingDirectory, args, options: { ...options, [WORKER_WRITE_TURN]: true }, raw },
+          { signal },
+        ),
+      );
+    }
     return raw
       ? this.runner.runRawResult(args, workingDirectory, { ...options, signal })
       : this.runner.runResult(args, workingDirectory, { ...options, signal });
   }
 
-  execRepository({ descriptor, args, options = {} }, context = {}) {
+  execRepository({ descriptor, args, options = {}, raw = false }, context = {}) {
+    if (!options.repositoryRead && !options[WORKER_WRITE_TURN]) {
+      return this.writeQueue.run(writeDomain(descriptor), () =>
+        this.execRepository(
+          { descriptor, args, options: { ...options, [WORKER_WRITE_TURN]: true }, raw },
+          context,
+        ),
+      );
+    }
     const { signal } = context;
     const { repositoryRead = false, ...commandOptions } = options;
     const execute = repositoryRead
@@ -589,7 +617,73 @@ module.exports = class SystemGitService {
         [DEFER_REPOSITORY_READ_POSTFLIGHT]: context[DEFER_REPOSITORY_READ_POSTFLIGHT] === true,
       },
       (validatedOptions) =>
-        this.runner.runResult(args, workingDirectoryFor(descriptor), validatedOptions),
+        raw
+          ? this.runner.runRawResult(args, workingDirectoryFor(descriptor), validatedOptions)
+          : this.runner.runResult(args, workingDirectoryFor(descriptor), validatedOptions),
+    );
+  }
+
+  performOperation({ descriptor, name, args }, { signal } = {}) {
+    const GitRepositoryOperations = require("./git-repository-operations");
+    const { OPERATION_OPTION_INDEX } = require("./git-operation-metadata");
+    if (!Object.hasOwn(OPERATION_OPTION_INDEX, name) || !Array.isArray(args)) {
+      throw new TypeError(`Unknown repository operation: ${name}`);
+    }
+    const optionIndex = OPERATION_OPTION_INDEX[name];
+    const options = args[optionIndex] || {};
+    if (!options.readOnly && !options[WORKER_WRITE_TURN]) {
+      const queuedArgs = args.slice();
+      queuedArgs[optionIndex] = { ...options, [WORKER_WRITE_TURN]: true };
+      return this.writeQueue.run(writeDomain(descriptor), () =>
+        this.performOperation({ descriptor, name, args: queuedArgs }, { signal }),
+      );
+    }
+    const operationArgs = args.slice();
+    operationArgs[optionIndex] = { ...operationArgs[optionIndex], signal };
+    const backend = {
+      runRepository: async (command, boundDescriptor, options) =>
+        (
+          await this.execRepository(
+            { descriptor: boundDescriptor, args: command, options },
+            { signal },
+          )
+        ).stdout,
+      runRepositoryRaw: (command, boundDescriptor, options) =>
+        this.execRepository(
+          {
+            descriptor: boundDescriptor,
+            args: command,
+            options: { ...options, repositoryRead: options.readOnly === true },
+            raw: true,
+          },
+          { signal },
+        ),
+      runRepositoryToFile: (command, boundDescriptor, destinationPath, options) =>
+        this.writeRepositoryCommandOutput(
+          { descriptor: boundDescriptor, args: command, destinationPath, options },
+          { signal },
+        ),
+    };
+    return new GitRepositoryOperations(backend, descriptor)[name](...operationArgs);
+  }
+
+  initializeRepository({ directoryPath, options }, { signal } = {}) {
+    const GitWorkspaceOperations = require("./git-workspace-operations");
+    return this.writeQueue.run(writeDomain(null, directoryPath), () =>
+      new GitWorkspaceOperations(this.runner).initialize(directoryPath, {
+        ...options,
+        signal,
+      }),
+    );
+  }
+
+  cloneRepository({ remoteUrl, destinationPath, options }, { signal } = {}) {
+    const GitWorkspaceOperations = require("./git-workspace-operations");
+    return this.writeQueue.run(writeDomain(null, destinationPath), () =>
+      new GitWorkspaceOperations(this.runner).clone(remoteUrl, destinationPath, {
+        ...options,
+        signal,
+      }),
     );
   }
 
@@ -598,6 +692,14 @@ module.exports = class SystemGitService {
     { signal } = {},
   ) {
     const operation = "writeRepositoryCommandOutput";
+    if (!options[WORKER_WRITE_TURN]) {
+      return this.writeQueue.run(writeDomain(descriptor), () =>
+        this.writeRepositoryCommandOutput(
+          { descriptor, args, options: { ...options, [WORKER_WRITE_TURN]: true }, destinationPath },
+          { signal },
+        ),
+      );
+    }
     const requestOptions = { ...options, signal };
     const validatedOptions = await this.validatedRepositoryOptions(
       descriptor,
