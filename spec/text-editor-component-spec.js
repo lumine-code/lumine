@@ -4426,6 +4426,9 @@ describe("TextEditorComponent", () => {
           description: "the overlay's initial size notification",
         });
 
+        // The rectangle is published before the initial observer reconnects on
+        // nextTick. Finish that delivery before observing the later teardown.
+        await new Promise((resolve) => process.nextTick(resolve));
         const observe = spyOn(overlayComponent.resizeObserver, "observe").and.callThrough();
         const originalDidResize = overlayComponent.props.didResize;
         const resize = spyOn(overlayComponent.props, "didResize").and.callFake((resized) => {

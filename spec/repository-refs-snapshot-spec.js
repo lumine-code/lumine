@@ -7,7 +7,7 @@ const { EMPTY_REFS_SNAPSHOT, parseRefsSnapshot } = require("../src/repository-re
 const GitRepositoryRefsProvider = require("../src/git-repository-refs-provider");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
 const GitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
 function refRecord({
   ref,
@@ -66,6 +66,12 @@ function rawBundle(overrides = {}) {
     headOid: "1111111111111111111111111111111111111111\n",
     ...overrides,
   };
+}
+
+async function runFixtureGit(provider, args, workingDirectory, options) {
+  const result = await provider.executeGit(args, workingDirectory, options);
+  if (result.exitCode !== 0) throw new Error(result.stderr || "Git fixture command failed");
+  return result.stdout;
 }
 
 describe("repository refs snapshot", () => {
@@ -532,7 +538,9 @@ describe("repository refs snapshot", () => {
       const worktreePath = path.join(temp.mkdirSync("refs-provider-worktrees"), "feature");
 
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      const repository = new GitRepository(discoverRepositoryDescriptor(workingDirectory));
+      const repository = new GitRepository(
+        await discoverRepositoryDescriptorAsync(workingDirectory),
+      );
       const operations = operationProvider.createRepositoryOperations({
         repository,
         gitDirectory: repository.getPath(),
@@ -546,18 +554,24 @@ describe("repository refs snapshot", () => {
       await operations.setConfig("i18n.logOutputEncoding", "ISO-8859-1");
       await operations.setConfig("log.showSignature", "true");
       const blobOid = (
-        await operationProvider.run(["rev-parse", "HEAD:file.txt"], workingDirectory)
+        await runFixtureGit(operationProvider, ["rev-parse", "HEAD:file.txt"], workingDirectory)
       ).trim();
-      await operationProvider.run(["branch", "feature"], workingDirectory);
-      await operationProvider.run(["tag", "-a", "v1", "-m", "release"], workingDirectory);
-      await operationProvider.run(
+      await runFixtureGit(operationProvider, ["branch", "feature"], workingDirectory);
+      await runFixtureGit(
+        operationProvider,
+        ["tag", "-a", "v1", "-m", "release"],
+        workingDirectory,
+      );
+      await runFixtureGit(
+        operationProvider,
         ["tag", "-a", "blob-v1", blobOid, "-m", "blob release"],
         workingDirectory,
       );
-      await operationProvider.run(["tag", "lightweight"], workingDirectory);
-      await operationProvider.run(["tag", "feature"], workingDirectory);
+      await runFixtureGit(operationProvider, ["tag", "lightweight"], workingDirectory);
+      await runFixtureGit(operationProvider, ["tag", "feature"], workingDirectory);
       await operations.addRemote("origin", "https://example.com/repo.git");
-      await operationProvider.run(
+      await runFixtureGit(
+        operationProvider,
         ["update-ref", "refs/remotes/origin/main", "HEAD"],
         workingDirectory,
       );
@@ -567,7 +581,11 @@ describe("repository refs snapshot", () => {
       await operations.setConfig("branch.feature.merge", "refs/heads/main");
       await operations.setConfig("branch.feature.pushRemote", "origin");
       await operations.setConfig("push.default", "current");
-      await operationProvider.run(["worktree", "add", worktreePath, "feature"], workingDirectory);
+      await runFixtureGit(
+        operationProvider,
+        ["worktree", "add", worktreePath, "feature"],
+        workingDirectory,
+      );
 
       const refsProvider = new GitRepositoryRefsProvider();
       const snapshot = parseRefsSnapshot(await refsProvider.getRefs(workingDirectory));
@@ -660,7 +678,7 @@ describe("repository refs snapshot", () => {
       ).toEqual([]);
 
       // A detached checkout is reported as detached, not as a branch head.
-      await operationProvider.run(["checkout", "--detach"], workingDirectory);
+      await runFixtureGit(operationProvider, ["checkout", "--detach"], workingDirectory);
       const detachedSnapshot = parseRefsSnapshot(await refsProvider.getRefs(workingDirectory));
       expect(detachedSnapshot.head.detached).toBe(true);
       expect(detachedSnapshot.head.name).toBeNull();

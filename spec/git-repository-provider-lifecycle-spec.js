@@ -3,10 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 const ChildProcess = require("node:child_process");
 const GitRepositoryProvider = require("../src/git-repository-provider");
-const {
-  discoverRepositoryDescriptor,
-  discoverRepositoryDescriptorAsync,
-} = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 const repositoryPaths = require("../src/repository-paths");
 const { deferred } = require("../src/file-watch-protocol");
 
@@ -101,7 +98,6 @@ describe("Git repository provider filesystem lifecycle", () => {
     const result = ChildProcess.spawnSync("git", ["-C", alias, "rev-parse", "--show-toplevel"]);
 
     expect(result.status).toBe(128);
-    expect(discoverRepositoryDescriptor(requested)).toBeNull();
     expect(await discoverRepositoryDescriptorAsync(requested)).toBeNull();
     expect(await provider.repositoryForPath(path.join(alias, "missing", "file"))).toBeNull();
     expect(await provider.repositoryForPath(outer)).not.toBeNull();
@@ -117,7 +113,6 @@ describe("Git repository provider filesystem lifecycle", () => {
     const requested = path.join(alias, "file");
 
     expect(canonical(git(["-C", alias, "rev-parse", "--show-toplevel"]))).toBe(canonical(target));
-    expect(discoverRepositoryDescriptor(requested).getWorkingDirectory()).toBe(canonical(target));
     expect((await discoverRepositoryDescriptorAsync(requested)).getWorkingDirectory()).toBe(
       canonical(target),
     );
@@ -135,7 +130,7 @@ describe("Git repository provider filesystem lifecycle", () => {
       canonical(metadata),
     );
     expect(repository.getPath().replace(/\\/g, "/")).toBe(canonical(metadata));
-    expect(discoverRepositoryDescriptor(alias).getPath().replace(/\\/g, "/")).toBe(
+    expect((await discoverRepositoryDescriptorAsync(alias)).getPath().replace(/\\/g, "/")).toBe(
       canonical(metadata),
     );
     provider.commitRepositoryForPath(repository, alias);
@@ -150,11 +145,12 @@ describe("Git repository provider filesystem lifecycle", () => {
     const alias = link(first, "alias");
     repositoryPaths.normalizePath(alias, true);
     repositoryPaths.realpathRecursive(path.join(alias, "file"));
-    expect(discoverRepositoryDescriptor(alias).getWorkingDirectory()).toBe(canonical(first));
+    expect((await discoverRepositoryDescriptorAsync(alias)).getWorkingDirectory()).toBe(
+      canonical(first),
+    );
     fs.unlinkSync(alias);
     fs.symlinkSync(second, alias, process.platform === "win32" ? "junction" : "dir");
 
-    expect(discoverRepositoryDescriptor(alias).getWorkingDirectory()).toBe(canonical(second));
     expect((await discoverRepositoryDescriptorAsync(alias)).getWorkingDirectory()).toBe(
       canonical(second),
     );

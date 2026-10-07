@@ -417,6 +417,12 @@ const REQUEST_STREAM_PATHS = Object.freeze({
   exec: Object.freeze([["options", "stdin"]]),
   execRepository: Object.freeze([["options", "stdin"]]),
   writeRepositoryCommandOutput: Object.freeze([["options", "stdin"]]),
+  operation: Object.freeze(
+    [0, 1, 2, 3, 4].flatMap((index) => [
+      ["args", index],
+      ["args", index, "stdin"],
+    ]),
+  ),
 });
 
 function requestStreamName(operation, path) {

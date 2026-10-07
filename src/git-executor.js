@@ -82,6 +82,7 @@ function createGitExec(gitPath) {
           cwd: workingDirectory,
           env: childEnvironment(options),
           windowsHide: true,
+          detached: process.platform !== "win32",
         });
       } catch (error) {
         classifySpawnError(error, gitPath, workingDirectory).then(reject, reject);
@@ -95,16 +96,63 @@ function createGitExec(gitPath) {
       let stderrLength = 0;
       let maxBufferExceeded = false;
       let aborted = false;
+      let terminating = false;
+      let killTimer = null;
+
+      const terminateTree = () => {
+        if (terminating) return;
+        terminating = true;
+        if (process.platform === "win32" && child.pid) {
+          try {
+            const sweep = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+              windowsHide: true,
+              stdio: "ignore",
+            });
+            const finish = () => {
+              try {
+                child.kill(killSignal);
+              } catch {
+                /* already exited */
+              }
+            };
+            sweep.once("close", finish);
+            sweep.once("error", finish);
+            return;
+          } catch {
+            /* fall back to the owned parent */
+          }
+        } else if (child.pid) {
+          try {
+            process.kill(-child.pid, killSignal);
+            if (killSignal !== "SIGKILL") {
+              killTimer = setTimeout(() => {
+                if (settled) return;
+                try {
+                  process.kill(-child.pid, "SIGKILL");
+                } catch {
+                  /* group already gone */
+                }
+              }, 1000);
+              killTimer.unref?.();
+            }
+            return;
+          } catch {
+            /* group already gone */
+          }
+        }
+        child.kill(killSignal);
+      };
 
       const onAbort = () => {
         aborted = true;
-        child.kill(killSignal);
+        terminateTree();
       };
       if (options.signal) {
         if (options.signal.aborted) onAbort();
         else options.signal.addEventListener("abort", onAbort, { once: true });
       }
       const cleanup = () => {
+        if (killTimer) clearTimeout(killTimer);
         if (options.signal) options.signal.removeEventListener("abort", onAbort);
       };
 
@@ -112,7 +160,7 @@ function createGitExec(gitPath) {
         stdoutLength += chunk.length;
         if (stdoutLength > maxBuffer) {
           maxBufferExceeded = true;
-          child.kill(killSignal);
+          terminateTree();
           return;
         }
         stdoutChunks.push(chunk);
@@ -121,7 +169,7 @@ function createGitExec(gitPath) {
         stderrLength += chunk.length;
         if (stderrLength > maxBuffer) {
           maxBufferExceeded = true;
-          child.kill(killSignal);
+          terminateTree();
           return;
         }
         stderrChunks.push(chunk);

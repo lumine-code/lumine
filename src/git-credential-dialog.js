@@ -7,7 +7,8 @@
 
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 
-function promptForGitCredential(query = {}) {
+function promptForGitCredential(query = {}, { signal } = {}) {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   const workspace = globalThis.lumine && globalThis.lumine.workspace;
   if (!workspace) {
     return Promise.reject(new Error("No workspace is available to prompt for credentials"));
@@ -57,12 +58,15 @@ function promptForGitCredential(query = {}) {
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener("abort", abort);
       subscriptions.dispose();
       panel.destroy();
       fn(value);
     };
     const accept = () => finish(resolve, { password: input.value });
     const cancel = () => finish(reject, new Error("Git credential prompt was cancelled"));
+    const abort = () => finish(reject, signal.reason);
+    signal?.addEventListener("abort", abort, { once: true });
 
     subscriptions.add(
       globalThis.lumine.commands.add(element, {

@@ -27,6 +27,9 @@ module.exports = function createGitHostOps(
   };
 
   return {
+    operation: (payload, context) => systemGitService.performOperation(payload, context),
+    initialize: (payload, context) => systemGitService.initializeRepository(payload, context),
+    clone: (payload, context) => systemGitService.cloneRepository(payload, context),
     snapshot: ({ descriptor, request, options = {} }, context) =>
       invoke("snapshot", (service) =>
         service.snapshot(descriptor, request, repositoryReadOptions(context, options)),

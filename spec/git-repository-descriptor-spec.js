@@ -2,9 +2,7 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const temp = require("@lumine-code/fs-temp").track();
 const {
-  discoverRepositoryDescriptor,
   discoverRepositoryDescriptorAsync,
-  discoverGitDirectory,
   inspectRepositoryDescriptorAsync,
   assertRepositoryDescriptorAvailableAsync,
 } = require("../src/git-repository-descriptor");
@@ -40,26 +38,15 @@ describe("git repository descriptor", () => {
     return { root, workingDirectory, gitDirectory };
   }
 
-  it("discovers the git directory and working directory for a working tree", () => {
+  it("discovers the git directory and working directory for a working tree", async () => {
     const workingDir = copyFixture("working-dir");
-    const descriptor = discoverRepositoryDescriptor(workingDir);
+    const descriptor = await discoverRepositoryDescriptorAsync(workingDir);
 
     expect(real(descriptor.getWorkingDirectory())).toBe(real(workingDir));
     expect(real(descriptor.getPath())).toBe(real(path.join(workingDir, ".git")));
     expect(descriptor.getWorktreeGitMarker().kind).toBe("directory");
     expect(descriptor.getWorktreeGitMarker().path).toBe(canonical(path.join(workingDir, ".git")));
     expect(descriptor.caseInsensitiveFs).toBe(fs.isCaseInsensitive());
-  });
-
-  it("matches synchronous descriptor semantics through asynchronous discovery", async () => {
-    const workingDir = copyFixture("working-dir");
-    const synchronous = discoverRepositoryDescriptor(workingDir);
-    const asynchronous = await discoverRepositoryDescriptorAsync(workingDir);
-
-    expect(asynchronous.getPath()).toBe(synchronous.getPath());
-    expect(asynchronous.getWorkingDirectory()).toBe(synchronous.getWorkingDirectory());
-    expect(asynchronous.openedWorkingDirectory).toBe(synchronous.openedWorkingDirectory);
-    expect(asynchronous.caseInsensitiveFs).toBe(synchronous.caseInsensitiveFs);
   });
 
   it("does not fall back to synchronous realpath calls during asynchronous discovery", async () => {
@@ -74,25 +61,21 @@ describe("git repository descriptor", () => {
     expect(realpathSync).not.toHaveBeenCalled();
   });
 
-  it("discovers the repository from a nested path", () => {
+  it("discovers the repository from a nested path", async () => {
     const workingDir = copyFixture("working-dir");
-    const descriptor = discoverRepositoryDescriptor(path.join(workingDir, "a.txt"));
+    const descriptor = await discoverRepositoryDescriptorAsync(path.join(workingDir, "a.txt"));
 
     expect(real(descriptor.getWorkingDirectory())).toBe(real(workingDir));
     expect(real(descriptor.getPath())).toBe(real(path.join(workingDir, ".git")));
   });
 
-  it("discovers sync and async from a missing nested path", async () => {
+  it("discovers from a missing nested path", async () => {
     const workingDir = copyFixture("working-dir");
     const missingPath = path.join(workingDir, "missing", "b#", "file#hash.md");
 
-    const synchronous = discoverRepositoryDescriptor(missingPath);
     const asynchronous = await discoverRepositoryDescriptorAsync(missingPath);
 
-    expect(real(synchronous.getWorkingDirectory())).toBe(real(workingDir));
     expect(real(asynchronous.getWorkingDirectory())).toBe(real(workingDir));
-    expect(real(synchronous.getPath())).toBe(real(path.join(workingDir, ".git")));
-    expect(asynchronous.getPath()).toBe(synchronous.getPath());
   });
 
   it("retains a symlink alias for a missing descendant", async () => {
@@ -102,10 +85,8 @@ describe("git repository descriptor", () => {
     fs.symlinkSync(workingDir, alias, process.platform === "win32" ? "junction" : "dir");
     const missingPath = path.join(alias, "missing", "file.txt");
 
-    const synchronous = discoverRepositoryDescriptor(missingPath);
     const asynchronous = await discoverRepositoryDescriptorAsync(missingPath);
 
-    expect(path.resolve(synchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
     expect(path.resolve(asynchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
     expect(
       asynchronous
@@ -114,8 +95,10 @@ describe("git repository descriptor", () => {
     ).toBe(true);
   });
 
-  it("walks up into a bare-style git directory", () => {
-    const descriptor = discoverRepositoryDescriptor(fixturePath("master.git", "objects"));
+  it("walks up into a bare-style git directory", async () => {
+    const descriptor = await discoverRepositoryDescriptorAsync(
+      fixturePath("master.git", "objects"),
+    );
 
     expect(real(descriptor.getPath())).toBe(real(fixturePath("master.git")));
     // master.git declares an explicit core.worktree pointing at its parent.
@@ -131,7 +114,6 @@ describe("git repository descriptor", () => {
       "[core]\n\trepositoryformatversion = 0\n\tbare = false\n",
     );
 
-    expect(discoverRepositoryDescriptor(path.join(gitDirectory, "objects"))).toBeNull();
     expect(await discoverRepositoryDescriptorAsync(path.join(gitDirectory, "objects"))).toBeNull();
   });
 
@@ -220,7 +202,7 @@ describe("git repository descriptor", () => {
 
   it("normalizes and freezes an available host descriptor", async () => {
     const workingDirectory = copyFixture("working-dir");
-    const descriptor = discoverRepositoryDescriptor(workingDirectory);
+    const descriptor = await discoverRepositoryDescriptorAsync(workingDirectory);
 
     const inspection = await inspectRepositoryDescriptorAsync({
       gitDirectory: descriptor.getPath(),
@@ -580,7 +562,6 @@ describe("git repository descriptor", () => {
       `[core]\n\tbare = false\n\tworktree = ${JSON.stringify(missingWorkingDirectory)}\n`,
     );
 
-    expect(discoverRepositoryDescriptor(gitDirectory)).toBeNull();
     expect(await discoverRepositoryDescriptorAsync(gitDirectory)).toBeNull();
   });
 
@@ -857,7 +838,6 @@ describe("git repository descriptor", () => {
       "gitdir:\n../.git\n",
     ]) {
       fs.writeFileSync(markerPath, contents);
-      expect(discoverRepositoryDescriptor(nestedDirectory)).toBeNull();
       expect(await discoverRepositoryDescriptorAsync(nestedDirectory)).toBeNull();
     }
 
@@ -867,14 +847,12 @@ describe("git repository descriptor", () => {
       markerPath,
       process.platform === "win32" ? "junction" : "dir",
     );
-    expect(discoverRepositoryDescriptor(nestedDirectory)).toBeNull();
     expect(await discoverRepositoryDescriptorAsync(nestedDirectory)).toBeNull();
   });
 
-  it("returns null outside a repository", () => {
+  it("returns null outside a repository", async () => {
     const dir = temp.mkdirSync("descriptor-no-repo-");
-    expect(discoverRepositoryDescriptor(dir)).toBeNull();
-    expect(discoverGitDirectory(path.join(dir, "missing.txt"))).toBeNull();
+    expect(await discoverRepositoryDescriptorAsync(dir)).toBeNull();
   });
 
   it("does not fall through to a parent repository when a nested marker is inaccessible", async () => {

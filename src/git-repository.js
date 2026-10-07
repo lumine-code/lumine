@@ -1905,14 +1905,10 @@ module.exports = class GitRepository {
     const bufferPath = buffer.getPath();
     if (!bufferPath) return;
 
-    // Reload the buffer from disk even if the checkout could not run (no
-    // operation provider, or a Git failure), matching the previous behavior
-    // where the reload always followed the checkout attempt.
-    try {
-      await this.checkoutHead(bufferPath);
-    } catch {
-      // Swallowed: the reload below still discards the in-memory edits.
-    }
+    if (!(await this.checkoutHead(bufferPath))) return false;
+    // Checkout may have waited behind another write. Only reload the buffer
+    // that still represents the restored file when the operation completes.
+    if (buffer.isDestroyed() || buffer.getPath() !== bufferPath) return false;
     return buffer.reload();
   }
 };

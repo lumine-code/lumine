@@ -49,6 +49,10 @@ const ops = createGitHostOps(runner);
 // beside the AbortController so cancellation can release a worker that is
 // waiting for renderer backpressure.
 const inflight = new Map();
+// An aborted or replaced request may already have left inflight while its Git
+// child is closing. Keep its execution lifetime until the backend settles.
+const activeExecutions = new Map();
+let disconnecting = false;
 
 function abortError() {
   const error = new Error("The git operation was aborted");
@@ -99,7 +103,10 @@ function replyError(id, error) {
 function isRepositoryRead(operation, payload) {
   return (
     REPOSITORY_READS.has(operation) ||
-    (operation === "execRepository" && payload.options?.repositoryRead === true)
+    (operation === "execRepository" && payload.options?.repositoryRead === true) ||
+    (operation === "operation" &&
+      payload.name === "executeGit" &&
+      payload.args?.[1]?.readOnly === true)
   );
 }
 
@@ -180,7 +187,15 @@ function createRequestState(op, payload, run, requestStream = null) {
   };
 }
 
-async function executeRequest(id, state) {
+function executeRequest(id, state) {
+  const execution = runRequest(id, state);
+  activeExecutions.set(state, execution);
+  const forget = () => activeExecutions.delete(state);
+  execution.then(forget, forget);
+  return execution;
+}
+
+async function runRequest(id, state) {
   const { op, payload, run } = state;
   try {
     const repositoryRead = isRepositoryRead(op, payload);
@@ -374,7 +389,7 @@ function handleRequestEnd({ id }) {
 }
 
 process.on("message", (message) => {
-  if (!message) return;
+  if (!message || disconnecting) return;
   if (message.event === GitHostMessageEvents.REQUEST) {
     handleRequest(message);
   } else if (message.event === GitHostMessageEvents.REQUEST_START) {
@@ -402,8 +417,20 @@ process.on("message", (message) => {
   }
 });
 
-// Exit cleanly when the renderer goes away so no orphan worker lingers.
-process.on("disconnect", () => process.exit(0));
+// IPC loss cancels Git children before retiring their worker. Exiting the
+// worker first would detach a still-running commit, hook, fetch or askpass.
+process.on("disconnect", () => {
+  disconnecting = true;
+  const states = new Set([...inflight.values(), ...activeExecutions.keys()]);
+  for (const state of states) {
+    state.controller.abort();
+    state.pendingAck?.reject(abortError());
+    state.pendingAck = null;
+    state.requestStream = null;
+  }
+  inflight.clear();
+  void Promise.allSettled([...activeExecutions.values()]).then(() => process.exit(0));
+});
 
 process.send({
   event: GitHostMessageEvents.READY,

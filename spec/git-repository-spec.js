@@ -2,16 +2,14 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/fs-temp").track();
 const CoreGitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 const Project = require("../src/project");
 const RepositoryRegistry = require("../src/repository-registry");
 const { parseRefsSnapshot } = require("../src/repository-refs-snapshot");
 const { parseStatusSnapshot } = require("../src/repository-status-snapshot");
 
-class GitRepository extends CoreGitRepository {
-  constructor(filePath, options) {
-    super(discoverRepositoryDescriptor(filePath), options);
-  }
+async function createGitRepository(filePath, options) {
+  return new CoreGitRepository(await discoverRepositoryDescriptorAsync(filePath), options);
 }
 
 function snapshotClient({ statusSnapshotProvider, refsSnapshotProvider } = {}) {
@@ -86,7 +84,7 @@ describe("GitRepository", () => {
 
   describe("@open(path)", () => {
     it("returns null when no repository is found", async () => {
-      expect(await GitRepository.open(path.join(temp.dir, "nogit.txt"))).toBeNull();
+      expect(await CoreGitRepository.open(path.join(temp.dir, "nogit.txt"))).toBeNull();
     });
 
     it("discovers repositories without synchronous filesystem calls", async () => {
@@ -107,21 +105,23 @@ describe("GitRepository", () => {
   });
 
   describe(".getPath()", () => {
-    it("returns the repository path for a .git directory path with a directory", () => {
-      repo = new GitRepository(path.join(__dirname, "fixtures", "git", "master.git", "objects"));
+    it("returns the repository path for a .git directory path with a directory", async () => {
+      repo = await createGitRepository(
+        path.join(__dirname, "fixtures", "git", "master.git", "objects"),
+      );
       expect(repo.getPath()).toBe(path.join(__dirname, "fixtures", "git", "master.git"));
     });
 
-    it("returns the repository path for a repository path", () => {
-      repo = new GitRepository(path.join(__dirname, "fixtures", "git", "master.git"));
+    it("returns the repository path for a repository path", async () => {
+      repo = await createGitRepository(path.join(__dirname, "fixtures", "git", "master.git"));
       expect(repo.getPath()).toBe(path.join(__dirname, "fixtures", "git", "master.git"));
     });
   });
 
   describe(".relativize(path) and .getWorkingDirectory()", () => {
-    it("relativizes paths in, at, and outside the working directory", () => {
+    it("relativizes paths in, at, and outside the working directory", async () => {
       const workingDirectory = copyRepository();
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
 
       expect(repo.getWorkingDirectory()).toBeTruthy();
       expect(repo.relativize(path.join(workingDirectory, "a.txt"))).toBe("a.txt");
@@ -133,9 +133,9 @@ describe("GitRepository", () => {
       expect(repo.relativize("")).toBe("");
     });
 
-    it("performs cached path queries without filesystem access", () => {
+    it("performs cached path queries without filesystem access", async () => {
       const workingDirectory = copyRepository();
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
       const realpathSync = spyOn(fs.realpathSync, "native").and.callThrough();
 
       for (let index = 0; index < 1000; index++) {
@@ -145,13 +145,13 @@ describe("GitRepository", () => {
       expect(realpathSync).not.toHaveBeenCalled();
     });
 
-    it("routes paths inside a bare repository through its Git directory", () => {
+    it("routes paths inside a bare repository through its Git directory", async () => {
       const bareDirectory = temp.mkdirSync("bare-routing-repository-");
       fs.copySync(path.join(__dirname, "fixtures", "git", "master.git"), bareDirectory);
       fs.writeFileSync(path.join(bareDirectory, "config"), "[core]\n\tbare = true\n");
       const aliasPath = path.join(temp.mkdirSync("bare-routing-alias-parent-"), "bare-link");
       fs.symlinkSync(bareDirectory, aliasPath, process.platform === "win32" ? "junction" : "dir");
-      repo = new GitRepository(path.join(aliasPath, "objects"));
+      repo = await createGitRepository(path.join(aliasPath, "objects"));
 
       expect(repo.getWorkingDirectory()).toBeNull();
       expect(repo.getWorkingDirectoryAliases()).toContain(repo.getPath());
@@ -164,15 +164,15 @@ describe("GitRepository", () => {
       const workingDirectory = copyRepository();
       fs.writeFileSync(path.join(workingDirectory, ".gitignore"), "ignored.txt\n");
       fs.writeFileSync(path.join(workingDirectory, "ignored.txt"), "secret");
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
       await repo.refreshStatusSnapshot();
 
       expect(repo.isPathIgnored(path.join(workingDirectory, "ignored.txt"))).toBe(true);
       expect(repo.isPathIgnored(path.join(workingDirectory, "a.txt"))).toBe(false);
     });
 
-    it("returns false before the status snapshot has loaded", () => {
-      repo = new GitRepository(copyRepository());
+    it("returns false before the status snapshot has loaded", async () => {
+      repo = await createGitRepository(copyRepository());
       expect(repo.isPathIgnored("a.txt")).toBe(false);
     });
   });
@@ -180,9 +180,9 @@ describe("GitRepository", () => {
   describe(".isPathModified(path)", () => {
     let filePath, newPath, workingDirPath;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       workingDirPath = copyRepository();
-      repo = new GitRepository(workingDirPath);
+      repo = await createGitRepository(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
       newPath = path.join(workingDirPath, "new-path.txt");
     });
@@ -210,9 +210,9 @@ describe("GitRepository", () => {
   describe(".isPathNew(path)", () => {
     let filePath, newPath, workingDirPath;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       workingDirPath = copyRepository();
-      repo = new GitRepository(workingDirPath);
+      repo = await createGitRepository(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
       newPath = path.join(workingDirPath, "new-path.txt");
       fs.writeFileSync(newPath, "i'm new here");
@@ -269,11 +269,30 @@ describe("GitRepository", () => {
       await repo.checkoutHeadForEditor(editor);
       expect(fs.readFileSync(filePath, "utf8")).toBe("");
     });
+
+    it("preserves unsaved edits when checkout fails", async () => {
+      editor.setText("unsaved changes");
+      const failure = new Error("Git index is locked");
+      spyOn(repo, "checkoutHead").and.rejectWith(failure);
+      const reload = spyOn(editor.getBuffer(), "reload").and.callThrough();
+      await expectAsync(repo.checkoutHeadForEditor(editor)).toBeRejectedWith(failure);
+      expect(editor.getText()).toBe("unsaved changes");
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it("preserves unsaved edits when no restore operation is available", async () => {
+      editor.setText("unsaved changes");
+      spyOn(repo, "checkoutHead").and.resolveTo(false);
+      const reload = spyOn(editor.getBuffer(), "reload").and.callThrough();
+      expect(await repo.checkoutHeadForEditor(editor)).toBe(false);
+      expect(editor.getText()).toBe("unsaved changes");
+      expect(reload).not.toHaveBeenCalled();
+    });
   });
 
   describe(".destroy()", () => {
-    it("throws an exception when any method is called after it is called", () => {
-      repo = new GitRepository(path.join(__dirname, "fixtures", "git", "master.git"));
+    it("throws an exception when any method is called after it is called", async () => {
+      repo = await createGitRepository(path.join(__dirname, "fixtures", "git", "master.git"));
       repo.destroy();
       expect(() => repo.getShortHead()).toThrow();
     });
@@ -282,9 +301,9 @@ describe("GitRepository", () => {
   describe(".getDirectoryStatusSummary(path)", () => {
     let directoryPath, filePath, workingDirectory;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       workingDirectory = copyRepository();
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
       directoryPath = path.join(workingDirectory, "fresh-dir");
       filePath = path.join(directoryPath, "new.txt");
     });
@@ -303,13 +322,13 @@ describe("GitRepository", () => {
   describe(".refreshStatusSnapshot()", () => {
     let output, statusSnapshotProvider, workingDirectory;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       workingDirectory = copyRepository();
       output = ["# branch.oid abc123", "# branch.head main", "? new file.txt", ""].join("\0");
       statusSnapshotProvider = {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
-      repo = new GitRepository(workingDirectory, {
+      repo = await createGitRepository(workingDirectory, {
         gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
     });
@@ -520,12 +539,12 @@ describe("GitRepository", () => {
       for (let i = 0; i < 5; i++) await Promise.resolve();
     };
 
-    beforeEach(() => {
+    beforeEach(async () => {
       output = "# branch.oid abc123\0# branch.head main\0? new.txt\0";
       statusSnapshotProvider = {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
-      repo = new GitRepository(copyRepository(), {
+      repo = await createGitRepository(copyRepository(), {
         statusSnapshotDebounceMs: 0,
         gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
@@ -674,7 +693,7 @@ describe("GitRepository", () => {
       repo.destroy();
       await runScheduler();
 
-      const scheduled = new GitRepository(copyRepository(), {
+      const scheduled = await createGitRepository(copyRepository(), {
         statusSnapshotDebounceMs: 1000,
         gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
@@ -714,12 +733,12 @@ describe("GitRepository", () => {
       headOid: "aaaa\n",
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
       refsOutputs = makeOutputs("main");
       refsSnapshotProvider = {
         getRefs: jasmine.createSpy("getRefs").and.callFake(() => Promise.resolve(refsOutputs)),
       };
-      repo = new GitRepository(copyRepository(), {
+      repo = await createGitRepository(copyRepository(), {
         refsSnapshotDebounceMs: 0,
         gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
@@ -852,8 +871,8 @@ describe("GitRepository", () => {
       expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
     });
 
-    it("clears the pending refresh timer on destroy", () => {
-      const scheduled = new GitRepository(copyRepository(), {
+    it("clears the pending refresh timer on destroy", async () => {
+      const scheduled = await createGitRepository(copyRepository(), {
         refsSnapshotDebounceMs: 1000,
         gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
@@ -899,7 +918,7 @@ describe("GitRepository", () => {
             headOid: "aaaa1111\n",
           }),
       };
-      repoWithRefs = new GitRepository(copyRepository(), {
+      repoWithRefs = await createGitRepository(copyRepository(), {
         gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
       await repoWithRefs.refreshRefsSnapshot();
@@ -939,13 +958,13 @@ describe("GitRepository", () => {
   describe("status summaries", () => {
     let output, statusSnapshotProvider, workingDirectory;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       workingDirectory = copyRepository();
       output = "# branch.oid abc123\0# branch.head main\0";
       statusSnapshotProvider = {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
-      repo = new GitRepository(workingDirectory, {
+      repo = await createGitRepository(workingDirectory, {
         gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
     });

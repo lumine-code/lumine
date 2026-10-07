@@ -67,16 +67,18 @@ module.exports = class RepositoryPathObserver {
     if (!same) {
       const previous = this.edge;
       this.readinessSubscriptions = null;
-      this.edge = new CompositeDisposable();
+      const next = new CompositeDisposable();
+      this.edge = next;
       this.current = repository;
       this.path = filePath;
       this.ready = false;
       if (repository) {
-        this.edge.add(this.registry.retain(repository, "path-observer"));
-        this.edge.add(repository.onDidDestroy(() => this.update(true)));
+        next.add(this.registry.retain(repository, "path-observer"));
+        next.add(repository.onDidDestroy(() => this.update(true)));
       }
       previous.dispose();
     }
+    if (!this.isCurrent(generation, filePath) || this.current !== repository) return;
     const needsStatus = this.snapshots === "status" || this.snapshots === "both";
     const needsRefs = this.snapshots === "refs" || this.snapshots === "both";
     const initialized =
@@ -90,6 +92,7 @@ module.exports = class RepositoryPathObserver {
       this.ready = Boolean(initialized);
       this.notify(repository, { path: filePath, ready: this.ready });
     }
+    if (!this.isCurrent(generation, filePath) || this.current !== repository) return;
     if (!repository || initialized) {
       this.readinessSubscriptions?.dispose();
       this.readinessSubscriptions = null;

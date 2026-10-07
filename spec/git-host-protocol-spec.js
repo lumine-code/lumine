@@ -168,6 +168,9 @@ describe("git-host protocol", () => {
         "fileMode",
         "history",
         "lineDiff",
+        "operation",
+        "initialize",
+        "clone",
         "readConfig",
         "readObjects",
         "snapshot",
@@ -197,6 +200,45 @@ describe("git-host protocol", () => {
     expect(revived.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
     expect(revived.cause.message).toBe("spawn detail");
     expect(revived.cause.command).toBe("git");
+  });
+
+  it("preserves write outcomes and completed workflow steps through IPC", () => {
+    for (const outcome of ["not-started", "partial", "unknown"]) {
+      const error = Object.assign(new Error("Write interrupted"), {
+        outcome,
+        retriable: false,
+        completedSteps: ["commit", "createTag"],
+      });
+      expect(reviveError(serializeError(error))).toEqual(
+        jasmine.objectContaining({
+          outcome,
+          retriable: false,
+          completedSteps: ["commit", "createTag"],
+        }),
+      );
+    }
+  });
+
+  it("streams large messages and patches for named repository writes", () => {
+    const value = "large input\n".repeat(GIT_HOST_STREAM_MAX_BYTES);
+    for (const [name, args] of [
+      ["commit", [value, {}]],
+      ["applyPatch", [value, { index: true }]],
+      ["createBlob", [{ stdin: value }]],
+    ]) {
+      const payload = { name, descriptor: { gitDirectory: "/repo/.git" }, args };
+      const plan = prepareRequestStream("operation", payload);
+      expect(plan.streams.length).toBe(1);
+      const descriptor = streamManifest(plan.streams[0]);
+      expect(validateRequestStreamManifest("operation", descriptor)).toBe(true);
+      let reconstructed = initializeReplyStream(plan.payload, descriptor).result;
+      for (let offset = 0; offset < descriptor.length;) {
+        const chunk = nextReplyChunk(plan.streams[0], offset);
+        reconstructed = appendReplyChunk(reconstructed, descriptor, offset, chunk);
+        offset += chunk.length;
+      }
+      expect(reconstructed).toEqual(payload);
+    }
   });
 
   it("preserves repository identity error fields, including a bare worktree", () => {

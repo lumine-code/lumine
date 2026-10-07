@@ -385,6 +385,7 @@ class Environment {
       config: this.config,
       notificationManager: this.notifications,
       packageManager: this.packages,
+      confirm: (options) => this.applicationDelegate.confirm(options),
     });
     this.icons.attachRepositories(this.repositories);
     // Interactive credential/passphrase prompting for git operations that run in

@@ -1,3 +1,4 @@
+const GitOperationError = require("./git-operation-error");
 const { createGitExec } = require("./git-executor");
 const { resolveGitPath } = require("./git-binary");
 const path = require("path");
@@ -19,25 +20,12 @@ function defaultGitExec(args, workingDirectory, options) {
 // startup. A shared FIFO semaphore flattens that burst into a bounded pipeline
 // without changing any provider's observable behavior.
 const DEFAULT_MAX_CONCURRENT_GIT = 6;
-const MAX_GIT_ERROR_DETAIL_BYTES = 64 * 1024;
-const TRUNCATED_DIAGNOSTIC_SUFFIX = "\n… [truncated by git-host]";
 
 function abortError() {
   const error = new Error("The Git operation was aborted");
   error.name = "AbortError";
   error.code = "ABORT_ERR";
   return error;
-}
-
-function boundedErrorDetail(value) {
-  const text = String(value).trim();
-  if (Buffer.byteLength(text) <= MAX_GIT_ERROR_DETAIL_BYTES) return text;
-  const suffixBytes = Buffer.byteLength(TRUNCATED_DIAGNOSTIC_SUFFIX);
-  return (
-    Buffer.from(text)
-      .subarray(0, MAX_GIT_ERROR_DETAIL_BYTES - suffixBytes)
-      .toString("utf8") + TRUNCATED_DIAGNOSTIC_SUFFIX
-  );
 }
 
 // Two lanes, so a user-initiated command (a stage, a commit) never waits out a
@@ -171,23 +159,6 @@ function repositoryArguments(descriptor) {
   return args;
 }
 
-class GitOperationError extends Error {
-  constructor(command, result) {
-    const stderr = String(result.stderr);
-    const stdout = String(result.stdout);
-    const detail = boundedErrorDetail(
-      stderr.trim() || stdout.trim() || `exit code ${result.exitCode}`,
-    );
-    super(`Git ${command} failed: ${detail}`);
-    this.name = "GitOperationError";
-    this.code = "ERR_GIT_COMMAND_FAILED";
-    this.command = command;
-    this.exitCode = result.exitCode;
-    this.stdout = result.stdout;
-    this.stderr = result.stderr;
-  }
-}
-
 class GitRunner {
   constructor({ execute, limiter = sharedGitLimiter, trustAllRepositories = false } = {}) {
     this.execute = execute || defaultGitExec;
@@ -272,8 +243,13 @@ class GitRunner {
     return result;
   }
 
-  runRawResult(args, workingDirectory, options = {}) {
-    return this.executeResult(args, workingDirectory, options, { includeColorConfig: false });
+  async runRawResult(args, workingDirectory, options = {}) {
+    const result = await this.executeResult(args, workingDirectory, options, {
+      includeColorConfig: false,
+    });
+    if (options.allowedExitCodes && !options.allowedExitCodes.includes(result.exitCode))
+      throw new GitOperationError(args[0], result);
+    return result;
   }
 }
 

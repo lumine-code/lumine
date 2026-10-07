@@ -2,12 +2,10 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/fs-temp").track();
 const CoreGitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
-class GitRepository extends CoreGitRepository {
-  constructor(filePath, options) {
-    super(discoverRepositoryDescriptor(filePath), options);
-  }
+async function createGitRepository(filePath, options) {
+  return new CoreGitRepository(await discoverRepositoryDescriptorAsync(filePath), options);
 }
 
 function copyRepository() {
@@ -113,7 +111,7 @@ describe("GitRepository host facade", () => {
         return result;
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const statusChanged = jasmine.createSpy("status changed");
     const refsChanged = jasmine.createSpy("refs changed");
     repo.onDidChangeStatusSnapshot(statusChanged);
@@ -160,7 +158,7 @@ describe("GitRepository host facade", () => {
         return new Promise((resolve) => pending.push({ request, resolve }));
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
 
     const status = repo.refreshStatusSnapshot();
     await Promise.resolve();
@@ -204,7 +202,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), {
+    repo = await createGitRepository(copyRepository(), {
       gitHostClient,
       statusSnapshotDebounceMs: 0,
       refsSnapshotDebounceMs: 0,
@@ -235,7 +233,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
     controller.abort();
     const status = repo.refreshStatusSnapshot();
@@ -248,7 +246,7 @@ describe("GitRepository host facade", () => {
 
   it("refreshes declared submodules in the worker without leaking routing data", async () => {
     const workingDirectory = copyRepository();
-    repo = new GitRepository(workingDirectory);
+    repo = await createGitRepository(workingDirectory);
     expect(repo.isSubmodule("vendor/library")).toBe(false);
 
     fs.writeFileSync(
@@ -276,7 +274,7 @@ describe("GitRepository host facade", () => {
     const getConfigValues = jasmine
       .createSpy("get config values")
       .and.resolveTo({ "user.name": "Lumine" });
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
 
     const values = await repo.getConfigValuesAsync(["user.name", "user.email"]);
     expect(values).toEqual({ "user.name": "Lumine", "user.email": null });
@@ -287,7 +285,7 @@ describe("GitRepository host facade", () => {
     const getConfigValues = jasmine
       .createSpy("get config values")
       .and.resolveTo({ "user.name": "Lumine" });
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     const controller = new AbortController();
     controller.abort();
 
@@ -314,7 +312,7 @@ describe("GitRepository host facade", () => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),
     );
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     const controller = new AbortController();
     const single = repo.getConfigValueAsync("user.name", { signal: controller.signal });
     const batch = repo.getConfigValuesAsync(["user.email"]);
@@ -334,7 +332,7 @@ describe("GitRepository host facade", () => {
     const getConfigValues = jasmine
       .createSpy("get config values")
       .and.callFake(() => new Promise((resolve) => (finishRead = resolve)));
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     const controller = new AbortController();
     const pending = repo.getConfigValuesAsync(["user.name"], { signal: controller.signal });
     controller.abort();
@@ -369,7 +367,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     expect(repo.getShortHead()).toBe("");
     await repo.refreshStatusSnapshot();
     expect(repo.getShortHead()).toBe("main");
@@ -402,7 +400,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     await repo.refreshStatusSnapshot();
     await repo.refreshRefsSnapshot();
     expect(repo.getShortHead()).toBe("feature");
@@ -413,7 +411,7 @@ describe("GitRepository host facade", () => {
 
   it("reads an explicit stage-0 index object through the host client", async () => {
     const getIndexFile = jasmine.createSpy("get index file").and.resolveTo("staged contents\n");
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getIndexFile } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getIndexFile } });
 
     expect(await repo.getIndexFile("nested/staged.txt")).toBe("staged contents\n");
     const [descriptor, relativePath, options] = getIndexFile.calls.argsFor(0);
@@ -424,7 +422,7 @@ describe("GitRepository host facade", () => {
 
   it("expresses all-ref history without leaking a Git CLI flag", async () => {
     const getHistory = jasmine.createSpy("get history").and.resolveTo([]);
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getHistory } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getHistory } });
 
     await repo.getCommits({ allRefs: true, limit: 25 });
     expect(getHistory.calls.argsFor(0)[1]).toEqual({
@@ -441,7 +439,7 @@ describe("GitRepository host facade", () => {
   });
 
   it("rejects command-line options in every public revision position", async () => {
-    repo = new GitRepository(copyRepository());
+    repo = await createGitRepository(copyRepository());
 
     await expectAsync(repo.getCommit("--all")).toBeRejectedWithError(TypeError);
     await expectAsync(
@@ -468,7 +466,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
 
     await repo.getDiff({ from: { type: "empty" }, to: { type: "index" } });
     await repo.getDiff({
@@ -509,7 +507,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const good = await repo.refreshStatusSnapshot();
     fail = true;
 
@@ -559,7 +557,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
 
     const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
@@ -611,7 +609,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
 
     const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
@@ -648,7 +646,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
 
     const pending = repo.refreshRefsSnapshot({ signal: controller.signal });
@@ -691,7 +689,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
 
     const snapshot = await repo.refreshRefsSnapshot();
 
@@ -739,7 +737,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
 
     const status = repo.refreshStatusSnapshot({ signal: controller.signal });
@@ -780,7 +778,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const controller = new AbortController();
 
     const status = repo.refreshStatusSnapshot({ signal: controller.signal });
@@ -814,7 +812,7 @@ describe("GitRepository host facade", () => {
               };
         },
       };
-      repo = new GitRepository(copyRepository(), { gitHostClient });
+      repo = await createGitRepository(copyRepository(), { gitHostClient });
 
       await expectAsync(
         Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]),
@@ -842,7 +840,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { gitHostClient });
+    repo = await createGitRepository(copyRepository(), { gitHostClient });
     const refsChanged = jasmine.createSpy("refs changed");
     repo.onDidChangeStatusSnapshot(() => {
       expect(repo.getRefsSnapshot().initialized).toBe(true);
@@ -858,13 +856,13 @@ describe("GitRepository host facade", () => {
     expect(refsChanged).toHaveBeenCalled();
   });
 
-  it("reports background snapshot failures with at most one warning per repository", () => {
+  it("reports background snapshot failures with at most one warning per repository", async () => {
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
     const codes = ["ERR_GIT_SNAPSHOT", "ERR_GIT_COMMAND_FAILED", "ERR_GIT_HOST_RESTART"];
 
     for (const code of codes) {
-      repo = new GitRepository(copyRepository());
+      repo = await createGitRepository(copyRepository());
       const error = new Error(`${code} snapshot failed`);
       error.code = code;
       repo.reportBackgroundSnapshotError(error);
@@ -877,8 +875,8 @@ describe("GitRepository host facade", () => {
     expect(warning.calls.argsFor(0)[0]).toBe("Git repository data could not be refreshed");
   });
 
-  it("treats an unavailable descriptor as repository lifecycle, not a warning", () => {
-    repo = new GitRepository(copyRepository());
+  it("treats an unavailable descriptor as repository lifecycle, not a warning", async () => {
+    repo = await createGitRepository(copyRepository());
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
     const unavailable = jasmine.createSpy("unavailable");
@@ -897,8 +895,8 @@ describe("GitRepository host facade", () => {
     expect(diagnostic).not.toHaveBeenCalled();
   });
 
-  it("does not warn when a background refresh is cancelled", () => {
-    repo = new GitRepository(copyRepository());
+  it("does not warn when a background refresh is cancelled", async () => {
+    repo = await createGitRepository(copyRepository());
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
 
@@ -915,7 +913,7 @@ describe("GitRepository host facade", () => {
 
   it("classifies facade reads started after disposal as repository lifecycle", async () => {
     const getHistory = jasmine.createSpy("getHistory");
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getHistory } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getHistory } });
     repo.destroy();
 
     await expectAsync(repo.getCommits()).toBeRejectedWith(
@@ -932,7 +930,7 @@ describe("GitRepository host facade", () => {
     error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
     error.reason = "worktree-marker-mismatch";
     const getConfigValues = jasmine.createSpy("getConfigValues").and.rejectWith(error);
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     const unavailable = jasmine.createSpy("unavailable");
     repo.onDidBecomeUnavailable(unavailable);
     repo.onDidBecomeUnavailable(() => repo.destroy());
@@ -952,7 +950,7 @@ describe("GitRepository host facade", () => {
     unavailableError.reason = "worktree-marker-mismatch";
     const listenerError = new Error("unavailable listener failed");
     const getConfigValues = jasmine.createSpy("getConfigValues").and.rejectWith(unavailableError);
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     const unavailable = jasmine.createSpy("unavailable").and.callFake(() => {
       throw listenerError;
     });
@@ -969,8 +967,8 @@ describe("GitRepository host facade", () => {
     expect(getConfigValues).toHaveBeenCalledTimes(1);
   });
 
-  it("finishes cleanup when an onDidDestroy listener throws", () => {
-    repo = new GitRepository(copyRepository());
+  it("finishes cleanup when an onDidDestroy listener throws", async () => {
+    repo = await createGitRepository(copyRepository());
     const listenerError = new Error("destroy listener failed");
     repo.onDidDestroy(() => {
       throw listenerError;
@@ -988,7 +986,7 @@ describe("GitRepository host facade", () => {
     const error = new Error("Git repository is unavailable");
     error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
     error.reason = "worktree-marker-missing";
-    repo = new GitRepository(copyRepository(), {
+    repo = await createGitRepository(copyRepository(), {
       gitHostClient: { getSnapshot: jasmine.createSpy("getSnapshot").and.rejectWith(error) },
     });
     repo.onDidBecomeUnavailable(() => repo.destroy());
@@ -1010,7 +1008,7 @@ describe("GitRepository host facade", () => {
       code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
       reason: "worktree-marker-mismatch",
     });
-    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
     repo.onDidBecomeUnavailable(() => repo.destroy());
 
     const read = repo.getConfigValuesAsync(["core.filemode"]);
@@ -1023,7 +1021,7 @@ describe("GitRepository host facade", () => {
     expect(repo.isDestroyed()).toBe(true);
   });
 
-  it("reports a missing shared Git executable only once per window", () => {
+  it("reports a missing shared Git executable only once per window", async () => {
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
     const error = new Error("Git executable could not be started");
@@ -1031,7 +1029,7 @@ describe("GitRepository host facade", () => {
     error.gitCode = "ERR_GIT_EXECUTABLE_NOT_FOUND";
 
     for (let index = 0; index < 2; index++) {
-      repo = new GitRepository(copyRepository());
+      repo = await createGitRepository(copyRepository());
       repo.reportBackgroundSnapshotError(error);
       repo.destroy();
     }

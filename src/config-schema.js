@@ -785,6 +785,37 @@ const configSchema = {
         type: "boolean",
         default: true,
       },
+      protectedBranches: {
+        title: "Protected Branches",
+        description: "Branch names guarded by the shared commit and push policies.",
+        type: "array",
+        items: { type: "string" },
+        default: ["main", "master"],
+      },
+      protectCommits: {
+        title: "Protect Commits",
+        description: "Block commits on protected branches from every Git interface.",
+        type: "boolean",
+        default: false,
+      },
+      protectPushes: {
+        title: "Protect Pushes",
+        description: "Block pushes on protected branches from every Git interface.",
+        type: "boolean",
+        default: false,
+      },
+      confirmForcePush: {
+        title: "Confirm Force Push",
+        description: "Ask before replacing a remote branch from any Git interface.",
+        type: "boolean",
+        default: true,
+      },
+      pullRebase: {
+        title: "Rebase When Pulling",
+        description: "Rebase local commits when pulling without an explicit merge strategy.",
+        type: "boolean",
+        default: false,
+      },
       promptForGpgPassphrase: {
         title: "Prompt For GPG Signing Passphrase",
         description:

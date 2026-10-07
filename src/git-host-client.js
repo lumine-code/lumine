@@ -78,6 +78,25 @@ module.exports = class GitHostClient {
     return this.request("commit", { descriptor, revision }, { signal });
   }
 
+  performOperation(descriptor, name, args) {
+    const { OPERATION_OPTION_INDEX } = require("./git-operation-metadata");
+    const optionIndex = OPERATION_OPTION_INDEX[name];
+    const { signal, rest } = splitSignal(args[optionIndex]);
+    const requestArgs = args.slice();
+    requestArgs[optionIndex] = rest;
+    return this.request("operation", { descriptor, name, args: requestArgs }, { signal });
+  }
+
+  initializeRepository(directoryPath, options = {}) {
+    const { signal, rest } = splitSignal(options);
+    return this.request("initialize", { directoryPath, options: rest }, { signal });
+  }
+
+  cloneRepository(remoteUrl, destinationPath, options = {}) {
+    const { signal, rest } = splitSignal(options);
+    return this.request("clone", { remoteUrl, destinationPath, options: rest }, { signal });
+  }
+
   readObjects(descriptor, requests, options = {}) {
     const { signal, rest } = splitSignal(options);
     return this.request(

@@ -41,7 +41,8 @@ describe("Project repository discovery", () => {
     project.destroy();
     registry.destroy();
     await new Promise((resolve) => setImmediate(resolve));
-    for (const provider of project.repositoryProviders) provider.sweepUnregisteredRepositories?.();
+    for (const provider of project.repositoryDiscovery.repositoryProviders)
+      provider.sweepUnregisteredRepositories?.();
   });
 
   it("shares a pending explicit lookup with the automatic scan when its project root is added", async () => {
@@ -62,7 +63,7 @@ describe("Project repository discovery", () => {
       }
       return value;
     });
-    const provider = project.repositoryProviders[0];
+    const provider = project.repositoryDiscovery.repositoryProviders[0];
     const lookup = provider.repositoryForPath.bind(provider);
     let lookupCount = 0;
     const providerLookups = spyOn(provider, "repositoryForPath").and.callFake(async (filePath) => {

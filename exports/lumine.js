@@ -4,7 +4,9 @@ const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event
 const BufferedNodeProcess = require("../src/buffered-node-process");
 const BufferedProcess = require("../src/buffered-process");
 const GitRepository = require("../src/git-repository");
+const GitOperationError = require("../src/git-operation-error");
 const { GitError, LargeRepoError } = require("../src/git-error");
+const { parseGitRemote } = require("../src/git-remote");
 const { filterPatch } = require("../src/patch-filter");
 const Notification = require("../src/notification");
 const { watchDirectory, watchFile } = require("../src/file-watch");
@@ -14,8 +16,10 @@ const lumineExport = {
   BufferedNodeProcess,
   BufferedProcess,
   GitRepository,
+  GitOperationError,
   GitError,
   LargeRepoError,
+  parseGitRemote,
   filterPatch,
   Notification,
   TextBuffer,

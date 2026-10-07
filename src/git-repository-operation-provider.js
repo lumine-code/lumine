@@ -1,654 +1,144 @@
 const fs = require("fs");
 const path = require("path");
-
 const GitHostClient = require("./git-host-client");
+const GitOperationError = require("./git-operation-error");
+const {
+  OPERATION_OPTION_INDEX,
+  SIGNING_OPERATIONS,
+  AUTH_OPERATIONS,
+  operationRefreshHint,
+} = require("./git-operation-metadata");
 
-function pathsFrom(value) {
-  if (value == null) return [];
-  return (Array.isArray(value) ? value : [value]).map(String);
-}
-
-function addBooleanFlag(args, value, flag) {
-  if (value) args.push(flag);
-}
-
-function coAuthorTrailer(author) {
-  if (typeof author === "string") return `Co-authored-by: ${author}`;
-  if (!author || !author.name || !author.email) return null;
-  return `Co-authored-by: ${author.name} <${author.email}>`;
-}
-
-// Whether a target path lands inside the working tree. Written files outside it
-// (temp directories, mostly) cannot change `git status` output. A lexical
-// check is enough here: a false "inside" merely refreshes status without need.
-function writesIntoWorkingDirectory(workingDirectory, targetPath) {
-  let root = path.resolve(workingDirectory);
-  let resolved = path.resolve(workingDirectory, String(targetPath ?? ""));
-  if (process.platform === "win32") {
-    root = root.toLowerCase();
-    resolved = resolved.toLowerCase();
-  }
-  return resolved === root || resolved.startsWith(root + path.sep);
-}
-
-// `branch.*` and `remote.*` config keys feed the refs snapshot (remote -v,
-// for-each-ref %(upstream)) and the status snapshot's branch headers; every
-// other key is invisible to both snapshots.
-function configRefreshHint([key]) {
-  return /^(branch|remote)\./i.test(String(key ?? "")) ? "both" : "none";
-}
-
-// Which snapshots each operation can invalidate, consulted by the repository
-// registry to right-size its post-operation refresh. "status" operations touch
-// the index or working tree but can never move a ref; "refs"/"both" move refs
-// or remotes; "none" writes only the object database or unrelated config.
-// Functions receive the operation's arguments for the hints that depend on
-// them. Anything absent refreshes both snapshots — the safe default.
-const OPERATION_REFRESH_HINTS = {
-  stageFiles: "status",
-  unstageFiles: "status",
-  stageFileModeChange: "status",
-  stageFileSymlinkChange: "status",
-  applyPatch: "status",
-  commit: "both",
-  merge: "both",
-  cherryPick: "both",
-  rebase: "both",
-  // `merge --abort` restores the pre-merge worktree/index; HEAD never moved,
-  // and MERGE_HEAD is not part of the refs snapshot.
-  abortMerge: "status",
-  // Stashes are not part of either public snapshot. Applying or creating one
-  // only changes the index and working tree from their point of view.
-  stashPush: "status",
-  stashApply: "status",
-  stashPop: "status",
-  stashDrop: "none",
-  checkoutSide: "status",
-  checkout: "both",
-  checkoutFiles: "status",
-  // fetch/push move remote or tracking refs, which also feed the status
-  // snapshot's ahead/behind branch headers.
-  fetch: "both",
-  pull: "both",
-  push: "both",
-  reset: "both",
-  deleteRef: "both",
-  updateSubmodules: "status",
-  // Every worktree operation acts on a *different* checkout, so this
-  // repository's own index and working tree are untouched. What changes is the
-  // worktree list, which `git worktree list` supplies to the refs snapshot —
-  // and, for `add -b`, a new branch, which the same snapshot carries.
-  worktreeAdd: "refs",
-  worktreeRemove: "refs",
-  worktreeMove: "refs",
-  worktreeLock: "refs",
-  worktreeUnlock: "refs",
-  worktreePrune: "refs",
-  setConfig: configRefreshHint,
-  unsetConfig: configRefreshHint,
-  // A brand-new remote has no refs yet, so only `remote -v` output changes.
-  addRemote: "refs",
-  // Removing a remote deletes refs/remotes/<name>/*; if HEAD tracked one of
-  // them, the status snapshot's upstream header changes too.
-  removeRemote: "both",
-  setRemoteUrl: "refs",
-  createBlob: "none",
-  expandBlobToFile: (args, operations) =>
-    writesIntoWorkingDirectory(operations.workingDirectory, args[0]) ? "status" : "none",
-  mergeFile: (args, operations) =>
-    writesIntoWorkingDirectory(operations.workingDirectory, args[3]) ? "status" : "none",
-  writeMergeConflictToIndex: "status",
-};
-
-class GitRepositoryOperations {
-  constructor(provider, repositoryDescriptor) {
+// The renderer owns prompts and transport. Git argv and filesystem work are
+// implemented once in the worker's GitRepositoryOperations.
+class RemoteGitOperations {
+  constructor(provider, descriptor) {
     this.provider = provider;
-    this.repositoryDescriptor = repositoryDescriptor;
-    this.workingDirectory = repositoryDescriptor.workingDirectory;
+    this.descriptor = descriptor;
   }
 
-  run(args, options) {
-    return this.provider.runRepository(args, this.repositoryDescriptor, options);
+  getOperationRefreshHint(name, args) {
+    if (name === "executeGit" && args[1]?.readOnly) return "none";
+    return operationRefreshHint(name, args, this.descriptor.workingDirectory);
   }
+}
 
-  getOperationRefreshHint(operationName, args = []) {
-    const hint = OPERATION_REFRESH_HINTS[operationName];
-    if (typeof hint === "function") return hint(args, this);
-    return hint || "both";
-  }
-
-  stageFiles(paths, options = {}) {
-    const filePaths = pathsFrom(paths);
-    if (filePaths.length === 0) return Promise.resolve("");
-    return this.run(["add", "--", ...filePaths], options);
-  }
-
-  unstageFiles(paths, options = {}) {
-    const filePaths = pathsFrom(paths);
-    if (filePaths.length === 0) return Promise.resolve("");
-    if (options.reference) {
-      return this.run(["reset", options.reference, "--", ...filePaths], options);
-    }
-    // Naming no reference resets against HEAD, or against the empty tree in an
-    // unborn repository, so one command covers both without a probe for which
-    // case this is. A path with no index entry is a no-op either way.
-    //
-    // `rm --cached` used to stand in for the unborn case and was wrong for it:
-    // it refuses a path whose staged content matches neither the working-tree
-    // file nor HEAD, which is every file edited after it was staged. In a
-    // repository with no commits there is no HEAD for it to match, so staging
-    // a file and then touching it made unstaging fail outright.
-    return this.run(["reset", "--", ...filePaths], options);
-  }
-
-  async stageFileModeChange(filePath, mode, options = {}) {
-    const indexEntry = await this.run(["ls-files", "-s", "--", filePath], {
-      ...options,
-      repositoryRead: true,
+for (const [name, optionIndex] of Object.entries(OPERATION_OPTION_INDEX)) {
+  RemoteGitOperations.prototype[name] = async function (...args) {
+    const options = args[optionIndex] || {};
+    return this.provider.withPreparedOptions(name, this.descriptor, options, (prepared) => {
+      args[optionIndex] = prepared;
+      return this.provider.performOperation(this.descriptor, name, args);
     });
-    const match = /^(\d+)\s+([0-9a-f]+)\s+\d+\t/.exec(indexEntry);
-    if (!match) throw new Error(`No index entry found for: ${filePath}`);
-    return this.run(["update-index", "--cacheinfo", `${mode},${match[2]},${filePath}`], options);
-  }
-
-  stageFileSymlinkChange(filePath, options = {}) {
-    return this.run(["rm", "--cached", "--force", "--", filePath], options);
-  }
-
-  applyPatch(patch, options = {}) {
-    const args = ["apply"];
-    addBooleanFlag(args, options.index, "--cached");
-    addBooleanFlag(args, options.reverse, "--reverse");
-    addBooleanFlag(args, options.threeWay, "--3way");
-    args.push("-");
-    return this.run(args, { ...options, stdin: String(patch) });
-  }
-
-  async commit(message, options = {}) {
-    const reuseExistingMessage = message == null && options.amend;
-    const args = ["commit", reuseExistingMessage ? "--no-edit" : "--file=-"];
-    addBooleanFlag(args, options.allowEmpty, "--allow-empty");
-    addBooleanFlag(args, options.allowEmptyMessage, "--allow-empty-message");
-    addBooleanFlag(args, options.amend, "--amend");
-    addBooleanFlag(args, options.noVerify, "--no-verify");
-    addBooleanFlag(args, options.signoff, "--signoff");
-    if (options.verbatim) args.push("--cleanup=verbatim");
-    else if (options.cleanup) args.push(`--cleanup=${options.cleanup}`);
-    if (options.gpgSign === true) args.push("--gpg-sign");
-    else if (typeof options.gpgSign === "string") args.push(`--gpg-sign=${options.gpgSign}`);
-
-    const coAuthors = Array.isArray(options.coAuthors)
-      ? options.coAuthors
-      : options.coAuthors
-        ? [options.coAuthors]
-        : [];
-    const trailers = coAuthors.map(coAuthorTrailer).filter(Boolean);
-    const rawMessage = message == null ? "" : String(message);
-    const commitMessage = trailers.length
-      ? `${rawMessage.replace(/\s+$/, "")}\n\n${trailers.join("\n")}`
-      : rawMessage;
-    const executionOptions = reuseExistingMessage ? options : { ...options, stdin: commitMessage };
-    return this.run(
-      args,
-      await this.provider.withSigningEnvironment(this.workingDirectory, executionOptions),
-    );
-  }
-
-  async merge(reference, options = {}) {
-    const args = ["merge"];
-    addBooleanFlag(args, options.noFastForward, "--no-ff");
-    addBooleanFlag(args, options.fastForwardOnly, "--ff-only");
-    addBooleanFlag(args, options.squash, "--squash");
-    addBooleanFlag(args, options.noCommit, "--no-commit");
-    args.push(reference);
-    return this.run(
-      args,
-      await this.provider.withSigningEnvironment(this.workingDirectory, options),
-    );
-  }
-
-  abortMerge(options = {}) {
-    return this.run(["merge", "--abort"], options);
-  }
-
-  async cherryPick(reference, options = {}) {
-    const args = ["cherry-pick"];
-    addBooleanFlag(args, options.noCommit, "--no-commit");
-    addBooleanFlag(args, options.edit, "--edit");
-    if (options.mainline != null) args.push("--mainline", String(options.mainline));
-    if (options.gpgSign === true) args.push("--gpg-sign");
-    else if (typeof options.gpgSign === "string") args.push(`--gpg-sign=${options.gpgSign}`);
-    args.push(reference);
-    return this.run(
-      args,
-      await this.provider.withSigningEnvironment(this.workingDirectory, options),
-    );
-  }
-
-  async rebase(reference, options = {}) {
-    const args = ["rebase"];
-    addBooleanFlag(args, options.autostash, "--autostash");
-    addBooleanFlag(args, options.rebaseMerges, "--rebase-merges");
-    addBooleanFlag(args, options.keepEmpty, "--keep-empty");
-    if (options.onto) args.push("--onto", options.onto);
-    args.push(reference);
-    return this.run(
-      args,
-      await this.provider.withSigningEnvironment(this.workingDirectory, options),
-    );
-  }
-
-  stashPush(options = {}) {
-    const args = ["stash", "push"];
-    addBooleanFlag(args, options.includeUntracked, "--include-untracked");
-    addBooleanFlag(args, options.all, "--all");
-    addBooleanFlag(args, options.keepIndex, "--keep-index");
-    addBooleanFlag(args, options.staged, "--staged");
-    if (options.message) args.push("--message", String(options.message));
-    const filePaths = pathsFrom(options.paths);
-    if (filePaths.length > 0) args.push("--", ...filePaths);
-    return this.run(args, options);
-  }
-
-  stashApply(reference = "stash@{0}", options = {}) {
-    const args = ["stash", "apply"];
-    addBooleanFlag(args, options.index, "--index");
-    args.push(reference || "stash@{0}");
-    return this.run(args, options);
-  }
-
-  stashPop(reference = "stash@{0}", options = {}) {
-    const args = ["stash", "pop"];
-    addBooleanFlag(args, options.index, "--index");
-    args.push(reference || "stash@{0}");
-    return this.run(args, options);
-  }
-
-  stashDrop(reference = "stash@{0}", options = {}) {
-    return this.run(["stash", "drop", reference || "stash@{0}"], options);
-  }
-
-  checkoutSide(side, paths, options = {}) {
-    if (side !== "ours" && side !== "theirs") {
-      return Promise.reject(new Error('Checkout side must be either "ours" or "theirs"'));
-    }
-    const filePaths = pathsFrom(paths);
-    if (filePaths.length === 0) return Promise.resolve("");
-    return this.run(["checkout", `--${side}`, "--", ...filePaths], options);
-  }
-
-  checkout(reference, options = {}) {
-    const args = ["checkout"];
-    addBooleanFlag(args, options.force, "--force");
-    addBooleanFlag(args, options.detach, "--detach");
-    if (options.createNew || options.createNewBranch) args.push("-b");
-    // The new branch name must come immediately after `-b`; `--track` and the
-    // start point follow it (git: `checkout -b <name> --track <start-point>`).
-    // Emitting `--track` before the name made git read it as the branch name
-    // ("fatal: '--track' is not a valid branch name").
-    args.push(reference);
-    if (options.track) args.push("--track");
-    if (options.startPoint) args.push(options.startPoint);
-    return this.run(args, options);
-  }
-
-  checkoutFiles(paths, reference, options = {}) {
-    const filePaths = pathsFrom(paths);
-    if (filePaths.length === 0) return Promise.resolve("");
-    return this.run(["checkout", ...(reference ? [reference] : []), "--", ...filePaths], options);
-  }
-
-  async fetch(remote, reference, options = {}) {
-    const args = ["fetch"];
-    addBooleanFlag(args, options.prune, "--prune");
-    addBooleanFlag(args, options.tags, "--tags");
-    addBooleanFlag(args, options.force, "--force");
-    if (options.depth != null) args.push(`--depth=${options.depth}`);
-    if (remote) args.push(remote);
-    if (reference) args.push(reference);
-    return this.run(args, await this.provider.withAuthEnvironment(this.workingDirectory, options));
-  }
-
-  async pull(remote, reference, options = {}) {
-    const args = ["pull"];
-    addBooleanFlag(args, options.rebase, "--rebase");
-    addBooleanFlag(args, options.ffOnly, "--ff-only");
-    addBooleanFlag(args, options.noCommit, "--no-commit");
-    if (remote) args.push(remote);
-    if (options.refSpec || reference) args.push(options.refSpec || reference);
-    return this.run(
-      args,
-      await this.provider.withAuthAndSigningEnvironment(this.workingDirectory, options),
-    );
-  }
-
-  async push(remote = "origin", reference, options = {}) {
-    const args = ["push"];
-    addBooleanFlag(args, options.setUpstream, "--set-upstream");
-    addBooleanFlag(args, options.force, "--force");
-    addBooleanFlag(args, options.forceWithLease, "--force-with-lease");
-    addBooleanFlag(args, options.tags, "--tags");
-    addBooleanFlag(args, options.delete, "--delete");
-    args.push(remote || "origin");
-    if (options.refSpec || reference) args.push(options.refSpec || reference);
-    return this.run(args, await this.provider.withAuthEnvironment(this.workingDirectory, options));
-  }
-
-  reset(mode = "mixed", reference = "HEAD", options = {}) {
-    const validModes = new Set(["soft", "mixed", "hard", "merge", "keep"]);
-    if (!validModes.has(mode)) {
-      return Promise.reject(new Error(`Invalid reset mode: ${mode}`));
-    }
-    return this.run(["reset", `--${mode}`, reference], options);
-  }
-
-  deleteRef(reference, options = {}) {
-    return this.run(["update-ref", "-d", reference], options);
-  }
-
-  updateSubmodules(paths, options = {}) {
-    const args = ["submodule", "update"];
-    addBooleanFlag(args, options.init, "--init");
-    addBooleanFlag(args, options.recursive, "--recursive");
-    addBooleanFlag(args, options.remote, "--remote");
-    const filePaths = pathsFrom(paths);
-    if (filePaths.length > 0) args.push("--", ...filePaths);
-    return this.run(args, options);
-  }
-
-  // `worktree add [flags] <path> [<commit-ish>]`. The path is always the last
-  // flag-free argument and the commit-ish follows it, so every option has to be
-  // emitted before them; `--reason` is only meaningful right after `--lock`.
-  worktreeAdd(worktreePath, options = {}) {
-    const args = ["worktree", "add"];
-    addBooleanFlag(args, options.force, "--force");
-    addBooleanFlag(args, options.detach, "--detach");
-    if (options.checkout === false) args.push("--no-checkout");
-    if (options.lock) {
-      args.push("--lock");
-      if (options.reason) args.push("--reason", String(options.reason));
-    }
-    if (options.branch) args.push(options.forceBranch ? "-B" : "-b", String(options.branch));
-    if (options.track === true) args.push("--track");
-    else if (options.track === false) args.push("--no-track");
-    args.push(worktreePath);
-    if (options.commitish) args.push(String(options.commitish));
-    return this.run(args, options);
-  }
-
-  worktreeRemove(worktreePath, options = {}) {
-    const args = ["worktree", "remove"];
-    addBooleanFlag(args, options.force, "--force");
-    args.push(worktreePath);
-    return this.run(args, options);
-  }
-
-  worktreeMove(worktreePath, destinationPath, options = {}) {
-    const args = ["worktree", "move"];
-    addBooleanFlag(args, options.force, "--force");
-    args.push(worktreePath, destinationPath);
-    return this.run(args, options);
-  }
-
-  worktreeLock(worktreePath, options = {}) {
-    const args = ["worktree", "lock"];
-    if (options.reason) args.push("--reason", String(options.reason));
-    args.push(worktreePath);
-    return this.run(args, options);
-  }
-
-  worktreeUnlock(worktreePath, options = {}) {
-    return this.run(["worktree", "unlock", worktreePath], options);
-  }
-
-  worktreePrune(options = {}) {
-    const args = ["worktree", "prune"];
-    addBooleanFlag(args, options.dryRun, "--dry-run");
-    addBooleanFlag(args, options.verbose, "--verbose");
-    if (options.expire) args.push("--expire", String(options.expire));
-    return this.run(args, options);
-  }
-
-  setConfig(key, value, options = {}) {
-    const args = ["config"];
-    if (options.global) args.push("--global");
-    else if (options.local !== false) args.push("--local");
-    if (options.add) args.push("--add");
-    else if (options.replaceAll) args.push("--replace-all");
-    args.push(key, String(value));
-    return this.run(args, options);
-  }
-
-  unsetConfig(key, options = {}) {
-    const args = ["config"];
-    if (options.global) args.push("--global");
-    else if (options.local !== false) args.push("--local");
-    args.push(options.all ? "--unset-all" : "--unset", key);
-    return this.run(args, options);
-  }
-
-  addRemote(name, url, options = {}) {
-    return this.run(["remote", "add", name, url], options);
-  }
-
-  removeRemote(name, options = {}) {
-    return this.run(["remote", "remove", name], options);
-  }
-
-  setRemoteUrl(name, url, options = {}) {
-    return this.run(["remote", "set-url", name, url], options);
-  }
-
-  createBlob(options = {}) {
-    const args = ["hash-object", "-w"];
-    const executionOptions = { ...options };
-    if (options.filePath) args.push("--", options.filePath);
-    else {
-      args.push("--stdin");
-      executionOptions.stdin = options.stdin || "";
-    }
-    return this.run(args, executionOptions)
-      .then((stdout) => stdout.trim())
-      .catch((error) => {
-        const missingSource =
-          options.filePath &&
-          error?.code === "ERR_GIT_COMMAND_FAILED" &&
-          /(?:no such file|does not exist|cannot find|could not open.*for reading)/i.test(
-            String(error.stderr || error.message),
-          );
-        if (missingSource) {
-          error.gitCode = error.code;
-          error.code = "ERR_GIT_CREATE_BLOB";
-          error.operation = "createBlob";
-        }
-        throw error;
-      });
-  }
-
-  async expandBlobToFile(filePath, sha, options = {}) {
-    await this.provider.runRepositoryToFile(
-      ["cat-file", "blob", sha],
-      this.repositoryDescriptor,
-      path.resolve(this.workingDirectory, filePath),
-      options,
-    );
-    return filePath;
-  }
-
-  async mergeFile(oursPath, basePath, theirsPath, resultPath, options = {}) {
-    const args = ["merge-file", "--stdout"];
-    for (const label of options.labels || []) args.push("-L", label);
-    args.push(oursPath, basePath, theirsPath);
-    const result = await this.provider.runRepositoryToFile(
-      args,
-      this.repositoryDescriptor,
-      path.resolve(this.workingDirectory, resultPath),
-      { ...options, allowedExitCodes: [0, 1] },
-    );
-    return result.exitCode;
-  }
-
-  async writeMergeConflictToIndex(filePath, baseSha, oursSha, theirsSha, options = {}) {
-    const entries = await this.run(["ls-files", "-s", "--", filePath], {
-      ...options,
-      repositoryRead: true,
-    });
-    const modes = new Map();
-    for (const line of entries.split(/\r?\n/)) {
-      const match = /^(\d+)\s+[0-9a-f]+\s+(\d)\t/.exec(line);
-      if (match) modes.set(Number(match[2]), match[1]);
-    }
-    const fallbackMode = options.mode || modes.get(2) || modes.get(3) || modes.get(1) || "100644";
-    const sampleOid = baseSha || oursSha || theirsSha;
-    let oidLength = sampleOid?.length;
-    if (!oidLength) {
-      const format = (
-        await this.run(["rev-parse", "--show-object-format"], {
-          ...options,
-          repositoryRead: true,
-        })
-      ).trim();
-      oidLength = format === "sha256" ? 64 : 40;
-    }
-    const lines = [`0 ${"0".repeat(oidLength)}\t${filePath}`];
-    const stages = [
-      [baseSha, 1],
-      [oursSha, 2],
-      [theirsSha, 3],
-    ];
-    for (const [sha, stage] of stages) {
-      if (sha) lines.push(`${modes.get(stage) || fallbackMode} ${sha} ${stage}\t${filePath}`);
-    }
-    return this.run(["update-index", "--index-info"], {
-      ...options,
-      stdin: `${lines.join("\n")}\n`,
-    });
-  }
+  };
 }
 
 module.exports = class GitRepositoryOperationProvider {
-  // `exec(args, workingDirectory, options, raw)` runs a git command and resolves
-  // to a `{exitCode, stdout, stderr}` result. It defaults to the git-host
-  // worker; specs inject a fake to assert on the argument vector.
   constructor({ exec, authBroker, gitHostClient = new GitHostClient() } = {}) {
-    this.exec = exec || gitHostClient.exec.bind(gitHostClient);
-    this.execRepository = exec
-      ? (descriptor, args, options) => this.exec(args, descriptor.workingDirectory, options, false)
-      : gitHostClient.execRepository.bind(gitHostClient);
-    this.writeRepositoryCommandOutput = exec
-      ? async (descriptor, args, destinationPath, options) => {
-          const result = await this.execRepository(descriptor, args, {
-            ...options,
-            encoding: "buffer",
-          });
-          await fs.promises.writeFile(destinationPath, result.stdout);
-          return result;
-        }
-      : gitHostClient.writeRepositoryCommandOutput.bind(gitHostClient);
+    this.client = gitHostClient;
     this.authBroker = authBroker || null;
+    this.exec = exec || gitHostClient.exec.bind(gitHostClient);
+    // Argument-vector specs inject a transport into the same worker backend;
+    // production never loads the backend into the renderer.
+    if (exec) {
+      const GitRepositoryOperations = require("./git-repository-operations");
+      const GitWorkspaceOperations = require("./git-workspace-operations");
+      const backend = {
+        runRepository: async (args, descriptor, options) =>
+          (await exec(args, descriptor.workingDirectory, options, false)).stdout,
+        runRepositoryRaw: (args, descriptor, options) =>
+          exec(args, descriptor.workingDirectory, options, true),
+        runRepositoryToFile: async (args, descriptor, destination, options) => {
+          const result = await exec(
+            args,
+            descriptor.workingDirectory,
+            { ...options, encoding: "buffer" },
+            false,
+          );
+          await fs.promises.writeFile(destination, result.stdout);
+          return result;
+        },
+      };
+      this.performOperation = (descriptor, name, args) =>
+        new GitRepositoryOperations(backend, descriptor)[name](...args);
+      this.workspaceOperations = new GitWorkspaceOperations({
+        runResult: (args, workingDirectory, options) =>
+          exec(args, workingDirectory, options, false),
+      });
+    } else {
+      this.performOperation = gitHostClient.performOperation.bind(gitHostClient);
+    }
   }
 
-  // Merge the auth broker's askpass environment into a remote operation's
-  // options so git can prompt for credentials/passphrases through the editor.
-  // Harmless for commands that never authenticate.
-  async withAuthEnvironment(workingDirectory, options = {}) {
-    if (!this.authBroker) return options;
-    await this.authBroker.ensureStarted();
-    const { env } = this.authBroker.getEnvironment({ workingDirectory });
-    return { ...options, env: { ...options.env, ...env } };
-  }
-
-  // Merge the auth broker's askpass environment plus the GPG signing config into
-  // a commit/merge operation, so a passphrase-protected signing key can prompt
-  // through the editor when no gpg-agent is reachable. Gated behind
-  // `git.promptForGpgPassphrase`; when disabled (the default) signing relies on
-  // gpg-agent and the options are returned unchanged. `allowPrompt` keeps the
-  // blocking passphrase dialog off the shared read budget.
-  async withSigningEnvironment(workingDirectory, options = {}) {
-    if (!this.authBroker) return options;
-    if (!globalThis.lumine?.config?.get("git.promptForGpgPassphrase")) return options;
-    await this.authBroker.ensureStarted();
-    const { env, config } = this.authBroker.getSigningEnvironment({ workingDirectory });
-    return {
-      ...options,
-      allowPrompt: true,
-      env: { ...options.env, ...env },
-      config: { ...options.config, ...config },
-    };
-  }
-
-  // Both of the above, layered: the auth environment always (a pull fetches, so
-  // it may prompt for credentials) plus the signing config when enabled (a pull
-  // can produce a GPG-signed merge or rebase commit). withSigningEnvironment is
-  // a no-op when signing is disabled, leaving just the auth environment.
-  async withAuthAndSigningEnvironment(workingDirectory, options = {}) {
-    const authed = await this.withAuthEnvironment(workingDirectory, options);
-    return this.withSigningEnvironment(workingDirectory, authed);
-  }
-
-  runResult(args, workingDirectory, options = {}) {
-    // Repository operations are user-initiated: they take the semaphore's
-    // interactive lane so they never queue behind background refreshes.
-    // Callers can still override the priority explicitly.
-    return this.exec(args, workingDirectory, { priority: "interactive", ...options }, false);
-  }
-
-  run(args, workingDirectory, options = {}) {
-    return this.runResult(args, workingDirectory, options).then((result) => result.stdout);
-  }
-
-  runRepositoryResult(args, repositoryDescriptor, options = {}) {
-    return this.execRepository(repositoryDescriptor, args, {
-      priority: "interactive",
-      ...options,
+  async withPreparedOptions(name, descriptor, options, callback) {
+    let prepared = { priority: "interactive", ...options };
+    if (!this.authBroker) return callback(prepared);
+    const auth = !options.readOnly && (AUTH_OPERATIONS.has(name) || name === "pull");
+    const signing =
+      !options.readOnly &&
+      (SIGNING_OPERATIONS.has(name) || name === "pull" || name === "executeGit");
+    const promptSigning = signing && globalThis.lumine?.config?.get("git.promptForGpgPassphrase");
+    if (!auth && !promptSigning) return callback(prepared);
+    const workingDirectory = descriptor.workingDirectory || descriptor.gitDirectory;
+    const session = await this.authBroker.createSession({
+      workingDirectory,
+      signal: options.signal,
+      signing: Boolean(promptSigning),
     });
+    prepared = {
+      ...prepared,
+      env: { ...prepared.env, ...session.env },
+      ...(promptSigning
+        ? { allowPrompt: true, config: { ...prepared.config, ...session.config } }
+        : {}),
+    };
+    try {
+      return await callback(prepared);
+    } finally {
+      session.dispose();
+    }
   }
 
-  runRepository(args, repositoryDescriptor, options = {}) {
-    return this.runRepositoryResult(args, repositoryDescriptor, options).then(
-      (result) => result.stdout,
+  async executeGit(args, workingDirectory, options = {}) {
+    return this.withPreparedOptions(
+      "executeGit",
+      { workingDirectory },
+      { allowedExitCodes: [0], ...options },
+      async (prepared) => {
+        const result = await this.exec(args, workingDirectory, prepared, true);
+        if (
+          typeof result.exitCode === "number" &&
+          !prepared.allowedExitCodes.includes(result.exitCode)
+        )
+          throw new GitOperationError(args[0], result);
+        return result;
+      },
     );
   }
 
-  runRepositoryToFile(args, repositoryDescriptor, destinationPath, options = {}) {
-    return this.writeRepositoryCommandOutput(repositoryDescriptor, args, destinationPath, {
-      priority: "interactive",
-      ...options,
-    });
-  }
-
-  executeGit(args, workingDirectory, options = {}) {
-    return this.exec(args, workingDirectory, { priority: "interactive", ...options }, true);
-  }
-
   createRepositoryOperations({ repository }) {
-    const repositoryDescriptor = repository?.getHostDescriptor?.();
-    if (!repositoryDescriptor) {
+    const descriptor = repository?.getHostDescriptor?.();
+    if (!descriptor)
       throw new TypeError("Repository operations require an exact repository descriptor");
-    }
-    return new GitRepositoryOperations(this, repositoryDescriptor);
+    return new RemoteGitOperations(this, descriptor);
   }
 
-  async initializeRepository(directoryPath, options = {}) {
-    await fs.promises.mkdir(directoryPath, { recursive: true });
-    const args = ["init"];
-    if (options.initialBranch) args.push(`--initial-branch=${options.initialBranch}`);
-    if (options.bare) args.push("--bare");
-    args.push(".");
-    return this.run(args, directoryPath, options);
+  initializeRepository(directoryPath, options = {}) {
+    const prepared = { priority: "interactive", ...options };
+    return this.workspaceOperations
+      ? this.workspaceOperations.initialize(directoryPath, prepared)
+      : this.client.initializeRepository(directoryPath, prepared);
   }
 
   async cloneRepository(remoteUrl, destinationPath, options = {}) {
-    await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
-    const args = ["clone"];
-    addBooleanFlag(args, options.noLocal, "--no-local");
-    addBooleanFlag(args, options.bare, "--bare");
-    addBooleanFlag(args, options.recursive, "--recursive");
-    addBooleanFlag(args, options.depth != null, `--depth=${options.depth}`);
-    if (options.branch) args.push("--branch", options.branch);
-    if (options.sourceRemoteName) args.push("--origin", options.sourceRemoteName);
-    args.push("--", remoteUrl, destinationPath);
-    const parent = path.dirname(destinationPath);
-    return this.run(args, parent, await this.withAuthEnvironment(parent, options));
+    return this.withPreparedOptions(
+      "fetch",
+      { workingDirectory: path.dirname(destinationPath) },
+      options,
+      (prepared) =>
+        this.workspaceOperations
+          ? this.workspaceOperations.clone(remoteUrl, destinationPath, prepared)
+          : this.client.cloneRepository(remoteUrl, destinationPath, prepared),
+    );
   }
 };

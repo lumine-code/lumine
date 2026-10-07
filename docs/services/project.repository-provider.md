@@ -6,7 +6,7 @@ Supplies a `Repository` for a filesystem path, so a version-control system other
 | ----------- | --------------------------------------------------------- |
 | Version     | `1.0.0`                                                   |
 | Provided by | `provideProjectRepositoryProvider()` returning a provider |
-| Consumed by | core, in `src/project.js`                                 |
+| Consumed by | core, in `src/repository-discovery.js`                    |
 | Owner       | the editor itself                                         |
 
 **Nothing provides this today.** Core registers its own Git provider first; this service is how Mercurial, Subversion, or a remote VCS would supply the same thing. Everything that reads repository state — the gutter, the tree view's status colouring, the status-bar tiles — goes through whatever comes back.

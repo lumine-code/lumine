@@ -23,7 +23,9 @@ describe("RepositoryOperationQueue", () => {
       events.push({ event, snapshot });
       observer.callback?.(event, snapshot);
     });
+    const report = jasmine.createSpy("report completion failure");
     const queue = new RepositoryOperationQueue({
+      report,
       repository: { getWorkingDirectory: () => "repository" },
       nextId: () => nextId++,
       acquire,
@@ -31,7 +33,7 @@ describe("RepositoryOperationQueue", () => {
       emit,
       snapshot: (operation) => ({ ...operation }),
     });
-    return { queue, acquire, execute, emit, release, retention, events, observer };
+    return { queue, acquire, execute, emit, release, retention, events, observer, report };
   }
 
   for (const stage of ["queue", "start"]) {
@@ -133,7 +135,7 @@ describe("RepositoryOperationQueue", () => {
     expect(fixture.retention.held).toBe(0);
   });
 
-  it("preserves a finish observer failure, releases after that observer, and continues the queue", async () => {
+  it("reports a finish observer failure while preserving the completed write", async () => {
     const fixture = buildQueue();
     const failure = Object.freeze(new Error("Finish observer failed"));
     let retainedAtFinish;
@@ -145,7 +147,10 @@ describe("RepositoryOperationQueue", () => {
       throw failure;
     };
 
-    expect(await fixture.queue.enqueue("fault").catch((error) => error)).toBe(failure);
+    expect(await fixture.queue.enqueue("fault")).toBe("fault");
+    expect(fixture.report.calls.count()).toBe(1);
+    expect(fixture.report.calls.mostRecent().args[0]).toBe(failure);
+    expect(fixture.report.calls.mostRecent().args[1].phase).toBe("completion");
 
     expect(retainedAtFinish).toBe(1);
     expect(pendingAtFinish).toEqual([]);
@@ -185,7 +190,7 @@ describe("RepositoryOperationQueue", () => {
     expect(fixture.queue.getPendingOperations()).toEqual([]);
   });
 
-  it("rejects a release failure after a successful write without blocking later writes", async () => {
+  it("reports a release failure after a successful write without changing its result", async () => {
     const fixture = buildQueue();
     const failure = new Error("Retention release failed");
     fixture.release.and.callFake(() => {
@@ -193,7 +198,10 @@ describe("RepositoryOperationQueue", () => {
       if (fixture.release.calls.count() === 1) throw failure;
     });
 
-    expect(await fixture.queue.enqueue("first").catch((error) => error)).toBe(failure);
+    expect(await fixture.queue.enqueue("first")).toBe("first");
+    expect(fixture.report.calls.count()).toBe(1);
+    expect(fixture.report.calls.mostRecent().args[0]).toBe(failure);
+    expect(fixture.report.calls.mostRecent().args[1].phase).toBe("completion");
     expect(await fixture.queue.enqueue("second")).toBe("second");
     expect(fixture.execute.calls.allArgs().map(([name]) => name)).toEqual(["first", "second"]);
     expect(fixture.release).toHaveBeenCalledTimes(2);

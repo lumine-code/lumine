@@ -1,12 +1,12 @@
+const { isRepositoryUnavailableError } = require("./git-error");
+const RepositoryOperationManager = require("./repository-operation-manager");
+const completeCleanup = require("./complete-cleanup");
 const fs = require("fs");
 const path = require("path");
 
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
 const RepositoryPathObserver = require("./repository-path-observer");
-const RepositoryOperationQueue = require("./repository-operation-queue");
-const WorkspaceOperationQueue = require("./workspace-operation-queue");
-const { isRepositoryUnavailableError } = require("./git-error");
 const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
@@ -32,23 +32,6 @@ const REPOSITORY_METADATA_NAMES = new Set([
 
 // Valid answers from an operation implementation's getOperationRefreshHint():
 // which read snapshots the just-finished operation can have invalidated.
-const OPERATION_REFRESH_HINTS = new Set(["none", "status", "refs", "both"]);
-
-function completeCleanup(actions, message, initialFailures = []) {
-  const failures = [...initialFailures];
-  const collectError = (error) => failures.push(error);
-  for (const action of actions) {
-    try {
-      action(collectError);
-    } catch (error) {
-      collectError(error);
-    }
-  }
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) {
-    throw new AggregateError(failures, message, { cause: failures[0] });
-  }
-}
 
 function normalizePath(filePath) {
   const resolved = path.resolve(filePath);
@@ -298,9 +281,7 @@ function mergeRefreshHints(current, next) {
  * a window with no provider installed can answer nothing.
  */
 module.exports = class RepositoryRegistry {
-  #operationProviderRegistrations = [];
-
-  constructor({ project, config, notificationManager, packageManager }) {
+  constructor({ project, config, notificationManager, packageManager, confirm }) {
     this.project = null;
     this.config = config;
     this.notificationManager = notificationManager;
@@ -335,19 +316,10 @@ module.exports = class RepositoryRegistry {
     this.repositoryMoveLedgerSequence = 0;
     this.repositoryMoveReconciliationScheduled = false;
     this.version = 0;
-    this.nextOperationId = 1;
+    this.operationManager = new RepositoryOperationManager(this, { confirm });
     this.nextRescanId = 1;
     this.destroyed = false;
     this.didNotifyRepositoryLimit = false;
-    this.workspaceOperationQueue = new WorkspaceOperationQueue({
-      keyForPath: normalizePath,
-      nextId: () => this.nextOperationId++,
-      snapshot: (operation) => this.operationSnapshot(operation),
-      emit: (event, operation) => {
-        if (!this.destroyed) this.emitter.emit(event, operation);
-      },
-      execute: (name, args, operation) => this.executeWorkspaceOperation(name, args, operation),
-    });
 
     if (this.config?.onDidChange) {
       this.subscriptions.add(
@@ -832,7 +804,7 @@ module.exports = class RepositoryRegistry {
     this.entriesById.clear();
     this.routingDirectoryOwners.clear();
     this.gitDirectoryOwners.clear();
-    this.#operationProviderRegistrations = [];
+    this.operationManager.destroy();
     for (const entry of entries) {
       entry.removing = true;
       this.entryByRepository.delete(entry.repository);
@@ -1148,6 +1120,26 @@ module.exports = class RepositoryRegistry {
       this.subscriptions.remove(observer);
       observer.dispose();
     });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Resolve the context of a repository or file command. Repository commands
+   * honor the selected/pinned repository; file commands honor their target editor.
+   *
+   * @param {Object} [event] - Command dispatch event.
+   * @param {Object} [options] - scope, either repository or file.
+   * @returns {Object} frozen {repository, editor, path} context.
+   */
+  getCommandContext(event, { scope = "repository" } = {}) {
+    const element = event?.target?.closest?.("lumine-text-editor:not([mini])");
+    const editor = element?.getModel?.() || this.workspace?.getActiveTextEditor?.() || null;
+    const filePath = editor?.getPath?.() || null;
+    const repository =
+      scope === "file" ? (filePath ? this.getForPath(filePath) : null) : this.getActiveRepository();
+    return Object.freeze({ repository, editor, path: filePath });
   }
 
   isLiveRoutingEntry(entry) {
@@ -1496,63 +1488,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Disposable} that removes the provider and everything it implemented.
    */
   addOperationProvider(provider, { fallback = false } = {}) {
-    if (this.destroyed) throw new Error("Cannot add a provider to a destroyed RepositoryRegistry");
-    if (
-      !provider ||
-      (typeof provider.createRepositoryOperations !== "function" &&
-        typeof provider.initializeRepository !== "function" &&
-        typeof provider.cloneRepository !== "function" &&
-        typeof provider.executeGit !== "function")
-    ) {
-      throw new TypeError(
-        "Repository operation providers must implement repository, workspace, or Git transport operations",
-      );
-    }
-
-    const registration = { provider };
-    if (fallback) {
-      this.#operationProviderRegistrations.push(registration);
-    } else {
-      this.#operationProviderRegistrations.unshift(registration);
-    }
-
-    const removeRegistration = (initialFailures = []) => {
-      const message = initialFailures.length
-        ? "Unable to roll back repository operation provider registration"
-        : "Unable to remove the repository operation provider cleanly";
-      const index = this.#operationProviderRegistrations.indexOf(registration);
-      if (index < 0) {
-        completeCleanup([], message, initialFailures);
-        return;
-      }
-      this.#operationProviderRegistrations.splice(index, 1);
-      const records = [];
-      // Registrations of the same provider share implementations. Removing one
-      // registration must preserve the records owned by the remaining ones.
-      if (!this.hasOperationProvider(provider)) {
-        for (const entry of this.entriesById.values()) {
-          if (entry.operationImplementations.has(provider)) {
-            records.push(entry.operationImplementations.get(provider));
-            entry.operationImplementations.delete(provider);
-          }
-        }
-      }
-      completeCleanup(
-        [
-          ...records.map((record) => () => this.disposeOperationImplementation(record)),
-          (collectError) => this.emitOperationProviderChange(collectError),
-        ],
-        message,
-        initialFailures,
-      );
-    };
-    const subscription = new Disposable(() => removeRegistration());
-    try {
-      this.emitOperationProviderChange();
-    } catch (error) {
-      removeRegistration([error]);
-    }
-    return subscription;
+    return this.operationManager.addOperationProvider(provider, { fallback });
   }
 
   /**
@@ -1565,7 +1501,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Object} of operation functions, or `null` when no provider has claimed the repository.
    */
   getOperations(repository) {
-    return this.entryByRepository.get(repository)?.operations || null;
+    return this.operationManager.getOperations(repository);
   }
 
   /**
@@ -1583,7 +1519,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Boolean}
    */
   canPerformOperation(repository, operationName) {
-    return this.findOperationImplementation(repository, operationName) != null;
+    return this.operationManager.canPerformOperation(repository, operationName);
   }
 
   /**
@@ -1596,24 +1532,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Array} frozen `Array` of `String` operation names.
    */
   getOperationCapabilities(repository) {
-    const capabilities = new Set();
-    for (const { provider } of this.#operationProviderRegistrations) {
-      const record = this.getOperationImplementation(repository, provider);
-      if (!record) continue;
-
-      for (const operationName of RepositoryOperations.standardCapabilities) {
-        if (this.operationImplementationSupports(record, operationName)) {
-          capabilities.add(operationName);
-        }
-      }
-      const customCapabilities = record.implementation.getCapabilities?.() || [];
-      for (const operationName of customCapabilities) {
-        if (this.operationImplementationSupports(record, operationName)) {
-          capabilities.add(operationName);
-        }
-      }
-    }
-    return Object.freeze(Array.from(capabilities));
+    return this.operationManager.getOperationCapabilities(repository);
   }
 
   /**
@@ -1638,14 +1557,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Array} frozen `Array` of frozen `Objects`.
    */
   getPendingOperations(repository) {
-    const entries = repository
-      ? [this.entryByRepository.get(repository)].filter(Boolean)
-      : Array.from(this.entriesById.values());
-    const operations = entries.flatMap((entry) => entry.operationQueue.getPendingOperations());
-    if (!repository) {
-      operations.push(...this.workspaceOperationQueue.getPendingOperations());
-    }
-    return Object.freeze(operations);
+    return this.operationManager.getPendingOperations(repository);
   }
 
   /**
@@ -1664,10 +1576,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Array} frozen `Array` of `String` operation names.
    */
   getWorkspaceOperationCapabilities() {
-    const capabilities = [];
-    if (this.findWorkspaceOperationProvider("initialize")) capabilities.push("initialize");
-    if (this.findWorkspaceOperationProvider("clone")) capabilities.push("clone");
-    return Object.freeze(capabilities);
+    return this.operationManager.getWorkspaceOperationCapabilities();
   }
 
   /**
@@ -1680,7 +1589,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Boolean}
    */
   canPerformWorkspaceOperation(operationName) {
-    return this.findWorkspaceOperationProvider(operationName) != null;
+    return this.operationManager.canPerformWorkspaceOperation(operationName);
   }
 
   /**
@@ -1696,7 +1605,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Boolean}
    */
   canExecuteGitCommands() {
-    return this.findGitCommandProvider() != null;
+    return this.operationManager.canExecuteGitCommands();
   }
 
   /**
@@ -1715,20 +1624,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Promise} for the provider's result. It rejects with a `TypeError` if `args` is not an array, and with an `Error` whose `code` is `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
    */
   async executeGit(args, workingDirectory, options) {
-    if (this.destroyed) {
-      throw new Error("Cannot execute Git with a destroyed RepositoryRegistry");
-    }
-    if (!Array.isArray(args)) {
-      throw new TypeError("Git arguments must be an array");
-    }
-
-    const provider = this.findGitCommandProvider();
-    if (!provider) {
-      const error = new Error("No provider implements raw Git command execution");
-      error.code = "ERR_GIT_EXECUTION_UNAVAILABLE";
-      throw error;
-    }
-    return provider.executeGit(args, workingDirectory, options);
+    return this.operationManager.executeGit(args, workingDirectory, options);
   }
 
   /**
@@ -1746,7 +1642,7 @@ module.exports = class RepositoryRegistry {
    * @returns {Promise} that resolves to the new {@link GitRepository}. It rejects when no provider implements `initialize`, and with an `Error` whose `code` is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing was found at the path afterwards.
    */
   initialize(directoryPath, options) {
-    return this.performWorkspaceOperation("initialize", directoryPath, [directoryPath, options]);
+    return this.operationManager.initialize(directoryPath, options);
   }
 
   /**
@@ -1761,286 +1657,127 @@ module.exports = class RepositoryRegistry {
    * @returns {Promise} that resolves to the new {@link GitRepository}, and rejects the same way {@link #initialize} does.
    */
   clone(remoteUrl, destinationPath, options) {
-    return this.performWorkspaceOperation("clone", destinationPath, [
-      remoteUrl,
-      destinationPath,
+    return this.operationManager.clone(remoteUrl, destinationPath, options);
+  }
+
+  async registerCreatedRepository(directoryPath, operationName) {
+    return this.operationManager.registerCreatedRepository(directoryPath, operationName);
+  }
+
+  performWorkspaceOperation(operationName, workingDirectory, args) {
+    return this.operationManager.performWorkspaceOperation(operationName, workingDirectory, args);
+  }
+
+  assertWorkspaceOperationAvailable() {
+    return this.operationManager.assertWorkspaceOperationAvailable();
+  }
+
+  async executeWorkspaceOperation(operationName, args, operation) {
+    return this.operationManager.executeWorkspaceOperation(operationName, args, operation);
+  }
+
+  hasOperationProvider(provider) {
+    return this.operationManager.hasOperationProvider(provider);
+  }
+
+  findWorkspaceOperationProvider(operationName) {
+    return this.operationManager.findWorkspaceOperationProvider(operationName);
+  }
+
+  findGitCommandProvider() {
+    return this.operationManager.findGitCommandProvider();
+  }
+
+  performOperation(repository, operationName, args = []) {
+    return this.operationManager.performOperation(repository, operationName, args);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Execute a complete workflow in one repository write turn. The callback gets
+   * direct operations that share the turn and never enqueue behind themselves.
+   *
+   * @param {GitRepository} repository - Repository retained for the workflow.
+   * @param {String} name - Workflow name used in operation progress events.
+   * @param {Function} callback - Receives direct operations.
+   * @param {Object} [options] - signal, expectedHead, guards, refresh selection.
+   * @returns {Promise} callback result, with partial/unknown outcomes on failure.
+   */
+  performWorkflow(repository, name, callback, options = {}) {
+    return this.operationManager.performWorkflow(repository, name, callback, options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Fetch, pull or push the selected repository's current branch using a fresh
+   * remote/upstream snapshot inside the same serialized workflow.
+   *
+   * @param {GitRepository} repository - Repository to act on.
+   * @param {String} name - fetch, pull or push.
+   * @param {Object} [options] - Named operation options.
+   * @returns {Promise} the named operation result.
+   */
+  performRemoteOperation(repository, name, options = {}) {
+    return this.operationManager.performRemoteOperation(repository, name, options);
+  }
+
+  assertOperationEntry(entry, operationName) {
+    return this.operationManager.assertOperationEntry(entry, operationName);
+  }
+
+  executeRepositoryOperation(entry, operationName, args) {
+    return this.operationManager.executeRepositoryOperation(entry, operationName, args);
+  }
+
+  async executeRepositoryWorkflow(entry, operationName, [callback, options = {}]) {
+    return this.operationManager.executeRepositoryWorkflow(entry, operationName, [
+      callback,
       options,
     ]);
   }
 
-  async registerCreatedRepository(directoryPath, operationName) {
-    this.assertWorkspaceOperationAvailable();
-    const registration = await this.add(directoryPath);
-    this.assertWorkspaceOperationAvailable();
-    if (registration) return registration.repository;
-
-    const error = new Error(
-      `Git ${operationName} completed, but no repository was found at: ${directoryPath}`,
-    );
-    error.code = "ERR_REPOSITORY_DISCOVERY_FAILED";
-    error.operation = operationName;
-    error.directoryPath = directoryPath;
-    throw error;
-  }
-
-  performWorkspaceOperation(operationName, workingDirectory, args) {
-    try {
-      this.assertWorkspaceOperationAvailable();
-      return this.workspaceOperationQueue.enqueue(operationName, workingDirectory, args);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  assertWorkspaceOperationAvailable() {
-    if (this.destroyed) {
-      throw new Error("Cannot run an operation on a destroyed RepositoryRegistry");
-    }
-  }
-
-  async executeWorkspaceOperation(operationName, args, operation) {
-    this.assertWorkspaceOperationAvailable();
-    const provider = this.findWorkspaceOperationProvider(operationName);
-    this.assertWorkspaceOperationAvailable();
-    if (!provider) {
-      throw Object.assign(
-        new Error(`No provider implements repository operation: ${operationName}`),
-        { code: "ERR_REPOSITORY_OPERATION_UNAVAILABLE", operation: operationName },
-      );
-    }
-    const methodName = operationName === "initialize" ? "initializeRepository" : "cloneRepository";
-    await provider[methodName](...args);
-    this.assertWorkspaceOperationAvailable();
-    const repository = await this.registerCreatedRepository(
-      operation.workingDirectory,
+  async invokeRepositoryOperation(
+    entry,
+    operationName,
+    args,
+    workflowOptions = {},
+    refresh = false,
+  ) {
+    return this.operationManager.invokeRepositoryOperation(
+      entry,
       operationName,
+      args,
+      workflowOptions,
+      refresh,
     );
-    this.assertWorkspaceOperationAvailable();
-    return repository;
-  }
-
-  hasOperationProvider(provider) {
-    return this.#operationProviderRegistrations.some(
-      (registration) => registration.provider === provider,
-    );
-  }
-
-  findWorkspaceOperationProvider(operationName) {
-    const methodName =
-      operationName === "initialize"
-        ? "initializeRepository"
-        : operationName === "clone"
-          ? "cloneRepository"
-          : null;
-    if (!methodName) return null;
-    return (
-      this.#operationProviderRegistrations.find(
-        ({ provider }) => typeof provider[methodName] === "function",
-      )?.provider || null
-    );
-  }
-
-  findGitCommandProvider() {
-    return (
-      this.#operationProviderRegistrations.find(
-        ({ provider }) => typeof provider.executeGit === "function",
-      )?.provider || null
-    );
-  }
-
-  performOperation(repository, operationName, args = []) {
-    if (typeof operationName !== "string" || operationName.length === 0) {
-      return Promise.reject(new TypeError("Repository operation name must be a non-empty string"));
-    }
-    try {
-      if (this.destroyed) this.assertOperationEntry(null, operationName);
-      const entry = this.entryByRepository.get(repository) || this.register(repository);
-      this.assertOperationEntry(entry, operationName);
-      return entry.operationQueue.enqueue(operationName, args);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  assertOperationEntry(entry, operationName) {
-    if (
-      this.destroyed ||
-      !entry ||
-      entry.removing ||
-      this.entriesById.get(entry.id) !== entry ||
-      entry.repository.isDestroyed?.()
-    ) {
-      throw Object.assign(new Error("Repository has been destroyed"), {
-        code: "ERR_GIT_REPOSITORY_DESTROYED",
-        operation: operationName,
-      });
-    }
-  }
-
-  async executeRepositoryOperation(entry, operationName, args) {
-    const repository = entry.repository;
-    const failures = [];
-    let result, record;
-    let acquired = false;
-    try {
-      this.assertOperationEntry(entry, operationName);
-      record = this.findOperationImplementation(repository, operationName);
-      this.assertOperationEntry(entry, operationName);
-      if (!record) {
-        throw Object.assign(
-          new Error(`No provider implements repository operation: ${operationName}`),
-          { code: "ERR_REPOSITORY_OPERATION_UNAVAILABLE", operation: operationName },
-        );
-      }
-      record.activeOperations++;
-      acquired = true;
-      result = await record.implementation[operationName](...args);
-      // The write has succeeded. A read-cache or notification failure must not
-      // turn that completed write into a failure that invites an unsafe retry.
-      try {
-        await this.refreshRepositoryAfterOperation(
-          repository,
-          this.operationRefreshHint(record.implementation, operationName, args),
-        );
-      } catch (error) {
-        this.reportRefreshFailure(repository, error);
-      }
-    } catch (error) {
-      failures.push(error);
-      if (isRepositoryUnavailableError(error)) {
-        try {
-          if (typeof repository.signalRepositoryUnavailable === "function") {
-            repository.signalRepositoryUnavailable(error);
-          } else {
-            this.removeUnavailableEntry(entry);
-          }
-        } catch (unavailableError) {
-          failures.push(unavailableError);
-        }
-      }
-    }
-    if (acquired) {
-      record.activeOperations--;
-      if (record.pendingDisposal && record.activeOperations === 0) {
-        try {
-          this.disposeOperationImplementation(record);
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-    }
-    if (failures.length === 1) throw failures[0];
-    if (failures.length > 1) {
-      throw new AggregateError(failures, "Repository operation and its cleanup failed", {
-        cause: failures[0],
-      });
-    }
-    return result;
   }
 
   operationSnapshot(operation) {
-    return Object.freeze({
-      id: operation.id,
-      repository: operation.repository,
-      name: operation.name,
-      status: operation.status,
-      workingDirectory: operation.workingDirectory || null,
-      queuedAt: operation.queuedAt,
-      startedAt: operation.startedAt,
-    });
+    return this.operationManager.operationSnapshot(operation);
   }
 
   findOperationImplementation(repository, operationName) {
-    for (const { provider } of this.#operationProviderRegistrations.slice()) {
-      const record = this.getOperationImplementation(repository, provider);
-      if (
-        record &&
-        this.operationImplementationSupports(record, operationName) &&
-        !record.disposed &&
-        this.hasOperationProvider(provider) &&
-        this.entryByRepository.get(repository)?.operationImplementations.get(provider) === record
-      )
-        return record;
-    }
-    return null;
+    return this.operationManager.findOperationImplementation(repository, operationName);
   }
 
   operationImplementationSupports(record, operationName) {
-    if (typeof record.implementation[operationName] !== "function") return false;
-    if (RepositoryOperations.standardCapabilities.includes(operationName)) return true;
-    return (record.implementation.getCapabilities?.() || []).includes(operationName);
+    return this.operationManager.operationImplementationSupports(record, operationName);
   }
 
   getOperationImplementation(repository, provider) {
-    const entry = this.entryByRepository.get(repository);
-    if (
-      !entry ||
-      entry.removing ||
-      this.entriesById.get(entry.id) !== entry ||
-      repository.isDestroyed?.() ||
-      !this.hasOperationProvider(provider)
-    )
-      return null;
-    if (entry.operationImplementations.has(provider)) {
-      return entry.operationImplementations.get(provider);
-    }
-    if (typeof provider.createRepositoryOperations !== "function") {
-      entry.operationImplementations.set(provider, null);
-      return null;
-    }
-
-    const implementation = provider.createRepositoryOperations({
-      repository,
-      workingDirectory: entry.workingDirectory,
-      gitDirectory: repository.getPath?.() || null,
-    });
-    const record = implementation
-      ? { implementation, activeOperations: 0, pendingDisposal: false, disposed: false }
-      : null;
-    // A synchronous factory can remove its provider or repository. Its returned
-    // implementation must not escape the registration that owned its creation.
-    if (
-      this.destroyed ||
-      entry.removing ||
-      this.entriesById.get(entry.id) !== entry ||
-      repository.isDestroyed?.() ||
-      !this.hasOperationProvider(provider)
-    ) {
-      this.disposeOperationImplementation(record);
-      return null;
-    }
-    entry.operationImplementations.set(provider, record);
-    return record;
+    return this.operationManager.getOperationImplementation(repository, provider);
   }
 
   disposeOperationImplementation(record) {
-    if (!record || record.disposed) return;
-    if (record.activeOperations > 0) {
-      record.pendingDisposal = true;
-    } else {
-      record.disposed = true;
-      record.pendingDisposal = false;
-      record.implementation.destroy?.();
-    }
+    return this.operationManager.disposeOperationImplementation(record);
   }
 
   disposeOperationImplementations(entry) {
-    const records = [...entry.operationImplementations.values()];
-    entry.operationImplementations.clear();
-    const failures = [];
-    for (const record of records) {
-      try {
-        this.disposeOperationImplementation(record);
-      } catch (error) {
-        failures.push(error);
-      }
-    }
-    if (failures.length === 1) throw failures[0];
-    if (failures.length > 1) {
-      throw new AggregateError(failures, "Unable to dispose repository operation implementations", {
-        cause: failures[0],
-      });
-    }
+    return this.operationManager.disposeOperationImplementations(entry);
   }
 
   // Ask the operation implementation which snapshots the operation can have
@@ -2049,92 +1786,19 @@ module.exports = class RepositoryRegistry {
   // throwing refreshes both snapshots — the behavior every operation had
   // before hints existed.
   operationRefreshHint(implementation, operationName, args) {
-    if (typeof implementation.getOperationRefreshHint !== "function") return "both";
-    try {
-      const hint = implementation.getOperationRefreshHint(operationName, args);
-      return OPERATION_REFRESH_HINTS.has(hint) ? hint : "both";
-    } catch {
-      return "both";
-    }
+    return this.operationManager.operationRefreshHint(implementation, operationName, args);
   }
 
-  async refreshRepositoryAfterOperation(repository, hint = "both") {
-    if (hint === "none" || repository.isDestroyed?.()) return;
-    let statusRefresh = null;
-    if (
-      (hint === "status" || hint === "both") &&
-      repository.refreshStatusSnapshot &&
-      repository.getStatusSnapshot?.().initialized
-    ) {
-      // This refresh gates the operation's promise, so it rides the
-      // interactive lane along with the operation itself.
-      try {
-        statusRefresh = Promise.resolve(
-          repository.refreshStatusSnapshot({ priority: "interactive" }),
-        ).catch((error) => this.reportRefreshFailure(repository, error));
-      } catch (error) {
-        this.reportRefreshFailure(repository, error);
-      }
-    }
-
-    // Status is the only refresh that gates the operation. Waiting for it to
-    // settle before enqueueing refs also keeps refs out of an already-queued
-    // trailing status request; a single microtask is insufficient while
-    // another snapshot flight is active.
-    if (statusRefresh) await statusRefresh;
-
-    // Every refs consumer is event-driven, so the refs refresh runs detached,
-    // freeing its Git commands' worth of wait from ref-moving operations.
-    if (
-      (hint === "refs" || hint === "both") &&
-      repository.refreshRefsSnapshot &&
-      repository.getRefsSnapshot?.().initialized
-    ) {
-      let refsRefresh;
-      try {
-        refsRefresh = repository.refreshRefsSnapshot();
-      } catch (error) {
-        this.reportRefreshFailure(repository, error);
-      }
-      Promise.resolve(refsRefresh).catch((error) => this.reportRefreshFailure(repository, error));
-    }
+  async refreshRepositoryAfterOperation(repository, hint = "both", { peers = true } = {}) {
+    return this.operationManager.refreshRepositoryAfterOperation(repository, hint, { peers });
   }
 
   reportRefreshFailure(repository, error) {
-    try {
-      if (repository.isDestroyed?.()) return;
-      // GitRepository owns the once-per-repository reporting policy. Route
-      // post-operation failures through the same gate so a combined status+refs
-      // refresh cannot produce duplicate warnings.
-      if (typeof repository.reportBackgroundSnapshotError === "function") {
-        repository.reportBackgroundSnapshotError(error);
-        return;
-      }
-      // The Git command has already succeeded. Never report it as failed (and
-      // invite a dangerous retry) merely because the read cache did not refresh.
-      this.notificationManager?.addWarning("Repository refresh failed after Git operation", {
-        detail: error.message,
-        dismissable: true,
-      });
-    } catch (reportError) {
-      console.error("Unable to report a repository refresh failure", error, reportError);
-    }
+    return this.operationManager.reportRefreshFailure(repository, error);
   }
 
   emitOperationProviderChange(collectError) {
-    if (this.destroyed || this.entriesById.size === 0) return;
-    const repositories = this.getRepositories();
-    this.emitChange(
-      {
-        added: [],
-        removed: [],
-        updated: repositories,
-        rootsAdded: [],
-        rootsRemoved: [],
-        routingChangedPrefixes: [],
-      },
-      collectError,
-    );
+    return this.operationManager.emitOperationProviderChange(collectError);
   }
 
   /**
@@ -3922,27 +3586,7 @@ module.exports = class RepositoryRegistry {
       unavailableSubscription: null,
     };
 
-    entry.operationQueue = new RepositoryOperationQueue({
-      repository,
-      nextId: () => this.nextOperationId++,
-      snapshot: (operation) => this.operationSnapshot(operation),
-      emit: (event, operation) => {
-        if (!this.destroyed) this.emitter.emit(event, operation);
-      },
-      acquire: () => {
-        this.assertOperationEntry(entry);
-        const token = Symbol("operation");
-        entry.operationOwners.add(token);
-        let released = false;
-        return () => {
-          if (released) return;
-          released = true;
-          entry.operationOwners.delete(token);
-          this.prune(entry);
-        };
-      },
-      execute: (name, args) => this.executeRepositoryOperation(entry, name, args),
-    });
+    entry.operationQueue = this.operationManager.createQueue(entry);
 
     for (const rootPath of this.rootPaths) {
       if (this.repositoryRelatesToRoot(entry, rootPath)) entry.rootOwners.add(rootPath);

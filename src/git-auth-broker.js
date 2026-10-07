@@ -2,7 +2,9 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const fs = require("fs/promises");
+const { randomUUID } = require("crypto");
 const { Emitter } = require("@lumine-code/event-kit");
+const { resolveGitPath, which } = require("./git-binary");
 
 // The auth broker gives the system git that runs in the git-host worker a way to
 // prompt the user for credentials and SSH/GPG passphrases from the editor GUI —
@@ -22,6 +24,39 @@ const { Emitter } = require("@lumine-code/event-kit");
 
 const SCRIPT_DIRECTORY = __dirname;
 const HELPER_SCRIPTS = ["askpass.js", "askpass.sh", "ssh-wrapper.sh", "gpg-wrapper.sh"];
+const MAX_PROMPT_BYTES = 64 * 1024;
+
+function stoppedError() {
+  const error = new Error("Git credential broker has been terminated");
+  error.name = "AbortError";
+  error.code = "ABORT_ERR";
+  return error;
+}
+
+async function closeServer(server) {
+  if (!server?.listening) return;
+  await new Promise((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+async function resolveAskpassShell() {
+  if (process.platform !== "win32") return "sh";
+  const onPath = which("sh");
+  if (onPath) return onPath;
+  const gitDirectory = path.dirname(
+    resolveGitPath(globalThis.lumine?.config?.get?.("git.path") || ""),
+  );
+  for (const relativePath of ["sh.exe", "../bin/sh.exe", "../usr/bin/sh.exe"]) {
+    const candidate = path.resolve(gitDirectory, relativePath);
+    try {
+      if ((await fs.stat(candidate)).isFile()) return candidate;
+    } catch {
+      // A minimal Git install may omit the shell; dialog fallback still works.
+    }
+  }
+  return "sh";
+}
 
 // Git's bundled sh on Windows (MSYS) wants forward slashes in the paths it
 // receives through the environment.
@@ -30,7 +65,7 @@ function toHelperPath(candidate) {
 }
 
 class GitAuthBroker {
-  constructor({ promptForInput } = {}) {
+  constructor({ promptForInput, filesystem = fs, createServer = net.createServer } = {}) {
     this.promptForInput =
       promptForInput || (() => Promise.reject(new Error("No credential prompt handler is set")));
     this.emitter = new Emitter();
@@ -38,6 +73,13 @@ class GitAuthBroker {
     this.tempDirectory = null;
     this.server = null;
     this.address = null;
+    this.filesystem = filesystem;
+    this.createServer = createServer;
+    this.terminated = false;
+    this.terminationPromise = null;
+    this.connections = new Map();
+    this.sessions = new Map();
+    this.shellPath = null;
   }
 
   setPromptHandler(promptForInput) {
@@ -50,6 +92,7 @@ class GitAuthBroker {
 
   // Start (once) the helper temp directory and the prompt socket.
   ensureStarted() {
+    if (this.terminated) return Promise.reject(stoppedError());
     if (!this.startPromise) {
       this.startPromise = this.start().catch((error) => {
         this.startPromise = null;
@@ -60,51 +103,112 @@ class GitAuthBroker {
   }
 
   async start() {
-    this.tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lumine-git-auth-"));
-    await Promise.all(
-      HELPER_SCRIPTS.map(async (name) => {
-        const destination = path.join(this.tempDirectory, name);
-        await fs.copyFile(path.join(SCRIPT_DIRECTORY, name), destination);
-        if (name.endsWith(".sh")) await fs.chmod(destination, 0o700);
-      }),
-    );
-    this.server = await this.listen();
+    let directory, server;
+    try {
+      directory = await this.filesystem.mkdtemp(path.join(os.tmpdir(), "lumine-git-auth-"));
+      if (this.terminated) throw stoppedError();
+      // Wait for every copy before removing a failed startup's directory.
+      const copies = await Promise.allSettled(
+        HELPER_SCRIPTS.map(async (name) => {
+          const destination = path.join(directory, name);
+          await this.filesystem.copyFile(path.join(SCRIPT_DIRECTORY, name), destination);
+          if (name.endsWith(".sh")) await this.filesystem.chmod(destination, 0o700);
+        }),
+      );
+      const failure = copies.find((result) => result.status === "rejected");
+      if (failure) throw failure.reason;
+      if (this.terminated) throw stoppedError();
+      this.shellPath = await resolveAskpassShell();
+      if (this.terminated) throw stoppedError();
+      server = await this.listen(directory);
+      if (this.terminated) throw stoppedError();
+      this.tempDirectory = directory;
+      this.server = server;
+      this.address = server.address();
+    } catch (error) {
+      const cleanup = await Promise.allSettled([
+        closeServer(server),
+        directory ? this.filesystem.rm(directory, { recursive: true, force: true }) : undefined,
+      ]);
+      const failures = cleanup
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason);
+      if (failures.length)
+        throw new AggregateError(
+          [error, ...failures],
+          "Git credential broker startup and cleanup failed",
+          { cause: error },
+        );
+      throw error;
+    }
   }
 
-  socketOptions() {
+  socketOptions(directory) {
     if (process.platform === "win32") {
       return { port: 0, host: "127.0.0.1" };
     }
-    return { path: path.join(this.tempDirectory, "auth.sock") };
+    return { path: path.join(directory, "auth.sock") };
   }
 
-  listen() {
-    return new Promise((resolve) => {
-      const server = net.createServer({ allowHalfOpen: true }, (connection) => {
+  listen(directory) {
+    return new Promise((resolve, reject) => {
+      const server = this.createServer({ allowHalfOpen: true }, (connection) => {
+        if (this.terminated) {
+          connection.destroy();
+          return;
+        }
+        const controller = new AbortController();
+        this.connections.set(connection, controller);
         connection.setEncoding("utf8");
         let payload = "";
         connection.on("data", (chunk) => {
           payload += chunk;
+          if (Buffer.byteLength(payload) > MAX_PROMPT_BYTES) connection.destroy();
         });
-        connection.on("end", () => this.handleConnection(connection, payload));
+        connection.on(
+          "end",
+          () => void this.handleConnection(connection, payload, controller.signal),
+        );
+        connection.on("close", () => {
+          this.connections.delete(connection);
+          controller.abort(stoppedError());
+        });
         connection.on("error", () => {});
       });
-      server.listen(this.socketOptions(), () => {
-        this.address = server.address();
+      const onError = (error) => reject(error);
+      server.once("error", onError);
+      server.listen(this.socketOptions(directory), () => {
+        server.removeListener("error", onError);
         resolve(server);
       });
     });
   }
 
-  async handleConnection(connection, payload) {
+  async handleConnection(connection, payload, signal) {
     let query;
+    let authenticated = false;
     try {
       query = JSON.parse(payload);
-      const answer = await this.promptForInput(query);
+      const session = this.sessions.get(query.session);
+      if (!session) throw new Error("Unknown Git credential session");
+      authenticated = true;
+      signal = AbortSignal.any([signal, session.controller.signal]);
+      signal.throwIfAborted();
+      const answer = await this.promptForInput(query, { signal });
+      signal.throwIfAborted();
       await new Promise((resolve) => connection.end(JSON.stringify(answer), "utf8", resolve));
     } catch {
       connection.destroy();
-      this.emitter.emit("did-cancel", query && query.pid ? { handlerPid: query.pid } : undefined);
+      if (authenticated && !this.terminated) {
+        try {
+          this.emitter.emit(
+            "did-cancel",
+            query && query.pid ? { handlerPid: query.pid } : undefined,
+          );
+        } catch (error) {
+          console.error("Unable to report Git credential cancellation", error);
+        }
+      }
     }
   }
 
@@ -130,6 +234,7 @@ class GitAuthBroker {
       LUMINE_GIT_AUTH_ASKPASS_JS: this.scriptPath("askpass.js"),
       LUMINE_GIT_AUTH_WORKDIR: workingDirectory || "",
       LUMINE_GIT_AUTH_ORIGINAL_ASKPASS: process.env.GIT_ASKPASS || process.env.SSH_ASKPASS || "",
+      LUMINE_GIT_AUTH_SHELL: this.shellPath || "sh",
       GIT_ASKPASS: this.scriptPath("askpass.sh"),
       SSH_ASKPASS: this.scriptPath("askpass.sh"),
     };
@@ -166,18 +271,66 @@ class GitAuthBroker {
     };
   }
 
-  async terminate() {
-    if (this.server) {
-      await new Promise((resolve) => this.server.close(resolve));
+  async createSession({ workingDirectory, signal, signing = false, electronPath } = {}) {
+    signal?.throwIfAborted();
+    await this.ensureStarted();
+    signal?.throwIfAborted();
+    if (this.terminated) throw stoppedError();
+    const token = randomUUID();
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    const session = { controller, dispose: null };
+    session.dispose = () => {
+      if (!this.sessions.delete(token)) return;
+      signal?.removeEventListener("abort", abort);
+      controller.abort(stoppedError());
+    };
+    this.sessions.set(token, session);
+    const environment = signing
+      ? this.getSigningEnvironment({ workingDirectory, electronPath })
+      : this.getEnvironment({ workingDirectory, electronPath });
+    return {
+      ...environment,
+      env: { ...environment.env, LUMINE_GIT_AUTH_SESSION: token },
+      dispose: session.dispose,
+    };
+  }
+
+  terminate() {
+    if (this.terminationPromise) return this.terminationPromise;
+    this.terminated = true;
+    for (const session of this.sessions.values()) session.dispose();
+    for (const [connection, controller] of this.connections) {
+      controller.abort(stoppedError());
+      connection.destroy();
     }
-    if (this.tempDirectory) {
-      await fs.rm(this.tempDirectory, { recursive: true, force: true });
-    }
+    this.connections.clear();
+    this.terminationPromise = this.completeTermination();
+    return this.terminationPromise;
+  }
+
+  async completeTermination() {
+    // Startup owns provisional resources; let it roll them back before closing
+    // the published server and directory. A terminated broker cannot restart.
+    await this.startPromise?.catch(() => {});
+    const results = await Promise.allSettled([
+      closeServer(this.server),
+      this.tempDirectory
+        ? this.filesystem.rm(this.tempDirectory, { recursive: true, force: true })
+        : undefined,
+    ]);
     this.server = null;
     this.tempDirectory = null;
     this.address = null;
     this.startPromise = null;
     this.emitter.dispose();
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Git credential broker cleanup failed");
   }
 }
 

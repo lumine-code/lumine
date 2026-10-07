@@ -8,17 +8,27 @@ module.exports = class RepositoryOperationQueue {
   #execute;
   #emit;
   #snapshot;
+  #report;
   #tail = Promise.resolve();
   #pending = new Map();
   #outstanding = 0;
 
-  constructor({ repository, nextId, acquire = () => {}, execute, emit, snapshot }) {
+  constructor({
+    repository,
+    nextId,
+    acquire = () => {},
+    execute,
+    emit,
+    snapshot,
+    report = console.error,
+  }) {
     this.#repository = repository;
     this.#nextId = nextId;
     this.#acquire = acquire;
     this.#execute = execute;
     this.#emit = emit;
     this.#snapshot = snapshot;
+    this.#report = report;
   }
 
   getPendingOperations() {
@@ -102,7 +112,11 @@ module.exports = class RepositoryOperationQueue {
   async #complete(operation, value, failed, primaryError, settle) {
     const failures = failed ? [primaryError] : [];
     this.#pending.delete(operation.id);
-    operation.status = failed ? "failed" : "succeeded";
+    operation.status = failed
+      ? primaryError?.outcome === "unknown"
+        ? "unknown"
+        : "failed"
+      : "succeeded";
     try {
       this.#emit(
         "did-finish-operation",
@@ -111,6 +125,7 @@ module.exports = class RepositoryOperationQueue {
           status: operation.status,
           finishedAt: Date.now(),
           error: failed ? primaryError : null,
+          outcome: failed ? primaryError?.outcome || "failed" : "succeeded",
         }),
       );
     } catch (error) {
@@ -127,7 +142,18 @@ module.exports = class RepositoryOperationQueue {
       settle.completeTurn();
     }
 
-    if (failures.length === 0) {
+    if (!failed) {
+      // Completion observers and retention cleanup cannot change a completed
+      // write into a failed command that a caller may repeat.
+      for (const error of failures) {
+        try {
+          this.#report(error, { operation, phase: "completion" });
+        } catch {
+          /* reporting cannot change the result */
+        }
+      }
+      settle.resolveResult(value);
+    } else if (failures.length === 0) {
       settle.resolveResult(value);
     } else if (failures.length === 1) {
       settle.rejectResult(failures[0]);

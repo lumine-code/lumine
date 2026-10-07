@@ -14,8 +14,8 @@ describe("Git credential dialog", () => {
     panel?.destroy();
   });
 
-  function prompt() {
-    const result = promptForGitCredential({ prompt: "Password:" });
+  function prompt(options) {
+    const result = promptForGitCredential({ prompt: "Password:" }, options);
     panel = lumine.workspace
       .getModalPanels()
       .find((candidate) => candidate.getElement().querySelector(".git-credential-dialog"));
@@ -73,5 +73,23 @@ describe("Git credential dialog", () => {
     expect(lumine.commands.findCommands({ target: input }).map(({ name }) => name)).not.toContain(
       "core:cancel",
     );
+  });
+
+  it("closes the prompt when the Git operation is aborted", async () => {
+    const controller = new AbortController();
+    const result = prompt({ signal: controller.signal });
+    const failure = new Error("Git operation cancelled");
+    const cancelled = expectAsync(result).toBeRejectedWith(failure);
+    controller.abort(failure);
+    await cancelled;
+    expect(panel.destroyed).toBe(true);
+  });
+
+  it("does not open a dialog for an already cancelled operation", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("Git operation cancelled"));
+    const result = prompt({ signal: controller.signal });
+    await expectAsync(result).toBeRejectedWith(controller.signal.reason);
+    expect(panel).toBeUndefined();
   });
 });

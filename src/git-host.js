@@ -38,6 +38,28 @@ function restartError() {
   const error = new Error("git-host worker exited before the request completed");
   error.code = "ERR_GIT_HOST_RESTART";
   error.retriable = true;
+  error.outcome = "not-started";
+  return error;
+}
+
+function requestMayMutate(operation, payload) {
+  if (operation === "operation") {
+    const { OPERATION_OPTION_INDEX } = require("./git-operation-metadata");
+    return !(
+      payload.name === "executeGit" && payload.args?.[OPERATION_OPTION_INDEX.executeGit]?.readOnly
+    );
+  }
+  if (operation === "exec") return !payload.options?.readOnly;
+  if (operation === "execRepository") return !payload.options?.repositoryRead;
+  return ["initialize", "clone", "writeRepositoryCommandOutput"].includes(operation);
+}
+
+function requestFailure(entry, error) {
+  if (entry?.mutating && entry.dispatched) {
+    error.outcome = "unknown";
+    error.retriable = false;
+    error.operation = entry.operation;
+  }
   return error;
 }
 
@@ -67,6 +89,43 @@ function abandonedRequest() {
 // `code`/`exitCode`/`stderr` that callers branch on (e.g. GitRepository.getDiff
 // maps ERR_CHILD_PROCESS_STDIO_MAXBUFFER -> ERR_GIT_DIFF_TOO_LARGE).
 let singleton = null;
+const retiringWorkers = new Set();
+
+function retireWorker(child) {
+  if (child.exitCode != null || child.signalCode != null) return;
+  if (typeof child.disconnect !== "function") {
+    child.kill();
+    return;
+  }
+  const completion = new Promise((resolve) => {
+    const timer = Timers.setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    }, 30_000);
+    timer.unref?.();
+    child.once("exit", () => {
+      Timers.clearTimeout(timer);
+      resolve();
+    });
+    child.once("error", () => {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    });
+    try {
+      if (child.connected !== false) child.disconnect();
+    } catch {
+      child.kill();
+    }
+  });
+  retiringWorkers.add(completion);
+  void completion.then(() => retiringWorkers.delete(completion));
+}
 
 // null = auto (fork in production, run in-process under specs so package tests
 // do not spawn a worker per test); true/false force the mode. The dedicated
@@ -496,7 +555,7 @@ class GitHost {
       this.child.stderr?.removeAllListeners();
       if (kill) {
         try {
-          this.child.kill();
+          retireWorker(this.child);
         } catch {
           // The process may already have completed between error and cleanup.
         }
@@ -515,7 +574,7 @@ class GitHost {
       this.detachAbort(entry);
       entry.stream = null;
       this.clearOutboundStream(entry);
-      if (!abandon) entry.reject(restartError());
+      if (!abandon) entry.reject(requestFailure(entry, restartError()));
     }
     this.pending.clear();
   }
@@ -631,6 +690,7 @@ class GitHost {
 
       await new Promise((resolve) => setImmediate(resolve));
       this.assertActiveOutboundRequest(id, entry, streamState);
+      entry.dispatched = true;
       if (
         !this.sendRequestMessage(entry, { event: GitHostMessageEvents.REQUEST_END, id }, () =>
           this.handleExit(entry.child, { kill: true }),
@@ -679,6 +739,10 @@ class GitHost {
     assertKnownOperation(op);
     if (signal?.aborted) throw abortError();
     if (isUnloading()) return abandonedRequest();
+    // A reset must not let a new worker mutate shared metadata until the old
+    // worker has cancelled and drained its Git process trees.
+    if (retiringWorkers.size) await Promise.all([...retiringWorkers]);
+    signal?.throwIfAborted();
 
     const started = this.ensureStarted();
     if (signal) {
@@ -729,7 +793,14 @@ class GitHost {
       try {
         return await run(payload, { signal: controller.signal });
       } catch (error) {
-        throw normalizeGitOperationError(error);
+        const normalized = normalizeGitOperationError(error);
+        if (error?.name === "AbortError" || error?.code === "ABORT_ERR") {
+          throw requestFailure(
+            { mutating: requestMayMutate(op, payload), dispatched: true, operation: op },
+            normalized,
+          );
+        }
+        throw normalized;
       } finally {
         if (signal) signal.removeEventListener("abort", onAbort);
       }
@@ -755,6 +826,8 @@ class GitHost {
         onAbort: null,
         child: this.child,
         operation: op,
+        mutating: requestMayMutate(op, payload),
+        dispatched: false,
         stream: null,
         outboundStream: requestStream ? { pendingAck: null, plan: requestStream } : null,
       };
@@ -765,7 +838,7 @@ class GitHost {
           this.detachAbort(entry);
           entry.stream = null;
           this.clearOutboundStream(entry);
-          reject(abortError());
+          reject(requestFailure(entry, abortError()));
           this.sendCancel(id, entry.child);
         };
         signal.addEventListener("abort", entry.onAbort, { once: true });
@@ -784,6 +857,7 @@ class GitHost {
             this.failOutboundRequest(id, entry, error);
           });
         } else {
+          entry.dispatched = true;
           this.sendWorkerMessage(this.child, {
             event: GitHostMessageEvents.REQUEST,
             id,
@@ -832,7 +906,7 @@ class GitHost {
       this.child.removeAllListeners();
       this.child.stdout?.removeAllListeners();
       this.child.stderr?.removeAllListeners();
-      this.child.kill();
+      retireWorker(this.child);
       this.child = null;
     }
     this.readyPromise = null;

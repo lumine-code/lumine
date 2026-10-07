@@ -5,16 +5,14 @@ const ChildProcess = require("child_process");
 
 const GitHost = require("../src/git-host");
 const CoreGitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
-class GitRepository extends CoreGitRepository {
-  constructor(filePath, options) {
-    super(discoverRepositoryDescriptor(filePath), options);
-  }
+async function createGitRepository(filePath, options) {
+  return new CoreGitRepository(await discoverRepositoryDescriptorAsync(filePath), options);
 }
 
-function hostDescriptorForPath(filePath) {
-  const descriptor = discoverRepositoryDescriptor(filePath);
+async function hostDescriptorForPath(filePath) {
+  const descriptor = await discoverRepositoryDescriptorAsync(filePath);
   return {
     gitDirectory: descriptor.getPath(),
     workingDirectory: descriptor.getWorkingDirectory(),
@@ -209,13 +207,13 @@ function runGitSync(workingDirectory, args, input = undefined) {
   return result.stdout.trim();
 }
 
-function createIpcStatusFixture() {
+async function createIpcStatusFixture() {
   const workingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-git-ipc-benchmark-"));
   runGitSync(workingDirectory, ["init", "--quiet"]);
   const emptyOid = runGitSync(workingDirectory, ["hash-object", "--stdin"], "");
   let entryCount = 0;
   return {
-    descriptor: hostDescriptorForPath(workingDirectory),
+    descriptor: await hostDescriptorForPath(workingDirectory),
     addEntries(targetCount) {
       const records = [];
       for (let index = entryCount; index < targetCount; index++) {
@@ -245,7 +243,7 @@ describe("Git renderer boundary benchmark", () => {
     GitHost.reset();
     GitHost.setForkModeForTesting(true);
     GitHost.setChildFactoryForTesting(null);
-    const repository = new GitRepository(process.cwd());
+    const repository = await createGitRepository(process.cwd());
     let ipcStatusFixture = null;
 
     try {
@@ -297,7 +295,7 @@ describe("Git renderer boundary benchmark", () => {
       expect(outboundOid).toMatch(/^[0-9a-f]{40,64}$/);
 
       const objectIpcMetrics = {};
-      const objectDescriptor = hostDescriptorForPath(process.cwd());
+      const objectDescriptor = await hostDescriptorForPath(process.cwd());
       for (const input of [
         {
           name: "buffer",
@@ -336,7 +334,7 @@ describe("Git renderer boundary benchmark", () => {
         };
       }
 
-      ipcStatusFixture = createIpcStatusFixture();
+      ipcStatusFixture = await createIpcStatusFixture();
       const ipcStatusMetrics = {};
       let ipcGeneration = 1;
       for (const count of IPC_STATUS_SIZES) {

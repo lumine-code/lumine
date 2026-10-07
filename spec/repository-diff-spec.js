@@ -7,16 +7,20 @@ const { parseDiffPatch } = require("../src/repository-diff");
 const GitRepositoryDiffProvider = require("../src/git-repository-diff-provider");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
 const CoreGitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
-class GitRepository extends CoreGitRepository {
-  constructor(filePath, options) {
-    super(discoverRepositoryDescriptor(filePath), options);
-  }
+async function createGitRepository(filePath, options) {
+  return new CoreGitRepository(await discoverRepositoryDescriptorAsync(filePath), options);
 }
 
 const COLOR_CONFIG_ARGUMENT_COUNT = 8;
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
+
+async function runFixtureGit(provider, args, workingDirectory, options) {
+  const result = await provider.executeGit(args, workingDirectory, options);
+  if (result.exitCode !== 0) throw new Error(result.stderr || "Git fixture command failed");
+  return result.stdout;
+}
 
 describe("repository diff", () => {
   describe("parseDiffPatch", () => {
@@ -351,7 +355,7 @@ describe("repository diff", () => {
       const workingDirectory = temp.mkdirSync("empty-tree-read-only-diff");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
       fs.writeFileSync(path.join(workingDirectory, "staged.txt"), "staged\n");
-      const repository = new GitRepository(workingDirectory);
+      const repository = await createGitRepository(workingDirectory);
       const operations = operationProvider.createRepositoryOperations({
         repository,
         gitDirectory: repository.getPath(),
@@ -359,9 +363,14 @@ describe("repository diff", () => {
       });
       await operations.stageFiles(["staged.txt"]);
       const emptyOid = (
-        await operationProvider.run(["hash-object", "-t", "tree", "--stdin"], workingDirectory, {
-          stdin: "",
-        })
+        await runFixtureGit(
+          operationProvider,
+          ["hash-object", "-t", "tree", "--stdin"],
+          workingDirectory,
+          {
+            stdin: "",
+          },
+        )
       ).trim();
       const repositoryObject = path.join(
         workingDirectory,
@@ -408,7 +417,7 @@ describe("repository diff", () => {
       operationProvider = new GitRepositoryOperationProvider();
       workingDirectory = temp.mkdirSync("repository-diff-repo");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
       operations = operationProvider.createRepositoryOperations({
         repository: repo,
         gitDirectory: repo.getPath(),
@@ -516,7 +525,7 @@ describe("repository diff", () => {
     });
 
     it("detects renames between commits", async () => {
-      await operationProvider.run(["mv", "file.txt", "moved.txt"], workingDirectory);
+      await runFixtureGit(operationProvider, ["mv", "file.txt", "moved.txt"], workingDirectory);
       await operations.commit("rename");
 
       const renamed = await repo.getDiff({

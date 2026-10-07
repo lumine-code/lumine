@@ -32,25 +32,41 @@ function socketOptions() {
 }
 
 // Delegate to the user's configured askpass, if any (e.g. an OS keyring askpass).
-function fromUserAskpass() {
+function fromUserAskpass({
+  program = userAskpass,
+  message = prompt,
+  cwd = workdir,
+  shell = process.env.LUMINE_GIT_AUTH_SHELL || "sh",
+} = {}) {
   return new Promise((resolve, reject) => {
-    if (userAskpass.length === 0) {
+    if (program.length === 0) {
       reject(new Error("No user askpass"));
       return;
     }
-    log(`trying user askpass: ${userAskpass}`);
-    execFile("sh", ["-c", `'${userAskpass}' '${prompt}'`], { cwd: workdir }, (error, stdout) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(stdout);
-    });
+    log(`trying user askpass: ${program}`);
+    execFile(
+      shell,
+      ["-c", 'exec "$1" "$2"', "lumine-askpass", program, message],
+      { cwd, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout);
+      },
+    );
   });
 }
 
 function fromDialog() {
-  const query = { kind: "askpass", prompt, includeUsername: false, pid: process.pid };
+  const query = {
+    kind: "askpass",
+    prompt,
+    includeUsername: false,
+    pid: process.pid,
+    session: process.env.LUMINE_GIT_AUTH_SESSION,
+  };
   return new Promise((resolve, reject) => {
     const socket = net.connect(socketOptions(), () => {
       let payload = "";
@@ -71,15 +87,19 @@ function fromDialog() {
   });
 }
 
-fromUserAskpass()
-  .catch(() => fromDialog())
-  .then(
-    (password) => {
-      process.stdout.write(password || "");
-      process.exit(0);
-    },
-    (error) => {
-      log(`failure: ${error.stack || error}`);
-      process.exit(1);
-    },
-  );
+if (require.main === module) {
+  fromUserAskpass()
+    .catch(() => fromDialog())
+    .then(
+      (password) => {
+        process.stdout.write(password || "");
+        process.exit(0);
+      },
+      (error) => {
+        log(`failure: ${error.stack || error}`);
+        process.exit(1);
+      },
+    );
+}
+
+module.exports = { fromUserAskpass };

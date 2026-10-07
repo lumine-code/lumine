@@ -3,10 +3,10 @@ const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/fs-temp").track();
 const createGitHostOps = require("../src/git-host-ops");
 const GitRunner = require("../src/git-runner");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
-function hostDescriptorForPath(filePath) {
-  const descriptor = discoverRepositoryDescriptor(filePath);
+async function hostDescriptorForPath(filePath) {
+  const descriptor = await discoverRepositoryDescriptorAsync(filePath);
   return {
     gitDirectory: descriptor.getPath(),
     workingDirectory: descriptor.getWorkingDirectory(),
@@ -18,19 +18,19 @@ function hostDescriptorForPath(filePath) {
   };
 }
 
-function copyRepository() {
+async function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-cli-contract-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-  return hostDescriptorForPath(workingDirectory);
+  return await hostDescriptorForPath(workingDirectory);
 }
 
 describe("git-host system Git contract", () => {
   let descriptor;
   let ops;
 
-  beforeEach(() => {
-    descriptor = copyRepository();
+  beforeEach(async () => {
+    descriptor = await copyRepository();
     fs.writeFileSync(path.join(descriptor.workingDirectory, "a.txt"), "changed\n");
     ops = createGitHostOps(new GitRunner({ trustAllRepositories: true }));
   });
@@ -138,7 +138,7 @@ describe("git-host system Git contract", () => {
     const runner = new GitRunner({ trustAllRepositories: true });
     await runner.run(["init", "--bare", "--initial-branch=main"], gitDirectory);
     const bareOps = createGitHostOps(runner);
-    const bareDescriptor = hostDescriptorForPath(gitDirectory);
+    const bareDescriptor = await hostDescriptorForPath(gitDirectory);
 
     const snapshot = await bareOps.snapshot(
       {

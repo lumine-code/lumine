@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/fs-temp").track();
 const GitHost = require("../src/git-host");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 const {
   GIT_HOST_STREAM_MAX_BYTES,
   GIT_HOST_STREAM_MAX_RECORDS,
@@ -33,8 +33,8 @@ function waitForChildMessage(child, predicate) {
   });
 }
 
-function hostDescriptorForPath(filePath) {
-  const descriptor = discoverRepositoryDescriptor(filePath);
+async function hostDescriptorForPath(filePath) {
+  const descriptor = await discoverRepositoryDescriptorAsync(filePath);
   return {
     gitDirectory: descriptor.getPath(),
     workingDirectory: descriptor.getWorkingDirectory(),
@@ -46,14 +46,14 @@ function hostDescriptorForPath(filePath) {
   };
 }
 
-function copyRepository() {
+async function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-real-process-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-  return hostDescriptorForPath(workingDirectory);
+  return await hostDescriptorForPath(workingDirectory);
 }
 
-function copyGitfileRepository() {
+async function copyGitfileRepository() {
   const rootDirectory = temp.mkdirSync("git-host-real-gitfile-");
   const workingDirectory = path.join(rootDirectory, "worktree");
   const gitDirectory = path.join(rootDirectory, "metadata.git");
@@ -64,10 +64,54 @@ function copyGitfileRepository() {
   const markerPath = path.join(workingDirectory, ".git");
   fs.writeFileSync(markerPath, `gitdir: ${gitDirectory}\n`);
   return {
-    descriptor: hostDescriptorForPath(workingDirectory),
+    descriptor: await hostDescriptorForPath(workingDirectory),
     markerPath,
     otherGitDirectory,
   };
+}
+
+function pidIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function installHeldCommitHook(descriptor) {
+  const directory = temp.mkdirSync("held-git-hook");
+  const marker = path.join(directory, "started.json");
+  const release = path.join(directory, "release");
+  const hookScript = path.join(directory, "hook.js");
+  fs.writeFileSync(
+    hookScript,
+    `const fs = require("fs");
+fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid, gitPid: process.ppid }));
+const timer = setInterval(() => {
+  if (fs.existsSync(${JSON.stringify(release)})) { clearInterval(timer); process.exit(0); }
+}, 10);
+`,
+  );
+  const quote = (value) => `'${value.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
+  const hookPath = path.join(descriptor.gitDirectory, "hooks", "pre-commit");
+  fs.mkdirSync(path.dirname(hookPath), { recursive: true });
+  fs.writeFileSync(
+    hookPath,
+    `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 ELECTRON_NO_ATTACH_CONSOLE=1 exec ${quote(process.execPath)} ${quote(hookScript)}\n`,
+  );
+  fs.chmodSync(hookPath, 0o700);
+  fs.writeFileSync(path.join(descriptor.workingDirectory, "a.txt"), "held commit\n");
+  for (const args of [
+    ["config", "user.name", "Lumine Specs"],
+    ["config", "user.email", "specs@lumine.invalid"],
+    ["add", "a.txt"],
+  ]) {
+    ChildProcess.execFileSync("git", ["-C", descriptor.workingDirectory, ...args], {
+      windowsHide: true,
+    });
+  }
+  return { marker, release };
 }
 
 describe("git-host real process", () => {
@@ -83,7 +127,7 @@ describe("git-host real process", () => {
   });
 
   it("boots the worker and transports CLI results, buffers, and errors", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
 
     const execution = await host.request("exec", {
@@ -222,7 +266,7 @@ describe("git-host real process", () => {
   });
 
   it("identifies a repository working directory that moved after discovery", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const movedDirectory = `${descriptor.workingDirectory}-moved`;
     const host = GitHost.instance();
     let error;
@@ -248,11 +292,11 @@ describe("git-host real process", () => {
   });
 
   it("never reads a parent repository when a nested repository marker disappears", async () => {
-    const parent = copyRepository();
+    const parent = await copyRepository();
     const workingDirectory = path.join(parent.workingDirectory, "nested-repository");
     fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
     fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-    const descriptor = hostDescriptorForPath(workingDirectory);
+    const descriptor = await hostDescriptorForPath(workingDirectory);
     fs.removeSync(descriptor.gitDirectory);
     fs.writeFileSync(path.join(workingDirectory, "now-owned-by-parent.txt"), "parent data\n");
     const host = GitHost.instance();
@@ -273,7 +317,7 @@ describe("git-host real process", () => {
   });
 
   it("streams a large real status snapshot and preserves the public result", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const messages = [];
     let interceptMessage = null;
@@ -399,7 +443,7 @@ describe("git-host real process", () => {
   });
 
   it("streams large blob buffers and decoded strings through the real worker", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 3 + 137, 0x78);
     const hashResult = await host.request("exec", {
@@ -442,7 +486,7 @@ describe("git-host real process", () => {
   });
 
   it("rejects a partial real read on worker crash and recovers with a fresh worker", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x63);
     const { stdout } = await host.request("execRepository", {
@@ -481,7 +525,7 @@ describe("git-host real process", () => {
   });
 
   it("cancels a partial real read without blocking a second large reply", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x61);
     const { stdout } = await host.request("execRepository", {
@@ -518,8 +562,86 @@ describe("git-host real process", () => {
     expect(host.pending.size).toBe(0);
   });
 
+  it("cancels a real Git child before a disconnected worker exits", async () => {
+    const descriptor = await copyRepository();
+    const hook = installHeldCommitHook(descriptor);
+    const transport = new GitHost();
+    const child = ChildProcess.fork(
+      require.resolve("../src/git-host-bootstrap"),
+      ["--no-deprecation"],
+      {
+        env: transport.childEnv(),
+        silent: true,
+        windowsHide: true,
+        serialization: "advanced",
+      },
+    );
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    try {
+      await waitForChildMessage(child, ({ event }) => event === "git:ready");
+      child.send({
+        event: "git:request",
+        id: "held-commit",
+        op: "operation",
+        payload: { descriptor, name: "commit", args: ["Held commit", {}] },
+      });
+      await conditionPromise(() => fs.existsSync(hook.marker), "the held commit hook");
+      const { gitPid } = JSON.parse(fs.readFileSync(hook.marker, "utf8"));
+      expect(pidIsRunning(gitPid)).toBe(true);
+      child.disconnect();
+      await conditionPromise(() => !pidIsRunning(gitPid), "the cancelled Git child");
+      fs.writeFileSync(hook.release, "complete");
+      expect(await exited).toBe(0);
+    } finally {
+      fs.writeFileSync(hook.release, "complete");
+      if (child.connected) child.disconnect();
+      await exited;
+    }
+  });
+
+  it("does not overlap a successor mutation with surviving work from a cancelled commit", async () => {
+    const descriptor = await copyRepository();
+    const hook = installHeldCommitHook(descriptor);
+    const host = GitHost.instance();
+    const controller = new AbortController();
+    const first = host
+      .request(
+        "operation",
+        { descriptor, name: "commit", args: ["Held commit", {}] },
+        { signal: controller.signal },
+      )
+      .catch((error) => error);
+    let successor;
+    try {
+      await conditionPromise(() => fs.existsSync(hook.marker), "the held commit hook");
+      const { pid, gitPid } = JSON.parse(fs.readFileSync(hook.marker, "utf8"));
+      controller.abort();
+      expect(await first).toEqual(
+        jasmine.objectContaining({ outcome: "unknown", retriable: false }),
+      );
+      const marker = path.join(path.dirname(hook.marker), "successor");
+      const quoted = marker.replace(/\\/g, "/").replace(/'/g, "'\\''");
+      successor = host.request("operation", {
+        descriptor,
+        name: "executeGit",
+        args: [["-c", `alias.mark=!printf successor > '${quoted}'`, "mark"], {}],
+      });
+      // An independent read witnesses another worker turn without releasing
+      // the still-open hook's write domain.
+      await host.request("readConfig", { descriptor, keys: ["core.repositoryformatversion"] });
+      if (pidIsRunning(pid) || pidIsRunning(gitPid)) expect(fs.existsSync(marker)).toBe(false);
+      fs.writeFileSync(hook.release, "complete");
+      expect((await successor).exitCode).toBe(0);
+      expect(fs.readFileSync(marker, "utf8")).toBe("successor");
+    } finally {
+      fs.writeFileSync(hook.release, "complete");
+      controller.abort();
+      await Promise.allSettled([first, successor]);
+    }
+  });
+
   it("reads through an index lock, reports a blocked write and recovers after removal", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const lockPath = path.join(descriptor.gitDirectory, "index.lock");
     const lockContents = "external Git operation owns this lock\n";
@@ -561,7 +683,7 @@ describe("git-host real process", () => {
   });
 
   it("streams 32 MiB command stdin out of the renderer in bounded messages", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     await host.ensureStarted();
     const content = Buffer.alloc(32 * 1024 * 1024 + 137, 0x5a);
@@ -603,7 +725,7 @@ describe("git-host real process", () => {
   });
 
   it("rejects a streamed read when its descriptor changes before reply-end", async () => {
-    const { descriptor, markerPath, otherGitDirectory } = copyGitfileRepository();
+    const { descriptor, markerPath, otherGitDirectory } = await copyGitfileRepository();
     const host = GitHost.instance();
     const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x78);
     const sourcePath = path.join(descriptor.workingDirectory, "large.bin");
@@ -641,7 +763,7 @@ describe("git-host real process", () => {
   });
 
   it("postvalidates a streamed execRepository read with its stable operation", async () => {
-    const { descriptor, markerPath, otherGitDirectory } = copyGitfileRepository();
+    const { descriptor, markerPath, otherGitDirectory } = await copyGitfileRepository();
     const host = GitHost.instance();
     const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 2 + 137, 0x79);
     const hashResult = await host.request("execRepository", {
@@ -676,7 +798,7 @@ describe("git-host real process", () => {
   });
 
   it("streams a real minified diff line larger than one object chunk", async () => {
-    const descriptor = copyRepository();
+    const descriptor = await copyRepository();
     const host = GitHost.instance();
     const lineText = `const sourceMap = "${"x".repeat(GIT_HOST_STREAM_MAX_BYTES * 2)}";`;
     fs.writeFileSync(path.join(descriptor.workingDirectory, "a.txt"), `${lineText}\n`);

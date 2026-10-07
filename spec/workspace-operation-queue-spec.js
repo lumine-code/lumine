@@ -32,6 +32,7 @@ describe("WorkspaceOperationQueue", () => {
 
   for (const stage of ["queue", "start", "finish"]) {
     it(`cleans up a throwing ${stage} observer and allows another operation on that path`, async () => {
+      const report = spyOn(console, "error");
       const fixture = buildQueue();
       const failure = Object.freeze(new Error(`${stage} observer failed`));
       fixture.observer.callback = (event, operation) => {
@@ -42,7 +43,12 @@ describe("WorkspaceOperationQueue", () => {
         .enqueue("initialize", "destination")
         .catch((error) => error);
 
-      expect(result).toBe(failure);
+      expect(result).toBe(stage === "finish" ? "initialize" : failure);
+      if (stage === "finish") {
+        expect(report.calls.count()).toBe(1);
+        expect(report.calls.mostRecent().args[0]).toBe(failure);
+        expect(report.calls.mostRecent().args[1].phase).toBe("completion");
+      } else expect(report).not.toHaveBeenCalled();
       expect(fixture.queue.getPendingOperations()).toEqual([]);
       expect(fixture.execute.calls.count()).toBe(stage === "finish" ? 1 : 0);
       const finished = fixture.events.filter(({ event }) => event === "did-finish-operation");

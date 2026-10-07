@@ -11,12 +11,10 @@ const {
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
 const GitRepositoryHistoryProvider = require("../src/git-repository-history-provider");
 const CoreGitRepository = require("../src/git-repository");
-const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+const { discoverRepositoryDescriptorAsync } = require("../src/git-repository-descriptor");
 
-class GitRepository extends CoreGitRepository {
-  constructor(filePath, options) {
-    super(discoverRepositoryDescriptor(filePath), options);
-  }
+async function createGitRepository(filePath, options) {
+  return new CoreGitRepository(await discoverRepositoryDescriptorAsync(filePath), options);
 }
 
 function logRecord({
@@ -40,6 +38,12 @@ function logRecord({
     subject,
     body,
   ].join("\0");
+}
+
+async function runFixtureGit(provider, args, workingDirectory, options) {
+  const result = await provider.executeGit(args, workingDirectory, options);
+  if (result.exitCode !== 0) throw new Error(result.stderr || "Git fixture command failed");
+  return result.stdout;
 }
 
 describe("repository history", () => {
@@ -171,7 +175,7 @@ describe("repository history", () => {
       operationProvider = new GitRepositoryOperationProvider();
       workingDirectory = temp.mkdirSync("repository-history-repo");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      repo = new GitRepository(workingDirectory);
+      repo = await createGitRepository(workingDirectory);
       operations = operationProvider.createRepositoryOperations({
         repository: repo,
         gitDirectory: repo.getPath(),
@@ -190,7 +194,7 @@ describe("repository history", () => {
       await operations.stageFiles(["file.txt"]);
       await operations.commit("second\n\nBody line one.\n\nBody line two.");
 
-      await operationProvider.run(["mv", "file.txt", "moved.txt"], workingDirectory);
+      await runFixtureGit(operationProvider, ["mv", "file.txt", "moved.txt"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "bin.dat"), Buffer.from([0, 1, 2, 255]));
       await operations.stageFiles(["bin.dat"]);
       await operations.commit("rename");
@@ -232,7 +236,7 @@ describe("repository history", () => {
 
     it("keeps signature verification diagnostics out of structured commit history", async () => {
       const tree = (
-        await operationProvider.run(["rev-parse", "HEAD^{tree}"], workingDirectory)
+        await runFixtureGit(operationProvider, ["rev-parse", "HEAD^{tree}"], workingDirectory)
       ).trim();
       // A signature packet need not verify for Git's display setting to print
       // diagnostics before the formatted fields. Keep any GPG setup local.
@@ -248,7 +252,8 @@ describe("repository history", () => {
         "",
       ].join("\n");
       const sha = (
-        await operationProvider.run(
+        await runFixtureGit(
+          operationProvider,
           ["hash-object", "-t", "commit", "-w", "--stdin"],
           workingDirectory,
           {
@@ -295,11 +300,11 @@ describe("repository history", () => {
     });
 
     it("walks all refs through a structured repository option", async () => {
-      await operationProvider.run(["checkout", "-b", "side"], workingDirectory);
+      await runFixtureGit(operationProvider, ["checkout", "-b", "side"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "side.txt"), "side\n");
       await operations.stageFiles(["side.txt"]);
       await operations.commit("side only");
-      await operationProvider.run(["checkout", "main"], workingDirectory);
+      await runFixtureGit(operationProvider, ["checkout", "main"], workingDirectory);
 
       const first = await repo.getCommits({ allRefs: true, limit: 1 });
       // Commits created within the same second have no defined relative order
@@ -338,16 +343,17 @@ describe("repository history", () => {
     });
 
     it("compares merge commits with their first parent", async () => {
-      await operationProvider.run(["checkout", "-b", "feature"], workingDirectory);
+      await runFixtureGit(operationProvider, ["checkout", "-b", "feature"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "feature.txt"), "feature\n");
       await operations.stageFiles(["feature.txt"]);
       await operations.commit("feature");
 
-      await operationProvider.run(["checkout", "main"], workingDirectory);
+      await runFixtureGit(operationProvider, ["checkout", "main"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "main.txt"), "main\n");
       await operations.stageFiles(["main.txt"]);
       await operations.commit("main");
-      await operationProvider.run(
+      await runFixtureGit(
+        operationProvider,
         ["merge", "--no-ff", "feature", "-m", "merge feature"],
         workingDirectory,
       );
@@ -401,12 +407,12 @@ describe("repository history", () => {
 
     it("reads blob contents by object id", async () => {
       const oid = (
-        await operationProvider.run(["rev-parse", "HEAD:moved.txt"], workingDirectory)
+        await runFixtureGit(operationProvider, ["rev-parse", "HEAD:moved.txt"], workingDirectory)
       ).trim();
       expect(await repo.getBlob(oid)).toBe("alpha\nBETA\n");
 
       const binOid = (
-        await operationProvider.run(["rev-parse", "HEAD:bin.dat"], workingDirectory)
+        await runFixtureGit(operationProvider, ["rev-parse", "HEAD:bin.dat"], workingDirectory)
       ).trim();
       const blob = await repo.getBlob(binOid, { encoding: "buffer" });
       expect(Buffer.isBuffer(blob)).toBe(true);
@@ -436,7 +442,8 @@ describe("repository history", () => {
       fs.writeFileSync(path.join(workingDirectory, "file[1].txt"), "literal\n");
       fs.writeFileSync(path.join(workingDirectory, "file1.txt"), "executable\n");
       await operations.stageFiles(["file[1].txt", "file1.txt"]);
-      await operationProvider.run(
+      await runFixtureGit(
+        operationProvider,
         ["update-index", "--chmod=+x", "--", "file1.txt"],
         workingDirectory,
       );
@@ -478,7 +485,7 @@ describe("repository history", () => {
     it("resolves an empty page for an unborn repository", async () => {
       const unbornDirectory = temp.mkdirSync("repository-history-unborn");
       await operationProvider.initializeRepository(unbornDirectory, { initialBranch: "main" });
-      const unbornRepo = new GitRepository(unbornDirectory);
+      const unbornRepo = await createGitRepository(unbornDirectory);
 
       try {
         expect(await unbornRepo.getCommits()).toEqual({

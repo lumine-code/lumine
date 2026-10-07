@@ -267,6 +267,15 @@ function config(values = {}) {
   };
 }
 
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 function bufferFor(filePath) {
   const emitter = new Emitter();
   let currentPath = filePath;
@@ -1094,34 +1103,33 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshRefsSnapshotCount).toBe(1);
   });
 
-  it("resolves an operation without waiting for the detached refs refresh", async () => {
-    const workdir = temp.mkdirSync("detached-refs-refresh");
+  it("waits for refs freshness before resolving a completed write", async () => {
+    const workdir = temp.mkdirSync("awaited-refs-refresh");
     const repository = new FakeRepository(workdir);
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
-    let releaseRefs;
-    let statusStarted = false;
-    repository.refreshStatusSnapshot = () =>
-      Promise.resolve().then(() => {
-        statusStarted = true;
-        repository.refreshStatusSnapshotCount++;
-      });
+    const refsStarted = deferred();
+    const refsFinished = deferred();
     repository.refreshRefsSnapshot = () => {
-      expect(statusStarted).toBe(true);
-      return new Promise((resolve) => (releaseRefs = resolve));
+      refsStarted.resolve();
+      return refsFinished.promise;
     };
     registry.addOperationProvider({
-      createRepositoryOperations() {
-        return { commit: async () => "created-commit" };
-      },
+      createRepositoryOperations: () => ({ commit: async () => "created-commit" }),
     });
-
-    // The refs refresh is still hanging when the operation's promise resolves:
-    // only the status refresh gates it.
-    expect(await repository.getOperations().commit("Subject")).toBe("created-commit");
+    let resolved = false;
+    const operation = repository
+      .getOperations()
+      .commit("Subject")
+      .then((value) => {
+        resolved = true;
+        return value;
+      });
+    await refsStarted.promise;
+    expect(resolved).toBe(false);
     expect(repository.refreshStatusSnapshotCount).toBe(1);
-    expect(typeof releaseRefs).toBe("function");
-    releaseRefs();
+    refsFinished.resolve();
+    expect(await operation).toBe("created-commit");
   });
 
   it("does not merge refs into a pending post-operation status refresh", async () => {
@@ -1142,7 +1150,10 @@ describe("RepositoryRegistry", () => {
     });
 
     const operation = repository.getOperations().commit("Subject");
-    await flushMicrotasks();
+    await conditionPromise(
+      () => typeof releaseStatus === "function",
+      "post-operation status refresh",
+    );
     expect(repository.refreshRefsSnapshot).not.toHaveBeenCalled();
 
     releaseStatus();
@@ -1150,35 +1161,28 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshRefsSnapshot).toHaveBeenCalled();
   });
 
-  it("warns when the detached refs refresh fails, unless the repository is gone", async () => {
+  it("reports a failed awaited refs refresh without changing write success", async () => {
     const warnings = [];
     const workdir = temp.mkdirSync("failed-refs-refresh");
     const repository = new FakeRepository(workdir);
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
     registry.notificationManager = { addWarning: (...args) => warnings.push(args) };
-    let rejectRefs;
-    repository.refreshRefsSnapshot = () => new Promise((_, reject) => (rejectRefs = reject));
+    const started = deferred();
+    const completed = deferred();
+    repository.refreshRefsSnapshot = () => {
+      started.resolve();
+      return completed.promise;
+    };
     registry.addOperationProvider({
-      createRepositoryOperations() {
-        return { commit: async () => "created-commit" };
-      },
+      createRepositoryOperations: () => ({ commit: async () => "created-commit" }),
     });
-
-    await repository.getOperations().commit("Subject");
-    rejectRefs(new Error("refs refresh failed"));
-    await Promise.resolve();
-    await Promise.resolve();
+    const operation = repository.getOperations().commit("Subject");
+    await started.promise;
+    completed.reject(new Error("refs refresh failed"));
+    expect(await operation).toBe("created-commit");
     expect(warnings.length).toBe(1);
     expect(warnings[0][1].detail).toBe("refs refresh failed");
-
-    // A failure surfacing after the repository was destroyed stays silent.
-    await repository.getOperations().commit("Subject");
-    repository.destroy();
-    rejectRefs(new Error("late failure"));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(warnings.length).toBe(1);
   });
 
   it("routes post-operation refresh failures through the repository dedupe gate", async () => {
@@ -1355,7 +1359,7 @@ describe("RepositoryRegistry", () => {
     });
 
     const commit = repository.getOperations().commit("Subject");
-    await Promise.resolve();
+    await conditionPromise(() => typeof finishCommit === "function", "active provider write");
     registry.setProjectRoots([]);
     providerDisposable.dispose();
     expect(repository.isDestroyed()).toBe(false);
@@ -1395,7 +1399,7 @@ describe("RepositoryRegistry", () => {
 
     const first = operations.commit("first");
     const second = operations.commit("second");
-    await Promise.resolve();
+    await conditionPromise(() => typeof finishFirst === "function", "first serialized write");
 
     expect(calls).toEqual(["first"]);
     expect(operations.getPendingOperations().map((operation) => operation.status)).toEqual([
@@ -1473,7 +1477,9 @@ describe("RepositoryRegistry", () => {
         throw failure;
       });
 
-      expect(await operations.commit("fault").catch((error) => error)).toBe(failure);
+      expect(await operations.commit("fault").catch((error) => error)).toBe(
+        stage === "Finish" ? "fault" : failure,
+      );
 
       expect(operations.getPendingOperations()).toEqual([]);
       expect(completions.length).toBe(1);
@@ -1798,12 +1804,516 @@ describe("RepositoryRegistry", () => {
 
     const first = firstRepository.getOperations().commit("first");
     const second = secondRepository.getOperations().commit("second");
-    await Promise.resolve();
+    await conditionPromise(() => started.length === 2, "parallel provider writes");
 
     expect(started).toEqual([firstPath, secondPath]);
     expect(operationIds).toEqual([1, 2]);
     finishWrites();
     await Promise.all([first, second]);
+  });
+
+  describe("repository workflows", () => {
+    let repository, operations, calls;
+
+    beforeEach(() => {
+      const workdir = temp.mkdirSync("repository-workflow");
+      repository = new FakeRepository(workdir);
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(workdir)]);
+      operations = repository.getOperations();
+      calls = [];
+    });
+
+    it("holds one write turn for every workflow step", async () => {
+      const staged = deferred();
+      const continueWorkflow = deferred();
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          stageFiles: async () => {
+            calls.push("stage");
+            staged.resolve();
+          },
+          commit: async (message) => {
+            calls.push(message);
+            return message;
+          },
+        }),
+      });
+      const workflow = operations.runWorkflow("stage-and-commit", async (direct) => {
+        await direct.stageFiles(["a.txt"]);
+        await continueWorkflow.promise;
+        return direct.commit("workflow commit");
+      });
+      await staged.promise;
+      const separate = operations.commit("separate commit");
+      expect(calls).toEqual(["stage"]);
+      continueWorkflow.resolve();
+      expect(await workflow).toBe("workflow commit");
+      expect(await separate).toBe("separate commit");
+      expect(calls).toEqual(["stage", "workflow commit", "separate commit"]);
+    });
+
+    it("rejects a saved direct facade after its callback has closed", async () => {
+      const commit = jasmine.createSpy("commit").and.resolveTo("created");
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ commit }) });
+      let saved;
+      expect(
+        await operations.runWorkflow("capture", (direct) => {
+          saved = direct;
+          return "captured";
+        }),
+      ).toBe("captured");
+      expect(saved.isAvailable("commit")).toBe(false);
+      for (const invoke of [
+        () => saved.commit("escaped"),
+        () => saved.execute("commit", "escaped"),
+      ]) {
+        const failure = await invoke().catch((error) => error);
+        expect(failure.code).toBe("ERR_GIT_WORKFLOW_CLOSED");
+        expect(failure.outcome).toBe("not-started");
+      }
+      expect(commit).not.toHaveBeenCalled();
+      expect(await operations.commit("normal queued write")).toBe("created");
+    });
+
+    it("keeps an unawaited accepted step in the write turn until its backend finishes", async () => {
+      const started = deferred();
+      const completed = deferred();
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          stageFiles: () => {
+            calls.push("stage");
+            started.resolve();
+            return completed.promise;
+          },
+          commit: async () => {
+            calls.push("commit");
+            return "committed";
+          },
+        }),
+      });
+      let saved;
+      let settled = false;
+      const workflow = operations
+        .runWorkflow("unawaited-stage", (direct) => {
+          saved = direct;
+          void direct.stageFiles(["a.txt"]);
+          return "callback completed";
+        })
+        .then((value) => {
+          settled = true;
+          return value;
+        });
+      await started.promise;
+      const following = operations.commit("following");
+      expect(saved.isAvailable("commit")).toBe(false);
+      expect(settled).toBe(false);
+      expect(calls).toEqual(["stage"]);
+      completed.resolve("staged");
+      expect(await workflow).toBe("callback completed");
+      expect(await following).toBe("committed");
+      expect(calls).toEqual(["stage", "commit"]);
+    });
+
+    it("reports an unawaited failed step with its original error before any completed write", async () => {
+      const failure = new Error("Stage failed");
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          stageFiles: async () => {
+            throw failure;
+          },
+        }),
+      });
+      const result = await operations
+        .runWorkflow("unawaited-failure", (direct) => {
+          void direct.stageFiles(["a.txt"]);
+          return "must not succeed";
+        })
+        .catch((error) => error);
+      expect(result).toBe(failure);
+      expect(operations.getPendingOperations()).toEqual([]);
+    });
+
+    it("reports a failed accepted step after a completed commit as partial without replay", async () => {
+      const failure = new Error("Push failed");
+      const commit = jasmine.createSpy("commit").and.resolveTo("created");
+      const push = jasmine.createSpy("push").and.rejectWith(failure);
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ commit, push }) });
+      const result = await operations
+        .runWorkflow("unawaited-push", async (direct) => {
+          await direct.commit("Subject");
+          void direct.push("origin", "main");
+        })
+        .catch((error) => error);
+      expect(result.code).toBe("ERR_GIT_WORKFLOW_PARTIAL");
+      expect(result.completedSteps).toEqual(["commit"]);
+      expect(result.cause).toBe(failure);
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves an unknown outcome from an unawaited accepted write", async () => {
+      const failure = Object.assign(new Error("Worker exited"), {
+        outcome: "unknown",
+        retriable: false,
+      });
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          commit: async () => "created",
+          push: async () => {
+            throw failure;
+          },
+        }),
+      });
+      const result = await operations
+        .runWorkflow("unknown-push", async (direct) => {
+          await direct.commit("Subject");
+          void direct.push("origin", "main");
+        })
+        .catch((error) => error);
+      expect(result).toBe(failure);
+      expect(result.outcome).toBe("unknown");
+    });
+
+    it("serializes direct steps submitted concurrently", async () => {
+      const started = deferred();
+      const completed = deferred();
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          stageFiles: () => {
+            calls.push("stage");
+            started.resolve();
+            return completed.promise;
+          },
+          commit: async () => {
+            calls.push("commit");
+            return "committed";
+          },
+        }),
+      });
+      const workflow = operations.runWorkflow("parallel-submissions", (direct) =>
+        Promise.all([direct.stageFiles(["a.txt"]), direct.commit("Subject")]),
+      );
+      await started.promise;
+      expect(calls).toEqual(["stage"]);
+      completed.resolve("staged");
+      expect(await workflow).toEqual(["staged", "committed"]);
+      expect(calls).toEqual(["stage", "commit"]);
+    });
+
+    it("drains accepted steps on cancellation and prevents a later queued mutation", async () => {
+      const started = deferred();
+      const completed = deferred();
+      const controller = new AbortController();
+      const failure = new Error("Workflow cancelled");
+      const stageFiles = jasmine.createSpy("stage").and.resolveTo("must not stage");
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          commit: () => {
+            started.resolve();
+            return completed.promise;
+          },
+          stageFiles,
+        }),
+      });
+      let settled = false;
+      const workflow = operations
+        .runWorkflow(
+          "cancel-queued-step",
+          (direct) => {
+            void direct.commit("Subject");
+            void direct.stageFiles(["a.txt"]);
+          },
+          { signal: controller.signal },
+        )
+        .catch((error) => {
+          settled = true;
+          return error;
+        });
+      await started.promise;
+      controller.abort(failure);
+      expect(settled).toBe(false);
+      completed.resolve("created despite cancellation");
+      const result = await workflow;
+      expect(result.code).toBe("ERR_GIT_WORKFLOW_PARTIAL");
+      expect(result.cause).toBe(failure);
+      expect(result.completedSteps).toEqual(["commit"]);
+      expect(stageFiles).not.toHaveBeenCalled();
+      expect(operations.getPendingOperations()).toEqual([]);
+    });
+
+    it("does not start an accepted successor after its predecessor fails", async () => {
+      const failure = new Error("Stage failed");
+      const commit = jasmine.createSpy("commit").and.resolveTo("must not commit");
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          stageFiles: async () => {
+            throw failure;
+          },
+          commit,
+        }),
+      });
+      const result = await operations
+        .runWorkflow("stop-on-failure", (direct) => {
+          void direct.stageFiles(["a.txt"]);
+          void direct.commit("Subject");
+        })
+        .catch((error) => error);
+      expect(result).toBe(failure);
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it("keeps a successful workflow successful when its final refresh fails", async () => {
+      const failure = new Error("Refresh failed");
+      const warning = spyOn(registry.operationManager, "reportRefreshFailure");
+      spyOn(registry.operationManager, "refreshRepositoryAfterOperation").and.rejectWith(failure);
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({ commit: async () => "created" }),
+      });
+      expect(
+        await operations.runWorkflow("refresh-failure", (direct) => direct.commit("Subject")),
+      ).toBe("created");
+      expect(warning).toHaveBeenCalledOnceWith(repository, failure);
+    });
+
+    it("reports completed steps after a later capability is unavailable without replaying them", async () => {
+      const commit = jasmine.createSpy("commit").and.resolveTo("created commit");
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ commit }) });
+      const failure = await operations
+        .runWorkflow("commit-and-push", async (direct) => {
+          await direct.commit("Subject");
+          await direct.push("origin", "main");
+        })
+        .catch((error) => error);
+      expect(failure.code).toBe("ERR_GIT_WORKFLOW_PARTIAL");
+      expect(failure.outcome).toBe("partial");
+      expect(failure.retriable).toBe(false);
+      expect(failure.completedSteps).toEqual(["commit"]);
+      expect(failure.cause.code).toBe("ERR_REPOSITORY_OPERATION_UNAVAILABLE");
+      expect(commit).toHaveBeenCalledOnceWith("Subject", {});
+      expect(operations.getPendingOperations()).toEqual([]);
+      expect(await operations.commit("later")).toBe("created commit");
+      expect(commit.calls.count()).toBe(2);
+    });
+
+    it("refuses an expected HEAD mismatch before invoking a write", async () => {
+      repository.statusSnapshot.head = { name: "main", oid: "a".repeat(40) };
+      const commit = jasmine.createSpy("commit").and.resolveTo("must not commit");
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ commit }) });
+      const failure = await operations
+        .commit("Subject", {
+          expectedHead: { name: "feature", oid: "b".repeat(40) },
+        })
+        .catch((error) => error);
+      expect(failure.code).toBe("ERR_GIT_CONTEXT_CHANGED");
+      expect(failure.outcome).toBe("not-started");
+      expect(commit).not.toHaveBeenCalled();
+    });
+
+    it("checks the captured HEAD once before a workflow that creates its own commit", async () => {
+      const capturedHead = { name: "feature", oid: "a".repeat(40) };
+      repository.statusSnapshot.head = capturedHead;
+      registry.addOperationProvider({
+        createRepositoryOperations: () => ({
+          commit: async () => {
+            calls.push("commit");
+            repository.statusSnapshot.head = { name: "feature", oid: "b".repeat(40) };
+            return "created commit";
+          },
+          push: async () => {
+            calls.push("push");
+            return "pushed";
+          },
+        }),
+      });
+      expect(
+        await operations.runWorkflow(
+          "commit-and-push",
+          async (direct) => {
+            await direct.commit("Subject");
+            return direct.push("origin", "feature");
+          },
+          { expectedHead: capturedHead },
+        ),
+      ).toBe("pushed");
+      expect(calls).toEqual(["commit", "push"]);
+    });
+
+    for (const name of ["commit", "push"]) {
+      it(`protects ${name} through every named and raw write facade`, async () => {
+        repository.statusSnapshot.head = { name: "main", oid: "a".repeat(40) };
+        const values = {
+          "git.protectCommits": true,
+          "git.protectPushes": true,
+          "git.protectedBranches": ["main"],
+        };
+        spyOn(registry.config, "get").and.callFake((key) => values[key]);
+        const named = jasmine.createSpy(name).and.resolveTo("must not write");
+        const raw = jasmine.createSpy("raw Git").and.resolveTo("must not write");
+        registry.addOperationProvider({
+          executeGit: raw,
+          createRepositoryOperations: () => ({ [name]: named, executeGit: raw }),
+        });
+        const args = name === "commit" ? ["Subject"] : ["origin", "main"];
+        const rawArgs =
+          name === "commit" ? ["commit", "-m", "Subject"] : ["push", "origin", "main"];
+        for (const invoke of [
+          () => operations[name](...args),
+          () => operations.execute(name, ...args),
+          () => registry.performOperation(repository, name, args),
+          () => operations.runWorkflow(`protected-${name}`, (direct) => direct[name](...args)),
+          () => operations.executeGit(rawArgs),
+          () => registry.executeGit(rawArgs, repository.getWorkingDirectory()),
+          () =>
+            operations.executeGit([
+              "-c",
+              "color.ui=false",
+              "-C",
+              repository.getWorkingDirectory(),
+              ...rawArgs,
+            ]),
+        ]) {
+          const failure = await invoke().catch((error) => error);
+          expect(failure.code).toBe("ERR_GIT_OPERATION_BLOCKED");
+          expect(failure.outcome).toBe("not-started");
+        }
+        expect(named).not.toHaveBeenCalled();
+        expect(raw).not.toHaveBeenCalled();
+      });
+    }
+
+    it("confirms raw force pushes before invoking the transport", async () => {
+      spyOn(registry.config, "get").and.callFake((key) => key === "git.confirmForcePush");
+      registry.operationManager.workflowPolicy.confirm = jasmine
+        .createSpy("confirm force push")
+        .and.resolveTo(1);
+      const executeGit = jasmine.createSpy("raw transport").and.resolveTo("must not push");
+      registry.addOperationProvider({
+        executeGit,
+        createRepositoryOperations: () => ({ executeGit }),
+      });
+      const failure = await operations
+        .executeGit(["-c", "color.ui=false", "push", "--force", "origin", "main"])
+        .catch((error) => error);
+      expect(failure.code).toBe("ERR_GIT_OPERATION_CANCELLED");
+      expect(registry.operationManager.workflowPolicy.confirm).toHaveBeenCalledTimes(1);
+      expect(executeGit).not.toHaveBeenCalled();
+    });
+
+    it("queues raw repository writes behind named writes", async () => {
+      const writing = deferred();
+      const completeWrite = deferred();
+      const executeGit = jasmine.createSpy("raw transport").and.callFake(async () => {
+        calls.push("raw");
+        return "raw result";
+      });
+      registry.addOperationProvider({
+        executeGit,
+        createRepositoryOperations: () => ({
+          commit: () => {
+            calls.push("commit");
+            writing.resolve();
+            return completeWrite.promise;
+          },
+          executeGit,
+        }),
+      });
+      const committing = operations.commit("Subject");
+      await writing.promise;
+      const raw = registry.executeGit(
+        ["config", "core.filemode", "true"],
+        repository.getWorkingDirectory(),
+      );
+      expect(calls).toEqual(["commit"]);
+      completeWrite.resolve("commit result");
+      expect(await committing).toBe("commit result");
+      expect(await raw).toBe("raw result");
+      expect(calls).toEqual(["commit", "raw"]);
+    });
+  });
+
+  it("serializes linked worktrees sharing metadata while an unrelated repository remains parallel", async () => {
+    const firstPath = temp.mkdirSync("shared-metadata-first");
+    const secondPath = temp.mkdirSync("shared-metadata-second");
+    const thirdPath = temp.mkdirSync("unrelated-metadata-third");
+    const first = new FakeRepository(firstPath);
+    const second = new FakeRepository(secondPath);
+    const third = new FakeRepository(thirdPath);
+    const common = first.getPath();
+    first.getCommonDirectory = () => common;
+    second.getCommonDirectory = () => common;
+    repositories.push(first, second, third);
+    registry.setProjectRoots([
+      directoryFor(firstPath),
+      directoryFor(secondPath),
+      directoryFor(thirdPath),
+    ]);
+    const entered = deferred();
+    const firstFinished = deferred();
+    const thirdFinished = deferred();
+    const started = [];
+    registry.addOperationProvider({
+      createRepositoryOperations: ({ workingDirectory }) => ({
+        commit: () => {
+          started.push(workingDirectory);
+          if (started.length === 2) entered.resolve();
+          if (workingDirectory === firstPath) return firstFinished.promise;
+          if (workingDirectory === thirdPath) return thirdFinished.promise;
+          return Promise.resolve("second");
+        },
+      }),
+    });
+    const one = first.getOperations().commit("first");
+    const two = second.getOperations().commit("second");
+    const three = third.getOperations().commit("third");
+    await entered.promise;
+    expect(started).toEqual([firstPath, thirdPath]);
+    firstFinished.resolve("first");
+    expect(await one).toBe("first");
+    expect(await two).toBe("second");
+    expect(started).toEqual([firstPath, thirdPath, secondPath]);
+    thirdFinished.resolve("third");
+    expect(await three).toBe("third");
+  });
+
+  it("refreshes initialized peer worktrees after a shared ref mutation", async () => {
+    const first = new FakeRepository(temp.mkdirSync("peer-refresh-first"));
+    const second = new FakeRepository(temp.mkdirSync("peer-refresh-second"));
+    const unrelated = new FakeRepository(temp.mkdirSync("peer-refresh-unrelated"));
+    first.getCommonDirectory = () => first.getPath();
+    second.getCommonDirectory = () => first.getPath();
+    repositories.push(first, second, unrelated);
+    registry.setProjectRoots(
+      repositories.map((repository) => directoryFor(repository.getWorkingDirectory())),
+    );
+    let hint = "refs";
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({
+        fetch: async () => "fetched",
+        stageFiles: async () => "staged",
+        getOperationRefreshHint: () => hint,
+      }),
+    });
+    await first.getOperations().fetch("origin", "main");
+    expect(first.refreshRefsSnapshotCount).toBe(1);
+    expect(second.refreshRefsSnapshotCount).toBe(1);
+    expect(second.refreshStatusSnapshotCount).toBe(0);
+    expect(unrelated.refreshRefsSnapshotCount).toBe(0);
+    hint = "both";
+    await first.getOperations().fetch("origin", "main");
+    expect(second.refreshRefsSnapshotCount).toBe(2);
+    expect(second.refreshStatusSnapshotCount).toBe(1);
+    second.refsSnapshot.initialized = false;
+    second.statusSnapshot.initialized = false;
+    await first.getOperations().fetch("origin", "main");
+    expect(second.refreshRefsSnapshotCount).toBe(2);
+    expect(second.refreshStatusSnapshotCount).toBe(1);
+    hint = "status";
+    second.refsSnapshot.initialized = true;
+    second.statusSnapshot.initialized = true;
+    await first.getOperations().stageFiles(["a.txt"]);
+    expect(second.refreshRefsSnapshotCount).toBe(2);
+    expect(second.refreshStatusSnapshotCount).toBe(1);
   });
 
   it("initializes and registers a repository through a workspace provider", async () => {
@@ -1867,7 +2377,7 @@ describe("RepositoryRegistry", () => {
     beforeEach(() => {
       destination = path.join(temp.mkdirSync("queued-workspace-operations"), "repository");
       created = { created: true };
-      spyOn(registry, "registerCreatedRepository").and.resolveTo(created);
+      spyOn(registry.operationManager, "registerCreatedRepository").and.resolveTo(created);
       initialize = jasmine.createSpy("initialize provider").and.resolveTo();
       clone = jasmine.createSpy("clone provider").and.resolveTo();
       provider = registry.addOperationProvider({
@@ -1888,11 +2398,15 @@ describe("RepositoryRegistry", () => {
           throw failure;
         });
 
-        expect(await registry.initialize(destination).catch((error) => error)).toBe(failure);
+        expect(await registry.initialize(destination).catch((error) => error)).toBe(
+          stage === "Finish" ? created : failure,
+        );
 
         expect(registry.getPendingOperations()).toEqual([]);
         expect(initialize.calls.count()).toBe(stage === "Finish" ? 1 : 0);
-        expect(registry.registerCreatedRepository.calls.count()).toBe(stage === "Finish" ? 1 : 0);
+        expect(registry.operationManager.registerCreatedRepository.calls.count()).toBe(
+          stage === "Finish" ? 1 : 0,
+        );
         expect(finished.length).toBe(1);
         expect(finished[0].operation.repository).toBeNull();
         expect(finished[0].operation.workingDirectory).toBe(destination);
@@ -1922,7 +2436,7 @@ describe("RepositoryRegistry", () => {
       expect(await initializing).toBe(created);
       expect(await cloning).toBe(created);
       expect(clone.calls.mostRecent().args).toEqual(["remote", alias, undefined]);
-      expect(registry.registerCreatedRepository.calls.allArgs()).toEqual([
+      expect(registry.operationManager.registerCreatedRepository.calls.allArgs()).toEqual([
         [destination, "initialize"],
         [alias, "clone"],
       ]);
@@ -1949,7 +2463,7 @@ describe("RepositoryRegistry", () => {
 
       expect(rejected).toBe(true);
       expect(clone).not.toHaveBeenCalled();
-      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.operationManager.registerCreatedRepository).not.toHaveBeenCalled();
       firstWrite.resolve();
       expect(await failed).toBe(failure);
       expect(await initializing).toBe(created);
@@ -2011,7 +2525,7 @@ describe("RepositoryRegistry", () => {
       expect(queuedFailure.message).toContain("destroyed RepositoryRegistry");
       expect(initialize.calls.count()).toBe(1);
       expect(clone).not.toHaveBeenCalled();
-      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.operationManager.registerCreatedRepository).not.toHaveBeenCalled();
       expect(registry.getPendingOperations()).toEqual([]);
     });
 
@@ -2025,7 +2539,7 @@ describe("RepositoryRegistry", () => {
       write.reject(original);
 
       expect(await initializing).toBe(original);
-      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.operationManager.registerCreatedRepository).not.toHaveBeenCalled();
       expect(registry.getPendingOperations()).toEqual([]);
     });
 
@@ -2092,14 +2606,15 @@ describe("RepositoryRegistry", () => {
       }
       expect(initialize).not.toHaveBeenCalled();
       expect(clone).not.toHaveBeenCalled();
-      expect(registry.registerCreatedRepository).not.toHaveBeenCalled();
+      expect(registry.operationManager.registerCreatedRepository).not.toHaveBeenCalled();
     });
 
     for (const stage of ["provider", "discovery"]) {
       it(`preserves a ${stage} failure when the workspace finish observer also throws`, async () => {
         const original = Object.freeze(new Error(`${stage} failed`));
         const finishFailure = new Error("Workspace finish observer failed");
-        const failing = stage === "provider" ? initialize : registry.registerCreatedRepository;
+        const failing =
+          stage === "provider" ? initialize : registry.operationManager.registerCreatedRepository;
         failing.and.callFake(async () => {
           throw original;
         });
@@ -2113,7 +2628,9 @@ describe("RepositoryRegistry", () => {
         expect(failure.errors[0]).toBe(original);
         expect(failure.cause).toBe(original);
         expect(initialize.calls.count()).toBe(1);
-        expect(registry.registerCreatedRepository.calls.count()).toBe(stage === "provider" ? 0 : 1);
+        expect(registry.operationManager.registerCreatedRepository.calls.count()).toBe(
+          stage === "provider" ? 0 : 1,
+        );
         expect(registry.getPendingOperations()).toEqual([]);
       });
     }
@@ -2196,13 +2713,13 @@ describe("RepositoryRegistry", () => {
         execution = registry.executeGit(["status"], temp.dir);
       }).not.toThrow();
       expect(typeof execution?.then).toBe("function");
-      expect(execute).toHaveBeenCalledTimes(1);
       expect(await Promise.resolve(execution).catch((error) => error)).toBe(original);
+      expect(execute).toHaveBeenCalledTimes(1);
       expect(registry.getPendingOperations()).toEqual([]);
     });
   }
 
-  it("normalizes a synchronous raw Git result to a Promise while preserving invocation timing and provider context", async () => {
+  it("queues a synchronous raw Git provider and preserves its context and result", async () => {
     const args = ["status", "--short"];
     const workingDirectory = temp.mkdirSync("synchronous-raw-git-result");
     const options = { stdin: "input", customOption: true };
@@ -2219,12 +2736,12 @@ describe("RepositoryRegistry", () => {
     const execution = registry.executeGit(args, workingDirectory, options);
 
     expect(typeof execution?.then).toBe("function");
+    expect(await execution).toBe(result);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(receiver).toBe(provider);
     expect(forwarded[0]).toBe(args);
     expect(forwarded[1]).toBe(workingDirectory);
     expect(forwarded[2]).toBe(options);
-    expect(await execution).toBe(result);
   });
 
   it("keeps raw Git unavailable, argument validation, and destroyed-registry failures as Promise rejections", async () => {
@@ -2245,6 +2762,37 @@ describe("RepositoryRegistry", () => {
     expect(destroyed.message).toContain("destroyed RepositoryRegistry");
     expect(execute).not.toHaveBeenCalled();
     expect(registry.getPendingOperations()).toEqual([]);
+  });
+
+  describe("command context", () => {
+    it("keeps repository commands on pinned B while file commands follow focused A or originating C", () => {
+      const first = new FakeRepository(temp.mkdirSync("context-focused-a"));
+      const pinned = new FakeRepository(temp.mkdirSync("context-pinned-b"));
+      const origin = new FakeRepository(temp.mkdirSync("context-origin-c"));
+      repositories.push(first, pinned, origin);
+      registry.setProjectRoots(
+        repositories.map((repository) => directoryFor(repository.getWorkingDirectory())),
+      );
+      const focused = { getPath: () => path.join(first.getWorkingDirectory(), "focused.txt") };
+      const originating = { getPath: () => path.join(origin.getWorkingDirectory(), "origin.txt") };
+      registry.workspace = { getActiveTextEditor: () => focused };
+      registry.setActiveRepository(pinned, { pin: true });
+      expect(registry.getCommandContext().repository).toBe(pinned);
+      expect(registry.getCommandContext(undefined, { scope: "file" }).repository).toBe(first);
+      const element = document.createElement("lumine-text-editor");
+      element.getModel = () => originating;
+      const child = document.createElement("span");
+      element.append(child);
+      const event = { target: child };
+      expect(registry.getCommandContext(event).repository).toBe(pinned);
+      expect(registry.getCommandContext(event, { scope: "file" })).toEqual({
+        repository: origin,
+        editor: originating,
+        path: originating.getPath(),
+      });
+      element.setAttribute("mini", "");
+      expect(registry.getCommandContext(event, { scope: "file" }).repository).toBe(first);
+    });
   });
 
   describe("active repository", () => {

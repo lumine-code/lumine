@@ -40,6 +40,9 @@ const GitHostOperations = Object.freeze({
   blame: true,
   readConfig: true,
   lineDiff: true,
+  operation: true,
+  initialize: true,
+  clone: true,
   exec: true,
   execRepository: true,
   writeRepositoryCommandOutput: true,
@@ -56,6 +59,9 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "workingDirectory",
   "exitCode",
   "retriable",
+  "outcome",
+  "completedSteps",
+  "completedStepsTruncated",
   "maxBytes",
   "resultBytes",
   "structuredBytes",
@@ -79,6 +85,7 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
 ]);
 
 const SERIALIZED_ERROR_TEXT_FIELDS = new Set([
+  "outcome",
   "name",
   "code",
   "stack",
@@ -183,7 +190,12 @@ function serializeError(error, state = null, depth = 0) {
       serialized[field] = null;
       continue;
     }
-    if (SERIALIZED_ERROR_TEXT_FIELDS.has(field)) {
+    if (field === "completedSteps" && Array.isArray(value)) {
+      serialized.completedSteps = value
+        .slice(0, 128)
+        .map((step) => takeErrorText(step, state).text);
+      if (value.length > 128) serialized.completedStepsTruncated = true;
+    } else if (SERIALIZED_ERROR_TEXT_FIELDS.has(field)) {
       const bounded = takeErrorText(value, state);
       serialized[field] = bounded.text;
       if (bounded.truncated) serialized[`${field}Truncated`] = true;
@@ -200,7 +212,12 @@ function serializeError(error, state = null, depth = 0) {
 
 function reviveError(serialized) {
   if (!serialized) return new Error("Unknown git-host error");
-  const error = new Error(serialized.message ?? String(serialized));
+  const GitOperationError = require("./git-operation-error");
+  const error =
+    serialized.name === "GitOperationError" && typeof serialized.exitCode === "number"
+      ? new GitOperationError(serialized.command, serialized)
+      : new Error(serialized.message ?? String(serialized));
+  error.message = serialized.message ?? String(serialized);
   for (const field of SERIALIZED_ERROR_FIELDS) {
     if (serialized[field] !== undefined) error[field] = serialized[field];
   }

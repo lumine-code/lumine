@@ -8,6 +8,8 @@ const Workspace = require("../src/workspace");
 const Task = require("../src/task");
 const Project = require("../src/project");
 const RepositoryRegistry = require("../src/repository-registry");
+const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
+const PaneItemTransferService = require("../src/pane-item-transfer-service");
 const platform = require("./helpers/platform");
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
@@ -47,12 +49,16 @@ describe("Workspace", () => {
   async function simulateReload() {
     const workspaceState = workspace.serialize();
     const projectState = lumine.project.serialize({ isUnloading: true });
+    lumine.paneItemTransfers.destroy();
     workspace.destroy();
     lumine.project.destroy();
     lumine.repositories.destroy();
     lumine.repositories = new RepositoryRegistry({
       config: lumine.config,
       notificationManager: lumine.notifications,
+    });
+    lumine.repositories.addOperationProvider(new GitRepositoryOperationProvider(), {
+      fallback: true,
     });
     lumine.project = new Project({
       notificationManager: lumine.notifications,
@@ -84,6 +90,15 @@ describe("Workspace", () => {
     });
     workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
     workspace.deserialize(workspaceState, lumine.deserializers);
+    lumine.repositories.attachWorkspace(workspace);
+    lumine.workspaceDrops.workspace = workspace;
+    workspace.workspaceDropManager = lumine.workspaceDrops;
+    lumine.paneItemTransfers = new PaneItemTransferService({
+      workspace,
+      workspaceDrops: lumine.workspaceDrops,
+      windowService: lumine.window,
+      applicationDelegate: lumine.applicationDelegate,
+    });
   }
 
   describe("serialization", () => {
@@ -5099,8 +5114,19 @@ describe("Workspace", () => {
     beforeEach(async () => {
       jasmine.useRealClock();
       lumine.config.set("git.confirmCheckoutHeadRevision", false);
-
-      editor = await lumine.workspace.open("sample-with-comments.js");
+      const directory = temp.mkdirSync("workspace-git-restore");
+      const repository = await lumine.repositories.initialize(directory, {
+        initialBranch: "spec-restore",
+      });
+      const operations = repository.getOperations();
+      await operations.setConfig("user.name", "Workspace Specs");
+      await operations.setConfig("user.email", "specs@lumine.invalid");
+      const filePath = path.join(directory, "sample.js");
+      fs.writeFileSync(filePath, "\n// Committed source\n");
+      await operations.stageFiles(["sample.js"]);
+      await operations.commit("Track the restore fixture");
+      lumine.project.setPaths([directory]);
+      editor = await lumine.workspace.open(filePath);
     });
 
     it("reverts to the version of its file checked into the project repository", async () => {
@@ -5108,9 +5134,8 @@ describe("Workspace", () => {
       editor.insertText("---\n");
       expect(editor.lineTextForBufferRow(0)).toBe("---");
 
-      lumine.workspace.checkoutHeadRevision(editor);
-
-      await conditionPromise(() => editor.lineTextForBufferRow(0) === "");
+      await lumine.workspace.checkoutHeadRevision(editor);
+      expect(editor.lineTextForBufferRow(0)).toBe("");
     });
 
     describe("when there's no repository for the editor's file", () => {

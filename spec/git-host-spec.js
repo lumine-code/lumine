@@ -45,11 +45,18 @@ describe("GitHost transport", () => {
   let host;
   let children;
   const current = () => children[children.length - 1];
-  const ready = () =>
-    current().emit("message", {
+  const ready = async () => {
+    await conditionPromise(
+      () => children.some((child) => !child.ready && !child.killed),
+      "the Git worker to start",
+    );
+    const child = children.find((candidate) => !candidate.ready && !candidate.killed);
+    child.ready = true;
+    child.emit("message", {
       event: "git:ready",
       protocolVersion: GIT_HOST_PROTOCOL_VERSION,
     });
+  };
 
   beforeEach(() => {
     GitHost.reset();
@@ -71,9 +78,10 @@ describe("GitHost transport", () => {
 
   it("forks lazily, awaits git:ready, and correlates a reply to its request", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    await conditionPromise(() => children.length === 1, "the initial Git worker");
     expect(children.length).toBe(1);
 
-    ready();
+    await ready();
     await flush();
 
     expect(current().sent.length).toBe(1);
@@ -95,7 +103,7 @@ describe("GitHost transport", () => {
       text,
     };
     const pending = host.request("lineDiff", payload);
-    ready();
+    await ready();
     await flush();
 
     const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
@@ -153,7 +161,7 @@ describe("GitHost transport", () => {
       },
       { signal: controller.signal },
     );
-    ready();
+    await ready();
     await flush();
     const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
     await waitForSent(current(), ({ event }) => event === "git:request-chunk");
@@ -170,7 +178,7 @@ describe("GitHost transport", () => {
     const pending = host.request("lineDiff", {
       text: "x".repeat(GIT_HOST_STREAM_MAX_BYTES),
     });
-    ready();
+    await ready();
     await flush();
     const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
     await waitForSent(current(), ({ event }) => event === "git:request-chunk");
@@ -191,7 +199,7 @@ describe("GitHost transport", () => {
     const pending = host.request("lineDiff", {
       text: "x".repeat(Math.floor(GIT_HOST_STREAM_MAX_BYTES / 4)),
     });
-    ready();
+    await ready();
     await flush();
     const child = current();
     const start = await waitForSent(child, ({ event }) => event === "git:request-start");
@@ -217,7 +225,7 @@ describe("GitHost transport", () => {
     const pending = host.request("lineDiff", {
       text: "x".repeat(GIT_HOST_STREAM_MAX_BYTES),
     });
-    ready();
+    await ready();
     await flush();
     const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
 
@@ -236,7 +244,7 @@ describe("GitHost transport", () => {
 
   it("revives a reply error with its code/exitCode/stderr", async () => {
     const pending = host.request("diff", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -259,7 +267,7 @@ describe("GitHost transport", () => {
 
   it("assembles chunked snapshots and applies backpressure between renderer turns", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     const result = {
@@ -335,7 +343,7 @@ describe("GitHost transport", () => {
       { descriptor: { gitDirectory: "/repo/.git" } },
       { signal: controller.signal },
     );
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -380,7 +388,7 @@ describe("GitHost transport", () => {
 
   it("does not send a delayed stream ACK to a replacement worker after termination", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const retiredChild = current();
     const { id } = retiredChild.sent[0];
@@ -413,7 +421,7 @@ describe("GitHost transport", () => {
     const replacement = host.request("snapshot", {
       descriptor: { gitDirectory: "/replacement/.git" },
     });
-    ready();
+    await ready();
     await flush();
     await nextImmediate();
     expect(current().sent.filter(({ event }) => event === "git:chunk-ack")).toEqual([]);
@@ -429,7 +437,7 @@ describe("GitHost transport", () => {
 
   it("rejects an incomplete streamed reply as a protocol error", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -462,7 +470,7 @@ describe("GitHost transport", () => {
 
   it("rejects a nonempty stream skeleton", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -496,7 +504,7 @@ describe("GitHost transport", () => {
 
   it("retires the worker after a malformed stream chunk", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -541,7 +549,7 @@ describe("GitHost transport", () => {
       workingDirectory: "/repo",
       args: ["checkout", "missing"],
     });
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -573,7 +581,7 @@ describe("GitHost transport", () => {
 
   it("rejects pending requests with a retriable error on crash and re-forks on the next request", async () => {
     const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
 
     current().emit("exit");
@@ -588,16 +596,74 @@ describe("GitHost transport", () => {
 
     const second = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
     expect(children.length).toBe(2);
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "OK" });
     expect(await second).toBe("OK");
   });
 
+  for (const [operation, payload] of [
+    [
+      "operation",
+      { name: "commit", args: ["Subject"], descriptor: { gitDirectory: "/repo/.git" } },
+    ],
+    [
+      "execRepository",
+      { args: ["commit", "-m", "Subject"], descriptor: { gitDirectory: "/repo/.git" } },
+    ],
+    ["exec", { args: ["push", "origin", "main"] }],
+    ["initialize", { directoryPath: "/repo" }],
+    ["clone", { remoteUrl: "https://example.com/repo.git", destinationPath: "/repo" }],
+  ]) {
+    it(`reports an unknown ${operation} write outcome after a dispatched request loses its worker`, async () => {
+      const pending = host.request(operation, payload).catch((error) => error);
+      await ready();
+      await waitForSent(current(), (message) => message.event === "git:request");
+      current().emit("exit");
+      expect(await pending).toEqual(
+        jasmine.objectContaining({
+          code: "ERR_GIT_HOST_RESTART",
+          outcome: "unknown",
+          retriable: false,
+          operation,
+        }),
+      );
+    });
+  }
+
+  it("allows retrying a write whose worker never became ready", async () => {
+    const pending = host
+      .request("operation", { name: "commit", args: ["Subject"] })
+      .catch((error) => error);
+    current().emit("exit");
+    expect(await pending).toEqual(
+      jasmine.objectContaining({
+        code: "ERR_GIT_HOST_RESTART",
+        outcome: "not-started",
+        retriable: true,
+      }),
+    );
+  });
+
+  it("keeps explicitly read-only raw requests retriable after a worker crash", async () => {
+    const pending = host
+      .request("operation", {
+        name: "executeGit",
+        args: [["status"], { readOnly: true }],
+      })
+      .catch((error) => error);
+    await ready();
+    await waitForSent(current(), (message) => message.event === "git:request");
+    current().emit("exit");
+    expect(await pending).toEqual(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
+    );
+  });
+
   it("kills a still-live worker after an IPC error", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
     const failedChild = current();
 
@@ -609,7 +675,7 @@ describe("GitHost transport", () => {
       descriptor: { gitDirectory: "/replacement/.git" },
     });
     expect(children.length).toBe(2);
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "OK" });
@@ -619,7 +685,7 @@ describe("GitHost transport", () => {
   it("settles pending reads when a live worker disconnects without exiting", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
     const failure = pending.catch((error) => error);
-    ready();
+    await ready();
     await flush();
     const disconnectedChild = current();
 
@@ -635,8 +701,8 @@ describe("GitHost transport", () => {
       jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
     );
 
-    const replacement = host.request("exec", { args: ["--version"] });
-    ready();
+    const replacement = host.request("exec", { args: ["--version"], options: { readOnly: true } });
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "recovered" });
@@ -645,14 +711,16 @@ describe("GitHost transport", () => {
 
   it("retires the worker when a plain request send fails asynchronously", async () => {
     const started = host.ensureStarted();
-    ready();
+    await ready();
     await started;
     const failedChild = current();
     failedChild.send = (message, callback) => {
       failedChild.sent.push(message);
       setImmediate(() => callback?.(new Error("IPC write failed")));
     };
-    const failure = host.request("exec", { args: ["--version"] }).catch((error) => error);
+    const failure = host
+      .request("exec", { args: ["--version"], options: { readOnly: true } })
+      .catch((error) => error);
     await nextImmediate();
     await nextImmediate();
 
@@ -669,8 +737,10 @@ describe("GitHost transport", () => {
     const cancelled = host
       .request("snapshot", {}, { signal: controller.signal })
       .catch((error) => error);
-    const other = host.request("exec", { args: ["--version"] }).catch((error) => error);
-    ready();
+    const other = host
+      .request("exec", { args: ["--version"], options: { readOnly: true } })
+      .catch((error) => error);
+    await ready();
     await flush();
     const failedChild = current();
     const send = failedChild.send.bind(failedChild);
@@ -694,7 +764,7 @@ describe("GitHost transport", () => {
 
   it("retires the worker when a streamed reply ACK fails asynchronously", async () => {
     const failure = host.request("readObjects", {}).catch((error) => error);
-    ready();
+    await ready();
     await flush();
     const failedChild = current();
     const { id } = failedChild.sent[0];
@@ -736,20 +806,22 @@ describe("GitHost transport", () => {
   });
 
   it("ignores a retired child's delayed send error after a replacement starts", async () => {
-    const first = host.request("exec", { args: ["--version"] }).catch((error) => error);
+    const first = host
+      .request("exec", { args: ["--version"], options: { readOnly: true } })
+      .catch((error) => error);
     const retiredChild = current();
     let finishSend;
     retiredChild.send = (message, callback) => {
       retiredChild.sent.push(message);
       finishSend = callback;
     };
-    ready();
+    await ready();
     await flush();
     retiredChild.emit("exit");
     expect((await first).code).toBe("ERR_GIT_HOST_RESTART");
 
-    const replacement = host.request("exec", { args: ["--version"] });
-    ready();
+    const replacement = host.request("exec", { args: ["--version"], options: { readOnly: true } });
+    await ready();
     await flush();
     finishSend?.(new Error("late IPC write failure"));
 
@@ -766,9 +838,9 @@ describe("GitHost transport", () => {
     GitHost.setChildFactoryForTesting(() => {
       throw forkFailure;
     });
-    await expectAsync(host.request("exec", { args: ["--version"] })).toBeRejectedWith(
-      jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }),
-    );
+    await expectAsync(
+      host.request("exec", { args: ["--version"], options: { readOnly: true } }),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: "ERR_GIT_HOST_RESTART", retriable: true }));
     expect(host.readyPromise).toBeNull();
 
     GitHost.setChildFactoryForTesting(() => {
@@ -776,14 +848,14 @@ describe("GitHost transport", () => {
       children.push(child);
       return child;
     });
-    const recovered = host.request("exec", { args: ["--version"] });
+    const recovered = host.request("exec", { args: ["--version"], options: { readOnly: true } });
     await flush();
     expect(children).toHaveSize(1);
     if (children.length === 0) {
       await recovered.catch(() => {});
       return;
     }
-    ready();
+    await ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "recovered" });
@@ -809,7 +881,7 @@ describe("GitHost transport", () => {
 
   it("never sends a resumed old request to a replacement worker before readiness", async () => {
     const failure = host.request("exec", { args: ["old"] }).catch((error) => error);
-    ready();
+    await ready();
     host.terminate();
     const replacement = host.request("exec", { args: ["new"] });
     await flush();
@@ -817,7 +889,7 @@ describe("GitHost transport", () => {
     expect(children).toHaveSize(2);
     expect(current().sent).toEqual([]);
     expect(host.pending.size).toBe(0);
-    ready();
+    await ready();
     await flush();
     // Reply to anything the broken transport sent so a failed regression can
     // finish without leaving either request or the Jasmine harness hanging.
@@ -851,7 +923,7 @@ describe("GitHost transport", () => {
     expect(clearTimeout).toHaveBeenCalledWith(timers[0]);
 
     const replacement = host.request("exec", { args: ["new"] });
-    ready();
+    await ready();
     await flush();
     // Even a previously queued timeout callback belongs to its old worker.
     timers[0].callback();
@@ -870,7 +942,7 @@ describe("GitHost transport", () => {
     });
     const clearTimeout = spyOn(Timers, "clearTimeout");
     let started = host.ensureStarted();
-    ready();
+    await ready();
     await started;
     expect(clearTimeout).toHaveBeenCalledWith(timers[0]);
     expect(host.startupTimeout).toBeNull();
@@ -895,7 +967,7 @@ describe("GitHost transport", () => {
     // host. Rejecting them there only lands as "Uncaught (in promise)" noise in
     // a context that is already gone.
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
 
     const settled = jasmine.createSpy("settled");
@@ -921,7 +993,7 @@ describe("GitHost transport", () => {
 
   it("abandons pending requests when the worker exits while the window is unloading", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
+    await ready();
     await flush();
 
     const settled = jasmine.createSpy("settled");
@@ -944,7 +1016,7 @@ describe("GitHost transport", () => {
       { workingDirectory: "/repo" },
       { signal: controller.signal },
     );
-    ready();
+    await ready();
     await flush();
     const request = current().sent[0];
 
@@ -972,7 +1044,7 @@ describe("GitHost transport", () => {
     );
 
     controller.abort();
-    ready();
+    await ready();
 
     let error;
     try {
@@ -998,7 +1070,7 @@ describe("GitHost transport", () => {
     expect(settled).toHaveBeenCalled();
     expect(host.pending.size).toBe(0);
     expect(current().sent).toEqual([]);
-    ready();
+    await ready();
     const error = await failure;
     expect(error.name).toBe("AbortError");
     expect(error.code).toBe("ABORT_ERR");

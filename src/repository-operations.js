@@ -43,6 +43,30 @@ class RepositoryOperations {
     return this.registry.performOperation(this.repository, operationName, args);
   }
 
+  executeGit(args, options) {
+    return this.execute("executeGit", args, options);
+  }
+
+  createTag(name, options) {
+    return this.execute("createTag", name, options);
+  }
+
+  runWorkflow(name, callback, options = {}) {
+    return this.registry.performWorkflow(this.repository, name, callback, options);
+  }
+
+  fetchCurrent(options) {
+    return this.registry.performRemoteOperation(this.repository, "fetch", options);
+  }
+
+  pullCurrent(options) {
+    return this.registry.performRemoteOperation(this.repository, "pull", options);
+  }
+
+  pushCurrent(options) {
+    return this.registry.performRemoteOperation(this.repository, "push", options);
+  }
+
   stageFiles(paths, options) {
     return this.execute("stageFiles", paths, options);
   }
@@ -216,7 +240,9 @@ RepositoryOperations.standardCapabilities = Object.freeze(
       name !== "onDidQueueOperation" &&
       name !== "onDidStartOperation" &&
       name !== "onDidFinishOperation" &&
-      name !== "execute",
+      name !== "execute" &&
+      name !== "runWorkflow" &&
+      !["fetchCurrent", "pullCurrent", "pushCurrent"].includes(name),
   ),
 );
 

@@ -1,6 +1,7 @@
 const temp = require("@lumine-code/fs-temp").track();
 const TextBuffer = require("../src/text-buffer");
 const Project = require("../src/project");
+const RepositoryDiscovery = require("../src/repository-discovery");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const ProjectDirectory = require("../src/project-directory");
@@ -1088,10 +1089,12 @@ describe("Project", () => {
       const result = await lumine.project.repositoryForDirectory(directory);
 
       expect(result).toBeNull();
-      expect(lumine.project.repositoryProviders.length).toBeGreaterThan(0);
-      expect(lumine.project.repositoryPromisesByPath.has(path.resolve(directory.getPath()))).toBe(
-        false,
-      );
+      expect(lumine.project.repositoryDiscovery.repositoryProviders.length).toBeGreaterThan(0);
+      expect(
+        lumine.project.repositoryDiscovery.repositoryPromisesByPath.has(
+          path.resolve(directory.getPath()),
+        ),
+      ).toBe(false);
     });
 
     it("resolves to a GitRepository and is cached when the given directory is a Git repo", async () => {
@@ -1127,16 +1130,10 @@ describe("Project", () => {
   describe(".repositoryForPath(filePath)", () => {
     const projectWithRepositoryProviders = (repositoryProviders) => {
       const project = Object.create(Project.prototype);
-      Object.assign(project, {
-        alive: true,
-        repositoryProviders,
-        repositoryPromisesByPath: new Map(),
-        repositoriesByCachedPath: new Map(),
-        repositoryPromiseKeysByRepository: new Map(),
-        repositoryCacheObservedRepositories: new WeakSet(),
-        repositoryProviderGeneration: 0,
-        pendingRepositoryDiscoveryCount: 0,
-        repositoryOrphanSweepScheduled: false,
+      project.alive = true;
+      project.repositoryDiscovery = new RepositoryDiscovery({
+        providers: repositoryProviders,
+        isAvailable: () => !project.isDestroyed(),
       });
       return project;
     };
