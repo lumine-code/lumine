@@ -19,7 +19,7 @@ const result = {
     "Subscription-observed composited frame, not physical monitor scanout.",
     "Capture/copy and marker instrumentation add overhead; CPU and frame latency are separate and may overlap.",
     "Sequential interactions with syntax settled between samples; not a sustained typing-throughput test.",
-    "Electron44.5.1 caps beginFrameSubscription at30FPS. Input-to-capture includes capture delay and cannot prove first monitor presentation or count missed display frames.",
+    `Electron ${process.versions.electron} caps beginFrameSubscription at 30 FPS. Input-to-capture includes capture delay and cannot prove first monitor presentation or count missed display frames.`,
     "CPU fields are instrumented synchronous component/model method wall times collected until settle; async parsing and general renderer work outside those methods are excluded. No syntax-correct second paint is asserted.",
     "Paste follows native Ctrl-V through the core command with an in-memory benchmark clipboard; excludes native clipboard transfer and paste providers.",
   ],
@@ -185,8 +185,7 @@ async function run(window) {
   result.cadence = {
     capturePeriodMs,
     captureCapFps: 30,
-    source:
-      "https://raw.githubusercontent.com/electron/electron/v44.5.1/shell/browser/api/frame_subscriber.cc",
+    source: `https://raw.githubusercontent.com/electron/electron/v${process.versions.electron}/shell/browser/api/frame_subscriber.cc`,
     missedDisplayFrames: null,
     observedFrameCount: calibration.length,
     intervalsMs: intervals,
