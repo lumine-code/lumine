@@ -685,6 +685,50 @@ describe("Pane", () => {
       expect(events[1][1].pane).toEqual(pane);
     });
 
+    for (const waitFor of ["listener", "save prompt"]) {
+      it(`does not destroy an item moved to another pane during an asynchronous ${waitFor}`, async () => {
+        let resumeDestroy;
+        const pending = new Promise((resolve) => {
+          resumeDestroy = resolve;
+        });
+        const subscription = waitFor === "listener" ? pane.onWillDestroyItem(() => pending) : null;
+        if (waitFor === "save prompt") {
+          spyOn(pane, "shouldPromptToSaveItem").and.returnValue(true);
+          spyOn(pane, "promptToSaveItem").and.returnValue(pending);
+        }
+        const destination = new Pane(paneParams());
+        const closing = pane.destroyItem(item2);
+        pane.moveItemToPane(item2, destination, 0);
+        resumeDestroy(true);
+
+        expect(await closing).toBe(false);
+        expect(item2.isDestroyed()).toBe(false);
+        expect(pane.getItems()).toEqual([item1, item3]);
+        expect(destination.getItems()).toEqual([item2]);
+        subscription?.dispose();
+        destination.destroy();
+      });
+    }
+
+    it("does not destroy an item again after it was destroyed while a close listener awaited", async () => {
+      let resumeDestroy;
+      const subscription = pane.onWillDestroyItem(
+        () =>
+          new Promise((resolve) => {
+            resumeDestroy = resolve;
+          }),
+      );
+      const destroy = spyOn(item2, "destroy").and.callThrough();
+      const closing = pane.destroyItem(item2);
+      item2.destroy();
+      resumeDestroy();
+
+      expect(await closing).toBe(false);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(pane.getItems()).toEqual([item1, item3]);
+      subscription.dispose();
+    });
+
     it("invokes ::onWillRemoveItem() observers", () => {
       const events = [];
       pane.onWillRemoveItem((event) => events.push(event));

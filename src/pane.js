@@ -1033,6 +1033,14 @@ module.exports = class Pane {
     if (!force && this.shouldPromptToSaveItem(item)) {
       if (!(await this.promptToSaveItem(item))) return false;
     }
+    // Awaited listeners and save prompts can remove or relocate the item.
+    if (
+      this.isDestroyed() ||
+      !this.items.includes(item) ||
+      (typeof item.isDestroyed === "function" && item.isDestroyed())
+    ) {
+      return false;
+    }
     if (canDestroy && !canDestroy()) return false;
     this.removeItem(item, false);
     if (typeof item.destroy === "function") item.destroy();

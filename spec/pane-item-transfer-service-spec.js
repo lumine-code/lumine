@@ -430,6 +430,54 @@ describe("PaneItemTransferService", () => {
     subscription.dispose();
   });
 
+  for (const preserveSourcePane of [false, true]) {
+    it(`rejects remote commit after its item moves away from a ${preserveSourcePane ? "surviving" : "destroyed"} source pane`, async () => {
+      lumine.config.set("core.destroyEmptyPanes", true);
+      if (preserveSourcePane) pane.addItem(lumine.workspace.buildTextEditor());
+      let resumeClose;
+      const subscription = pane.onWillDestroyItem(
+        () =>
+          new Promise((resolve) => {
+            resumeClose = resolve;
+          }),
+      );
+      const descriptor = scope.createTransfer(pane, editor);
+      const result = lumine.workspaceDrops.commit(descriptor.token);
+      await conditionPromise(() => resumeClose);
+      pane.moveItemToPane(editor, targetPane, 0);
+      expect(pane.isDestroyed()).toBe(!preserveSourcePane);
+      resumeClose();
+
+      expect(await result).toBe(false);
+      expect(editor.isDestroyed()).toBe(false);
+      expect(lumine.workspace.paneForItem(editor)).toBe(targetPane);
+      expect(targetPane.getItems()).toEqual([editor]);
+      subscription.dispose();
+    });
+  }
+
+  it("allows remote commit after reordering the same source item within its pane", async () => {
+    const other = lumine.workspace.buildTextEditor();
+    pane.addItem(other);
+    let resumeClose;
+    const subscription = pane.onWillDestroyItem(
+      () =>
+        new Promise((resolve) => {
+          resumeClose = resolve;
+        }),
+    );
+    const descriptor = scope.createTransfer(pane, editor);
+    const result = lumine.workspaceDrops.commit(descriptor.token);
+    await conditionPromise(() => resumeClose);
+    pane.moveItem(editor, 1);
+    resumeClose();
+
+    expect(await result).toBe(true);
+    expect(editor.isDestroyed()).toBe(true);
+    expect(pane.getItems()).toEqual([other]);
+    subscription.dispose();
+  });
+
   it("keeps the source until a new window commits its staged copy", async () => {
     const result = scope.openInNewWindow(pane, editor);
     const descriptor = delegate.invokeApp.calls.mostRecent().args[1];
