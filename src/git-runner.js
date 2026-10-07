@@ -134,11 +134,11 @@ const COLOR_CONFIG = [
   "color.ui=false",
 ];
 
-// Repository operations are bound with command-line arguments instead of
-// Git's repository-discovery environment. Remove variables that could redirect
-// that binding or the namespace exposed by a local remote, while retaining
-// object-directory overrides used by the diff provider (GIT_OBJECT_DIRECTORY
-// and GIT_ALTERNATE_OBJECT_DIRECTORIES).
+// Typed commands target their working directory or exact descriptor. Ambient
+// repository variables must not redirect discovery, creation, or remote refs.
+// Explicit object directories support diffs in temporary stores; inherited
+// object variables are removed. Only unbound raw execution keeps arbitrary
+// repository-selection environment behavior.
 const REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES = [
   "GIT_DIR",
   "GIT_WORK_TREE",
@@ -176,7 +176,7 @@ class GitRunner {
     return result.stdout;
   }
 
-  async executeResult(args, workingDirectory, options = {}, { includeColorConfig = true } = {}) {
+  async executeResult(args, workingDirectory, options = {}, { raw = false } = {}) {
     const priority = options.priority === "interactive" ? "interactive" : "background";
     const environment = {
       GIT_TERMINAL_PROMPT: options.allowPrompt ? "1" : "0",
@@ -190,7 +190,8 @@ class GitRunner {
       ...(priority === "background" && !options.allowPrompt ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
       ...options.env,
     };
-    if (options.repositoryDescriptor) {
+    const sanitizeRepositoryEnvironment = !raw || Boolean(options.repositoryDescriptor);
+    if (sanitizeRepositoryEnvironment) {
       const selectionVariables = new Set(
         REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES.map((name) =>
           process.platform === "win32" ? name.toUpperCase() : name,
@@ -211,16 +212,11 @@ class GitRunner {
     const boundRepositoryArguments = repositoryArguments(options.repositoryDescriptor);
     const runExec = () =>
       this.execute(
-        [
-          ...(includeColorConfig ? COLOR_CONFIG : []),
-          ...configArguments,
-          ...boundRepositoryArguments,
-          ...args,
-        ],
+        [...(raw ? [] : COLOR_CONFIG), ...configArguments, ...boundRepositoryArguments, ...args],
         workingDirectory,
         {
           env: environment,
-          unsetEnv: options.repositoryDescriptor ? REPOSITORY_ENVIRONMENT_VARIABLES : undefined,
+          unsetEnv: sanitizeRepositoryEnvironment ? REPOSITORY_ENVIRONMENT_VARIABLES : undefined,
           stdin: options.stdin,
           encoding: options.encoding,
           maxBuffer: options.maxBuffer,
@@ -247,7 +243,7 @@ class GitRunner {
 
   async runRawResult(args, workingDirectory, options = {}) {
     const result = await this.executeResult(args, workingDirectory, options, {
-      includeColorConfig: false,
+      raw: true,
     });
     if (options.allowedExitCodes && !options.allowedExitCodes.includes(result.exitCode))
       throw new GitOperationError(args[0], result);

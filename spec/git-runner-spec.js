@@ -3,6 +3,8 @@ const { Semaphore } = GitRunner;
 const path = require("path");
 const fs = require("fs");
 const temp = require("@lumine-code/fs-temp").track();
+const GitWorkspaceOperations = require("../src/git-workspace-operations");
+const createGitHostOps = require("../src/git-host-ops");
 
 // Flush enough microtask turns for the semaphore's async acquire() handoffs to
 // settle before asserting on in-flight state.
@@ -378,9 +380,30 @@ describe("GitRunner repository binding", () => {
     expect(calls[0].options.env.GIT_DIR).toBe("intentional-unbound-value");
     expect(calls[0].options.env.GIT_NAMESPACE).toBe("intentional-unbound-namespace");
   });
+
+  it("clears typed cwd selectors and inherited object variables while preserving explicit objects", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+    const names = [
+      "GIT_DIR",
+      "GIT_WORK_TREE",
+      "GIT_COMMON_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_NAMESPACE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ];
+    await runner.run(["rev-parse", "--show-toplevel"], "requested-cwd", {
+      env: Object.fromEntries(names.map((name) => [name, "foreign"])),
+    });
+    expect(calls[0].options.unsetEnv).toEqual(names);
+    for (const name of names.slice(0, 5)) expect(calls[0].options.env[name]).toBeUndefined();
+    expect(calls[0].options.env.GIT_OBJECT_DIRECTORY).toBe("foreign");
+    expect(calls[0].options.env.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe("foreign");
+  });
 });
 
-describe("GitRunner repository namespace binding", () => {
+describe("GitRunner path binding with system Git", () => {
   let runner, workingDirectory, remote, descriptor, publicHead, namespaceHead;
 
   beforeEach(async () => {
@@ -391,8 +414,11 @@ describe("GitRunner repository namespace binding", () => {
     fs.mkdirSync(remote);
     runner = new GitRunner();
     await runner.run(["init", "--bare"], remote);
+    const blob = (
+      await runner.run(["hash-object", "-w", "--stdin"], remote, { stdin: "tracked content\n" })
+    ).trim();
     const tree = (
-      await runner.run(["hash-object", "-t", "tree", "-w", "--stdin"], remote, { stdin: "" })
+      await runner.run(["mktree"], remote, { stdin: `100644 blob ${blob}\tfile.txt\n` })
     ).trim();
     const env = {
       GIT_AUTHOR_NAME: "Namespace test",
@@ -414,17 +440,29 @@ describe("GitRunner repository namespace binding", () => {
     descriptor = { workingDirectory, gitDirectory: path.join(workingDirectory, ".git") };
   });
 
+  async function withEnvironment(environment, source, callback) {
+    const originals = new Map(Object.keys(environment).map((name) => [name, process.env[name]]));
+    if (source === "inherited") Object.assign(process.env, environment);
+    try {
+      return await callback(source === "options" ? environment : undefined);
+    } finally {
+      for (const [name, value] of originals) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }
+
   for (const source of ["inherited", "options"]) {
     it(`fetches the selected remote's public branch despite ${source === "inherited" ? "an" : "a"} ${source} Git namespace`, async () => {
-      const originalNamespace = process.env.GIT_NAMESPACE;
-      const env = source === "options" ? { GIT_NAMESPACE: "other" } : undefined;
-      if (source === "inherited") process.env.GIT_NAMESPACE = "other";
-      try {
+      await withEnvironment({ GIT_NAMESPACE: "other" }, source, async (env) => {
         // Prove the remote really exposes a different branch in this namespace.
-        const namespaced = await runner.run(["ls-remote", remote, "refs/heads/main"], remote, {
-          env,
-        });
-        expect(namespaced.trim()).toBe(`${namespaceHead}\trefs/heads/main`);
+        const namespaced = await runner.runRawResult(
+          ["ls-remote", remote, "refs/heads/main"],
+          remote,
+          { env },
+        );
+        expect(namespaced.stdout.trim()).toBe(`${namespaceHead}\trefs/heads/main`);
         await runner.run(
           ["fetch", remote, "refs/heads/main:refs/remotes/source/main"],
           workingDirectory,
@@ -436,10 +474,73 @@ describe("GitRunner repository namespace binding", () => {
           { repositoryDescriptor: descriptor },
         );
         expect(fetched.trim()).toBe(publicHead);
-      } finally {
-        if (originalNamespace === undefined) delete process.env.GIT_NAMESPACE;
-        else process.env.GIT_NAMESPACE = originalNamespace;
-      }
+      });
+    });
+
+    it(`initializes the requested directory despite ${source} Git directory redirection`, async () => {
+      const destination = path.join(workingDirectory, "initialized");
+      const foreignDirectory = path.join(workingDirectory, "foreign.git");
+      await withEnvironment({ GIT_DIR: foreignDirectory }, source, async (env) => {
+        await new GitWorkspaceOperations(runner).initialize(destination, {
+          initialBranch: "main",
+          env,
+        });
+      });
+      expect(fs.existsSync(path.join(destination, ".git", "config"))).toBe(true);
+      expect(fs.existsSync(foreignDirectory)).toBe(false);
+      const topLevel = await runner.run(["rev-parse", "--show-toplevel"], destination);
+      expect(fs.realpathSync.native(topLevel.trim())).toBe(fs.realpathSync.native(destination));
+    });
+
+    it(`clones the public branch into the target despite ${source} Git environment redirection`, async () => {
+      const destination = path.join(workingDirectory, "cloned");
+      const foreignWorktree = path.join(workingDirectory, "foreign-worktree");
+      const foreignIndex = path.join(workingDirectory, "foreign-index");
+      await withEnvironment(
+        {
+          GIT_NAMESPACE: "other",
+          GIT_WORK_TREE: foreignWorktree,
+          GIT_INDEX_FILE: foreignIndex,
+        },
+        source,
+        async (env) => {
+          await new GitWorkspaceOperations(runner).clone(remote, destination, {
+            noLocal: true,
+            branch: "main",
+            config: { "core.autocrlf": "false" },
+            env,
+          });
+        },
+      );
+      const clonedHead = await runner.run(["rev-parse", "HEAD"], destination);
+      expect(clonedHead.trim()).toBe(publicHead);
+      expect(fs.readFileSync(path.join(destination, "file.txt"), "utf8")).toBe("tracked content\n");
+      expect(fs.existsSync(path.join(destination, ".git", "index"))).toBe(true);
+      expect(fs.existsSync(foreignWorktree)).toBe(false);
+      expect(fs.existsSync(foreignIndex)).toBe(false);
+    });
+
+    it(`probes the requested cwd through typed git-host execution despite ${source} repository redirection`, async () => {
+      const foreignWorktree = path.join(workingDirectory, "foreign-worktree");
+      fs.mkdirSync(foreignWorktree);
+      await withEnvironment(
+        { GIT_DIR: remote, GIT_WORK_TREE: foreignWorktree },
+        source,
+        async (env) => {
+          const result = await createGitHostOps(runner).exec(
+            {
+              workingDirectory,
+              args: ["rev-parse", "--show-toplevel"],
+              options: { env, readOnly: true },
+              raw: false,
+            },
+            {},
+          );
+          expect(fs.realpathSync.native(result.stdout.trim())).toBe(
+            fs.realpathSync.native(workingDirectory),
+          );
+        },
+      );
     });
   }
 });
