@@ -8,6 +8,7 @@ const GitWorkflowPolicy = require("./git-workflow-policy");
 const { OPERATION_OPTION_INDEX } = require("./git-operation-metadata");
 const resolveRemoteTarget = require("./git-remote-target");
 const { isRepositoryUnavailableError } = require("./git-error");
+const GitOperationError = require("./git-operation-error");
 const completeCleanup = require("./complete-cleanup");
 const OPERATION_REFRESH_HINTS = new Set(["none", "status", "refs", "both"]);
 const normalizePath = (value) => {
@@ -300,7 +301,13 @@ module.exports = class RepositoryOperationManager {
         throw Object.assign(new Error("No provider implements raw Git command execution"), {
           code: "ERR_GIT_EXECUTION_UNAVAILABLE",
         });
-      return provider.executeGit(...args);
+      const result = await provider.executeGit(...args);
+      if (
+        typeof result?.exitCode === "number" &&
+        !(args[2]?.allowedExitCodes || [0]).includes(result.exitCode)
+      )
+        throw new GitOperationError(args[0][0], result);
+      return result;
     }
     const provider = this.findWorkspaceOperationProvider(operationName);
     this.assertWorkspaceOperationAvailable();
@@ -556,6 +563,12 @@ module.exports = class RepositoryOperationManager {
       record.activeOperations++;
       acquired = true;
       result = await record.implementation[operationName](...args);
+      if (
+        operationName === "executeGit" &&
+        typeof result?.exitCode === "number" &&
+        !(args[1]?.allowedExitCodes || [0]).includes(result.exitCode)
+      )
+        throw new GitOperationError(args[0][0], result);
     } catch (error) {
       failures.push(error);
       if (isRepositoryUnavailableError(error)) {

@@ -15,7 +15,11 @@ module.exports = class GitWorkflowPolicy {
     const effectiveName = name === "executeGit" ? rawGitCommand(args[0]) : name;
     const force =
       options.force ||
-      (name === "executeGit" && args[0]?.some((arg) => ["--force", "-f"].includes(arg)));
+      options.forceWithLease ||
+      (name === "executeGit" &&
+        args[0]?.some(
+          (arg) => ["--force", "-f"].includes(arg) || String(arg).startsWith("--force-with-lease"),
+        ));
     return Boolean(
       options.expectedHead ||
       workflowOptions.expectedHead ||
@@ -32,7 +36,11 @@ module.exports = class GitWorkflowPolicy {
     const effectiveName = name === "executeGit" ? rawGitCommand(args[0]) : name;
     const force =
       options.force ||
-      (name === "executeGit" && args[0]?.some((arg) => ["--force", "-f"].includes(arg)));
+      options.forceWithLease ||
+      (name === "executeGit" &&
+        args[0]?.some(
+          (arg) => ["--force", "-f"].includes(arg) || String(arg).startsWith("--force-with-lease"),
+        ));
     const signal = options.signal || workflowOptions.signal;
     signal?.throwIfAborted();
     const expectedHead = options.expectedHead || workflowOptions.expectedHead;

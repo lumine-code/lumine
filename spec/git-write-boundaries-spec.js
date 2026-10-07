@@ -64,6 +64,55 @@ describe("Git write boundaries", () => {
     return registry;
   }
 
+  it("checks raw results from a provider that does not enforce exit codes", async () => {
+    const registry = registryFor();
+    const repository = fakeRepository(temp.mkdirSync("unchecked-provider-result"));
+    registry.register(repository);
+    const lease = registry.retain(repository, "test-owner");
+    const result = { exitCode: 128, stdout: "probe output", stderr: "probe failed" };
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({ executeGit: async () => result }),
+    });
+    const failure = await repository
+      .getOperations()
+      .executeGit(["status"], { readOnly: true })
+      .catch((error) => error);
+    expect(failure.code).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(failure.stdout).toBe("probe output");
+    expect(failure.outcome).toBe("failed");
+    expect(registry.getPendingOperations()).toEqual([]);
+    expect(
+      await repository
+        .getOperations()
+        .executeGit(["status"], { readOnly: true, allowedExitCodes: [128] }),
+    ).toBe(result);
+    lease.dispose();
+  });
+
+  it("uses the shared confirmation for named and raw force-with-lease pushes", async () => {
+    let confirmations = 0;
+    const policy = new GitWorkflowPolicy({
+      config: { get: (key) => key === "git.confirmForcePush" },
+      confirm: async () => {
+        confirmations++;
+        return 1;
+      },
+    });
+    const repository = {
+      refreshStatusSnapshot: async () => ({ head: { name: "feature", oid: "abc" } }),
+    };
+    for (const [name, args] of [
+      ["push", ["origin", "feature", { forceWithLease: true }]],
+      ["executeGit", [["push", "--force-with-lease=feature:abc"], {}]],
+    ]) {
+      expect(policy.requiresCheck(name, args)).toBe(true);
+      const failure = await policy.assertAllowed(repository, name, args).catch((error) => error);
+      expect(failure.code).toBe("ERR_GIT_OPERATION_CANCELLED");
+      expect(failure.outcome).toBe("not-started");
+    }
+    expect(confirmations).toBe(2);
+  });
+
   it("rejects repository selectors in bound raw argv, including after config arguments", async () => {
     const runRepositoryRaw = jasmine.createSpy("raw backend").and.resolveTo({ exitCode: 0 });
     const operations = new GitRepositoryOperations(

@@ -1291,7 +1291,10 @@ class Environment {
     this.projectStateIndex.close();
     this.workspace.closeStateStore();
     GitHost.reset();
-    if (this.#gitAuthBroker) this.#gitAuthBroker.terminate();
+    const closingGitAuth = this.#gitAuthBroker?.terminate();
+    void closingGitAuth?.catch((error) =>
+      console.error("Failed to close Git credential broker", error),
+    );
     if (this.secrets) this.secrets.dispose();
     if (!this.project) return;
 
