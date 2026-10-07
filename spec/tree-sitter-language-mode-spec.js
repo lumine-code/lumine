@@ -111,7 +111,10 @@ describe("TreeSitterLanguageMode", () => {
 
   describe("optional incremental parse boundaries", () => {
     async function setUp(source) {
-      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, {
+        ...jsConfig,
+        treeSitter: { ...jsConfig.treeSitter },
+      });
       await grammar.setQueryForTest("parseBoundariesQuery", "(comment) @parse.boundary");
       const languageMode = new TreeSitterLanguageMode({
         grammars: lumine.grammars,
@@ -172,6 +175,114 @@ describe("TreeSitterLanguageMode", () => {
         }
       } finally {
         layer.queries.parseBoundariesQuery = originalQuery;
+      }
+    });
+
+    it("subdivides opted-in injection ranges without including gaps or splitting characters", async () => {
+      const source = "// " + "x".repeat(8192) + "😀\r\nconst value = 1;\r\n";
+      const languageMode = await setUp(source);
+      const layer = languageMode.rootLanguageLayer;
+      const originalQuery = layer.queries.parseBoundariesQuery;
+      const originalDepth = layer.depth;
+      const indices = [1024, 2048, 3600, source.indexOf("😀") + 1, source.indexOf("\r\n") + 1];
+      layer.queries.parseBoundariesQuery = {
+        captures: () =>
+          indices.map((endIndex) => ({
+            name: "parse.boundary",
+            node: {
+              endIndex,
+              endPosition: buffer.positionForCharacterIndex(endIndex),
+            },
+          })),
+      };
+      const included = [
+        [0, 1500],
+        [2500, source.length],
+      ].map(([startIndex, endIndex]) => ({
+        startIndex,
+        endIndex,
+        startPosition: buffer.positionForCharacterIndex(startIndex),
+        endPosition: buffer.positionForCharacterIndex(endIndex),
+      }));
+      const before = JSON.stringify(included);
+      layer.depth = 1;
+      try {
+        grammar.queryPaths.parseBoundariesInjections = "true";
+        expect(layer.getParseRanges(included)).toBe(included);
+        grammar.queryPaths.parseBoundariesInjections = true;
+        expect(
+          layer.getParseRanges(included).map(({ startIndex, endIndex }) => [startIndex, endIndex]),
+        ).toEqual([
+          [0, 1024],
+          [1024, 1500],
+          [2500, 3600],
+          [3600, source.length],
+        ]);
+        expect(JSON.stringify(included)).toBe(before);
+        expect(layer.getCurrentRanges()).toBeNull();
+      } finally {
+        layer.depth = originalDepth;
+        layer.queries.parseBoundariesQuery = originalQuery;
+      }
+    });
+
+    it("keeps injection fragment consolidation inside a single semantic range", async () => {
+      const languageMode = await setUp("/*x*/".repeat(64));
+      const layer = languageMode.rootLanguageLayer;
+      const originalDepth = layer.depth;
+      grammar.queryPaths.parseBoundariesInjections = true;
+      layer.depth = 1;
+      const included = [
+        [0, 160],
+        [160, 320],
+      ].map(([startIndex, endIndex]) => ({
+        startIndex,
+        endIndex,
+        startPosition: buffer.positionForCharacterIndex(startIndex),
+        endPosition: buffer.positionForCharacterIndex(endIndex),
+      }));
+      spyOn(layer.tree, "edit").and.callThrough();
+      try {
+        expect(layer.getParseRanges(included)).toBe(included);
+        expect(layer.tree.edit).not.toHaveBeenCalled();
+        expect(layer.treeIsDirty).toBe(false);
+      } finally {
+        layer.depth = originalDepth;
+      }
+    });
+
+    it("loads parse boundary queries for injected grammars only when explicitly opted in", async () => {
+      for (const enabled of [false, true]) {
+        const languageMode = await setUp("const alpha = one;");
+        const injectedGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, {
+          ...htmlConfig,
+          injectionNames: ["boundary-test-html"],
+          treeSitter: { ...htmlConfig.treeSitter, parseBoundariesInjections: enabled },
+        });
+        await injectedGrammar.setQueryForTest("parseBoundariesQuery", "(text) @parse.boundary");
+        const registration = lumine.grammars.addGrammar(injectedGrammar);
+        grammar.addInjectionPoint({
+          type: "identifier",
+          language: () => "boundary-test-html",
+          content: (node) => node,
+          includeChildren: true,
+          languageScope: null,
+        });
+        try {
+          await languageMode.atGrammarSettlement();
+          const layer = languageMode
+            .getAllInjectionLayers()
+            .find((item) => item.grammar === injectedGrammar);
+          expect(layer).toBeDefined();
+          expect(layer.depth).toBe(1);
+          expect(Boolean(layer.queries.parseBoundariesQuery)).toBe(enabled);
+          expect(layer.requestedQueryTypes.has("parseBoundariesQuery")).toBe(enabled);
+        } finally {
+          buffer.setLanguageMode(null);
+          registration.dispose();
+          injectedGrammar.deactivate();
+          grammar.subscriptions.dispose();
+        }
       }
     });
 

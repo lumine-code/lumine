@@ -3154,7 +3154,8 @@ class LanguageLayer {
         // `highlightsQuery`, and some kinds of layers don't even need
         // `highlightsQuery`.
         let queries = ["highlightsQuery", "injectionsQuery"];
-        if (this.depth === 0) queries.push("parseBoundariesQuery");
+        if (this.depth === 0 || this.grammar.queryPaths?.parseBoundariesInjections === true)
+          queries.push("parseBoundariesQuery");
         let promises = [];
         let failures = [];
 
@@ -4129,7 +4130,12 @@ class LanguageLayer {
     // These are parser hints, never new ownership boundaries for injections.
     // A scanner must explicitly opt in and tolerate adjacent included ranges.
     const query = this.queries.parseBoundariesQuery;
-    if (this.depth !== 0 || !this.tree || !query) return includedRanges;
+    if (
+      (this.depth !== 0 && this.grammar.queryPaths?.parseBoundariesInjections !== true) ||
+      !this.tree ||
+      !query
+    )
+      return includedRanges;
     if (this.tree.language !== this.grammar.getLanguageSync()) return includedRanges;
     const length = this.buffer.getLength();
     let captures = this.getParseBoundaryCaptures();
