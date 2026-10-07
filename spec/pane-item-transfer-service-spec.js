@@ -251,31 +251,41 @@ describe("PaneItemTransferService", () => {
     ]);
     const originalState = target.serializeViewState();
     const trace = [];
-    const record = (phase) =>
-      trace.push({ phase, text: target.getText(), viewState: target.serializeViewState() });
+    let phase = "before-open";
+    const serialize = target.serializeViewState.bind(target);
+    spyOn(target, "serializeViewState").and.callFake(() => {
+      const state = serialize();
+      trace.push({ phase, viewState: state });
+      return state;
+    });
+    const rawSelections = () =>
+      target.getSelections().map((selection) => ({
+        range: selection.marker.bufferMarker.getRange().serialize(),
+        generation: selection.marker.bufferMarker.positionGeneration,
+        cachedGeneration: selection.marker.cachedBufferMarkerPositionGeneration,
+      }));
     const restoreText = scope.restoreText.bind(scope);
     spyOn(scope, "restoreText").and.callFake((item, original) => {
+      phase = "before-restore";
       trace.push({
-        phase: "before-restore",
+        phase,
         original: original.viewState,
         staged: original.stagedViewState,
-        text: item.getText(),
-        current: item.serializeViewState(),
       });
       restoreText(item, original);
-      record("after-restore");
+      phase = "after-restore";
+      trace.push({ phase, rawSelections: rawSelections() });
     });
     const subscription = lumine.workspace.onDidOpen(({ item }) => {
       if (item === target) {
-        record("before-open-hook");
+        phase = "before-open-hook";
+        trace.push({ phase, rawSelections: rawSelections() });
         item.setCursorBufferPosition(item.getBuffer().getEndPosition(), { autoscroll: false });
-        record("after-open-hook");
+        phase = "after-open-hook";
+        trace.push({ phase, rawSelections: rawSelections() });
       }
     });
-    spyOn(lumine.workspaceDrops, "commit").and.callFake(async () => {
-      record("commit");
-      return false;
-    });
+    spyOn(lumine.workspaceDrops, "commit").and.resolveTo(false);
     const descriptor = remoteDescriptor({
       items: [{ type: "pane-item", uri: file, modifiedText: "source changes" }],
     });
@@ -283,7 +293,7 @@ describe("PaneItemTransferService", () => {
       await expectAsync(
         scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane)),
       ).toBeRejectedWithError("The source window rejected the pane item transfer");
-      record("after-rejection");
+      phase = "after-rejection";
       expect(target.serializeViewState().selections)
         .withContext(JSON.stringify(trace))
         .toEqual(originalState.selections);
