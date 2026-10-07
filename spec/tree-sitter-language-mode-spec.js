@@ -181,7 +181,19 @@ describe("TreeSitterLanguageMode", () => {
       const layer = languageMode.rootLanguageLayer;
       const oldTree = layer.tree;
       expect(layer.treeIsDirty).toBe(false);
+      grammar.queryPaths.parseBoundariesMaxStartDepth = 1;
+      const changedRoots = [];
+      const query = layer.queries.parseBoundariesQuery;
+      const capture = query.captures.bind(query);
+      spyOn(query, "captures").and.callFake((node, options) => {
+        changedRoots.push(node.hasChanges);
+        return capture(node, options);
+      });
       layer.getParseRanges(null);
+      expect(changedRoots).toEqual([false, true]);
+      expect(query.captures.calls.allArgs().every((args) => args[1]?.maxStartDepth === 1)).toBe(
+        true,
+      );
       expect(layer.treeIsDirty).toBe(true);
       expect(oldTree.rootNode.hasChanges).toBe(true);
       spyOn(languageMode, "parse").and.callThrough();
@@ -190,6 +202,52 @@ describe("TreeSitterLanguageMode", () => {
       expect(tree).not.toBe(oldTree);
       expect(tree.rootNode.hasError).toBe(false);
       expect(tree.rootNode.descendantsOfType("comment").length).toBe(64);
+    });
+
+    it("expands dirty shallow groups and deduplicates their nested boundaries", async () => {
+      const languageMode = await setUp("const value = 1;\n");
+      const layer = languageMode.rootLanguageLayer;
+      grammar.queryPaths.parseBoundariesMaxStartDepth = 2;
+      const dirty = { id: 1, hasChanges: true, childCount: 2 };
+      const clean = { id: 2, hasChanges: false, childCount: 2 };
+      const leaf = { id: 3, hasChanges: true, childCount: 0 };
+      const nested = { id: 4, hasChanges: true, childCount: 2 };
+      const fragment = { id: 5, hasChanges: true, childCount: 0 };
+      const boundary = (node) => ({ name: "parse.boundary", node });
+      const original = layer.queries.parseBoundariesQuery;
+      const query = {
+        captures: jasmine.createSpy("captures").and.callFake((node) => {
+          if (node === dirty) return [boundary(dirty), boundary(nested), boundary(nested)];
+          if (node === nested) return [boundary(nested), boundary(fragment)];
+          return [boundary(dirty), boundary(clean), boundary(leaf), boundary(dirty)];
+        }),
+      };
+      layer.queries.parseBoundariesQuery = query;
+      try {
+        expect(layer.getParseBoundaryCaptures().map(({ node }) => node.id)).toEqual([
+          1, 2, 3, 4, 5,
+        ]);
+        expect(query.captures.calls.allArgs()).toEqual([
+          [layer.tree.rootNode, { maxStartDepth: 2 }],
+          [dirty, { maxStartDepth: 3 }],
+          [nested, { maxStartDepth: 3 }],
+        ]);
+      } finally {
+        layer.queries.parseBoundariesQuery = original;
+      }
+    });
+
+    it("uses one unrestricted query when the depth option is absent or invalid", async () => {
+      const languageMode = await setUp("const value = 1;\n");
+      const layer = languageMode.rootLanguageLayer;
+      const query = layer.queries.parseBoundariesQuery;
+      spyOn(query, "captures").and.returnValue([]);
+      for (const option of [undefined, -1, 33, 1.5, Infinity, "2"]) {
+        grammar.queryPaths.parseBoundariesMaxStartDepth = option;
+        query.captures.calls.reset();
+        expect(layer.getParseBoundaryCaptures()).toEqual([]);
+        expect(query.captures.calls.allArgs()).toEqual([[layer.tree.rootNode]]);
+      }
     });
   });
 
@@ -5256,6 +5314,24 @@ describe("TreeSitterLanguageMode", () => {
         elif c:…
         else:…
       `);
+    });
+
+    it("invalidates the fold cache for an edit confined to one row", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+      });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      buffer.setText("const value = 1;\n");
+      await languageMode.atTransactionEnd();
+      languageMode.isFoldableCache[0] = true;
+      spyOn(languageMode, "prefillFoldCache").and.stub();
+      languageMode.emitFoldUpdate(new Range([0, 2], [0, 3]));
+      expect(languageMode.isFoldableCache[0]).toBeUndefined();
+      expect(languageMode.isFoldableAtRow(0)).toBe(false);
     });
 
     it("updates fold locations when the buffer changes", async () => {

@@ -794,7 +794,7 @@ class TreeSitterLanguageMode {
     this.foldRangeIndex = null;
     const startRow = range.start.row;
     const endRow = range.end.row;
-    for (let row = startRow; row < endRow; row++) {
+    for (let row = startRow; row <= endRow; row++) {
       this.isFoldableCache[row] = undefined;
     }
     // Invalidation must cover the whole range, but eager re-computation must
@@ -4070,6 +4070,37 @@ class LanguageLayer {
     );
   }
 
+  getParseBoundaryCaptures() {
+    const query = this.queries.parseBoundariesQuery;
+    const root = this.tree.rootNode;
+    const maxStartDepth = this.grammar.queryPaths?.parseBoundariesMaxStartDepth;
+    if (!Number.isSafeInteger(maxStartDepth) || maxStartDepth < 0 || maxStartDepth > 32)
+      return query.captures(root);
+
+    const shallow = query.captures(root, { maxStartDepth });
+    const keyFor = ({ name, node }) => `${name}:${node.id}`;
+    const captures = [];
+    const seen = new Set();
+    const pending = [];
+    const expanded = new Set();
+    const addCapture = (capture) => {
+      const key = keyFor(capture);
+      if (seen.has(key)) return;
+      seen.add(key);
+      captures.push(capture);
+      pending.push(capture.node);
+    };
+    shallow.forEach(addCapture);
+    const childOptions = { maxStartDepth: Math.max(1, maxStartDepth + 1) };
+    while (pending.length) {
+      const node = pending.pop();
+      if (!node.hasChanges || node.childCount === 0 || expanded.has(node.id)) continue;
+      expanded.add(node.id);
+      query.captures(node, childOptions).forEach(addCapture);
+    }
+    return captures;
+  }
+
   getParseRanges(includedRanges) {
     // These are parser hints, never new ownership boundaries for injections.
     // A scanner must explicitly opt in and tolerate adjacent included ranges.
@@ -4077,7 +4108,7 @@ class LanguageLayer {
     if (this.depth !== 0 || !this.tree || !query) return includedRanges;
     if (this.tree.language !== this.grammar.getLanguageSync()) return includedRanges;
     const length = this.buffer.getLength();
-    let captures = query.captures(this.tree.rootNode);
+    let captures = this.getParseBoundaryCaptures();
     const fragments = [];
     for (const { name, node } of captures) {
       if (name !== "parse.boundary") continue;
@@ -4113,7 +4144,7 @@ class LanguageLayer {
     }
     if (compacted) {
       this.treeIsDirty = true;
-      captures = query.captures(this.tree.rootNode);
+      captures = this.getParseBoundaryCaptures();
     }
     const boundaries = [];
     for (const { name, node } of captures) {
