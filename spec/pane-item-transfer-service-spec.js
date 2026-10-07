@@ -250,11 +250,32 @@ describe("PaneItemTransferService", () => {
       [0, 3],
     ]);
     const originalState = target.serializeViewState();
-    const subscription = lumine.workspace.onDidOpen(({ item }) => {
-      if (item === target)
-        item.setCursorBufferPosition(item.getBuffer().getEndPosition(), { autoscroll: false });
+    const trace = [];
+    const record = (phase) =>
+      trace.push({ phase, text: target.getText(), viewState: target.serializeViewState() });
+    const restoreText = scope.restoreText.bind(scope);
+    spyOn(scope, "restoreText").and.callFake((item, original) => {
+      trace.push({
+        phase: "before-restore",
+        original: original.viewState,
+        staged: original.stagedViewState,
+        text: item.getText(),
+        current: item.serializeViewState(),
+      });
+      restoreText(item, original);
+      record("after-restore");
     });
-    spyOn(lumine.workspaceDrops, "commit").and.resolveTo(false);
+    const subscription = lumine.workspace.onDidOpen(({ item }) => {
+      if (item === target) {
+        record("before-open-hook");
+        item.setCursorBufferPosition(item.getBuffer().getEndPosition(), { autoscroll: false });
+        record("after-open-hook");
+      }
+    });
+    spyOn(lumine.workspaceDrops, "commit").and.callFake(async () => {
+      record("commit");
+      return false;
+    });
     const descriptor = remoteDescriptor({
       items: [{ type: "pane-item", uri: file, modifiedText: "source changes" }],
     });
@@ -262,7 +283,10 @@ describe("PaneItemTransferService", () => {
       await expectAsync(
         scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane)),
       ).toBeRejectedWithError("The source window rejected the pane item transfer");
-      expect(target.serializeViewState().selections).toEqual(originalState.selections);
+      record("after-rejection");
+      expect(target.serializeViewState().selections)
+        .withContext(JSON.stringify(trace))
+        .toEqual(originalState.selections);
     } finally {
       subscription.dispose();
     }
