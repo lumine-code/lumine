@@ -70,7 +70,6 @@ const baseName = "lumine";
 const iconName = "lumine";
 
 const ICONS = {
-  png: `resources/app-icons/${iconName}.png`,
   ico: `resources/app-icons/${iconName}.ico`,
   svg: `resources/app-icons/${iconName}.svg`,
   icns: `resources/app-icons/${iconName}.icns`,
@@ -110,6 +109,8 @@ let options = {
     // the NSIS installer. Nothing reads resources/win/ at runtime, so keep it
     // out of app.asar on every platform. resources/app-icons/ must stay -- that
     // one IS read from inside the asar, by src/lumine-window.js.
+    // Listing an icon in extraResources also excludes its source from app.asar,
+    // so keep the runtime PNGs only in this files set.
     "!resources/win/",
     // The raw SVG is runtime art: the empty editor pane uses it as a mask. Its
     // PNG sibling and the square badges are alternate-format brand assets that
@@ -227,7 +228,6 @@ let options = {
 
   extraResources: [
     { from: "lumine.sh", to: `${baseName}.sh` },
-    { from: ICONS.png, to: "lumine.png" },
     { from: "LICENSE", to: "LICENSE" },
   ],
   compression: "normal",
