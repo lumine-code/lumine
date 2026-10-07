@@ -234,6 +234,44 @@ describe("WorkspaceDropManager", () => {
     expect(pane.getContainer().getPanes().length).toBe(2);
   });
 
+  it("creates a drop split without activating its empty context", async () => {
+    const initialItem = document.createElement("div");
+    const droppedItem = document.createElement("div");
+    pane.addItem(initialItem);
+    const observed = [];
+    disposables.push(lumine.workspace.onDidChangeActivePaneItem((item) => observed.push(item)));
+    const dataTransfer = new TestDataTransfer();
+    manager.write(dataTransfer, {
+      kind: "spec-item",
+      effect: "copy",
+      allowedLocations: ["center"],
+      items: [{ id: 1 }],
+    });
+    let performed;
+    const completion = new Promise((resolve) => (performed = resolve));
+    disposables.push(
+      manager.addProvider(
+        {
+          propose: ({ offer }) => offer.kind === "spec-item" && { effect: "copy" },
+          perform: (context) => {
+            const destination = context.resolvePane();
+            expect(lumine.workspace.getActivePane()).toBe(pane);
+            expect(observed).toEqual([]);
+            destination.activateItem(droppedItem, { activatePane: true });
+            performed(destination);
+          },
+        },
+        { priority: 100 },
+      ),
+    );
+
+    dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
+    const destination = await completion;
+    expect(destination).not.toBe(pane);
+    expect(lumine.workspace.getActivePane()).toBe(destination);
+    expect(observed).toEqual([droppedItem]);
+  });
+
   it("treats a registered target as a boundary when its providers reject the drag", () => {
     const target = document.createElement("div");
     paneElement.appendChild(target);

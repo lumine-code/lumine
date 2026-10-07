@@ -2415,6 +2415,56 @@ describe("Workspace", () => {
       expect(observed).toEqual([editor]);
     });
 
+    it("publishes only the selected editor when selecting and focusing another pane", () => {
+      const leftEditor = new TextEditor();
+      const previousRightEditor = new TextEditor();
+      const selectedRightEditor = new TextEditor();
+      pane.activateItem(leftEditor);
+      const rightPane = pane.splitRight({
+        items: [previousRightEditor, selectedRightEditor],
+        activate: false,
+      });
+      const activeItems = [];
+      workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
+      workspace.onDidChangeActivePaneItem((item) => activeItems.push(item));
+
+      rightPane.activateItem(selectedRightEditor, { activatePane: true });
+
+      expect(workspace.getActiveTextEditor()).toBe(selectedRightEditor);
+      expect(observed).toEqual([selectedRightEditor]);
+      expect(activeItems).toEqual([selectedRightEditor]);
+    });
+
+    it("does not expose the source fallback editor when splitting its active item", () => {
+      const editor = new TextEditor();
+      const fallbackEditor = new TextEditor();
+      pane.addItems([editor, fallbackEditor]);
+      const activeItems = [];
+      workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
+      workspace.onDidChangeActivePaneItem((item) => activeItems.push(item));
+
+      const split = pane.splitRight({ moveActiveItem: true });
+
+      expect(workspace.getActivePane()).toBe(split);
+      expect(pane.getActiveItem()).toBe(fallbackEditor);
+      expect(observed).toEqual([editor]);
+      expect(activeItems).toEqual([editor]);
+    });
+
+    it("does not expose an empty editor context when closing the last item of an active pane", () => {
+      lumine.config.set("core.destroyEmptyPanes", true);
+      const editor = new TextEditor();
+      const survivorEditor = new TextEditor();
+      pane.activateItem(editor);
+      const survivor = pane.splitRight({ items: [survivorEditor], activate: false });
+      workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
+
+      pane.destroyItem(editor);
+
+      expect(workspace.getActivePane()).toBe(survivor);
+      expect(observed).toEqual([survivorEditor]);
+    });
+
     it("invokes the observer when the last text editor is closed", () => {
       const editor = new TextEditor();
       pane.activateItem(editor);

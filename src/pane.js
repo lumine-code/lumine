@@ -504,6 +504,29 @@ module.exports = class Pane {
     return this.activeItem;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Apply a synchronous group of pane changes and notify workspace observers
+   * once with the final active pane and item. Changes and pane-local view
+   * events remain synchronous. Nested transactions share the outer operation.
+   *
+   * @param {Function} callback - synchronous work to perform; async callbacks and Promise return values are rejected. A thrown error still commits notifications for changes already made and clears the transaction.
+   * @returns {*} the callback's return value.
+   */
+  transactActiveState(callback) {
+    if (this.container) return this.container.transactActiveState(callback);
+    if (Object.prototype.toString.call(callback) === "[object AsyncFunction]") {
+      throw new TypeError("Active pane transactions require a synchronous callback");
+    }
+    const result = callback();
+    if (result && typeof result.then === "function") {
+      throw new TypeError("Active pane transactions cannot return a Promise");
+    }
+    return result;
+  }
+
   // Build the itemStack after deserializing
   addItemsToStack(itemStackIndices) {
     if (this.items.length > 0) {
@@ -682,16 +705,20 @@ module.exports = class Pane {
    * @param item - The item to activate
    * @param {Object} [options]
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state if it does not yet exist in the pane. Existing pending items in a pane are replaced with new pending items when they are opened.
+   * @param {Boolean} [options.activatePane] - `true` also activates and focuses this pane after selecting the item, notifying workspace observers of the final selection once.
    */
   activateItem(item, options = {}) {
-    if (item) {
-      const index =
-        this.getPendingItem() === this.activeItem
-          ? this.getActiveItemIndex()
-          : this.getActiveItemIndex() + 1;
-      this.addItem(item, Object.assign({}, options, { index }));
-      this.setActiveItem(item);
-    }
+    return this.transactActiveState(() => {
+      if (item) {
+        const index =
+          this.getPendingItem() === this.activeItem
+            ? this.getActiveItemIndex()
+            : this.getActiveItemIndex() + 1;
+        this.addItem(item, Object.assign({}, options, { index }));
+        this.setActiveItem(item);
+        if (options.activatePane === true) this.activate();
+      }
+    });
   }
 
   /**
@@ -839,47 +866,49 @@ module.exports = class Pane {
   }
 
   removeItem(item, moved) {
-    const index = this.items.indexOf(item);
-    if (index === -1) return;
-    if (this.getPendingItem() === item) this.pendingItem = null;
-    this.removeItemFromStack(item);
-    this.emitter.emit("will-remove-item", {
-      item,
-      index,
-      destroyed: !moved,
-      moved,
-    });
-    this.unsubscribeFromItem(item);
+    return this.transactActiveState(() => {
+      const index = this.items.indexOf(item);
+      if (index === -1) return;
+      if (this.getPendingItem() === item) this.pendingItem = null;
+      this.removeItemFromStack(item);
+      this.emitter.emit("will-remove-item", {
+        item,
+        index,
+        destroyed: !moved,
+        moved,
+      });
+      this.unsubscribeFromItem(item);
 
-    if (item === this.activeItem) {
-      if (this.items.length === 1) {
-        this.setActiveItem(undefined);
-      } else if (index === 0) {
-        this.activateNextItem();
-      } else {
-        this.activatePreviousItem();
+      if (item === this.activeItem) {
+        if (this.items.length === 1) {
+          this.setActiveItem(undefined);
+        } else if (index === 0) {
+          this.activateNextItem();
+        } else {
+          this.activatePreviousItem();
+        }
       }
-    }
-    this.items.splice(index, 1);
-    this.emitter.emit("did-remove-item", {
-      item,
-      index,
-      destroyed: !moved,
-      moved,
+      this.items.splice(index, 1);
+      this.emitter.emit("did-remove-item", {
+        item,
+        index,
+        destroyed: !moved,
+        moved,
+      });
+      if (this.container) {
+        // As in `addItem`: a move destroys nothing, but the item has left this
+        // container and the registry has to say so.
+        if (moved) {
+          this.container.unregisterItem(item);
+        } else {
+          this.container.didDestroyPaneItem({ item, index, pane: this });
+        }
+      }
+      const shouldDestroyEmptyPanes = this.container
+        ? this.container.shouldDestroyEmptyPanes()
+        : this.config.get("core.destroyEmptyPanes");
+      if (this.items.length === 0 && shouldDestroyEmptyPanes) this.destroy();
     });
-    if (this.container) {
-      // As in `addItem`: a move destroys nothing, but the item has left this
-      // container and the registry has to say so.
-      if (moved) {
-        this.container.unregisterItem(item);
-      } else {
-        this.container.didDestroyPaneItem({ item, index, pane: this });
-      }
-    }
-    const shouldDestroyEmptyPanes = this.container
-      ? this.container.shouldDestroyEmptyPanes()
-      : this.config.get("core.destroyEmptyPanes");
-    if (this.items.length === 0 && shouldDestroyEmptyPanes) this.destroy();
   }
 
   // Remove the given item from the itemStack.
@@ -918,8 +947,12 @@ module.exports = class Pane {
    * @param {Number} index - indicating the index to which to move the item in the given pane.
    */
   moveItemToPane(item, pane, index) {
-    this.removeItem(item, true);
-    return pane.addItem(item, { index, moved: true });
+    return this.transactActiveState(() =>
+      pane.transactActiveState(() => {
+        this.removeItem(item, true);
+        return pane.addItem(item, { index, moved: true });
+      }),
+    );
   }
 
   /**
@@ -1365,23 +1398,24 @@ module.exports = class Pane {
     if (this.container && this.container.isAlive() && this.container.getPanes().length === 1) {
       return this.destroyItems();
     }
-
-    this.emitter.emit("will-destroy");
-    this.alive = false;
-    if (this.pendingItemSubscription) {
-      this.pendingItemSubscription.dispose();
-      this.pendingItemSubscription = null;
-    }
-    if (this.container) {
-      this.container.willDestroyPane({ pane: this });
-      if (this.isActive()) this.container.activatePaneAfterDestroy();
-    }
-    this.emitter.emit("did-destroy");
-    this.emitter.dispose();
-    for (let item of this.items.slice()) {
-      if (typeof item.destroy === "function") item.destroy();
-    }
-    if (this.container) this.container.didDestroyPane({ pane: this });
+    return this.transactActiveState(() => {
+      this.emitter.emit("will-destroy");
+      this.alive = false;
+      if (this.pendingItemSubscription) {
+        this.pendingItemSubscription.dispose();
+        this.pendingItemSubscription = null;
+      }
+      if (this.container) {
+        this.container.willDestroyPane({ pane: this });
+        if (this.isActive()) this.container.activatePaneAfterDestroy();
+      }
+      this.emitter.emit("did-destroy");
+      this.emitter.dispose();
+      for (let item of this.items.slice()) {
+        if (typeof item.destroy === "function") item.destroy();
+      }
+      if (this.container) this.container.didDestroyPane({ pane: this });
+    });
   }
 
   isAlive() {
@@ -1469,56 +1503,58 @@ module.exports = class Pane {
   }
 
   split(orientation, side, params) {
-    if (params && params.copyActiveItem) {
-      if (!params.items) params.items = [];
-      params.items.push(this.copyActiveItem());
-    }
+    return this.transactActiveState(() => {
+      if (params && params.copyActiveItem) {
+        if (!params.items) params.items = [];
+        params.items.push(this.copyActiveItem());
+      }
 
-    if (this.parent.orientation !== orientation) {
-      this.parent.replaceChild(
-        this,
-        new PaneAxis(
+      if (this.parent.orientation !== orientation) {
+        this.parent.replaceChild(
+          this,
+          new PaneAxis(
+            {
+              container: this.container,
+              orientation,
+              children: [this],
+              flexScale: this.flexScale,
+            },
+            this.viewRegistry,
+          ),
+        );
+        this.setFlexScale(1);
+      }
+
+      const newPane = new Pane(
+        Object.assign(
           {
-            container: this.container,
-            orientation,
-            children: [this],
-            flexScale: this.flexScale,
+            applicationDelegate: this.applicationDelegate,
+            notificationManager: this.notificationManager,
+            deserializerManager: this.deserializerManager,
+            config: this.config,
+            viewRegistry: this.viewRegistry,
           },
-          this.viewRegistry,
+          params,
         ),
       );
-      this.setFlexScale(1);
-    }
 
-    const newPane = new Pane(
-      Object.assign(
-        {
-          applicationDelegate: this.applicationDelegate,
-          notificationManager: this.notificationManager,
-          deserializerManager: this.deserializerManager,
-          config: this.config,
-          viewRegistry: this.viewRegistry,
-        },
-        params,
-      ),
-    );
+      switch (side) {
+        case "before":
+          this.parent.insertChildBefore(this, newPane);
+          break;
+        case "after":
+          this.parent.insertChildAfter(this, newPane);
+          break;
+      }
 
-    switch (side) {
-      case "before":
-        this.parent.insertChildBefore(this, newPane);
-        break;
-      case "after":
-        this.parent.insertChildAfter(this, newPane);
-        break;
-    }
+      if (params && params.moveActiveItem && this.activeItem)
+        this.moveItemToPane(this.activeItem, newPane);
 
-    if (params && params.moveActiveItem && this.activeItem)
-      this.moveItemToPane(this.activeItem, newPane);
-
-    if (!params || params.activate !== false) {
-      newPane.activate();
-    }
-    return newPane;
+      if (!params || params.activate !== false) {
+        newPane.activate();
+      }
+      return newPane;
+    });
   }
 
   // If the parent is a horizontal axis, returns its first child if it is a pane;

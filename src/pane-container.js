@@ -23,6 +23,7 @@ module.exports = class PaneContainer {
     this.itemRegistry = new ItemRegistry();
     this.alive = true;
     this.paneActivationOrder = new Set();
+    this.activeStateTransaction = null;
     this.stoppedChangingActivePaneItemTimeout = null;
 
     this.setRoot(
@@ -213,6 +214,42 @@ module.exports = class PaneContainer {
     return this.getActivePane().getActiveItem();
   }
 
+  // Commit a composite synchronous operation before notifying workspace
+  // observers. Pane-local events still update views as the operation runs.
+  transactActiveState(callback) {
+    if (Object.prototype.toString.call(callback) === "[object AsyncFunction]") {
+      throw new TypeError("Active pane transactions require a synchronous callback");
+    }
+    const update = () => {
+      const result = callback();
+      if (result && typeof result.then === "function") {
+        throw new TypeError("Active pane transactions cannot return a Promise");
+      }
+      return result;
+    };
+    if (this.activeStateTransaction) return update();
+
+    const transaction = {
+      pane: this.getActivePane(),
+      item: this.getActivePaneItem(),
+      activated: false,
+    };
+    this.activeStateTransaction = transaction;
+    try {
+      return update();
+    } finally {
+      this.activeStateTransaction = null;
+      if (this.isAlive()) {
+        const paneChanged = this.activePane !== transaction.pane;
+        if (paneChanged) this.emitter.emit("did-change-active-pane", this.activePane);
+        if (paneChanged || this.getActivePaneItem() !== transaction.item) {
+          this.didChangeActiveItemOnPane(this.activePane, this.getActivePaneItem());
+        }
+        if (transaction.activated) this.emitter.emit("did-activate-pane", this.activePane);
+      }
+    }
+  }
+
   paneForURI(uri) {
     return find(this.getPanes(), (pane) => pane.itemForURI(uri) != null);
   }
@@ -284,15 +321,17 @@ module.exports = class PaneContainer {
       return;
     }
 
-    this.activePane.moveItemToPane(item, destPane);
-    destPane.setActiveItem(item);
+    return this.transactActiveState(() => {
+      this.activePane.moveItemToPane(item, destPane);
+      destPane.setActiveItem(item);
+    });
   }
 
   copyActiveItemToPane(destPane) {
     const item = this.activePane.copyActiveItem();
 
     if (item && destPane.isItemAllowed(item)) {
-      destPane.activateItem(item);
+      return this.transactActiveState(() => destPane.activateItem(item));
     }
   }
 
@@ -337,10 +376,16 @@ module.exports = class PaneContainer {
       this.paneActivationOrder.delete(activePane);
       this.paneActivationOrder.add(activePane);
       this.activePane = activePane;
-      this.emitter.emit("did-change-active-pane", this.activePane);
-      this.didChangeActiveItemOnPane(this.activePane, this.activePane.getActiveItem());
+      if (!this.activeStateTransaction) {
+        this.emitter.emit("did-change-active-pane", this.activePane);
+        this.didChangeActiveItemOnPane(this.activePane, this.activePane.getActiveItem());
+      }
     }
-    this.emitter.emit("did-activate-pane", this.activePane);
+    if (this.activeStateTransaction) {
+      this.activeStateTransaction.activated = true;
+    } else {
+      this.emitter.emit("did-activate-pane", this.activePane);
+    }
     return this.activePane;
   }
 
@@ -372,7 +417,7 @@ module.exports = class PaneContainer {
   }
 
   didChangeActiveItemOnPane(pane, activeItem) {
-    if (this.isAlive() && pane === this.getActivePane()) {
+    if (this.isAlive() && pane === this.getActivePane() && !this.activeStateTransaction) {
       this.emitter.emit("did-change-active-pane-item", activeItem);
 
       this.cancelStoppedChangingActivePaneItemTimeout();

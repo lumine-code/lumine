@@ -622,7 +622,7 @@ class WorkspaceDropManager {
       if (context.resolvedPane) return context.resolvedPane;
       if (!allowSplit || !SPLITS.has(split)) return (context.resolvedPane = context.pane);
       const method = `split${split[0].toUpperCase()}${split.slice(1)}`;
-      context.createdPane = context.pane[method]();
+      context.createdPane = context.pane[method]({ activate: false });
       return (context.resolvedPane = context.createdPane);
     };
     return context;

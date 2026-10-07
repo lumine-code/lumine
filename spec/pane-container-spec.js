@@ -310,6 +310,193 @@ describe("PaneContainer", () => {
     });
   });
 
+  describe("composite active pane changes", () => {
+    let container, pane1, pane2, item1, item2, item3, item4, observed, panes;
+
+    beforeEach(() => {
+      item1 = {};
+      item2 = {};
+      item3 = {};
+      item4 = {};
+      container = new PaneContainer(params);
+      pane1 = container.getActivePane();
+      pane1.addItems([item1, item2]);
+      pane2 = pane1.splitRight({ items: [item3, item4], activate: false });
+      container.cancelStoppedChangingActivePaneItemTimeout();
+      observed = [];
+      panes = [];
+      container.onDidChangeActivePane((pane) => panes.push(pane));
+      container.onDidChangeActivePaneItem((item) => {
+        expect(container.getActivePaneItem()).toBe(item);
+        observed.push(item);
+      });
+    });
+
+    afterEach(() => container.destroy());
+
+    it("selects and focuses an item in another pane with one final notification", () => {
+      pane2.activateItem(item4, { activatePane: true });
+
+      expect(container.getActivePane()).toBe(pane2);
+      expect(container.getActivePaneItem()).toBe(item4);
+      expect(panes).toEqual([pane2]);
+      expect(observed).toEqual([item4]);
+      expect(pane1.isFocused()).toBe(false);
+      expect(pane2.isFocused()).toBe(true);
+    });
+
+    it("leaves ordinary item selection in an inactive pane inactive", () => {
+      pane2.activateItem(item4);
+
+      expect(container.getActivePane()).toBe(pane1);
+      expect(pane2.getActiveItem()).toBe(item4);
+      expect(panes).toEqual([]);
+      expect(observed).toEqual([]);
+    });
+
+    it("moves the active item to a split without publishing its source's fallback", () => {
+      const split = pane1.splitRight({ moveActiveItem: true });
+
+      expect(container.getActivePane()).toBe(split);
+      expect(pane1.getActiveItem()).toBe(item2);
+      expect(panes).toEqual([split]);
+      expect(observed).toEqual([item1]);
+    });
+
+    it("moves a sole active item to a split without publishing an empty or unrelated pane", () => {
+      pane1.removeItem(item2, false);
+      observed.length = 0;
+      const split = pane1.splitRight({ moveActiveItem: true });
+
+      expect(container.getActivePane()).toBe(split);
+      expect(container.getActivePaneItem()).toBe(item1);
+      expect(panes).toEqual([split]);
+      expect(observed).toEqual([item1]);
+    });
+
+    it("copies an active item into a split and publishes the copy once", () => {
+      const copy = {};
+      item1.copy = () => copy;
+      const split = pane1.splitRight({ copyActiveItem: true });
+
+      expect(container.getActivePane()).toBe(split);
+      expect(pane1.getActiveItem()).toBe(item1);
+      expect(observed).toEqual([copy]);
+    });
+
+    it("closes the final item of an active pane without publishing an empty context", () => {
+      lumine.config.set("core.destroyEmptyPanes", true);
+      pane1.removeItem(item2, false);
+      pane1.destroyItem(item1);
+
+      expect(container.getActivePane()).toBe(pane2);
+      expect(panes).toEqual([pane2]);
+      expect(observed).toEqual([item3]);
+    });
+
+    it("still publishes an empty context when the remaining pane becomes empty", () => {
+      pane2.destroy();
+      pane1.removeItem(item2, false);
+      panes.length = 0;
+      observed.length = 0;
+      pane1.destroyItem(item1);
+
+      expect(container.getActivePane()).toBe(pane1);
+      expect(panes).toEqual([]);
+      expect(observed).toEqual([undefined]);
+    });
+
+    it("moves the sole active item into a populated pane without publishing its previous item", () => {
+      lumine.config.set("core.destroyEmptyPanes", true);
+      pane1.removeItem(item2, false);
+      container.moveActiveItemToPane(pane2);
+
+      expect(container.getActivePane()).toBe(pane2);
+      expect(pane2.getActiveItem()).toBe(item1);
+      expect(panes).toEqual([pane2]);
+      expect(observed).toEqual([item1]);
+    });
+
+    it("retains the source's final fallback when a move leaves the source active", () => {
+      container.moveActiveItemToPane(pane2);
+
+      expect(container.getActivePane()).toBe(pane1);
+      expect(pane2.getActiveItem()).toBe(item1);
+      expect(observed).toEqual([item2]);
+    });
+
+    it("keeps local view events immediate and combines nested operations synchronously", () => {
+      const localItems = [];
+      const activated = [];
+      pane1.onDidChangeActiveItem((item) => localItems.push(item));
+      pane2.onDidChangeActiveItem((item) => localItems.push(item));
+      container.onDidActivatePane((pane) => activated.push(pane));
+      const result = pane1.transactActiveState(() => {
+        pane1.activateItem(item2);
+        pane2.activateItem(item4, { activatePane: true });
+        expect(localItems).toEqual([item2, item4]);
+        expect(observed).toEqual([]);
+        expect(panes).toEqual([]);
+        expect(activated).toEqual([]);
+        return item4;
+      });
+
+      expect(result).toBe(item4);
+      expect(observed).toEqual([item4]);
+      expect(panes).toEqual([pane2]);
+      expect(activated).toEqual([pane2]);
+    });
+
+    it("does not publish temporary selections that return to the initial context", () => {
+      pane1.transactActiveState(() => {
+        pane1.activateItem(item2);
+        pane1.activateItem(item1);
+      });
+
+      expect(observed).toEqual([]);
+      advanceClock(100);
+      expect(observed).toEqual([]);
+    });
+
+    it("flushes committed changes and clears the transaction after an exception", () => {
+      const error = new Error("Selection interrupted");
+      expect(() =>
+        pane1.transactActiveState(() => {
+          pane2.activateItem(item4, { activatePane: true });
+          throw error;
+        }),
+      ).toThrow(error);
+      expect(observed).toEqual([item4]);
+
+      pane1.activateItem(item2, { activatePane: true });
+      expect(observed).toEqual([item4, item2]);
+    });
+
+    it("rejects asynchronous transactions before invoking their callback", () => {
+      let invoked = false;
+      expect(() =>
+        pane1.transactActiveState(async () => {
+          invoked = true;
+        }),
+      ).toThrowError(TypeError, /synchronous callback/);
+      expect(invoked).toBe(false);
+
+      expect(() => pane1.transactActiveState(() => Promise.resolve())).toThrowError(
+        TypeError,
+        /cannot return a Promise/,
+      );
+      pane1.activateItem(item2);
+      expect(observed).toEqual([item2]);
+    });
+
+    it("keeps an ordinary pane activation immediate", () => {
+      pane2.activate();
+
+      expect(panes).toEqual([pane2]);
+      expect(observed).toEqual([item3]);
+    });
+  });
+
   describe("::onDidStopChangingActivePaneItem()", () => {
     let container, pane1, pane2, observed;
 
