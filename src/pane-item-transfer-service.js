@@ -442,11 +442,27 @@ class PaneItemTransferScope {
         return [];
       const current = candidate.serializeViewState();
       const captured = snapshots.get(candidate);
-      const state =
-        captured &&
-        (!captured.staged || JSON.stringify(current) === JSON.stringify(captured.staged))
-          ? captured.state
-          : current;
+      let state = current;
+      if (captured) {
+        if (!captured.staged) {
+          state = captured.state;
+        } else {
+          state = { ...current };
+          // Layout can add or normalize the anchor while the cursor stays put.
+          // Compare the user's selection and logical viewport independently.
+          if (JSON.stringify(current.selections) === JSON.stringify(captured.staged.selections)) {
+            state.selections = captured.state.selections;
+          }
+          if (current.scrollTopRow === captured.staged.scrollTopRow) {
+            state.scrollTopRow = captured.state.scrollTopRow;
+            if (captured.state.scrollAnchor) state.scrollAnchor = captured.state.scrollAnchor;
+            else delete state.scrollAnchor;
+          }
+          if (current.scrollLeftColumn === captured.staged.scrollLeftColumn) {
+            state.scrollLeftColumn = captured.state.scrollLeftColumn;
+          }
+        }
+      }
       return [{ item: candidate, state }];
     });
     if (original.checkpoint == null || !original.buffer.revertToCheckpoint(original.checkpoint)) {

@@ -238,6 +238,51 @@ describe("PaneItemTransferService", () => {
   });
 
   for (const shared of [false, true]) {
+    it(`restores unchanged selections despite layout anchor drift in a ${shared ? "shared" : "reused"} target`, async () => {
+      const file = path.join(__dirname, "fixtures", "sample.js");
+      const existing = await lumine.workspace.open(file, { pane: shared ? pane : targetPane });
+      existing.setSelectedBufferRange(
+        [
+          [1, 1],
+          [2, 2],
+        ],
+        { reversed: true },
+      );
+      const originalState = existing.serializeViewState();
+      const serialize = existing.serializeViewState.bind(existing);
+      let layoutChanged = false;
+      spyOn(existing, "serializeViewState").and.callFake(() => {
+        const state = serialize();
+        if (layoutChanged) {
+          // A component's first layout can change its anchor representation
+          // without any cursor movement or change to the logical scroll row.
+          state.scrollAnchor = { type: "row", bufferPosition: [0, 0], offset: 17 };
+        }
+        return state;
+      });
+      let resolveCommit;
+      spyOn(lumine.workspaceDrops, "commit").and.returnValue(
+        new Promise((resolve) => {
+          resolveCommit = resolve;
+        }),
+      );
+      const descriptor = remoteDescriptor({
+        items: [{ type: "pane-item", uri: file, modifiedText: "remote source draft" }],
+      });
+      const result = scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane));
+      await conditionPromise(() => lumine.workspaceDrops.commit.calls.any());
+      const staged = serialize();
+      layoutChanged = true;
+      expect(existing.serializeViewState().selections).toEqual(staged.selections);
+      expect(existing.serializeViewState().scrollAnchor).not.toEqual(staged.scrollAnchor);
+      resolveCommit(false);
+      await expectAsync(result).toBeRejectedWithError(
+        "The source window rejected the pane item transfer",
+      );
+      expect(serialize().selections).toEqual(originalState.selections);
+      expect(serialize().scrollTopRow).toBe(originalState.scrollTopRow);
+    });
+
     it(`preserves cursor changes made while a ${shared ? "shared" : "reused"} target awaits a rejected commit`, async () => {
       const file = path.join(__dirname, "fixtures", "sample.js");
       const existing = await lumine.workspace.open(file, { pane: shared ? pane : targetPane });
