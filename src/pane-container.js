@@ -6,6 +6,7 @@ const { createPaneContainerElement } = require("./pane-container-element");
 
 const SERIALIZATION_VERSION = 1;
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
+let activeStateTransaction = null;
 
 module.exports = class PaneContainer {
   constructor(params) {
@@ -136,6 +137,10 @@ module.exports = class PaneContainer {
     return this.emitter.on("did-activate-pane", fn);
   }
 
+  onWillActivatePane(fn) {
+    return this.emitter.on("will-activate-pane", fn);
+  }
+
   observeActivePane(fn) {
     fn(this.getActivePane());
     return this.onDidChangeActivePane(fn);
@@ -215,7 +220,8 @@ module.exports = class PaneContainer {
   }
 
   // Commit a composite synchronous operation before notifying workspace
-  // observers. Pane-local events still update views as the operation runs.
+  // observers. Any container touched on this synchronous call stack joins the
+  // same group, including a center activated by an empty dock hiding itself.
   transactActiveState(callback) {
     if (Object.prototype.toString.call(callback) === "[object AsyncFunction]") {
       throw new TypeError("Active pane transactions require a synchronous callback");
@@ -227,27 +233,52 @@ module.exports = class PaneContainer {
       }
       return result;
     };
-    if (this.activeStateTransaction) return update();
+    if (activeStateTransaction) {
+      this.enlistInActiveStateTransaction();
+      return update();
+    }
 
     const transaction = {
-      pane: this.getActivePane(),
-      item: this.getActivePaneItem(),
-      activated: false,
+      containers: new Map(),
+      activationOwner: null,
     };
-    this.activeStateTransaction = transaction;
+    activeStateTransaction = transaction;
+    this.enlistInActiveStateTransaction();
     try {
       return update();
     } finally {
-      this.activeStateTransaction = null;
-      if (this.isAlive()) {
-        const paneChanged = this.activePane !== transaction.pane;
-        if (paneChanged) this.emitter.emit("did-change-active-pane", this.activePane);
-        if (paneChanged || this.getActivePaneItem() !== transaction.item) {
-          this.didChangeActiveItemOnPane(this.activePane, this.getActivePaneItem());
-        }
-        if (transaction.activated) this.emitter.emit("did-activate-pane", this.activePane);
+      activeStateTransaction = null;
+      for (const container of transaction.containers.keys()) {
+        container.activeStateTransaction = null;
+      }
+      // Establish the final workspace container before another container
+      // reports its fallback item. Earlier activation requests must not replay
+      // afterward and move the workspace back to a pane that lost focus.
+      const owner = transaction.activationOwner;
+      if (owner) owner.flushActiveStateTransaction(transaction.containers.get(owner), true);
+      for (const [container, initialState] of transaction.containers) {
+        if (container !== owner) container.flushActiveStateTransaction(initialState, false);
       }
     }
+  }
+
+  enlistInActiveStateTransaction() {
+    if (!activeStateTransaction) return;
+    if (!activeStateTransaction.containers.has(this)) {
+      const pane = this.getActivePane();
+      activeStateTransaction.containers.set(this, { pane, item: pane?.getActiveItem() });
+    }
+    this.activeStateTransaction = activeStateTransaction;
+  }
+
+  flushActiveStateTransaction(initialState, activated) {
+    if (!this.isAlive()) return;
+    const paneChanged = this.activePane !== initialState.pane;
+    if (paneChanged) this.emitter.emit("did-change-active-pane", this.activePane);
+    if (paneChanged || this.getActivePaneItem() !== initialState.item) {
+      this.didChangeActiveItemOnPane(this.activePane, this.getActivePaneItem());
+    }
+    if (activated) this.emitter.emit("did-activate-pane", this.activePane);
   }
 
   paneForURI(uri) {
@@ -368,6 +399,7 @@ module.exports = class PaneContainer {
   }
 
   didActivatePane(activePane) {
+    this.enlistInActiveStateTransaction();
     if (activePane !== this.activePane) {
       if (!this.getPanes().includes(activePane)) {
         throw new Error("Setting active pane that is not present in pane container");
@@ -382,8 +414,12 @@ module.exports = class PaneContainer {
       }
     }
     if (this.activeStateTransaction) {
-      this.activeStateTransaction.activated = true;
-    } else {
+      this.activeStateTransaction.activationOwner = this;
+    }
+    // A dock must be visible before the pane's immediate local activation
+    // event focuses its view. Workspace activation still waits for commit.
+    this.emitter.emit("will-activate-pane", this.activePane);
+    if (!this.activeStateTransaction) {
       this.emitter.emit("did-activate-pane", this.activePane);
     }
     return this.activePane;

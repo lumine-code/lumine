@@ -495,6 +495,26 @@ describe("PaneContainer", () => {
       expect(panes).toEqual([pane2]);
       expect(observed).toEqual([item3]);
     });
+
+    it("enlists another container before a direct active-item mutation", () => {
+      const other = new PaneContainer(params);
+      const otherPane = other.getActivePane();
+      otherPane.addItems([item3, item4]);
+      const otherItems = [];
+      other.onDidChangeActivePaneItem((item) => otherItems.push(item));
+
+      try {
+        pane1.transactActiveState(() => {
+          otherPane.setActiveItem(item4);
+          expect(otherItems).toEqual([]);
+        });
+
+        expect(otherItems).toEqual([item4]);
+        expect(observed).toEqual([]);
+      } finally {
+        other.destroy();
+      }
+    });
   });
 
   describe("::onDidStopChangingActivePaneItem()", () => {

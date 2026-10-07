@@ -2392,6 +2392,108 @@ describe("Workspace", () => {
     });
   });
 
+  describe("synchronous pane changes across docks", () => {
+    let sourceDock, destinationDock, sourcePane, destinationPane, movedItem, observed, containers;
+
+    const focusableItem = () => {
+      const element = document.createElement("div");
+      element.tabIndex = -1;
+      return {
+        element,
+        getAllowedLocations: () => ["center", "left", "right", "bottom"],
+      };
+    };
+
+    beforeEach(() => {
+      jasmine.attachToDOM(workspace.getElement());
+      sourceDock = workspace.getLeftDock();
+      destinationDock = workspace.getRightDock();
+      sourcePane = sourceDock.getActivePane();
+      destinationPane = destinationDock.getActivePane();
+      movedItem = focusableItem();
+      sourcePane.addItem(movedItem);
+      destinationPane.addItem(focusableItem());
+      sourcePane.activate();
+      observed = [];
+      containers = [];
+      workspace.onDidChangeActivePaneItem((item) => observed.push(item));
+      workspace.onDidChangeActivePaneContainer((container) => containers.push(container));
+    });
+
+    function moveAndActivate() {
+      return sourcePane.transactActiveState(() =>
+        destinationPane.transactActiveState(() => {
+          sourcePane.moveItemToPane(movedItem, destinationPane);
+          destinationPane.activateItem(movedItem, { activatePane: true });
+          return movedItem;
+        }),
+      );
+    }
+
+    it("moves a sole dock item and publishes only the destination container and item", () => {
+      expect(moveAndActivate()).toBe(movedItem);
+
+      expect(sourceDock.isVisible()).toBe(false);
+      expect(destinationDock.isVisible()).toBe(true);
+      expect(workspace.getActivePaneContainer()).toBe(destinationDock);
+      expect(workspace.getActivePaneItem()).toBe(movedItem);
+      expect(containers).toEqual([destinationDock]);
+      expect(observed).toEqual([movedItem]);
+    });
+
+    it("does not replay the source sibling's earlier activation after the destination", () => {
+      const siblingItem = focusableItem();
+      const sibling = sourcePane.splitRight({ items: [siblingItem], activate: false });
+      const sourceActivations = [];
+      sourcePane.getContainer().onDidActivatePane((pane) => sourceActivations.push(pane));
+
+      moveAndActivate();
+
+      expect(sourcePane.isDestroyed()).toBe(true);
+      expect(sourceDock.getActivePane()).toBe(sibling);
+      expect(sourceDock.getActivePaneItem()).toBe(siblingItem);
+      expect(workspace.getActivePaneContainer()).toBe(destinationDock);
+      expect(workspace.getActivePaneItem()).toBe(movedItem);
+      expect(containers).toEqual([destinationDock]);
+      expect(observed).toEqual([movedItem]);
+      expect(sourceActivations).toEqual([]);
+    });
+
+    it("enlists the center fallback caused by a focused empty dock hiding itself", () => {
+      const centerPane = workspace.getCenter().getActivePane();
+      centerPane.addItem(new TextEditor());
+      movedItem.element.focus();
+      expect(sourceDock.getElement().contains(document.activeElement)).toBe(true);
+      const centerActivation = spyOn(centerPane, "activate").and.callThrough();
+
+      moveAndActivate();
+
+      expect(centerActivation).toHaveBeenCalled();
+      expect(workspace.getActivePaneContainer()).toBe(destinationDock);
+      expect(workspace.getActivePaneItem()).toBe(movedItem);
+      expect(containers).toEqual([destinationDock]);
+      expect(observed).toEqual([movedItem]);
+      expect(destinationPane.getElement().hasFocus()).toBe(true);
+    });
+
+    it("reveals a hidden destination before its local activation focuses the item", () => {
+      destinationDock.getElement().style.display = "none";
+      destinationDock.onDidChangeVisible((visible) => {
+        if (visible) destinationDock.getElement().style.display = "";
+      });
+      let focusedWhileSelecting;
+      destinationPane.onDidActivate(() => {
+        focusedWhileSelecting = destinationPane.getElement().hasFocus();
+      });
+
+      moveAndActivate();
+
+      expect(focusedWhileSelecting).toBe(true);
+      expect(destinationPane.getElement().hasFocus()).toBe(true);
+      expect(workspace.getActivePaneContainer()).toBe(destinationDock);
+    });
+  });
+
   describe("::onDidChangeActiveTextEditor()", () => {
     let center, pane, observed;
 

@@ -61,10 +61,8 @@ module.exports = class Dock {
 
     this.subscriptions = new CompositeDisposable(
       this.emitter,
-      this.paneContainer.onDidActivatePane(() => {
-        this.show();
-        this.didActivate(this);
-      }),
+      this.paneContainer.onWillActivatePane(() => this.show()),
+      this.paneContainer.onDidActivatePane(() => this.didActivate(this)),
       this.paneContainer.observePanes((pane) => {
         pane.onDidAddItem(this.handleDidAddPaneItem.bind(this));
         pane.onDidRemoveItem(this.handleDidRemovePaneItem.bind(this));

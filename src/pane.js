@@ -496,6 +496,7 @@ module.exports = class Pane {
   setActiveItem(activeItem, options) {
     const modifyStack = options && options.modifyStack;
     if (activeItem !== this.activeItem) {
+      this.container?.enlistInActiveStateTransaction();
       if (modifyStack !== false) this.addItemToStack(activeItem);
       this.activeItem = activeItem;
       this.emitter.emit("did-change-active-item", this.activeItem);
@@ -510,7 +511,9 @@ module.exports = class Pane {
    *
    * Apply a synchronous group of pane changes and notify workspace observers
    * once with the final active pane and item. Changes and pane-local view
-   * events remain synchronous. Nested transactions share the outer operation.
+   * events remain synchronous. Nested transactions and other containers touched
+   * by the callback share the outer operation. Only its final activation request
+   * is published, before the other containers report their final items.
    *
    * @param {Function} callback - synchronous work to perform; async callbacks and Promise return values are rejected. A thrown error still commits notifications for changes already made and clears the transaction.
    * @returns {*} the callback's return value.
