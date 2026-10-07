@@ -3,6 +3,7 @@ const path = require("path");
 
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
+const RepositoryPathObserver = require("./repository-path-observer");
 const RepositoryOperationQueue = require("./repository-operation-queue");
 const WorkspaceOperationQueue = require("./workspace-operation-queue");
 const { isRepositoryUnavailableError } = require("./git-error");
@@ -1126,6 +1127,27 @@ module.exports = class RepositoryRegistry {
       if (parent === candidate) return null;
       candidate = parent;
     }
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe the current repository of a changing file path, including discovery,
+   * routing changes, repository destruction and initial snapshot readiness.
+   *
+   * @param {Function} getPath - Returns the current absolute path or null.
+   * @param {Function} callback - Receives the repository and {path, ready, error}.
+   * @param {Object} [options] - onDidChangePath subscription and snapshots selection.
+   * @returns {Disposable} disposing discovery delivery and repository retention.
+   */
+  observeForPath(getPath, callback, options) {
+    const observer = new RepositoryPathObserver(this, getPath, callback, options);
+    this.subscriptions.add(observer);
+    return new Disposable(() => {
+      this.subscriptions.remove(observer);
+      observer.dispose();
+    });
   }
 
   isLiveRoutingEntry(entry) {
