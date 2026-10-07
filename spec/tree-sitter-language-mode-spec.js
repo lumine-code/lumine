@@ -109,6 +109,90 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 
+  describe("optional incremental parse boundaries", () => {
+    async function setUp(source) {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("parseBoundariesQuery", "(comment) @parse.boundary");
+      const languageMode = new TreeSitterLanguageMode({
+        grammars: lumine.grammars,
+        grammar,
+        buffer,
+        config: lumine.config,
+      });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      buffer.setText(source);
+      await languageMode.atTransactionEnd();
+      return languageMode;
+    }
+
+    it("loads the opt-in query and preserves whole-document ownership after an edit", async () => {
+      const source = "// " + "x".repeat(2048) + "\nconst value = 1;\n";
+      const languageMode = await setUp(source);
+      const layer = languageMode.rootLanguageLayer;
+      expect(layer.queries.parseBoundariesQuery).toBeDefined();
+      spyOn(languageMode, "parseAsync").and.callThrough();
+      buffer.insert([0, 0], "\n");
+      await languageMode.atTransactionEnd();
+      const calls = languageMode.parseAsync.calls.allArgs();
+      const ranges = calls.find((args) => args[2]?.length > 1)?.[2];
+      expect(ranges).toBeDefined();
+      expect(ranges[0].startIndex).toBe(0);
+      expect(ranges[0].endIndex).toBe(ranges[1].startIndex);
+      expect(ranges.at(-1).endIndex).toBeGreaterThan(buffer.getLength());
+      expect(layer.getCurrentRanges()).toBeNull();
+      expect(layer.tree.rootNode.hasError).toBe(false);
+      expect(layer.tree.rootNode.endIndex).toBe(buffer.getLength());
+    });
+
+    it("does not split UTF-16 pairs or CRLF and does not apply hints to an injected layer", async () => {
+      const source = "// " + "x".repeat(2048) + "😀\r\nconst value = 1;\r\n";
+      const languageMode = await setUp(source);
+      const layer = languageMode.rootLanguageLayer;
+      const originalQuery = layer.queries.parseBoundariesQuery;
+      const indices = [1024, source.indexOf("😀") + 1, source.indexOf("\r\n") + 1];
+      layer.queries.parseBoundariesQuery = {
+        captures: () =>
+          indices.map((endIndex) => ({
+            name: "parse.boundary",
+            node: { endIndex, endPosition: buffer.positionForCharacterIndex(endIndex) },
+          })),
+      };
+      try {
+        expect(layer.getParseRanges(null).map(({ endIndex }) => endIndex)).toEqual([
+          1024, 0x7fffffff,
+        ]);
+        const originalDepth = layer.depth;
+        layer.depth = 1;
+        try {
+          const included = [{ startIndex: 0, endIndex: source.length }];
+          expect(layer.getParseRanges(included)).toBe(included);
+        } finally {
+          layer.depth = originalDepth;
+        }
+      } finally {
+        layer.queries.parseBoundariesQuery = originalQuery;
+      }
+    });
+
+    it("forces a reparse after metadata-only fragment consolidation", async () => {
+      const source = "/*x*/".repeat(64);
+      const languageMode = await setUp(source);
+      const layer = languageMode.rootLanguageLayer;
+      const oldTree = layer.tree;
+      expect(layer.treeIsDirty).toBe(false);
+      layer.getParseRanges(null);
+      expect(layer.treeIsDirty).toBe(true);
+      expect(oldTree.rootNode.hasChanges).toBe(true);
+      spyOn(languageMode, "parse").and.callThrough();
+      const tree = layer.getOrParseTree();
+      expect(languageMode.parse).toHaveBeenCalled();
+      expect(tree).not.toBe(oldTree);
+      expect(tree.rootNode.hasError).toBe(false);
+      expect(tree.rootNode.descendantsOfType("comment").length).toBe(64);
+    });
+  });
+
   describe("atGrammarSettlement", () => {
     async function buildLanguageMode() {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

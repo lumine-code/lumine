@@ -9,6 +9,11 @@ const IndentResolver = require("./tree-sitter-indent-resolver");
 const { comparePoints } = require("./tree-sitter-node-helpers");
 const TreeSitterRangeList = require("./tree-sitter-range-list");
 const { collectInjectionMatches } = require("./tree-sitter-injections");
+const {
+  MINIMUM_BOUNDARY_DISTANCE,
+  smallFragmentRegions,
+  splitIncludedRanges,
+} = require("./tree-sitter-parse-ranges");
 const Token = require("./token");
 const { matcherForSelector } = require("./selectors");
 const { commentStringsFromDelimiters, getDelimitersForScope } = require("./comment-utils.js");
@@ -76,7 +81,7 @@ const POST_PARSE_DEFER_CODE_UNITS = 1024 * 1024;
 // consume its own synchronous parse allowance before yielding.
 const INITIAL_INJECTION_UPDATE_BUDGET_MILLIS = 8;
 const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
-const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery"]);
+const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery", "parseBoundariesQuery"]);
 const ANCILLARY_QUERY_TYPES = ["foldsQuery", "indentsQuery"];
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
@@ -2260,6 +2265,7 @@ class TreeSitterLanguageMode {
       "indentsQuery",
       "localsQuery",
       "tagsQuery",
+      "parseBoundariesQuery",
     ];
     let failures = [];
     let grammars = new Set();
@@ -3148,6 +3154,7 @@ class LanguageLayer {
         // `highlightsQuery`, and some kinds of layers don't even need
         // `highlightsQuery`.
         let queries = ["highlightsQuery", "injectionsQuery"];
+        if (this.depth === 0) queries.push("parseBoundariesQuery");
         let promises = [];
         let failures = [];
 
@@ -4038,6 +4045,88 @@ class LanguageLayer {
     }
   }
 
+  isSafeParseBoundary(index, position) {
+    const length = this.buffer.getLength();
+    if (index < 0 || index > length || this.buffer.characterIndexForPosition(position) !== index)
+      return false;
+    if (index === 0 || index === length) return true;
+    const surrounding = this.buffer.getTextInRange(
+      new Range(
+        this.buffer.positionForCharacterIndex(index - 1),
+        this.buffer.positionForCharacterIndex(index + 1),
+      ),
+    );
+    const first = surrounding.charCodeAt(0);
+    const second = surrounding.charCodeAt(1);
+    return (
+      surrounding !== "\r\n" &&
+      !(
+        surrounding.length === 2 &&
+        first >= 0xd800 &&
+        first <= 0xdbff &&
+        second >= 0xdc00 &&
+        second <= 0xdfff
+      )
+    );
+  }
+
+  getParseRanges(includedRanges) {
+    // These are parser hints, never new ownership boundaries for injections.
+    // A scanner must explicitly opt in and tolerate adjacent included ranges.
+    const query = this.queries.parseBoundariesQuery;
+    if (this.depth !== 0 || !this.tree || !query) return includedRanges;
+    if (this.tree.language !== this.grammar.getLanguageSync()) return includedRanges;
+    const length = this.buffer.getLength();
+    let captures = query.captures(this.tree.rootNode);
+    const fragments = [];
+    for (const { name, node } of captures) {
+      if (name !== "parse.boundary") continue;
+      const startIndex = node.startIndex;
+      const endIndex = node.endIndex;
+      if (endIndex - startIndex >= MINIMUM_BOUNDARY_DISTANCE) continue;
+      fragments.push({
+        startIndex,
+        endIndex,
+        startPosition: node.startPosition,
+        endPosition: node.endPosition,
+      });
+    }
+    // Repeated edits can accumulate reused tiny leaves. Mark only a bounded
+    // contiguous region dirty without changing any byte or coordinate, so the
+    // scanner can consolidate it during this parse. Reacquire nodes afterward.
+    let compacted = false;
+    for (const edit of smallFragmentRegions(fragments)) {
+      if (
+        includedRanges &&
+        !includedRanges.some(
+          (range) => edit.startIndex >= range.startIndex && edit.oldEndIndex <= range.endIndex,
+        )
+      )
+        continue;
+      if (
+        !this.isSafeParseBoundary(edit.startIndex, edit.startPosition) ||
+        !this.isSafeParseBoundary(edit.oldEndIndex, edit.oldEndPosition)
+      )
+        continue;
+      this.tree.edit(edit);
+      compacted = true;
+    }
+    if (compacted) {
+      this.treeIsDirty = true;
+      captures = query.captures(this.tree.rootNode);
+    }
+    const boundaries = [];
+    for (const { name, node } of captures) {
+      if (name !== "parse.boundary") continue;
+      const index = node.endIndex;
+      if (index <= 0 || index >= length) continue;
+      const position = node.endPosition;
+      if (!this.isSafeParseBoundary(index, position)) continue;
+      boundaries.push({ index, position });
+    }
+    return splitIncludedRanges(includedRanges, boundaries);
+  }
+
   async _performUpdate(nodeRangeSet, params = {}) {
     // It's much more common in specs than in real life, but it's always
     // possible for a layer to get destroyed during the async period between
@@ -4147,8 +4236,9 @@ class LanguageLayer {
     let language = this.grammar.getLanguageSync();
     let tree;
     try {
+      const parseRanges = this.getParseRanges(includedRanges);
       if (this.languageMode.useAsyncParsing) {
-        tree = this.languageMode.parseAsync(language, this.tree, includedRanges, {
+        tree = this.languageMode.parseAsync(language, this.tree, parseRanges, {
           scopeName: this.grammar.scopeName,
           initialTimeoutMicros: params.initialInjectionUpdateStarted
             ? this.languageMode.syncTimeoutMicros
@@ -4163,7 +4253,7 @@ class LanguageLayer {
           if (!tree) return;
         }
       } else {
-        tree = this.languageMode.parse(language, this.tree, includedRanges, {
+        tree = this.languageMode.parse(language, this.tree, parseRanges, {
           scopeName: this.grammar.scopeName,
         });
       }
@@ -4508,7 +4598,7 @@ class LanguageLayer {
     let tree = this.languageMode.parse(
       this.language,
       this.tree,
-      ranges,
+      this.getParseRanges(ranges),
       // { tag: `Re-parsing ${this.inspect()}` }
     );
     let now = performance.now();
