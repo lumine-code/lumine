@@ -734,6 +734,7 @@ module.exports = class Pane {
    * @param {Object} [options]
    * @param {Number} [options.index] - indicating the index at which to add the item. If omitted, the item is added after the current active item.
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
+   * @param {Boolean} [options.transferred] - Mark a newly staged cross-window item, preserving its requested placement instead of treating it as a regular open.
    * @returns {*} added item.
    */
   addItem(item, options = {}) {
@@ -774,14 +775,19 @@ module.exports = class Pane {
     if (replacingPendingItem) this.pendingItem = null;
     if (pending) this.setPendingItem(item);
 
-    this.emitter.emit("did-add-item", { item, index, moved });
+    this.emitter.emit("did-add-item", {
+      item,
+      index,
+      moved,
+      ...(options.transferred ? { transferred: true } : {}),
+    });
     if (this.container) {
       // A moved item is not *added* as far as the workspace is concerned, but
       // it does now live in this container, so the registry follows it.
       if (moved) {
         this.container.registerItem(item);
       } else {
-        this.container.didAddPaneItem(item, this, index);
+        this.container.didAddPaneItem(item, this, index, options);
       }
     }
 
@@ -986,9 +992,11 @@ module.exports = class Pane {
    *
    * @param item - Item to destroy
    * @param {Boolean} [force] - Destroy the item without prompting to save it, even if the item's `isPermanentDockItem` method returns true.
+   * @param {Object} [options] - Final mutation guards for an asynchronous close.
+   * @param {Function} [options.canDestroy] - Return false to cancel after listeners and save prompts have completed.
    * @returns {Promise} that resolves with a `Boolean` indicating whether or not the item was destroyed.
    */
-  async destroyItem(item, force) {
+  async destroyItem(item, force, { canDestroy } = {}) {
     const index = this.items.indexOf(item);
     if (index === -1) return false;
 
@@ -1025,6 +1033,7 @@ module.exports = class Pane {
     if (!force && this.shouldPromptToSaveItem(item)) {
       if (!(await this.promptToSaveItem(item))) return false;
     }
+    if (canDestroy && !canDestroy()) return false;
     this.removeItem(item, false);
     if (typeof item.destroy === "function") item.destroy();
     return true;

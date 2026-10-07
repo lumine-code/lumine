@@ -1722,6 +1722,7 @@ module.exports = class Workspace extends Model {
    * @param options.activatePane - A `Boolean` indicating whether to call {@link Pane#activate} on containing pane. Defaults to `true`.
    * @param options.activateItem - A `Boolean` indicating whether to call {@link Pane#activateItem} on containing pane. Defaults to `true`.
    * @param options.pending - A `Boolean` indicating whether or not the item should be opened in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
+   * @param options.transferred - A `Boolean` marking a staged cross-window item whose requested placement should be preserved by tab surfaces.
    * @param options.pane - A {@link Pane} in which to open the item. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
    * @param options.searchAllPanes - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
    * @param [options.location] - A `String` containing the name of the location in which this item should be opened (one of "left", "right", "bottom", or "center"). If omitted, Lumine will fall back to the last location in which a user has placed an item with the same URI or, if this is a new URI, the default location specified by the item. NOTE: This option should almost always be omitted to honor user preference.
@@ -2038,9 +2039,9 @@ module.exports = class Workspace extends Model {
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 
       if (options.activateItem === false) {
-        pane.addItem(item, { pending: options.pending });
+        pane.addItem(item, { pending: options.pending, transferred: options.transferred });
       } else {
-        pane.activateItem(item, { pending: options.pending });
+        pane.activateItem(item, { pending: options.pending, transferred: options.transferred });
       }
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
 

@@ -156,6 +156,80 @@ describe("LumineWindow", function () {
       );
     });
 
+    it("moves an unsaved editor through new-window startup and real commit acknowledgement", async function () {
+      const source = new LumineWindow(app, service, {
+        resourcePath,
+        windowInitializationScript,
+        devMode: true,
+        headless: true,
+        clearWindowState: true,
+      });
+      browserWindow = source.browserWindow;
+      await source.getLoadedPromise();
+      let destination;
+      app.openPaths = async (options) => {
+        destination = new LumineWindow(app, service, {
+          resourcePath,
+          windowInitializationScript,
+          devMode: options.devMode,
+          safeMode: options.safeMode,
+          headless: true,
+          clearWindowState: options.clearWindowState,
+          paneItemTransfer: options.paneItemTransfer,
+        });
+        extraWindows.add(destination.browserWindow);
+        return destination;
+      };
+      const result = await source.browserWindow.webContents.executeJavaScript(`
+        (async () => {
+          globalThis.transferSourceItem = await lumine.workspace.open("");
+          transferSourceItem.setText("unsaved source draft\\nsecond line");
+          transferSourceItem.setSelectedBufferRange([[0, 2], [1, 4]], {reversed: true});
+          const scope = lumine.paneItemTransfers.createScope();
+          try {
+            return await scope.openInNewWindow(
+              lumine.workspace.paneForItem(transferSourceItem), transferSourceItem
+            );
+          } finally {
+            scope.dispose();
+          }
+        })()
+      `);
+      await destination.getLoadedPromise();
+      assert.strictEqual(result.windowId, destination.id);
+      assert.isTrue(
+        await source.browserWindow.webContents.executeJavaScript(
+          "transferSourceItem.isDestroyed()",
+        ),
+      );
+      const staged = await destination.browserWindow.webContents.executeJavaScript(`
+        (() => {
+          const item = lumine.workspace.getActivePaneItem();
+          return {
+            text: item.getText(),
+            modified: item.getFileState(),
+            selections: item.serializeViewState().selections
+          };
+        })()
+      `);
+      assert.strictEqual(staged.text, "unsaved source draft\nsecond line");
+      assert.strictEqual(staged.modified, "modified");
+      assert.deepEqual(staged.selections, [
+        {
+          range: [
+            [0, 2],
+            [1, 4],
+          ],
+          reversed: true,
+        },
+      ]);
+      // This assertion leaves an unsaved untitled buffer. Avoid a native save
+      // prompt when the fixture unloads its isolated destination window.
+      await destination.browserWindow.webContents.executeJavaScript(
+        "lumine.workspace.confirmClose = () => true; void 0;",
+      );
+    });
+
     it("shares one watcher worker across main and two renderers through veto, reload, close and crash", async function () {
       const sharedFile = path.join(lumineHome, "shared-observation.txt");
       const privateFile = path.join(lumineHome, "second-window-observation.txt");
@@ -918,10 +992,12 @@ class StubApplication {
     this.saveCurrentWindowOptions = sinon.spy();
     this.exit = sinon.spy();
     this.windows = [];
+    this.lumineWindowsByWebContentsId = new Map();
   }
 
   registerLumineWindow(lumineWindow) {
     this.windows.push(lumineWindow);
+    this.lumineWindowsByWebContentsId.set(lumineWindow.browserWindow.webContents.id, lumineWindow);
     global.lumineApplication = this;
   }
 

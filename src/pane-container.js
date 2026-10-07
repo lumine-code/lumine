@@ -438,9 +438,14 @@ module.exports = class PaneContainer {
     this.itemRegistry.removeItem(item);
   }
 
-  didAddPaneItem(item, pane, index) {
+  didAddPaneItem(item, pane, index, options = {}) {
     this.registerItem(item);
-    this.emitter.emit("did-add-pane-item", { item, pane, index });
+    this.emitter.emit("did-add-pane-item", {
+      item,
+      pane,
+      index,
+      ...(options.transferred ? { transferred: true } : {}),
+    });
   }
 
   willDestroyPaneItem(event) {

@@ -224,6 +224,8 @@ function appPaths() {
 const handleWindowBootstrap = (event) => {
   const lumineWindow = currentLumineWindow(event);
   const loadSettings = JSON.parse(JSON.stringify(lumineWindow.getLoadSettingsForRenderer()));
+  // Startup transfers are consumed by one renderer generation only.
+  delete lumineWindow.loadSettings.paneItemTransfer;
   return {
     loadSettings: Object.assign(loadSettings, {
       windowId: lumineWindow.id,
@@ -567,6 +569,29 @@ const handleAppAction = async (event, action, ...args) => {
   currentLumineWindow(event);
   const application = currentApplication();
   switch (action) {
+    case "openPaneItemInNewWindow": {
+      const sourceWindow = currentLumineWindow(event);
+      const descriptor = args[0];
+      if (
+        descriptor?.kind !== "pane-item" ||
+        descriptor.source?.windowId !== sourceWindow.id ||
+        typeof descriptor.token !== "string" ||
+        !descriptor.token ||
+        descriptor.items?.length !== 1 ||
+        typeof descriptor.items[0]?.uri !== "string"
+      ) {
+        throw new TypeError("A new window requires a valid pane item transfer from its source");
+      }
+      const destination = await application.openPaths({
+        pathsToOpen: sourceWindow.projectRoots.length > 0 ? [...sourceWindow.projectRoots] : [null],
+        newWindow: true,
+        clearWindowState: true,
+        devMode: sourceWindow.loadSettings.devMode,
+        safeMode: sourceWindow.loadSettings.safeMode,
+        paneItemTransfer: descriptor,
+      });
+      return destination.id;
+    }
     case "getUserDefault":
       assertString(args[0], "key");
       if (
@@ -1939,6 +1964,7 @@ module.exports = class LumineApplication extends EventEmitter {
     addToLastWindow,
     preserveFocus,
     env,
+    paneItemTransfer,
   } = {}) {
     if (!env) env = process.env;
     if (!pathsToOpen) pathsToOpen = [];
@@ -2073,6 +2099,7 @@ module.exports = class LumineApplication extends EventEmitter {
         profileStartup,
         clearWindowState,
         env,
+        paneItemTransfer,
       });
       openedWindow.preserveFocus = preserveFocus;
       this.addWindow(openedWindow);

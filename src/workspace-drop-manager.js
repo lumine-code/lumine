@@ -245,10 +245,12 @@ class WorkspaceDropManager {
    *
    * @param token - A session token.
    * @param reason - A serializable reason for abandoning the move.
+   * @param {Object} [options] - Cross-window routing when no drag descriptor was read locally.
+   * @param {Number} [options.sourceWindowId] - The source window of a programmatic transfer.
    * @returns {Promise} resolving to whether the rollback was delivered.
    */
-  async rollback(token, reason) {
-    return this.settleSession("rollback", token, { reason });
+  async rollback(token, reason, { sourceWindowId } = {}) {
+    return this.settleSession("rollback", token, { reason, sourceWindowId });
   }
 
   async settleSession(action, token, result) {

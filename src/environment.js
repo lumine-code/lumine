@@ -51,6 +51,7 @@ const ShellService = require("./shell-service");
 const RuntimeService = require("./runtime-service");
 const Workspace = require("./workspace");
 const WorkspaceDropManager = require("./workspace-drop-manager");
+const PaneItemTransferService = require("./pane-item-transfer-service");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
 const Pane = require("./pane");
@@ -513,6 +514,20 @@ class Environment {
     });
     this.workspace.workspaceDropManager = this.workspaceDrops;
 
+    /**
+     * @public
+     * @status extended
+     *
+     * Staged moves of pane items within this window or into another window.
+     * @type {PaneItemTransferService}
+     */
+    this.paneItemTransfers = new PaneItemTransferService({
+      workspace: this.workspace,
+      workspaceDrops: this.workspaceDrops,
+      windowService: this.window,
+      applicationDelegate: this.applicationDelegate,
+    });
+
     this.themes.workspace = this.workspace;
     this.repositories.attachWorkspace(this.workspace);
 
@@ -796,6 +811,7 @@ class Environment {
     };
     this.#resetting++;
     try {
+      capture(() => this.paneItemTransfers.cancelAll());
       capture(() => this.#projectStateController.reset());
       // Config::clear replaces its emitter, so observers held by ThemeManager
       // must be disposed before the reset and recreated on the next activation.
@@ -891,6 +907,7 @@ class Environment {
     capture(() => this.tooltips.destroy());
     capture(() => this.disposables.dispose());
     destroyField("themes");
+    destroyField("paneItemTransfers");
     destroyField("workspaceDrops");
     destroyField("workspace");
     destroyField("textEditorFactory");
@@ -1166,6 +1183,14 @@ class Environment {
       this.menu.update();
 
       StartupTime.addMarker("window:environment:start-editor-window:open-editor");
+      const initialTransfer = this.#getLoadSettings().paneItemTransfer;
+      if (initialTransfer) {
+        try {
+          await this.paneItemTransfers.acceptInitialTransfer(initialTransfer);
+        } catch (error) {
+          this.notifications.addWarning(error.message);
+        }
+      }
       await this.openInitialEmptyEditorIfNecessary();
     });
 

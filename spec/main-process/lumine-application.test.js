@@ -999,6 +999,60 @@ describe("LumineApplication", function () {
       );
     });
 
+    it("opens a fresh transfer window with its source roots and one-shot payload", async function () {
+      const descriptor = {
+        kind: "pane-item",
+        token: "pane-item-token",
+        source: { windowId: w1.id },
+        items: [{ type: "pane-item", uri: "", modifiedText: "unsaved draft" }],
+      };
+      await LumineApplication.handleAppAction(
+        { sender: w1.browserWindow.webContents },
+        "openPaneItemInNewWindow",
+        descriptor,
+      );
+      const options = app.openPaths.lastCall.args[0];
+      assert.deepEqual(options.pathsToOpen, [null]);
+      assert.isTrue(options.newWindow);
+      assert.isTrue(options.clearWindowState);
+      assert.strictEqual(options.paneItemTransfer, descriptor);
+      const destination = scenario.getWindow(3);
+      assert.strictEqual(destination.loadSettings.paneItemTransfer, descriptor);
+      destination.id = 4;
+      destination.browserWindow.webContents.id = 7003;
+      destination.browserWindow.webContents.isDestroyed = () => false;
+      destination.browserWindow.isDestroyed = () => false;
+      app.registerLumineWindow(destination);
+      destination.getLoadSettingsForRenderer = () => destination.loadSettings;
+      destination.consumeStartupMarkers = () => ({});
+      const first = LumineApplication.handleWindowBootstrap({
+        sender: destination.browserWindow.webContents,
+      });
+      const second = LumineApplication.handleWindowBootstrap({
+        sender: destination.browserWindow.webContents,
+      });
+      assert.deepEqual(first.loadSettings.paneItemTransfer, descriptor);
+      assert.isUndefined(second.loadSettings.paneItemTransfer);
+    });
+
+    it("refuses a new-window transfer claiming another source window", async function () {
+      app.openPaths.resetHistory();
+      await assert.rejects(
+        LumineApplication.handleAppAction(
+          { sender: w1.browserWindow.webContents },
+          "openPaneItemInNewWindow",
+          {
+            kind: "pane-item",
+            token: "forged-token",
+            source: { windowId: w2.id },
+            items: [{ type: "pane-item", uri: "file.txt" }],
+          },
+        ),
+        /valid pane item transfer from its source/,
+      );
+      assert.isFalse(app.openPaths.called);
+    });
+
     it("handles allowlisted window state and lifecycle operations for the originating window", async function () {
       const window = w1.browserWindow;
       const contents = window.webContents;
