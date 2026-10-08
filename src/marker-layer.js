@@ -50,7 +50,13 @@ class MarkerLayer {
   constructor(
     delegate,
     id,
-    { destroyInvalidatedMarkers = false, maintainHistory = false, persistent = false, role } = {},
+    {
+      destroyInvalidatedMarkers = false,
+      maintainHistory = false,
+      persistent = false,
+      role,
+      trackRanges,
+    } = {},
   ) {
     this.delegate = delegate;
     this.id = id;
@@ -70,6 +76,7 @@ class MarkerLayer {
     this.emitter = new Emitter();
     this.index = new MarkerIndex();
     this.markersById = new Map();
+    this.setRangeTracker(trackRanges);
     this.markersWithChangeListeners = new Set();
     this.markersWithDestroyListeners = new Set();
     this.displayMarkerLayers = new Set();
@@ -90,6 +97,7 @@ class MarkerLayer {
       maintainHistory: this.maintainHistory,
       persistent: this.persistent,
       role: this.role,
+      trackRanges: this.trackRanges,
     });
     for (let marker of this.markersById.values()) {
       let snapshot = marker.getSnapshot(null);
@@ -112,6 +120,7 @@ class MarkerLayer {
     // Mark the layer destroyed before notifying the display marker layers; a
     // display layer that owns this layer calls back into this method.
     this.destroyed = true;
+    this.trackRanges = null;
     this.delegate.markerLayerDestroyed(this);
     this.displayMarkerLayers.forEach(function (displayMarkerLayer) {
       return displayMarkerLayer.destroy();
@@ -297,6 +306,44 @@ class MarkerLayer {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
+   * Set custom range tracking for this layer, or pass `null` to restore native
+   * tracking. The callback receives sorted `{id, range}` entries for markers
+   * touching an edit, with their pre-edit ranges, and `{oldRange, newRange,
+   * newText}` describing the edit. It returns `{id, range}` entries in the new
+   * coordinate space; omitted entries and `null` ranges invalidate markers.
+   * Normal marker invalidation strategies still apply independently.
+   *
+   * The callback must be synchronous and must not mutate the buffer or markers.
+   * Exceptions and invalid results invalidate affected markers and are logged;
+   * they do not interrupt the buffer edit. Ranges are not clipped, because a
+   * reload can apply intermediate edits after installing the final buffer text.
+   * The callback is retained by {@link #copy}, but is not serialized: reattach
+   * it after deserialization. Untouched markers continue to use the native index.
+   *
+   * @param {Function} [callback] - A range tracker, or `null` to disable it.
+   */
+  setRangeTracker(callback) {
+    if (this.destroyed) throw new Error("Cannot track ranges on a destroyed marker layer");
+    if (callback != null && typeof callback !== "function") {
+      throw new TypeError("A marker range tracker must be a function or null");
+    }
+    this.trackRanges = callback ?? null;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * @returns {Function} The layer's custom range tracker, or `null`.
+   */
+  getRangeTracker() {
+    return this.trackRanges;
+  }
+
+  /**
    * @category Marker creation
    */
   /**
@@ -401,15 +448,41 @@ class MarkerLayer {
   /**
    * @category Private - TextBuffer interface
    */
-  splice(start, oldExtent, newExtent) {
+  splice(start, oldExtent, newExtent, newText) {
     // Markers the splice touches (closed interval, so boundary contact counts)
     // move in ways plain arithmetic cannot reproduce — a deletion collapses
     // their boundaries — so they are re-read from the index afterwards. Every
     // other marker's endpoints sit strictly outside the spliced region and
     // translate exactly.
     let touched = null;
-    if (this.historyShadow) {
+    if (this.historyShadow || this.trackRanges) {
       touched = this.index.findIntersecting(start, traverse(start, oldExtent));
+    }
+    let trackedRanges = null;
+    if (this.trackRanges && touched.size > 0) {
+      const ranges = [];
+      for (const id of touched) {
+        const range = Range.fromObject(this.index.getRange(id));
+        range.freeze();
+        ranges.push(Object.freeze({ id, range }));
+      }
+      ranges.sort((a, b) => a.range.compare(b.range) || a.id - b.id);
+      const oldRange = Range(start, traverse(start, oldExtent));
+      const newRange = Range(start, traverse(start, newExtent));
+      oldRange.freeze();
+      newRange.freeze();
+      try {
+        const result = this.trackRanges(
+          Object.freeze(ranges),
+          Object.freeze({ oldRange, newRange, newText }),
+        );
+        trackedRanges = validateTrackedRanges(result, touched);
+      } catch (error) {
+        // The text has already changed. Finish the native splice rather than
+        // leaving other marker/display layers in the previous coordinate space.
+        console.error("Error tracking marker ranges", error);
+        trackedRanges = new Map();
+      }
     }
 
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
@@ -443,6 +516,25 @@ class MarkerLayer {
         if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
           applyInvalidation(marker, this.destroyInvalidatedMarkers);
         }
+      }
+    }
+
+    if (trackedRanges) {
+      for (const id of touched) {
+        const marker = this.markersById.get(id);
+        if (!marker) continue;
+        const nextRange = trackedRanges.get(id);
+        if (!nextRange) {
+          applyInvalidation(marker, this.destroyInvalidatedMarkers);
+          continue;
+        }
+        const current = this.index.getRange(id);
+        if (nextRange.start.isEqual(current.start) && nextRange.end.isEqual(current.end)) continue;
+        // A reload applies several splices after installing the final text.
+        // Intermediate coordinates must not be clipped against that final buffer.
+        this.index.remove(id);
+        this.index.insert(id, nextRange.start, nextRange.end);
+        this.index.setExclusive(id, marker.isExclusive());
       }
     }
 
@@ -518,6 +610,7 @@ class MarkerLayer {
           this.markersById.set(marker.id, marker);
           let { range } = snapshot;
           this.index.insert(marker.id, range.start, range.end);
+          this.index.setExclusive(marker.id, marker.isExclusive());
           this.historyShadow?.set(marker.id, {
             sr: range.start.row,
             sc: range.start.column,
@@ -818,6 +911,34 @@ class MarkerLayer {
   emitUpdateEvent() {
     return this.emitter.emit("did-update");
   }
+}
+
+function validateTrackedRanges(result, touched) {
+  if (!Array.isArray(result)) throw new TypeError("A range tracker must return an array");
+  const ranges = new Map();
+  for (const entry of result) {
+    if (!entry || !touched.has(entry.id) || ranges.has(entry.id)) {
+      throw new TypeError("A range tracker must return unique ids from its input");
+    }
+    let range = null;
+    if (entry.range != null) {
+      const start = Point.fromObject(
+        Array.isArray(entry.range) ? entry.range[0] : entry.range.start,
+      );
+      const end = Point.fromObject(Array.isArray(entry.range) ? entry.range[1] : entry.range.end);
+      for (const point of [start, end]) {
+        for (const coordinate of [point.row, point.column]) {
+          if (!Number.isInteger(coordinate) || coordinate < 0 || coordinate > 0xffffffff) {
+            throw new TypeError("A tracked range must have finite nonnegative integer coordinates");
+          }
+        }
+      }
+      if (start.compare(end) > 0) throw new TypeError("A tracked range must not be inverted");
+      range = Range(start, end);
+    }
+    ranges.set(entry.id, range);
+  }
+  return ranges;
 }
 
 function applyInvalidation(marker, destroyInvalidatedMarkers) {

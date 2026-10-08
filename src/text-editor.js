@@ -3619,6 +3619,7 @@ module.exports = class TextEditor {
    * @param options - An `Object` containing the following keys:
    * @param options.maintainHistory - A `Boolean` indicating whether marker state should be restored on undo/redo. Defaults to `false`.
    * @param options.persistent - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
+   * @param {Function} [options.trackRanges] - A synchronous callback applying custom edit tracking to touched markers. See {@link TextBuffer#addMarkerLayer} for its arguments and return value. The callback is not serialized and can be replaced through {@link DisplayMarkerLayer#setRangeTracker}.
    * @returns {DisplayMarkerLayer}
    */
   addMarkerLayer(options) {

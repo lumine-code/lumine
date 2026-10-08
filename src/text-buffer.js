@@ -488,6 +488,26 @@ class TextBuffer {
    * @public
    * @status public
    *
+   * Invoke the callback synchronously at the end of a transaction with its
+   * individual edits in application order, before the consolidated change event.
+   * Each edit uses the coordinates of the buffer immediately before and after
+   * that edit. Edits that cancel each other still appear, allowing external
+   * external range snapshots to follow every applied edit.
+   *
+   * @param {Function} callback - Receives an object containing a `changes` array
+   * of edits with `oldRange`, `newRange`, `oldText`, and `newText`, plus
+   * `isCurrent()` which returns false if an earlier observer has already applied
+   * another edit.
+   * @returns {Disposable} Subscription to the applied edit batches.
+   */
+  onDidApplyChanges(callback) {
+    return this.emitter.on("did-apply-changes", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * This is now identical to {@link #onDidChange}.
    */
   onDidChangeText(callback) {
@@ -1333,7 +1353,7 @@ class TextBuffer {
     if (this.markerLayers) {
       for (const id in this.markerLayers) {
         const markerLayer = this.markerLayers[id];
-        markerLayer.splice(oldRange.start, oldExtent, newExtent);
+        markerLayer.splice(oldRange.start, oldExtent, newExtent, newText);
         this.markerLayersWithPendingUpdateEvents.add(markerLayer);
       }
     }
@@ -1341,6 +1361,7 @@ class TextBuffer {
     this.cachedText = null;
     this.changesSinceLastDidChangeTextEvent.push(change);
     this.changesSinceLastStoppedChangingEvent.push(change);
+    this.recordAppliedChange(changeEvent);
     this.emitDidChangeEvent(changeEvent);
     return newRange;
   }
@@ -1349,6 +1370,33 @@ class TextBuffer {
     if (!changeEvent.oldRange.isEmpty() || !changeEvent.newRange.isEmpty()) {
       this.languageMode.bufferDidChange(changeEvent);
       this.updateDisplayLayersForChange(changeEvent);
+    }
+  }
+
+  recordAppliedChange(change) {
+    if (this.emitter.listenerCountForEventName("did-apply-changes") > 0) {
+      this.appliedChangeRevision = (this.appliedChangeRevision || 0) + 1;
+      (this.appliedChanges ||= []).push(Object.freeze({ ...change }));
+    }
+  }
+
+  emitAppliedChanges(changes) {
+    const revision = this.appliedChangeRevision;
+    (this.appliedChangeBatches ||= []).push(
+      Object.freeze({
+        changes: Object.freeze(changes),
+        isCurrent: () => revision === this.appliedChangeRevision,
+      }),
+    );
+    // An observer can make another edit. Finish delivering the current batch
+    // before its nested batch so every range tracker sees application order.
+    if (this.emittingAppliedChanges) return;
+    this.emittingAppliedChanges = true;
+    try {
+      while (this.appliedChangeBatches.length)
+        this.emitter.emit("did-apply-changes", this.appliedChangeBatches.shift());
+    } finally {
+      this.emittingAppliedChanges = false;
     }
   }
 
@@ -1483,6 +1531,7 @@ class TextBuffer {
    * @param [options.maintainHistory] - A `Boolean` indicating whether or not the state of this layer should be restored on undo/redo operations. Defaults to `false`.
    * @param [options.persistent] - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
    * @param [options.role] - A `String` indicating role of this marker layer
+   * @param {Function} [options.trackRanges] - A synchronous `(ranges, change)` callback overriding the ranges of markers touched by an edit. `ranges` is a sorted array of `{id, range}` entries in pre-edit buffer coordinates; each `range` is a {@link Range}. `change` contains `oldRange`, `newRange` and `newText`. Return an array of `{id, range}` entries in post-edit coordinates, using each supplied id at most once. Omitting an id or returning a null range invalidates that marker. Untouched markers follow the standard index update. The callback must not edit the buffer or markers; exceptions and invalid results are reported and invalidate the touched markers without cancelling the text edit. The callback is retained by layer copies but is not serialized; see {@link MarkerLayer#setRangeTracker} to replace or remove it.
    * @returns {MarkerLayer}
    */
   addMarkerLayer(options) {
@@ -1532,7 +1581,7 @@ class TextBuffer {
    * @param [properties] - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
    * @param {Boolean} [properties.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [properties.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} [properties.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {Boolean} [properties.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
    * @returns {Marker}
    */
   markRange(range, properties) {
@@ -1549,7 +1598,7 @@ class TextBuffer {
    * @param {Point} position - or point-compatible `Array`
    * @param [options] - An `Object` with the following keys:
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} [options.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {Boolean} [options.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
    * @returns {Marker}
    */
   markPosition(position, options) {
@@ -2972,17 +3021,28 @@ class TextBuffer {
         this.changesSinceLastStoppedChangingEvent.push(...changes);
       }
 
-      if (this.markerLayers != null) {
-        for (const change of changes) {
+      for (const change of changes) {
+        if (this.markerLayers != null) {
           for (const id in this.markerLayers) {
             const markerLayer = this.markerLayers[id];
             markerLayer.splice(
               change.newStart,
               traversal(change.oldEnd, change.oldStart),
               traversal(change.newEnd, change.newStart),
+              change.newText,
             );
           }
         }
+        const start = Point.fromObject(change.newStart);
+        this.recordAppliedChange({
+          oldRange: Range(
+            start,
+            traverse(start, traversal(change.oldEnd, change.oldStart)),
+          ).freeze(),
+          newRange: Range(start, change.newEnd).freeze(),
+          oldText: change.oldText,
+          newText: change.newText,
+        });
       }
 
       const markersSnapshot = this.createMarkerSnapshot();
@@ -3404,10 +3464,13 @@ class TextBuffer {
     this.cachedHasAstral = null;
     if (this.transactCallDepth === 0) {
       if (this.changesSinceLastDidChangeTextEvent.length > 0) {
+        const appliedChanges = this.appliedChanges;
+        this.appliedChanges = null;
         const compactedChanges = patchFromChanges(
           this.changesSinceLastDidChangeTextEvent,
         ).getChanges();
         this.changesSinceLastDidChangeTextEvent.length = 0;
+        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges);
         if (compactedChanges.length > 0) {
           const changeEvent = new ChangeEvent(this, compactedChanges);
           this.languageMode.bufferDidFinishTransaction(changeEvent);
