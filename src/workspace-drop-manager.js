@@ -80,6 +80,8 @@ class WorkspaceDropManager {
     const window = document.defaultView;
     this.overlay = document.createElement("div");
     this.overlay.className = "workspace-drop-overlay";
+    this.overlay.setAttribute("popover", "manual");
+    this.overlay.setAttribute("aria-hidden", "true");
     this.element.appendChild(this.overlay);
 
     const dragEnter = (event) => this.handleDragEnter(event);
@@ -666,11 +668,17 @@ class WorkspaceDropManager {
       width: `${bounds.width}px`,
       height: `${bounds.height}px`,
     });
+    // The top layer keeps the preview above every pane item's own stacking
+    // contexts and makes these viewport bounds independent of containment.
+    if (this.overlay.isConnected && !this.overlay.matches(":popover-open")) {
+      this.overlay.showPopover();
+    }
     this.overlay.classList.add("visible");
   }
 
   hideOverlay() {
     this.overlay?.classList.remove("visible");
+    if (this.overlay?.matches(":popover-open")) this.overlay.hidePopover();
   }
 
   setDropEffect(dataTransfer, effect) {

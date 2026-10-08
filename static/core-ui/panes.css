@@ -173,7 +173,10 @@ body.is-unloading {
 
 .workspace-drop-overlay {
   position: fixed;
-  z-index: 11;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
   opacity: 0;
   pointer-events: none;
   background: var(--text-color);
@@ -181,5 +184,9 @@ body.is-unloading {
 
   &.visible {
     opacity: 0.1;
+  }
+
+  &::backdrop {
+    pointer-events: none;
   }
 }
