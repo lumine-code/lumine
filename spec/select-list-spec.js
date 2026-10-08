@@ -832,6 +832,142 @@ describe("SelectList", () => {
       ).toBeLessThanOrEqual(1);
     });
 
+    describe("descriptor row layout", () => {
+      async function showRows(descriptors, width = 240) {
+        view = createSelectList({
+          items: descriptors.map((_, index) => String(index)),
+          renderItem: (index) => descriptors[Number(index)],
+        });
+        await addHost().show();
+        find("ol.list-group").style.width = `${width}px`;
+        return Array.from(listElement().querySelectorAll("li"));
+      }
+
+      function center(element) {
+        const { top, height } = element.getBoundingClientRect();
+        return top + height / 2;
+      }
+
+      it("truncates long labels beside badges while preserving icons and description alignment", async () => {
+        const [shortRow, longRow] = await showRows(
+          ["Repository", "Repository with a very long name ".repeat(12)].map((primary) => ({
+            icon: ["icon-repo"],
+            primary,
+            secondary: "C:/Projects/repository",
+            trailing: [{ text: "master", className: "badge" }],
+          })),
+        );
+
+        for (const width of [240, 120]) {
+          find("ol.list-group").style.width = `${width}px`;
+          const line = longRow.querySelector(".primary-line");
+          const text = longRow.querySelector(".primary-text");
+          const badge = longRow.querySelector(".badge");
+          const icon = getComputedStyle(line, "::before");
+          const description = document.createRange();
+          description.selectNodeContents(longRow.querySelector(".secondary-line"));
+
+          expect(line.getBoundingClientRect().height).toBe(
+            shortRow.querySelector(".primary-line").getBoundingClientRect().height,
+          );
+          expect(Math.abs(center(badge) - center(line))).toBeLessThanOrEqual(1);
+          expect(text.scrollWidth).toBeGreaterThan(text.clientWidth);
+          expect(text.getBoundingClientRect().right).toBeLessThanOrEqual(
+            badge.getBoundingClientRect().left,
+          );
+          expect(
+            Math.abs(description.getBoundingClientRect().left - text.getBoundingClientRect().left),
+          ).toBeLessThanOrEqual(1);
+          expect(text.getBoundingClientRect().left - line.getBoundingClientRect().left).toBeCloseTo(
+            parseFloat(icon.width) + parseFloat(icon.marginLeft) + parseFloat(icon.marginRight),
+            1,
+          );
+        }
+      });
+
+      it("keeps mixed status text and a badge in order on the primary line", async () => {
+        const [plainRow, statusRow] = await showRows([
+          { primary: "Repository" },
+          {
+            primary: "Repository with a long name ".repeat(12),
+            trailing: [
+              { text: "+7", className: "text-success" },
+              { text: "↑2" },
+              { text: "main", className: "badge" },
+            ],
+          },
+        ]);
+        const line = statusRow.querySelector(".primary-line");
+        const chips = Array.from(statusRow.querySelector(".trailing-block").children);
+
+        expect(line.getBoundingClientRect().height).toBe(
+          plainRow.querySelector(".primary-line").getBoundingClientRect().height,
+        );
+        for (const chip of chips) {
+          expect(Math.abs(center(chip) - center(line))).toBeLessThanOrEqual(1);
+        }
+        for (let index = 1; index < chips.length; index++) {
+          expect(chips[index - 1].getBoundingClientRect().right).toBeLessThanOrEqual(
+            chips[index].getBoundingClientRect().left,
+          );
+        }
+      });
+
+      it("contains an overlong trailing badge in a narrow primary line", async () => {
+        const [plainRow, narrowRow] = await showRows(
+          [
+            { primary: "Repository" },
+            {
+              icon: ["icon-repo"],
+              primary: "Repository",
+              trailing: [{ text: "feature/very-long-branch-name/".repeat(12), className: "badge" }],
+            },
+          ],
+          120,
+        );
+        const line = narrowRow.querySelector(".primary-line");
+        const trailing = narrowRow.querySelector(".trailing-block");
+
+        expect(line.getBoundingClientRect().height).toBe(
+          plainRow.querySelector(".primary-line").getBoundingClientRect().height,
+        );
+        expect(trailing.getBoundingClientRect().right).toBeLessThanOrEqual(
+          line.getBoundingClientRect().right,
+        );
+        expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth);
+        expect(trailing.scrollWidth).toBeGreaterThan(trailing.clientWidth);
+      });
+
+      it("lets a tall badge enlarge the line without covering its description or the next row", async () => {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "main";
+        badge.style.cssText = "font-size: 32px; padding-block: 12px";
+        const [tallRow, nextRow] = await showRows([
+          { primary: "Repository", secondary: "C:/Projects/repository", trailing: [badge] },
+          { primary: "Next repository" },
+        ]);
+        const line = tallRow.querySelector(".primary-line");
+        const description = tallRow.querySelector(".secondary-line");
+
+        expect(badge.getBoundingClientRect().height).toBeGreaterThan(
+          parseFloat(getComputedStyle(line).lineHeight),
+        );
+        expect(line.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+          badge.getBoundingClientRect().height,
+        );
+        expect(
+          Math.abs(center(tallRow.querySelector(".primary-text")) - center(badge)),
+        ).toBeLessThanOrEqual(1);
+        expect(description.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+          badge.getBoundingClientRect().bottom,
+        );
+        expect(nextRow.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+          description.getBoundingClientRect().bottom,
+        );
+      });
+    });
+
     it("passes matchIndices aligned with the filter key to renderItem", async () => {
       view = createSelectList({
         items: ["abc", "xyz"],

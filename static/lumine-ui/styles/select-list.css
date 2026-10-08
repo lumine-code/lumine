@@ -23,17 +23,42 @@
         overflow: hidden;
       }
 
-      /* Right-hand content of a primary line. Floated rather than turning the
-         line into a flex row, so the ellipsis truncation above still applies to
-         the primary text. Inside the block, flex restores left-to-right order,
-         which floated siblings would otherwise reverse. `display` is written as
-         `flex` because the float blockifies it either way. */
+      /* Custom rows can float their trailing content beside inline text. */
       .trailing-block {
         float: right;
         display: flex;
         align-items: baseline;
         gap: var(--ui-spacing);
         margin-left: var(--ui-spacing);
+      }
+
+      /* Descriptor rows give the label its own shrinking box. A float after a
+         long label drops to another line, and a short badge floats against the
+         top edge. Flex keeps icons, labels and chips on the same centered line
+         while each text box handles its own truncation. Custom renderers keep
+         their existing layout, including labels that deliberately wrap. */
+      .primary-line:where(:has(> .primary-text)) {
+        display: flex;
+        align-items: center;
+
+        &::before {
+          flex-shrink: 0;
+        }
+
+        > .primary-text {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        > .trailing-block {
+          float: none;
+          flex: 0 1 auto;
+          min-width: 0;
+          align-items: center;
+          overflow: hidden;
+        }
       }
 
       /* An icon belongs to the primary line, so the secondary line begins
