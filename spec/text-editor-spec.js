@@ -58,6 +58,49 @@ describe("TextEditor", () => {
   });
 
   describe("when the editor is deserialized", () => {
+    for (const scrollAnchor of [
+      { type: "bottom", bottomOffset: 4.5 },
+      { type: "row", bufferPosition: [8, 2], offset: 17.25 },
+    ]) {
+      it(`retains a ${scrollAnchor.type} scroll anchor across serialization before attachment`, async () => {
+        editor.update({ scrollPastEnd: true });
+        const state = JSON.parse(JSON.stringify(editor.serialize()));
+        state.viewState.scrollAnchor = scrollAnchor;
+        const restoredBuffer = await TextBuffer.deserialize(editor.buffer.serialize());
+        const restoredEditor = TextEditor.deserialize(state, {
+          assert: lumine.assert,
+          project: { bufferForIdSync: () => restoredBuffer },
+        });
+
+        try {
+          expect(restoredEditor.getScrollPastEnd()).toBe(true);
+          const nextState = JSON.parse(JSON.stringify(restoredEditor.serialize()));
+          expect(nextState.viewState.scrollAnchor).toEqual(scrollAnchor);
+        } finally {
+          restoredEditor.destroy();
+        }
+      });
+    }
+
+    for (const scrollAnchor of [undefined, { type: "bottom", bottomOffset: -1 }]) {
+      it(`restores the logical scroll row with an ${scrollAnchor ? "invalid" : "absent"} anchor`, async () => {
+        const state = JSON.parse(JSON.stringify(editor.serialize()));
+        state.initialScrollTopRow = 3;
+        state.viewState.scrollAnchor = scrollAnchor;
+        const restoredBuffer = await TextBuffer.deserialize(editor.buffer.serialize());
+        const restoredEditor = TextEditor.deserialize(state, {
+          assert: lumine.assert,
+          project: { bufferForIdSync: () => restoredBuffer },
+        });
+
+        try {
+          expect(restoredEditor.getScrollTopRow()).toBe(3);
+        } finally {
+          restoredEditor.destroy();
+        }
+      });
+    }
+
     it("restores selections and folds based on markers in the buffer", async () => {
       editor.setSelectedBufferRange([
         [1, 2],

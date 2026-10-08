@@ -8820,6 +8820,72 @@ describe("TextEditorComponent", () => {
       );
     });
 
+    for (const [cursorAtEnd, legacyState] of [
+      [false, false],
+      [true, false],
+      [false, true],
+    ]) {
+      it(`restores past-end scrolling from ${legacyState ? "legacy" : "current"} state with a ${cursorAtEnd ? "row" : "bottom"} anchor`, async () => {
+        const { component, editor } = buildComponent({
+          text: "abcdefghij ".repeat(8).trim().concat("\n").repeat(30),
+          softWrapped: true,
+          autoHeight: false,
+        });
+        editor.update({ scrollPastEnd: true });
+        await setEditorHeightInLines(component, 10);
+        await setEditorWidthInCharacters(component, 40);
+        if (cursorAtEnd) editor.setCursorBufferPosition(editor.getEofBufferPosition());
+        await setScrollTop(component, component.getMaxScrollTop() - component.getLineHeight() / 4);
+
+        const state = JSON.parse(JSON.stringify(editor.serialize()));
+        if (legacyState) delete state.scrollPastEnd;
+        const anchor = state.viewState.scrollAnchor;
+        expect(anchor.type).toBe(cursorAtEnd ? "row" : "bottom");
+        component.element.remove();
+        const restoredBuffer = await TextBuffer.deserialize(editor.buffer.serialize());
+        const getConfig = jasmine.createSpy("getConfig").and.returnValue(true);
+        const restoredEditor = TextEditor.deserialize(state, {
+          assert: lumine.assert,
+          project: { bufferForIdSync: () => restoredBuffer },
+          config: { get: getConfig },
+        });
+        editors.push(restoredEditor);
+        if (legacyState) {
+          expect(getConfig).toHaveBeenCalledOnceWith("editor.scrollPastEnd", {
+            scope: restoredBuffer.getLanguageMode().rootScopeDescriptor,
+          });
+        } else {
+          expect(getConfig).not.toHaveBeenCalled();
+        }
+        const restoredElement = restoredEditor.getElement();
+        const restoredComponent = restoredEditor.component;
+        restoredElement.style.height = component.getLineHeight() * 10 + "px";
+        restoredElement.style.width =
+          component.getGutterContainerWidth() +
+          25 * component.measurements.baseCharacterWidth +
+          verticalScrollbarWidth +
+          "px";
+        jasmine.attachToDOM(restoredElement);
+        await conditionPromise(() => restoredComponent.hasInitialMeasurements);
+
+        expect(restoredEditor.getScrollPastEnd()).toBe(true);
+        if (anchor.type === "bottom") {
+          expect(restoredComponent.getMaxScrollTop() - restoredComponent.getScrollTop()).toBeNear(
+            anchor.bottomOffset,
+          );
+        } else {
+          const row = restoredEditor.screenPositionForBufferPosition(anchor.bufferPosition).row;
+          expect(
+            restoredComponent.pixelPositionBeforeBlocksForRow(row) -
+              restoredComponent.getScrollTop(),
+          ).toBeNear(anchor.offset);
+        }
+        expect(restoredComponent.getScrollTop()).toBeGreaterThan(
+          restoredComponent.getContentHeight() - restoredComponent.getScrollContainerClientHeight(),
+        );
+      });
+    }
+
     it("preserves the past-end scroll position when copied into a pane with a different width", async () => {
       const { component, editor } = buildComponent({
         softWrapped: true,

@@ -195,6 +195,14 @@ module.exports = class TextEditor {
     // Indent guides moved from the editor core to the indent-guide package.
     delete state.showIndentGuide;
 
+    // Older states omitted this setting. Apply it before the first measurement
+    // can clamp a saved past-end position while scoped configuration catches up.
+    if (state.scrollPastEnd == null) {
+      state.scrollPastEnd = lumineEnvironment.config?.get("editor.scrollPastEnd", {
+        scope: state.buffer.getLanguageMode().rootScopeDescriptor,
+      });
+    }
+
     const retained = lumineEnvironment.project.restoredBufferAliases?.get(bufferId);
     if (retained?.buffer === state.buffer) {
       // A dock keeps its live buffer across project changes. Saved layer IDs
@@ -229,6 +237,9 @@ module.exports = class TextEditor {
       return editor;
     }
 
+    // Marker layers already restore selections and folds. Carry the viewport
+    // anchor separately so its pixel offset survives the first layout pass.
+    state.initialScrollAnchor = normalizeSerializedScrollAnchor(state.viewState?.scrollAnchor);
     return new TextEditor(state);
   }
 
@@ -883,6 +894,7 @@ module.exports = class TextEditor {
       maxScreenLineLength: this.maxScreenLineLength,
       invisibles: this.invisibles,
       showInvisibles: this.showInvisibles,
+      scrollPastEnd: this.scrollPastEnd,
       autoHeight: this.autoHeight,
       autoWidth: this.autoWidth,
     };
@@ -907,7 +919,9 @@ module.exports = class TextEditor {
       scrollTopRow: this.getScrollTopRow(),
       scrollLeftColumn: this.getScrollLeftColumn(),
     };
-    const scrollAnchor = normalizeSerializedScrollAnchor(this.component?.captureScrollAnchor());
+    const scrollAnchor = normalizeSerializedScrollAnchor(
+      this.component?.pendingScrollAnchor || this.component?.captureScrollAnchor(),
+    );
     if (scrollAnchor) state.scrollAnchor = scrollAnchor;
     return state;
   }
