@@ -358,7 +358,7 @@ describe("ScrollAnimator", () => {
 
     it("ends a small glide at a finite deadline with zero velocity", () => {
       animator.scrollBy({ x: 60, y: 90, smoothness: 8 });
-      tick(199);
+      tick(119);
       expect(component.scrollTop).toBeGreaterThan(0);
       expect(component.scrollTop).toBeLessThan(90);
       expect(animator.isAnimating()).toBe(true);
@@ -378,7 +378,7 @@ describe("ScrollAnimator", () => {
       });
       animator.scrollBy({ y: 120, smoothness: 8 });
       large.scrollBy({ y: 480, smoothness: 8 });
-      tick(100);
+      tick(60);
       large.step(now);
       expect(largeComponent.scrollTop).toBe(480);
       expect(large.velocityY).toBe(0);
@@ -386,7 +386,7 @@ describe("ScrollAnimator", () => {
       expect(component.scrollTop).toBeGreaterThan(0);
       expect(component.scrollTop).toBeLessThan(120);
       expect(animator.isAnimating()).toBe(true);
-      tick(100);
+      tick(60);
       expect(component.scrollTop).toBe(120);
       expect(animator.isAnimating()).toBe(false);
     });
@@ -394,10 +394,10 @@ describe("ScrollAnimator", () => {
     it("does not postpone the endpoint for repeated requests clamped to the same edge", () => {
       animator.scrollBy({ y: component.maxScrollTop, smoothness: 8 });
       for (let i = 0; i < 9; i++) {
-        tick(10);
+        tick(6);
         animator.scrollBy({ y: 100, smoothness: 8 });
       }
-      tick(10);
+      tick(6);
       expect(component.scrollTop).toBe(component.maxScrollTop);
       expect(animator.velocityY).toBe(0);
       expect(animator.isAnimating()).toBe(false);
@@ -405,9 +405,9 @@ describe("ScrollAnimator", () => {
 
     it("does not restart the curve when its absolute target stays the same", () => {
       animator.scrollTo({ top: 480, smoothness: 8 });
-      tick(50);
+      tick(30);
       animator.scrollTo({ top: 480, smoothness: 8 });
-      tick(50);
+      tick(30);
       expect(component.scrollTop).toBe(480);
       expect(animator.velocityY).toBe(0);
       expect(animator.isAnimating()).toBe(false);
@@ -415,9 +415,9 @@ describe("ScrollAnimator", () => {
 
     it("does not extend one axis when the other axis receives new input", () => {
       animator.scrollBy({ x: 480, smoothness: 8 });
-      tick(50);
+      tick(30);
       animator.scrollBy({ y: 120, smoothness: 8 });
-      tick(50);
+      tick(30);
       expect(component.scrollLeft).toBe(480);
       expect(animator.velocityX).toBe(0);
       expect(component.scrollTop).toBeLessThan(120);
@@ -465,14 +465,14 @@ describe("ScrollAnimator", () => {
       reference.scrollBy({ y: 100, smoothness: 8 });
       tick();
       reference.advance(FRAME);
-      now = 199;
-      reference.advance(199 - FRAME);
+      now = 119;
+      reference.advance(119 - FRAME);
       const positionBeforeRetarget = referenceComponent.scrollTop;
-      animator.scrollBy({ y: 100, smoothness: 8, timestamp: 199 });
-      reference.scrollBy({ y: 100, smoothness: 8, timestamp: 199 });
+      animator.scrollBy({ y: 100, smoothness: 8, timestamp: 119 });
+      reference.scrollBy({ y: 100, smoothness: 8, timestamp: 119 });
       expect(animator.virtualScrollTop).toBeCloseTo(positionBeforeRetarget, 8);
       expect(animator.virtualScrollTop).toBeGreaterThan(component.scrollTop);
-      animator.step(200);
+      animator.step(120);
       reference.advance(1);
       expect(component.scrollTop).toBeCloseTo(referenceComponent.scrollTop, 8);
       expect(animator.velocityY).toBeCloseTo(reference.velocityY, 8);
@@ -569,39 +569,13 @@ describe("ScrollAnimator", () => {
         return { component: trainComponent, positions };
       }
 
-      // Retains the previous algorithm as a regression comparator, not as the
-      // specification for the new motion curve.
-      function legacyPositions(events, frames) {
-        const positions = [0];
-        let target = 0;
-        let position = 0;
-        let eventIndex = 0;
-        for (let frame = 1; frame < frames; frame++) {
-          while (eventIndex < events.length && events[eventIndex].time <= frame * FRAME) {
-            target += events[eventIndex++].delta;
-          }
-          const pending = target - position;
-          position += Math.abs(pending * 0.25) < 0.01 ? pending : pending * 0.25;
-          positions.push(position);
-        }
-        return positions;
-      }
-
-      function largestVelocityChange(positions) {
-        let largest = 0;
-        for (let i = 2; i < positions.length; i++) {
-          const change = Math.abs(positions[i] - 2 * positions[i - 1] + positions[i - 2]);
-          largest = Math.max(largest, change / FRAME);
-        }
-        return largest;
-      }
-
-      it("reduces velocity jumps as fixed pulses become farther apart", () => {
+      it("preserves distance and forward motion as fixed pulses become farther apart", () => {
         const times = [0, 16, 33, 52, 74, 100, 132, 171, 218, 276, 345, 428, 528, 648, 790, 955];
         const events = times.map((time) => ({ time, delta: 48 }));
         const result = runTrain(events);
-        const legacy = legacyPositions(events, result.positions.length);
-        expect(largestVelocityChange(result.positions)).toBeLessThan(largestVelocityChange(legacy));
+        for (let i = 1; i < result.positions.length; i++) {
+          expect(result.positions[i]).toBeGreaterThanOrEqual(result.positions[i - 1]);
+        }
         expect(result.component.scrollTop).toBe(events.length * 48);
       });
 

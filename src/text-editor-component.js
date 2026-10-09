@@ -33,10 +33,9 @@ const DOUBLE_WIDTH_CHARACTER = "我";
 const HALF_WIDTH_CHARACTER = "ﾊ";
 const KOREAN_CHARACTER = "세";
 const MOUSE_DRAG_AUTOSCROLL_MARGIN = 40;
-// The legacy `mousewheel` handler consumed `wheelDelta` (120 per notch); the
-// standard `wheel` event reports `deltaY` of 100 per notch. This factor
-// preserves the historical scroll speed at a given scroll sensitivity.
-const WHEEL_DELTA_PARITY = 1.2;
+// Scale normalized wheel pixels before applying the editor's sensitivity.
+// Direct and animated scrolling use the same gain.
+const WHEEL_PIXEL_SCALE = 1.2;
 const CURSOR_BLINK_RESUME_DELAY = 300;
 const CURSOR_BLINK_PERIOD = 800;
 
@@ -2567,8 +2566,8 @@ module.exports = class TextEditorComponent {
       deltaY *= this.element.offsetHeight;
     }
 
-    deltaX *= WHEEL_DELTA_PARITY;
-    deltaY *= WHEEL_DELTA_PARITY;
+    deltaX *= WHEEL_PIXEL_SCALE;
+    deltaY *= WHEEL_PIXEL_SCALE;
 
     if (this.getPlatform() !== "darwin" && event.shiftKey) {
       const temp = deltaX;
