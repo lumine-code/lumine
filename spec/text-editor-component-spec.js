@@ -18,6 +18,7 @@ const electron = require("electron");
 const clipboardBridge = require("../src/clipboard-bridge");
 const { beginLayoutDrag } = require("../src/layout-drag");
 const {
+  roundToPhysicalPixelBoundary,
   UPDATE_MODE_NORMAL,
   UPDATE_MODE_SCROLL_TILES,
 } = require("../src/text-editor-component-helpers");
@@ -2480,6 +2481,30 @@ describe("TextEditorComponent", () => {
       expect(component.scrollAnimator.isAnimating()).toBe(false);
     });
 
+    it("preserves the wheel event timestamp for animation integration", () => {
+      const { component } = buildSmoothComponent();
+      const scrollBy = spyOn(component.scrollAnimator, "scrollBy").and.callThrough();
+      const event = new WheelEvent("wheel", { deltaY: 20, cancelable: true });
+
+      component.didMouseWheel(event);
+
+      expect(scrollBy.calls.mostRecent().args[0].timestamp).toBe(event.timeStamp);
+      expect(event.defaultPrevented).toBe(true);
+      driveAnimationToCompletion(component);
+      expect(component.getScrollTop()).toBeNear(20 * wheelDeltaParity * 0.25);
+    });
+
+    it("accepts synthetic wheel input without a timestamp", () => {
+      const { component } = buildSmoothComponent();
+      const preventDefault = jasmine.createSpy("preventDefault");
+
+      component.didMouseWheel({ deltaY: 20, preventDefault });
+
+      expect(preventDefault).toHaveBeenCalled();
+      driveAnimationToCompletion(component);
+      expect(component.getScrollTop()).toBeNear(20 * wheelDeltaParity * 0.25);
+    });
+
     it("follows the global setting for editors no TextEditorFactory configures", () => {
       // Directly constructed editors bypass Workspace#buildTextEditor, so
       // their scoped configuration parameters stay unset.
@@ -2561,10 +2586,10 @@ describe("TextEditorComponent", () => {
       expect(notifyingLeft).toBe(true);
       expect(updateSync).not.toHaveBeenCalled();
       expect(component.refs.content.style.transform).toBe(
-        `translate(-${component.getScrollLeft()}px, -${component.getScrollTop()}px)`,
+        `translate(${-roundToPhysicalPixelBoundary(component.getScrollLeft())}px, ${-roundToPhysicalPixelBoundary(component.getScrollTop())}px)`,
       );
       expect(component.refs.gutterContainer.innerElement.style.transform).toBe(
-        `translateY(-${component.getScrollTop()}px)`,
+        `translateY(${-roundToPhysicalPixelBoundary(component.getScrollTop())}px)`,
       );
       expect(component.refs.verticalScrollbar.element.scrollTop).toBeNear(component.getScrollTop());
       expect(component.refs.horizontalScrollbar.element.scrollLeft).toBeNear(
@@ -2611,7 +2636,8 @@ describe("TextEditorComponent", () => {
       expect(preventDefault).toHaveBeenCalled();
 
       component.scrollAnimator.advance(FRAME);
-      expect(component.getScrollTop()).toBeNear(initialScrollTop + 12);
+      expect(component.getScrollTop()).toBeGreaterThan(initialScrollTop);
+      expect(component.getScrollTop()).toBeLessThan(targetScrollTop);
       scrollbar.dispatchEvent(new Event("scroll"));
       expect(component.scrollAnimator.isAnimating()).toBe(true);
 

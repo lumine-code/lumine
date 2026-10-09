@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { createHash } = require("crypto");
 
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
@@ -6,12 +7,34 @@ const TextEditorComponent = require("../src/text-editor-component");
 const ScrollAnimator = require("../src/scroll-animator");
 const { UPDATE_MODE_SCROLL_TILES } = require("../src/text-editor-component-helpers");
 
+const animatorSourceSha256 = createHash("sha256")
+  .update(fs.readFileSync(require.resolve("../src/scroll-animator")))
+  .digest("hex");
+
 const FRAME_DURATION = 1000 / 120;
 const LINE_COUNT = 12462;
 const COMMENTED_LINE_COUNT = 9163;
 const INPUT_COUNT = 30;
 const EDITOR_WIDTH = 1000;
 const EDITOR_HEIGHT = 1200;
+
+function wheelScenarios() {
+  const altBurst = [];
+  const increasingGaps = [];
+  const decreasingDeltas = [];
+  let spacedTime = 0;
+  for (let index = 0; index < INPUT_COUNT; index++) {
+    altBurst.push({ at: index * FRAME_DURATION, deltaY: 100, altKey: true });
+    increasingGaps.push({ at: spacedTime, deltaY: 100 });
+    decreasingDeltas.push({ at: index * (1000 / 60), deltaY: 100 * Math.pow(0.88, index) });
+    spacedTime += FRAME_DURATION + ((100 - FRAME_DURATION) * index) / (INPUT_COUNT - 1);
+  }
+  return [
+    { name: "alt-wheel-burst", events: altBurst },
+    { name: "free-wheel-spacing", events: increasingGaps },
+    { name: "free-wheel-deltas", events: decreasingDeltas },
+  ];
+}
 
 function syntheticSource() {
   const lines = [];
@@ -38,6 +61,7 @@ function percentile(samples, fraction) {
 function summarize(samples) {
   return {
     count: samples.length,
+    totalMs: samples.reduce((sum, sample) => sum + sample, 0),
     medianMs: percentile(samples, 0.5),
     p95Ms: percentile(samples, 0.95),
     minMs: samples.length > 0 ? Math.min(...samples) : 0,
@@ -89,16 +113,42 @@ function queryRowCount(options) {
 function installDeterministicAnimator(component) {
   component.scrollAnimator.cancel();
   let nextHandle = 1;
+  let timestamp = 1000;
+  const callbacks = new Map();
   const animator = new ScrollAnimator(component, {
-    requestAnimationFrame() {
-      return nextHandle++;
+    now: () => timestamp,
+    requestAnimationFrame(callback) {
+      const handle = nextHandle++;
+      callbacks.set(handle, callback);
+      return handle;
     },
-    cancelAnimationFrame() {},
+    cancelAnimationFrame(handle) {
+      callbacks.delete(handle);
+    },
   });
   const originalAnimator = component.scrollAnimator;
   component.scrollAnimator = animator;
   return {
     animator,
+    setTime(elapsed) {
+      timestamp = 1000 + elapsed;
+      return timestamp;
+    },
+    runFrame() {
+      // Call only the callbacks already queued at the start of this frame.
+      // New callbacks belong to the next frame, just as they do in Chromium.
+      const pending = [...callbacks.entries()];
+      let count = 0;
+      for (const [handle, callback] of pending) {
+        if (!callbacks.delete(handle)) continue;
+        callback(timestamp);
+        count++;
+      }
+      return count;
+    },
+    pendingFrameCount() {
+      return callbacks.size;
+    },
     restore() {
       animator.cancel();
       component.scrollAnimator = originalAnimator;
@@ -107,38 +157,103 @@ function installDeterministicAnimator(component) {
   };
 }
 
-function runAltWheelBurst(component) {
+function runWheelScenario(component, scenario) {
   const frameDurations = [];
-  const { animator, restore } = installDeterministicAnimator(component);
+  const wheelDurations = [];
+  const intervalWorkDurations = [];
+  const frameSteps = [];
+  const { animator, restore, setTime, runFrame, pendingFrameCount } =
+    installDeterministicAnimator(component);
+  const initialScrollTop = component.getScrollTop();
+  let expectedScrollTop = initialScrollTop;
+  let inputIndex = 0;
+  let frameCount = 0;
+  let callbackCount = 0;
+  let maxCallbacksPerFrame = 0;
+  let previousPosition = initialScrollTop;
+  let activeInputFrames = 0;
   try {
-    for (let index = 0; index < INPUT_COUNT; index++) {
-      component.element.dispatchEvent(
-        new WheelEvent("wheel", {
-          altKey: true,
+    while (
+      (inputIndex < scenario.events.length || animator.isAnimating() || pendingFrameCount() > 0) &&
+      frameCount < 2000
+    ) {
+      const nextFrameTime = ++frameCount * FRAME_DURATION;
+      let intervalWork = 0;
+      // An input exactly on a frame boundary is processed after that frame.
+      // This preserves the original one-input-then-one-frame Alt burst.
+      while (
+        inputIndex < scenario.events.length &&
+        scenario.events[inputIndex].at < nextFrameTime - 1e-7
+      ) {
+        const input = scenario.events[inputIndex++];
+        const event = new WheelEvent("wheel", {
+          altKey: input.altKey ?? false,
           bubbles: true,
           cancelable: true,
-          deltaY: 100,
-        }),
-      );
-      const startedAt = performance.now();
-      animator.advance(FRAME_DURATION);
-      frameDurations.push(performance.now() - startedAt);
-    }
+          deltaY: input.deltaY,
+        });
+        Object.defineProperty(event, "timeStamp", { value: setTime(input.at) });
+        const requestedY =
+          component.normalizedWheelDeltas(event).y *
+          (component.props.model.getScrollSensitivity() / 100);
+        expectedScrollTop = Math.max(
+          0,
+          Math.min(component.getMaxScrollTop(), expectedScrollTop + requestedY),
+        );
+        const startedAt = performance.now();
+        component.element.dispatchEvent(event);
+        const duration = performance.now() - startedAt;
+        wheelDurations.push(duration);
+        intervalWork += duration;
+      }
 
-    let drainFrames = 0;
-    while (animator.isAnimating() && drainFrames++ < 1000) {
+      setTime(nextFrameTime);
       const startedAt = performance.now();
-      animator.advance(FRAME_DURATION);
-      frameDurations.push(performance.now() - startedAt);
+      const callbacks = runFrame();
+      const duration = performance.now() - startedAt;
+      if (callbacks > 0) frameDurations.push(duration);
+      callbackCount += callbacks;
+      maxCallbacksPerFrame = Math.max(maxCallbacksPerFrame, callbacks);
+      intervalWorkDurations.push(intervalWork + duration);
+      const position = animator.virtualScrollTop;
+      frameSteps.push(position - previousPosition);
+      previousPosition = position;
+      if (nextFrameTime <= scenario.events.at(-1).at + FRAME_DURATION) activeInputFrames++;
     }
     expect(animator.isAnimating()).toBe(false);
-    return frameDurations;
+    expect(pendingFrameCount()).toBe(0);
+    const distance = component.getScrollTop() - initialScrollTop;
+    const targetError = component.getScrollTop() - expectedScrollTop;
+    expect(Math.abs(targetError)).toBeLessThanOrEqual(1 / window.devicePixelRatio);
+    expect(frameSteps.every((step) => step >= -1e-7)).toBe(true);
+    const activeSteps = frameSteps.slice(0, activeInputFrames);
+    const stepChanges = activeSteps.slice(1).map((step, index) => step - activeSteps[index]);
+    return {
+      frameDurations,
+      wheelDurations,
+      intervalWorkDurations,
+      callbackCount,
+      maxCallbacksPerFrame,
+      distance,
+      targetError,
+      motion: {
+        sampledFrames: frameCount,
+        activeInputFrames,
+        inputDurationMs: scenario.events.at(-1).at,
+        drainDurationMs: frameCount * FRAME_DURATION - scenario.events.at(-1).at,
+        maxFrameStepPx: Math.max(...activeSteps),
+        maxFrameStepChangePx: Math.max(...stepChanges.map(Math.abs)),
+        rmsFrameStepChangePx: Math.sqrt(
+          stepChanges.reduce((sum, change) => sum + change * change, 0) / stepChanges.length,
+        ),
+      },
+    };
   } finally {
     restore();
   }
 }
 
-async function measureCase({ name, languageId, text }) {
+async function measureCase({ name, languageId, text }, scenario) {
   const { buffer, component, editor } = buildEditor(text);
   try {
     await selectGrammar(buffer, editor, languageId);
@@ -173,6 +288,7 @@ async function measureCase({ name, languageId, text }) {
     let tileUpdates = 0;
     let normalUpdates = 0;
     let scrollOnlyFrames = 0;
+    let scrollFrameUpdates = 0;
     component.updateSync = function (options = {}) {
       if (measuring) {
         if (options.updateMode === UPDATE_MODE_SCROLL_TILES) tileUpdates++;
@@ -181,13 +297,20 @@ async function measureCase({ name, languageId, text }) {
       return originalUpdateSync.call(this, options);
     };
     component.updateScrollAnimationFrame = function (...args) {
+      if (measuring) scrollFrameUpdates++;
       const scrollOnly = originalScrollFrame.apply(this, args);
       if (measuring && scrollOnly) scrollOnlyFrames++;
       return scrollOnly;
     };
 
     const frameDurations = [];
+    const wheelDurations = [];
+    const intervalWorkDurations = [];
     const distances = [];
+    const targetErrors = [];
+    const motion = [];
+    let callbackCount = 0;
+    let maxCallbacksPerFrame = 0;
     try {
       for (const startRow of sampleStartRows(editor.getLineCount())) {
         component.scrollAnimator.cancel();
@@ -195,14 +318,20 @@ async function measureCase({ name, languageId, text }) {
         component.derivedDimensionsCache = {};
         component.setScrollTop(startRow * component.getLineHeight());
         component.updateSync();
-        const initialScrollTop = component.getScrollTop();
         measuring = true;
         try {
-          frameDurations.push(...runAltWheelBurst(component));
+          const result = runWheelScenario(component, scenario);
+          frameDurations.push(...result.frameDurations);
+          wheelDurations.push(...result.wheelDurations);
+          intervalWorkDurations.push(...result.intervalWorkDurations);
+          distances.push(result.distance);
+          targetErrors.push(result.targetError);
+          motion.push(result.motion);
+          callbackCount += result.callbackCount;
+          maxCallbacksPerFrame = Math.max(maxCallbacksPerFrame, result.maxCallbacksPerFrame);
         } finally {
           measuring = false;
         }
-        distances.push(component.getScrollTop() - initialScrollTop);
       }
     } finally {
       if (query) {
@@ -217,7 +346,12 @@ async function measureCase({ name, languageId, text }) {
     expect(distances.every((distance) => distance > 0)).toBe(true);
     return {
       name,
+      scenario: scenario.name,
       frames: summarize(frameDurations),
+      wheelHandling: summarize(wheelDurations),
+      workPerFrameInterval: summarize(intervalWorkDurations),
+      callbackCount,
+      maxCallbacksPerFrame,
       queryCount,
       queriedRows,
       capturedNodes,
@@ -225,7 +359,10 @@ async function measureCase({ name, languageId, text }) {
       tileUpdates,
       normalUpdates,
       scrollOnlyFrames,
+      scrollFrameUpdates,
       distances,
+      targetErrors,
+      motion,
     };
   } finally {
     component.element.remove();
@@ -233,8 +370,8 @@ async function measureCase({ name, languageId, text }) {
   }
 }
 
-describe("Text editor Alt+wheel benchmark", () => {
-  it("reports cold-tile work for plain text, Python, and IPython", async () => {
+describe("Text editor wheel benchmark", () => {
+  it("reports renderer work and motion for bursts and slowing wheel input", async () => {
     jasmine.useRealClock();
     await Promise.all([
       lumine.packages.activatePackage("language-python"),
@@ -251,13 +388,19 @@ describe("Text editor Alt+wheel benchmark", () => {
     ];
 
     const results = [];
-    for (const benchmarkCase of cases) results.push(await measureCase(benchmarkCase));
+    const scenarios = wheelScenarios();
+    for (const scenario of scenarios) {
+      for (const benchmarkCase of cases) {
+        results.push(await measureCase(benchmarkCase, scenario));
+      }
+    }
 
     console.log(
       `TEXT_EDITOR_SCROLL_BENCHMARK=${JSON.stringify({
         runtime: {
           electron: process.versions.electron,
           node: process.versions.node,
+          animatorSourceSha256,
         },
         input: {
           source: process.env.LUMINE_SCROLL_BENCHMARK_FILE ?? "synthetic ctypes-like source",
@@ -266,7 +409,10 @@ describe("Text editor Alt+wheel benchmark", () => {
           frameDuration: FRAME_DURATION,
           editorWidth: EDITOR_WIDTH,
           editorHeight: EDITOR_HEIGHT,
+          scenarios,
         },
+        measurement:
+          "Deterministic 120 Hz input/frame timeline; synchronous wheel and renderer work only, without compositor or presentation timing. Frame-interval work includes every wheel dispatch and every queued animation callback in that interval.",
         results,
       })}`,
     );

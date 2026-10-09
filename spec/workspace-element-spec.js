@@ -1335,6 +1335,8 @@ describe("WorkspaceElement", () => {
     });
 
     it("scrolls all visible center-pane editors together", () => {
+      const scroll1 = spyOn(component1, "applyWheelScroll").and.callThrough();
+      const scroll2 = spyOn(component2, "applyWheelScroll").and.callThrough();
       const event = new WheelEvent("wheel", {
         deltaY: 50,
         deltaMode: 0,
@@ -1345,6 +1347,10 @@ describe("WorkspaceElement", () => {
       editor1.getElement().dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(true);
+      for (const scroll of [scroll1, scroll2]) {
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(scroll.calls.mostRecent().args[2]).toBe(event.timeStamp);
+      }
       driveAnimationToCompletion(component1);
       driveAnimationToCompletion(component2);
       expect(component1.getScrollTop()).toBeGreaterThan(0);
@@ -1354,6 +1360,8 @@ describe("WorkspaceElement", () => {
 
     it("scrolls only the hovered editor when the setting is disabled", () => {
       lumine.config.set("editor.ctrlWheelScrollsAllPanes", false);
+      const scroll1 = spyOn(component1, "applyWheelScroll").and.callThrough();
+      const scroll2 = spyOn(component2, "applyWheelScroll").and.callThrough();
 
       const event = new WheelEvent("wheel", {
         deltaY: 50,
@@ -1364,6 +1372,9 @@ describe("WorkspaceElement", () => {
       });
       editor1.getElement().dispatchEvent(event);
 
+      expect(scroll1).toHaveBeenCalledTimes(1);
+      expect(scroll1.calls.mostRecent().args[2]).toBe(event.timeStamp);
+      expect(scroll2).not.toHaveBeenCalled();
       driveAnimationToCompletion(component1);
       driveAnimationToCompletion(component2);
       expect(component1.getScrollTop()).toBeGreaterThan(0);

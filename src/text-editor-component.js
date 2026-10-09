@@ -2545,7 +2545,7 @@ module.exports = class TextEditorComponent {
     // just as focus does, so the model and rendered lines advance together.
     if (!this.visible) this.didShow();
     const { x, y } = this.normalizedWheelDeltas(event);
-    if (this.applyWheelScroll(x, y)) event.preventDefault();
+    if (this.applyWheelScroll(x, y, event.timeStamp)) event.preventDefault();
   }
 
   // Converts a `wheel` event into pre-sensitivity pixel deltas, applying
@@ -2588,7 +2588,7 @@ module.exports = class TextEditorComponent {
   // Scrolls this editor by pre-sensitivity pixel deltas, animating when smooth
   // scrolling is enabled. Returns whether the scroll was accepted, so wheel
   // events can chain to outer scroll containers when the editor is at an edge.
-  applyWheelScroll(x, y) {
+  applyWheelScroll(x, y, timestamp) {
     const model = this.props.model;
     const scrollSensitivity = model.getScrollSensitivity() / 100;
     x *= scrollSensitivity;
@@ -2600,6 +2600,7 @@ module.exports = class TextEditorComponent {
         x,
         y,
         smoothness: model.getWheelSmoothness(),
+        timestamp,
       });
       if (accepted) {
         // The user took over the viewport; stop pinning the inherited anchor.
