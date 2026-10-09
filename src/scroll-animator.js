@@ -105,11 +105,24 @@ class ScrollAnimator {
 
     // Opposite input is an explicit change of intent. Clear unfinished motion
     // on that axis instead of requiring the user to cancel the old backlog.
-    if (x * this.pendingX() < 0 || x * this.velocityX < 0) {
+    // An absolute destination can move closer while still remaining ahead of
+    // the current position. Preserve velocity unless the destination reverses
+    // the actual motion, rather than merely reducing the previous target.
+    const directionX = absolute ? x + this.pendingX() : x;
+    const directionY = absolute ? y + this.pendingY() : y;
+    if (
+      directionX * this.pendingX() < 0 ||
+      directionX * this.velocityX < 0 ||
+      (absolute && directionX === 0)
+    ) {
       if (!absolute) this.targetScrollLeft = this.virtualScrollLeft;
       this.velocityX = 0;
     }
-    if (y * this.pendingY() < 0 || y * this.velocityY < 0) {
+    if (
+      directionY * this.pendingY() < 0 ||
+      directionY * this.velocityY < 0 ||
+      (absolute && directionY === 0)
+    ) {
       if (!absolute) this.targetScrollTop = this.virtualScrollTop;
       this.velocityY = 0;
     }

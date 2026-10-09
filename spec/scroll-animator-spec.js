@@ -264,6 +264,7 @@ describe("ScrollAnimator", () => {
       tick();
       animator.scrollTo({ top: 100, smoothness: 8 });
       expect(animator.targetScrollTop).toBe(100);
+      expect(animator.velocityY).toBe(0);
       runUntilDone();
       expect(component.scrollTop).toBe(100);
     });
@@ -272,7 +273,10 @@ describe("ScrollAnimator", () => {
       animator.scrollBy({ y: 800, smoothness: 8 });
       tick(50);
       const target = component.scrollTop + 1;
+      const velocityY = animator.velocityY;
+      expect(velocityY).toBeGreaterThan(0);
       animator.scrollTo({ top: target, smoothness: 8 });
+      expect(animator.velocityY).toBe(velocityY);
       for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
         tick();
         expect(component.scrollTop).toBeLessThanOrEqual(target);
@@ -280,6 +284,19 @@ describe("ScrollAnimator", () => {
       expect(animator.isAnimating()).toBe(false);
       expect(component.scrollTop).toBe(target);
       expect(animator.velocityY).toBe(0);
+    });
+
+    it("stops old velocity when the absolute destination is the current position", () => {
+      animator.scrollBy({ y: 800, smoothness: 8 });
+      tick(50);
+      const top = component.scrollTop;
+      expect(animator.velocityY).toBeGreaterThan(0);
+      animator.scrollTo({ top, smoothness: 8 });
+      expect(animator.targetScrollTop).toBe(top);
+      expect(animator.velocityY).toBe(0);
+      tick();
+      expect(component.scrollTop).toBe(top);
+      expect(animator.isAnimating()).toBe(false);
     });
 
     it("clears both velocities on cancellation", () => {
