@@ -2871,17 +2871,23 @@ class TextBuffer {
     let patch;
     let checkpoint = null;
     try {
-      patch = this.buffer.loadSync(this.getPath(), this.getEncoding(), (percentDone, patch) => {
-        if (textChangesOnlyPatch(patch)?.getChangeCount() > 0) {
-          checkpoint = this.historyProvider.createCheckpoint({
-            markers: this.createMarkerSnapshot(),
-            isBarrier: true,
-          });
-          this.emitter.emit("will-reload");
-          this.emitWillChangeEvent();
-        }
-      });
-      this.textRevision++;
+      try {
+        patch = this.buffer.loadSync(this.getPath(), this.getEncoding(), (percentDone, patch) => {
+          if (textChangesOnlyPatch(patch)?.getChangeCount() > 0) {
+            checkpoint = this.historyProvider.createCheckpoint({
+              markers: this.createMarkerSnapshot(),
+              isBarrier: true,
+            });
+            this.emitter.emit("will-reload");
+            this.emitWillChangeEvent();
+          }
+        });
+      } finally {
+        // Native loading can commit text even when a reload observer throws.
+        // Invalidate before either finishLoading or the outer error handler.
+        this.textRevision++;
+        this.cachedText = null;
+      }
       patch = textChangesOnlyPatch(patch);
       this.finishLoading(checkpoint, patch, options);
     } catch (error) {

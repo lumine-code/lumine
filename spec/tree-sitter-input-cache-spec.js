@@ -146,4 +146,36 @@ describe("Tree-sitter live text input", () => {
     expect(externalReader.getTextInputChunk(0, source.length)).toBe(asyncSource);
     expect(await editor.whenGrammarSettled()).toBe(true);
   });
+
+  it("reads committed native text when a synchronous reload observer throws", async () => {
+    const source = "const alpha = 1;";
+    const changed = "const bravo = 2;";
+    const { buffer } = await buildMode(source);
+    const fixture = temp.openSync("tree-sitter-input-cache-throw");
+    fixturePath = fixture.path;
+    fs.closeSync(fixture.fd);
+    fs.writeFileSync(fixturePath, changed);
+    buffer.setPath(fixturePath);
+    const externalReader = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
+      buffer,
+      textInputChunk: null,
+    });
+    expect(externalReader.getTextInputChunk(0, source.length)).toBe(source);
+    expect(buffer.getText()).toBe(source);
+    const subscription = buffer.onWillReload(() => {
+      throw new Error("Reload observer failed");
+    });
+
+    try {
+      expect(() => buffer.loadSync({ discardChanges: true })).toThrowError(
+        "Reload observer failed",
+      );
+    } finally {
+      subscription.dispose();
+    }
+
+    expect(buffer.getTextInRange(buffer.getRange())).toBe(changed);
+    expect(externalReader.getTextInputChunk(0, source.length)).toBe(changed);
+    expect(buffer.getText()).toBe(changed);
+  });
 });
