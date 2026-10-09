@@ -2505,6 +2505,65 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 0.25);
     });
 
+    it("batches system momentum without adding a glide or losing the unfinished wheel target", () => {
+      const { component } = buildSmoothComponent();
+      const preventDefault = jasmine.createSpy("preventDefault");
+      const animator = component.scrollAnimator;
+      component.didMouseWheel({ deltaY: 40, preventDefault });
+      animator.advance(FRAME);
+      const position = component.getScrollTop();
+      const update = spyOn(component, "updateScrollAnimationFrame").and.callThrough();
+
+      component.didMouseWheel({ deltaX: 10.25, deltaY: 8.125, momentum: true, preventDefault });
+      component.didMouseWheel({ deltaX: 3.5, deltaY: 2.25, momentum: true, preventDefault });
+
+      expect(component.getScrollTop()).toBe(position);
+      expect(update).not.toHaveBeenCalled();
+      animator.advance(FRAME);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(component.getScrollTop()).toBeNear((40 + 8.125 + 2.25) * wheelPixelScale * 0.25);
+      expect(component.getScrollLeft()).toBeNear((10.25 + 3.5) * wheelPixelScale * 0.25);
+      expect(animator.isAnimating()).toBe(false);
+      expect(preventDefault).toHaveBeenCalledTimes(3);
+
+      component.didMouseWheel({ deltaY: 20, momentum: false, preventDefault });
+      const nextTarget = animator.targetScrollTop;
+      animator.advance(FRAME);
+      expect(component.getScrollTop()).toBeLessThan(nextTarget);
+      expect(animator.isAnimating()).toBe(true);
+      driveAnimationToCompletion(component);
+    });
+
+    it("lets momentum chain at an edge without starting an animation", () => {
+      const { component } = buildSmoothComponent();
+      const preventDefault = jasmine.createSpy("preventDefault");
+      component.didMouseWheel({ deltaY: -20, momentum: true, preventDefault });
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(component.scrollAnimator.isAnimating()).toBe(false);
+    });
+
+    it("finishes an active glide without rendering while the editor is hidden", () => {
+      const { component, element } = buildSmoothComponent();
+      component.didMouseWheel({ deltaY: 40, preventDefault() {} });
+      component.scrollAnimator.advance(FRAME);
+      const target = component.scrollAnimator.targetScrollTop;
+      const render = spyOn(component, "renderSync").and.callThrough();
+      const end = jasmine.createSpy("end");
+      element.onDidEndScrollAnimation(end);
+
+      component.didHide();
+
+      expect(component.getScrollTop()).toBe(target);
+      expect(component.scrollAnimator.isAnimating()).toBe(false);
+      expect(component.scrollAnimator.frameHandle).toBeNull();
+      expect(end).toHaveBeenCalledTimes(1);
+      expect(render).not.toHaveBeenCalled();
+      component.didShow();
+      expect(component.getScrollTop()).toBe(target);
+      expect(component.visible).toBe(true);
+      expect(render).toHaveBeenCalled();
+    });
+
     it("follows the global setting for editors no TextEditorFactory configures", () => {
       // Directly constructed editors bypass Workspace#buildTextEditor, so
       // their scoped configuration parameters stay unset.
@@ -2872,6 +2931,110 @@ describe("TextEditorComponent", () => {
       );
       expect(updateSync).toHaveBeenCalledTimes(1);
       expect(updateSync).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
+    });
+
+    it("refits competing overlays during scroll without rendering the retained lines", async () => {
+      const { component, editor } = buildSmoothComponent({
+        text: "abcdefghijklmnopqrstuvwxyz".repeat(3).concat("\n").repeat(40),
+        width: 120,
+        height: 100,
+        rowsPerTile: 20,
+      });
+      const contentRect = component.refs.content.getBoundingClientRect();
+      spyOn(component, "getWindowInnerHeight").and.returnValue(contentRect.top + 100);
+      spyOn(component, "getWindowInnerWidth").and.returnValue(contentRect.left + 120);
+      for (const [column, side, priority] of [
+        [12, "below", 0],
+        [13, "above", 1],
+      ]) {
+        const item = document.createElement("div");
+        item.style.cssText = "width: 60px; height: 24px; margin: 3px";
+        editor.decorateMarker(editor.markScreenPosition([2, column]), {
+          type: "overlay",
+          item,
+          side,
+          priority,
+        });
+      }
+      const block = document.createElement("div");
+      block.style.height = "7px";
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "block",
+        item: block,
+        position: "after",
+      });
+      await component.getNextUpdatePromise();
+      component.updateSync();
+      const placement = () =>
+        component.decorationsToRender.overlays.map((overlay) => [
+          overlay.pixelTop,
+          overlay.pixelLeft,
+          overlay.flipped,
+          overlay.displaced,
+          overlay.anchorOffset,
+          overlay.marginLeft,
+        ]);
+      const initialPlacement = placement();
+      const render = spyOn(component, "renderSync").and.callThrough();
+      const update = spyOn(component, "updateSync").and.callThrough();
+      component.setScrollTop(10.25);
+      component.setScrollLeft(20.5);
+
+      expect(component.canUpdateScrollPositionOnly(true, true)).toBe(true);
+      expect(component.updateScrollAnimationFrame({ horizontal: true, vertical: true })).toBe(true);
+      expect(update).not.toHaveBeenCalled();
+      expect(render).not.toHaveBeenCalled();
+      const fastPlacement = placement();
+      expect(fastPlacement).not.toEqual(initialPlacement);
+      for (const overlay of component.decorationsToRender.overlays) {
+        const wrapper = component.overlayComponentsByElement.get(overlay.element).element;
+        expect(parseFloat(wrapper.style.top)).toBe(overlay.pixelTop);
+        expect(parseFloat(wrapper.style.left)).toBe(overlay.pixelLeft);
+        expect(wrapper.dataset.overlayPosition).toBe(overlay.flipped ? "above" : "below");
+      }
+
+      component.updateSync();
+      expect(placement()).toEqual(fastPlacement);
+    });
+
+    it("falls back to measurement when an overlay anchor has no cached horizontal position", async () => {
+      const { component, editor } = buildSmoothComponent();
+      const item = document.createElement("div");
+      item.style.cssText = "width: 20px; height: 10px";
+      editor.decorateMarker(editor.markScreenPosition([1, 2]), { type: "overlay", item });
+      await component.getNextUpdatePromise();
+      component.updateSync();
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(true);
+      component.horizontalPixelPositionsByScreenLineId.clear();
+      const update = spyOn(component, "updateSync").and.callThrough();
+      component.setScrollTop(1);
+
+      expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
+        false,
+      );
+      expect(update).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
+    });
+
+    it("refreshes overlay lifecycle changes through the normal path during a glide", async () => {
+      const { component, editor } = buildSmoothComponent();
+      const item = document.createElement("div");
+      item.style.cssText = "width: 20px; height: 10px";
+      const decoration = editor.decorateMarker(editor.markScreenPosition([1, 2]), {
+        type: "overlay",
+        item,
+      });
+      await component.getNextUpdatePromise();
+      component.updateSync();
+      const update = spyOn(component, "updateSync").and.callThrough();
+      decoration.destroy();
+      component.setScrollTop(1);
+
+      expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
+        false,
+      );
+      expect(update).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
+      expect(component.overlayComponents.size).toBe(0);
+      expect(component.decorationsToRender.overlays.length).toBe(0);
     });
 
     it("cancels the glide when the scroll position is set directly", () => {

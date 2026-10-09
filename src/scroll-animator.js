@@ -159,6 +159,27 @@ class ScrollAnimator {
     if (wasAnimating) this.component.element.emitter.emit("did-end-scroll-animation");
   }
 
+  // A hidden surface needs no more frames, but retains all accepted motion
+  // for its next reveal. Publish the bounded destination before ending the
+  // lifecycle so scroll observers see the final position too.
+  finish() {
+    if (!this.animating) return;
+    if (this.frameHandle != null) this.caf(this.frameHandle);
+    this.targetScrollTop = this.virtualScrollTop = clamp(
+      this.targetScrollTop,
+      0,
+      this.component.getMaxScrollTop(),
+    );
+    this.targetScrollLeft = this.virtualScrollLeft = clamp(
+      this.targetScrollLeft,
+      0,
+      this.component.getMaxScrollLeft(),
+    );
+    this.velocityX = this.velocityY = 0;
+    this.curveX = this.curveY = null;
+    this.advance(0);
+  }
+
   requestScroll(x, y, smoothness, timestamp, absolute = false) {
     if (!this.animating && !this.canScrollBy(x, y)) return false;
     const previousTargetX = this.targetScrollLeft;

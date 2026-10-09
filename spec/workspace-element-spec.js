@@ -1381,6 +1381,33 @@ describe("WorkspaceElement", () => {
       expect(component2.getScrollTop()).toBe(0);
     });
 
+    it("preserves system momentum when scrolling all center-pane editors", () => {
+      const scroll1 = spyOn(component1, "applyWheelScroll").and.callThrough();
+      const scroll2 = spyOn(component2, "applyWheelScroll").and.callThrough();
+      const event = new WheelEvent("wheel", {
+        deltaY: 50,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      // Test forwarding independently of platform support for the native flag.
+      Object.defineProperty(event, "momentum", { value: true });
+      editor1.getElement().dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      for (const [scroll, component] of [
+        [scroll1, component1],
+        [scroll2, component2],
+      ]) {
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(scroll.calls.mostRecent().args[3]).toBe(true);
+        component.scrollAnimator.advance(FRAME);
+        expect(component.getScrollTop()).toBeGreaterThan(0);
+        expect(component.scrollAnimator.isAnimating()).toBe(false);
+      }
+      expect(component1.getScrollTop()).toBe(component2.getScrollTop());
+    });
+
     it("ignores ctrl+wheel events that don't originate from a text editor", () => {
       const event = new WheelEvent("wheel", {
         deltaY: 50,

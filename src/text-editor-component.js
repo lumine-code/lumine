@@ -434,6 +434,7 @@ module.exports = class TextEditorComponent {
       this.refs.horizontalScrollbar.updateScrollPosition(this.getScrollLeft());
       this.scrollLeftPending = false;
     }
+    this.updateOverlayPositions();
     return true;
   }
 
@@ -476,14 +477,33 @@ module.exports = class TextEditorComponent {
       this.linesToMeasure.size > 0 ||
       this.horizontalPositionsToMeasure.size > 0 ||
       this.blockDecorationsToMeasure.size > 0 ||
-      this.decorationsToRender.overlays.length > 0 ||
-      this.overlayComponents.size > 0 ||
       this.mountedTileStartRow == null ||
       this.mountedTileEndRow == null ||
       (vertical && (!this.refs.gutterContainer || !this.refs.verticalScrollbar)) ||
       (horizontal && !this.refs.horizontalScrollbar)
     ) {
       return false;
+    }
+    return this.canUpdateOverlayPositionsOnly();
+  }
+
+  canUpdateOverlayPositionsOnly() {
+    if (this.updatingOverlays) return false;
+    const overlays = this.decorationsToRender.overlays;
+    if (overlays.length !== this.overlayComponents.size) return false;
+    for (const decoration of overlays) {
+      const component = this.overlayComponentsByElement.get(decoration.element);
+      const position = decoration.screenPosition;
+      if (
+        !component ||
+        !component.attached ||
+        component.destroyed ||
+        !position ||
+        !this.renderedScreenLineForRow(position.row) ||
+        this.pixelLeftForRowAndColumn(position.row, position.column) == null
+      ) {
+        return false;
+      }
     }
     return true;
   }
@@ -2328,7 +2348,11 @@ module.exports = class TextEditorComponent {
   // one, and the observer that reported the resize is disconnected until the
   // next tick.
   didResizeOverlay(resizedComponent) {
-    if (this.updatingOverlays) return;
+    this.updateOverlayPositions(resizedComponent);
+  }
+
+  updateOverlayPositions(resizedComponent) {
+    if (this.updatingOverlays || this.decorationsToRender.overlays.length === 0) return;
     this.updatingOverlays = true;
     try {
       this.updateOverlaysToRender();
@@ -2488,6 +2512,7 @@ module.exports = class TextEditorComponent {
     if (this.visible) {
       this.visible = false;
       this.props.model.setVisible(false);
+      this.scrollAnimator.finish();
     }
   }
 
@@ -2544,7 +2569,7 @@ module.exports = class TextEditorComponent {
     // just as focus does, so the model and rendered lines advance together.
     if (!this.visible) this.didShow();
     const { x, y } = this.normalizedWheelDeltas(event);
-    if (this.applyWheelScroll(x, y, event.timeStamp)) event.preventDefault();
+    if (this.applyWheelScroll(x, y, event.timeStamp, event.momentum)) event.preventDefault();
   }
 
   // Converts a `wheel` event into pre-sensitivity pixel deltas, applying
@@ -2587,7 +2612,7 @@ module.exports = class TextEditorComponent {
   // Scrolls this editor by pre-sensitivity pixel deltas, animating when smooth
   // scrolling is enabled. Returns whether the scroll was accepted, so wheel
   // events can chain to outer scroll containers when the editor is at an edge.
-  applyWheelScroll(x, y, timestamp) {
+  applyWheelScroll(x, y, timestamp, momentum = false) {
     const model = this.props.model;
     const scrollSensitivity = model.getScrollSensitivity() / 100;
     x *= scrollSensitivity;
@@ -2598,7 +2623,10 @@ module.exports = class TextEditorComponent {
       const accepted = this.scrollAnimator.scrollBy({
         x,
         y,
-        smoothness: model.getWheelSmoothness(),
+        // The system already supplies the deceleration of a momentum stream.
+        // Keep frame batching and its unfinished target, without adding a
+        // second glide after each inertial delta.
+        smoothness: momentum ? 1 : model.getWheelSmoothness(),
         timestamp,
       });
       if (accepted) {

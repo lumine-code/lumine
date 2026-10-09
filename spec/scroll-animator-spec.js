@@ -178,6 +178,47 @@ describe("ScrollAnimator", () => {
       expect(canceledHandles.length).toBe(1);
     });
 
+    it("finishes accepted motion before ending the lifecycle and cancels the queued frame", () => {
+      const destinations = [];
+      component.element.emitter.on("did-end-scroll-animation", () => {
+        destinations.push([component.scrollTop, component.scrollLeft]);
+      });
+      animator.scrollBy({ x: 60.125, y: 300.25, smoothness: 8 });
+      tick();
+      const updates = component.scrollFrameUpdateCount;
+      const requests = rafCallbacks.length;
+
+      animator.finish();
+
+      expect(component.scrollTop).toBe(300.25);
+      expect(component.scrollLeft).toBe(60.125);
+      expect(component.scrollFrameUpdateCount).toBe(updates + 1);
+      expect(animator.isAnimating()).toBe(false);
+      expect(animator.frameHandle).toBeNull();
+      expect(canceledHandles.length).toBe(1);
+      expect(rafCallbacks.length).toBe(requests);
+      expect(destinations).toEqual([[300.25, 60.125]]);
+      animator.finish();
+      tick();
+      expect(destinations.length).toBe(1);
+      expect(component.scrollFrameUpdateCount).toBe(updates + 1);
+    });
+
+    it("bounds the final destination when the scroll range shrinks before finishing", () => {
+      animator.scrollBy({ x: 400, y: 900, smoothness: 8 });
+      tick();
+      component.maxScrollTop = 100;
+      component.maxScrollLeft = 30;
+
+      animator.finish();
+
+      expect(component.scrollTop).toBe(100);
+      expect(component.scrollLeft).toBe(30);
+      expect(animator.isAnimating()).toBe(false);
+      expect(animator.velocityX).toBe(0);
+      expect(animator.velocityY).toBe(0);
+    });
+
     it("conserves fractional distance across same-direction requests", () => {
       const deltas = [0.125, 4.75, 9.0625, 0.03125, 32.5];
       for (const delta of deltas) {

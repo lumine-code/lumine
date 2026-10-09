@@ -358,7 +358,8 @@ class WorkspaceElement extends HTMLElement {
       const item = pane.getActiveItem();
       if (!this.model.isTextEditor(item)) continue;
       const component = item.getElement().getComponent();
-      anyAccepted = component.applyWheelScroll(x, y, event.timeStamp) || anyAccepted;
+      anyAccepted =
+        component.applyWheelScroll(x, y, event.timeStamp, event.momentum) || anyAccepted;
     }
     if (anyAccepted) {
       event.preventDefault();
