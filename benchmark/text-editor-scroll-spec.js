@@ -20,18 +20,25 @@ const EDITOR_HEIGHT = 1200;
 
 function wheelScenarios() {
   const altBurst = [];
+  const altSparse = [];
   const increasingGaps = [];
   const decreasingDeltas = [];
   let spacedTime = 0;
   for (let index = 0; index < INPUT_COUNT; index++) {
     altBurst.push({ at: index * FRAME_DURATION, deltaY: 100, altKey: true });
+    altSparse.push({ at: index * 100, deltaY: 100, altKey: true });
     increasingGaps.push({ at: spacedTime, deltaY: 100 });
     decreasingDeltas.push({ at: index * (1000 / 60), deltaY: 100 * Math.pow(0.88, index) });
     spacedTime += FRAME_DURATION + ((100 - FRAME_DURATION) * index) / (INPUT_COUNT - 1);
   }
   return [
     { name: "alt-wheel-burst", events: altBurst },
+    { name: "alt-wheel-sparse", events: altSparse },
     { name: "free-wheel-spacing", events: increasingGaps },
+    {
+      name: "alt-wheel-spacing",
+      events: increasingGaps.map((event) => ({ ...event, altKey: true })),
+    },
     { name: "free-wheel-deltas", events: decreasingDeltas },
   ];
 }
@@ -172,6 +179,14 @@ function runWheelScenario(component, scenario) {
   let maxCallbacksPerFrame = 0;
   let previousPosition = initialScrollTop;
   let activeInputFrames = 0;
+  let animationStarts = 0;
+  let animationEnds = 0;
+  const startSubscription = component.element.emitter.on("did-start-scroll-animation", () => {
+    animationStarts++;
+  });
+  const endSubscription = component.element.emitter.on("did-end-scroll-animation", () => {
+    animationEnds++;
+  });
   try {
     while (
       (inputIndex < scenario.events.length || animator.isAnimating() || pendingFrameCount() > 0) &&
@@ -234,6 +249,8 @@ function runWheelScenario(component, scenario) {
       intervalWorkDurations,
       callbackCount,
       maxCallbacksPerFrame,
+      animationStarts,
+      animationEnds,
       distance,
       targetError,
       motion: {
@@ -249,6 +266,8 @@ function runWheelScenario(component, scenario) {
       },
     };
   } finally {
+    startSubscription.dispose();
+    endSubscription.dispose();
     restore();
   }
 }
@@ -311,6 +330,8 @@ async function measureCase({ name, languageId, text }, scenario) {
     const motion = [];
     let callbackCount = 0;
     let maxCallbacksPerFrame = 0;
+    let animationStarts = 0;
+    let animationEnds = 0;
     try {
       for (const startRow of sampleStartRows(editor.getLineCount())) {
         component.scrollAnimator.cancel();
@@ -329,6 +350,8 @@ async function measureCase({ name, languageId, text }, scenario) {
           motion.push(result.motion);
           callbackCount += result.callbackCount;
           maxCallbacksPerFrame = Math.max(maxCallbacksPerFrame, result.maxCallbacksPerFrame);
+          animationStarts += result.animationStarts;
+          animationEnds += result.animationEnds;
         } finally {
           measuring = false;
         }
@@ -352,6 +375,8 @@ async function measureCase({ name, languageId, text }, scenario) {
       workPerFrameInterval: summarize(intervalWorkDurations),
       callbackCount,
       maxCallbacksPerFrame,
+      animationStarts,
+      animationEnds,
       queryCount,
       queriedRows,
       capturedNodes,

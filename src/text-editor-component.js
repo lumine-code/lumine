@@ -2570,14 +2570,17 @@ module.exports = class TextEditorComponent {
     // must reconcile a stale hidden state before scrolling its viewport,
     // just as focus does, so the model and rendered lines advance together.
     if (!this.visible) this.didShow();
-    const { x, y } = this.normalizedWheelDeltas(event);
-    if (this.applyWheelScroll(x, y, event.timeStamp, event.momentum)) event.preventDefault();
+    const { x, y, distanceScale } = this.normalizedWheelDeltas(event);
+    if (this.applyWheelScroll(x, y, event.timeStamp, event.momentum, distanceScale)) {
+      event.preventDefault();
+    }
   }
 
   // Converts a `wheel` event into pre-sensitivity pixel deltas, applying
   // delta-mode normalization, the non-darwin shift swap, and the alt speed
   // multiplier. Both axes are preserved so diagonal trackpad gestures pan
-  // smoothly instead of locking to the dominant axis per event.
+  // smoothly instead of locking to the dominant axis per event. distanceScale
+  // records the gain already applied to those deltas for animation timing.
   normalizedWheelDeltas(event) {
     let deltaX = event.deltaX || 0;
     let deltaY = event.deltaY || 0;
@@ -2602,19 +2605,19 @@ module.exports = class TextEditorComponent {
       deltaY = temp;
     }
 
-    const altWheelMultiplier = this.props.model.getAltWheelMultiplier();
-    if (event.altKey && altWheelMultiplier !== 1) {
-      deltaX *= altWheelMultiplier;
-      deltaY *= altWheelMultiplier;
+    const distanceScale = event.altKey ? this.props.model.getAltWheelMultiplier() : 1;
+    if (distanceScale !== 1) {
+      deltaX *= distanceScale;
+      deltaY *= distanceScale;
     }
 
-    return { x: deltaX, y: deltaY };
+    return { x: deltaX, y: deltaY, distanceScale };
   }
 
   // Scrolls this editor by pre-sensitivity pixel deltas, animating when smooth
   // scrolling is enabled. Returns whether the scroll was accepted, so wheel
   // events can chain to outer scroll containers when the editor is at an edge.
-  applyWheelScroll(x, y, timestamp, momentum = false) {
+  applyWheelScroll(x, y, timestamp, momentum = false, distanceScale = 1) {
     const model = this.props.model;
     const scrollSensitivity = model.getScrollSensitivity() / 100;
     x *= scrollSensitivity;
@@ -2628,6 +2631,7 @@ module.exports = class TextEditorComponent {
         smoothness: model.getWheelSmoothness(),
         momentum,
         timestamp,
+        distanceScale,
       });
       if (accepted) {
         // The user took over the viewport; stop pinning the inherited anchor.

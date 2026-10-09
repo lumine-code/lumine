@@ -12,11 +12,11 @@ const X_C = 3 * CURVE_X1;
 // Chromium-style cubic retargeting and inverse-distance duration selection.
 // The upstream notices and reference revision are retained in LICENSE. Each
 // axis has its own segment and a stricter duration bound to prevent overshoot.
-function createCurve(position, velocity, target, smoothness) {
+function createCurve(position, velocity, target, smoothness, timingDistance = target - position) {
   const distance = target - position;
   if (distance === 0) return null;
   if (distance * velocity < 0) velocity = 0;
-  const ramp = clamp((Math.abs(distance) - RAMP_START) / (RAMP_END - RAMP_START), 0, 1);
+  const ramp = clamp((Math.abs(timingDistance) - RAMP_START) / (RAMP_END - RAMP_START), 0, 1);
   let duration =
     smoothness <= 2
       ? 0
@@ -30,11 +30,20 @@ function createCurve(position, velocity, target, smoothness) {
     position,
     target,
     distance,
+    timingDistance,
     initialVelocity: velocity,
     duration,
     elapsed: 0,
     y1: duration === 0 ? 0 : clamp((CURVE_X1 * velocity * duration) / distance, 0, 1),
   };
+}
+
+// The same fraction of a segment remains in its physical and base-input
+// distances. Retain that base distance across modifier changes rather than
+// reinterpreting every unfinished input using the latest Alt multiplier.
+function remainingTimingDistance(pending, curve) {
+  if (!curve || curve.timingDistance === curve.distance) return pending;
+  return (pending / curve.distance) * curve.timingDistance;
 }
 
 function cubicX(parameter) {
@@ -122,10 +131,18 @@ class ScrollAnimator {
     return this.animating;
   }
 
-  scrollBy({ x = 0, y = 0, smoothness, momentum = false, reset = false, timestamp } = {}) {
+  scrollBy({
+    x = 0,
+    y = 0,
+    smoothness,
+    momentum = false,
+    reset = false,
+    timestamp,
+    distanceScale = 1,
+  } = {}) {
     const time = this.prepareRequest(timestamp, reset);
     if (momentum) return this.requestMomentumScroll(x, y, time);
-    return this.requestScroll(x, y, smoothness, time);
+    return this.requestScroll(x, y, smoothness, time, false, distanceScale);
   }
 
   scrollTo({ top, left, smoothness, reset = false, timestamp } = {}) {
@@ -181,13 +198,16 @@ class ScrollAnimator {
     this.advance(0);
   }
 
-  requestScroll(x, y, smoothness, timestamp, absolute = false) {
+  requestScroll(x, y, smoothness, timestamp, absolute = false, distanceScale = 1) {
     if (!this.animating && !this.canScrollBy(x, y)) return false;
     const previousTargetX = this.targetScrollLeft;
     const previousTargetY = this.targetScrollTop;
     const previousVelocityX = this.velocityX;
     const previousVelocityY = this.velocityY;
     const previousSmoothness = this.smoothness;
+    const scale = Number.isFinite(distanceScale) && distanceScale > 0 ? distanceScale : 1;
+    let timingDistanceX = remainingTimingDistance(this.pendingX(), this.curveX);
+    let timingDistanceY = remainingTimingDistance(this.pendingY(), this.curveY);
     if (smoothness != null) this.smoothness = smoothness;
 
     // Relative reversal cancels unfinished motion on that axis. An absolute
@@ -199,7 +219,10 @@ class ScrollAnimator {
       directionX * this.velocityX < 0 ||
       (absolute && directionX === 0)
     ) {
-      if (!absolute) this.targetScrollLeft = this.virtualScrollLeft;
+      if (!absolute) {
+        this.targetScrollLeft = this.virtualScrollLeft;
+        timingDistanceX = 0;
+      }
       this.velocityX = 0;
     }
     if (
@@ -207,11 +230,16 @@ class ScrollAnimator {
       directionY * this.velocityY < 0 ||
       (absolute && directionY === 0)
     ) {
-      if (!absolute) this.targetScrollTop = this.virtualScrollTop;
+      if (!absolute) {
+        this.targetScrollTop = this.virtualScrollTop;
+        timingDistanceY = 0;
+      }
       this.velocityY = 0;
     }
-    this.targetScrollLeft = clamp(this.targetScrollLeft + x, 0, this.component.getMaxScrollLeft());
-    this.targetScrollTop = clamp(this.targetScrollTop + y, 0, this.component.getMaxScrollTop());
+    const inputOriginX = this.targetScrollLeft;
+    const inputOriginY = this.targetScrollTop;
+    this.targetScrollLeft = clamp(inputOriginX + x, 0, this.component.getMaxScrollLeft());
+    this.targetScrollTop = clamp(inputOriginY + y, 0, this.component.getMaxScrollTop());
 
     // A clamped or unchanged target keeps its segment and original deadline.
     // Neither repeated events at an edge nor input on the other axis prolongs it.
@@ -220,14 +248,22 @@ class ScrollAnimator {
       this.velocityX !== previousVelocityX ||
       this.smoothness !== previousSmoothness
     ) {
-      this.retargetX();
+      this.retargetX(
+        absolute && this.targetScrollLeft !== previousTargetX
+          ? this.pendingX()
+          : timingDistanceX + (this.targetScrollLeft - inputOriginX) / scale,
+      );
     }
     if (
       this.targetScrollTop !== previousTargetY ||
       this.velocityY !== previousVelocityY ||
       this.smoothness !== previousSmoothness
     ) {
-      this.retargetY();
+      this.retargetY(
+        absolute && this.targetScrollTop !== previousTargetY
+          ? this.pendingY()
+          : timingDistanceY + (this.targetScrollTop - inputOriginY) / scale,
+      );
     }
     if (this.pendingX() === 0 && this.pendingY() === 0) return false;
     this.start(timestamp);
@@ -287,22 +323,24 @@ class ScrollAnimator {
     }
   }
 
-  retargetX() {
+  retargetX(timingDistance = remainingTimingDistance(this.pendingX(), this.curveX)) {
     this.curveX = createCurve(
       this.virtualScrollLeft,
       this.velocityX,
       this.targetScrollLeft,
       this.smoothness,
+      timingDistance,
     );
     this.velocityX = this.curveX?.initialVelocity ?? 0;
   }
 
-  retargetY() {
+  retargetY(timingDistance = remainingTimingDistance(this.pendingY(), this.curveY)) {
     this.curveY = createCurve(
       this.virtualScrollTop,
       this.velocityY,
       this.targetScrollTop,
       this.smoothness,
+      timingDistance,
     );
     this.velocityY = this.curveY?.initialVelocity ?? 0;
   }

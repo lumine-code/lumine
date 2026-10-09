@@ -1350,6 +1350,7 @@ describe("WorkspaceElement", () => {
       for (const scroll of [scroll1, scroll2]) {
         expect(scroll).toHaveBeenCalledTimes(1);
         expect(scroll.calls.mostRecent().args[2]).toBe(event.timeStamp);
+        expect(scroll.calls.mostRecent().args[4]).toBe(1);
       }
       driveAnimationToCompletion(component1);
       driveAnimationToCompletion(component2);
@@ -1374,11 +1375,43 @@ describe("WorkspaceElement", () => {
 
       expect(scroll1).toHaveBeenCalledTimes(1);
       expect(scroll1.calls.mostRecent().args[2]).toBe(event.timeStamp);
+      expect(scroll1.calls.mostRecent().args[4]).toBe(1);
       expect(scroll2).not.toHaveBeenCalled();
       driveAnimationToCompletion(component1);
       driveAnimationToCompletion(component2);
       expect(component1.getScrollTop()).toBeGreaterThan(0);
       expect(component2.getScrollTop()).toBe(0);
+    });
+
+    it("carries the source Alt-wheel gain to every pane while preserving their sensitivities", () => {
+      editor1.update({ altWheelMultiplier: 7.5, scrollSensitivity: 25, smoothScrolling: true });
+      editor2.update({ altWheelMultiplier: 3, scrollSensitivity: 50, smoothScrolling: true });
+      const scroll1 = spyOn(component1, "applyWheelScroll").and.callThrough();
+      const scroll2 = spyOn(component2, "applyWheelScroll").and.callThrough();
+      const animator1 = spyOn(component1.scrollAnimator, "scrollBy").and.callThrough();
+      const animator2 = spyOn(component2.scrollAnimator, "scrollBy").and.callThrough();
+      const event = new WheelEvent("wheel", {
+        deltaY: 50,
+        ctrlKey: true,
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      editor1.getElement().dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      for (const scroll of [scroll1, scroll2]) {
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(scroll.calls.mostRecent().args[2]).toBe(event.timeStamp);
+        expect(scroll.calls.mostRecent().args[4]).toBe(7.5);
+      }
+      expect(scroll1.calls.mostRecent().args[1]).toBe(scroll2.calls.mostRecent().args[1]);
+      expect(animator1.calls.mostRecent().args[0].distanceScale).toBe(7.5);
+      expect(animator2.calls.mostRecent().args[0].distanceScale).toBe(7.5);
+      driveAnimationToCompletion(component1);
+      driveAnimationToCompletion(component2);
+      expect(component1.getScrollTop()).toBeGreaterThan(0);
+      expect(component2.getScrollTop()).toBe(component1.getScrollTop() * 2);
     });
 
     it("preserves system momentum when scrolling all center-pane editors", () => {
@@ -1401,6 +1434,7 @@ describe("WorkspaceElement", () => {
       ]) {
         expect(scroll).toHaveBeenCalledTimes(1);
         expect(scroll.calls.mostRecent().args[3]).toBe(true);
+        expect(scroll.calls.mostRecent().args[4]).toBe(1);
         component.scrollAnimator.advance(FRAME);
         expect(component.getScrollTop()).toBeGreaterThan(0);
         expect(component.scrollAnimator.isAnimating()).toBe(false);

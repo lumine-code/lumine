@@ -2489,6 +2489,7 @@ describe("TextEditorComponent", () => {
       component.didMouseWheel(event);
 
       expect(scrollBy.calls.mostRecent().args[0].timestamp).toBe(event.timeStamp);
+      expect(scrollBy.calls.mostRecent().args[0].distanceScale).toBe(1);
       expect(event.defaultPrevented).toBe(true);
       driveAnimationToCompletion(component);
       expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 0.25);
@@ -2591,19 +2592,82 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTop()).toBeNear(scrollTop + 20 * wheelPixelScale * 0.25);
     });
 
-    it("applies the alt wheel multiplier", () => {
+    it("applies the same Alt-wheel distance with smooth scrolling on and off", () => {
       const { component } = buildSmoothComponent({ altWheelMultiplier: 5 });
+      const { component: direct } = buildSmoothComponent({
+        altWheelMultiplier: 5,
+        smoothScrolling: false,
+      });
       const preventDefault = jasmine.createSpy("preventDefault");
-      component.didMouseWheel({
+      const event = {
         deltaX: 0,
         deltaY: 20,
         deltaMode: 0,
         altKey: true,
         preventDefault,
-      });
+      };
+      component.didMouseWheel(event);
+      direct.didMouseWheel(event);
+      expect(component.getScrollTop()).toBe(0);
+      expect(direct.scrollAnimator.isAnimating()).toBe(false);
       driveAnimationToCompletion(component);
       expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 5 * 0.25);
+      expect(component.getScrollTop()).toBe(direct.getScrollTop());
     });
+
+    for (const multiplier of [7.5, 1]) {
+      it(`keeps Alt-wheel timing with multiplier ${multiplier} aligned with ordinary wheel input`, async () => {
+        const params = {
+          text: "line\n".repeat(1000),
+          height: 80,
+          width: 100,
+          altWheelMultiplier: multiplier,
+        };
+        const { component: ordinary } = buildSmoothComponent(params);
+        const { component: alt } = buildSmoothComponent(params);
+        for (const component of [ordinary, alt]) {
+          if (component.updateScheduled) await component.getNextUpdatePromise();
+        }
+        let now = 0;
+        ordinary.scrollAnimator.now = alt.scrollAnimator.now = () => now;
+        const altScroll = spyOn(alt.scrollAnimator, "scrollBy").and.callThrough();
+        const compareMotion = () => {
+          expect(alt.getScrollTop() / multiplier).toBeCloseTo(ordinary.getScrollTop(), 7);
+          expect(alt.scrollAnimator.isAnimating()).toBe(ordinary.scrollAnimator.isAnimating());
+        };
+        let nextFrameTime = FRAME;
+        const renderFrame = () => {
+          now = nextFrameTime;
+          ordinary.scrollAnimator.step(now);
+          alt.scrollAnimator.step(now);
+          compareMotion();
+          nextFrameTime += FRAME;
+        };
+
+        for (const [timeStamp, deltaY] of [
+          [0, 300],
+          [24, 240],
+          [67, 160],
+        ]) {
+          while (nextFrameTime <= timeStamp) renderFrame();
+          now = timeStamp;
+          const event = { deltaY, timeStamp, preventDefault() {} };
+          ordinary.didMouseWheel(event);
+          alt.didMouseWheel({ ...event, altKey: true });
+          expect(altScroll.calls.mostRecent().args[0].distanceScale).toBe(multiplier);
+          compareMotion();
+        }
+
+        for (let frames = 0; ordinary.scrollAnimator.isAnimating() && frames < 1000; frames++) {
+          renderFrame();
+        }
+        expect(ordinary.scrollAnimator.isAnimating()).toBe(false);
+        expect(alt.scrollAnimator.isAnimating()).toBe(false);
+        expect(ordinary.getScrollTop()).toBeGreaterThan(0);
+        expect(alt.getScrollTop()).toBeLessThan(alt.getMaxScrollTop());
+        compareMotion();
+      });
+    }
 
     it("normalizes line-based wheel deltas against the line height", () => {
       const { component } = buildSmoothComponent();

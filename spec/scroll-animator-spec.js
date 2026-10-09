@@ -579,6 +579,222 @@ describe("ScrollAnimator", () => {
       expect(component.scrollTop).toBe(120);
     });
 
+    describe("distance scaling", () => {
+      function referenceAnimator(referenceComponent) {
+        return new ScrollAnimator(referenceComponent, {
+          now: () => now,
+          requestAnimationFrame: () => 0,
+        });
+      }
+
+      it("scales diagonal distance without changing the normal animation phase", () => {
+        const reference = buildMockComponent();
+        const normal = referenceAnimator(reference);
+        animator.scrollBy({ x: 180, y: 450, distanceScale: 7.5, smoothness: 8 });
+        normal.scrollBy({ x: 24, y: 60, smoothness: 8 });
+        for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
+          tick();
+          normal.step(now);
+          expect(component.scrollTop / 7.5).toBeCloseTo(reference.scrollTop, 9);
+          expect(component.scrollLeft / 7.5).toBeCloseTo(reference.scrollLeft, 9);
+          expect(animator.velocityY / 7.5).toBeCloseTo(normal.velocityY, 9);
+          expect(animator.velocityX / 7.5).toBeCloseTo(normal.velocityX, 9);
+          expect(animator.isAnimating()).toBe(normal.isAnimating());
+        }
+        expect(component.scrollTop).toBe(450);
+        expect(component.scrollLeft).toBe(180);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("retains the original timing debt when normal and Alt inputs are mixed", () => {
+        const reference = buildMockComponent();
+        const combined = referenceAnimator(reference);
+        animator.scrollBy({ y: 60, smoothness: 8 });
+        combined.scrollBy({ y: 60, smoothness: 8 });
+        tick(30);
+        combined.step(now);
+        const velocityY = animator.velocityY;
+        const remainingNormalDistance = animator.pendingY();
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        expect(animator.curveY.timingDistance).toBeCloseTo(remainingNormalDistance + 60, 9);
+        expect(animator.velocityY).toBe(velocityY);
+        animator.scrollBy({ y: 60, smoothness: 8 });
+        expect(animator.velocityY).toBe(velocityY);
+
+        // The simultaneous 450px Alt and 60px normal inputs carry 120px of
+        // timing distance. Combining them must keep the earlier normal debt.
+        combined.scrollBy({ y: 510, distanceScale: 4.25, smoothness: 8 });
+        for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
+          tick();
+          combined.step(now);
+          expect(component.scrollTop).toBeCloseTo(reference.scrollTop, 8);
+          expect(animator.velocityY).toBeCloseTo(combined.velocityY, 8);
+        }
+        expect(component.scrollTop).toBe(570);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("drops the reversed axis's old timing debt", () => {
+        component.scrollTop = 1000;
+        component.maxScrollTop = 10000;
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const top = component.scrollTop;
+        animator.scrollBy({ y: -30, distanceScale: 7.5, smoothness: 8 });
+        expect(animator.curveY.timingDistance).toBe(-4);
+        expect(animator.velocityY).toBe(0);
+        runUntilDone();
+        expect(component.scrollTop).toBe(top - 30);
+      });
+
+      it("keeps normal timing when a scaled destination is clamped by a reflow", () => {
+        const reference = buildMockComponent();
+        const normal = referenceAnimator(reference);
+        component.maxScrollTop = 10000;
+        animator.scrollBy({ y: 3600, distanceScale: 7.5, smoothness: 8 });
+        normal.scrollBy({ y: 480, smoothness: 8 });
+        tick(20);
+        normal.step(now);
+        component.maxScrollTop = 1800;
+        reference.maxScrollTop = 240;
+        for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
+          tick();
+          normal.step(now);
+          expect(component.scrollTop / 7.5).toBeCloseTo(reference.scrollTop, 8);
+          expect(animator.velocityY / 7.5).toBeCloseTo(normal.velocityY, 8);
+          expect(animator.isAnimating()).toBe(normal.isAnimating());
+        }
+        expect(component.scrollTop).toBe(1800);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("retains timing metadata and the deadline when momentum translates a scaled glide", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const curve = animator.curveY;
+        const timingDistance = curve.timingDistance;
+        const velocityY = animator.velocityY;
+        const deadline = now + curve.duration - curve.elapsed;
+        animator.scrollBy({ y: 75, distanceScale: 7.5, momentum: true });
+        expect(animator.curveY).toBe(curve);
+        expect(curve.timingDistance).toBe(timingDistance);
+        expect(animator.velocityY).toBe(velocityY);
+        expect(now + curve.duration - curve.elapsed).toBe(deadline);
+        runUntilDone();
+        expect(component.scrollTop).toBe(525);
+      });
+
+      it("uses the new input's scale when resetting an existing glide", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const top = component.scrollTop;
+        animator.scrollBy({ y: 60, smoothness: 8, reset: true });
+        expect(animator.curveY.timingDistance).toBeCloseTo(60, 9);
+        expect(animator.velocityY).toBe(0);
+        runUntilDone();
+        expect(component.scrollTop).toBe(top + 60);
+      });
+
+      it("uses the actual distance for a changed absolute destination", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const top = component.scrollTop;
+        animator.scrollTo({ top: 480, smoothness: 8 });
+        expect(animator.curveY.timingDistance).toBe(480 - top);
+        runUntilDone();
+        expect(component.scrollTop).toBe(480);
+      });
+
+      it("does not reinterpret an unchanged absolute destination", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const curve = animator.curveY;
+        const timingDistance = curve.timingDistance;
+        animator.scrollTo({ top: 450, smoothness: 8 });
+        expect(animator.curveY).toBe(curve);
+        expect(curve.timingDistance).toBe(timingDistance);
+        tick(90);
+        expect(component.scrollTop).toBe(450);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("preserves scaled timing debt when only absolute smoothness changes on an axis", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const velocityY = animator.velocityY;
+        animator.scrollTo({ left: 100, smoothness: 20 });
+        expect(animator.targetScrollTop).toBe(450);
+        expect(animator.curveY.timingDistance).toBeCloseTo(animator.pendingY() / 7.5, 9);
+        expect(animator.velocityY).toBe(velocityY);
+        tick(10);
+        const nextVelocityY = animator.velocityY;
+        animator.scrollTo({ top: 450, smoothness: 8 });
+        expect(animator.curveY.timingDistance).toBeCloseTo(animator.pendingY() / 7.5, 9);
+        expect(animator.velocityY).toBe(nextVelocityY);
+        runUntilDone();
+        expect(component.scrollTop).toBe(450);
+        expect(component.scrollLeft).toBe(100);
+      });
+
+      it("does not extend the other axis when input changes distance scale", () => {
+        animator.scrollBy({ x: 480, smoothness: 8 });
+        tick(30);
+        const curveX = animator.curveX;
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        expect(animator.curveX).toBe(curveX);
+        tick(30);
+        expect(component.scrollLeft).toBe(480);
+        expect(animator.velocityX).toBe(0);
+        expect(component.scrollTop).toBeLessThan(450);
+        runUntilDone();
+        expect(component.scrollTop).toBe(450);
+      });
+
+      it("keeps a clamped request from replacing a scaled curve or postponing its endpoint", () => {
+        component.maxScrollTop = 450;
+        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        tick(30);
+        const curve = animator.curveY;
+        const timingDistance = curve.timingDistance;
+        animator.scrollBy({ y: 60, smoothness: 8 });
+        expect(animator.curveY).toBe(curve);
+        expect(curve.timingDistance).toBe(timingDistance);
+        tick(90);
+        expect(component.scrollTop).toBe(450);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("retains exact fractional totals for scaled input", () => {
+        const deltas = [0.125, 4.75, 9.0625, 0.03125, 32.5];
+        for (const delta of deltas) {
+          animator.scrollBy({
+            x: (delta * 7.5) / 2,
+            y: delta * 7.5,
+            distanceScale: 7.5,
+            smoothness: 8,
+          });
+          tick(FRAME / 2);
+        }
+        runUntilDone();
+        const total = deltas.reduce((sum, delta) => sum + delta * 7.5, 0);
+        expect(component.scrollTop).toBe(total);
+        expect(component.scrollLeft).toBe(total / 2);
+      });
+
+      it("treats invalid distance scales as normal input", () => {
+        for (const distanceScale of [0, -1, NaN, Infinity]) {
+          component.scrollTop = 0;
+          animator.scrollBy({ y: 60, distanceScale, smoothness: 8 });
+          expect(animator.curveY.timingDistance).toBe(60);
+          tick(119);
+          expect(component.scrollTop).toBeLessThan(60);
+          tick(1);
+          expect(component.scrollTop).toBe(60);
+          expect(animator.isAnimating()).toBe(false);
+        }
+      });
+    });
+
     describe("system momentum", () => {
       it("batches fractional idle momentum into one frame without an easing curve", () => {
         expect(animator.scrollBy({ x: 5.125, y: 10.25, smoothness: 8, momentum: true })).toBe(true);
@@ -760,7 +976,7 @@ describe("ScrollAnimator", () => {
     });
 
     describe("continuous wheel input", () => {
-      function runTrain(events, fps = 60) {
+      function runTrain(events, fps = 60, distanceScale = 1) {
         let time = 0;
         const trainComponent = buildMockComponent();
         trainComponent.maxScrollTop = 100000;
@@ -769,6 +985,10 @@ describe("ScrollAnimator", () => {
           requestAnimationFrame: () => 0,
         });
         const positions = [0];
+        const velocities = [0];
+        const lifecycle = { started: 0, ended: 0 };
+        trainComponent.element.emitter.on("did-start-scroll-animation", () => lifecycle.started++);
+        trainComponent.element.emitter.on("did-end-scroll-animation", () => lifecycle.ended++);
         let eventIndex = 0;
         const duration = events[events.length - 1].time + 1000;
         for (let frame = 1; (frame * 1000) / fps <= duration; frame++) {
@@ -776,19 +996,53 @@ describe("ScrollAnimator", () => {
           while (eventIndex < events.length && events[eventIndex].time <= timestamp) {
             const event = events[eventIndex++];
             time = event.time;
-            trainAnimator.scrollBy({ y: event.delta, smoothness: 8, timestamp: time });
+            trainAnimator.scrollBy({
+              y: event.delta * distanceScale,
+              distanceScale,
+              smoothness: 8,
+              momentum: event.momentum,
+              timestamp: time,
+            });
           }
           time = timestamp;
           trainAnimator.step(timestamp);
           positions.push(trainComponent.scrollTop);
+          velocities.push(trainAnimator.velocityY);
         }
         for (let frames = 0; trainAnimator.isAnimating() && frames < 1000; frames++) {
           time += FRAME;
           trainAnimator.step(time);
         }
         expect(trainAnimator.isAnimating()).toBe(false);
-        return { component: trainComponent, positions };
+        return { component: trainComponent, positions, velocities, lifecycle };
       }
+
+      it("keeps Alt timing and lifecycles equal to normal input across wheel sequences", () => {
+        const sequences = [
+          [{ time: 0, delta: 60 }],
+          Array.from({ length: 8 }, (_, i) => ({ time: i * 17, delta: 60 })),
+          [0, 16, 33, 52, 74, 100, 132, 171, 218, 276, 345, 428, 528, 648, 790, 955].map(
+            (time) => ({ time, delta: 60 }),
+          ),
+          Array.from({ length: 40 }, (_, i) => ({ time: i * 17, delta: 60 * Math.pow(0.92, i) })),
+          [
+            { time: 0, delta: 60 },
+            { time: 30, delta: 10, momentum: true },
+            { time: 40, delta: 60 },
+          ],
+        ];
+        for (const events of sequences) {
+          const normal = runTrain(events);
+          const scaled = runTrain(events, 60, 7.5);
+          expect(scaled.positions.length).toBe(normal.positions.length);
+          for (let frame = 0; frame < normal.positions.length; frame++) {
+            expect(scaled.positions[frame] / 7.5).toBeCloseTo(normal.positions[frame], 7);
+            expect(scaled.velocities[frame] / 7.5).toBeCloseTo(normal.velocities[frame], 7);
+          }
+          expect(scaled.lifecycle).toEqual(normal.lifecycle);
+          expect(scaled.component.scrollTop / 7.5).toBeCloseTo(normal.component.scrollTop, 8);
+        }
+      });
 
       it("preserves distance and forward motion as fixed pulses become farther apart", () => {
         const times = [0, 16, 33, 52, 74, 100, 132, 171, 218, 276, 345, 428, 528, 648, 790, 955];

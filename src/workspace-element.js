@@ -351,7 +351,7 @@ class WorkspaceElement extends HTMLElement {
 
     // Normalize once against the source editor (its line height and element
     // size); each target editor applies its own sensitivity and smoothness.
-    const { x, y } = sourceEditorElement.getComponent().normalizedWheelDeltas(event);
+    const { x, y, distanceScale } = sourceEditorElement.getComponent().normalizedWheelDeltas(event);
 
     let anyAccepted = false;
     for (const pane of this.model.getCenter().getPanes()) {
@@ -359,7 +359,8 @@ class WorkspaceElement extends HTMLElement {
       if (!this.model.isTextEditor(item)) continue;
       const component = item.getElement().getComponent();
       anyAccepted =
-        component.applyWheelScroll(x, y, event.timeStamp, event.momentum) || anyAccepted;
+        component.applyWheelScroll(x, y, event.timeStamp, event.momentum, distanceScale) ||
+        anyAccepted;
     }
     if (anyAccepted) {
       event.preventDefault();
