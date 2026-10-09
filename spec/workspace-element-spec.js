@@ -1383,9 +1383,17 @@ describe("WorkspaceElement", () => {
       expect(component2.getScrollTop()).toBe(0);
     });
 
-    it("carries the source Alt-wheel gain to every pane while preserving their sensitivities", () => {
-      editor1.update({ altWheelMultiplier: 7.5, scrollSensitivity: 25, smoothScrolling: true });
-      editor2.update({ altWheelMultiplier: 3, scrollSensitivity: 50, smoothScrolling: true });
+    it("carries the source Alt-wheel gain to every pane while preserving their wheel multipliers", () => {
+      editor1.update({
+        altWheelScrollMultiplier: 7.5,
+        wheelScrollMultiplier: 0.3,
+        smoothScrolling: true,
+      });
+      editor2.update({
+        altWheelScrollMultiplier: 3,
+        wheelScrollMultiplier: 0.6,
+        smoothScrolling: true,
+      });
       const scroll1 = spyOn(component1, "applyWheelScroll").and.callThrough();
       const scroll2 = spyOn(component2, "applyWheelScroll").and.callThrough();
       const animator1 = spyOn(component1.scrollAnimator, "scrollBy").and.callThrough();

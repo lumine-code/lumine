@@ -2,9 +2,7 @@ const CURVE_X1 = 0.42;
 const CURVE_X2 = 0.58;
 const RAMP_START = 120; // px
 const RAMP_END = 480; // px
-const MIN_DURATION = 60; // ms at smoothness 8
-const MAX_DURATION = 120;
-const DEFAULT_SMOOTHNESS = 8;
+const MIN_DURATION_RATIO = 0.5;
 const X_A = 1 - 3 * CURVE_X2 + 3 * CURVE_X1;
 const X_B = 3 * (CURVE_X2 - 2 * CURVE_X1);
 const X_C = 3 * CURVE_X1;
@@ -12,15 +10,12 @@ const X_C = 3 * CURVE_X1;
 // Chromium-style cubic retargeting and inverse-distance duration selection.
 // The upstream notices and reference revision are retained in LICENSE. Each
 // axis has its own segment and a stricter duration bound to prevent overshoot.
-function createCurve(position, velocity, target, smoothness, timingDistance = target - position) {
+function createCurve(position, velocity, target, maxDuration, timingDistance = target - position) {
   const distance = target - position;
   if (distance === 0) return null;
   if (distance * velocity < 0) velocity = 0;
   const ramp = clamp((Math.abs(timingDistance) - RAMP_START) / (RAMP_END - RAMP_START), 0, 1);
-  let duration =
-    smoothness <= 2
-      ? 0
-      : (MAX_DURATION - (MAX_DURATION - MIN_DURATION) * ramp) * (smoothness / DEFAULT_SMOOTHNESS);
+  let duration = Math.max(0, maxDuration) * (1 - (1 - MIN_DURATION_RATIO) * ramp);
   if (distance * velocity > 0) {
     // Keeping the first Y control point at/below the endpoint makes the curve
     // monotone while retaining the incoming velocity, even for a nearby target.
@@ -114,7 +109,7 @@ class ScrollAnimator {
     this.animating = false;
     this.frameHandle = null;
     this.lastUpdateTime = null;
-    this.smoothness = 1;
+    this.duration = 0;
     this.targetScrollTop = 0;
     this.targetScrollLeft = 0;
     this.virtualScrollTop = 0;
@@ -134,7 +129,7 @@ class ScrollAnimator {
   scrollBy({
     x = 0,
     y = 0,
-    smoothness,
+    duration,
     momentum = false,
     reset = false,
     timestamp,
@@ -142,14 +137,14 @@ class ScrollAnimator {
   } = {}) {
     const time = this.prepareRequest(timestamp, reset);
     if (momentum) return this.requestMomentumScroll(x, y, time);
-    return this.requestScroll(x, y, smoothness, time, false, distanceScale);
+    return this.requestScroll(x, y, duration, time, false, distanceScale);
   }
 
-  scrollTo({ top, left, smoothness, reset = false, timestamp } = {}) {
+  scrollTo({ top, left, duration, reset = false, timestamp } = {}) {
     const time = this.prepareRequest(timestamp, reset);
     const x = left != null ? left - this.targetScrollLeft : 0;
     const y = top != null ? top - this.targetScrollTop : 0;
-    return this.requestScroll(x, y, smoothness, time, true);
+    return this.requestScroll(x, y, duration, time, true);
   }
 
   prepareRequest(timestamp, reset) {
@@ -198,17 +193,17 @@ class ScrollAnimator {
     this.advance(0);
   }
 
-  requestScroll(x, y, smoothness, timestamp, absolute = false, distanceScale = 1) {
+  requestScroll(x, y, duration, timestamp, absolute = false, distanceScale = 1) {
     if (!this.animating && !this.canScrollBy(x, y)) return false;
     const previousTargetX = this.targetScrollLeft;
     const previousTargetY = this.targetScrollTop;
     const previousVelocityX = this.velocityX;
     const previousVelocityY = this.velocityY;
-    const previousSmoothness = this.smoothness;
+    const previousDuration = this.duration;
     const scale = Number.isFinite(distanceScale) && distanceScale > 0 ? distanceScale : 1;
     let timingDistanceX = remainingTimingDistance(this.pendingX(), this.curveX);
     let timingDistanceY = remainingTimingDistance(this.pendingY(), this.curveY);
-    if (smoothness != null) this.smoothness = smoothness;
+    if (duration != null) this.duration = duration;
 
     // Relative reversal cancels unfinished motion on that axis. An absolute
     // destination can move closer while still remaining ahead of the viewport.
@@ -246,7 +241,7 @@ class ScrollAnimator {
     if (
       this.targetScrollLeft !== previousTargetX ||
       this.velocityX !== previousVelocityX ||
-      this.smoothness !== previousSmoothness
+      this.duration !== previousDuration
     ) {
       this.retargetX(
         absolute && this.targetScrollLeft !== previousTargetX
@@ -257,7 +252,7 @@ class ScrollAnimator {
     if (
       this.targetScrollTop !== previousTargetY ||
       this.velocityY !== previousVelocityY ||
-      this.smoothness !== previousSmoothness
+      this.duration !== previousDuration
     ) {
       this.retargetY(
         absolute && this.targetScrollTop !== previousTargetY
@@ -328,7 +323,7 @@ class ScrollAnimator {
       this.virtualScrollLeft,
       this.velocityX,
       this.targetScrollLeft,
-      this.smoothness,
+      this.duration,
       timingDistance,
     );
     this.velocityX = this.curveX?.initialVelocity ?? 0;
@@ -339,7 +334,7 @@ class ScrollAnimator {
       this.virtualScrollTop,
       this.velocityY,
       this.targetScrollTop,
-      this.smoothness,
+      this.duration,
       timingDistance,
     );
     this.velocityY = this.curveY?.initialVelocity ?? 0;

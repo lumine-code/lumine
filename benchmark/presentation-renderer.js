@@ -28,7 +28,7 @@ module.exports = async function installPresentationBenchmark(_config) {
   lumine.config.set("editor.softWrap", false);
   lumine.config.set("editor.showIndentGuide", false);
   lumine.config.set("editor.autoIndent", false);
-  lumine.config.set("editor.scrollSensitivity", 40);
+  lumine.config.set("editor.wheelScrollMultiplier", 0.48);
   lumine.config.set("editor.cursorBlinkPeriod", 0);
   for (const name of [
     "language-text",
@@ -372,7 +372,11 @@ module.exports = async function installPresentationBenchmark(_config) {
     themes: lumine.themes.getActiveThemeNames(),
     themeConfig: lumine.config.get("core.theme"),
     smoothScrolling: lumine.config.get("editor.smoothScrolling"),
-    wheelSmoothness: lumine.config.get("editor.wheelSmoothness"),
+    wheelScrollMultiplier: lumine.config.get("editor.wheelScrollMultiplier"),
+    wheelScrollDuration: lumine.config.get("editor.wheelScrollDuration"),
+    commandScrollDuration: lumine.config.get("editor.commandScrollDuration"),
+    altWheelScrollMultiplier: lumine.config.get("editor.altWheelScrollMultiplier"),
+    commandScrollDistance: lumine.config.get("editor.commandScrollDistance"),
     softWrapped: editor.isSoftWrapped(),
     loadedNativeModules: Object.keys(require.cache).filter((file) => file.endsWith(".node")),
     timerMetadata: {

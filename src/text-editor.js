@@ -271,19 +271,20 @@ module.exports = class TextEditor {
     this.autoHeight = params.autoHeight;
     this.autoWidth = params.autoWidth;
     this.scrollPastEnd = params.scrollPastEnd != null ? params.scrollPastEnd : false;
-    this.scrollSensitivity = params.scrollSensitivity != null ? params.scrollSensitivity : 40;
-    // Raw default is false so directly-constructed editors (specs, embedders)
-    // scroll instantly; the config default of true reaches workspace editors
-    // via the TextEditorFactory.
+    this.wheelScrollMultiplier =
+      params.wheelScrollMultiplier != null ? params.wheelScrollMultiplier : 0.5;
     // null means "not managed": editors that no TextEditorFactory configures
     // (for example editors embedded in package views) follow the global
     // smooth-scrolling settings instead of silently disabling the feature.
     this.smoothScrolling = params.smoothScrolling != null ? params.smoothScrolling : null;
-    this.wheelSmoothness = params.wheelSmoothness != null ? params.wheelSmoothness : null;
-    this.commandSmoothness = params.commandSmoothness != null ? params.commandSmoothness : null;
-    this.altWheelMultiplier = params.altWheelMultiplier != null ? params.altWheelMultiplier : 7.5;
-    this.scrollCommandDistance =
-      params.scrollCommandDistance != null ? params.scrollCommandDistance : 1;
+    this.wheelScrollDuration =
+      params.wheelScrollDuration != null ? params.wheelScrollDuration : null;
+    this.commandScrollDuration =
+      params.commandScrollDuration != null ? params.commandScrollDuration : null;
+    this.altWheelScrollMultiplier =
+      params.altWheelScrollMultiplier != null ? params.altWheelScrollMultiplier : 8;
+    this.commandScrollDistance =
+      params.commandScrollDistance != null ? params.commandScrollDistance : 1;
     this.softWrapDebounceInterval =
       params.softWrapDebounceInterval != null ? params.softWrapDebounceInterval : 0;
     this.editorWidthInChars = params.editorWidthInChars;
@@ -476,28 +477,28 @@ module.exports = class TextEditor {
           this.updateUndoGroupingInterval(value, false);
           break;
 
-        case "scrollSensitivity":
-          this.updateScrollSensitivity(value, false);
+        case "wheelScrollMultiplier":
+          this.updateWheelScrollMultiplier(value, false);
           break;
 
         case "smoothScrolling":
           this.updateSmoothScrolling(value, false);
           break;
 
-        case "wheelSmoothness":
-          this.updateWheelSmoothness(value, false);
+        case "wheelScrollDuration":
+          this.updateWheelScrollDuration(value, false);
           break;
 
-        case "commandSmoothness":
-          this.updateCommandSmoothness(value, false);
+        case "commandScrollDuration":
+          this.updateCommandScrollDuration(value, false);
           break;
 
-        case "altWheelMultiplier":
-          this.updateAltWheelMultiplier(value, false);
+        case "altWheelScrollMultiplier":
+          this.updateAltWheelScrollMultiplier(value, false);
           break;
 
-        case "scrollCommandDistance":
-          this.updateScrollCommandDistance(value, false);
+        case "commandScrollDistance":
+          this.updateCommandScrollDistance(value, false);
           break;
 
         case "softWrapDebounceInterval":
@@ -632,8 +633,8 @@ module.exports = class TextEditor {
     if (finish) this.finishUpdate();
   }
 
-  updateScrollSensitivity(value, finish) {
-    this.scrollSensitivity = value;
+  updateWheelScrollMultiplier(value, finish) {
+    this.wheelScrollMultiplier = value;
     if (finish) this.finishUpdate();
   }
 
@@ -642,23 +643,23 @@ module.exports = class TextEditor {
     if (finish) this.finishUpdate();
   }
 
-  updateWheelSmoothness(value, finish) {
-    this.wheelSmoothness = value;
+  updateWheelScrollDuration(value, finish) {
+    this.wheelScrollDuration = value;
     if (finish) this.finishUpdate();
   }
 
-  updateCommandSmoothness(value, finish) {
-    this.commandSmoothness = value;
+  updateCommandScrollDuration(value, finish) {
+    this.commandScrollDuration = value;
     if (finish) this.finishUpdate();
   }
 
-  updateAltWheelMultiplier(value, finish) {
-    this.altWheelMultiplier = value;
+  updateAltWheelScrollMultiplier(value, finish) {
+    this.altWheelScrollMultiplier = value;
     if (finish) this.finishUpdate();
   }
 
-  updateScrollCommandDistance(value, finish) {
-    this.scrollCommandDistance = value;
+  updateCommandScrollDistance(value, finish) {
+    this.commandScrollDistance = value;
     if (finish) this.finishUpdate();
   }
 
@@ -6650,13 +6651,12 @@ module.exports = class TextEditor {
    * @public
    * @status experimental
    *
-   * How fast does the editor scroll in response to mouse wheel
-   * movements?
+   * Multiplier applied to mouse wheel and trackpad scroll distances.
    *
-   * @returns {Number} positive `Number`.
+   * @returns {Number} positive distance multiplier.
    */
-  getScrollSensitivity() {
-    return this.scrollSensitivity;
+  getWheelScrollMultiplier() {
+    return this.wheelScrollMultiplier;
   }
 
   /**
@@ -6676,55 +6676,57 @@ module.exports = class TextEditor {
    * @public
    * @status experimental
    *
-   * How gradually does the editor glide toward the target
-   * position when scrolling with the mouse wheel?
+   * Maximum animation duration in milliseconds for ordinary mouse wheel
+   * scrolling. Long movements and existing velocity can shorten the duration.
+   * A duration of zero scrolls without a glide.
    *
-   * @returns {Number} positive `Number`.
+   * @returns {Number} non-negative duration in milliseconds.
    */
-  getWheelSmoothness() {
-    if (this.wheelSmoothness != null) return this.wheelSmoothness;
-    return lumine.config.get("editor.wheelSmoothness");
+  getWheelScrollDuration() {
+    if (this.wheelScrollDuration != null) return this.wheelScrollDuration;
+    return lumine.config.get("editor.wheelScrollDuration");
   }
 
   /**
    * @public
    * @status experimental
    *
-   * How gradually does the editor glide when scrolling via the
-   * scroll commands?
+   * Maximum animation duration in milliseconds for `editor:scroll-up` and
+   * `editor:scroll-down`. Long movements and existing velocity can shorten it.
+   * A duration of zero scrolls without a glide.
    *
-   * @returns {Number} positive `Number`.
+   * @returns {Number} non-negative duration in milliseconds.
    */
-  getCommandSmoothness() {
-    if (this.commandSmoothness != null) return this.commandSmoothness;
-    return lumine.config.get("editor.commandSmoothness");
+  getCommandScrollDuration() {
+    if (this.commandScrollDuration != null) return this.commandScrollDuration;
+    return lumine.config.get("editor.commandScrollDuration");
   }
 
   /**
    * @public
    * @status experimental
    *
-   * Speed multiplier applied to wheel scrolling while holding
-   * `alt`.
+   * Additional distance multiplier applied to wheel scrolling while holding
+   * `alt`. This gain does not change the ordinary wheel animation duration.
    *
-   * @returns {Number} positive `Number`.
+   * @returns {Number} positive distance multiplier.
    */
-  getAltWheelMultiplier() {
-    return this.altWheelMultiplier;
+  getAltWheelScrollMultiplier() {
+    return this.altWheelScrollMultiplier;
   }
 
   /**
    * @public
    * @status experimental
    *
-   * Distance scrolled by the scroll commands, as a fraction of
-   * the editor height. Seeded from config; the increase/decrease scroll
+   * Distance scrolled by `editor:scroll-up` and `editor:scroll-down`, measured
+   * in editor heights. Seeded from config; the increase/decrease scroll
    * distance commands adjust it per editor.
    *
-   * @returns {Number} positive `Number`.
+   * @returns {Number} positive distance in editor heights.
    */
-  getScrollCommandDistance() {
-    return this.scrollCommandDistance;
+  getCommandScrollDistance() {
+    return this.commandScrollDistance;
   }
 
   /**

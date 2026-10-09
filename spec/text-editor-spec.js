@@ -57,6 +57,66 @@ describe("TextEditor", () => {
     expect(fresh.id).not.toEqual(deserialized.id);
   });
 
+  describe("scroll settings", () => {
+    it("accepts distance multipliers and millisecond durations in constructor and update options", () => {
+      const configured = new TextEditor({
+        wheelScrollMultiplier: 0.75,
+        wheelScrollDuration: 150,
+        commandScrollDuration: 240,
+        altWheelScrollMultiplier: 4,
+        commandScrollDistance: 0.5,
+      });
+      try {
+        expect(configured.getWheelScrollMultiplier()).toBe(0.75);
+        expect(configured.getWheelScrollDuration()).toBe(150);
+        expect(configured.getCommandScrollDuration()).toBe(240);
+        expect(configured.getAltWheelScrollMultiplier()).toBe(4);
+        expect(configured.getCommandScrollDistance()).toBe(0.5);
+        configured.update({
+          wheelScrollMultiplier: 0.6,
+          wheelScrollDuration: 0,
+          commandScrollDuration: 100,
+          altWheelScrollMultiplier: 6,
+          commandScrollDistance: 2,
+        });
+        expect(configured.getWheelScrollMultiplier()).toBe(0.6);
+        expect(configured.getWheelScrollDuration()).toBe(0);
+        expect(configured.getCommandScrollDuration()).toBe(100);
+        expect(configured.getAltWheelScrollMultiplier()).toBe(6);
+        expect(configured.getCommandScrollDistance()).toBe(2);
+      } finally {
+        configured.destroy();
+      }
+    });
+
+    it("follows global animation settings for unmanaged editors until explicitly overridden", () => {
+      const embedded = new TextEditor();
+      try {
+        expect(embedded.getWheelScrollMultiplier()).toBe(0.5);
+        expect(embedded.getAltWheelScrollMultiplier()).toBe(8);
+        expect(embedded.getCommandScrollDistance()).toBe(1);
+        lumine.config.set("editor.wheelScrollDuration", 140);
+        lumine.config.set("editor.commandScrollDuration", 260);
+        lumine.config.set("editor.smoothScrolling", false);
+        expect(embedded.getWheelScrollDuration()).toBe(140);
+        expect(embedded.getCommandScrollDuration()).toBe(260);
+        expect(embedded.getSmoothScrolling()).toBe(false);
+        embedded.update({
+          wheelScrollDuration: 0,
+          commandScrollDuration: 110,
+          smoothScrolling: true,
+        });
+        lumine.config.set("editor.wheelScrollDuration", 180);
+        lumine.config.set("editor.commandScrollDuration", 320);
+        expect(embedded.getWheelScrollDuration()).toBe(0);
+        expect(embedded.getCommandScrollDuration()).toBe(110);
+        expect(embedded.getSmoothScrolling()).toBe(true);
+      } finally {
+        embedded.destroy();
+      }
+    });
+  });
+
   describe("when the editor is deserialized", () => {
     for (const scrollAnchor of [
       { type: "bottom", bottomOffset: 4.5 },

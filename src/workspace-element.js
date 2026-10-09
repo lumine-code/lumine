@@ -350,7 +350,7 @@ class WorkspaceElement extends HTMLElement {
     if (!sourceEditorElement || !this.paneContainer.contains(sourceEditorElement)) return;
 
     // Normalize once against the source editor (its line height and element
-    // size); each target editor applies its own sensitivity and smoothness.
+    // size); each target editor applies its own wheel multiplier and duration.
     const { x, y, distanceScale } = sourceEditorElement.getComponent().normalizedWheelDeltas(event);
 
     let anyAccepted = false;

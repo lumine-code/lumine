@@ -673,37 +673,53 @@ describe("TextEditorRegistry", function () {
       expect(editor.getUndoGroupingInterval()).toBe(300);
     });
 
-    it("sets the scroll sensitivity based on the config", async function () {
-      editor.update({ scrollSensitivity: 50 });
-      expect(editor.getScrollSensitivity()).toBe(50);
+    it("sets the wheel distance multiplier based on the config", async function () {
+      editor.update({ wheelScrollMultiplier: 0.5 });
+      expect(editor.getWheelScrollMultiplier()).toBe(0.5);
 
-      lumine.config.set("editor.scrollSensitivity", 60);
+      lumine.config.set("editor.wheelScrollMultiplier", 0.6);
       factory.maintainConfig(editor);
       await initialPackageActivation;
-      expect(editor.getScrollSensitivity()).toBe(60);
+      expect(editor.getWheelScrollMultiplier()).toBe(0.6);
 
-      lumine.config.set("editor.scrollSensitivity", 70);
-      expect(editor.getScrollSensitivity()).toBe(70);
+      lumine.config.set("editor.wheelScrollMultiplier", 0.7);
+      expect(editor.getWheelScrollMultiplier()).toBe(0.7);
+    });
+
+    it("keeps scroll durations and command and Alt distances synchronized with the config", async function () {
+      factory.maintainConfig(editor);
+      await initialPackageActivation;
+      for (const [setting, getter, initial, next] of [
+        ["wheelScrollDuration", "getWheelScrollDuration", 150, 240],
+        ["commandScrollDuration", "getCommandScrollDuration", 240, 300],
+        ["altWheelScrollMultiplier", "getAltWheelScrollMultiplier", 4, 8],
+        ["commandScrollDistance", "getCommandScrollDistance", 0.5, 2],
+      ]) {
+        lumine.config.set(`editor.${setting}`, initial);
+        expect(editor[getter]()).toBe(initial);
+        lumine.config.set(`editor.${setting}`, next);
+        expect(editor[getter]()).toBe(next);
+      }
     });
 
     describe("when called twice with a given editor", function () {
       it("does nothing the second time", async function () {
-        editor.update({ scrollSensitivity: 50 });
+        editor.update({ wheelScrollMultiplier: 0.5 });
 
         const disposable1 = factory.maintainConfig(editor);
         const disposable2 = factory.maintainConfig(editor);
         await initialPackageActivation;
 
-        lumine.config.set("editor.scrollSensitivity", 60);
-        expect(editor.getScrollSensitivity()).toBe(60);
+        lumine.config.set("editor.wheelScrollMultiplier", 0.6);
+        expect(editor.getWheelScrollMultiplier()).toBe(0.6);
 
         disposable2.dispose();
-        lumine.config.set("editor.scrollSensitivity", 70);
-        expect(editor.getScrollSensitivity()).toBe(70);
+        lumine.config.set("editor.wheelScrollMultiplier", 0.7);
+        expect(editor.getWheelScrollMultiplier()).toBe(0.7);
 
         disposable1.dispose();
-        lumine.config.set("editor.scrollSensitivity", 80);
-        expect(editor.getScrollSensitivity()).toBe(70);
+        lumine.config.set("editor.wheelScrollMultiplier", 0.8);
+        expect(editor.getWheelScrollMultiplier()).toBe(0.7);
       });
     });
   });

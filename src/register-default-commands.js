@@ -926,7 +926,7 @@ module.exports = function ({
         description: "Double how far the scroll commands move, up to 64 screens.",
         didDispatch: function () {
           return this.update({
-            scrollCommandDistance: Math.min(64, this.getScrollCommandDistance() * 2),
+            commandScrollDistance: Math.min(64, this.getCommandScrollDistance() * 2),
           });
         },
       },
@@ -934,7 +934,7 @@ module.exports = function ({
         description: "Halve how far the scroll commands move, down to a 64th.",
         didDispatch: function () {
           return this.update({
-            scrollCommandDistance: Math.max(0.015625, this.getScrollCommandDistance() / 2),
+            commandScrollDistance: Math.max(0.015625, this.getCommandScrollDistance() / 2),
           });
         },
       },
@@ -1103,14 +1103,14 @@ var scrollEditorByPage = function (editor, direction) {
   const element = editor.getElement();
   if (!element) return;
   const component = element.getComponent();
-  const deltaY = direction * element.offsetHeight * editor.getScrollCommandDistance();
+  const deltaY = direction * element.offsetHeight * editor.getCommandScrollDistance();
 
   if (editor.getSmoothScrolling()) {
     // reset: true restarts the glide from the current position, so rapid
     // repeated invocations don't accumulate an unbounded target.
     const accepted = component.scrollAnimator.scrollBy({
       y: deltaY,
-      smoothness: editor.getCommandSmoothness(),
+      duration: editor.getCommandScrollDuration(),
       reset: true,
     });
     if (accepted) {

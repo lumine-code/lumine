@@ -2192,20 +2192,18 @@ describe("TextEditorComponent", () => {
 
   describe("scrolling via the mouse wheel", () => {
     it("scrolls both axes by their respective deltas", () => {
-      const scrollSensitivity = 25;
-      // Gain applied to normalized wheel pixels before scroll sensitivity.
-      const wheelPixelScale = 1.2;
+      const wheelScrollMultiplier = 0.3;
       const { component } = buildComponent({
         height: 50,
         width: 50,
-        scrollSensitivity,
+        wheelScrollMultiplier,
         // Pin the instant path: an unset param follows the global setting.
         smoothScrolling: false,
       });
       // stub in place for Event.preventDefault()
       const eventPreventDefaultStub = function () {};
 
-      const factor = wheelPixelScale * (scrollSensitivity / 100);
+      const factor = wheelScrollMultiplier;
 
       {
         // A diagonal gesture moves both axes at once.
@@ -2258,13 +2256,11 @@ describe("TextEditorComponent", () => {
     });
 
     it("inverts deltaX and deltaY when holding shift on Windows and Linux", async () => {
-      const scrollSensitivity = 50;
-      // Gain applied to normalized wheel pixels before scroll sensitivity.
-      const wheelPixelScale = 1.2;
+      const wheelScrollMultiplier = 0.6;
       const { component } = buildComponent({
         height: 50,
         width: 50,
-        scrollSensitivity,
+        wheelScrollMultiplier,
         // Pin the instant path: an unset param follows the global setting.
         smoothScrolling: false,
       });
@@ -2273,7 +2269,7 @@ describe("TextEditorComponent", () => {
 
       component.props.platform = "linux";
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2288,7 +2284,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollLeft = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollLeft = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2304,7 +2300,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 20,
           deltaY: 0,
@@ -2321,7 +2317,7 @@ describe("TextEditorComponent", () => {
 
       component.props.platform = "win32";
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2336,7 +2332,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollLeft = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollLeft = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2352,7 +2348,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 20,
           deltaY: 0,
@@ -2369,7 +2365,7 @@ describe("TextEditorComponent", () => {
 
       component.props.platform = "darwin";
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2384,7 +2380,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollTop = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollTop = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 0,
           deltaY: 20,
@@ -2400,7 +2396,7 @@ describe("TextEditorComponent", () => {
       }
 
       {
-        const expectedScrollLeft = 20 * wheelPixelScale * (scrollSensitivity / 100);
+        const expectedScrollLeft = 20 * wheelScrollMultiplier;
         component.didMouseWheel({
           deltaX: 20,
           deltaY: 0,
@@ -2419,16 +2415,15 @@ describe("TextEditorComponent", () => {
 
   describe("smooth scrolling", () => {
     const FRAME = 1000 / 60;
-    // Gain applied to normalized wheel pixels before scroll sensitivity.
-    const wheelPixelScale = 1.2;
+    const wheelScrollMultiplier = 0.3;
 
     function buildSmoothComponent(params = {}) {
       const result = buildComponent({
         height: 50,
         width: 50,
-        scrollSensitivity: 25,
+        wheelScrollMultiplier,
         smoothScrolling: true,
-        wheelSmoothness: 8,
+        wheelScrollDuration: 120,
         ...params,
       });
       // Detach the animator from real animation frames so specs can drive it
@@ -2457,7 +2452,7 @@ describe("TextEditorComponent", () => {
 
       const preventDefault = jasmine.createSpy("preventDefault");
       component.didMouseWheel({ deltaX: 0, deltaY: 20, deltaMode: 0, preventDefault });
-      const expectedScrollTop = 20 * wheelPixelScale * 0.25;
+      const expectedScrollTop = 20 * wheelScrollMultiplier;
 
       expect(preventDefault).toHaveBeenCalled();
       expect(started).toBe(1);
@@ -2492,7 +2487,7 @@ describe("TextEditorComponent", () => {
       expect(scrollBy.calls.mostRecent().args[0].distanceScale).toBe(1);
       expect(event.defaultPrevented).toBe(true);
       driveAnimationToCompletion(component);
-      expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 0.25);
+      expect(component.getScrollTop()).toBeNear(20 * wheelScrollMultiplier);
     });
 
     it("accepts synthetic wheel input without a timestamp", () => {
@@ -2503,7 +2498,7 @@ describe("TextEditorComponent", () => {
 
       expect(preventDefault).toHaveBeenCalled();
       driveAnimationToCompletion(component);
-      expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 0.25);
+      expect(component.getScrollTop()).toBeNear(20 * wheelScrollMultiplier);
     });
 
     it("batches system momentum without adding a glide or losing the unfinished wheel target", () => {
@@ -2526,9 +2521,9 @@ describe("TextEditorComponent", () => {
       expect(animator.lastUpdateTime + curve.duration - curve.elapsed).toBe(deadline);
       animator.advance(FRAME);
       expect(update).toHaveBeenCalledTimes(1);
-      const target = (40 + 8.125 + 2.25) * wheelPixelScale * 0.25;
+      const target = (40 + 8.125 + 2.25) * wheelScrollMultiplier;
       expect(component.getScrollTop()).toBeLessThan(target);
-      expect(component.getScrollLeft()).toBeNear((10.25 + 3.5) * wheelPixelScale * 0.25);
+      expect(component.getScrollLeft()).toBeNear((10.25 + 3.5) * wheelScrollMultiplier);
       expect(animator.isAnimating()).toBe(true);
       expect(preventDefault).toHaveBeenCalledTimes(3);
       driveAnimationToCompletion(component);
@@ -2583,19 +2578,19 @@ describe("TextEditorComponent", () => {
       expect(component.scrollAnimator.isAnimating()).toBe(true);
       expect(component.getScrollTop()).toBe(0);
       driveAnimationToCompletion(component);
-      expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 0.25);
+      expect(component.getScrollTop()).toBeNear(20 * wheelScrollMultiplier);
 
       lumine.config.set("editor.smoothScrolling", false);
       const scrollTop = component.getScrollTop();
       component.didMouseWheel({ deltaX: 0, deltaY: 20, deltaMode: 0, preventDefault });
       expect(component.scrollAnimator.isAnimating()).toBe(false);
-      expect(component.getScrollTop()).toBeNear(scrollTop + 20 * wheelPixelScale * 0.25);
+      expect(component.getScrollTop()).toBeNear(scrollTop + 20 * wheelScrollMultiplier);
     });
 
     it("applies the same Alt-wheel distance with smooth scrolling on and off", () => {
-      const { component } = buildSmoothComponent({ altWheelMultiplier: 5 });
+      const { component } = buildSmoothComponent({ altWheelScrollMultiplier: 5 });
       const { component: direct } = buildSmoothComponent({
-        altWheelMultiplier: 5,
+        altWheelScrollMultiplier: 5,
         smoothScrolling: false,
       });
       const preventDefault = jasmine.createSpy("preventDefault");
@@ -2611,7 +2606,7 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTop()).toBe(0);
       expect(direct.scrollAnimator.isAnimating()).toBe(false);
       driveAnimationToCompletion(component);
-      expect(component.getScrollTop()).toBeNear(20 * wheelPixelScale * 5 * 0.25);
+      expect(component.getScrollTop()).toBeNear(20 * wheelScrollMultiplier * 5);
       expect(component.getScrollTop()).toBe(direct.getScrollTop());
     });
 
@@ -2621,7 +2616,7 @@ describe("TextEditorComponent", () => {
           text: "line\n".repeat(1000),
           height: 80,
           width: 100,
-          altWheelMultiplier: multiplier,
+          altWheelScrollMultiplier: multiplier,
         };
         const { component: ordinary } = buildSmoothComponent(params);
         const { component: alt } = buildSmoothComponent(params);
@@ -2675,7 +2670,7 @@ describe("TextEditorComponent", () => {
       component.didMouseWheel({ deltaX: 0, deltaY: 2, deltaMode: 1, preventDefault });
       driveAnimationToCompletion(component);
       expect(component.getScrollTop()).toBeNear(
-        2 * component.getLineHeight() * wheelPixelScale * 0.25,
+        2 * component.getLineHeight() * wheelScrollMultiplier,
       );
     });
 
@@ -2691,7 +2686,7 @@ describe("TextEditorComponent", () => {
       expect(started).toBe(1);
 
       driveAnimationToCompletion(component);
-      expect(component.getScrollTop()).toBeNear(2 * 20 * wheelPixelScale * 0.25);
+      expect(component.getScrollTop()).toBeNear(2 * 20 * wheelScrollMultiplier);
     });
 
     it("preserves direct-scroll distance for a slowing fractional wheel series", async () => {
@@ -2750,7 +2745,7 @@ describe("TextEditorComponent", () => {
         notifyingLeft = true;
       });
 
-      component.scrollAnimator.scrollBy({ x: 20, y: 20, smoothness: 8 });
+      component.scrollAnimator.scrollBy({ x: 20, y: 20, duration: 120 });
       component.scrollAnimator.advance(FRAME);
 
       expect(notifyingTop).toBe(true);
@@ -2803,7 +2798,7 @@ describe("TextEditorComponent", () => {
         deltaMode: 0,
         preventDefault,
       });
-      const targetScrollTop = initialScrollTop + 160 * wheelPixelScale * 0.25;
+      const targetScrollTop = initialScrollTop + 160 * wheelScrollMultiplier;
       expect(preventDefault).toHaveBeenCalled();
 
       component.scrollAnimator.advance(FRAME);
@@ -2834,7 +2829,7 @@ describe("TextEditorComponent", () => {
       // tile is rightly still mounted.
       const boundaryTop = Math.ceil(component.pixelPositionBeforeBlocksForRow(boundaryRow));
 
-      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.scrollTo({ top: boundaryTop, duration: 0 });
       component.scrollAnimator.advance(FRAME);
 
       expect(updateSync).toHaveBeenCalledTimes(1);
@@ -2875,7 +2870,7 @@ describe("TextEditorComponent", () => {
       labelFns.forEach((labelFn) => labelFn.calls.reset());
       expect(component.canUpdateForScrollOnly(false, true)).toBe(true);
 
-      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.scrollTo({ top: boundaryTop, duration: 0 });
       component.scrollAnimator.advance(FRAME);
 
       const enteringRows = Array.from(
@@ -2942,7 +2937,7 @@ describe("TextEditorComponent", () => {
       expect(component.updateScheduled).toBe(true);
 
       const boundaryTop = Math.ceil(component.pixelPositionBeforeBlocksForRow(boundaryRow));
-      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.scrollTo({ top: boundaryTop, duration: 0 });
       component.scrollAnimator.advance(FRAME);
 
       expect(labelFn.calls.count()).toBe(
@@ -10113,11 +10108,12 @@ function buildEditor(params = {}) {
     "showLineNumbers",
     "placeholderText",
     "softWrapped",
-    "scrollSensitivity",
+    "wheelScrollMultiplier",
     "smoothScrolling",
-    "wheelSmoothness",
-    "commandSmoothness",
-    "altWheelMultiplier",
+    "wheelScrollDuration",
+    "commandScrollDuration",
+    "altWheelScrollMultiplier",
+    "commandScrollDistance",
   ]) {
     if (params[paramName] != null) editorParams[paramName] = params[paramName];
   }

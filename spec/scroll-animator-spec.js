@@ -74,7 +74,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("glides to the requested position and lands exactly on target", () => {
-      expect(animator.scrollBy({ y: 100, smoothness: 8 })).toBe(true);
+      expect(animator.scrollBy({ y: 100, duration: 120 })).toBe(true);
       expect(animator.isAnimating()).toBe(true);
       expect(component.scrollTop).toBe(0);
 
@@ -86,7 +86,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("approaches the target monotonically", () => {
-      animator.scrollBy({ y: 200, smoothness: 8 });
+      animator.scrollBy({ y: 200, duration: 120 });
       let previous = component.scrollTop;
       while (animator.isAnimating()) {
         tick();
@@ -98,51 +98,51 @@ describe("ScrollAnimator", () => {
     });
 
     it("animates both axes simultaneously", () => {
-      animator.scrollBy({ x: 60, y: 90, smoothness: 8 });
+      animator.scrollBy({ x: 60, y: 90, duration: 120 });
       runUntilDone();
       expect(component.scrollLeft).toBe(60);
       expect(component.scrollTop).toBe(90);
     });
 
     it("rejects requests that cannot scroll in the requested direction", () => {
-      expect(animator.scrollBy({ y: -10, smoothness: 8 })).toBe(false);
+      expect(animator.scrollBy({ y: -10, duration: 120 })).toBe(false);
       expect(animator.isAnimating()).toBe(false);
 
       component.scrollTop = component.maxScrollTop;
-      expect(animator.scrollBy({ y: 10, smoothness: 8 })).toBe(false);
+      expect(animator.scrollBy({ y: 10, duration: 120 })).toBe(false);
 
       // Room on the other axis is enough to accept the request.
-      expect(animator.scrollBy({ x: 10, y: 10, smoothness: 8 })).toBe(true);
+      expect(animator.scrollBy({ x: 10, y: 10, duration: 120 })).toBe(true);
     });
 
     it("accumulates targets across requests while animating", () => {
-      animator.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
       tick();
-      expect(animator.scrollBy({ y: 100, smoothness: 8 })).toBe(true);
+      expect(animator.scrollBy({ y: 100, duration: 120 })).toBe(true);
       expect(animator.targetScrollTop).toBe(200);
       runUntilDone();
       expect(component.scrollTop).toBe(200);
     });
 
     it("keeps accepting requests at the edge while a glide is active", () => {
-      animator.scrollBy({ y: component.maxScrollTop, smoothness: 8 });
+      animator.scrollBy({ y: component.maxScrollTop, duration: 120 });
       tick();
-      expect(animator.scrollBy({ y: 50, smoothness: 8 })).toBe(true);
+      expect(animator.scrollBy({ y: 50, duration: 120 })).toBe(true);
       expect(animator.targetScrollTop).toBe(component.maxScrollTop);
     });
 
     it("restarts from the current position when reset is true", () => {
-      animator.scrollBy({ y: 400, smoothness: 8 });
+      animator.scrollBy({ y: 400, duration: 120 });
       tick();
       const positionAtReset = component.scrollTop;
-      animator.scrollBy({ y: 100, smoothness: 8, reset: true });
+      animator.scrollBy({ y: 100, duration: 120, reset: true });
       expect(animator.targetScrollTop).toBeCloseTo(positionAtReset + 100, 6);
       runUntilDone();
       expect(component.scrollTop).toBe(positionAtReset + 100);
     });
 
     it("re-clamps the target when the scrollable area shrinks mid-glide", () => {
-      animator.scrollBy({ y: 800, smoothness: 8 });
+      animator.scrollBy({ y: 800, duration: 120 });
       tick();
       component.maxScrollTop = 100;
       runUntilDone();
@@ -152,13 +152,13 @@ describe("ScrollAnimator", () => {
 
     it("supports absolute targets via scrollTo", () => {
       component.scrollTop = 300;
-      expect(animator.scrollTo({ top: 100, smoothness: 8 })).toBe(true);
+      expect(animator.scrollTo({ top: 100, duration: 120 })).toBe(true);
       runUntilDone();
       expect(component.scrollTop).toBe(100);
     });
 
     it("stops without moving when cancelled and ignores further frames", () => {
-      animator.scrollBy({ y: 300, smoothness: 8 });
+      animator.scrollBy({ y: 300, duration: 120 });
       tick();
       const positionAtCancel = component.scrollTop;
 
@@ -172,7 +172,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("cancels the scheduled animation frame on cancel", () => {
-      animator.scrollBy({ y: 300, smoothness: 8 });
+      animator.scrollBy({ y: 300, duration: 120 });
       expect(rafCallbacks.length).toBe(1);
       animator.cancel();
       expect(canceledHandles.length).toBe(1);
@@ -183,7 +183,7 @@ describe("ScrollAnimator", () => {
       component.element.emitter.on("did-end-scroll-animation", () => {
         destinations.push([component.scrollTop, component.scrollLeft]);
       });
-      animator.scrollBy({ x: 60.125, y: 300.25, smoothness: 8 });
+      animator.scrollBy({ x: 60.125, y: 300.25, duration: 120 });
       tick();
       const updates = component.scrollFrameUpdateCount;
       const requests = rafCallbacks.length;
@@ -205,7 +205,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("bounds the final destination when the scroll range shrinks before finishing", () => {
-      animator.scrollBy({ x: 400, y: 900, smoothness: 8 });
+      animator.scrollBy({ x: 400, y: 900, duration: 120 });
       tick();
       component.maxScrollTop = 100;
       component.maxScrollLeft = 30;
@@ -222,7 +222,7 @@ describe("ScrollAnimator", () => {
     it("conserves fractional distance across same-direction requests", () => {
       const deltas = [0.125, 4.75, 9.0625, 0.03125, 32.5];
       for (const delta of deltas) {
-        animator.scrollBy({ x: delta / 2, y: delta, smoothness: 8 });
+        animator.scrollBy({ x: delta / 2, y: delta, duration: 120 });
         tick(FRAME / 2);
       }
       const total = deltas.reduce((sum, delta) => sum + delta, 0);
@@ -232,7 +232,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("preserves position and velocity when a same-direction pulse arrives", () => {
-      animator.scrollBy({ x: 40, y: 100, smoothness: 8 });
+      animator.scrollBy({ x: 40, y: 100, duration: 120 });
       tick();
       const top = animator.virtualScrollTop;
       const left = animator.virtualScrollLeft;
@@ -241,7 +241,7 @@ describe("ScrollAnimator", () => {
       expect(velocityY).toBeGreaterThan(0);
       expect(velocityX).toBeGreaterThan(0);
 
-      animator.scrollBy({ x: 20, y: 50, smoothness: 8 });
+      animator.scrollBy({ x: 20, y: 50, duration: 120 });
       expect(animator.virtualScrollTop).toBe(top);
       expect(animator.virtualScrollLeft).toBe(left);
       expect(animator.velocityY).toBe(velocityY);
@@ -251,11 +251,11 @@ describe("ScrollAnimator", () => {
     });
 
     it("reverses promptly instead of completing the old direction first", () => {
-      animator.scrollBy({ y: 400, smoothness: 8 });
+      animator.scrollBy({ y: 400, duration: 120 });
       tick(50);
       const top = animator.virtualScrollTop;
       expect(top).toBeGreaterThan(10);
-      animator.scrollBy({ y: -10, smoothness: 8 });
+      animator.scrollBy({ y: -10, duration: 120 });
       expect(animator.targetScrollTop).toBe(top - 10);
       expect(animator.velocityY).toBe(0);
       tick();
@@ -265,11 +265,11 @@ describe("ScrollAnimator", () => {
     });
 
     it("reverses only the affected axis", () => {
-      animator.scrollBy({ x: 100, y: 200, smoothness: 8 });
+      animator.scrollBy({ x: 100, y: 200, duration: 120 });
       tick(50);
       const left = animator.virtualScrollLeft;
       const velocityY = animator.velocityY;
-      animator.scrollBy({ x: -5, y: 20, smoothness: 8 });
+      animator.scrollBy({ x: -5, y: 20, duration: 120 });
       expect(animator.targetScrollLeft).toBe(left - 5);
       expect(animator.velocityX).toBe(0);
       expect(animator.targetScrollTop).toBe(220);
@@ -280,15 +280,15 @@ describe("ScrollAnimator", () => {
     });
 
     it("clears old velocity when restarting from the current position", () => {
-      animator.scrollBy({ x: 100, y: 400, smoothness: 8 });
+      animator.scrollBy({ x: 100, y: 400, duration: 120 });
       tick();
-      animator.scrollBy({ y: 100, smoothness: 8, reset: true });
+      animator.scrollBy({ y: 100, duration: 120, reset: true });
       expect(animator.velocityX).toBe(0);
       expect(animator.velocityY).toBe(0);
     });
 
     it("clamps position and velocity when a reflow puts them past the end", () => {
-      animator.scrollBy({ y: 800, smoothness: 8 });
+      animator.scrollBy({ y: 800, duration: 120 });
       tick(50);
       expect(component.scrollTop).toBeGreaterThan(100);
       component.maxScrollTop = 100;
@@ -301,9 +301,9 @@ describe("ScrollAnimator", () => {
 
     it("preserves the absolute endpoint when scrollTo reverses a running glide", () => {
       component.scrollTop = 300;
-      animator.scrollTo({ top: 450, smoothness: 8 });
+      animator.scrollTo({ top: 450, duration: 120 });
       tick();
-      animator.scrollTo({ top: 100, smoothness: 8 });
+      animator.scrollTo({ top: 100, duration: 120 });
       expect(animator.targetScrollTop).toBe(100);
       expect(animator.velocityY).toBe(0);
       runUntilDone();
@@ -311,12 +311,12 @@ describe("ScrollAnimator", () => {
     });
 
     it("does not overshoot a nearby absolute target while moving quickly", () => {
-      animator.scrollBy({ y: 800, smoothness: 8 });
+      animator.scrollBy({ y: 800, duration: 120 });
       tick(50);
       const target = component.scrollTop + 1;
       const velocityY = animator.velocityY;
       expect(velocityY).toBeGreaterThan(0);
-      animator.scrollTo({ top: target, smoothness: 8 });
+      animator.scrollTo({ top: target, duration: 120 });
       expect(animator.velocityY).toBe(velocityY);
       for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
         tick();
@@ -328,11 +328,11 @@ describe("ScrollAnimator", () => {
     });
 
     it("stops old velocity when the absolute destination is the current position", () => {
-      animator.scrollBy({ y: 800, smoothness: 8 });
+      animator.scrollBy({ y: 800, duration: 120 });
       tick(50);
       const top = component.scrollTop;
       expect(animator.velocityY).toBeGreaterThan(0);
-      animator.scrollTo({ top, smoothness: 8 });
+      animator.scrollTo({ top, duration: 120 });
       expect(animator.targetScrollTop).toBe(top);
       expect(animator.velocityY).toBe(0);
       tick();
@@ -341,7 +341,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("clears both velocities on cancellation", () => {
-      animator.scrollBy({ x: 60, y: 300, smoothness: 8 });
+      animator.scrollBy({ x: 60, y: 300, duration: 120 });
       tick();
       animator.cancel();
       expect(animator.velocityY).toBe(0);
@@ -349,7 +349,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("lands exactly on small fractional endpoints after a long frame", () => {
-      animator.scrollBy({ x: 0.0125, y: 0.02, smoothness: 8 });
+      animator.scrollBy({ x: 0.0125, y: 0.02, duration: 120 });
       tick(1000);
       runUntilDone();
       expect(component.scrollTop).toBe(0.02);
@@ -357,26 +357,37 @@ describe("ScrollAnimator", () => {
     });
 
     it("does not move when no time has elapsed", () => {
-      animator.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
       tick(0);
       expect(component.scrollTop).toBe(0);
       expect(animator.velocityY).toBe(0);
       expect(animator.isAnimating()).toBe(true);
     });
 
-    it("preserves immediate scrolling at the lowest smoothness settings", () => {
-      for (const smoothness of [1, 2]) {
-        component.scrollTop = 50;
-        animator.scrollBy({ y: 25, smoothness });
-        tick();
-        expect(component.scrollTop).toBe(75);
-        expect(animator.velocityY).toBe(0);
-        expect(animator.isAnimating()).toBe(false);
-      }
+    it("skips interpolation for a zero duration", () => {
+      component.scrollTop = 50;
+      animator.scrollBy({ y: 25, duration: 0 });
+      tick(0);
+      expect(component.scrollTop).toBe(75);
+      expect(animator.velocityY).toBe(0);
+      expect(animator.isAnimating()).toBe(false);
+    });
+
+    it("interprets small positive durations as milliseconds", () => {
+      animator.scrollBy({ y: 60, duration: 2 });
+      tick(0);
+      expect(component.scrollTop).toBe(0);
+      tick(1);
+      expect(component.scrollTop).toBeGreaterThan(0);
+      expect(component.scrollTop).toBeLessThan(60);
+      expect(animator.isAnimating()).toBe(true);
+      tick(1);
+      expect(component.scrollTop).toBe(60);
+      expect(animator.isAnimating()).toBe(false);
     });
 
     it("ignores negative elapsed time without reversing the trajectory", () => {
-      animator.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
       tick();
       const top = component.scrollTop;
       const velocityY = animator.velocityY;
@@ -388,7 +399,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("settles safely after a long pause", () => {
-      animator.scrollBy({ x: 80, y: 300, smoothness: 8 });
+      animator.scrollBy({ x: 80, y: 300, duration: 120 });
       tick(5000);
       expect(component.scrollTop).toBe(300);
       expect(component.scrollLeft).toBe(80);
@@ -398,7 +409,7 @@ describe("ScrollAnimator", () => {
     });
 
     it("ends a small glide at a finite deadline with zero velocity", () => {
-      animator.scrollBy({ x: 60, y: 90, smoothness: 8 });
+      animator.scrollBy({ x: 60, y: 90, duration: 120 });
       tick(119);
       expect(component.scrollTop).toBeGreaterThan(0);
       expect(component.scrollTop).toBeLessThan(90);
@@ -417,8 +428,8 @@ describe("ScrollAnimator", () => {
         now: () => now,
         requestAnimationFrame: () => 0,
       });
-      animator.scrollBy({ y: 120, smoothness: 8 });
-      large.scrollBy({ y: 480, smoothness: 8 });
+      animator.scrollBy({ y: 120, duration: 120 });
+      large.scrollBy({ y: 480, duration: 120 });
       tick(60);
       large.step(now);
       expect(largeComponent.scrollTop).toBe(480);
@@ -433,10 +444,10 @@ describe("ScrollAnimator", () => {
     });
 
     it("does not postpone the endpoint for repeated requests clamped to the same edge", () => {
-      animator.scrollBy({ y: component.maxScrollTop, smoothness: 8 });
+      animator.scrollBy({ y: component.maxScrollTop, duration: 120 });
       for (let i = 0; i < 9; i++) {
         tick(6);
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
       }
       tick(6);
       expect(component.scrollTop).toBe(component.maxScrollTop);
@@ -445,9 +456,9 @@ describe("ScrollAnimator", () => {
     });
 
     it("does not restart the curve when its absolute target stays the same", () => {
-      animator.scrollTo({ top: 480, smoothness: 8 });
+      animator.scrollTo({ top: 480, duration: 120 });
       tick(30);
-      animator.scrollTo({ top: 480, smoothness: 8 });
+      animator.scrollTo({ top: 480, duration: 120 });
       tick(30);
       expect(component.scrollTop).toBe(480);
       expect(animator.velocityY).toBe(0);
@@ -455,9 +466,9 @@ describe("ScrollAnimator", () => {
     });
 
     it("does not extend one axis when the other axis receives new input", () => {
-      animator.scrollBy({ x: 480, smoothness: 8 });
+      animator.scrollBy({ x: 480, duration: 120 });
       tick(30);
-      animator.scrollBy({ y: 120, smoothness: 8 });
+      animator.scrollBy({ y: 120, duration: 120 });
       tick(30);
       expect(component.scrollLeft).toBe(480);
       expect(animator.velocityX).toBe(0);
@@ -469,7 +480,7 @@ describe("ScrollAnimator", () => {
     it("retains the exact accumulated endpoint for very small fractional pulses", () => {
       const deltas = Array.from({ length: 40 }, (_, i) => [0.001, 0.0001, 0.0000001][i % 3]);
       for (const delta of deltas) {
-        animator.scrollBy({ x: delta / 2, y: delta, smoothness: 8 });
+        animator.scrollBy({ x: delta / 2, y: delta, duration: 120 });
         tick(2);
       }
       runUntilDone();
@@ -480,7 +491,7 @@ describe("ScrollAnimator", () => {
 
     it("uses actual elapsed time for the first frame at a high refresh rate", () => {
       now = 1000;
-      animator.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
       tick(FRAME / 2);
       const top = component.scrollTop;
       const velocityY = animator.velocityY;
@@ -489,7 +500,7 @@ describe("ScrollAnimator", () => {
         now: () => 1000,
         requestAnimationFrame: () => 0,
       });
-      reference.scrollBy({ y: 100, smoothness: 8 });
+      reference.scrollBy({ y: 100, duration: 120 });
       reference.advance(FRAME / 2);
       expect(top).toBeGreaterThan(0);
       expect(top).toBeCloseTo(referenceComponent.scrollTop, 10);
@@ -502,15 +513,15 @@ describe("ScrollAnimator", () => {
         now: () => now,
         requestAnimationFrame: () => 0,
       });
-      animator.scrollBy({ y: 100, smoothness: 8 });
-      reference.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
+      reference.scrollBy({ y: 100, duration: 120 });
       tick();
       reference.advance(FRAME);
       now = 119;
       reference.advance(119 - FRAME);
       const positionBeforeRetarget = referenceComponent.scrollTop;
-      animator.scrollBy({ y: 100, smoothness: 8, timestamp: 119 });
-      reference.scrollBy({ y: 100, smoothness: 8, timestamp: 119 });
+      animator.scrollBy({ y: 100, duration: 120, timestamp: 119 });
+      reference.scrollBy({ y: 100, duration: 120, timestamp: 119 });
       expect(animator.virtualScrollTop).toBeCloseTo(positionBeforeRetarget, 8);
       expect(animator.virtualScrollTop).toBeGreaterThan(component.scrollTop);
       animator.step(120);
@@ -523,12 +534,12 @@ describe("ScrollAnimator", () => {
     });
 
     it("batches input-time movement into the next frame even at the same timestamp", () => {
-      animator.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
       tick();
       const top = component.scrollTop;
       const updates = component.scrollFrameUpdateCount;
       now = 50;
-      animator.scrollBy({ y: 50, smoothness: 8, timestamp: now });
+      animator.scrollBy({ y: 50, duration: 120, timestamp: now });
       expect(component.scrollTop).toBe(top);
       expect(component.scrollFrameUpdateCount).toBe(updates);
       expect(animator.virtualScrollTop).toBeGreaterThan(top);
@@ -543,13 +554,13 @@ describe("ScrollAnimator", () => {
         now: () => now,
         requestAnimationFrame: () => 0,
       });
-      animator.scrollBy({ y: 100, smoothness: 8 });
-      explicit.scrollBy({ y: 100, smoothness: 8 });
+      animator.scrollBy({ y: 100, duration: 120 });
+      explicit.scrollBy({ y: 100, duration: 120 });
       tick();
       explicit.step(now);
       now = 90;
-      animator.scrollBy({ y: 50, smoothness: 8 });
-      explicit.scrollBy({ y: 50, smoothness: 8, timestamp: 90 });
+      animator.scrollBy({ y: 50, duration: 120 });
+      explicit.scrollBy({ y: 50, duration: 120, timestamp: 90 });
       animator.step(100);
       explicit.step(100);
       expect(component.scrollTop).toBeCloseTo(explicitComponent.scrollTop, 10);
@@ -562,15 +573,15 @@ describe("ScrollAnimator", () => {
         now: () => now,
         requestAnimationFrame: () => 0,
       });
-      animator.scrollBy({ y: 100, smoothness: 8, timestamp: 0 });
-      reference.scrollBy({ y: 100, smoothness: 8, timestamp: 0 });
+      animator.scrollBy({ y: 100, duration: 120, timestamp: 0 });
+      reference.scrollBy({ y: 100, duration: 120, timestamp: 0 });
       tick(50);
       reference.step(50);
       const top = component.scrollTop;
       animator.step(30);
       expect(component.scrollTop).toBe(top);
-      animator.scrollBy({ y: 20, smoothness: 8, timestamp: 30 });
-      reference.scrollBy({ y: 20, smoothness: 8, timestamp: 50 });
+      animator.scrollBy({ y: 20, duration: 120, timestamp: 30 });
+      reference.scrollBy({ y: 20, duration: 120, timestamp: 50 });
       animator.step(60);
       reference.step(60);
       expect(component.scrollTop).toBeCloseTo(referenceComponent.scrollTop, 10);
@@ -590,8 +601,8 @@ describe("ScrollAnimator", () => {
       it("scales diagonal distance without changing the normal animation phase", () => {
         const reference = buildMockComponent();
         const normal = referenceAnimator(reference);
-        animator.scrollBy({ x: 180, y: 450, distanceScale: 7.5, smoothness: 8 });
-        normal.scrollBy({ x: 24, y: 60, smoothness: 8 });
+        animator.scrollBy({ x: 180, y: 450, distanceScale: 7.5, duration: 120 });
+        normal.scrollBy({ x: 24, y: 60, duration: 120 });
         for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
           tick();
           normal.step(now);
@@ -609,21 +620,21 @@ describe("ScrollAnimator", () => {
       it("retains the original timing debt when normal and Alt inputs are mixed", () => {
         const reference = buildMockComponent();
         const combined = referenceAnimator(reference);
-        animator.scrollBy({ y: 60, smoothness: 8 });
-        combined.scrollBy({ y: 60, smoothness: 8 });
+        animator.scrollBy({ y: 60, duration: 120 });
+        combined.scrollBy({ y: 60, duration: 120 });
         tick(30);
         combined.step(now);
         const velocityY = animator.velocityY;
         const remainingNormalDistance = animator.pendingY();
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         expect(animator.curveY.timingDistance).toBeCloseTo(remainingNormalDistance + 60, 9);
         expect(animator.velocityY).toBe(velocityY);
-        animator.scrollBy({ y: 60, smoothness: 8 });
+        animator.scrollBy({ y: 60, duration: 120 });
         expect(animator.velocityY).toBe(velocityY);
 
         // The simultaneous 450px Alt and 60px normal inputs carry 120px of
         // timing distance. Combining them must keep the earlier normal debt.
-        combined.scrollBy({ y: 510, distanceScale: 4.25, smoothness: 8 });
+        combined.scrollBy({ y: 510, distanceScale: 4.25, duration: 120 });
         for (let frames = 0; animator.isAnimating() && frames < 1000; frames++) {
           tick();
           combined.step(now);
@@ -637,10 +648,10 @@ describe("ScrollAnimator", () => {
       it("drops the reversed axis's old timing debt", () => {
         component.scrollTop = 1000;
         component.maxScrollTop = 10000;
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const top = component.scrollTop;
-        animator.scrollBy({ y: -30, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: -30, distanceScale: 7.5, duration: 120 });
         expect(animator.curveY.timingDistance).toBe(-4);
         expect(animator.velocityY).toBe(0);
         runUntilDone();
@@ -651,8 +662,8 @@ describe("ScrollAnimator", () => {
         const reference = buildMockComponent();
         const normal = referenceAnimator(reference);
         component.maxScrollTop = 10000;
-        animator.scrollBy({ y: 3600, distanceScale: 7.5, smoothness: 8 });
-        normal.scrollBy({ y: 480, smoothness: 8 });
+        animator.scrollBy({ y: 3600, distanceScale: 7.5, duration: 120 });
+        normal.scrollBy({ y: 480, duration: 120 });
         tick(20);
         normal.step(now);
         component.maxScrollTop = 1800;
@@ -669,7 +680,7 @@ describe("ScrollAnimator", () => {
       });
 
       it("retains timing metadata and the deadline when momentum translates a scaled glide", () => {
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const curve = animator.curveY;
         const timingDistance = curve.timingDistance;
@@ -685,10 +696,10 @@ describe("ScrollAnimator", () => {
       });
 
       it("uses the new input's scale when resetting an existing glide", () => {
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const top = component.scrollTop;
-        animator.scrollBy({ y: 60, smoothness: 8, reset: true });
+        animator.scrollBy({ y: 60, duration: 120, reset: true });
         expect(animator.curveY.timingDistance).toBeCloseTo(60, 9);
         expect(animator.velocityY).toBe(0);
         runUntilDone();
@@ -696,21 +707,21 @@ describe("ScrollAnimator", () => {
       });
 
       it("uses the actual distance for a changed absolute destination", () => {
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const top = component.scrollTop;
-        animator.scrollTo({ top: 480, smoothness: 8 });
+        animator.scrollTo({ top: 480, duration: 120 });
         expect(animator.curveY.timingDistance).toBe(480 - top);
         runUntilDone();
         expect(component.scrollTop).toBe(480);
       });
 
       it("does not reinterpret an unchanged absolute destination", () => {
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const curve = animator.curveY;
         const timingDistance = curve.timingDistance;
-        animator.scrollTo({ top: 450, smoothness: 8 });
+        animator.scrollTo({ top: 450, duration: 120 });
         expect(animator.curveY).toBe(curve);
         expect(curve.timingDistance).toBe(timingDistance);
         tick(90);
@@ -718,17 +729,17 @@ describe("ScrollAnimator", () => {
         expect(animator.isAnimating()).toBe(false);
       });
 
-      it("preserves scaled timing debt when only absolute smoothness changes on an axis", () => {
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+      it("preserves scaled timing debt when only absolute duration changes on an axis", () => {
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const velocityY = animator.velocityY;
-        animator.scrollTo({ left: 100, smoothness: 20 });
+        animator.scrollTo({ left: 100, duration: 300 });
         expect(animator.targetScrollTop).toBe(450);
         expect(animator.curveY.timingDistance).toBeCloseTo(animator.pendingY() / 7.5, 9);
         expect(animator.velocityY).toBe(velocityY);
         tick(10);
         const nextVelocityY = animator.velocityY;
-        animator.scrollTo({ top: 450, smoothness: 8 });
+        animator.scrollTo({ top: 450, duration: 120 });
         expect(animator.curveY.timingDistance).toBeCloseTo(animator.pendingY() / 7.5, 9);
         expect(animator.velocityY).toBe(nextVelocityY);
         runUntilDone();
@@ -737,10 +748,10 @@ describe("ScrollAnimator", () => {
       });
 
       it("does not extend the other axis when input changes distance scale", () => {
-        animator.scrollBy({ x: 480, smoothness: 8 });
+        animator.scrollBy({ x: 480, duration: 120 });
         tick(30);
         const curveX = animator.curveX;
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         expect(animator.curveX).toBe(curveX);
         tick(30);
         expect(component.scrollLeft).toBe(480);
@@ -752,11 +763,11 @@ describe("ScrollAnimator", () => {
 
       it("keeps a clamped request from replacing a scaled curve or postponing its endpoint", () => {
         component.maxScrollTop = 450;
-        animator.scrollBy({ y: 450, distanceScale: 7.5, smoothness: 8 });
+        animator.scrollBy({ y: 450, distanceScale: 7.5, duration: 120 });
         tick(30);
         const curve = animator.curveY;
         const timingDistance = curve.timingDistance;
-        animator.scrollBy({ y: 60, smoothness: 8 });
+        animator.scrollBy({ y: 60, duration: 120 });
         expect(animator.curveY).toBe(curve);
         expect(curve.timingDistance).toBe(timingDistance);
         tick(90);
@@ -771,7 +782,7 @@ describe("ScrollAnimator", () => {
             x: (delta * 7.5) / 2,
             y: delta * 7.5,
             distanceScale: 7.5,
-            smoothness: 8,
+            duration: 120,
           });
           tick(FRAME / 2);
         }
@@ -784,7 +795,7 @@ describe("ScrollAnimator", () => {
       it("treats invalid distance scales as normal input", () => {
         for (const distanceScale of [0, -1, NaN, Infinity]) {
           component.scrollTop = 0;
-          animator.scrollBy({ y: 60, distanceScale, smoothness: 8 });
+          animator.scrollBy({ y: 60, distanceScale, duration: 120 });
           expect(animator.curveY.timingDistance).toBe(60);
           tick(119);
           expect(component.scrollTop).toBeLessThan(60);
@@ -797,8 +808,8 @@ describe("ScrollAnimator", () => {
 
     describe("system momentum", () => {
       it("batches fractional idle momentum into one frame without an easing curve", () => {
-        expect(animator.scrollBy({ x: 5.125, y: 10.25, smoothness: 8, momentum: true })).toBe(true);
-        expect(animator.scrollBy({ x: 0.375, y: 3.75, smoothness: 8, momentum: true })).toBe(true);
+        expect(animator.scrollBy({ x: 5.125, y: 10.25, duration: 120, momentum: true })).toBe(true);
+        expect(animator.scrollBy({ x: 0.375, y: 3.75, duration: 120, momentum: true })).toBe(true);
         expect(component.scrollLeft).toBe(0);
         expect(component.scrollTop).toBe(0);
         expect(animator.pendingX()).toBe(0);
@@ -820,7 +831,7 @@ describe("ScrollAnimator", () => {
         const frame = 1000 / 120;
         let previousStep = 0;
         for (let input = 0; input < 12; input++) {
-          animator.scrollBy({ y: 9.6, smoothness: 8, timestamp: now });
+          animator.scrollBy({ y: 9.6, duration: 120, timestamp: now });
           const previousPosition = component.scrollTop;
           tick(frame);
           previousStep = component.scrollTop - previousPosition;
@@ -832,7 +843,7 @@ describe("ScrollAnimator", () => {
         const endpoint = animator.targetScrollTop + 9.6;
         const velocity = animator.velocityY;
 
-        animator.scrollBy({ y: 9.6, smoothness: 8, momentum: true, timestamp: now });
+        animator.scrollBy({ y: 9.6, duration: 120, momentum: true, timestamp: now });
 
         expect(component.scrollTop).toBe(position);
         expect(animator.pendingY()).toBeCloseTo(pending, 10);
@@ -853,16 +864,16 @@ describe("ScrollAnimator", () => {
           now: () => now,
           requestAnimationFrame: () => 0,
         });
-        animator.scrollBy({ x: 40, y: 100, smoothness: 8 });
-        referenceAnimator.scrollBy({ x: 40, y: 100, smoothness: 8 });
+        animator.scrollBy({ x: 40, y: 100, duration: 120 });
+        referenceAnimator.scrollBy({ x: 40, y: 100, duration: 120 });
         tick();
         referenceAnimator.step(now);
         const curveY = animator.curveY;
         const deadline = now + curveY.duration - curveY.elapsed;
 
-        animator.scrollBy({ x: 4, smoothness: 20, momentum: true, timestamp: now });
+        animator.scrollBy({ x: 4, duration: 300, momentum: true, timestamp: now });
 
-        expect(animator.smoothness).toBe(8);
+        expect(animator.duration).toBe(120);
         expect(animator.curveY).toBe(curveY);
         expect(now + curveY.duration - curveY.elapsed).toBe(deadline);
         tick();
@@ -875,7 +886,7 @@ describe("ScrollAnimator", () => {
       });
 
       it("accepts edge momentum until the existing glide reaches its original deadline", () => {
-        animator.scrollBy({ y: component.maxScrollTop, smoothness: 8 });
+        animator.scrollBy({ y: component.maxScrollTop, duration: 120 });
         tick();
         const curve = animator.curveY;
         const deadline = now + curve.duration - curve.elapsed;
@@ -895,7 +906,7 @@ describe("ScrollAnimator", () => {
 
       it("translates a glide by only the accepted part of a bounded momentum delta", () => {
         component.scrollTop = 800;
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
         tick();
         const position = animator.virtualScrollTop;
         const curve = animator.curveY;
@@ -914,7 +925,7 @@ describe("ScrollAnimator", () => {
       });
 
       it("cancels only the reversed axis's old glide before applying its momentum delta", () => {
-        animator.scrollBy({ x: 100, y: 200, smoothness: 8 });
+        animator.scrollBy({ x: 100, y: 200, duration: 120 });
         tick();
         const positionX = component.scrollLeft;
         const curveY = animator.curveY;
@@ -936,7 +947,7 @@ describe("ScrollAnimator", () => {
       });
 
       it("bounds reversal and an extent shrink before publishing momentum", () => {
-        animator.scrollBy({ x: 400, y: 800, smoothness: 8 });
+        animator.scrollBy({ x: 400, y: 800, duration: 120 });
         tick();
         component.maxScrollTop = 70;
         component.maxScrollLeft = 20;
@@ -960,7 +971,7 @@ describe("ScrollAnimator", () => {
         expect(animator.isAnimating()).toBe(false);
         expect(canceledHandles.length).toBe(1);
 
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
         tick();
         animator.scrollBy({ x: 4, y: 25, momentum: true, timestamp: now });
         const end = jasmine.createSpy("end");
@@ -999,7 +1010,7 @@ describe("ScrollAnimator", () => {
             trainAnimator.scrollBy({
               y: event.delta * distanceScale,
               distanceScale,
-              smoothness: 8,
+              duration: 120,
               momentum: event.momentum,
               timestamp: time,
             });
@@ -1095,12 +1106,12 @@ describe("ScrollAnimator", () => {
       });
 
       it("emits start and end exactly once per glide", () => {
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
         expect(started).toBe(1);
         expect(ended).toBe(0);
 
         // Additional requests during the glide don't re-emit start.
-        animator.scrollBy({ y: 50, smoothness: 8 });
+        animator.scrollBy({ y: 50, duration: 120 });
         expect(started).toBe(1);
 
         runUntilDone();
@@ -1109,7 +1120,7 @@ describe("ScrollAnimator", () => {
 
       it("keeps one animation lifecycle throughout an extended wheel train", () => {
         for (let i = 0; i < 20; i++) {
-          animator.scrollBy({ y: 20, smoothness: 8 });
+          animator.scrollBy({ y: 20, duration: 120 });
           tick(25);
         }
         expect(started).toBe(1);
@@ -1119,9 +1130,9 @@ describe("ScrollAnimator", () => {
       });
 
       it("keeps the same animation lifecycle when changing direction", () => {
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
         tick();
-        animator.scrollBy({ y: -5, smoothness: 8 });
+        animator.scrollBy({ y: -5, duration: 120 });
         expect(started).toBe(1);
         expect(ended).toBe(0);
         runUntilDone();
@@ -1129,7 +1140,7 @@ describe("ScrollAnimator", () => {
       });
 
       it("emits end when cancelled mid-glide, and not when already idle", () => {
-        animator.scrollBy({ y: 100, smoothness: 8 });
+        animator.scrollBy({ y: 100, duration: 120 });
         animator.cancel();
         expect(ended).toBe(1);
         animator.cancel();

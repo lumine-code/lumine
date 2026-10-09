@@ -33,9 +33,6 @@ const DOUBLE_WIDTH_CHARACTER = "我";
 const HALF_WIDTH_CHARACTER = "ﾊ";
 const KOREAN_CHARACTER = "세";
 const MOUSE_DRAG_AUTOSCROLL_MARGIN = 40;
-// Scale normalized wheel pixels before applying the editor's sensitivity.
-// Direct and animated scrolling use the same gain.
-const WHEEL_PIXEL_SCALE = 1.2;
 const CURSOR_BLINK_RESUME_DELAY = 300;
 const CURSOR_BLINK_PERIOD = 800;
 
@@ -2576,7 +2573,7 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  // Converts a `wheel` event into pre-sensitivity pixel deltas, applying
+  // Converts a `wheel` event into pixel deltas, applying
   // delta-mode normalization, the non-darwin shift swap, and the alt speed
   // multiplier. Both axes are preserved so diagonal trackpad gestures pan
   // smoothly instead of locking to the dominant axis per event. distanceScale
@@ -2596,16 +2593,13 @@ module.exports = class TextEditorComponent {
       deltaY *= this.element.offsetHeight;
     }
 
-    deltaX *= WHEEL_PIXEL_SCALE;
-    deltaY *= WHEEL_PIXEL_SCALE;
-
     if (this.getPlatform() !== "darwin" && event.shiftKey) {
       const temp = deltaX;
       deltaX = deltaY;
       deltaY = temp;
     }
 
-    const distanceScale = event.altKey ? this.props.model.getAltWheelMultiplier() : 1;
+    const distanceScale = event.altKey ? this.props.model.getAltWheelScrollMultiplier() : 1;
     if (distanceScale !== 1) {
       deltaX *= distanceScale;
       deltaY *= distanceScale;
@@ -2614,21 +2608,21 @@ module.exports = class TextEditorComponent {
     return { x: deltaX, y: deltaY, distanceScale };
   }
 
-  // Scrolls this editor by pre-sensitivity pixel deltas, animating when smooth
-  // scrolling is enabled. Returns whether the scroll was accepted, so wheel
+  // Applies the configured wheel multiplier to pixel deltas, animating when
+  // smooth scrolling is enabled. Returns whether the scroll was accepted, so wheel
   // events can chain to outer scroll containers when the editor is at an edge.
   applyWheelScroll(x, y, timestamp, momentum = false, distanceScale = 1) {
     const model = this.props.model;
-    const scrollSensitivity = model.getScrollSensitivity() / 100;
-    x *= scrollSensitivity;
-    y *= scrollSensitivity;
+    const wheelScrollMultiplier = model.getWheelScrollMultiplier();
+    x *= wheelScrollMultiplier;
+    y *= wheelScrollMultiplier;
     if (x === 0 && y === 0) return false;
 
     if (model.getSmoothScrolling() && !model.isMini()) {
       const accepted = this.scrollAnimator.scrollBy({
         x,
         y,
-        smoothness: model.getWheelSmoothness(),
+        duration: model.getWheelScrollDuration(),
         momentum,
         timestamp,
         distanceScale,

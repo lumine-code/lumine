@@ -20,12 +20,12 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["editor.autoIndentOnPaste", "autoIndentOnPaste"],
   ["editor.scrollPastEnd", "scrollPastEnd"],
   ["editor.undoGroupingInterval", "undoGroupingInterval"],
-  ["editor.scrollSensitivity", "scrollSensitivity"],
+  ["editor.wheelScrollMultiplier", "wheelScrollMultiplier"],
   ["editor.smoothScrolling", "smoothScrolling"],
-  ["editor.wheelSmoothness", "wheelSmoothness"],
-  ["editor.commandSmoothness", "commandSmoothness"],
-  ["editor.altWheelMultiplier", "altWheelMultiplier"],
-  ["editor.scrollCommandDistance", "scrollCommandDistance"],
+  ["editor.wheelScrollDuration", "wheelScrollDuration"],
+  ["editor.commandScrollDuration", "commandScrollDuration"],
+  ["editor.altWheelScrollMultiplier", "altWheelScrollMultiplier"],
+  ["editor.commandScrollDistance", "commandScrollDistance"],
 ];
 
 // Constructs TextEditor models and owns their scoped configuration lifecycle.

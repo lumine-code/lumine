@@ -17,6 +17,12 @@ const COMMENTED_LINE_COUNT = 9163;
 const INPUT_COUNT = 30;
 const EDITOR_WIDTH = 1000;
 const EDITOR_HEIGHT = 1200;
+const SCROLL_SETTINGS = {
+  smoothScrolling: true,
+  wheelScrollMultiplier: 0.48,
+  wheelScrollDuration: 120,
+  altWheelScrollMultiplier: 8,
+};
 
 function wheelScenarios() {
   const altBurst = [];
@@ -87,10 +93,7 @@ function buildEditor(text) {
     lineNumberGutterVisible: true,
     showLineNumbers: true,
     softWrapped: false,
-    scrollSensitivity: 40,
-    smoothScrolling: true,
-    wheelSmoothness: 8,
-    altWheelMultiplier: 7.5,
+    ...SCROLL_SETTINGS,
   });
   const component = new TextEditorComponent({ model: editor, updatedSynchronously: true });
   component.element.style.width = `${EDITOR_WIDTH}px`;
@@ -210,7 +213,7 @@ function runWheelScenario(component, scenario) {
         Object.defineProperty(event, "timeStamp", { value: setTime(input.at) });
         const requestedY =
           component.normalizedWheelDeltas(event).y *
-          (component.props.model.getScrollSensitivity() / 100);
+          component.props.model.getWheelScrollMultiplier();
         expectedScrollTop = Math.max(
           0,
           Math.min(component.getMaxScrollTop(), expectedScrollTop + requestedY),
@@ -434,6 +437,7 @@ describe("Text editor wheel benchmark", () => {
           frameDuration: FRAME_DURATION,
           editorWidth: EDITOR_WIDTH,
           editorHeight: EDITOR_HEIGHT,
+          scrollSettings: SCROLL_SETTINGS,
           scenarios,
         },
         measurement:

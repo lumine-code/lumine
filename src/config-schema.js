@@ -549,22 +549,6 @@ const configSchema = {
         maximum: 1000,
         default: 100,
       },
-      scrollSensitivity: {
-        scopeResolution: "grammar",
-        title: "Scroll Sensitivity",
-        description: "Determines how fast the editor scrolls when using a mouse or trackpad.",
-        type: "integer",
-        minimum: 10,
-        maximum: 200,
-        default: 40,
-      },
-      scrollPastEnd: {
-        scopeResolution: "grammar",
-        title: "Scroll Past End",
-        description: "Allow the editor to be scrolled past the end of the last line.",
-        type: "boolean",
-        default: true,
-      },
       multiCursorOnClick: {
         title: "Multi Cursor On Click",
         description:
@@ -573,49 +557,59 @@ const configSchema = {
         default: true,
       },
       smoothScrolling: {
-        scopeResolution: "grammar",
         title: "Smooth Scrolling",
         description:
-          "Animate mouse wheel and scroll command movements instead of jumping instantly.",
+          "Animate wheel scrolling and the editor:scroll-up/down commands with a cubic curve. System momentum keeps its own deceleration.",
         type: "boolean",
+        scopeResolution: "grammar",
         default: true,
       },
-      wheelSmoothness: {
-        scopeResolution: "grammar",
-        title: "Wheel Smoothness",
+      wheelScrollMultiplier: {
+        title: "Wheel Scroll Multiplier",
         description:
-          "How gradually the editor glides toward the target position when scrolling with the mouse wheel. Higher values feel floatier.",
-        type: "integer",
-        minimum: 1,
-        maximum: 20,
-        default: 8,
-      },
-      commandSmoothness: {
-        scopeResolution: "grammar",
-        title: "Command Smoothness",
-        description:
-          "How gradually the editor glides when scrolling via the `editor:scroll-up` and `editor:scroll-down` commands.",
-        type: "integer",
-        minimum: 1,
-        maximum: 50,
-        default: 12,
-      },
-      altWheelMultiplier: {
-        scopeResolution: "grammar",
-        title: "Alt Wheel Multiplier",
-        description:
-          "Speed multiplier applied to wheel scrolling while holding `alt`. Set to `1` to disable.",
+          "Distance multiplier for wheel scrolling. 1 keeps the supplied distance; 0.5 halves it. Applies with and without animation.",
         type: "number",
+        scopeResolution: "grammar",
+        minimum: 0.1,
+        maximum: 10,
+        default: 0.5,
+      },
+      wheelScrollDuration: {
+        title: "Wheel Scroll Duration (ms)",
+        description:
+          "Maximum duration of a new wheel animation, in milliseconds. Large movements finish sooner. Set 0 to skip interpolation; system momentum is not reanimated.",
+        type: "integer",
+        scopeResolution: "grammar",
+        minimum: 0,
+        maximum: 1000,
+        default: 120,
+      },
+      altWheelScrollMultiplier: {
+        title: "Alt Wheel Scroll Multiplier",
+        description:
+          "Multiply wheel scroll distance while holding Alt. 1 disables the boost. Animation timing follows the ordinary wheel profile.",
+        type: "number",
+        scopeResolution: "grammar",
         minimum: 1,
         maximum: 100,
-        default: 7.5,
+        default: 8,
       },
-      scrollCommandDistance: {
-        scopeResolution: "grammar",
-        title: "Scroll Command Distance",
+      commandScrollDuration: {
+        title: "Command Scroll Duration (ms)",
         description:
-          "Distance scrolled by `editor:scroll-up` and `editor:scroll-down`, as a fraction of the editor height. `editor:increase-scroll-distance` and `editor:decrease-scroll-distance` double or halve it per editor without changing this setting.",
+          "Maximum animation duration for editor:scroll-up/down, in milliseconds. Large movements finish sooner. Set 0 to skip interpolation.",
+        type: "integer",
+        scopeResolution: "grammar",
+        minimum: 0,
+        maximum: 5000,
+        default: 180,
+      },
+      commandScrollDistance: {
+        title: "Command Scroll Distance (Editor Heights)",
+        description:
+          "Distance for editor:scroll-up/down, measured in editor heights. 1 moves one full height. The increase/decrease-scroll-distance commands adjust it per editor without changing this setting.",
         type: "number",
+        scopeResolution: "grammar",
         minimum: 0.015625,
         maximum: 64,
         default: 1,
@@ -625,6 +619,13 @@ const configSchema = {
         description:
           "Holding `ctrl` while wheel scrolling over a text editor scrolls every visible center pane editor together.",
         type: "boolean",
+        default: true,
+      },
+      scrollPastEnd: {
+        title: "Scroll Past End",
+        description: "Allow the editor to be scrolled past the end of the last line.",
+        type: "boolean",
+        scopeResolution: "grammar",
         default: true,
       },
       undoGroupingInterval: {
