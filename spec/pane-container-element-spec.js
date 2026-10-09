@@ -156,6 +156,7 @@ describe("PaneContainerElement", function () {
           view: window,
           bubbles: true,
           button: 0,
+          buttons: 1,
         }),
       );
 
@@ -164,14 +165,16 @@ describe("PaneContainerElement", function () {
           view: window,
           bubbles: true,
           clientX,
+          buttons: 1,
         }),
       );
 
       element.dispatchEvent(
         new MouseEvent("mouseup", {
-          iew: window,
+          view: window,
           bubbles: true,
           button: 0,
+          buttons: 0,
         }),
       );
     };
