@@ -28,6 +28,7 @@ module.exports = class Dock {
     this.handleResizeToFit = this.handleResizeToFit.bind(this);
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
+    this.flushPendingResize = this.flushPendingResize.bind(this);
     this.handleDrag = _.throttle(this.handleDrag.bind(this), 30);
     this.handleDragEnd = this.handleDragEnd.bind(this);
     this.handleToggleButtonDragEnter = this.handleToggleButtonDragEnter.bind(this);
@@ -42,6 +43,8 @@ module.exports = class Dock {
     this.viewRegistry = params.viewRegistry;
     this.didActivate = params.didActivate;
     this.layoutDrag = null;
+    this.resizeFrame = null;
+    this.pendingResizePosition = null;
 
     this.emitter = new Emitter();
 
@@ -96,11 +99,16 @@ module.exports = class Dock {
   }
 
   destroy() {
+    this.destroyed = true;
+    this.cancelPendingResize();
+    const layoutDrag = this.layoutDrag;
+    this.layoutDrag = null;
     this.subscriptions.dispose();
     this.paneContainer.destroy();
-    if (this.layoutDrag) this.layoutDrag.dispose();
+    layoutDrag?.dispose();
     window.removeEventListener("mousemove", this.handleMouseMove);
     window.removeEventListener("mouseup", this.handleMouseUp);
+    window.removeEventListener("blur", this.handleMouseUp);
     window.removeEventListener("drag", this.handleDrag);
     window.removeEventListener("dragend", this.handleDragEnd);
   }
@@ -317,8 +325,10 @@ module.exports = class Dock {
   }
 
   handleResizeHandleDragStart() {
+    if (this.destroyed || this.layoutDrag) return;
     window.addEventListener("mousemove", this.handleMouseMove);
     window.addEventListener("mouseup", this.handleMouseUp);
+    window.addEventListener("blur", this.handleMouseUp);
     this.layoutDrag = beginLayoutDrag();
     this.setState({ resizing: true });
   }
@@ -338,26 +348,53 @@ module.exports = class Dock {
       return;
     }
 
+    if (!this.layoutDrag) return;
+    this.pendingResizePosition = { x: event.pageX, y: event.pageY };
+    if (this.resizeFrame == null) {
+      this.resizeFrame = window.requestAnimationFrame(this.flushPendingResize);
+    }
+  }
+
+  cancelPendingResize() {
+    if (this.resizeFrame != null) window.cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = null;
+    this.pendingResizePosition = null;
+  }
+
+  flushPendingResize() {
+    const position = this.pendingResizePosition;
+    this.cancelPendingResize();
+    if (!position || !this.layoutDrag || this.destroyed || !this.element?.isConnected) return;
+
+    // Read geometry and synchronously commit only the newest pointer position
+    // once per frame. Programmatic sizing still uses setState immediately.
+    const rect = this.element.getBoundingClientRect();
     let size = 0;
     switch (this.location) {
       case "left":
-        size = event.pageX - this.element.getBoundingClientRect().left;
+        size = position.x - rect.left;
         break;
       case "bottom":
-        size = this.element.getBoundingClientRect().bottom - event.pageY;
+        size = rect.bottom - position.y;
         break;
       case "right":
-        size = this.element.getBoundingClientRect().right - event.pageX;
+        size = rect.right - position.x;
         break;
     }
     this.setState({ size });
   }
 
   handleMouseUp(_event) {
+    // Ending the layout drag flushes deferred editor measurements, so settle
+    // the last queued pointer position before notifying those subscribers.
+    this.flushPendingResize();
     window.removeEventListener("mousemove", this.handleMouseMove);
     window.removeEventListener("mouseup", this.handleMouseUp);
-    if (this.layoutDrag) this.layoutDrag.dispose();
-    this.setState({ resizing: false });
+    window.removeEventListener("blur", this.handleMouseUp);
+    const layoutDrag = this.layoutDrag;
+    this.layoutDrag = null;
+    if (!this.destroyed) this.setState({ resizing: false });
+    layoutDrag?.dispose();
   }
 
   handleToggleButtonDragEnter() {
