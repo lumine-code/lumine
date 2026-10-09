@@ -662,12 +662,10 @@ class WorkspaceDropManager {
     const split = proposal.allowSplit === false ? null : context.candidateSplit;
     const rect = context.dropElement.getBoundingClientRect();
     const bounds = boundsForSplit(rect, split);
-    Object.assign(this.overlay.style, {
-      left: `${bounds.left}px`,
-      top: `${bounds.top}px`,
-      width: `${bounds.width}px`,
-      height: `${bounds.height}px`,
-    });
+    // Move a fixed-size, text-free rectangle instead of laying out and painting
+    // a new box for every preview. Keep fractional pane bounds intact.
+    const transform = `translate(${bounds.left}px, ${bounds.top}px) scale(${bounds.width}, ${bounds.height})`;
+    if (this.overlay.style.transform !== transform) this.overlay.style.transform = transform;
     // The top layer keeps the preview above every pane item's own stacking
     // contexts and makes these viewport bounds independent of containment.
     if (this.overlay.isConnected && !this.overlay.matches(":popover-open")) {

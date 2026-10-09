@@ -317,7 +317,7 @@ describe("WorkspaceDropManager", () => {
     });
 
     dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
-    expect(manager.overlay.style.left).toBe("60px");
+    expect(manager.overlay.getBoundingClientRect().left).toBe(60);
     expect(pane.getContainer().getPanes().length).toBe(1);
     dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
     await conditionPromise(() => lumine.workspace.open.calls.count() === 1);
@@ -349,8 +349,8 @@ describe("WorkspaceDropManager", () => {
     });
 
     dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
-    expect(manager.overlay.style.left).toBe("0px");
-    expect(manager.overlay.style.width).toBe("120px");
+    expect(manager.overlay.getBoundingClientRect().left).toBe(0);
+    expect(manager.overlay.getBoundingClientRect().width).toBe(120);
     dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
     expect(await directoriesOpened).toEqual({ pathsToOpen: [directoryPath], here: true });
 

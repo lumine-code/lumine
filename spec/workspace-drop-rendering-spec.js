@@ -135,6 +135,41 @@ describe("workspace drop preview rendering", () => {
     expect(manager.activeClaim).toBe(null);
   });
 
+  it("tracks fractional pane bounds without rewriting unchanged preview geometry", () => {
+    workspaceElement.style.left = "17.25px";
+    workspaceElement.style.top = "23.5px";
+    workspaceElement.style.width = "401.375px";
+    workspaceElement.style.height = "301.625px";
+    const { rect, dataTransfer } = showFullPreview();
+    expectBounds(manager.overlay.getBoundingClientRect(), rect);
+    const observer = new MutationObserver(() => {});
+    observer.observe(manager.overlay, { attributes: true, attributeFilter: ["style"] });
+    try {
+      dispatchDrag(
+        "dragover",
+        item,
+        dataTransfer,
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      expect(observer.takeRecords().length).toBe(0);
+
+      workspaceElement.style.width = "451.625px";
+      const resizedRect = itemViews.getBoundingClientRect();
+      dispatchDrag(
+        "dragover",
+        item,
+        dataTransfer,
+        resizedRect.left + resizedRect.width / 2,
+        resizedRect.top + resizedRect.height / 2,
+      );
+      expectBounds(manager.overlay.getBoundingClientRect(), resizedRect);
+      expect(observer.takeRecords().length).toBe(1);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   it("closes the previous preview when the workspace is rebound", () => {
     showFullPreview();
     const previousOverlay = manager.overlay;

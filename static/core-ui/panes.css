@@ -173,7 +173,10 @@ body.is-unloading {
 
 .workspace-drop-overlay {
   position: fixed;
-  inset: auto;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  transform-origin: 0 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -184,6 +187,7 @@ body.is-unloading {
 
   &.visible {
     opacity: 0.1;
+    will-change: transform;
   }
 
   &::backdrop {
