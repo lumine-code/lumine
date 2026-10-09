@@ -122,8 +122,9 @@ class ScrollAnimator {
     return this.animating;
   }
 
-  scrollBy({ x = 0, y = 0, smoothness, reset = false, timestamp } = {}) {
+  scrollBy({ x = 0, y = 0, smoothness, momentum = false, reset = false, timestamp } = {}) {
     const time = this.prepareRequest(timestamp, reset);
+    if (momentum) return this.requestMomentumScroll(x, y, time);
     return this.requestScroll(x, y, smoothness, time);
   }
 
@@ -231,6 +232,59 @@ class ScrollAnimator {
     if (this.pendingX() === 0 && this.pendingY() === 0) return false;
     this.start(timestamp);
     return true;
+  }
+
+  requestMomentumScroll(x, y, timestamp) {
+    this.translateMomentumAxis(x, true);
+    this.translateMomentumAxis(y, false);
+
+    // Momentum can have no unfinished distance but still need a frame: its
+    // accepted deltas update the virtual viewport without publishing to DOM.
+    if (
+      this.pendingX() === 0 &&
+      this.pendingY() === 0 &&
+      this.virtualScrollLeft === this.component.getScrollLeft() &&
+      this.virtualScrollTop === this.component.getScrollTop()
+    ) {
+      return false;
+    }
+    this.start(timestamp);
+    return true;
+  }
+
+  translateMomentumAxis(delta, horizontal) {
+    if (delta === 0) return;
+    const targetKey = horizontal ? "targetScrollLeft" : "targetScrollTop";
+    const positionKey = horizontal ? "virtualScrollLeft" : "virtualScrollTop";
+    const velocityKey = horizontal ? "velocityX" : "velocityY";
+    const curveKey = horizontal ? "curveX" : "curveY";
+    const maximum = horizontal
+      ? this.component.getMaxScrollLeft()
+      : this.component.getMaxScrollTop();
+
+    // A reversal takes over this axis instead of completing its old glide.
+    // The other axis keeps its own curve, velocity and deadline.
+    const pending = this[targetKey] - this[positionKey];
+    if (delta * pending < 0 || delta * this[velocityKey] < 0) {
+      this[targetKey] = this[positionKey];
+      this[velocityKey] = 0;
+      this[curveKey] = null;
+    }
+
+    const target = clamp(this[targetKey] + delta, 0, maximum);
+    const accepted = target - this[targetKey];
+    if (accepted === 0) return;
+    this[targetKey] = target;
+    this[positionKey] += accepted;
+
+    // The system supplies this motion's deceleration. Translate the existing
+    // unfinished glide rather than replacing it with a new easing curve or
+    // paying its whole remaining distance in the first momentum frame.
+    const curve = this[curveKey];
+    if (curve) {
+      curve.position += accepted;
+      curve.target = target;
+    }
   }
 
   retargetX() {

@@ -2625,10 +2625,8 @@ module.exports = class TextEditorComponent {
       const accepted = this.scrollAnimator.scrollBy({
         x,
         y,
-        // The system already supplies the deceleration of a momentum stream.
-        // Keep frame batching and its unfinished target, without adding a
-        // second glide after each inertial delta.
-        smoothness: momentum ? 1 : model.getWheelSmoothness(),
+        smoothness: model.getWheelSmoothness(),
+        momentum,
         timestamp,
       });
       if (accepted) {

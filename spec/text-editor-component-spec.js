@@ -2512,6 +2512,8 @@ describe("TextEditorComponent", () => {
       component.didMouseWheel({ deltaY: 40, preventDefault });
       animator.advance(FRAME);
       const position = component.getScrollTop();
+      const curve = animator.curveY;
+      const deadline = animator.lastUpdateTime + curve.duration - curve.elapsed;
       const update = spyOn(component, "updateScrollAnimationFrame").and.callThrough();
 
       component.didMouseWheel({ deltaX: 10.25, deltaY: 8.125, momentum: true, preventDefault });
@@ -2519,12 +2521,17 @@ describe("TextEditorComponent", () => {
 
       expect(component.getScrollTop()).toBe(position);
       expect(update).not.toHaveBeenCalled();
+      expect(animator.curveY).toBe(curve);
+      expect(animator.lastUpdateTime + curve.duration - curve.elapsed).toBe(deadline);
       animator.advance(FRAME);
       expect(update).toHaveBeenCalledTimes(1);
-      expect(component.getScrollTop()).toBeNear((40 + 8.125 + 2.25) * wheelPixelScale * 0.25);
+      const target = (40 + 8.125 + 2.25) * wheelPixelScale * 0.25;
+      expect(component.getScrollTop()).toBeLessThan(target);
       expect(component.getScrollLeft()).toBeNear((10.25 + 3.5) * wheelPixelScale * 0.25);
-      expect(animator.isAnimating()).toBe(false);
+      expect(animator.isAnimating()).toBe(true);
       expect(preventDefault).toHaveBeenCalledTimes(3);
+      driveAnimationToCompletion(component);
+      expect(component.getScrollTop()).toBeNear(target);
 
       component.didMouseWheel({ deltaY: 20, momentum: false, preventDefault });
       const nextTarget = animator.targetScrollTop;

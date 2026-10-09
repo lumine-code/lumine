@@ -579,6 +579,186 @@ describe("ScrollAnimator", () => {
       expect(component.scrollTop).toBe(120);
     });
 
+    describe("system momentum", () => {
+      it("batches fractional idle momentum into one frame without an easing curve", () => {
+        expect(animator.scrollBy({ x: 5.125, y: 10.25, smoothness: 8, momentum: true })).toBe(true);
+        expect(animator.scrollBy({ x: 0.375, y: 3.75, smoothness: 8, momentum: true })).toBe(true);
+        expect(component.scrollLeft).toBe(0);
+        expect(component.scrollTop).toBe(0);
+        expect(animator.pendingX()).toBe(0);
+        expect(animator.pendingY()).toBe(0);
+        expect(animator.curveX).toBeNull();
+        expect(animator.curveY).toBeNull();
+        expect(rafCallbacks.length).toBe(1);
+
+        tick(1000 / 120);
+
+        expect(component.scrollLeft).toBe(5.5);
+        expect(component.scrollTop).toBe(14);
+        expect(component.scrollFrameUpdateCount).toBe(1);
+        expect(animator.isAnimating()).toBe(false);
+        expect(rafCallbacks.length).toBe(1);
+      });
+
+      it("retains the wheel deadline and endpoint without a transition jump", () => {
+        const frame = 1000 / 120;
+        let previousStep = 0;
+        for (let input = 0; input < 12; input++) {
+          animator.scrollBy({ y: 9.6, smoothness: 8, timestamp: now });
+          const previousPosition = component.scrollTop;
+          tick(frame);
+          previousStep = component.scrollTop - previousPosition;
+        }
+        const position = component.scrollTop;
+        const pending = animator.pendingY();
+        const curve = animator.curveY;
+        const deadline = now + curve.duration - curve.elapsed;
+        const endpoint = animator.targetScrollTop + 9.6;
+        const velocity = animator.velocityY;
+
+        animator.scrollBy({ y: 9.6, smoothness: 8, momentum: true, timestamp: now });
+
+        expect(component.scrollTop).toBe(position);
+        expect(animator.pendingY()).toBeCloseTo(pending, 10);
+        expect(animator.velocityY).toBe(velocity);
+        expect(animator.curveY).toBe(curve);
+        expect(now + curve.duration - curve.elapsed).toBe(deadline);
+        tick(frame);
+        expect(component.scrollTop - position).toBeLessThan(previousStep * 3);
+        expect(component.scrollTop).toBeLessThan(endpoint);
+        runUntilDone();
+        expect(component.scrollTop).toBe(endpoint);
+        expect(now).toBeLessThan(deadline + FRAME);
+      });
+
+      it("does not flush or retarget the other axis for horizontal-only momentum", () => {
+        const reference = buildMockComponent();
+        const referenceAnimator = new ScrollAnimator(reference, {
+          now: () => now,
+          requestAnimationFrame: () => 0,
+        });
+        animator.scrollBy({ x: 40, y: 100, smoothness: 8 });
+        referenceAnimator.scrollBy({ x: 40, y: 100, smoothness: 8 });
+        tick();
+        referenceAnimator.step(now);
+        const curveY = animator.curveY;
+        const deadline = now + curveY.duration - curveY.elapsed;
+
+        animator.scrollBy({ x: 4, smoothness: 20, momentum: true, timestamp: now });
+
+        expect(animator.smoothness).toBe(8);
+        expect(animator.curveY).toBe(curveY);
+        expect(now + curveY.duration - curveY.elapsed).toBe(deadline);
+        tick();
+        referenceAnimator.step(now);
+        expect(component.scrollTop).toBe(reference.scrollTop);
+        expect(component.scrollLeft).toBeCloseTo(reference.scrollLeft + 4, 10);
+        runUntilDone();
+        expect(component.scrollTop).toBe(100);
+        expect(component.scrollLeft).toBe(44);
+      });
+
+      it("accepts edge momentum until the existing glide reaches its original deadline", () => {
+        animator.scrollBy({ y: component.maxScrollTop, smoothness: 8 });
+        tick();
+        const curve = animator.curveY;
+        const deadline = now + curve.duration - curve.elapsed;
+        const virtualPosition = animator.virtualScrollTop;
+
+        expect(animator.scrollBy({ y: 50, momentum: true, timestamp: now })).toBe(true);
+        expect(animator.curveY).toBe(curve);
+        expect(animator.virtualScrollTop).toBe(virtualPosition);
+        expect(now + curve.duration - curve.elapsed).toBe(deadline);
+        tick();
+        expect(component.scrollTop).toBeLessThan(component.maxScrollTop);
+        runUntilDone();
+        expect(component.scrollTop).toBe(component.maxScrollTop);
+        expect(animator.scrollBy({ y: 50, momentum: true })).toBe(false);
+        expect(animator.isAnimating()).toBe(false);
+      });
+
+      it("translates a glide by only the accepted part of a bounded momentum delta", () => {
+        component.scrollTop = 800;
+        animator.scrollBy({ y: 100, smoothness: 8 });
+        tick();
+        const position = animator.virtualScrollTop;
+        const curve = animator.curveY;
+        const origin = curve.position;
+        const deadline = now + curve.duration - curve.elapsed;
+
+        animator.scrollBy({ y: 200, momentum: true, timestamp: now });
+
+        expect(animator.targetScrollTop).toBe(1000);
+        expect(animator.virtualScrollTop).toBe(position + 100);
+        expect(curve.position).toBe(origin + 100);
+        expect(curve.distance).toBe(100);
+        expect(now + curve.duration - curve.elapsed).toBe(deadline);
+        runUntilDone();
+        expect(component.scrollTop).toBe(1000);
+      });
+
+      it("cancels only the reversed axis's old glide before applying its momentum delta", () => {
+        animator.scrollBy({ x: 100, y: 200, smoothness: 8 });
+        tick();
+        const positionX = component.scrollLeft;
+        const curveY = animator.curveY;
+        const deadlineY = now + curveY.duration - curveY.elapsed;
+
+        animator.scrollBy({ x: -2, momentum: true, timestamp: now });
+
+        expect(animator.curveX).toBeNull();
+        expect(animator.velocityX).toBe(0);
+        expect(animator.targetScrollLeft).toBe(positionX - 2);
+        expect(animator.curveY).toBe(curveY);
+        expect(now + curveY.duration - curveY.elapsed).toBe(deadlineY);
+        tick();
+        expect(component.scrollLeft).toBe(positionX - 2);
+        expect(component.scrollTop).toBeGreaterThan(0);
+        runUntilDone();
+        expect(component.scrollLeft).toBe(positionX - 2);
+        expect(component.scrollTop).toBe(200);
+      });
+
+      it("bounds reversal and an extent shrink before publishing momentum", () => {
+        animator.scrollBy({ x: 400, y: 800, smoothness: 8 });
+        tick();
+        component.maxScrollTop = 70;
+        component.maxScrollLeft = 20;
+
+        animator.scrollBy({ x: -100, y: 20, momentum: true, timestamp: now });
+        tick();
+        expect(component.scrollLeft).toBe(0);
+        expect(component.scrollTop).toBeLessThanOrEqual(70);
+        expect(animator.targetScrollTop).toBe(70);
+        runUntilDone();
+        expect(component.scrollTop).toBe(70);
+        expect(component.scrollLeft).toBe(0);
+      });
+
+      it("can cancel unpublished momentum or finish it together with a remaining wheel glide", () => {
+        animator.scrollBy({ x: 4, y: 10, momentum: true });
+        animator.cancel();
+        tick();
+        expect(component.scrollLeft).toBe(0);
+        expect(component.scrollTop).toBe(0);
+        expect(animator.isAnimating()).toBe(false);
+        expect(canceledHandles.length).toBe(1);
+
+        animator.scrollBy({ y: 100, smoothness: 8 });
+        tick();
+        animator.scrollBy({ x: 4, y: 25, momentum: true, timestamp: now });
+        const end = jasmine.createSpy("end");
+        component.element.emitter.on("did-end-scroll-animation", end);
+        animator.finish();
+        expect(component.scrollLeft).toBe(4);
+        expect(component.scrollTop).toBe(125);
+        expect(animator.isAnimating()).toBe(false);
+        expect(end).toHaveBeenCalledTimes(1);
+        tick();
+        expect(end).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe("continuous wheel input", () => {
       function runTrain(events, fps = 60) {
         let time = 0;
