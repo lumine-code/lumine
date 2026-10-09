@@ -124,6 +124,25 @@ lumine-pane-container {
       calc(-100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing))
     );
   }
+
+  /* Move the default composition anchor through the compositor. Container
+     lengths keep its percentage relative to the empty viewport, not the mark.
+     Custom offsets retain the existing layout-based positioning above. */
+  @container style(--empty-pane-content-offset: min(8rem, 18%)) {
+    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane) > .item-views:empty {
+      container-type: size;
+    }
+
+    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane):has(> background-tips)
+      > .item-views:empty::after {
+      top: 50%;
+      transition: transform 0.3s ease-in-out;
+      transform: translate(
+        -50%,
+        calc(-100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing) + min(8rem, 18cqh))
+      );
+    }
+  }
 }
 
 /* Packages deactivate before the renderer closes. Hide the core mark for

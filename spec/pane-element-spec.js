@@ -115,7 +115,7 @@ describe("PaneElement", function () {
       paneElement.appendChild(backgroundTips);
       expect(watermarkStyle().transform).not.toBe("none");
       expect(watermarkStyle().transform).not.toBe(centeredTransform);
-      expect(watermarkStyle().top).not.toBe(centeredTop);
+      expect(watermarkStyle().top).toBe(centeredTop);
 
       backgroundTips.remove();
       expect(watermarkStyle().transform).toBe(centeredTransform);
@@ -127,11 +127,46 @@ describe("PaneElement", function () {
 
       const backgroundTips = document.createElement("background-tips");
       paneElement.appendChild(backgroundTips);
-      expect(watermarkStyle().transitionDuration).toBe("0.3s, 0.3s");
-      expect(watermarkStyle().transitionProperty).toBe("top, transform");
+      expect(watermarkStyle().transitionDuration).toBe("0.3s");
+      expect(watermarkStyle().transitionProperty).toBe("transform");
 
       backgroundTips.remove();
       expect(watermarkStyle().transitionDuration).toBe("0s");
+    });
+
+    it("keeps its composition position when the empty viewport is resized", function () {
+      const styles = document.createElement("style");
+      styles.textContent =
+        "lumine-pane > .item-views:empty::after { transition: none !important; }";
+      jasmine.attachToDOM(styles);
+      containerElement.style.setProperty("--ui-spacing", "8px");
+      const backgroundTips = document.createElement("background-tips");
+      paneElement.appendChild(backgroundTips);
+      for (const height of [300.375, 900.625]) {
+        containerElement.style.height = `${height}px`;
+        const viewportHeight = paneElement.itemViews.getBoundingClientRect().height;
+        const markHeight = parseFloat(watermarkStyle().height);
+        const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const offset = Math.min(8 * rootFontSize, 0.18 * viewportHeight);
+        const transform = new DOMMatrixReadOnly(watermarkStyle().transform);
+        expect(parseFloat(watermarkStyle().top)).toBeCloseTo(viewportHeight / 2, 1);
+        expect(transform.m42).toBeCloseTo(offset - markHeight - 24, 1);
+      }
+    });
+
+    it("preserves custom offsets and leaves populated viewports outside size containment", function () {
+      const backgroundTips = document.createElement("background-tips");
+      paneElement.appendChild(backgroundTips);
+      for (const offset of ["30px", "20%", "min(8rem, 25%)"]) {
+        paneElement.style.setProperty("--empty-pane-content-offset", offset);
+        expect(getComputedStyle(paneElement.itemViews).containerType).toBe("normal");
+        expect(watermarkStyle().transitionProperty).toBe("top, transform");
+      }
+      paneElement.style.removeProperty("--empty-pane-content-offset");
+      expect(getComputedStyle(paneElement.itemViews).containerType).toBe("size");
+      pane.addItem(document.createElement("div"));
+      expect(getComputedStyle(paneElement.itemViews).containerType).toBe("normal");
+      expect(watermarkStyle().content).toBe("none");
     });
 
     it("keeps background tips after the item views when the pane reconnects", function () {
