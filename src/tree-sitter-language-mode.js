@@ -212,6 +212,7 @@ class TreeSitterLanguageMode {
     maxIdleParsersPerLanguage,
   }) {
     this.buffer = buffer;
+    this.textInputChunk = null;
     this.grammar = grammar;
     this.config = config ?? lumine.config;
     this.grammarRegistry = grammars;
@@ -330,6 +331,7 @@ class TreeSitterLanguageMode {
     // Read by the async parse loop, which runs across `setImmediate` and so can
     // still have a batch queued when this returns.
     this.destroyed = true;
+    this.textInputChunk = null;
 
     let layers = this.getAllLanguageLayers();
     for (let layer of layers) {
@@ -596,6 +598,7 @@ class TreeSitterLanguageMode {
   }
 
   bufferDidChange(change) {
+    this.textInputChunk = null;
     if (!this.rootLanguageLayer) {
       return;
     }
@@ -1245,15 +1248,35 @@ class TreeSitterLanguageMode {
     const length = this.buffer.getLength();
     if (index >= length) return "";
 
+    // Query predicates read Node#text repeatedly for neighboring captures.
+    // Keep one bounded live-buffer window instead of copying an overlapping
+    // 32K-code-unit suffix for every token. The callback may return a shorter suffix;
+    // web-tree-sitter composes successive chunks for nodes spanning its end.
+    const cached = this.textInputChunk;
+    const revision = this.buffer.textRevision;
+    if (
+      cached &&
+      cached.revision === revision &&
+      index >= cached.startIndex &&
+      index < cached.startIndex + cached.text.length
+    ) {
+      const offset = index - cached.startIndex;
+      return cached.text.slice(offset, offset + chunkSize);
+    }
+
     const start = this.buffer.positionForCharacterIndex(index);
     const startIndex = this.buffer.characterIndexForPosition(start);
     // Buffer positions cannot point between CR and LF. Either endpoint can
     // therefore clip back one code unit: include one extra unit at the end,
     // then trim by the actual start offset to preserve the parser's indices.
-    const end = this.buffer.positionForCharacterIndex(Math.min(index + chunkSize + 1, length));
-    return this.buffer
+    const end = this.buffer.positionForCharacterIndex(
+      Math.min(index + NODE_TEXT_INPUT_CHUNK_CODE_UNITS + 1, length),
+    );
+    const text = this.buffer
       .getTextInRange(new Range(start, end))
-      .slice(index - startIndex, index - startIndex + chunkSize);
+      .slice(index - startIndex, index - startIndex + NODE_TEXT_INPUT_CHUNK_CODE_UNITS);
+    this.textInputChunk = { startIndex: index, text, revision };
+    return text.slice(0, chunkSize);
   }
 
   parseAsync(

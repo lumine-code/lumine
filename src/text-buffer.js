@@ -172,6 +172,7 @@ class TextBuffer {
     this.changesSinceLastDidChangeTextEvent = [];
     this.id = crypto.randomBytes(16).toString("hex");
     this.buffer = new NativeTextBuffer(typeof params === "string" ? params : params.text || "");
+    this.textRevision = 0;
     this.debouncedEmitDidStopChangingEvent = debounce(
       this.emitDidStopChangingEvent.bind(this),
       this.stoppedChangingDelay,
@@ -310,10 +311,14 @@ class TextBuffer {
 
       if (persistedBaseMatchesDisk && serializedState === "modified") {
         buffer.buffer.deserializeChanges(params.outstandingChanges);
+        buffer.textRevision++;
       }
 
       if (!fileExists) {
-        if (serializedDirty && params.text != null) buffer.buffer.setText(params.text);
+        if (serializedDirty && params.text != null) {
+          buffer.buffer.setText(params.text);
+          buffer.textRevision++;
+        }
         fileContentsChanged = hadBackingFile;
         if (hadBackingFile) {
           buffer.didHaveFileOnDisk = true;
@@ -327,10 +332,12 @@ class TextBuffer {
           params.text != null
         ) {
           buffer.buffer.setText(params.text);
+          buffer.textRevision++;
         }
         buffer.setFileState(buffer.deriveFileStateFromBuffer());
       } else if (serializedDirty && params.text != null) {
         buffer.buffer.setText(params.text);
+        buffer.textRevision++;
         fileContentsChanged = true;
         buffer.setFileState("conflicted");
       } else {
@@ -1349,6 +1356,9 @@ class TextBuffer {
     } else {
       this.buffer.setTextInRange(oldRange, newText);
     }
+    // Live parser input caches must observe the mutation before marker or
+    // language-mode callbacks inspect the changed text.
+    this.textRevision++;
 
     if (this.markerLayers) {
       for (const id in this.markerLayers) {
@@ -2871,6 +2881,7 @@ class TextBuffer {
           this.emitWillChangeEvent();
         }
       });
+      this.textRevision++;
       patch = textChangesOnlyPatch(patch);
       this.finishLoading(checkpoint, patch, options);
     } catch (error) {
@@ -2911,11 +2922,17 @@ class TextBuffer {
         // Ignoring an obsolete result only after it resolves is too late: it
         // would already have changed the base text and invalidated undo and
         // the diff returned by the next load.
-        () =>
-          this.loadCount === loadCount &&
-          this.fileOperationGeneration === operationGeneration &&
-          this.file === file &&
-          !this.isDestroyed(),
+        (_percentDone, patch) => {
+          const current =
+            this.loadCount === loadCount &&
+            this.fileOperationGeneration === operationGeneration &&
+            this.file === file &&
+            !this.isDestroyed();
+          // The final guard receives the patch and returns straight into the
+          // native reset; progress-only callbacks do not change the text.
+          if (current && patch !== undefined) this.textRevision++;
+          return current;
+        },
       );
 
       // If this is not the most recent load of this file, then we should bow
@@ -3113,10 +3130,12 @@ class TextBuffer {
     }
     if (this.outstandingSaveCount === 0) {
       this.buffer.reset("");
+      this.textRevision++;
     } else {
       var subscription = this.onDidSave(() => {
         if (this.outstandingSaveCount === 0) {
           this.buffer.reset("");
+          this.textRevision++;
           subscription.dispose();
         }
       });
