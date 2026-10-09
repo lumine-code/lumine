@@ -3015,6 +3015,33 @@ describe("TextEditorComponent", () => {
       expect(update).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
     });
 
+    it("resolves an overlay update wait when fractional scrolling leaves its placement unchanged", async () => {
+      const { component, editor } = buildSmoothComponent();
+      const item = document.createElement("div");
+      item.style.cssText = "width: 20px; height: 10px";
+      editor.decorateMarker(editor.markScreenPosition([1, 2]), {
+        type: "overlay",
+        item,
+        avoidOverflow: false,
+      });
+      await component.getNextUpdatePromise();
+      component.updateSync();
+      const overlay = component.overlayComponentsByElement.get(item);
+      const placement = [overlay.props.pixelTop, overlay.props.pixelLeft];
+      let updated = false;
+      overlay.getNextUpdatePromise().then(() => (updated = true));
+      const render = spyOn(component, "renderSync").and.callThrough();
+      component.setScrollTop(0.01);
+
+      expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
+        true,
+      );
+      await Promise.resolve();
+      expect([overlay.props.pixelTop, overlay.props.pixelLeft]).toEqual(placement);
+      expect(updated).toBe(true);
+      expect(render).not.toHaveBeenCalled();
+    });
+
     it("refreshes overlay lifecycle changes through the normal path during a glide", async () => {
       const { component, editor } = buildSmoothComponent();
       const item = document.createElement("div");

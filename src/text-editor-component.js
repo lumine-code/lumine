@@ -2361,11 +2361,13 @@ module.exports = class TextEditorComponent {
         if (!component) continue;
         // The overlay that reported the resize is always updated, even when it
         // did not move: it is waiting on the update promise that resolves.
-        // The rest are left alone unless their placement actually changed —
+        // The rest are left alone unless their placement changed or they are
+        // awaiting this update (fractional motion may round to the same pixel) —
         // their own observers are still connected, and writing to them for no
         // reason is how a resize in one becomes a resize in another.
         if (
           component === resizedComponent ||
+          component.resolveNextUpdatePromise ||
           component.props.pixelTop !== overlayProps.pixelTop ||
           component.props.pixelLeft !== overlayProps.pixelLeft ||
           component.props.flipped !== overlayProps.flipped ||
