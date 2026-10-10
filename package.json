@@ -95,7 +95,6 @@
     "normalize-package-data": "9.0.0",
     "notifications": "github:lumine-code/notifications#b22ecfc4b14601031a6f27736d38585e4f1afa04",
     "one-theme": "github:lumine-code/one-theme#7287c3788646ab16d633dfd8159786764e38e6d8",
-    "patch-view": "github:lumine-code/patch-view#3a2f0c7f10c4d8ea6912d27e4bd0f7aa6cbe6ea1",
     "picomatch": "^4.0.7",
     "postcss-selector-parser": "7.1.6",
     "random-seed": "^0.3.0",
