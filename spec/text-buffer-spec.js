@@ -210,6 +210,7 @@ describe("TextBuffer", function () {
         });
 
         const changeEvent1 = {
+          origin: "edit",
           oldRange: [
             [0, 2],
             [2, 3],
@@ -222,6 +223,7 @@ describe("TextBuffer", function () {
           newText: "y there\r\ncat\nwhat",
         };
         const changeEvent2 = {
+          origin: "edit",
           oldRange: [
             [1, 1],
             [1, 2],
@@ -245,6 +247,7 @@ describe("TextBuffer", function () {
           {
             source: "buffer",
             event: {
+              origin: "edit",
               oldRange: Range(Point(0, 2), Point(2, 3)),
               newRange: Range(Point(0, 2), Point(2, 4)),
               changes: [
@@ -263,6 +266,7 @@ describe("TextBuffer", function () {
               {
                 oldRange: Range(Point(0, 0), Point(3, 0)),
                 newRange: Range(Point(0, 0), Point(3, 0)),
+                origin: "edit",
               },
             ],
           },
@@ -406,6 +410,7 @@ describe("TextBuffer", function () {
             oldTailPosition: Point(0, 0),
             newTailPosition: Point(0, 0),
             textChanged: true,
+            origin: "edit",
           },
         ]);
         markerChangeEvents.length = 0;
@@ -434,6 +439,7 @@ describe("TextBuffer", function () {
             oldTailPosition: Point(0, 0),
             newTailPosition: Point(0, 0),
             textChanged: true,
+            origin: "edit",
           },
         ]);
       });

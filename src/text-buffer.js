@@ -34,6 +34,11 @@ function textChangesOnlyPatch(patch) {
   return textChanges.length === changes.length ? patch : patchFromChanges(textChanges);
 }
 
+function changeOrigin(origins) {
+  if (origins.size === 0) return "edit";
+  return origins.size === 1 ? origins.values().next().value : "mixed";
+}
+
 function advanceStringIndex(text, index, unicode) {
   if (!unicode || index + 1 >= text.length) return index + 1;
 
@@ -170,6 +175,8 @@ class TextBuffer {
     this.emitter = new Emitter();
     this.changesSinceLastStoppedChangingEvent = [];
     this.changesSinceLastDidChangeTextEvent = [];
+    this.changeOriginsSinceLastDidChangeTextEvent = new Set();
+    this.transactionsSinceLastStoppedChangingEvent = [];
     this.id = crypto.randomBytes(16).toString("hex");
     this.buffer = new NativeTextBuffer(typeof params === "string" ? params : params.text || "");
     this.textRevision = 0;
@@ -478,6 +485,7 @@ class TextBuffer {
    *
    * @param {Function} callback - to be called when a transaction in which textual changes occurred is completed.
    * @param {Object} callback.event - with the following keys:
+   * @param {String} callback.event.origin - `edit` for editor and API mutations, `reload` for text loaded from the backing file, or `mixed` when a transaction contains both.
    * @param callback.event.oldRange - The smallest combined {@link Range} containing all of the old text.
    * @param callback.event.newRange - The smallest combined {@link Range} containing all of the new text.
    * @param {Array} callback.event.changes - of `Objects` summarizing the aggregated changes that occurred during the transaction. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
@@ -504,7 +512,8 @@ class TextBuffer {
    * @param {Function} callback - Receives an object containing a `changes` array
    * of edits with `oldRange`, `newRange`, `oldText`, and `newText`, plus
    * `isCurrent()` which returns false if an earlier observer has already applied
-   * another edit.
+   * another edit. `origin` identifies the batch as `edit`, `reload`, or `mixed`;
+   * each individual edit also carries its own `origin`.
    * @returns {Disposable} Subscription to the applied edit batches.
    */
   onDidApplyChanges(callback) {
@@ -535,6 +544,8 @@ class TextBuffer {
    *
    * @param {Function} callback - to be called when the buffer stops changing.
    * @param {Object} callback.event - with the following keys:
+   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`, covering all transactions in this idle interval.
+   * @param {Array} callback.event.transactions - Immutable transaction snapshots in application order, each containing `origin` and `changes`. Their ranges use the coordinates of their own transaction. Use these for reactions to the latest edit rather than treating the combined diff as user input.
    * @param callback.event.changes - An `Array` containing `Objects` summarizing the aggregated changes. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
    * @param callback.event.changes.oldRange - The {@link Range} of the deleted text in the contents of the buffer as it existed *before* the batch of changes reported by this event.
    * @param callback.event.changes.newRange - The {@link Range} of the inserted text in the current contents of the buffer.
@@ -1317,7 +1328,7 @@ class TextBuffer {
   }
 
   // Applies a change to the buffer based on its old range and new text.
-  applyChange(change, pushToHistory = false) {
+  applyChange(change, pushToHistory = false, origin = "edit") {
     const { newStart, newEnd, oldStart, oldEnd, oldText, newText } = change;
 
     const oldExtent = traversal(oldEnd, oldStart);
@@ -1336,7 +1347,7 @@ class TextBuffer {
       }
     }
 
-    const changeEvent = { oldRange, newRange, oldText, newText };
+    const changeEvent = { oldRange, newRange, oldText, newText, origin };
     this.prepareDisplayLayersForChange(changeEvent);
 
     this.emitWillChangeEvent();
@@ -1371,6 +1382,7 @@ class TextBuffer {
     this.cachedText = null;
     this.changesSinceLastDidChangeTextEvent.push(change);
     this.changesSinceLastStoppedChangingEvent.push(change);
+    this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
     this.recordAppliedChange(changeEvent);
     this.emitDidChangeEvent(changeEvent);
     return newRange;
@@ -1390,11 +1402,12 @@ class TextBuffer {
     }
   }
 
-  emitAppliedChanges(changes) {
+  emitAppliedChanges(changes, origin) {
     const revision = this.appliedChangeRevision;
     (this.appliedChangeBatches ||= []).push(
       Object.freeze({
         changes: Object.freeze(changes),
+        origin,
         isCurrent: () => revision === this.appliedChangeRevision,
       }),
     );
@@ -1748,8 +1761,8 @@ class TextBuffer {
       this.transactCallDepth--;
     }
     this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer);
-    this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(pop.markers);
+    const origin = this.emitDidChangeTextEvent();
+    this.emitMarkerChangeEvents(pop.markers, origin);
     return true;
   }
 
@@ -1777,8 +1790,8 @@ class TextBuffer {
       this.transactCallDepth--;
     }
     this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer);
-    this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(pop.markers);
+    const origin = this.emitDidChangeTextEvent();
+    this.emitMarkerChangeEvents(pop.markers, origin);
     return true;
   }
 
@@ -1839,8 +1852,8 @@ class TextBuffer {
     });
     this.historyProvider.applyGroupingInterval(groupingInterval);
     this.historyProvider.enforceUndoStackSizeLimit();
-    this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(endMarkerSnapshot);
+    const origin = this.emitDidChangeTextEvent();
+    this.emitMarkerChangeEvents(endMarkerSnapshot, origin);
     return result;
   }
 
@@ -1926,9 +1939,9 @@ class TextBuffer {
       this.transactCallDepth--;
     }
     this.restoreFromMarkerSnapshot(truncated.markers, options && options.selectionsMarkerLayer);
-    this.emitDidChangeTextEvent();
+    const origin = this.emitDidChangeTextEvent();
     this.emitter.emit("did-update-markers");
-    this.emitMarkerChangeEvents(truncated.markers);
+    this.emitMarkerChangeEvents(truncated.markers, origin);
     return true;
   }
 
@@ -2894,7 +2907,7 @@ class TextBuffer {
       if ((!options || !options.mustExist) && error.code === "ENOENT") {
         this.loaded = true;
         this.emitter.emit("will-reload");
-        if (options && options.discardChanges) this.setText("");
+        if (options && options.discardChanges) this.clearTextForReload();
         if (this.didHaveFileOnDisk) this.setFileState("removed");
         this.emitter.emit("did-reload");
       } else {
@@ -2987,7 +3000,7 @@ class TextBuffer {
         }
         this.loaded = true;
         this.emitter.emit("will-reload");
-        if (options && options.discardChanges) this.setText("");
+        if (options && options.discardChanges) this.clearTextForReload();
         if (this.didHaveFileOnDisk) this.setFileState("removed");
         this.emitter.emit("did-reload");
       } else {
@@ -3002,6 +3015,25 @@ class TextBuffer {
     }
 
     return this;
+  }
+
+  clearTextForReload() {
+    const oldText = this.getText();
+    if (oldText.length === 0) return;
+    this.transact(() =>
+      this.applyChange(
+        {
+          oldStart: Point.ZERO,
+          oldEnd: this.getEndPosition(),
+          oldText,
+          newStart: Point.ZERO,
+          newEnd: Point.ZERO,
+          newText: "",
+        },
+        true,
+        "reload",
+      ),
+    );
   }
 
   finishLoading(checkpoint, patch, options) {
@@ -3042,6 +3074,7 @@ class TextBuffer {
       if (changes) {
         this.changesSinceLastDidChangeTextEvent.push(...changes);
         this.changesSinceLastStoppedChangingEvent.push(...changes);
+        this.changeOriginsSinceLastDidChangeTextEvent.add("reload");
       }
 
       for (const change of changes) {
@@ -3065,6 +3098,7 @@ class TextBuffer {
           newRange: Range(start, change.newEnd).freeze(),
           oldText: change.oldText,
           newText: change.newText,
+          origin: "reload",
         });
       }
 
@@ -3074,10 +3108,10 @@ class TextBuffer {
         deleteCheckpoint: true,
       });
 
-      this.emitDidChangeEvent(new ChangeEvent(this, changes));
+      this.emitDidChangeEvent(new ChangeEvent(this, changes, "reload"));
       this.updateFileStateFromBuffer({ resolveStickyState: true });
-      this.emitDidChangeTextEvent();
-      this.emitMarkerChangeEvents(markersSnapshot);
+      const origin = this.emitDidChangeTextEvent();
+      this.emitMarkerChangeEvents(markersSnapshot, origin);
     }
 
     this.loaded = true;
@@ -3454,12 +3488,12 @@ class TextBuffer {
     }
   }
 
-  emitMarkerChangeEvents(snapshot) {
+  emitMarkerChangeEvents(snapshot, origin = "edit") {
     this.emitPendingMarkerLayerUpdateEvents();
 
     for (const markerLayerId in this.markerLayers) {
       const markerLayer = this.markerLayers[markerLayerId];
-      markerLayer.emitChangeEvents(snapshot && snapshot[markerLayerId]);
+      markerLayer.emitChangeEvents(snapshot && snapshot[markerLayerId], origin);
     }
   }
 
@@ -3487,17 +3521,31 @@ class TextBuffer {
 
   emitDidChangeTextEvent() {
     this.cachedHasAstral = null;
+    const origin = changeOrigin(this.changeOriginsSinceLastDidChangeTextEvent);
     if (this.transactCallDepth === 0) {
       if (this.changesSinceLastDidChangeTextEvent.length > 0) {
+        this.changeOriginsSinceLastDidChangeTextEvent.clear();
         const appliedChanges = this.appliedChanges;
         this.appliedChanges = null;
         const compactedChanges = patchFromChanges(
           this.changesSinceLastDidChangeTextEvent,
         ).getChanges();
         this.changesSinceLastDidChangeTextEvent.length = 0;
-        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges);
+        this.transactionsSinceLastStoppedChangingEvent.push(
+          Object.freeze({
+            origin,
+            changes: Object.freeze(
+              normalizePatchChanges(compactedChanges).map((change) => {
+                change.oldRange.freeze();
+                change.newRange.freeze();
+                return Object.freeze(change);
+              }),
+            ),
+          }),
+        );
+        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges, origin);
         if (compactedChanges.length > 0) {
-          const changeEvent = new ChangeEvent(this, compactedChanges);
+          const changeEvent = new ChangeEvent(this, compactedChanges, origin);
           this.languageMode.bufferDidFinishTransaction(changeEvent);
           this.emitter.emit("did-change-text", changeEvent);
         }
@@ -3510,6 +3558,7 @@ class TextBuffer {
       }
       this.updateFileStateFromBuffer();
     }
+    return origin;
   }
 
   // Identifies if the buffer belongs to multiple editors.
@@ -3529,7 +3578,9 @@ class TextBuffer {
       ),
     );
     this.changesSinceLastStoppedChangingEvent.length = 0;
-    this.emitter.emit("did-stop-changing", { changes: compactedChanges });
+    const transactions = Object.freeze(this.transactionsSinceLastStoppedChangingEvent.splice(0));
+    const origin = changeOrigin(new Set(transactions.map((transaction) => transaction.origin)));
+    this.emitter.emit("did-stop-changing", { changes: compactedChanges, origin, transactions });
   }
 
   logLines(start = 0, end = this.getLastRow()) {
@@ -3630,7 +3681,8 @@ Object.assign(TextBuffer.prototype, {
 class TransactionAbortedError extends Error {}
 
 class ChangeEvent {
-  constructor(buffer, changes) {
+  constructor(buffer, changes, origin = "edit") {
+    this.origin = origin;
     this.changes = Object.freeze(normalizePatchChanges(changes));
 
     const start = changes[0].oldStart;
@@ -3672,6 +3724,7 @@ class ChangeEvent {
 
   isEqual(other) {
     return (
+      this.origin === other.origin &&
       this.changes.length === other.changes.length &&
       this.changes.every((change, i) => change.isEqual(other.changes[i])) &&
       this.oldRange.isEqual(other.oldRange) &&

@@ -127,6 +127,7 @@ class DisplayMarker {
    * @param {Object} callback.event.oldProperties - containing the marker's custom properties before the change.
    * @param {Object} callback.event.newProperties - containing the marker's custom properties after the change.
    * @param {Boolean} callback.event.textChanged - indicating whether this change was caused by a textual change to the buffer or whether the marker was manipulated directly via its public API.
+   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChange(callback) {
@@ -656,6 +657,7 @@ class DisplayMarker {
     // wrapping changed; that path deliberately re-translates everything.
     const markerChange = change != null && typeof change === "object" ? change : null;
     const textChanged = markerChange ? markerChange.textChanged : Boolean(change);
+    const origin = markerChange?.origin ?? "edit";
     const directMarkerChange = markerChange && !textChanged;
     // Always re-read. Text-change events can carry another edit session's
     // selection snapshot, and an earlier listener can move the BufferMarker
@@ -703,6 +705,7 @@ class DisplayMarker {
       oldTailBufferPosition: this.oldTailBufferPosition,
       newTailBufferPosition,
       textChanged,
+      origin,
       wasValid: this.wasValid,
       isValid,
       hadTail: this.hadTail,

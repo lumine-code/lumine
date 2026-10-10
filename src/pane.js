@@ -838,8 +838,9 @@ module.exports = class Pane {
    *
    * Clears the pending item if the active item is already pending, otherwise
    * marks the active item as pending. When marking an item pending, its
-   * `onDidChange` is watched so that editing it clears the pending state, the
-   * same way natively-previewed items behave. This is required because
+   * buffer edits are watched for text editors so that editing them clears the
+   * pending state, the same way natively-previewed items behave. Other items
+   * use `onDidChange`. This is required because
    * `terminatePendingState` is one-shot: once an item has terminated it never
    * emits again, so a re-pended item could not otherwise clear itself.
    */
@@ -850,7 +851,11 @@ module.exports = class Pane {
       this.clearPendingItem();
     } else {
       this.setPendingItem(item);
-      if (typeof item.onDidChange === "function") {
+      if (item instanceof TextEditor) {
+        this.pendingItemSubscription = item.getBuffer().onDidChange(({ origin }) => {
+          if (origin === "edit") this.clearPendingItem();
+        });
+      } else if (typeof item.onDidChange === "function") {
         this.pendingItemSubscription = item.onDidChange(() => this.clearPendingItem());
       }
     }

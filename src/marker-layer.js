@@ -741,7 +741,7 @@ class MarkerLayer {
     }
   }
 
-  emitChangeEvents(snapshot) {
+  emitChangeEvents(snapshot, origin = "edit") {
     // Runs with the end-of-transaction snapshot on every transact, so a lazy
     // snapshot is read per listener id rather than materialized wholesale.
     const rangeFor = (id) => {
@@ -757,7 +757,7 @@ class MarkerLayer {
       this.markersWithChangeListeners.forEach(function (marker) {
         if (!marker.isDestroyed()) {
           // event handlers could destroy markers
-          return marker.emitChangeEvent(rangeFor(marker.id), true, false);
+          return marker.emitChangeEvent(rangeFor(marker.id), true, false, origin);
         }
       });
       completed = true;

@@ -60,6 +60,7 @@ class DisplayLayer {
     this.displayMarkerLayersById = new Map();
     this.destroyed = false;
     this.changesSinceLastEvent = new Patch();
+    this.changeOriginsSinceLastEvent = new Set();
     this.mappingGeneration = 0;
     this.pendingGeometryStableChange = null;
 
@@ -1175,6 +1176,7 @@ class DisplayLayer {
     } else {
       layoutChange = this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity);
     }
+    layoutChange.origin = change.origin ?? "edit";
     this.didChange(layoutChange);
     return layoutChange;
   }
@@ -1201,24 +1203,29 @@ class DisplayLayer {
     this.didChange(layoutChange);
   }
 
-  didChange({ start, oldExtent, newExtent }) {
+  didChange({ start, oldExtent, newExtent, origin = "edit" }) {
     this.changesSinceLastEvent.splice(start, oldExtent, newExtent);
+    this.changeOriginsSinceLastEvent.add(origin);
     if (this.buffer.transactCallDepth === 0) this.emitDeferredChangeEvents();
   }
 
   emitDeferredChangeEvents() {
-    if (this.changesSinceLastEvent.getChangeCount() > 0) {
-      this.emitter.emit(
-        "did-change",
-        this.changesSinceLastEvent.getChanges().map((change) => {
-          return {
-            oldRange: new Range(change.oldStart, change.oldEnd),
-            newRange: new Range(change.newStart, change.newEnd),
-          };
-        }),
-      );
-      this.changesSinceLastEvent = new Patch();
+    if (this.changesSinceLastEvent.getChangeCount() === 0) {
+      this.changeOriginsSinceLastEvent.clear();
+      return;
     }
+    const origin =
+      this.changeOriginsSinceLastEvent.size === 1
+        ? this.changeOriginsSinceLastEvent.values().next().value
+        : "mixed";
+    const changes = this.changesSinceLastEvent.getChanges().map((change) => ({
+      oldRange: new Range(change.oldStart, change.oldEnd),
+      newRange: new Range(change.newStart, change.newEnd),
+      origin,
+    }));
+    this.changesSinceLastEvent = new Patch();
+    this.changeOriginsSinceLastEvent.clear();
+    this.emitter.emit("did-change", changes);
   }
 
   notifyObserversIfMarkerScreenPositionsChanged() {

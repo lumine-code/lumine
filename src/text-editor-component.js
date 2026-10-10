@@ -4453,20 +4453,28 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  didChangeSelectionRange() {
+  didChangeSelectionRange(event) {
     const { model } = this.props;
 
     if (this.getPlatform() === "linux") {
+      // Buffer edits move selections to follow their text; they are not a new
+      // selection gesture and must not replace the user's PRIMARY clipboard.
+      if (event?.textChanged || event?.origin === "reload") return;
+
       if (this.selectionClipboardImmediateId) {
         clearImmediate(this.selectionClipboardImmediateId);
+        this.selectionClipboardImmediateId = null;
       }
+
+      // Capture the selection gesture's text now. A reload can arrive before
+      // the deferred write without changing what the user selected.
+      const selectedText = model.getSelectedText();
 
       this.selectionClipboardImmediateId = setImmediate(() => {
         this.selectionClipboardImmediateId = null;
 
         if (model.isDestroyed()) return;
 
-        const selectedText = model.getSelectedText();
         if (selectedText) {
           // Fire and forget: a selection change must not wait for a
           // main-process round trip while the user is dragging.

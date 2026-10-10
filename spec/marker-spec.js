@@ -213,6 +213,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -237,6 +238,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -261,6 +263,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
       });
@@ -309,6 +312,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -332,6 +336,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -355,6 +360,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
       });
@@ -407,6 +413,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -438,6 +445,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
       });
@@ -485,6 +493,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -570,6 +579,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -592,6 +602,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -616,6 +627,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -638,6 +650,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -725,6 +738,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: true,
+            origin: "edit",
           },
         ]);
       }
@@ -1177,6 +1191,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: false,
+            origin: "edit",
           },
         ]);
 
@@ -1193,6 +1208,7 @@ describe("Marker", function () {
             oldProperties: {},
             newProperties: {},
             textChanged: true,
+            origin: "edit",
           },
         ]);
       });

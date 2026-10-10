@@ -44,6 +44,22 @@ Before an editor-owned move, call `workspace.beginFileMove(plannedRenames)`. Com
 
 Custom TextBuffer data sources retain their own identity and stream transformations during moves when they provide `setPath(target)`, which may return a Promise. This method opts the source into workspace filesystem moves and must update its existing `getPath()` result. Core reattaches its notifications and emits one path change after relocation, including when the provider also emits `onDidRename`. Sources without `setPath` remain under their provider's relocation policy and are excluded from automatic filesystem moves.
 
+## Buffer change origins
+
+`TextBuffer.onDidChange`, `onDidChangeText` and `onDidApplyChanges` identify changes with `origin`: `edit` for editor and API mutations, `reload` for text read from the backing file, or `mixed` for a transaction containing both. Editing includes programmatic changes and undo; it does not prove that a key was pressed. Reloads still notify syntax, language servers, decorations and other consumers of the current text. Cursor and selection events carry the same origin alongside `textChanged`.
+
+`onDidStopChanging` preserves the combined diff in `changes` and exposes immutable `transactions` in application order, each with its own `origin` and `changes`. A transaction's ranges refer to the text before and after that transaction, not to the start of the entire idle interval. Reactions to the latest insertion should inspect the last transaction: a reload and typing immediately afterwards may share one idle event, whose overall origin is `mixed`.
+
+```js
+buffer.onDidStopChanging(({ transactions }) => {
+  const latest = transactions.at(-1);
+  if (latest?.origin !== "edit") return;
+  handleLatestEdit(latest.changes);
+});
+```
+
+Use `onWillReload` to retire transient editing state before the loaded patch moves markers: cancel completion or signature requests and end active snippet expansions. This boundary also fires for an explicit reload whose contents are unchanged; a watcher read that finds identical contents emits no reload boundary.
+
 ## Ownership and platforms
 
 The main process owns configuration subscriptions and renderer sessions; the worker alone loads the native addon. Reload or crash releases only that renderer session. An armed recursive directory source also serves subscriptions and location guards below it, preserving each subscriber's shallow or recursive scope. A broader recursive source takes over existing descendants after arming, and its readiness waits for their native handles to close. Shallow sources never take over recursive subscriptions or descendants they cannot observe.

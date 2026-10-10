@@ -1095,6 +1095,10 @@ module.exports = class TextEditor {
    * Invoke the given callback synchronously when the content of the
    * buffer changes.
    *
+   * Ranges reported for text changes carry the buffer's `origin`: `edit`,
+   * `reload`, or `mixed`. For buffer-coordinate transactions, subscribe to
+   * {@link TextBuffer#onDidChange} on {@link #getBuffer} instead.
+   *
    * Because observers are invoked synchronously, it's important not to perform
    * any expensive operations via this method. Consider {@link #onDidStopChanging} to
    * delay expensive operations until after changes stop occurring.
@@ -1135,6 +1139,7 @@ module.exports = class TextEditor {
    * @param {Point} callback.event.newBufferPosition
    * @param {Point} callback.event.newScreenPosition
    * @param {Boolean} callback.event.textChanged
+   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
    * @param {Cursor} callback.event.cursor - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -1154,6 +1159,8 @@ module.exports = class TextEditor {
    * @param {Range} callback.event.oldScreenRange
    * @param {Range} callback.event.newBufferRange
    * @param {Range} callback.event.newScreenRange
+   * @param {Boolean} callback.event.textChanged - whether a buffer text change moved the selection.
+   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -5047,7 +5054,7 @@ module.exports = class TextEditor {
 
   // Called by the selection
   selectionRangeChanged(event) {
-    if (this.component) this.component.didChangeSelectionRange();
+    if (this.component) this.component.didChangeSelectionRange(event);
     this.emitter.emit("did-change-selection-range", event);
   }
 
@@ -7537,9 +7544,10 @@ function columnRangeForEndDelimiter(line, delimiter) {
 }
 
 class ChangeEvent {
-  constructor({ oldRange, newRange }) {
+  constructor({ oldRange, newRange, origin = "edit" }) {
     this.oldRange = oldRange;
     this.newRange = newRange;
+    this.origin = origin;
   }
 
   get start() {

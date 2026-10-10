@@ -57,6 +57,8 @@ module.exports = class Selection {
    * @param {Range} callback.event.oldScreenRange
    * @param {Range} callback.event.newBufferRange
    * @param {Range} callback.event.newScreenRange
+   * @param {Boolean} callback.event.textChanged - whether a buffer text change moved the selection.
+   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -1453,7 +1455,7 @@ module.exports = class Selection {
       newHeadScreenPosition,
       newTailScreenPosition,
     } = e;
-    const { textChanged } = e;
+    const { textChanged, origin = "edit" } = e;
 
     // Marker metadata and an empty marker's tail can change without moving
     // the selection. Keep validity changes observable as they were before.
@@ -1485,6 +1487,7 @@ module.exports = class Selection {
         newBufferPosition: newHeadBufferPosition,
         newScreenPosition: newHeadScreenPosition,
         textChanged,
+        origin,
         cursor: this.cursor,
       };
       this.cursor.emitter.emit("did-change-position", cursorMovedEvent);
@@ -1499,6 +1502,8 @@ module.exports = class Selection {
       // payload they describe the final range after nested changes.
       newBufferRange: this.getBufferRange(),
       newScreenRange: this.getScreenRange(),
+      textChanged,
+      origin,
       selection: this,
     };
     this.emitter.emit("did-change-range", rangeChangedEvent);

@@ -182,6 +182,7 @@ describe("DisplayMarkerLayer", function () {
       oldProperties: {},
       newProperties: {},
       textChanged: false,
+      origin: "edit",
     });
 
     markerChangeEvents = [];
@@ -211,6 +212,7 @@ describe("DisplayMarkerLayer", function () {
       oldProperties: {},
       newProperties: {},
       textChanged: true,
+      origin: "edit",
     });
 
     expect(markerLayer.getMarker(marker.id)).toBe(marker);
@@ -245,6 +247,7 @@ describe("DisplayMarkerLayer", function () {
       oldProperties: {},
       newProperties: {},
       textChanged: false,
+      origin: "edit",
     });
 
     markerChangeEvents = [];
@@ -274,6 +277,7 @@ describe("DisplayMarkerLayer", function () {
       oldProperties: {},
       newProperties: {},
       textChanged: false,
+      origin: "edit",
     });
 
     markerChangeEvents = [];
@@ -303,6 +307,7 @@ describe("DisplayMarkerLayer", function () {
       oldProperties: {},
       newProperties: {},
       textChanged: false,
+      origin: "edit",
     });
   });
 

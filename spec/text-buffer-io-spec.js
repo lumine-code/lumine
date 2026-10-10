@@ -176,8 +176,8 @@ describe("TextBuffer IO", () => {
       displayLayer.onDidChange((event) => events.push(["display-layer", event]));
 
       buffer.setLanguageMode({
-        bufferDidChange({ oldRange, newRange, oldText, newText }) {
-          events.push(["decoration-layer", { oldRange, newRange, oldText, newText }]);
+        bufferDidChange({ oldRange, newRange, oldText, newText, origin }) {
+          events.push(["decoration-layer", { oldRange, newRange, oldText, newText, origin }]);
         },
 
         bufferDidFinishTransaction() {},
@@ -192,6 +192,7 @@ describe("TextBuffer IO", () => {
         [
           "decoration-layer",
           {
+            origin: "reload",
             oldRange: Range(Point(0, 6), Point(0, 7)),
             newRange: Range(Point(0, 6), Point(0, 11)),
             oldText: "g",
@@ -204,6 +205,7 @@ describe("TextBuffer IO", () => {
             {
               oldRange: Range(Point(0, 0), Point(1, 0)),
               newRange: Range(Point(0, 0), Point(1, 0)),
+              origin: "reload",
             },
           ],
         ],
@@ -1151,6 +1153,7 @@ describe("TextBuffer IO", () => {
             [
               "did-change",
               {
+                origin: "reload",
                 oldRange: Range(Point(0, 0), Point(0, 5)),
                 newRange: Range(Point(0, 0), Point(0, newText.length)),
                 changes: [
@@ -1195,6 +1198,7 @@ describe("TextBuffer IO", () => {
             [
               "did-change",
               {
+                origin: "reload",
                 oldRange: Range(Point(0, 3), Point(0, 5)),
                 newRange: Range(Point(0, 3), Point(0, 7)),
                 changes: [
