@@ -1813,8 +1813,18 @@ module.exports = class TextEditorComponent {
   }
 
   addOverlayDecorationToRender(decoration, marker) {
-    const { class: className, item, position, avoidOverflow, side, priority, id } = decoration;
+    const {
+      class: className,
+      item,
+      position,
+      avoidOverflow,
+      side,
+      lockSide,
+      priority,
+      id,
+    } = decoration;
     const element = TextEditor.viewForItem(item);
+    const overlayComponent = this.overlayComponentsByElement.get(element);
     const screenPosition =
       position === "tail" ? marker.getTailScreenPosition() : marker.getHeadScreenPosition();
 
@@ -1825,6 +1835,13 @@ module.exports = class TextEditorComponent {
       avoidOverflow,
       screenPosition,
       side: side === "above" ? "above" : "below",
+      lockSide: lockSide === true,
+      // A new decoration may reuse the same content element before the old
+      // wrapper is removed. Its first placement still gets a fresh choice.
+      lockedSide:
+        lockSide === true && overlayComponent?.props.id === id
+          ? overlayComponent.props.lockedSide
+          : null,
       priority: priority || 0,
       id,
     });
@@ -2252,8 +2269,12 @@ module.exports = class TextEditorComponent {
         return top;
       };
 
-      const requested = decoration.side === "above" ? "above" : "below";
-      const sides = requested === "above" ? ["above", "below"] : ["below", "above"];
+      const requested = decoration.lockedSide ?? (decoration.side === "above" ? "above" : "below");
+      const sides = decoration.lockedSide
+        ? [decoration.lockedSide]
+        : requested === "above"
+          ? ["above", "below"]
+          : ["below", "above"];
       let chosen = null;
       // 1. A side that fits the window with nothing already on it.
       for (const side of sides) {
@@ -2289,7 +2310,12 @@ module.exports = class TextEditorComponent {
       flipped = chosen.side === "above";
       displaced = chosen.displaced;
       // An overlay with no size blocks nothing, whatever its margins claim.
-      if (clientRect.width > 0 && height > 0) claim = boxAt(wrapperTop);
+      if (clientRect.width > 0 && height > 0) {
+        claim = boxAt(wrapperTop);
+        // Empty content often receives its real dimensions only after mounting.
+        // Keep choosing normally until that first visible box can be measured.
+        if (decoration.lockSide) decoration.lockedSide = chosen.side;
+      }
     }
 
     decoration.pixelTop = Math.round(wrapperTop);

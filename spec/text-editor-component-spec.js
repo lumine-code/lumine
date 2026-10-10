@@ -4414,6 +4414,173 @@ describe("TextEditorComponent", () => {
       expect(wrapper.getBoundingClientRect().top).toBeNear(clientTopForLine(component, 1));
     });
 
+    for (const lockSide of [false, true]) {
+      it(`${lockSide ? "retains" : "reconsiders"} the selected overlay side when scrolling opens space above`, async () => {
+        const { component, element, editor } = buildComponent({
+          text: "abcdefghijklmnopqrstuvwxyz\n".repeat(40),
+          width: 200,
+          height: 300,
+          attach: false,
+        });
+        element.style.lineHeight = "16px";
+        attachWithWindowHeight(component, () => 100000);
+        await setScrollTop(component, 50);
+        expect(component.getScrollTop()).toBe(50);
+
+        const item = buildOverlayItem(40);
+        editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+          type: "overlay",
+          item,
+          side: "above",
+          lockSide,
+        });
+        await component.getNextUpdatePromise();
+        const wrapper = item.parentElement;
+        expect(wrapper.dataset.overlayPosition).toBe("below");
+        const initialTop = wrapper.getBoundingClientRect().top;
+
+        await setScrollTop(component, 0);
+
+        expect(wrapper.dataset.overlayPosition).toBe(lockSide ? "below" : "above");
+        if (lockSide) {
+          expect(wrapper.getBoundingClientRect().top).toBeNear(clientTopForLine(component, 5));
+          expect(wrapper.getBoundingClientRect().top).toBeNear(initialTop + 50);
+        } else {
+          expect(wrapper.getBoundingClientRect().bottom).toBeNear(clientTopForLine(component, 4));
+        }
+      });
+    }
+
+    it("retains the actual selected side when locked overlay content shrinks", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+      const item = buildOverlayItem(2000);
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item,
+        side: "above",
+        lockSide: true,
+      });
+      await component.getNextUpdatePromise();
+      expect(item.parentElement.dataset.overlayPosition).toBe("below");
+
+      const overlayComponent = component.overlayComponentsByElement.get(item);
+      item.style.height = "20px";
+      const nextUpdate = overlayComponent.getNextUpdatePromise();
+      overlayComponent.props.didResize(overlayComponent);
+      await nextUpdate;
+
+      expect(item.parentElement.dataset.overlayPosition).toBe("below");
+      expect(item.parentElement.getBoundingClientRect().top).toBeNear(
+        clientTopForLine(component, 5),
+      );
+    });
+
+    it("retains a locked side when growing content overflows that window edge", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+      const item = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item,
+        side: "above",
+        lockSide: true,
+      });
+      await component.getNextUpdatePromise();
+      expect(item.parentElement.dataset.overlayPosition).toBe("above");
+
+      const overlayComponent = component.overlayComponentsByElement.get(item);
+      item.style.height = "2000px";
+      const nextUpdate = overlayComponent.getNextUpdatePromise();
+      overlayComponent.props.didResize(overlayComponent);
+      await nextUpdate;
+
+      expect(item.parentElement.dataset.overlayPosition).toBe("above");
+      expect(item.getBoundingClientRect().top).toBeLessThan(0);
+      expect(item.parentElement.getBoundingClientRect().bottom).toBeNear(
+        clientTopForLine(component, 4),
+      );
+    });
+
+    it("chooses a fresh side when a new decoration reuses a mounted overlay element", async () => {
+      const { component, element, editor } = buildComponent({
+        text: "abcdefghijklmnopqrstuvwxyz\n".repeat(40),
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+      await setScrollTop(component, 50);
+      expect(component.getScrollTop()).toBe(50);
+      const item = buildOverlayItem(40);
+      const marker = editor.markScreenPosition([4, 5]);
+      const properties = { type: "overlay", item, side: "above", lockSide: true };
+      const decoration = editor.decorateMarker(marker, properties);
+      await component.getNextUpdatePromise();
+      expect(item.parentElement.dataset.overlayPosition).toBe("below");
+      await setScrollTop(component, 0);
+      expect(item.parentElement.dataset.overlayPosition).toBe("below");
+
+      // Replace it before a render removes the old wrapper. Content element
+      // identity alone must not retain the previous decoration's choice.
+      decoration.destroy();
+      editor.decorateMarker(marker, properties);
+      await component.getNextUpdatePromise();
+
+      expect(item.parentElement.dataset.overlayPosition).toBe("above");
+      expect(item.parentElement.getBoundingClientRect().bottom).toBeNear(
+        clientTopForLine(component, 4),
+      );
+    });
+
+    for (const emptyDimension of ["width", "height"]) {
+      it(`waits for a nonzero ${emptyDimension} before locking an overlay side`, async () => {
+        const { component, element, editor } = buildComponent({
+          width: 200,
+          height: 300,
+          attach: false,
+          updatedSynchronously: true,
+        });
+        element.style.lineHeight = "16px";
+        let windowInnerHeight = 100000;
+        const contentTop = attachWithWindowHeight(component, () => windowInnerHeight);
+        windowInnerHeight = contentTop() + 200;
+        const item = buildOverlayItem();
+        item.style[emptyDimension] = "0px";
+        editor.decorateMarker(editor.markScreenPosition([10, 0]), {
+          type: "overlay",
+          item,
+          lockSide: true,
+        });
+        const overlayComponent = component.overlayComponentsByElement.get(item);
+        expect(item.parentElement.dataset.overlayPosition).toBe("below");
+
+        item.style.width = "20px";
+        item.style.height = "40px";
+        const nextUpdate = overlayComponent.getNextUpdatePromise();
+        overlayComponent.props.didResize(overlayComponent);
+        await nextUpdate;
+        expect(item.parentElement.dataset.overlayPosition).toBe("above");
+
+        item.style.height = "20px";
+        const nextResize = overlayComponent.getNextUpdatePromise();
+        overlayComponent.props.didResize(overlayComponent);
+        await nextResize;
+        expect(item.parentElement.dataset.overlayPosition).toBe("above");
+      });
+    }
+
     it("keeps overlays on the same row off each other, highest priority first", async () => {
       const { component, element, editor } = buildComponent({
         width: 200,
