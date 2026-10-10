@@ -273,11 +273,6 @@ class TreeSitterLanguageMode {
 
     this.subscriptions = new CompositeDisposable();
     this.subscriptions.add(this.onDidTokenize(() => (this.tokenized = true)));
-    this.subscriptions.add(
-      ScopeResolver.onDidChangeConfiguration(this.config, (event) =>
-        this.highlightConfigurationChanged(event),
-      ),
-    );
 
     this.rootLanguage = null;
     this.rootLanguageLayer = null;
@@ -326,6 +321,11 @@ class TreeSitterLanguageMode {
         this.rootLanguage = language;
         this.registerGrammarForLanguage(language, grammar);
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
+        this.subscriptions.add(
+          ScopeResolver.onDidChangeConfiguration(this.config, (event) =>
+            this.highlightConfigurationChanged(event),
+          ),
+        );
         return this.getOrCreateParserForLanguage(language);
       })
       .then((parser) => {

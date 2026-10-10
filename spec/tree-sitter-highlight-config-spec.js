@@ -71,6 +71,38 @@ describe("Tree-sitter configuration-dependent highlighting", () => {
       .map((id) => mode.grammar.scopeNameForScopeId(id));
   }
 
+  it("defers global grammar observation until construction has returned", async () => {
+    const editor = await lumine.workspace.open("");
+    editors.push(editor);
+    const buffer = editor.getBuffer();
+    buffer.setText("VALUE");
+    const grammar = new TreeSitterGrammar(lumine.grammars, grammarPath, {
+      ...grammarConfig,
+      treeSitter: { ...grammarConfig.treeSitter, injectionsQuery: [] },
+    });
+    grammars.push(grammar);
+    await grammar.setQueryForTest(
+      "highlightsQuery",
+      "((identifier) @constant.other.test (#is? test.config syntax.enabled))",
+    );
+    spyOn(lumine.grammars, "onDidAddGrammar").and.callThrough();
+    const mode = new TreeSitterLanguageMode({
+      buffer,
+      grammar,
+      config,
+      grammars: lumine.grammars,
+    });
+    expect(lumine.grammars.onDidAddGrammar).not.toHaveBeenCalled();
+    buffer.setLanguageMode(mode);
+    await mode.ready;
+    expect(lumine.grammars.onDidAddGrammar).toHaveBeenCalled();
+    expect(scopesAt(mode)).toContain("constant.other.test");
+    config.set("syntax.enabled", false);
+    expect(scopesAt(mode)).not.toContain("constant.other.test");
+    config.set("syntax.enabled", true);
+    expect(scopesAt(mode)).toContain("constant.other.test");
+  });
+
   it("updates cached descriptors, iterators and rendered lines synchronously without parsing", async () => {
     const { editor, buffer, mode } = await setUp();
     const tree = mode.rootLanguageLayer.tree;
