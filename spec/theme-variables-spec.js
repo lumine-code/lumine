@@ -182,6 +182,48 @@ describe("the theme variable contract", () => {
     }
   });
 
+  it("derives overlay documentation surfaces from the theme until explicitly overridden", () => {
+    const defaults = lumine.styles.addStyleSheet(buildThemeVariablesStylesheet(), {
+      priority: 2,
+    });
+    const container = document.createElement("div");
+    container.innerHTML = '<span class="documentation"></span><span class="expected"></span>';
+    const [documentation, expected] = container.children;
+    documentation.style.backgroundColor = "var(--overlay-documentation-background-color)";
+    jasmine.attachToDOM(container);
+    let palette;
+    let override;
+    try {
+      for (const [overlay, documentationColor] of [
+        ["hsl(210, 25%, 80%)", "color(srgb 0.7 0.76 0.82)"],
+        ["hsl(30, 50%, 20%)", "color(srgb 0.24 0.16 0.08)"],
+      ]) {
+        palette?.dispose();
+        palette = lumine.styles.addStyleSheet(`:root { --overlay-background-color: ${overlay}; }`, {
+          priority: 3,
+        });
+        expected.style.backgroundColor = documentationColor;
+        expect(getComputedStyle(documentation).backgroundColor).toBe(
+          getComputedStyle(expected).backgroundColor,
+        );
+      }
+
+      override = lumine.styles.addStyleSheet(
+        ":root { --overlay-documentation-background-color: rgb(11, 22, 33); }",
+        { priority: 3 },
+      );
+      expect(getComputedStyle(documentation).backgroundColor).toBe("rgb(11, 22, 33)");
+      palette.dispose();
+      palette = null;
+      expect(getComputedStyle(documentation).backgroundColor).toBe("rgb(11, 22, 33)");
+    } finally {
+      container.remove();
+      override?.dispose();
+      palette?.dispose();
+      defaults.dispose();
+    }
+  });
+
   it("exposes shared data-grid tokens as component variables", () => {
     expect(
       THEME_VARIABLES.filter((variable) => variable.role === "component").map(

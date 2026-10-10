@@ -169,6 +169,12 @@ const THEME_VARIABLES = Object.freeze([
       "Panel heading border color.",
     ],
     ["overlay-background-color", "color", "#f4f4f4", "Overlay background color."],
+    [
+      "overlay-documentation-background-color",
+      "color",
+      "hsl(from var(--overlay-background-color) h s calc(l - 4))",
+      "Documentation background color in overlays.",
+    ],
     ["overlay-border-color", "color", "var(--base-border-color)", "Overlay border color."],
     ["button-background-color", "color", "#ccc", "Button background color."],
     [
