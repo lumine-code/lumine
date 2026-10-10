@@ -83,6 +83,7 @@ const INITIAL_INJECTION_UPDATE_BUDGET_MILLIS = 8;
 const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
 const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery", "parseBoundariesQuery"]);
 const ANCILLARY_QUERY_TYPES = ["foldsQuery", "indentsQuery"];
+const HIGHLIGHT_CONFIG_KEYS = new WeakMap();
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
 // keep that rare object alive for the renderer's remaining lifetime. This is a
@@ -109,6 +110,26 @@ function parseWithProgressTimeout(parser, callback, oldTree, includedRanges, tim
 
 function last(array) {
   return array[array.length - 1];
+}
+
+function configKeysForHighlightQuery(query) {
+  let keys = HIGHLIGHT_CONFIG_KEYS.get(query);
+  if (keys) return keys;
+  keys = new Set();
+  for (const properties of [
+    query.setProperties,
+    query.assertedProperties,
+    query.refutedProperties,
+  ]) {
+    for (const pattern of properties ?? []) {
+      const value = pattern?.["test.config"];
+      if (typeof value !== "string") continue;
+      const key = value.split(" ", 1)[0];
+      if (key) keys.add(key);
+    }
+  }
+  HIGHLIGHT_CONFIG_KEYS.set(query, keys);
+  return keys;
 }
 
 function removeLastOccurrenceOf(array, item) {
@@ -252,6 +273,11 @@ class TreeSitterLanguageMode {
 
     this.subscriptions = new CompositeDisposable();
     this.subscriptions.add(this.onDidTokenize(() => (this.tokenized = true)));
+    this.subscriptions.add(
+      ScopeResolver.onDidChangeConfiguration(this.config, (event) =>
+        this.highlightConfigurationChanged(event),
+      ),
+    );
 
     this.rootLanguage = null;
     this.rootLanguageLayer = null;
@@ -815,6 +841,25 @@ class TreeSitterLanguageMode {
     this.scopeDescriptorCache = null;
     this.emitFoldUpdate(range);
     this.emitter.emit("did-change-highlighting", range);
+  }
+
+  highlightConfigurationChanged(event) {
+    if (this.destroyed) return;
+    const ranges = new TreeSitterRangeList();
+    for (const layer of this.getAllLanguageLayers()) {
+      const query = layer?.queries?.highlightsQuery;
+      if (!query) continue;
+      const keys = configKeysForHighlightQuery(query);
+      for (const key of keys) {
+        if (event?.affectsConfiguration && !event.affectsConfiguration(key)) continue;
+        ranges.add(layer.getExtent());
+        break;
+      }
+    }
+    for (const range of ranges) {
+      this.scopeDescriptorCache = null;
+      this.emitter.emit("did-change-highlighting", range);
+    }
   }
 
   scheduleDirtyHighlightUpdate(range) {

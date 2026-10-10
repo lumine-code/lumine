@@ -1,4 +1,4 @@
-const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
 
@@ -89,11 +89,16 @@ function interpretPossibleKeyValuePair(rawValue, coerceValue = false) {
 class ConfigCache {
   constructor(config) {
     this.subscriptions = new CompositeDisposable();
+    this.emitter = new Emitter();
     this.cachesByGrammar = new Map();
     this.config = config;
+    this.configEmitter = config.emitter;
 
     this.subscriptions.add(
-      this.config.onDidChangeConfiguration(() => this.clearAll()),
+      this.config.onDidChangeConfiguration((event) => {
+        this.clearAll();
+        this.emitter.emit("did-change-configuration", event);
+      }),
       lumine.grammars.onDidAddGrammar(() => this.clearAll()),
       lumine.grammars.onDidUpdateGrammar(() => this.clearAll()),
     );
@@ -101,6 +106,7 @@ class ConfigCache {
 
   dispose() {
     this.subscriptions.dispose();
+    this.emitter.dispose();
   }
 
   clearAll() {
@@ -135,6 +141,12 @@ ConfigCache.CACHES_FOR_CONFIG_OBJECTS = new Map();
 ConfigCache.forConfig = (config) => {
   let { CACHES_FOR_CONFIG_OBJECTS } = ConfigCache;
   let configCache = CACHES_FOR_CONFIG_OBJECTS.get(config);
+  // Environment resets keep the Config object but replace its emitter.
+  // Reusing that cache would strand all observers on the previous emitter.
+  if (configCache && configCache.configEmitter !== config.emitter) {
+    configCache.dispose();
+    configCache = null;
+  }
   if (!configCache) {
     configCache = new ConfigCache(config);
     CACHES_FOR_CONFIG_OBJECTS.set(config, configCache);
@@ -1216,6 +1228,11 @@ ScopeResolver.ADJUSTMENTS = {
 ScopeResolver.clearConfigCache = () => {
   ConfigCache.clear();
 };
+
+// Notify language modes after the shared predicate cache has been invalidated,
+// so a synchronous highlight refresh cannot read the previous setting.
+ScopeResolver.onDidChangeConfiguration = (config, callback) =>
+  ConfigCache.forConfig(config).emitter.on("did-change-configuration", callback);
 
 // Resets the warn-once registry for predicate warnings. Intended for specs.
 ScopeResolver._clearPredicateWarnings = () => {
