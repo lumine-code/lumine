@@ -3717,6 +3717,7 @@ module.exports = class TextEditor {
    * @param position - A {@link Point} or `Array` of `[row, column]`
    * @param [options] - An `Object` containing the following keys:
    * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @param options.mode - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
    */
   setCursorBufferPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setBufferPosition(position, options));
@@ -3774,6 +3775,7 @@ module.exports = class TextEditor {
    * @param position - A {@link Point} or `Array` of `[row, column]`
    * @param [options] - An `Object` combining options for {@link #clipScreenPosition} with:
    * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @param options.mode - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
    */
   setCursorScreenPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setScreenPosition(position, options));
@@ -3792,7 +3794,8 @@ module.exports = class TextEditor {
     this.selectionsMarkerLayer.markBufferPosition(bufferPosition, {
       invalidate: "never",
     });
-    if (!options || options.autoscroll !== false) this.getLastSelection().cursor.autoscroll();
+    if (!options || options.autoscroll !== false)
+      this.getLastSelection().cursor.autoscroll({ mode: options?.mode });
     return this.getLastSelection().cursor;
   }
 
@@ -3809,7 +3812,8 @@ module.exports = class TextEditor {
     this.selectionsMarkerLayer.markScreenPosition(screenPosition, {
       invalidate: "never",
     });
-    if (!options || options.autoscroll !== false) this.getLastSelection().cursor.autoscroll();
+    if (!options || options.autoscroll !== false)
+      this.getLastSelection().cursor.autoscroll({ mode: options?.mode });
     return this.getLastSelection().cursor;
   }
 
@@ -3900,9 +3904,11 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Move every cursor to the first non-whitespace character of its line.
+   *
+   * @param {Object} [options] - Cursor position options, including `autoscroll` and `mode`.
    */
-  moveToFirstCharacterOfLine() {
-    return this.moveCursors((cursor) => cursor.moveToFirstCharacterOfLine());
+  moveToFirstCharacterOfLine(options) {
+    return this.moveCursors((cursor) => cursor.moveToFirstCharacterOfLine(options));
   }
 
   /**
@@ -4326,7 +4332,7 @@ module.exports = class TextEditor {
       invalidate: "never",
       reversed: options.reversed != null ? options.reversed : false,
     });
-    if (options.autoscroll !== false) this.getLastSelection().autoscroll();
+    if (options.autoscroll !== false) this.getLastSelection().autoscroll({ mode: options.mode });
     return this.getLastSelection();
   }
 
@@ -5045,7 +5051,7 @@ module.exports = class TextEditor {
     if (selections.length > 1) {
       const lastSelection = selections.pop();
       this.destroySelections(selections);
-      lastSelection.autoscroll({ center: false });
+      lastSelection.autoscroll({ mode: "nearest" });
       return true;
     } else {
       return false;
@@ -6515,19 +6521,20 @@ module.exports = class TextEditor {
    * off-screen.
    *
    * @param {Object} [options]
-   * @param options.center - Center the editor around the cursor if possible. (default: false)
-   * @param options.zone - Land the cursor inside a band of the viewport, instead of centering it. See {@link #scrollToScreenRange}.
+   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
-  scrollToCursorPosition(options) {
-    const zone = options && options.zone;
-    const autoscrollOptions = {};
-    if (zone != null) {
-      autoscrollOptions.zone = zone;
-      autoscrollOptions.center = false;
-    } else if (options && Object.hasOwn(options, "center")) {
-      autoscrollOptions.center = options.center === true;
-    }
-    this.getLastCursor().autoscroll(autoscrollOptions);
+  scrollToCursorPosition(options = {}) {
+    this.getLastCursor().autoscroll(options);
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Reveal the most recently added cursor using `editor.scrollZone` for this editor.
+   */
+  scrollToZone() {
+    this.scrollToCursorPosition({ mode: "zone" });
   }
 
   /**
@@ -6538,8 +6545,7 @@ module.exports = class TextEditor {
    *
    * @param bufferPosition - An object that represents a buffer position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
-   * @param options.center - Center the editor around the position if possible. (default: false)
-   * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
+   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
   scrollToBufferPosition(bufferPosition, options) {
     return this.scrollToScreenPosition(
@@ -6556,8 +6562,7 @@ module.exports = class TextEditor {
    *
    * @param screenPosition - An object that represents a screen position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
-   * @param options.center - Center the editor around the position if possible. (default: false)
-   * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
+   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
   scrollToScreenPosition(screenPosition, options) {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
@@ -6571,14 +6576,28 @@ module.exports = class TextEditor {
    *
    * @param screenRange - A {@link Range} or range-compatible `Array`.
    * @param {Object} [options]
-   * @param options.center - Center the editor around the range if possible. (default: false)
-   * @param options.zone - Where in the viewport the range should come to rest, as a percentage of the travel it has between the vertical scroll margins: `0` rests it against the top margin and `100` against the bottom one. A `Number` pins the range to that one spot. An `Array` of two numbers names where it lands after leaving the band through the top and after leaving it through the bottom, and so describes the band itself — nothing scrolls while the range is already inside. Ordered (`[0, 50]`) that is the edge it just crossed, the smallest scroll that brings it back; inverted (`[50, 0]`) it is the opposite edge, throwing the range across the viewport to leave the most room ahead of it. `[0, 100]` is the default behaviour and `50` is `center`.
+   * @param options.mode - `nearest` (default) scrolls only far enough to reveal the range with its margins. `zone` uses the current `editor.scrollZone` for this editor's root grammar scope. `center` fixes the range at the middle. A `Number` explicitly fixes its position as a percentage of the travel between the vertical scroll margins: `0` rests its start against the top margin and `100` rests its end against the bottom margin. A pair of percentages defines a band in which nothing scrolls. Ordered (`[0, 50]`), the range lands on the edge it crossed; inverted (`[50, 0]`), it lands on the opposite edge. `[0, 100]` is `nearest` and `50` is `center`. Explicit numeric modes ignore the configuration.
    * @param options.reversed - Scroll to the start of the range before its end when both are off-screen. (default: true)
    * @param options.clip - Clip the range to the editor's contents first. (default: true)
    */
   scrollToScreenRange(screenRange, options = {}) {
+    if (Object.hasOwn(options, "center") || Object.hasOwn(options, "zone")) {
+      throw new TypeError("Scroll requests use 'mode', not 'center' or 'zone'");
+    }
     if (options.clip !== false) screenRange = this.clipScreenRange(screenRange);
-    if (options.zone != null) options = { ...options, zone: normalizeScrollZone(options.zone) };
+    let mode = options.mode ?? "nearest";
+    switch (mode) {
+      case "nearest":
+        mode = [0, 100];
+        break;
+      case "center":
+        mode = [50, 50];
+        break;
+      case "zone":
+        mode = this.getScrollZone();
+        break;
+    }
+    options = { ...options, mode: normalizeScrollZone(mode) };
     const scrollEvent = { screenRange, options };
     if (this.component) this.component.didRequestAutoscroll(scrollEvent);
     this.emitter.emit("did-request-autoscroll", scrollEvent);
@@ -6653,6 +6672,20 @@ module.exports = class TextEditor {
     } else {
       return this.scrollPastEnd;
     }
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Get the current navigation scroll zone for this editor's root grammar scope.
+   *
+   * @returns {Array<Number>} The two landing percentages, preserving their order.
+   */
+  getScrollZone() {
+    return normalizeScrollZone(
+      lumine.config.get("editor.scrollZone", { scope: this.getRootScopeDescriptor() }) ?? [0, 50],
+    );
   }
 
   /**

@@ -4245,7 +4245,7 @@ describe("TextEditor", () => {
         expect(autoscrollEvents).toEqual([
           {
             screenRange: lastSelection.getScreenRange(),
-            options: { center: false, reversed: false },
+            options: { mode: [0, 100], reversed: false },
           },
         ]);
       });
@@ -10162,83 +10162,62 @@ describe("TextEditor", () => {
       editor.onDidRequestAutoscroll(scrollSpy);
 
       editor.scrollToScreenPosition([8, 20]);
-      editor.scrollToScreenPosition([8, 20], { center: true });
-      editor.scrollToScreenPosition([8, 20], { center: false, reversed: true });
+      editor.scrollToScreenPosition([8, 20], { mode: "center" });
+      editor.scrollToScreenPosition([8, 20], { mode: "nearest", reversed: true });
 
       expect(scrollSpy).toHaveBeenCalledWith({
         screenRange: [
           [8, 20],
           [8, 20],
         ],
-        options: {},
+        options: { mode: [0, 100] },
       });
       expect(scrollSpy).toHaveBeenCalledWith({
         screenRange: [
           [8, 20],
           [8, 20],
         ],
-        options: { center: true },
+        options: { mode: [50, 50] },
       });
       expect(scrollSpy).toHaveBeenCalledWith({
         screenRange: [
           [8, 20],
           [8, 20],
         ],
-        options: { center: false, reversed: true },
+        options: { mode: [0, 100], reversed: true },
       });
     });
 
-    it("normalizes a `zone` to a pair of percentages without reordering it", () => {
+    it("normalizes an explicit numeric mode to a pair of percentages without reordering it", () => {
       const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
       editor.onDidRequestAutoscroll(scrollSpy);
 
-      editor.scrollToScreenPosition([8, 20], { zone: 25 });
-      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([25, 25]);
+      editor.scrollToScreenPosition([8, 20], { mode: 25 });
+      expect(scrollSpy.calls.mostRecent().args[0].options.mode).toEqual([25, 25]);
 
       // An inverted pair is the maximum-scroll form, not a mistake to fix up.
-      editor.scrollToScreenPosition([8, 20], { zone: [75, 10] });
-      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([75, 10]);
+      editor.scrollToScreenPosition([8, 20], { mode: [75, 10] });
+      expect(scrollSpy.calls.mostRecent().args[0].options.mode).toEqual([75, 10]);
 
-      editor.scrollToScreenPosition([8, 20], { zone: [-5, 150] });
-      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([0, 100]);
+      editor.scrollToScreenPosition([8, 20], { mode: [-5, 150] });
+      expect(scrollSpy.calls.mostRecent().args[0].options.mode).toEqual([0, 100]);
     });
 
     it("does not mutate the options object it was given", () => {
-      const options = { zone: 25 };
+      const options = { mode: 25 };
       editor.scrollToScreenPosition([8, 20], options);
-      expect(options).toEqual({ zone: 25 });
+      expect(options).toEqual({ mode: 25 });
     });
   });
 
   describe("::scrollToCursorPosition([options])", () => {
-    it("does not center unless centering is explicitly requested", () => {
+    it("defaults to nearest and resolves explicit center mode", () => {
       const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
       editor.onDidRequestAutoscroll(scrollSpy);
-
       editor.scrollToCursorPosition();
-      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBeFalsy();
-
-      editor.scrollToCursorPosition({});
-      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBeFalsy();
-
-      editor.scrollToCursorPosition(null);
-      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBeFalsy();
-
-      editor.scrollToCursorPosition({ zone: undefined });
-      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBeFalsy();
-
-      editor.scrollToCursorPosition({ center: true });
-      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBe(true);
-    });
-
-    it("uses a zone instead of centering when both are requested", () => {
-      const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
-      editor.onDidRequestAutoscroll(scrollSpy);
-
-      editor.scrollToCursorPosition({ center: true, zone: [0, 50] });
-      const { options } = scrollSpy.calls.mostRecent().args[0];
-      expect(options.zone).toEqual([0, 50]);
-      expect(options.center).toBe(false);
+      expect(scrollSpy.calls.mostRecent().args[0].options.mode).toEqual([0, 100]);
+      editor.scrollToCursorPosition({ mode: "center" });
+      expect(scrollSpy.calls.mostRecent().args[0].options.mode).toEqual([50, 50]);
     });
   });
 

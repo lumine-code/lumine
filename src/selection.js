@@ -127,6 +127,7 @@ module.exports = class Selection {
    * @param {Boolean} options.reversed - indicating whether to set the selection in a reversed orientation.
    * @param options.preserveFolds - if `true`, the fold settings are preserved after the selection moves.
    * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
+   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
    */
   setBufferRange(bufferRange, options = {}) {
     bufferRange = Range.fromObject(bufferRange);
@@ -138,7 +139,7 @@ module.exports = class Selection {
       options.flash = null;
       this.marker.setBufferRange(bufferRange, options);
       const autoscroll = options.autoscroll != null ? options.autoscroll : this.isLastSelection();
-      if (autoscroll) this.autoscroll();
+      if (autoscroll) this.autoscroll({ mode: options.mode });
       if (needsFlash) this.decoration.flash("flash", this.editor.selectionFlashDuration);
     });
   }
@@ -272,7 +273,7 @@ module.exports = class Selection {
     if (!this.retainSelection) this.marker.clearTail();
     const autoscroll =
       options && options.autoscroll != null ? options.autoscroll : this.isLastSelection();
-    if (autoscroll) this.autoscroll();
+    if (autoscroll) this.autoscroll({ mode: options?.mode });
     this.finalize();
   }
 
@@ -586,7 +587,7 @@ module.exports = class Selection {
     });
     const autoscroll =
       options && options.autoscroll != null ? options.autoscroll : this.isLastSelection();
-    if (autoscroll) this.cursor.autoscroll();
+    if (autoscroll) this.cursor.autoscroll({ mode: options?.mode });
   }
 
   /**
@@ -634,7 +635,7 @@ module.exports = class Selection {
     this.setBufferRange(range, { autoscroll: false });
     const autoscroll =
       options && options.autoscroll != null ? options.autoscroll : this.isLastSelection();
-    if (autoscroll) this.cursor.autoscroll();
+    if (autoscroll) this.cursor.autoscroll({ mode: options?.mode });
   }
 
   /**
@@ -754,7 +755,7 @@ module.exports = class Selection {
     }
 
     const autoscroll = options.autoscroll != null ? options.autoscroll : this.isLastSelection();
-    if (autoscroll) this.autoscroll();
+    if (autoscroll) this.autoscroll({ mode: options?.mode });
 
     return newBufferRange;
   }

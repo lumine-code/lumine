@@ -621,6 +621,17 @@ const configSchema = {
         type: "boolean",
         default: true,
       },
+      scrollZone: {
+        title: "Scroll Zone",
+        description:
+          "Where navigation lands between the vertical scroll margins, from 0 to 100 percent. One value fixes the position. Two values define a band: an ordered pair lands on the crossed edge, and an inverted pair lands on the opposite edge. Scrolling in nearest or center mode ignores this setting.",
+        type: "array",
+        scopeResolution: "grammar",
+        items: { type: "number", minimum: 0, maximum: 100 },
+        minItems: 1,
+        maxItems: 2,
+        default: [0, 50],
+      },
       scrollPastEnd: {
         title: "Scroll Past End",
         description: "Allow the editor to be scrolled past the end of the last line.",

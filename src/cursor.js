@@ -79,6 +79,7 @@ module.exports = class Cursor extends Model {
    * @param {Array} screenPosition - of two numbers: the screen row, and the screen column.
    * @param {Object} [options] - with the following keys:
    * @param options.autoscroll - A Boolean which, if `true`, scrolls the {@link TextEditor} to wherever the cursor moves to.
+   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
    */
   setScreenPosition(screenPosition, options = {}) {
     this.changePosition(options, () => {
@@ -105,6 +106,7 @@ module.exports = class Cursor extends Model {
    * @param {Array} bufferPosition - of two numbers: the buffer row, and the buffer column.
    * @param {Object} [options] - with the following keys:
    * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new position. Defaults to `true` if this is the most recently added cursor, `false` otherwise.
+   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
    */
   setBufferPosition(bufferPosition, options = {}) {
     this.changePosition(options, () => {
@@ -522,8 +524,10 @@ module.exports = class Cursor extends Model {
    *
    * Moves the cursor to the beginning of the first character in the
    * line.
+   *
+   * @param {Object} [options] - Cursor position options, including `autoscroll` and `mode`.
    */
-  moveToFirstCharacterOfLine() {
+  moveToFirstCharacterOfLine(options) {
     let targetBufferColumn;
     const screenRow = this.getScreenRow();
     const screenLineStart = this.editor.clipScreenPosition([screenRow, 0], {
@@ -547,7 +551,7 @@ module.exports = class Cursor extends Model {
       targetBufferColumn = screenLineBufferRange.start.column;
     }
 
-    this.setBufferPosition([screenLineBufferRange.start.row, targetBufferColumn]);
+    this.setBufferPosition([screenLineBufferRange.start.row, targetBufferColumn], options);
   }
 
   /**
@@ -1012,7 +1016,7 @@ module.exports = class Cursor extends Model {
     this.goalColumn = null;
     const autoscroll =
       options && options.autoscroll != null ? options.autoscroll : this.isLastCursor();
-    if (autoscroll) this.autoscroll();
+    if (autoscroll) this.autoscroll({ mode: options?.mode });
   }
 
   getScreenRange() {
@@ -1021,8 +1025,7 @@ module.exports = class Cursor extends Model {
   }
 
   autoscroll(options = {}) {
-    options.clip = false;
-    this.editor.scrollToScreenRange(this.getScreenRange(), options);
+    this.editor.scrollToScreenRange(this.getScreenRange(), { ...options, clip: false });
   }
 
   getBeginningOfNextParagraphBufferPosition() {

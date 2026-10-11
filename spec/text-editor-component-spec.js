@@ -1774,7 +1774,7 @@ describe("TextEditorComponent", () => {
       );
     });
 
-    it("autoscrolls the given range to the center of the screen if the `center` option is true", async () => {
+    it("autoscrolls the given range to the center of the screen if center mode is true", async () => {
       // Size the editor in line-height units so the visible row count does not
       // depend on the platform's font metrics.
       const { component, element, editor } = buildComponent({ autoHeight: false });
@@ -1787,7 +1787,7 @@ describe("TextEditorComponent", () => {
           [4, 0],
           [6, 0],
         ],
-        { center: true },
+        { mode: "center" },
       );
       await component.getNextUpdatePromise();
 
@@ -1796,7 +1796,7 @@ describe("TextEditorComponent", () => {
       expect(actualScrollCenter).toBeCloseTo(expectedScrollCenter, 0);
     });
 
-    describe("the `zone` option", () => {
+    describe("the `mode` option", () => {
       // A tall buffer of short lines: no soft wrap and no horizontal scrollbar,
       // so the only geometry these specs depend on is the line height.
       async function buildZoneComponent() {
@@ -1825,7 +1825,7 @@ describe("TextEditorComponent", () => {
         const { component, editor } = await buildZoneComponent();
         const lineHeight = component.getLineHeight();
 
-        editor.scrollToScreenPosition([10, 0], { zone: 25 });
+        editor.scrollToScreenPosition([10, 0], { mode: 25 });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           10 * lineHeight - offsetForPercentage(component, 25),
@@ -1833,7 +1833,7 @@ describe("TextEditorComponent", () => {
 
         // Strict: it scrolls back for a row that is already comfortably on
         // screen, which the default behaviour never does.
-        editor.scrollToScreenPosition([11, 0], { zone: 25 });
+        editor.scrollToScreenPosition([11, 0], { mode: 25 });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           11 * lineHeight - offsetForPercentage(component, 25),
@@ -1843,12 +1843,12 @@ describe("TextEditorComponent", () => {
       it("leaves the viewport alone while the range is inside a two-ended zone", async () => {
         const { component, editor } = await buildZoneComponent();
 
-        editor.scrollToScreenPosition([12, 0], { zone: [0, 100] });
+        editor.scrollToScreenPosition([12, 0], { mode: [0, 100] });
         await component.getNextUpdatePromise();
         const scrollTop = component.getScrollTop();
         expect(scrollTop).toBeGreaterThan(0);
 
-        editor.scrollToScreenPosition([11, 0], { zone: [0, 100] });
+        editor.scrollToScreenPosition([11, 0], { mode: [0, 100] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBe(scrollTop);
       });
@@ -1857,14 +1857,14 @@ describe("TextEditorComponent", () => {
         const { component, editor } = await buildZoneComponent();
         const lineHeight = component.getLineHeight();
 
-        editor.scrollToScreenPosition([12, 0], { zone: [20, 60] });
+        editor.scrollToScreenPosition([12, 0], { mode: [20, 60] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           12 * lineHeight - offsetForPercentage(component, 60),
         );
 
         // Above the zone now, so the row lands on its upper edge instead.
-        editor.scrollToScreenPosition([9, 0], { zone: [20, 60] });
+        editor.scrollToScreenPosition([9, 0], { mode: [20, 60] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           9 * lineHeight - offsetForPercentage(component, 20),
@@ -1882,7 +1882,7 @@ describe("TextEditorComponent", () => {
         await byDefault.component.getNextUpdatePromise();
 
         const byZone = await buildZoneComponent();
-        byZone.editor.scrollToScreenRange(range, { zone: [0, 100] });
+        byZone.editor.scrollToScreenRange(range, { mode: [0, 100] });
         await byZone.component.getNextUpdatePromise();
 
         expect(byZone.component.getScrollTop()).toBeNear(byDefault.component.getScrollTop());
@@ -1903,25 +1903,25 @@ describe("TextEditorComponent", () => {
           await byDefault.component.getNextUpdatePromise();
 
           const byZone = await buildZoneComponent();
-          byZone.editor.scrollToScreenRange(range, { reversed, zone: [0, 100] });
+          byZone.editor.scrollToScreenRange(range, { reversed, mode: [0, 100] });
           await byZone.component.getNextUpdatePromise();
 
           expect(byZone.component.getScrollTop()).toBeNear(byDefault.component.getScrollTop());
         });
       }
 
-      it("reproduces the `center` option with `50`", async () => {
+      it("reproduces center mode with `50`", async () => {
         const range = [
           [12, 0],
           [14, 0],
         ];
 
         const byCenter = await buildZoneComponent();
-        byCenter.editor.scrollToScreenRange(range, { center: true });
+        byCenter.editor.scrollToScreenRange(range, { mode: "center" });
         await byCenter.component.getNextUpdatePromise();
 
         const byZone = await buildZoneComponent();
-        byZone.editor.scrollToScreenRange(range, { zone: 50 });
+        byZone.editor.scrollToScreenRange(range, { mode: 50 });
         await byZone.component.getNextUpdatePromise();
 
         expect(byZone.component.getScrollTop()).toBeNear(byCenter.component.getScrollTop());
@@ -1931,18 +1931,18 @@ describe("TextEditorComponent", () => {
         [true, "start"],
         [false, "end"],
       ]) {
-        it(`reproduces the \`center\` option for a range taller than the viewport with its ${activeEnd} active`, async () => {
+        it(`reproduces center mode for a range taller than the viewport with its ${activeEnd} active`, async () => {
           const range = [
             [8, 0],
             [30, 0],
           ];
 
           const byCenter = await buildZoneComponent();
-          byCenter.editor.scrollToScreenRange(range, { center: true, reversed });
+          byCenter.editor.scrollToScreenRange(range, { mode: "center", reversed });
           await byCenter.component.getNextUpdatePromise();
 
           const byZone = await buildZoneComponent();
-          byZone.editor.scrollToScreenRange(range, { reversed, zone: 50 });
+          byZone.editor.scrollToScreenRange(range, { reversed, mode: 50 });
           await byZone.component.getNextUpdatePromise();
 
           expect(byZone.component.getScrollTop()).toBeNear(byCenter.component.getScrollTop());
@@ -1955,14 +1955,14 @@ describe("TextEditorComponent", () => {
 
         // Same band as [0, 50], but leaving through the bottom throws the row
         // up to the top of it rather than resting it on the edge it crossed.
-        editor.scrollToScreenPosition([12, 0], { zone: [50, 0] });
+        editor.scrollToScreenPosition([12, 0], { mode: [50, 0] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           12 * lineHeight - offsetForPercentage(component, 0),
         );
 
         // And leaving through the top throws it down to the bottom of the band.
-        editor.scrollToScreenPosition([11, 0], { zone: [50, 0] });
+        editor.scrollToScreenPosition([11, 0], { mode: [50, 0] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           11 * lineHeight - offsetForPercentage(component, 50),
@@ -1973,7 +1973,7 @@ describe("TextEditorComponent", () => {
         const { component, editor } = await buildZoneComponent();
         const lineHeight = component.getLineHeight();
 
-        editor.scrollToScreenPosition([12, 0], { zone: [-40, 900] });
+        editor.scrollToScreenPosition([12, 0], { mode: [-40, 900] });
         await component.getNextUpdatePromise();
         expect(component.getScrollTop()).toBeNear(
           12 * lineHeight - offsetForPercentage(component, 100),
@@ -1989,7 +1989,7 @@ describe("TextEditorComponent", () => {
             [8, 0],
             [30, 0],
           ],
-          { reversed: false, zone: 100 },
+          { reversed: false, mode: 100 },
         );
         await component.getNextUpdatePromise();
         expect(component.getScrollBottom()).toBeNear(
@@ -1999,10 +1999,10 @@ describe("TextEditorComponent", () => {
 
       it("rejects a zone that is not a percentage or a pair of them", () => {
         const { editor } = buildComponent({ autoHeight: false });
-        expect(() => editor.scrollToScreenPosition([2, 0], { zone: "0-50" })).toThrow();
-        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [] })).toThrow();
-        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [0, 50, 100] })).toThrow();
-        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [0, NaN] })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { mode: "0-50" })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { mode: [] })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { mode: [0, 50, 100] })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { mode: [0, NaN] })).toThrow();
       });
     });
 

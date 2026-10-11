@@ -2063,7 +2063,7 @@ module.exports = class Workspace extends Model {
 
       if (hasInitialLine || hasInitialColumn) {
         if (typeof item.setCursorBufferPosition === "function") {
-          item.setCursorBufferPosition([initialLine, initialColumn]);
+          item.setCursorBufferPosition([initialLine, initialColumn], { autoscroll: false });
         }
         if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (typeof item.unfoldBufferRow === "function") {
@@ -2072,7 +2072,7 @@ module.exports = class Workspace extends Model {
         if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (typeof item.scrollToBufferPosition === "function") {
           item.scrollToBufferPosition([initialLine, initialColumn], {
-            center: true,
+            mode: "zone",
           });
         }
         if (!this.#itemOpenRequests.isCurrent(openRequest)) return;

@@ -3441,43 +3441,13 @@ module.exports = class TextEditorComponent {
       this.pixelPositionAfterBlocksForRow(screenRange.end.row) + this.getLineHeight();
     const verticalScrollMargin = this.getVerticalAutoscrollMargin();
 
-    if (options && options.zone) {
-      this.autoscrollVerticallyIntoZone(
-        screenRangeTop,
-        screenRangeBottom,
-        options.zone,
-        verticalScrollMargin,
-        options.reversed !== false,
-      );
-      return false;
-    }
-
-    let desiredScrollTop, desiredScrollBottom;
-    if (options && options.center) {
-      const desiredScrollCenter = (screenRangeTop + screenRangeBottom) / 2;
-      desiredScrollTop = desiredScrollCenter - this.getScrollContainerClientHeight() / 2;
-      desiredScrollBottom = desiredScrollCenter + this.getScrollContainerClientHeight() / 2;
-    } else {
-      desiredScrollTop = screenRangeTop - verticalScrollMargin;
-      desiredScrollBottom = screenRangeBottom + verticalScrollMargin;
-    }
-
-    if (!options || options.reversed !== false) {
-      if (desiredScrollBottom > this.getScrollBottom()) {
-        this.setScrollBottom(desiredScrollBottom);
-      }
-      if (desiredScrollTop < this.getScrollTop()) {
-        this.setScrollTop(desiredScrollTop);
-      }
-    } else {
-      if (desiredScrollTop < this.getScrollTop()) {
-        this.setScrollTop(desiredScrollTop);
-      }
-      if (desiredScrollBottom > this.getScrollBottom()) {
-        this.setScrollBottom(desiredScrollBottom);
-      }
-    }
-
+    this.autoscrollVerticallyIntoZone(
+      screenRangeTop,
+      screenRangeBottom,
+      options?.mode ?? [0, 100],
+      verticalScrollMargin,
+      options?.reversed !== false,
+    );
     return false;
   }
 

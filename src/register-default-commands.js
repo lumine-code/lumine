@@ -910,6 +910,12 @@ module.exports = function ({
       "editor:scroll-to-cursor": function () {
         return this.scrollToCursorPosition();
       },
+      "editor:scroll-to-zone": {
+        description: "Reveal the cursor using the configured navigation scroll zone.",
+        didDispatch: function () {
+          return this.scrollToZone();
+        },
+      },
       "editor:scroll-up": {
         description: "Scroll the view up, leaving the cursor where it is.",
         didDispatch: function () {
