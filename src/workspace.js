@@ -3869,7 +3869,9 @@ module.exports = class Workspace extends Model {
    * @status public
    *
    * Performs a replace across all the specified files in the project on disk.
-   * Open text buffers observe the writes as external file changes.
+   * Open text buffers receive the disk edits and retain nonoverlapping unsaved
+   * changes. Different overlapping edits leave the buffer conflicted. Buffer-only matches
+   * are not replaced, and unsaved changes are not written to disk.
    *
    * @param regex - A `RegExp` to search with.
    * @param {String} replacementText - to replace all matches of regex with.
@@ -3878,33 +3880,61 @@ module.exports = class Workspace extends Model {
    * @param {Object} iterator.options - with keys `filePath` and `replacements`.
    * @returns {Promise}
    */
-  replace(regex, replacementText, filePaths, iterator) {
+  async replace(regex, replacementText, filePaths, iterator) {
     const requestedPaths = [...new Set(filePaths)];
-    if (requestedPaths.length === 0) return Promise.resolve();
+    if (requestedPaths.length === 0) return;
 
     const requestedPathSet = new Set(requestedPaths);
-    const fileWatchersReady = this.project
+    const openBuffers = this.project
       .getBuffers()
       .filter((buffer) => requestedPathSet.has(buffer.getPath()))
-      .map((buffer) => buffer.getFileWatchStartPromise());
-
-    return Promise.all(fileWatchersReady).then(
-      () =>
-        new Promise((resolve) => {
-          const flags = regex.global ? regex.flags : `${regex.flags}g`;
-          const task = Task.once(
-            require.resolve("./replace-handler"),
-            requestedPaths,
-            regex.source,
-            flags,
-            replacementText,
-            () => resolve(),
-          );
-
-          task.on("replace:path-replaced", iterator);
-          task.on("replace:file-error", (error) => iterator(null, error));
-        }),
-    );
+      .map((buffer) => ({ buffer, file: buffer.file, path: buffer.getPath() }));
+    await Promise.all(openBuffers.map(({ buffer }) => buffer.getFileWatchStartPromise()));
+    const suspended = [];
+    try {
+      for (const { buffer } of openBuffers) {
+        if (buffer.isDestroyed()) continue;
+        suspended.push(buffer);
+        await buffer.beginFileOperation();
+      }
+      await new Promise((resolve, reject) => {
+        const flags = regex.global ? regex.flags : `${regex.flags}g`;
+        const task = Task.once(
+          require.resolve("./replace-handler"),
+          requestedPaths,
+          regex.source,
+          flags,
+          replacementText,
+          openBuffers.map(({ path }) => path),
+          () => resolve(),
+        );
+        const deliver = (callback) => {
+          try {
+            callback();
+          } catch (error) {
+            task.terminate();
+            reject(error);
+          }
+        };
+        task.on("replace:path-replaced", ({ filePath, replacements, fileChanges }) =>
+          deliver(() => {
+            for (const entry of openBuffers) {
+              if (
+                entry.path === filePath &&
+                entry.buffer.file === entry.file &&
+                entry.buffer.getPath() === filePath
+              ) {
+                entry.buffer.applyFileChanges(fileChanges);
+              }
+            }
+            iterator({ filePath, replacements });
+          }),
+        );
+        task.on("replace:file-error", (error) => deliver(() => iterator(null, error)));
+      });
+    } finally {
+      await Promise.all(suspended.map((buffer) => buffer.endFileOperation()));
+    }
   }
 
   async checkoutHeadRevision(editor) {

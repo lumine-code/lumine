@@ -4672,21 +4672,29 @@ describe("Workspace", () => {
     });
 
     describe("when a buffer is already open", () => {
-      it("replaces the file on disk and reloads an unmodified buffer", async () => {
+      async function openFile(fileName, contents) {
+        const filePath = path.join(projectDir, fileName);
+        fs.writeFileSync(filePath, contents);
+        const editor = await lumine.workspace.open(filePath);
+        await editor.buffer.getFileWatchStartPromise();
+        return { filePath, editor };
+      }
+
+      it("synchronizes an unmodified buffer before reporting the disk replacement", async () => {
         const filePath = path.join(projectDir, "sample.js");
         fs.copyFileSync(path.join(fixturesDir, "sample.js"), path.join(projectDir, "sample.js"));
         const results = [];
         const editor = await lumine.workspace.open("sample.js");
         await editor.buffer.getFileWatchStartPromise();
-        const didReload = new Promise((resolve) => editor.buffer.onDidReload(resolve));
         spyOn(editor.buffer, "save").and.callThrough();
 
         expect(editor.getFileState()).toBe("unmodified");
 
         await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
+          expect(editor.getFileState()).toBe("unmodified");
+          expect(editor.getText()).toBe(fs.readFileSync(filePath, "utf8"));
         });
-        await didReload;
 
         expect(results).toHaveLength(1);
         expect(results[0].filePath).toBe(filePath);
@@ -4704,7 +4712,6 @@ describe("Workspace", () => {
         fs.writeFileSync(closedPath, "alpha beta");
         const editor = await lumine.workspace.open(openPath);
         await editor.buffer.getFileWatchStartPromise();
-        const didReload = new Promise((resolve) => editor.buffer.onDidReload(resolve));
         const results = [];
 
         await lumine.workspace.replace(
@@ -4715,7 +4722,6 @@ describe("Workspace", () => {
             results.push(result);
           },
         );
-        await didReload;
 
         results.sort((a, b) => a.filePath.localeCompare(b.filePath));
         expect(results).toEqual(
@@ -4749,38 +4755,262 @@ describe("Workspace", () => {
         expect(results[0].filePath).toBe(commentFilePath);
       });
 
-      it("replaces the file on disk and marks a modified buffer as conflicted", async () => {
-        const filePath = path.join(projectDir, "sample.js");
-        fs.copyFileSync(path.join(fixturesDir, "sample.js"), filePath);
+      it("merges disk replacements with unrelated unsaved edits before reporting them", async () => {
+        const { filePath, editor } = await openFile(
+          "modified.txt",
+          "header\nitems on disk\nfooter\n",
+        );
+        editor.buffer.insert([0, 0], "local heading\n");
+        spyOn(editor.buffer, "save").and.callThrough();
         const results = [];
-        const editor = await lumine.workspace.open("sample.js");
-        await editor.buffer.getFileWatchStartPromise();
 
-        editor.buffer.setTextInRange(
-          [
-            [0, 0],
-            [0, 0],
-          ],
-          "omg",
-        );
-        const didConflict = new Promise((resolve) =>
-          editor.buffer.onDidChangeFileState((fileState) => {
-            if (fileState === "conflicted") resolve();
-          }),
-        );
         expect(editor.getFileState()).toBe("modified");
 
         await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
+          expect(editor.getText()).toBe("local heading\nheader\nokthen on disk\nfooter\n");
+          expect(editor.getFileState()).toBe("modified");
         });
-        await didConflict;
 
-        expect(results).toHaveLength(1);
-        expect(results[0].filePath).toBe(filePath);
-        expect(results[0].replacements).toBe(6);
+        expect(results).toEqual([{ filePath, replacements: 1 }]);
+        expect(editor.buffer.save).not.toHaveBeenCalled();
+        expect(editor.getText()).toBe("local heading\nheader\nokthen on disk\nfooter\n");
+        expect(editor.getFileState()).toBe("modified");
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nokthen on disk\nfooter\n");
+
+        await editor.buffer.save();
+
+        expect(fs.readFileSync(filePath, "utf8")).toBe(editor.getText());
+        expect(editor.getFileState()).toBe("unmodified");
+      });
+
+      it("undoes the project replacement without undoing earlier unsaved edits", async () => {
+        const { filePath, editor } = await openFile("undo.txt", "header\nitems\nfooter\n");
+        const localText = "local heading\nheader\nitems\nfooter\n";
+        editor.buffer.insert([0, 0], "local heading\n");
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], () => {});
+
+        editor.undo();
+        expect(editor.getText()).toBe(localText);
+        expect(editor.getFileState()).toBe("modified");
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nreplacement\nfooter\n");
+
+        editor.redo();
+        expect(editor.getText()).toBe("local heading\nheader\nreplacement\nfooter\n");
+        expect(editor.getFileState()).toBe("modified");
+      });
+
+      it("does not search newly inserted buffer text or persist unsaved edits", async () => {
+        const { filePath, editor } = await openFile(
+          "disk-scope.txt",
+          "header\nitems on disk\nfooter\n",
+        );
+        editor.buffer.insert([0, 0], "items only in buffer\n");
+        const results = [];
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], (result) =>
+          results.push(result),
+        );
+
+        expect(results).toEqual([{ filePath, replacements: 1 }]);
+        expect(editor.getText()).toBe(
+          "items only in buffer\nheader\nreplacement on disk\nfooter\n",
+        );
+        expect(editor.getFileState()).toBe("modified");
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nreplacement on disk\nfooter\n");
+      });
+
+      it("leaves buffer-only matches unchanged when the disk has no matches", async () => {
+        const contents = "header\nfooter\n";
+        const { filePath, editor } = await openFile("buffer-only.txt", contents);
+        editor.buffer.append("items only in buffer\n");
+        const results = [];
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], (result) =>
+          results.push(result),
+        );
+
+        expect(results).toEqual([]);
+        expect(editor.getText()).toBe(contents + "items only in buffer\n");
+        expect(editor.getFileState()).toBe("modified");
+        expect(fs.readFileSync(filePath, "utf8")).toBe(contents);
+      });
+
+      it("preserves overlapping local edits, applies other replacements and reports a conflict", async () => {
+        const { filePath, editor } = await openFile(
+          "overlap.txt",
+          "header\nitems one\nitems two\nfooter\n",
+        );
+        editor.buffer.setTextInRange(
+          [
+            [1, 0],
+            [1, 5],
+          ],
+          "local",
+        );
+        const results = [];
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], (result) => {
+          results.push(result);
+          expect(editor.getFileState()).toBe("conflicted");
+        });
+
+        expect(results).toEqual([{ filePath, replacements: 2 }]);
+        expect(editor.getText()).toBe("header\nlocal one\nreplacement two\nfooter\n");
         expect(editor.getFileState()).toBe("conflicted");
-        expect(editor.getText()).not.toContain("okthen");
-        expect(fs.readFileSync(filePath, "utf8")).toContain("okthen");
+        expect(fs.readFileSync(filePath, "utf8")).toBe(
+          "header\nreplacement one\nreplacement two\nfooter\n",
+        );
+      });
+
+      for (const { name, contents, regex, replacement } of [
+        {
+          name: "capture and literal dollar substitutions",
+          contents: "header\nalpha beta\nfooter\n",
+          regex: /(alpha) (beta)/g,
+          replacement: "[$2] $1 $& $$",
+        },
+        {
+          name: "prefix and suffix substitutions",
+          contents: "header\nalpha beta\nfooter\n",
+          regex: /alpha/g,
+          replacement: "$`<$&>$'",
+        },
+        {
+          name: "multiline matches and replacements",
+          contents: "header\nalpha\nbeta\nfooter\n",
+          regex: /^alpha\nbeta$/gm,
+          replacement: "delta\nepsilon",
+        },
+        {
+          name: "unicode matches",
+          contents: "header\n😀 😀\nfooter\n",
+          regex: /[😀]/gu,
+          replacement: "X",
+        },
+        {
+          name: "CRLF matches and replacements",
+          contents: "header\r\nalpha\r\nbeta\r\nfooter\r\n",
+          regex: /alpha\r\nbeta/g,
+          replacement: "delta\r\nepsilon",
+        },
+      ]) {
+        it(`uses disk replacement semantics for ${name} in a modified buffer`, async () => {
+          const { filePath, editor } = await openFile("substitutions.txt", contents);
+          const closedPath = path.join(projectDir, "closed-substitutions.txt");
+          fs.writeFileSync(closedPath, contents);
+          const localSuffix = contents.includes("\r\n") ? "local only\r\n" : "local only\n";
+          editor.buffer.append(localSuffix);
+          const expectedDiskText = contents.replace(regex, replacement);
+
+          await lumine.workspace.replace(regex, replacement, [filePath, closedPath], () => {});
+
+          expect(fs.readFileSync(filePath, "utf8")).toBe(expectedDiskText);
+          expect(fs.readFileSync(closedPath, "utf8")).toBe(expectedDiskText);
+          expect(editor.getText()).toBe(expectedDiskText + localSuffix);
+          expect(editor.getFileState()).toBe("modified");
+        });
+      }
+
+      it("replaces a repeated path only once", async () => {
+        const { filePath, editor } = await openFile("duplicate.txt", "header\nitems\nfooter\n");
+        editor.buffer.append("local only\n");
+        const results = [];
+
+        await lumine.workspace.replace(
+          /items/g,
+          "items items",
+          [filePath, filePath, filePath],
+          (result) => results.push(result),
+        );
+
+        expect(results).toEqual([{ filePath, replacements: 1 }]);
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nitems items\nfooter\n");
+        expect(editor.getText()).toBe("header\nitems items\nfooter\nlocal only\n");
+        expect(editor.getFileState()).toBe("modified");
+      });
+
+      it("does not add an undo step when the replacement leaves disk text unchanged", async () => {
+        const contents = "header\nitems\nfooter\n";
+        const { filePath, editor } = await openFile("unchanged.txt", contents);
+        editor.buffer.append("local only\n");
+        const results = [];
+
+        await lumine.workspace.replace(/items/g, "items", [filePath], (result) =>
+          results.push(result),
+        );
+
+        expect(results).toEqual([{ filePath, replacements: 1 }]);
+        expect(editor.getText()).toBe(contents + "local only\n");
+        expect(editor.getFileState()).toBe("modified");
+        editor.undo();
+        expect(editor.getText()).toBe(contents);
+        expect(editor.getFileState()).toBe("unmodified");
+      });
+
+      it("retains edits made after the replacement worker starts", async () => {
+        const { filePath, editor } = await openFile("during-worker.txt", "header\nitems\nfooter\n");
+        const taskOnce = Task.once;
+        spyOn(Task, "once").and.callFake((...args) => {
+          const task = taskOnce(...args);
+          if (args[0] === require.resolve("../src/replace-handler")) {
+            editor.buffer.insert([0, 0], "items inserted during replace\n");
+          }
+          return task;
+        });
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], () => {});
+
+        expect(Task.once).toHaveBeenCalled();
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nreplacement\nfooter\n");
+        expect(editor.getText()).toBe(
+          "items inserted during replace\nheader\nreplacement\nfooter\n",
+        );
+        expect(editor.getFileState()).toBe("modified");
+      });
+
+      it("does not apply the result to a buffer whose path changed during replacement", async () => {
+        const contents = "header\nitems\nfooter\n";
+        const { filePath, editor } = await openFile("retargeted.txt", contents);
+        const newPath = path.join(projectDir, "new-path.txt");
+        fs.writeFileSync(newPath, contents);
+        editor.buffer.append("local only\n");
+        const taskOnce = Task.once;
+        spyOn(Task, "once").and.callFake((...args) => {
+          const task = taskOnce(...args);
+          if (args[0] === require.resolve("../src/replace-handler")) {
+            editor.buffer.setPath(newPath);
+          }
+          return task;
+        });
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], () => {});
+
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nreplacement\nfooter\n");
+        expect(fs.readFileSync(newPath, "utf8")).toBe(contents);
+        expect(editor.getPath()).toBe(newPath);
+        expect(editor.getText()).toBe(contents + "local only\n");
+      });
+
+      it("finishes replacing the file when its buffer is destroyed during replacement", async () => {
+        const { filePath, editor } = await openFile("destroyed.txt", "header\nitems\nfooter\n");
+        const buffer = editor.buffer;
+        const taskOnce = Task.once;
+        spyOn(Task, "once").and.callFake((...args) => {
+          const task = taskOnce(...args);
+          if (args[0] === require.resolve("../src/replace-handler")) buffer.destroy();
+          return task;
+        });
+        const results = [];
+
+        await lumine.workspace.replace(/items/g, "replacement", [filePath], (result) =>
+          results.push(result),
+        );
+
+        expect(results).toEqual([{ filePath, replacements: 1 }]);
+        expect(buffer.isDestroyed()).toBe(true);
+        expect(fs.readFileSync(filePath, "utf8")).toBe("header\nreplacement\nfooter\n");
       });
     });
   });

@@ -24,6 +24,7 @@ const {
 } = require("./helpers");
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
+const getSubstitution = require("./text-substitution");
 
 function textChangesOnlyPatch(patch) {
   if (!patch || patch.getChangeCount() === 0) return patch;
@@ -32,6 +33,36 @@ function textChangesOnlyPatch(patch) {
   const changes = patch.getChanges();
   const textChanges = changes.filter((change) => change.oldText !== change.newText);
   return textChanges.length === changes.length ? patch : patchFromChanges(textChanges);
+}
+
+function fileChangesWithWholeLineEndings(text, changes) {
+  const insideCRLF = (offset) => text[offset - 1] === "\r" && text[offset] === "\n";
+  if (!changes.some(({ start, end }) => insideCRLF(start) || insideCRLF(end))) return changes;
+
+  // Buffer positions cannot address the middle of CRLF. Include the whole
+  // ending and combine edits that now overlap, retaining their exact output.
+  const groups = [];
+  for (const change of changes) {
+    const start = insideCRLF(change.start) ? change.start - 1 : change.start;
+    const end = insideCRLF(change.end) ? change.end + 1 : change.end;
+    const previous = groups.at(-1);
+    if (previous && start < previous.end) {
+      previous.end = Math.max(previous.end, end);
+      previous.changes.push(change);
+    } else {
+      groups.push({ start, end, changes: [change] });
+    }
+  }
+  return groups.map(({ start, end, changes: edits }) => {
+    const parts = [];
+    let offset = start;
+    for (const edit of edits) {
+      parts.push(text.slice(offset, edit.start), edit.newText);
+      offset = edit.end;
+    }
+    parts.push(text.slice(offset, end));
+    return { start, end, newText: parts.join("") };
+  });
 }
 
 function changeOrigin(origins) {
@@ -49,43 +80,6 @@ function advanceStringIndex(text, index, unicode) {
   if (secondCodeUnit < 0xdc00 || secondCodeUnit > 0xdfff) return index + 1;
 
   return index + 2;
-}
-
-function getSubstitution(
-  matchedText,
-  sourceText,
-  matchIndex,
-  captures,
-  namedCaptures,
-  replacementText,
-) {
-  return replacementText.replace(/\$([$&'`]|\d{1,2}|<[^>]*>)/g, (token, reference) => {
-    switch (reference) {
-      case "$":
-        return "$";
-      case "&":
-        return matchedText;
-      case "`":
-        return sourceText.slice(0, matchIndex);
-      case "'":
-        return sourceText.slice(matchIndex + matchedText.length);
-    }
-
-    if (reference.startsWith("<")) {
-      if (namedCaptures == null) return token;
-      return namedCaptures[reference.slice(1, -1)] ?? "";
-    }
-
-    let captureIndex = Number(reference);
-    let suffix = "";
-    if (captureIndex > captures.length && reference.length === 2) {
-      captureIndex = Number(reference[0]);
-      suffix = reference[1];
-    }
-
-    if (captureIndex === 0 || captureIndex > captures.length) return token;
-    return (captures[captureIndex - 1] ?? "") + suffix;
-  });
 }
 
 function lastOccupiedRowForRange(range) {
@@ -3207,6 +3201,176 @@ class TextBuffer {
     this.refcount--;
     if (this.refcount <= 0) this.destroy();
     return this;
+  }
+
+  // Integrate an editor-owned disk write without searching unsaved text again.
+  // The caller suspends file observation until this synchronous merge finishes.
+  applyFileChanges({ oldText, newText, changes }) {
+    if (this.isDestroyed() || oldText === newText) return;
+    const previous = new NativeTextBuffer(oldText);
+    const baseDigest = this.buffer.baseTextDigest();
+    if (baseDigest !== previous.baseTextDigest()) {
+      // A reload may already have consumed the write. Any other baseline is an
+      // unrelated external change and cannot safely be merged with these edits.
+      if (baseDigest !== new NativeTextBuffer(newText).baseTextDigest()) {
+        this.setFileState("conflicted");
+      }
+      return;
+    }
+
+    const file = this.file;
+    const filePath = this.getPath();
+    this.emitter.emit("will-reload");
+    // Reload observers may edit, retarget or destroy the buffer. Derive the
+    // mappings only after their edits, and keep this write on its original file.
+    if (
+      this.isDestroyed() ||
+      this.file !== file ||
+      this.getPath() !== filePath ||
+      this.buffer.baseTextDigest() !== baseDigest
+    ) {
+      return;
+    }
+    const currentText = this.getText();
+    if (currentText === newText) {
+      this.buffer.reset(newText);
+      this.baseTextDigestCache = null;
+      this.digestWhenLastPersisted = this.buffer.baseTextDigest();
+      this.updateFileStateFromBuffer({ resolveStickyState: true });
+      this.emitter.emit("did-reload");
+      return;
+    }
+
+    const localChanges = previous
+      .diff(currentText)
+      .getChanges()
+      .map((change) => ({
+        start: previous.characterIndexForPosition(change.oldStart),
+        end: previous.characterIndexForPosition(change.oldEnd),
+        newEnd: this.buffer.characterIndexForPosition(change.newEnd),
+        newText: change.newText,
+      }));
+    const mapOffset = (offset, end) => {
+      let low = 0;
+      let high = localChanges.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        const local = localChanges[middle];
+        if (local.end < offset || (local.end === offset && (!end || local.start !== local.end))) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      const local = localChanges[low - 1];
+      return local ? offset + local.newEnd - local.end : offset;
+    };
+
+    let conflicted = false;
+    let localIndex = 0;
+    const adoptedInsertions = new Set();
+    const mappedChanges = [];
+    const fileChanges = fileChangesWithWholeLineEndings(oldText, changes);
+    for (const fileChange of fileChanges) {
+      const { start, end, newText: replacement } = fileChange;
+      while (
+        localIndex < localChanges.length &&
+        (localChanges[localIndex].end < start ||
+          (localChanges[localIndex].end === start &&
+            localChanges[localIndex].start !== localChanges[localIndex].end))
+      ) {
+        localIndex++;
+      }
+      if (start === end) {
+        // Native diff can shift an insertion across identical adjacent text.
+        // Recognize an equivalent local insertion once, even after that shift.
+        const alreadyApplied = [localChanges[localIndex - 1], localChanges[localIndex]].find(
+          (local) => {
+            if (
+              !local ||
+              local.start !== local.end ||
+              local.newText.length !== replacement.length ||
+              adoptedInsertions.has(local)
+            ) {
+              return false;
+            }
+            const gapStart = Math.min(start, local.start);
+            const gapEnd = Math.max(start, local.start);
+            if (
+              local.start !== start &&
+              fileChanges.some(
+                (other) => other !== fileChange && other.start <= gapEnd && other.end >= gapStart,
+              )
+            ) {
+              return false;
+            }
+            const gap = oldText.slice(gapStart, gapEnd);
+            return local.start >= start
+              ? gap + local.newText === replacement + gap
+              : local.newText + gap === gap + replacement;
+          },
+        );
+        if (alreadyApplied) {
+          adoptedInsertions.add(alreadyApplied);
+          continue;
+        }
+      }
+      let overlaps = false;
+      let contained = true;
+      for (let i = localIndex; i < localChanges.length && localChanges[i].start <= end; i++) {
+        const local = localChanges[i];
+        const intersects =
+          start === end
+            ? (local.start < start && start < local.end) ||
+              (local.start === start && local.end === end)
+            : local.start === local.end
+              ? start < local.start && local.start < end
+              : start < local.end && local.start < end;
+        if (intersects) {
+          overlaps = true;
+          if (local.start < start || local.end > end) contained = false;
+        }
+      }
+      const mappedStart = this.positionForCharacterIndex(mapOffset(start, false));
+      const mappedEnd = this.positionForCharacterIndex(mapOffset(end, start !== end));
+      const mappedRange = new Range(mappedStart, mappedEnd);
+      if (overlaps) {
+        // A user may already have made this exact replacement. Adopt the new
+        // disk baseline without repeating the edit or adding an undo entry.
+        if (start !== end && contained && this.getTextInRange(mappedRange) === replacement) {
+          continue;
+        }
+        conflicted = true;
+        continue;
+      }
+      mappedChanges.push({
+        oldStart: mappedStart,
+        oldEnd: mappedEnd,
+        newStart: mappedStart,
+        newEnd: traverse(mappedStart, extentForText(replacement)),
+        oldText: this.getTextInRange(mappedRange),
+        newText: replacement,
+      });
+    }
+
+    this.transact(() => {
+      for (let i = mappedChanges.length - 1; i >= 0; i--) {
+        this.applyChange(mappedChanges[i], true, "reload");
+      }
+      if (conflicted) {
+        // Keep the old baseline so file observation continues to report the
+        // unresolved overlap, including after undoing the propagated edits.
+        this.setFileState("conflicted");
+      } else {
+        const mergedText = this.getText();
+        this.buffer.reset(newText);
+        this.buffer.setText(mergedText);
+        this.baseTextDigestCache = null;
+        this.digestWhenLastPersisted = this.buffer.baseTextDigest();
+        this.updateFileStateFromBuffer({ resolveStickyState: true });
+      }
+    });
+    this.emitter.emit("did-reload");
   }
 
   async beginFileOperation() {
