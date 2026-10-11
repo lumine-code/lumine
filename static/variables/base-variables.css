@@ -155,8 +155,23 @@
   --syntax-gutter-background-color: #ccc;
   --syntax-gutter-background-color-selected: #eee;
   --syntax-color-added: green;
+  --syntax-color-added-staged: color-mix(
+    in srgb,
+    var(--syntax-color-added) 40%,
+    var(--syntax-text-color)
+  );
   --syntax-color-modified: orange;
+  --syntax-color-modified-staged: color-mix(
+    in srgb,
+    var(--syntax-color-modified) 40%,
+    var(--syntax-text-color)
+  );
   --syntax-color-removed: red;
+  --syntax-color-removed-staged: color-mix(
+    in srgb,
+    var(--syntax-color-removed) 40%,
+    var(--syntax-text-color)
+  );
   --syntax-color-renamed: blue;
   --syntax-color-variable: #df6a73;
   --syntax-color-constant: #df6a73;

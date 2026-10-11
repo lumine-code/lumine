@@ -596,12 +596,30 @@ const THEME_VARIABLES = Object.freeze([
   ...define("Editor Git colors", "syntax", "semantic", [
     ["syntax-color-added", "color", "green", "Color of added changes in editor diff surfaces."],
     [
+      "syntax-color-added-staged",
+      "color",
+      "color-mix(in srgb, var(--syntax-color-added) 40%, var(--syntax-text-color))",
+      "Color of staged added changes in editor diff surfaces.",
+    ],
+    [
       "syntax-color-modified",
       "color",
       "orange",
       "Color of modified changes in editor diff surfaces.",
     ],
+    [
+      "syntax-color-modified-staged",
+      "color",
+      "color-mix(in srgb, var(--syntax-color-modified) 40%, var(--syntax-text-color))",
+      "Color of staged modified changes in editor diff surfaces.",
+    ],
     ["syntax-color-removed", "color", "red", "Color of removed changes in editor diff surfaces."],
+    [
+      "syntax-color-removed-staged",
+      "color",
+      "color-mix(in srgb, var(--syntax-color-removed) 40%, var(--syntax-text-color))",
+      "Color of staged removed changes in editor diff surfaces.",
+    ],
     ["syntax-color-renamed", "color", "blue", "Color of renamed changes in editor diff surfaces."],
   ]),
   ...define("Syntax entities", "syntax", "semantic", [
