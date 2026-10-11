@@ -79,35 +79,57 @@ module.exports = function createGitHostOps(
         service.readConfig(payload.descriptor, payload.keys, context),
       ),
 
-    // Fetch and cache the immutable HEAD blob, then run the repository-independent
-    // line diff without reopening the repository for subsequent buffer edits.
+    // Cache immutable baseline blobs, then compute line diffs without reopening
+    // the repository for subsequent buffer edits. Mutable index expressions are
+    // only a fallback before the first status snapshot identifies the blob.
     lineDiff: async (payload, { signal }) => {
-      const { descriptor, relativePosixPath, headOid, text, ignoreEolWhitespace } = payload;
+      const {
+        descriptor,
+        relativePosixPath,
+        headOid,
+        base = "head",
+        baselineOid,
+        baselinePath = relativePosixPath,
+        baselineKnownMissing = false,
+        text,
+        ignoreEolWhitespace,
+      } = payload;
+      if (base !== "head" && base !== "index") {
+        throw new TypeError(`Unsupported line diff baseline: ${base}`);
+      }
+      signal?.throwIfAborted();
       const revision = headOid || "HEAD";
       let blob;
-      if (headOid) {
-        const key = `${descriptor.gitDirectory}\0${relativePosixPath}\0${headOid}`;
+      const request = baselineOid
+        ? { oid: baselineOid }
+        : base === "index"
+          ? { source: "index", path: baselinePath }
+          : { revision, path: baselinePath };
+      if (baselineKnownMissing) {
+        blob = null;
+      } else if (baselineOid || (base === "head" && headOid)) {
+        const key = baselineOid
+          ? `${descriptor.gitDirectory}\0blob\0${baselineOid}`
+          : `${descriptor.gitDirectory}\0${baselinePath}\0${headOid}`;
         blob = await blobCache.getOrLoad(
           key,
           ({ signal: sharedSignal }) =>
             invoke("lineDiff", async (service) => {
-              const [loadedBlob] = await service.readObjects(
-                descriptor,
-                [{ revision, path: relativePosixPath }],
-                { signal: sharedSignal },
-              );
+              const [loadedBlob] = await service.readObjects(descriptor, [request], {
+                signal: sharedSignal,
+              });
               return loadedBlob;
             }),
           { signal },
         );
       } else {
         [blob] = await invoke("lineDiff", (service) =>
-          service.readObjects(descriptor, [{ revision, path: relativePosixPath }], { signal }),
+          service.readObjects(descriptor, [request], { signal }),
         );
       }
-      if (!blob) return [];
+      signal?.throwIfAborted();
       return invoke("lineDiff", (service) =>
-        service.lineDiff(blob.content, text, {
+        service.lineDiff(blob?.content ?? "", text, {
           ignoreEolWhitespace,
           signal,
         }),

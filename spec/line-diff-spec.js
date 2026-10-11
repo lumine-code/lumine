@@ -32,8 +32,11 @@ describe("computeLineDiffHunks", () => {
     expect(computeLineDiffHunks("a\nb\nc\n", "a\nb\nc\n")).toEqual([]);
   });
 
-  it("returns no hunks when the blob is absent at HEAD", () => {
-    expect(computeLineDiffHunks(null, "a\nb\n")).toEqual([]);
+  it("compares a missing baseline as empty text", () => {
+    expect(computeLineDiffHunks(null, "a\nb\n")).toEqual([
+      { oldStart: 1, oldLines: 0, newStart: 1, newLines: 2 },
+    ]);
+    expect(computeLineDiffHunks(null, "")).toEqual([]);
   });
 
   it("treats CRLF-vs-LF as unchanged when ignoreEolWhitespace is set", () => {

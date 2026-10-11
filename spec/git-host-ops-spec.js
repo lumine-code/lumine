@@ -1,5 +1,6 @@
 const createGitHostOps = require("../src/git-host-ops");
 const { GitHostOperations } = require("../src/git-host-protocol");
+const { DEFER_REPOSITORY_READ_POSTFLIGHT } = require("../src/system-git-service");
 
 describe("git-host ops", () => {
   const descriptor = { gitDirectory: "/repo/.git", workingDirectory: "/repo" };
@@ -60,6 +61,7 @@ describe("git-host ops", () => {
     expect(service.snapshot).toHaveBeenCalledWith(descriptor, request, {
       priority: "interactive",
       signal: controller.signal,
+      [DEFER_REPOSITORY_READ_POSTFLIGHT]: false,
     });
   });
 
@@ -108,6 +110,7 @@ describe("git-host ops", () => {
     expect(service.diff).toHaveBeenCalledWith(descriptor, request, {
       maxBytes: 1024,
       signal: undefined,
+      [DEFER_REPOSITORY_READ_POSTFLIGHT]: false,
     });
   });
 
@@ -151,6 +154,88 @@ describe("git-host ops", () => {
     expect(service.readObjects.calls.count()).toBe(1);
     expect(service.lineDiff.calls.count()).toBe(2);
     expect(service.lineDiff.calls.argsFor(1)[1]).toBe("a\nC\n");
+  });
+
+  it("caches index blobs by identity and reloads a changed staged version", async () => {
+    service.readObjects.and.callFake(async (_descriptor, [{ oid }]) => [
+      { oid, type: "blob", content: Buffer.from(`${oid}\n`) },
+    ]);
+    const payload = {
+      descriptor,
+      relativePosixPath: "f.txt",
+      base: "index",
+      baselineOid: "first-index",
+      text: "buffer\n",
+    };
+
+    await ops.lineDiff(payload, {});
+    await ops.lineDiff({ ...payload, text: "edited\n" }, {});
+    await ops.lineDiff({ ...payload, baselineOid: "second-index" }, {});
+
+    expect(service.readObjects.calls.count()).toBe(2);
+    expect(service.readObjects.calls.argsFor(0)[1]).toEqual([{ oid: "first-index" }]);
+    expect(service.readObjects.calls.argsFor(1)[1]).toEqual([{ oid: "second-index" }]);
+    expect(service.lineDiff.calls.argsFor(1).slice(0, 2)).toEqual([
+      Buffer.from("first-index\n"),
+      "edited\n",
+    ]);
+  });
+
+  it("shares one immutable blob between HEAD and index comparisons", async () => {
+    service.readObjects.and.resolveTo([{ oid: "same", content: Buffer.from("baseline\n") }]);
+    const payload = { descriptor, baselineOid: "same", text: "buffer\n" };
+
+    await ops.lineDiff({ ...payload, base: "head" }, {});
+    await ops.lineDiff({ ...payload, base: "index" }, {});
+
+    expect(service.readObjects.calls.count()).toBe(1);
+    expect(service.lineDiff.calls.count()).toBe(2);
+  });
+
+  it("uses the original HEAD path for a renamed file", async () => {
+    await ops.lineDiff(
+      {
+        descriptor,
+        relativePosixPath: "new.txt",
+        baselinePath: "old.txt",
+        headOid: "commit",
+        text: "buffer\n",
+      },
+      {},
+    );
+
+    expect(service.readObjects.calls.argsFor(0)[1]).toEqual([
+      { revision: "commit", path: "old.txt" },
+    ]);
+  });
+
+  it("does not cache the mutable index fallback before a snapshot is available", async () => {
+    const payload = { descriptor, relativePosixPath: "f.txt", base: "index", text: "buffer\n" };
+    await ops.lineDiff(payload, {});
+    await ops.lineDiff(payload, {});
+
+    expect(service.readObjects.calls.count()).toBe(2);
+    expect(service.readObjects.calls.argsFor(0)[1]).toEqual([{ source: "index", path: "f.txt" }]);
+  });
+
+  it("compares a known missing baseline as empty text without reading Git", async () => {
+    await ops.lineDiff({ descriptor, base: "head", baselineKnownMissing: true, text: "new\n" }, {});
+
+    expect(service.readObjects).not.toHaveBeenCalled();
+    expect(service.lineDiff.calls.argsFor(0).slice(0, 2)).toEqual(["", "new\n"]);
+  });
+
+  it("checks cancellation even for a known missing baseline", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expectAsync(
+      ops.lineDiff(
+        { descriptor, baselineKnownMissing: true, text: "new\n" },
+        { signal: controller.signal },
+      ),
+    ).toBeRejected();
+    expect(service.lineDiff).not.toHaveBeenCalled();
   });
 
   it("decodes requested object contents before crossing IPC", async () => {

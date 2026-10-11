@@ -55,12 +55,9 @@ module.exports = class GitHostClient {
     return this.request("diff", { descriptor, request, maxBytes: rest.maxBytes }, { signal });
   }
 
-  getLineDiffs(descriptor, { relativePosixPath, headOid, text, ignoreEolWhitespace, signal }) {
-    return this.request(
-      "lineDiff",
-      { descriptor, relativePosixPath, headOid, text, ignoreEolWhitespace },
-      { signal },
-    );
+  getLineDiffs(descriptor, params) {
+    const { signal, ...payload } = params;
+    return this.request("lineDiff", { descriptor, ...payload }, { signal });
   }
 
   getConfigValues(descriptor, keys, options = {}) {

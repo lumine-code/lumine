@@ -60,6 +60,8 @@ describe("Repository status snapshots", () => {
         kind: "ordinary",
         indexStatus: "M",
         worktreeStatus: null,
+        headBlobOid: "head",
+        indexBlobOid: "index",
         staged: true,
         unstaged: false,
       }),
@@ -76,6 +78,8 @@ describe("Repository status snapshots", () => {
         originalPath: "original file.txt",
         kind: "renamed",
         similarity: 87,
+        headBlobOid: "head",
+        indexBlobOid: "index",
       }),
     );
     expect(snapshot.files[3].conflicted).toBe(true);
@@ -102,6 +106,32 @@ describe("Repository status snapshots", () => {
       detached: true,
       unborn: false,
     });
+  });
+
+  it("retains immutable blob identities and normalizes missing baselines", () => {
+    const zero = "0".repeat(40);
+    const head = "a".repeat(40);
+    const index = "b".repeat(40);
+    const snapshot = parseStatusSnapshot(
+      [
+        `1 MM N... 100644 100644 100644 ${head} ${index} changed.txt`,
+        `1 A. N... 000000 100644 100644 ${zero} ${index} added.txt`,
+        `1 D. N... 100644 000000 000000 ${head} ${zero} deleted.txt`,
+        "u UU N... 100644 100644 100644 100644 one two three conflict.txt",
+        "? new.txt",
+        "",
+      ].join("\0"),
+    );
+
+    expect(
+      snapshot.files.map(({ headBlobOid, indexBlobOid }) => [headBlobOid, indexBlobOid]),
+    ).toEqual([
+      [head, index],
+      [null, index],
+      [head, null],
+      [null, null],
+      [null, null],
+    ]);
   });
 
   it("uses the whole repository and only includes ignored files on request", async () => {

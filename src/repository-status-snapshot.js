@@ -30,6 +30,10 @@ function statusCharacter(value) {
   return value && value !== "." ? value : null;
 }
 
+function blobOid(value) {
+  return value && !/^0+$/.test(value) ? value : null;
+}
+
 function parseSubmodule(value) {
   if (!value || value[0] !== "S") return NO_SUBMODULE;
   return Object.freeze({
@@ -46,6 +50,8 @@ function createEntry({
   kind,
   indexStatus = null,
   worktreeStatus = null,
+  headBlobOid = null,
+  indexBlobOid = null,
   conflicted = false,
   untracked = false,
   ignored = false,
@@ -58,6 +64,8 @@ function createEntry({
     kind,
     indexStatus,
     worktreeStatus,
+    headBlobOid,
+    indexBlobOid,
     staged: indexStatus != null,
     unstaged: worktreeStatus != null || untracked,
     conflicted,
@@ -80,6 +88,8 @@ function parseTrackedEntry(record, records, index) {
         kind: "ordinary",
         indexStatus: statusCharacter(match[1][0]),
         worktreeStatus: statusCharacter(match[1][1]),
+        headBlobOid: blobOid(match[6]),
+        indexBlobOid: blobOid(match[7]),
         submodule: parseSubmodule(match[2]),
       }),
       index,
@@ -103,6 +113,8 @@ function parseTrackedEntry(record, records, index) {
         kind: score[0] === "C" ? "copied" : "renamed",
         indexStatus: statusCharacter(match[1][0]),
         worktreeStatus: statusCharacter(match[1][1]),
+        headBlobOid: blobOid(match[6]),
+        indexBlobOid: blobOid(match[7]),
         similarity: Number.parseInt(score.slice(1), 10),
         submodule: parseSubmodule(match[2]),
       }),

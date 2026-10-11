@@ -168,4 +168,48 @@ describe("git-host system Git contract", () => {
       }),
     );
   });
+
+  it("compares both baselines through real Git while the index changes with the same status", async () => {
+    const filePath = path.join(descriptor.workingDirectory, "a.txt");
+    const run = (args) => ops.execRepository({ descriptor, args, options: {} }, {});
+    const snapshot = (knownFingerprint) =>
+      ops.snapshot(
+        {
+          descriptor,
+          request: {
+            status: true,
+            refs: false,
+            knownFingerprints: { status: knownFingerprint },
+          },
+        },
+        {},
+      );
+    await run(["add", "--", "a.txt"]);
+    fs.writeFileSync(filePath, "working\n");
+    const first = await snapshot();
+    const entry = first.status.value.files.find(({ path: filePath }) => filePath === "a.txt");
+    expect(entry.indexStatus).toBe("M");
+    expect(entry.worktreeStatus).toBe("M");
+    const payload = { descriptor, relativePosixPath: "a.txt", text: "changed\nunsaved\n" };
+
+    expect(
+      await ops.lineDiff({ ...payload, base: "index", baselineOid: entry.indexBlobOid }, {}),
+    ).toEqual([{ oldStart: 2, oldLines: 0, newStart: 2, newLines: 1 }]);
+    expect(
+      await ops.lineDiff({ ...payload, base: "head", baselineOid: entry.headBlobOid }, {}),
+    ).toEqual([{ oldStart: 1, oldLines: 0, newStart: 1, newLines: 2 }]);
+
+    fs.writeFileSync(filePath, "new staged\n");
+    await run(["add", "--", "a.txt"]);
+    fs.writeFileSync(filePath, "working\n");
+    const second = await snapshot(first.status.fingerprint);
+    expect(second.status.unchanged).toBe(false);
+    const nextEntry = second.status.value.files.find(({ path: filePath }) => filePath === "a.txt");
+    expect(nextEntry.indexStatus).toBe("M");
+    expect(nextEntry.worktreeStatus).toBe("M");
+    expect(nextEntry.indexBlobOid).not.toBe(entry.indexBlobOid);
+    expect(
+      await ops.lineDiff({ ...payload, base: "index", baselineOid: nextEntry.indexBlobOid }, {}),
+    ).toEqual([{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2 }]);
+  });
 });

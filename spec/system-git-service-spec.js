@@ -274,6 +274,35 @@ describe("SystemGitService", () => {
     }
   });
 
+  it("changes the status fingerprint when index content changes with the same status", async () => {
+    const descriptor = createDirectoryMarkerDescriptor();
+    const head = "a".repeat(40);
+    let index = "b".repeat(40);
+    const runner = {
+      run: async () =>
+        `# branch.oid ${head}\0# branch.head main\0` +
+        `1 MM N... 100644 100644 100644 ${head} ${index} file.txt\0`,
+    };
+    const service = new SystemGitService({ runner });
+    const request = { status: true, refs: false };
+    const first = await service.snapshot(descriptor, request);
+    index = "c".repeat(40);
+    const second = await service.snapshot(descriptor, {
+      ...request,
+      knownFingerprints: { status: first.status.fingerprint },
+    });
+
+    expect(second.status.unchanged).toBe(false);
+    expect(second.status.fingerprint).not.toBe(first.status.fingerprint);
+    expect(second.status.value.files[0].indexBlobOid).toBe(index);
+    const unchanged = await service.snapshot(descriptor, {
+      ...request,
+      knownFingerprints: { status: second.status.fingerprint },
+      generations: { status: 5 },
+    });
+    expect(unchanged.status.unchanged).toBe(true);
+  });
+
   it("lets git-host defer a read postflight without changing direct read validation", async () => {
     const descriptor = createDirectoryMarkerDescriptor();
     const assertRepositoryDescriptorAvailable = jasmine

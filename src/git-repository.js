@@ -1815,30 +1815,48 @@ module.exports = class GitRepository {
    * @status public
    *
    * Computes gutter line diffs off the renderer thread via the git-host worker,
-   * fetching and caching the HEAD blob before comparing it with the buffer.
+   * fetching and caching the selected baseline blob before comparing it with
+   * the buffer. A path absent from that baseline is compared as empty text.
    *
    * @param filePath - The `String` path relative to the repository.
-   * @param text - The `String` to compare against the `HEAD` contents.
+   * @param text - The `String` buffer contents to compare.
    * @param {Object} [options] - Diff options.
+   * @param {"head"|"index"} [options.base="head"] - The comparison baseline.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
    */
-  getLineDiffsAsync(filePath, text, { signal } = {}) {
+  getLineDiffsAsync(filePath, text, { base = "head", signal } = {}) {
+    if (base !== "head" && base !== "index") {
+      throw new TypeError(`Unsupported line diff baseline: ${base}`);
+    }
     if (this.isDestroyed()) {
       return this.repositoryUnavailableError
         ? Promise.reject(this.repositoryUnavailableError)
         : Promise.resolve([]);
     }
     const relativePosixPath = this.relativize(filePath).split(path.sep).join("/");
-    // The status snapshot's head oid keys the worker's blob cache; a HEAD move
-    // produces a fresh key. Files inside submodules are owned by their own
-    // repository, so this repository always keys against its own HEAD.
+    const entry = this.getStatusEntry(filePath);
     const headOid = this.statusSnapshot?.head?.oid ?? null;
+    // Status carries immutable blob identities, including the source blob for
+    // renames. Keeping the index identity also makes a same-status stage edit
+    // change the snapshot fingerprint. A clean path's index equals HEAD, so
+    // buffer edits need no repeated reads of the mutable index.
+    const baselineOid = entry ? (base === "index" ? entry.indexBlobOid : entry.headBlobOid) : null;
+    const baselineKnownMissing =
+      baselineOid == null && (entry != null || this.statusSnapshot?.head?.unborn === true);
+    const baselinePath =
+      base === "head" ? (entry?.originalPath ?? relativePosixPath) : relativePosixPath;
+    const effectiveBase =
+      base === "index" && !entry && this.statusSnapshot.initialized ? "head" : base;
     return this.repositoryHostRequest(
       (client, descriptor, requestSignal) =>
         client.getLineDiffs(descriptor, {
           relativePosixPath,
           headOid,
+          base: effectiveBase,
+          baselineOid,
+          baselinePath,
+          baselineKnownMissing,
           text,
           ignoreEolWhitespace: process.platform === "win32",
           signal: requestSignal,
