@@ -109,7 +109,9 @@ describe("Editor scroll modes", () => {
   });
 
   it("rejects unknown modes and removed option fields", () => {
-    for (const mode of ["unknown", NaN, Infinity, [], [0, 20, 80]]) {
+    const sparsePair = [0, 50];
+    delete sparsePair[0];
+    for (const mode of ["unknown", NaN, Infinity, [], [0, 20, 80], new Array(2), sparsePair]) {
       expect(() => editor.scrollToCursorPosition({ mode })).toThrowError(TypeError);
     }
     expect(() => editor.scrollToCursorPosition({ center: true })).toThrowError(TypeError);

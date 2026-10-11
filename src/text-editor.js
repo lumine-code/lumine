@@ -7552,7 +7552,7 @@ function columnRangeForStartDelimiter(line, delimiter) {
 // reordered — which end comes first is what distinguishes the least possible
 // scroll from the greatest.
 function normalizeScrollZone(zone) {
-  const bounds = Array.isArray(zone) ? zone : [zone];
+  const bounds = Array.isArray(zone) ? Array.from(zone) : [zone];
   if (bounds.length < 1 || bounds.length > 2 || !bounds.every(Number.isFinite)) {
     throw new TypeError(
       `Invalid autoscroll zone: ${JSON.stringify(
