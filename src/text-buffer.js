@@ -3271,7 +3271,8 @@ class TextBuffer {
     const adoptedInsertions = new Set();
     const mappedChanges = [];
     const fileChanges = fileChangesWithWholeLineEndings(oldText, changes);
-    for (const fileChange of fileChanges) {
+    for (let fileIndex = 0; fileIndex < fileChanges.length; fileIndex++) {
+      const fileChange = fileChanges[fileIndex];
       const { start, end, newText: replacement } = fileChange;
       while (
         localIndex < localChanges.length &&
@@ -3298,8 +3299,8 @@ class TextBuffer {
             const gapEnd = Math.max(start, local.start);
             if (
               local.start !== start &&
-              fileChanges.some(
-                (other) => other !== fileChange && other.start <= gapEnd && other.end >= gapStart,
+              [fileChanges[fileIndex - 1], fileChanges[fileIndex + 1]].some(
+                (other) => other && other.start <= gapEnd && other.end >= gapStart,
               )
             ) {
               return false;

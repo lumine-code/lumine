@@ -237,6 +237,45 @@ describe("TextBuffer known file changes", () => {
     expect(buffer.getFileState()).toBe("unmodified");
   });
 
+  it("adopts a shifted equivalent insertion while applying a separate disk edit", async () => {
+    const oldText = "left right target";
+    await openFile(oldText);
+    buffer.insert([0, 4], " disk");
+    buffer.append(" unsaved");
+    const target = oldText.indexOf("target");
+
+    apply(
+      fileChange(oldText, [
+        { start: 4, end: 4, newText: " disk" },
+        { start: target, end: target + "target".length, newText: "replacement" },
+      ]),
+    );
+
+    expect(buffer.getText()).toBe("left disk right replacement unsaved");
+    expect(buffer.getFileState()).toBe("modified");
+    expect(buffer.undo()).toBe(true);
+    expect(buffer.getText()).toBe("left disk right target unsaved");
+  });
+
+  it("keeps insertions distinct when another disk edit crosses their equivalent shift", async () => {
+    const oldText = "aaab";
+    await openFile(oldText);
+    buffer.insert([0, 0], "a");
+
+    apply(
+      fileChange(oldText, [
+        { start: 0, end: 0, newText: "a" },
+        { start: 1, end: 2, newText: "X" },
+      ]),
+    );
+
+    expect(buffer.getText()).toBe("aaXaab");
+    expect(buffer.getFileState()).toBe("modified");
+    expect(fs.readFileSync(filePath, "utf8")).toBe("aaXab");
+    expect(buffer.undo()).toBe(true);
+    expect(buffer.getText()).toBe("aaaab");
+  });
+
   it("treats a zero-width disk edit at a local insertion as a conflict", async () => {
     const oldText = "left right";
     await openFile(oldText);
