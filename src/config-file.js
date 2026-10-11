@@ -28,6 +28,7 @@ module.exports = class ConfigFile {
     this.fileWatchClient = fileWatchClient;
     this.emitter = new Emitter();
     this.value = {};
+    this.loaded = false;
     this.pendingUpdates = [];
     this.reloadCallbacks = [];
     this.loadGeneration = 0;
@@ -153,9 +154,12 @@ module.exports = class ConfigFile {
         `Failed to load \`${Path.basename(this.path)}\` - ${error.message}`,
       );
     } else {
-      this.value = data || {};
+      const value = data || {};
+      const changed = !this.loaded || !_.isEqual(this.value, value);
+      this.value = value;
+      this.loaded = true;
       try {
-        this.emitter.emit("did-change", this.value);
+        if (changed) this.emitter.emit("did-change", this.value);
       } finally {
         for (const update of updates) update.resolve();
       }

@@ -166,7 +166,7 @@ describe("Config", () => {
       expect(values.calls.allArgs()).toEqual([[9], [2]]);
       expect(mutations.calls.count()).toBe(1);
       expect(mutations.calls.mostRecent().args[0].changes).toEqual([
-        { keyPath: null, scopeSelector: null, source: "project.json" },
+        { keyPath: "test.count", scopeSelector: ".js.source", source: "project.json" },
       ]);
       config.clearProjectSettings();
       expect(values.calls.count()).toBe(2);
@@ -302,6 +302,248 @@ describe("Config", () => {
       config.resetUserSettings({ "*": { test: { count: 4 } } });
       expect(config.get("test.count")).toBe(4);
       expect(config.inspect("test.count", { local: true }).hasOverride).toBe(false);
+    });
+  });
+
+  describe("configuration snapshot changes", () => {
+    let config;
+
+    beforeEach(() => {
+      config = new Config({ mainSource: "user.json" });
+      config.setSchema(null, {
+        type: "object",
+        properties: {
+          minimap: {
+            type: "object",
+            properties: {
+              disabledLayers: { type: "array", items: { type: "string" }, default: [] },
+            },
+          },
+          marker: {
+            type: "object",
+            properties: {
+              disabledLayers: { type: "array", items: { type: "string" }, default: [] },
+            },
+          },
+          "ide-basedpyright": {
+            type: "object",
+            properties: {
+              features: {
+                type: "object",
+                properties: { diagnostics: { type: "boolean", default: true } },
+              },
+            },
+          },
+          fileTypes: { type: "object" },
+        },
+      });
+      config.resetUserSettings({});
+    });
+
+    it("ignores an unchanged saved roundtrip without rebuilding scoped selectors", () => {
+      config.resetUserSettings({
+        "*": { "ide-basedpyright": { features: { diagnostics: false } } },
+        ".a": { marker: { disabledLayers: ["first"] } },
+        ".b": { marker: { disabledLayers: ["second"] } },
+      });
+      const originalSelectors = config.scopedSettingsStore.propertySets.slice();
+      const changed = jasmine.createSpy("configuration changed");
+      config.onDidChangeConfiguration(changed);
+      config.saveCallback = (settings) => config.resetUserSettings(settings);
+
+      config.save();
+
+      expect(changed).not.toHaveBeenCalled();
+      expect(config.scopedSettingsStore.propertySets).toEqual(originalSelectors);
+      expect(config.get("marker.disabledLayers", { scope: ["a.b"] })).toEqual(["second"]);
+    });
+
+    it("reports only changed layer settings and leaves IDE namespaces unaffected", () => {
+      config.resetUserSettings({
+        "*": { "ide-basedpyright": { features: { diagnostics: false } } },
+      });
+      const events = [];
+      config.onDidChangeConfiguration((event) => events.push(event));
+
+      config.resetUserSettings({
+        "*": {
+          "ide-basedpyright": { features: { diagnostics: false } },
+          minimap: { disabledLayers: ["navigation"] },
+          marker: { disabledLayers: ["linter"] },
+        },
+      });
+
+      expect(events.length).toBe(1);
+      expect(events[0].changes).toEqual([
+        { keyPath: "minimap.disabledLayers", scopeSelector: null, source: "user.json" },
+        { keyPath: "marker.disabledLayers", scopeSelector: null, source: "user.json" },
+      ]);
+      expect(events[0].affectsConfiguration("ide-basedpyright")).toBe(false);
+      expect(events[0].affectsConfiguration("ide-ruff.features.diagnostics")).toBe(false);
+    });
+
+    it("publishes one final snapshot after changing base and scoped values", () => {
+      config.resetUserSettings({
+        "*": { "ide-basedpyright": { features: { diagnostics: false } } },
+        ".python": { "ide-basedpyright": { features: { diagnostics: true } } },
+      });
+      const snapshots = [];
+      config.onDidChangeConfiguration((event) =>
+        snapshots.push({
+          changes: event.changes,
+          base: config.get("ide-basedpyright.features.diagnostics"),
+          scoped: config.get("ide-basedpyright.features.diagnostics", { scope: [".python"] }),
+        }),
+      );
+
+      config.resetUserSettings({
+        "*": { "ide-basedpyright": { features: { diagnostics: true } } },
+        ".python": { "ide-basedpyright": { features: { diagnostics: false } } },
+      });
+
+      expect(snapshots).toEqual([
+        {
+          changes: [
+            {
+              keyPath: "ide-basedpyright.features.diagnostics",
+              scopeSelector: ".python",
+              source: "user.json",
+            },
+            {
+              keyPath: "ide-basedpyright.features.diagnostics",
+              scopeSelector: null,
+              source: "user.json",
+            },
+          ],
+          base: true,
+          scoped: false,
+        },
+      ]);
+    });
+
+    it("reports removed declarations and restores their inherited values", () => {
+      config.resetUserSettings({
+        "*": { minimap: { disabledLayers: ["navigation"] } },
+        ".python": { marker: { disabledLayers: ["linter"] } },
+      });
+      const events = [];
+      config.onDidChangeConfiguration((event) => events.push(event));
+
+      config.resetUserSettings({ "*": {} });
+
+      expect(events.length).toBe(1);
+      expect(events[0].changes).toEqual([
+        { keyPath: "marker.disabledLayers", scopeSelector: ".python", source: "user.json" },
+        { keyPath: "minimap.disabledLayers", scopeSelector: null, source: "user.json" },
+      ]);
+      expect(events[0].affectsConfiguration("ide-basedpyright")).toBe(false);
+      expect(config.get("minimap.disabledLayers")).toEqual([]);
+      expect(config.get("marker.disabledLayers", { scope: [".python"] })).toEqual([]);
+    });
+
+    it("replays pending writes within the final snapshot and preserves local masks", () => {
+      config.set("ide-basedpyright.features.diagnostics", false, { local: true });
+      config.set("marker.disabledLayers", ["local"], { local: true, scopeSelector: ".python" });
+      config.settingsLoaded = false;
+      config.set("minimap.disabledLayers", ["navigation"], { save: false });
+      const snapshots = [];
+      const effectiveDiagnostics = jasmine.createSpy("effective diagnostics");
+      config.onDidChange("ide-basedpyright.features.diagnostics", effectiveDiagnostics);
+      config.onDidChangeConfiguration(() =>
+        snapshots.push({
+          minimap: config.get("minimap.disabledLayers"),
+          marker: config.get("marker.disabledLayers", { scope: [".python"] }),
+          diagnostics: config.get("ide-basedpyright.features.diagnostics"),
+        }),
+      );
+
+      config.resetUserSettings({
+        "*": { minimap: { disabledLayers: ["saved"] } },
+        ".python": { marker: { disabledLayers: ["saved"] } },
+      });
+
+      expect(snapshots).toEqual([
+        { minimap: ["navigation"], marker: ["local"], diagnostics: false },
+      ]);
+      expect(effectiveDiagnostics).not.toHaveBeenCalled();
+      expect(config.pendingOperations).toEqual([]);
+      expect(config.inspect("ide-basedpyright.features.diagnostics").hasLocalOverride).toBe(true);
+    });
+
+    it("escapes literal dots in changed keys", () => {
+      config.resetUserSettings({ "*": { fileTypes: { "source.python": ["py"] } } });
+      const events = [];
+      config.onDidChangeConfiguration((event) => events.push(event));
+
+      config.resetUserSettings({ "*": { fileTypes: { "source.python": ["pyi"] } } });
+
+      expect(events[0].changes).toEqual([
+        { keyPath: "fileTypes.source\\.python", scopeSelector: null, source: "user.json" },
+      ]);
+      expect(events[0].affectsConfiguration("fileTypes.source\\.python")).toBe(true);
+      expect(events[0].affectsConfiguration("fileTypes.source.python")).toBe(false);
+    });
+
+    it("preserves tie precedence when another value in a surviving selector changes", () => {
+      config.resetUserSettings({
+        "*": {},
+        ".a": { marker: { disabledLayers: ["first"] } },
+        ".b": { marker: { disabledLayers: ["second"] } },
+      });
+      const indices = config.scopedSettingsStore.propertySets.map((set) => set.selector.index);
+
+      config.resetUserSettings({
+        "*": {},
+        ".b": {
+          marker: { disabledLayers: ["second"] },
+          minimap: { disabledLayers: ["navigation"] },
+        },
+        ".a": { marker: { disabledLayers: ["first"] } },
+      });
+
+      expect(config.scopedSettingsStore.propertySets.map((set) => set.selector.index)).toEqual(
+        indices,
+      );
+      expect(config.get("marker.disabledLayers", { scope: ["a.b"] })).toEqual(["second"]);
+    });
+
+    it("replaces project sources atomically and removes their scoped declarations", () => {
+      config.resetProjectSettings(
+        {
+          "*": { marker: { disabledLayers: ["base"] } },
+          ".python": { marker: { disabledLayers: ["scoped"] } },
+        },
+        "old-project.json",
+      );
+      const snapshots = [];
+      config.onDidChangeConfiguration((event) =>
+        snapshots.push({
+          changes: event.changes,
+          minimap: config.get("minimap.disabledLayers", { scope: [".python"] }),
+          marker: config.get("marker.disabledLayers", { scope: [".python"] }),
+          affectsIDE: event.affectsConfiguration("ide-basedpyright"),
+        }),
+      );
+
+      config.resetProjectSettings(
+        { "*": { minimap: { disabledLayers: ["navigation"] } } },
+        "new-project.json",
+      );
+
+      expect(snapshots.length).toBe(1);
+      expect(snapshots[0].changes).toEqual([
+        {
+          keyPath: "marker.disabledLayers",
+          scopeSelector: ".python",
+          source: "old-project.json",
+        },
+        { keyPath: "marker.disabledLayers", scopeSelector: null, source: "old-project.json" },
+        { keyPath: "minimap.disabledLayers", scopeSelector: null, source: "new-project.json" },
+      ]);
+      expect(snapshots[0].minimap).toEqual(["navigation"]);
+      expect(snapshots[0].marker).toEqual([]);
+      expect(snapshots[0].affectsIDE).toBe(false);
+      expect(config.getSources()).not.toContain("old-project.json");
     });
   });
 

@@ -1456,35 +1456,37 @@ class Config {
   }
 
   _resetSettings(newSettings, options = {}) {
-    const source = options.source;
+    const source = options.source ?? this.mainSource;
     newSettings = Object.assign({}, newSettings);
     if (newSettings.global != null) {
       newSettings["*"] = newSettings.global;
       delete newSettings.global;
     }
 
+    let scopedSettings = {};
     if (newSettings["*"] != null) {
-      const scopedSettings = newSettings;
+      scopedSettings = newSettings;
       newSettings = newSettings["*"];
       delete scopedSettings["*"];
-      this.resetScopedSettings(scopedSettings, { source });
     }
 
     const result = this.transact(() => {
-      this._clearUnscopedSettingsForSource(source);
-      this.emitChangeEvent({
-        keyPath: null,
-        scopeSelector: null,
-        source: source ?? this.mainSource,
-      });
-      this.settingsLoaded = true;
-      for (let key in newSettings) {
-        const value = newSettings[key];
-        const conformedValue = this.makeValueConformToSchema(key, value, {
+      this.resetScopedSettings(scopedSettings, { source });
+      const settingsToChange = source === this.projectFile ? "projectSettings" : "settings";
+      const oldSettings = this[settingsToChange];
+      const settings = {};
+      for (const [key, value] of Object.entries(newSettings)) {
+        const keyPath = pushKeyPath(null, key);
+        const conformedValue = this.makeValueConformToSchema(keyPath, value, {
           suppressException: true,
         });
-        this.setRawValue(key, conformedValue, { source });
+        if (!_.isEqual(getValueAtKeyPath(this.defaultSettings, keyPath), conformedValue))
+          settings[key] = conformedValue;
       }
+      this[settingsToChange] = settings;
+      for (const keyPath of changedKeyPaths(oldSettings, settings))
+        this.emitChangeEvent({ keyPath, scopeSelector: null, source });
+      this.settingsLoaded = true;
       if (this.pendingOperations.length) {
         for (let op of this.pendingOperations) {
           op();
@@ -1495,26 +1497,21 @@ class Config {
     return result;
   }
 
-  _clearUnscopedSettingsForSource(source) {
-    if (source === this.projectFile) {
-      this.projectSettings = {};
-    } else {
-      this.settings = {};
-    }
-  }
-
   resetProjectSettings(newSettings, projectFile) {
     // Sets the scope and source of all project settings to `path`.
     newSettings = Object.assign({}, newSettings);
     const oldProjectFile = this.projectFile;
-    this.projectFile = projectFile;
-    if (this.projectFile != null) {
-      this._resetSettings(newSettings, { source: this.projectFile });
-    } else if (oldProjectFile != null) {
-      this.scopedSettingsStore.removePropertiesForSource(oldProjectFile);
-      this.projectSettings = {};
-      this.emitChangeEvent({ keyPath: null, scopeSelector: null, source: oldProjectFile });
-    }
+    return this.transact(() => {
+      if (oldProjectFile != null && oldProjectFile !== projectFile) {
+        this.resetScopedSettings({}, { source: oldProjectFile });
+        const previous = this.projectSettings;
+        this.projectSettings = {};
+        for (const keyPath of changedKeyPaths(previous, this.projectSettings))
+          this.emitChangeEvent({ keyPath, scopeSelector: null, source: oldProjectFile });
+      }
+      this.projectFile = projectFile;
+      if (this.projectFile != null) this._resetSettings(newSettings, { source: this.projectFile });
+    });
   }
 
   clearProjectSettings() {
@@ -1889,23 +1886,41 @@ class Config {
   resetScopedSettings(newScopedSettings, options = {}) {
     const source = options.source == null ? this.mainSource : options.source;
     const priority = this.priorityForSource(source);
-    this.scopedSettingsStore.removePropertiesForSource(source);
-
-    for (let scopeSelector in newScopedSettings) {
-      let settings = newScopedSettings[scopeSelector];
-      settings = this.makeValueConformToSchema(null, settings, {
+    const previous = this.scopedSettingsStore.propertiesForSource(source);
+    const nextStore = new SelectorStore();
+    for (const [scopeSelector, values] of Object.entries(newScopedSettings)) {
+      const settings = this.makeValueConformToSchema(null, values, {
         suppressException: true,
       });
-      const validatedSettings = {};
-      validatedSettings[scopeSelector] = withoutEmptyObjects(settings);
-      if (validatedSettings[scopeSelector] != null) {
-        this.scopedSettingsStore.addProperties(source, validatedSettings, {
-          priority,
-        });
-      }
+      const properties = withoutEmptyObjects(settings);
+      if (properties != null)
+        nextStore.addProperties(source, { [scopeSelector]: properties }, { priority });
     }
+    const next = nextStore.propertiesForSource(source);
+    if (_.isEqual(previous, next)) return;
 
-    return this.emitChangeEvent({ keyPath: null, scopeSelector: null, source });
+    return this.transact(() => {
+      // Retain selector insertion indices: rebuilding an unchanged sibling
+      // would change which equally specific selector wins after a file reload.
+      this.scopedSettingsStore.propertySets = this.scopedSettingsStore.propertySets.flatMap(
+        (propertySet) => {
+          if (propertySet.source !== source) return [propertySet];
+          const selector = propertySet.selector.toString() || "*";
+          if (!Object.hasOwn(next, selector)) return [];
+          return [new propertySet.constructor(source, propertySet.selector, next[selector])];
+        },
+      );
+      for (const propertySet of nextStore.propertySets) {
+        const selector = propertySet.selector.toString() || "*";
+        if (!Object.hasOwn(previous, selector))
+          this.scopedSettingsStore.propertySets.push(propertySet);
+      }
+      this.scopedSettingsStore.propertySets.sort((a, b) => a.compare(b));
+      this.scopedSettingsStore.bustCache();
+      for (const selector of new Set([...Object.keys(previous), ...Object.keys(next)]))
+        for (const keyPath of changedKeyPaths(previous[selector], next[selector]))
+          this.emitChangeEvent({ keyPath, scopeSelector: selector, source });
+    });
   }
 
   setRawScopedValue(keyPath, value, source, selector, _options) {
@@ -2238,6 +2253,21 @@ Config.addSchemaEnforcers({
     },
   },
 });
+
+function changedKeyPaths(previous, next, keyPath = null) {
+  if (_.isEqual(previous, next)) return [];
+  if (
+    (isPlainObject(previous) || previous === undefined) &&
+    (isPlainObject(next) || next === undefined)
+  ) {
+    const keys = new Set([...Object.keys(previous ?? {}), ...Object.keys(next ?? {})]);
+    if (keys.size > 0)
+      return [...keys].flatMap((key) =>
+        changedKeyPaths(previous?.[key], next?.[key], pushKeyPath(keyPath, key)),
+      );
+  }
+  return [keyPath];
+}
 
 function scopesForSimpleSelector(selector) {
   if (typeof selector !== "string" || selector.trim() === "") return null;

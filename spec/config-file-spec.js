@@ -123,6 +123,52 @@ describe("ConfigFile", () => {
     });
   });
 
+  describe("unchanged reloads", () => {
+    let contents, changes;
+
+    beforeEach(() => {
+      configFile = new ConfigFile(filePath, lumine.fileWatchClient);
+      contents = {};
+      changes = [];
+      spyOn(CSON, "readFile").and.callFake((_path, callback) => callback(null, contents));
+      configFile.onDidChange((value) => changes.push(value));
+    });
+
+    it("publishes an initial empty snapshot only once", async () => {
+      await configFile.reload();
+      await configFile.reload();
+
+      expect(changes).toEqual([{}]);
+    });
+
+    it("ignores identical parsed contents regardless of object key order", async () => {
+      contents = { "*": { minimap: { disabledLayers: ["navigation"] }, marker: {} } };
+      await configFile.reload();
+      contents = { "*": { marker: {}, minimap: { disabledLayers: ["navigation"] } } };
+      await configFile.reload();
+
+      expect(changes.length).toBe(1);
+      expect(configFile.get()).toEqual(contents);
+    });
+
+    it("settles an unchanged write and ignores its delayed watcher echo", async () => {
+      contents = { "*": { minimap: { disabledLayers: ["navigation"] } } };
+      await configFile.reload();
+      changes.length = 0;
+      spyOn(CSON, "writeFile").and.callFake((_path, _data, callback) => {
+        configFile.requestLoad();
+        callback();
+      });
+
+      await configFile.update(contents);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(changes).toEqual([]);
+      expect(configFile.pendingUpdates).toEqual([]);
+      expect(configFile.reloadCallbacks).toEqual([]);
+    });
+  });
+
   describe("overlapping reloads", () => {
     let reads;
     let changes;
