@@ -135,10 +135,8 @@ describe("CompileCache", () => {
       expect(error.stack).toBe("a-stack-trace");
       expect(Array.isArray(error.getRawStack())).toBe(true);
 
-      await new Promise((resolve) => {
-        jasmine.unspy(window, "setTimeout");
-        setTimeout(resolve, 1);
-      });
+      // A renderer timer can run before Node's next-tick queue drains.
+      await new Promise((resolve) => process.nextTick(resolve));
 
       error = new Error("Oops again");
       expect(error.stack).not.toBe("a-stack-trace");
