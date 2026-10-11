@@ -86,7 +86,7 @@
     "language-typescript": "github:lumine-code/language-typescript#fd25308c555dcfc4999a6f5d18bc2cd3bf3b6862",
     "language-xml": "github:lumine-code/language-xml#71aedcd8497b0ea7ec1b3ebaf27be2970796d12c",
     "language-yaml": "github:lumine-code/language-yaml#3676d3c1894a17c1a5f8cc68271e23776e405999",
-    "line-ending": "github:lumine-code/line-ending#94f08d6ff6a9e9a58e2e29a7bffbd54682f58af4",
+    "line-ending": "github:lumine-code/line-ending#fc99484598dfa96b2fe740cc93abb9cfb7e6ecfc",
     "lumine-updater": "github:lumine-code/lumine-updater#f6f6b5ddeef7364c62bb7cb2d1aec16a1431bf77",
     "markdown-it": "^15.0.2",
     "markdown-it-emoji": "^3.1.0",
@@ -113,7 +113,7 @@
     "title-bar": "github:lumine-code/title-bar#3f43e23ffaca54842c333564c7a9a54573fc5994",
     "tree-view": "github:lumine-code/tree-view#ddd4b47ea726cb27db6e5de11214c8b408ea0743",
     "web-tree-sitter": "0.27.0",
-    "whitespace": "github:lumine-code/whitespace#443a6d78b0141595893997e29dde55280729ab9e",
+    "whitespace": "github:lumine-code/whitespace#e12c8b9583b2cc2c4f13e79f6b2387525b2dd419",
     "winattr": "^4.0.0",
     "window-title": "github:lumine-code/window-title#42e8c5c573825e329026f42e2ebcedbe45978be4",
     "yaml": "^2.9.1"
