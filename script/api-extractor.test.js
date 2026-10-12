@@ -188,16 +188,21 @@ test("rejects missing required dependency classes", (context) => {
   );
 });
 
-test("uses a grammatical article for synthesized property descriptions", (context) => {
+test("preserves property types without synthesizing descriptions", (context) => {
   const fixture = fs.readFileSync(fixturePath, "utf8").replace(/\r\n/g, "\n");
   for (const input of [fixture, fixture.replace(/\n/g, "\r\n")]) {
-    const source = input
-      .replace(/ {5}\* The fixture service\.\r?\n {5}\*\r?\n/, "")
-      .replaceAll("FixtureService", "ApplicationService");
-    const root = editorFixture(source);
-    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const api = extractApi({ editorRoot: root, parser });
-    assert.equal(api.classes[0].members[0].description, "An {@link ApplicationService} instance");
+    for (const type of ["FixtureService", "Object<string, number>"]) {
+      const source = input
+        .replace(/ {5}\* The fixture service\.\r?\n {5}\*\r?\n/, "")
+        .replace("@type {FixtureService}", `@type {${type}}`);
+      const root = editorFixture(source);
+      context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+      const api = extractApi({ editorRoot: root, parser });
+      const property = api.classes[0].members[0];
+      assert.equal(property.description, "");
+      assert.equal(property.summary, "");
+      assert.equal(property.propertyType, type);
+    }
   }
 });
 

@@ -181,9 +181,6 @@ class Environment {
      * @public
      * @status public
      *
-     * How long each deserialized top-level object took to restore, in
-     * milliseconds, keyed by name (`project`, `workspace`). The `timecop`
-     * package reads this to report window load cost, and resets it to `{}`.
      * @type {Object<string, number>}
      */
     this.deserializeTimings = {};
@@ -308,10 +305,6 @@ class Environment {
     /**
      * @public
      * @status extended
-     *
-     * Sticky hooks emitted by core and consumed by package-owned lazy
-     * features. Hooks are independent of package lifecycle and last for this
-     * environment generation only.
      *
      * @type {Object}
      */
@@ -510,8 +503,6 @@ class Environment {
      * @public
      * @status extended
      *
-     * Shared protocol and routing for drops on workspace panes and package
-     * surfaces such as tab bars.
      * @type {WorkspaceDropManager}
      */
     this.workspaceDrops = new WorkspaceDropManager({
@@ -525,7 +516,6 @@ class Environment {
      * @public
      * @status extended
      *
-     * Staged moves of pane items within this window or into another window.
      * @type {PaneItemTransferService}
      */
     this.paneItemTransfers = new PaneItemTransferService({
@@ -577,8 +567,6 @@ class Environment {
      * @public
      * @status public
      *
-     * Editor utilities a package can reuse instead of vendoring its own:
-     * `markdown`, `fuzzyMatcher`, and `removeDiacritics`.
      * @type {Object}
      */
     this.tools = Tools;
