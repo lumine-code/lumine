@@ -89,7 +89,7 @@ describe("Workspace", () => {
       textEditorRegistry: lumine.textEditors,
       textEditorFactory: lumine.textEditorFactory,
     });
-    workspace.initializeEditorWindows(lumine.window);
+    workspace.initializeEditorWindows(lumine.window, window);
     workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
     workspace.deserialize(workspaceState, lumine.deserializers);
     lumine.repositories.attachWorkspace(workspace);
