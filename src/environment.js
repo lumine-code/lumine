@@ -485,6 +485,8 @@ class Environment {
       enablePersistence: this.enablePersistence,
     });
 
+    this.workspace.initializeEditorWindows(this.window);
+
     this.#projectStateController = new ProjectStateController({
       project: this.project,
       workspace: this.workspace,
@@ -664,6 +666,7 @@ class Environment {
     this.#windowEventHandler.initialize(this.domWindow, this.document);
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
+    this.workspace.getMainWindow().setPresentation(this.domWindow, this.workspace.getElement());
     this.workspaceDrops.initialize();
 
     const didChangeStyles = this.didChangeStyles.bind(this);

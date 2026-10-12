@@ -14,6 +14,7 @@ const PanelContainer = require("./panel-container");
 const ModalFlow = require("./modal-flow");
 const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
+const EditorWindow = require("./editor-window");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
 // Builds detached dialog models and their optional modal hosts with this
@@ -395,6 +396,87 @@ module.exports = class Workspace extends Model {
     };
 
     this.incoming = new Map();
+    this.editorWindows = new Set();
+    this.mainEditorWindow = null;
+  }
+
+  /** @private Wire the physical main window at the environment composition root. */
+  initializeEditorWindows(windowService) {
+    this.windowService = windowService;
+    const main = new EditorWindow({
+      workspace: this,
+      editorContainer: this.getCenter().paneContainer,
+      windowService,
+      main: true,
+    });
+    this.mainEditorWindow = main;
+    for (const location of ["left", "right", "bottom"]) {
+      this.paneContainers[location].paneContainer.editorWindow = main;
+    }
+    this.registerEditorWindow(main);
+    return main;
+  }
+
+  /** @private Publish a fully owned presentation to current and future UI clients. */
+  registerEditorWindow(editorWindow) {
+    if (editorWindow.getWorkspace() !== this || this.editorWindows.has(editorWindow)) {
+      throw new TypeError("An editor window must belong to this workspace exactly once.");
+    }
+    this.editorWindows.add(editorWindow);
+    const subscription = editorWindow.onDidDestroy(() => {
+      this.editorWindows.delete(editorWindow);
+      this.disposables.remove(subscription);
+      subscription.dispose();
+      this.emitter.emit("did-remove-window", editorWindow);
+    });
+    this.disposables.add(subscription);
+    this.emitter.emit("did-add-window", editorWindow);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get this workspace's main presentation window.
+   * @returns {EditorWindow|null} The main window, or null before window initialization.
+   */
+  getMainWindow() {
+    return this.mainEditorWindow;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get all presentation windows belonging to this workspace.
+   * @returns {Array<EditorWindow>} The current windows.
+   */
+  getWindows() {
+    return [...this.editorWindows];
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe current and future presentation windows of this workspace.
+   * @param {Function} callback - Receives each EditorWindow once.
+   * @returns {Disposable} Removes the observation.
+   */
+  observeWindows(callback) {
+    for (const editorWindow of this.getWindows()) callback(editorWindow);
+    return this.emitter.on("did-add-window", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the presentation window whose document currently has focus.
+   * @returns {EditorWindow|null} The focused window, or null when the workspace lacks focus.
+   */
+  getFocusedWindow() {
+    return this.getWindows().find((editorWindow) => editorWindow.getDocument()?.hasFocus()) ?? null;
   }
 
   observeFileDocuments() {
@@ -519,6 +601,8 @@ module.exports = class Workspace extends Model {
     this.#layoutGeneration++;
     this.#resettingItemOpens++;
     try {
+      const domWindow = this.mainEditorWindow?.getDOMWindow();
+      for (const editorWindow of this.getWindows()) editorWindow.destroy();
       this.#itemOpenRequests.reset();
       this.incoming.clear();
       this.packageManager = packageManager;
@@ -603,6 +687,10 @@ module.exports = class Workspace extends Model {
         this.element = null;
       }
       this.consumeServices(this.packageManager);
+      if (this.windowService) {
+        const main = this.initializeEditorWindows(this.windowService);
+        if (domWindow) main.setPresentation(domWindow, this.getElement());
+      }
     } finally {
       this.#resettingItemOpens--;
     }
@@ -3304,6 +3392,7 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    for (const editorWindow of this.getWindows()) editorWindow.destroy();
     this.#layoutGeneration++;
     this.#itemOpenRequests.destroy();
     this.incoming.clear();

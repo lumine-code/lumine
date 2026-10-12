@@ -46,6 +46,17 @@ module.exports = class PaneContainer {
     return this.location;
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Get the editor window presenting this container.
+   * @returns {EditorWindow|null} The presentation, or null before attachment.
+   */
+  getWindow() {
+    return this.editorWindow ?? null;
+  }
+
   getElement() {
     return this.element != null
       ? this.element

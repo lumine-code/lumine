@@ -2,30 +2,124 @@
 
 const TextEditor = require("./text-editor");
 const PaneContainer = require("./pane-container");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 /**
  * @public
  * @status essential
  *
- * Represents the workspace at the center of the entire window.
+ * Aggregates the document panes presented by all windows of one workspace.
  */
 module.exports = class WorkspaceCenter {
   constructor(params) {
-    params.location = "center";
-    this.paneContainer = new PaneContainer(params);
-    this.didActivate = params.didActivate;
-    this.paneContainer.onDidActivatePane(() => this.didActivate(this));
-    this.paneContainer.onDidChangeActivePane((pane) => {
-      params.didChangeActivePane(this, pane);
-    });
-    this.paneContainer.onDidChangeActivePaneItem((item) => {
-      params.didChangeActivePaneItem(this, item);
-    });
-    this.paneContainer.onDidDestroyPaneItem((item) => params.didDestroyPaneItem(item));
+    this.params = { ...params, location: "center" };
+    this.emitter = new Emitter();
+    this.containers = new Map();
+    this.paneContainer = new PaneContainer(this.params);
+    this.activePaneContainer = this.paneContainer;
+    this.addPaneContainer(this.paneContainer);
+  }
+
+  /** @private Register a window's document container without creating a workspace. */
+  addPaneContainer(container) {
+    if (container.getLocation() !== "center" || container.workspace !== this.params.workspace) {
+      throw new TypeError("A center container must belong to this workspace.");
+    }
+    if (this.containers.has(container)) return;
+    const subscriptions = new CompositeDisposable();
+    this.containers.set(container, subscriptions);
+    subscriptions.add(
+      container.onDidActivatePane(() => {
+        if (this.activePaneContainer !== container) {
+          this.activePaneContainer = container;
+          this.didChangeActivePane(container.getActivePane());
+          this.didChangeActivePaneItem(container.getActivePaneItem());
+        }
+        this.params.didActivate(this);
+      }),
+      container.onDidChangeActivePane((pane) => {
+        if (container === this.activePaneContainer) this.didChangeActivePane(pane);
+      }),
+      container.onDidChangeActivePaneItem((item) => {
+        if (container === this.activePaneContainer) this.didChangeActivePaneItem(item);
+      }),
+      container.onDidStopChangingActivePaneItem((item) => {
+        if (container === this.activePaneContainer)
+          this.emitter.emit("did-stop-changing-active-pane-item", item);
+      }),
+      container.onDidAddPane((event) => this.emitter.emit("did-add-pane", event)),
+      container.onWillDestroyPane((event) => this.emitter.emit("will-destroy-pane", event)),
+      container.onDidDestroyPane((event) => this.emitter.emit("did-destroy-pane", event)),
+      container.onDidAddPaneItem((event) => this.emitter.emit("did-add-pane-item", event)),
+      container.onDidDestroyPaneItem((event) => {
+        this.params.didDestroyPaneItem(event);
+        this.emitter.emit("did-destroy-pane-item", event);
+      }),
+    );
+    this.emitter.emit("did-add-pane-container", container);
+    for (const pane of container.getPanes()) {
+      this.emitter.emit("did-add-pane", { pane });
+      pane.getItems().forEach((item, index) => {
+        this.emitter.emit("did-add-pane-item", { pane, item, index });
+      });
+    }
+  }
+
+  /** @private Remove a presentation after its panes have been moved or closed. */
+  removePaneContainer(container) {
+    if (container === this.paneContainer) throw new Error("Cannot remove the main center.");
+    const subscriptions = this.containers.get(container);
+    if (!subscriptions) return;
+    subscriptions.dispose();
+    this.containers.delete(container);
+    if (this.activePaneContainer === container) {
+      this.activePaneContainer = this.paneContainer;
+      this.didChangeActivePane(this.getActivePane());
+      this.didChangeActivePaneItem(this.getActivePaneItem());
+    }
+    this.emitter.emit("did-remove-pane-container", container);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get all document containers in this center.
+   */
+  getPaneContainers() {
+    return [...this.containers.keys()];
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe current and future document containers.
+   */
+  observePaneContainers(callback) {
+    for (const container of this.getPaneContainers()) callback(container);
+    return this.emitter.on("did-add-pane-container", callback);
+  }
+
+  /** @private */
+  didChangeActivePane(pane) {
+    this.params.didChangeActivePane(this, pane);
+    this.emitter.emit("did-change-active-pane", pane);
+  }
+
+  /** @private */
+  didChangeActivePaneItem(item) {
+    this.params.didChangeActivePaneItem(this, item);
+    this.emitter.emit("did-change-active-pane-item", item);
   }
 
   destroy() {
-    this.paneContainer.destroy();
+    for (const [container, subscriptions] of this.containers) {
+      container.destroy();
+      subscriptions.dispose();
+    }
+    this.containers.clear();
+    this.emitter.dispose();
   }
 
   serialize() {
@@ -82,7 +176,8 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observePaneItems(callback) {
-    return this.paneContainer.observePaneItems(callback);
+    for (const item of this.getPaneItems()) callback(item);
+    return this.onDidAddPaneItem(({ item }) => callback(item));
   }
 
   /**
@@ -101,7 +196,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActivePaneItem(callback) {
-    return this.paneContainer.onDidChangeActivePaneItem(callback);
+    return this.emitter.on("did-change-active-pane-item", callback);
   }
 
   /**
@@ -122,7 +217,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidStopChangingActivePaneItem(callback) {
-    return this.paneContainer.onDidStopChangingActivePaneItem(callback);
+    return this.emitter.on("did-stop-changing-active-pane-item", callback);
   }
 
   /**
@@ -137,7 +232,8 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeActivePaneItem(callback) {
-    return this.paneContainer.observeActivePaneItem(callback);
+    callback(this.getActivePaneItem());
+    return this.onDidChangeActivePaneItem(callback);
   }
 
   /**
@@ -153,7 +249,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidAddPane(callback) {
-    return this.paneContainer.onDidAddPane(callback);
+    return this.emitter.on("did-add-pane", callback);
   }
 
   /**
@@ -169,7 +265,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onWillDestroyPane(callback) {
-    return this.paneContainer.onWillDestroyPane(callback);
+    return this.emitter.on("will-destroy-pane", callback);
   }
 
   /**
@@ -185,7 +281,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidDestroyPane(callback) {
-    return this.paneContainer.onDidDestroyPane(callback);
+    return this.emitter.on("did-destroy-pane", callback);
   }
 
   /**
@@ -200,7 +296,8 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observePanes(callback) {
-    return this.paneContainer.observePanes(callback);
+    for (const pane of this.getPanes()) callback(pane);
+    return this.onDidAddPane(({ pane }) => callback(pane));
   }
 
   /**
@@ -214,7 +311,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActivePane(callback) {
-    return this.paneContainer.onDidChangeActivePane(callback);
+    return this.emitter.on("did-change-active-pane", callback);
   }
 
   /**
@@ -229,7 +326,8 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeActivePane(callback) {
-    return this.paneContainer.observeActivePane(callback);
+    callback(this.getActivePane());
+    return this.onDidChangeActivePane(callback);
   }
 
   /**
@@ -247,7 +345,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidAddPaneItem(callback) {
-    return this.paneContainer.onDidAddPaneItem(callback);
+    return this.emitter.on("did-add-pane-item", callback);
   }
 
   /**
@@ -265,7 +363,13 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
    */
   onWillDestroyPaneItem(callback) {
-    return this.paneContainer.onWillDestroyPaneItem(callback);
+    const subscriptions = new CompositeDisposable();
+    subscriptions.add(
+      this.observePaneContainers((container) => {
+        subscriptions.add(container.onWillDestroyPaneItem(callback));
+      }),
+    );
+    return subscriptions;
   }
 
   /**
@@ -282,7 +386,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
    */
   onDidDestroyPaneItem(callback) {
-    return this.paneContainer.onDidDestroyPaneItem(callback);
+    return this.emitter.on("did-destroy-pane-item", callback);
   }
 
   /**
@@ -320,7 +424,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Array} of items.
    */
   getPaneItems() {
-    return this.paneContainer.getPaneItems();
+    return this.getPaneContainers().flatMap((container) => container.getPaneItems());
   }
 
   /**
@@ -332,7 +436,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Object} pane item `Object`.
    */
   getActivePaneItem() {
-    return this.paneContainer.getActivePaneItem();
+    return this.activePaneContainer.getActivePaneItem();
   }
 
   /**
@@ -364,11 +468,13 @@ module.exports = class WorkspaceCenter {
 
   // Save all pane items.
   saveAll() {
-    return this.paneContainer.saveAll();
+    return Promise.all(this.getPaneContainers().map((container) => container.saveAll()));
   }
 
   confirmClose(options) {
-    return this.paneContainer.confirmClose(options);
+    return Promise.all(
+      this.getPaneContainers().map((container) => container.confirmClose(options)),
+    ).then((results) => results.every(Boolean));
   }
 
   /**
@@ -384,7 +490,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Array} of {@link Pane Panes}.
    */
   getPanes() {
-    return this.paneContainer.getPanes();
+    return this.getPaneContainers().flatMap((container) => container.getPanes());
   }
 
   /**
@@ -396,7 +502,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Pane}
    */
   getActivePane() {
-    return this.paneContainer.getActivePane();
+    return this.activePaneContainer.getActivePane();
   }
 
   /**
@@ -406,7 +512,7 @@ module.exports = class WorkspaceCenter {
    * Make the next pane active.
    */
   activateNextPane() {
-    return this.paneContainer.activateNextPane();
+    return this.activePaneContainer.activateNextPane();
   }
 
   /**
@@ -416,15 +522,21 @@ module.exports = class WorkspaceCenter {
    * Make the previous pane active.
    */
   activatePreviousPane() {
-    return this.paneContainer.activatePreviousPane();
+    return this.activePaneContainer.activatePreviousPane();
   }
 
   paneForURI(uri) {
-    return this.paneContainer.paneForURI(uri);
+    for (const container of this.getPaneContainers()) {
+      const pane = container.paneForURI(uri);
+      if (pane) return pane;
+    }
   }
 
   paneForItem(item) {
-    return this.paneContainer.paneForItem(item);
+    for (const container of this.getPaneContainers()) {
+      const pane = container.paneForItem(item);
+      if (pane) return pane;
+    }
   }
 
   // Destroy (close) the active pane.
