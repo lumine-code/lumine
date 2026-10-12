@@ -1,4 +1,8 @@
 const { Disposable } = require("@lumine-code/event-kit");
+const {
+  setTimeout: scheduleBackgroundUpdate,
+  clearTimeout: cancelBackgroundUpdate,
+} = require("node:timers");
 
 const AnyConstructor = Symbol("any-constructor");
 
@@ -363,31 +367,47 @@ module.exports = class ViewRegistry {
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
     if (this.animationFrameRequest != null) {
-      (this.animationFrameWindow ?? globalThis.window).cancelAnimationFrame(
-        this.animationFrameRequest,
-      );
+      this.cancelDocumentUpdate();
       this.animationFrameRequest = null;
     }
   }
 
   requestDocumentUpdate() {
     if (this.animationFrameRequest == null) {
+      const workspace = this.lumineEnvironment?.workspace;
+      const presentations =
+        workspace
+          ?.getWindows?.()
+          .map((window) => window.getDOMWindow())
+          .filter(Boolean) ?? [];
+      const candidates = [
+        workspace?.getFocusedWindow()?.getDOMWindow(),
+        this.preferredAnimationFrameWindow,
+        ...presentations,
+      ];
+      if (!presentations.length) candidates.push(globalThis.window);
       this.animationFrameWindow =
-        this.lumineEnvironment?.workspace?.getFocusedWindow()?.getDOMWindow() ??
-        this.preferredAnimationFrameWindow ??
-        globalThis.window;
-      if (this.animationFrameWindow.closed) this.animationFrameWindow = globalThis.window;
-      this.animationFrameRequest = this.animationFrameWindow.requestAnimationFrame(
-        this.performDocumentUpdate,
-      );
+        candidates.find(
+          (window) => window && !window.closed && window.document.visibilityState !== "hidden",
+        ) ?? null;
+      this.animationFrameRequest = this.animationFrameWindow
+        ? this.animationFrameWindow.requestAnimationFrame(this.performDocumentUpdate)
+        : scheduleBackgroundUpdate(this.performDocumentUpdate, 16);
     }
+  }
+
+  /** @private Release either a visible presentation's frame or the shared runtime's background timer. */
+  cancelDocumentUpdate() {
+    if (this.animationFrameWindow)
+      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
+    else cancelBackgroundUpdate(this.animationFrameRequest);
   }
 
   /** @private Keep active auxiliary presentation independent of an occluded opener. */
   setAnimationFrameWindow(domWindow) {
     this.preferredAnimationFrameWindow = domWindow;
     if (this.animationFrameRequest != null) {
-      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
+      this.cancelDocumentUpdate();
       this.animationFrameRequest = null;
       this.requestDocumentUpdate();
     }

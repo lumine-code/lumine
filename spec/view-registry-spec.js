@@ -198,4 +198,73 @@ describe("ViewRegistry", () => {
       expect(updateDocumentSpy).toHaveBeenCalled();
       expect(readDocumentSpy).toHaveBeenCalled();
     }));
+  describe("presentation scheduling", () => {
+    const hiddenWindow = () => ({
+      closed: false,
+      document: { visibilityState: "hidden" },
+      requestAnimationFrame: jasmine.createSpy("hidden frame"),
+      cancelAnimationFrame() {},
+    });
+    function withWindows(windows) {
+      const presentations = windows.map((window) => ({ getDOMWindow: () => window }));
+      return new ViewRegistry({
+        workspace: { getWindows: () => presentations, getFocusedWindow: () => presentations[0] },
+      });
+    }
+
+    it("uses a visible presentation when the focused or preferred document is hidden", async () => {
+      const hidden = hiddenWindow();
+      let fire;
+      const visible = {
+        closed: false,
+        document: { visibilityState: "visible" },
+        requestAnimationFrame: (callback) => {
+          fire = callback;
+          return 1;
+        },
+        cancelAnimationFrame() {},
+      };
+      registry = withWindows([hidden, visible]);
+      registry.setAnimationFrameWindow(hidden);
+      const updated = jasmine.createSpy("updated");
+      registry.updateDocument(updated);
+      const done = registry.getNextUpdatePromise();
+      fire();
+      await done;
+      expect(updated).toHaveBeenCalledTimes(1);
+      expect(hidden.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it("keeps shared model updates running when every native window is hidden", async () => {
+      const hidden = hiddenWindow();
+      registry = withWindows([hidden]);
+      const updated = jasmine.createSpy("updated");
+      registry.updateDocument(updated);
+      await registry.getNextUpdatePromise();
+      expect(updated).toHaveBeenCalledTimes(1);
+      expect(hidden.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it("cancels the fallback timer before switching to a visible window's frame", async () => {
+      const hidden = hiddenWindow();
+      registry = withWindows([hidden]);
+      const updated = jasmine.createSpy("updated");
+      registry.updateDocument(updated);
+      let fire;
+      registry.setAnimationFrameWindow({
+        closed: false,
+        document: { visibilityState: "visible" },
+        requestAnimationFrame: (callback) => {
+          fire = callback;
+          return 1;
+        },
+        cancelAnimationFrame() {},
+      });
+      const done = registry.getNextUpdatePromise();
+      fire();
+      await done;
+      await globalThis.timeoutPromise(30);
+      expect(updated).toHaveBeenCalledTimes(1);
+    });
+  });
 });
