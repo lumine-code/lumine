@@ -118,6 +118,33 @@ describe("workspace pane item operations", () => {
     expect(workspace.getActivePane()).toBe(targetPane);
   });
 
+  it("preserves focused descendant input when moving its live pane item", async () => {
+    item.element.tabIndex = -1;
+    const field = document.createElement("input");
+    item.element.appendChild(field);
+    field.focus();
+    expect(document.activeElement).toBe(field);
+    await workspace.movePaneItem(item, { targetPane });
+    expect(workspace.paneForItem(item)).toBe(targetPane);
+    expect(field.isConnected).toBe(true);
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("keeps the moving item's focus while the source activates its remaining tab", async () => {
+    const remaining = viewItem({ uri: "test://remaining" });
+    remaining.element.tabIndex = -1;
+    sourcePane.addItem(remaining);
+    item.element.tabIndex = -1;
+    const field = document.createElement("input");
+    item.element.appendChild(field);
+    field.focus();
+    expect(document.activeElement).toBe(field);
+    await workspace.movePaneItem(item, { targetPane });
+    expect(sourcePane.getActiveItem()).toBe(remaining);
+    expect(document.activeElement).toBe(field);
+    expect(item.element.style.display).not.toBe("none");
+  });
+
   it("does not resurrect ownership when an addition observer destroys the copy", async () => {
     const copy = viewItem();
     item.copy = () => copy;

@@ -1035,6 +1035,8 @@ module.exports = class Pane {
       this.container?.workspace?.paneForItem(item) ||
       (this.items.includes(item) ? this : pane.getItems().includes(item) ? pane : null);
     let accepted = false;
+    const previousMovingItem = this.movingItem;
+    this.movingItem = item;
     this.emptyPaneHoldCount++;
     return this.transactActiveState(() =>
       pane.transactActiveState(() => {
@@ -1102,6 +1104,7 @@ module.exports = class Pane {
           }
           throw error;
         } finally {
+          this.movingItem = previousMovingItem;
           this.emptyPaneHoldCount--;
           const shouldDestroy = this.container
             ? this.container.shouldDestroyEmptyPanes()

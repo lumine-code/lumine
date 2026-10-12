@@ -154,6 +154,8 @@ class PaneElement extends HTMLElement {
       return;
     }
     const hasFocus = this.hasFocus();
+    const movingView = this.model.movingItem && this.views.getView(this.model.movingItem);
+    const retainsMovingFocus = movingView?.contains(document.activeElement);
     const itemView = this.views.getView(item);
     const itemPath = typeof item.getPath === "function" ? item.getPath() : null;
     if (itemPath) {
@@ -177,6 +179,7 @@ class PaneElement extends HTMLElement {
     if (
       this.visibleItemView &&
       this.visibleItemView !== itemView &&
+      this.visibleItemView !== movingView &&
       this.visibleItemView.parentNode === this.itemViews
     ) {
       this.hideItemView(this.visibleItemView);
@@ -185,7 +188,7 @@ class PaneElement extends HTMLElement {
     if (this.attached) {
       this.showItemView(itemView);
     }
-    if (hasFocus) {
+    if (hasFocus && !retainsMovingFocus && !itemView.contains(document.activeElement)) {
       itemView.focus();
     }
   }
