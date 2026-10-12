@@ -242,7 +242,7 @@ class PaneItemTransferService {
     if (
       item &&
       typeof item === "object" &&
-      (typeof item.copy !== "function" || item.canCopy?.() === false)
+      (item.canCopy?.() === false || typeof item.copy !== "function")
     )
       return null;
     options = { ...options };

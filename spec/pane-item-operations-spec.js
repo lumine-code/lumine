@@ -146,6 +146,16 @@ describe("workspace pane item operations", () => {
     expect(sourcePane.getPendingItem()).toBe(item);
   });
 
+  it("skips disabled copying without reading a lazy copy factory", async () => {
+    item.canCopy = () => false;
+    const factory = jasmine.createSpy("copy factory getter").and.throwError("Must stay unloaded");
+    Object.defineProperty(item, "copy", { get: factory, configurable: true });
+    await expectAsync(workspace.copyPaneItem(item, { splitDirection: "down" })).toBeResolvedTo(
+      null,
+    );
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it("preserves focused descendant input when moving its live pane item", async () => {
     item.element.tabIndex = -1;
     const field = document.createElement("input");
