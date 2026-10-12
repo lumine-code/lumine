@@ -135,19 +135,19 @@ module.exports = class ViewRegistry {
   }
 
   createView(object) {
-    if (object instanceof HTMLElement) {
+    if (object?.nodeType === 1 && object.ownerDocument) {
       return object;
     }
 
     let element;
     if (object && typeof object.getElement === "function") {
       element = object.getElement();
-      if (element instanceof HTMLElement) {
+      if (element?.nodeType === 1 && element.ownerDocument) {
         return element;
       }
     }
 
-    if (object && object.element instanceof HTMLElement) {
+    if (object?.element?.nodeType === 1 && object.element.ownerDocument) {
       return object.element;
     }
 
@@ -232,14 +232,33 @@ module.exports = class ViewRegistry {
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
     if (this.animationFrameRequest != null) {
-      cancelAnimationFrame(this.animationFrameRequest);
+      (this.animationFrameWindow ?? globalThis.window).cancelAnimationFrame(
+        this.animationFrameRequest,
+      );
       this.animationFrameRequest = null;
     }
   }
 
   requestDocumentUpdate() {
     if (this.animationFrameRequest == null) {
-      this.animationFrameRequest = requestAnimationFrame(this.performDocumentUpdate);
+      this.animationFrameWindow =
+        this.lumineEnvironment?.workspace?.getFocusedWindow()?.getDOMWindow() ??
+        this.preferredAnimationFrameWindow ??
+        globalThis.window;
+      if (this.animationFrameWindow.closed) this.animationFrameWindow = globalThis.window;
+      this.animationFrameRequest = this.animationFrameWindow.requestAnimationFrame(
+        this.performDocumentUpdate,
+      );
+    }
+  }
+
+  /** @private Keep active auxiliary presentation independent of an occluded opener. */
+  setAnimationFrameWindow(domWindow) {
+    this.preferredAnimationFrameWindow = domWindow;
+    if (this.animationFrameRequest != null) {
+      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
+      this.animationFrameRequest = null;
+      this.requestDocumentUpdate();
     }
   }
 

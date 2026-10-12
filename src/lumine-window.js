@@ -5,6 +5,7 @@ const fs = require("fs");
 const url = require("url");
 const { EventEmitter } = require("events");
 const crypto = require("crypto");
+const AuxiliaryWindowBroker = require("./auxiliary-window-broker");
 const StartupTime = require("./startup-time");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 
@@ -118,6 +119,13 @@ module.exports = class LumineWindow extends EventEmitter {
 
     const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
+    this.auxiliaryWindowBroker = new AuxiliaryWindowBroker(this);
+    this.browserWindow.webContents.setWindowOpenHandler?.((details) =>
+      this.auxiliaryWindowBroker.windowOpenHandler(details),
+    );
+    this.browserWindow.webContents.on("did-create-window", (window, details) =>
+      this.auxiliaryWindowBroker.didCreateWindow(window, details),
+    );
     if (this.offscreen) {
       this.browserWindow.webContents.setFrameRate(60);
       this.browserWindow.webContents.startPainting();
@@ -260,6 +268,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      this.auxiliaryWindowBroker.destroy();
       this.embeddedKeyboardIpc?.dispose();
       void this.lumineApplication
         .releaseFileWatchSession(this)
@@ -337,6 +346,8 @@ module.exports = class LumineWindow extends EventEmitter {
       "did-start-navigation",
       (_event, _url, inPlace, isMainFrame) => {
         if (isMainFrame && !inPlace) {
+          this.auxiliaryWindowBroker.destroy();
+          this.auxiliaryWindowBroker = new AuxiliaryWindowBroker(this);
           void this.lumineApplication
             .releaseFileWatchSession(this)
             .catch((error) => console.error(error));
@@ -459,6 +470,11 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   sendCommand(command, ...args) {
+    const auxiliary = this.auxiliaryWindowBroker.getFocusedRecord();
+    if (auxiliary) {
+      this.sendToRenderer("auxiliary-window-command", { id: auxiliary.id, command, args });
+      return;
+    }
     if (this.isSpecWindow()) {
       if (!this.lumineApplication.sendCommandToFirstResponder(command)) {
         switch (command) {
@@ -528,7 +544,11 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   isFocused() {
-    return this.browserWindow.isFocused();
+    return this.browserWindow.isFocused() || !!this.auxiliaryWindowBroker.getFocusedRecord();
+  }
+
+  getFocusedNativeWindow() {
+    return this.auxiliaryWindowBroker.getFocusedRecord()?.window ?? this.browserWindow;
   }
 
   isMaximized() {

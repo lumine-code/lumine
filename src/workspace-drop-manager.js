@@ -6,24 +6,18 @@ const {
   MIME_PREFIX,
   inspect,
   mimeTypeForDescriptor,
-  nativeSummary,
   normalizeDescriptor,
   parseMimeType,
   read,
   write,
 } = require("./workspace-drop-protocol");
-const { SPLITS, splitForPoint, boundsForSplit } = require("./workspace-drop-geometry");
+const { splitForPoint, boundsForSplit } = require("./workspace-drop-geometry");
 
 const COMMIT_EVENT = "core:workspace-drop-commit";
 const ROLLBACK_EVENT = "core:workspace-drop-rollback";
 const COMMIT_RESULT_EVENT = "core:workspace-drop-commit-result";
 const SESSION_TTL_MS = 2 * 60 * 1000;
 const REMOTE_COMMIT_TIMEOUT_MS = 5 * 60 * 1000;
-
-function paneForElement(element) {
-  const paneElement = element?.closest?.("lumine-pane");
-  return paneElement?.getModel?.() || null;
-}
 
 /**
  * @public
@@ -43,9 +37,8 @@ class WorkspaceDropManager {
     this.remoteSessionWindows = new Map();
     this.pendingRemoteCommits = new Map();
     this.subscriptions = new CompositeDisposable();
-    this.domSubscriptions = new CompositeDisposable();
-    this.activeClaim = null;
-    this.leaveFrame = null;
+    this.surfaces = new Map();
+    this.mainSurface = null;
     this.nextOrder = 0;
 
     this.addProvider(new NativePathsDropProvider(this), { priority: -1000 });
@@ -68,54 +61,64 @@ class WorkspaceDropManager {
     if (this.workspace.element) this.rebind(this.workspace.element);
   }
 
+  /** @private Bind the main presentation after its layout root is replaced. */
   rebind(element = this.workspace.element) {
-    if (!element || this.element === element) return;
-    this.clearActiveClaim();
-    this.domSubscriptions.dispose();
-    this.domSubscriptions = new CompositeDisposable();
-    this.overlay?.remove();
-
-    this.element = element;
-    const document = this.element.ownerDocument;
-    const window = document.defaultView;
-    this.overlay = document.createElement("div");
-    this.overlay.className = "workspace-drop-overlay";
-    this.overlay.setAttribute("popover", "manual");
-    this.overlay.setAttribute("aria-hidden", "true");
-    this.element.appendChild(this.overlay);
-
-    const dragEnter = (event) => this.handleDragEnter(event);
-    const dragOver = (event) => this.handleDragOver(event);
-    const dragLeave = (event) => this.handleDragLeave(event);
-    const drop = (event) => void this.handleDrop(event).catch((error) => console.error(error));
-    const dragEnd = () => this.clearActiveClaim();
-    const blur = () => this.clearActiveClaim();
-    this.element.addEventListener("dragenter", dragEnter, true);
-    this.element.addEventListener("dragover", dragOver, true);
-    this.element.addEventListener("dragleave", dragLeave, true);
-    this.element.addEventListener("drop", drop, true);
-    window.addEventListener("dragend", dragEnd, true);
-    window.addEventListener("blur", blur, true);
-    const boundElement = this.element;
-    this.domSubscriptions.add(
-      new Disposable(() => {
-        boundElement.removeEventListener("dragenter", dragEnter, true);
-        boundElement.removeEventListener("dragover", dragOver, true);
-        boundElement.removeEventListener("dragleave", dragLeave, true);
-        boundElement.removeEventListener("drop", drop, true);
-        window.removeEventListener("dragend", dragEnd, true);
-        window.removeEventListener("blur", blur, true);
-      }),
+    if (!element || this.mainSurface?.element === element) return;
+    if (this.mainSurface) this.releaseSurface(this.mainSurface);
+    this.mainSurface = this.attachPresentation(element);
+  }
+  /** @private Attach a physical document without duplicating providers or sessions. */
+  attachPresentation(element) {
+    const existing = this.surfaces.get(element);
+    if (existing) return existing;
+    const Surface = require("./workspace-drop-surface");
+    const surface = new Surface(this, element);
+    this.surfaces.set(element, surface);
+    return surface;
+  }
+  /** @private Retire one document's listeners and preview. */
+  releaseSurface(surface) {
+    if (this.surfaces.get(surface.element) !== surface) return;
+    this.surfaces.delete(surface.element);
+    surface.destroy();
+  }
+  surfaceForEvent(event) {
+    return (
+      [...this.surfaces.values()].find(
+        (surface) => surface.element.ownerDocument === event.target?.ownerDocument,
+      ) ?? this.mainSurface
     );
+  }
+  handleDragEnter(event) {
+    return this.surfaceForEvent(event)?.handleDragEnter(event);
+  }
+  handleDragOver(event) {
+    return this.surfaceForEvent(event)?.handleDragOver(event);
+  }
+  handleDragLeave(event) {
+    return this.surfaceForEvent(event)?.handleDragLeave(event);
+  }
+  handleDrop(event) {
+    return this.surfaceForEvent(event)?.handleDrop(event);
+  }
+  clearActiveClaim() {
+    for (const surface of this.surfaces.values()) surface.clearActiveClaim();
+  }
+  get activeClaim() {
+    return this.mainSurface?.activeClaim;
+  }
+  get overlay() {
+    return this.mainSurface?.overlay;
+  }
+  get element() {
+    return this.mainSurface?.element;
   }
 
   destroy() {
-    this.cancelPendingLeave();
-    this.clearActiveClaim();
-    this.domSubscriptions.dispose();
+    for (const surface of this.surfaces.values()) surface.destroy();
+    this.surfaces.clear();
+    this.mainSurface = null;
     this.subscriptions.dispose();
-    this.overlay?.remove();
-    this.overlay = null;
     this.targets = [];
     this.providers = [];
     for (const [token, session] of this.sessions) {
@@ -184,7 +187,8 @@ class WorkspaceDropManager {
     return new Disposable(() => {
       const index = this.targets.indexOf(entry);
       if (index >= 0) this.targets.splice(index, 1);
-      if (this.activeClaim?.target === entry) this.clearActiveClaim();
+      for (const surface of this.surfaces.values())
+        if (surface.activeClaim?.target === entry) surface.clearActiveClaim();
     });
   }
 
@@ -419,274 +423,6 @@ class WorkspaceDropManager {
 
   parseMimeType(type) {
     return parseMimeType(type);
-  }
-
-  handleDragEnter(event) {
-    this.cancelPendingLeave();
-    this.claimDrag(event, "enter");
-  }
-
-  handleDragOver(event) {
-    this.cancelPendingLeave();
-    this.claimDrag(event, "over");
-  }
-
-  handleDragLeave(event) {
-    if (!this.activeClaim) return;
-    this.setDropEffect(event.dataTransfer, this.activeClaim.proposal.effect);
-    if (this.activeClaim.target.element?.contains?.(event.relatedTarget)) return;
-    if (event.relatedTarget == null) {
-      this.cancelPendingLeave();
-      this.leaveFrame = requestAnimationFrame(() => {
-        this.leaveFrame = null;
-        this.clearActiveClaim();
-      });
-    } else {
-      this.clearActiveClaim();
-    }
-  }
-
-  claimDrag(event, phase) {
-    const offer = this.inspect(event.dataTransfer);
-    if (!offer) return false;
-    const native = nativeSummary(event.dataTransfer);
-    const claim = this.findClaim(event, { offer, native });
-    if (!claim) {
-      this.clearActiveClaim();
-      return false;
-    }
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    this.setDropEffect(event.dataTransfer, claim.proposal.effect || offer.effect);
-    this.transitionToClaim(claim);
-    this.updateOverlay(claim.context, claim.proposal);
-    const hook = phase === "enter" ? "onDragEnter" : "onDragOver";
-    claim.target.adapter?.[hook]?.(claim.context);
-    return true;
-  }
-
-  async handleDrop(event) {
-    this.cancelPendingLeave();
-    const offer = this.inspect(event.dataTransfer);
-    if (!offer) return;
-    // Descriptor data and native File objects must be snapshotted synchronously.
-    const descriptor = this.read(event.dataTransfer);
-    const native = nativeSummary(event.dataTransfer);
-    const claim = this.findClaim(event, { offer, descriptor, native });
-    if (!claim) return;
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    this.setDropEffect(event.dataTransfer, claim.proposal.effect || offer.effect);
-    this.transitionToClaim(claim);
-    this.hideOverlay();
-
-    const context = claim.context;
-    context.descriptor = descriptor;
-    context.dataTransfer = event.dataTransfer;
-    try {
-      let prepared;
-      if (typeof claim.provider.prepareDrop === "function") {
-        prepared = await claim.provider.prepareDrop(context);
-      } else {
-        prepared = descriptor;
-      }
-      if (prepared == null) throw new Error("The drop provider rejected the payload");
-      if (prepared.allowSplit === false) context.candidateSplit = null;
-
-      let result;
-      if (typeof claim.provider.perform === "function") {
-        result = await claim.provider.perform(context, prepared);
-      } else {
-        result = await claim.provider.drop({ ...context, prepared });
-      }
-      if (context.createdPane?.isAlive?.() && context.createdPane.getItems().length === 0) {
-        context.createdPane.destroy();
-      }
-      claim.target.adapter?.onDropFinished?.({ ...context, result });
-      this.clearActiveClaim();
-      return result;
-    } catch (error) {
-      this.rollbackCreatedPane(context);
-      if (descriptor?.token) {
-        try {
-          await this.rollback(descriptor.token, error.message);
-        } catch (rollbackError) {
-          console.error(rollbackError);
-        }
-      }
-      try {
-        claim.target.adapter?.onDropFinished?.({ ...context, error });
-      } catch (cleanupError) {
-        console.error(cleanupError);
-      } finally {
-        this.clearActiveClaim();
-      }
-      if (error.message !== "The drop provider rejected the payload") console.error(error);
-    }
-  }
-
-  findClaim(event, payload) {
-    for (const target of this.targetCandidates(event)) {
-      const context = this.contextForTarget(event, target, payload);
-      if (!context) continue;
-      for (const { provider } of this.providers) {
-        let proposal;
-        if (typeof provider.propose === "function") proposal = provider.propose(context);
-        else proposal = provider.canHandle(context.descriptor || context.offer, context);
-        if (!proposal || typeof proposal.then === "function") continue;
-        if (proposal === true) proposal = {};
-        const locations =
-          proposal.allowedLocations ||
-          context.descriptor?.allowedLocations ||
-          context.offer.allowedLocations;
-        if (locations?.length && !locations.includes(context.location)) continue;
-        if (target.adapter?.canDrop?.({ ...context, proposal, provider }) === false) continue;
-        if (proposal.allowSplit === false) context.candidateSplit = null;
-        return { target, provider, proposal, context };
-      }
-    }
-    return null;
-  }
-
-  targetCandidates(event) {
-    const path = event.composedPath?.() || this.eventPath(event.target);
-    const candidates = this.targets
-      .filter(
-        (target) =>
-          this.element.contains(target.element) &&
-          (path.includes(target.element) || target.element.contains?.(event.target)),
-      )
-      .sort((a, b) => {
-        const depth = path.indexOf(a.element) - path.indexOf(b.element);
-        return depth || b.priority - a.priority || a.order - b.order;
-      });
-    const paneElement = path.find((element) => element?.matches?.("lumine-pane"));
-    const paneFallbackAllowed =
-      candidates.length === 0 || candidates.some((target) => target.adapter?.allowPaneFallback);
-    if (paneElement && paneFallbackAllowed) {
-      candidates.push({
-        element: paneElement,
-        adapter: { surface: "pane", showOverlay: true },
-        priority: -Infinity,
-        builtin: true,
-      });
-    }
-    return candidates;
-  }
-
-  eventPath(element) {
-    const path = [];
-    for (let current = element; current; current = current.parentElement) path.push(current);
-    return path;
-  }
-
-  contextForTarget(event, target, { offer, descriptor, native }) {
-    let pane = target.adapter?.getPane?.(event) || paneForElement(target.element);
-    if (!pane || pane.isDestroyed?.()) return null;
-    const location = pane.getContainer?.()?.getLocation?.() || "center";
-    const itemViews = pane.getElement().querySelector(":scope > .item-views");
-    const dropElement = target.adapter?.dropElement || itemViews || target.element;
-    const rect = dropElement.getBoundingClientRect();
-    let candidateSplit = null;
-    const sourceIsOnlyItemHere =
-      offer.source?.onlyItem &&
-      offer.source.windowId === this.windowService.getId() &&
-      offer.source.paneId === pane.id;
-    if (target.builtin && pane.getItems().length > 0 && !sourceIsOnlyItemHere) {
-      candidateSplit = splitForPoint(rect, event.clientX, event.clientY);
-    }
-    let context = {
-      manager: this,
-      event,
-      dataTransfer: event.dataTransfer,
-      offer,
-      descriptor,
-      native,
-      target,
-      element: target.element,
-      dropElement,
-      pane,
-      location,
-      surface: target.adapter?.surface || "custom",
-      index: pane.getActiveItemIndex() + 1,
-      candidateSplit,
-    };
-    const additions =
-      typeof target.adapter === "function"
-        ? target.adapter(context)
-        : target.adapter?.getContext?.(context);
-    if (additions === false || additions === null) return null;
-    if (additions) context = { ...context, ...additions };
-    if (typeof target.adapter?.getIndex === "function") {
-      context.index = target.adapter.getIndex(event, context);
-    }
-    context.resolvePane = ({ allowSplit = true, split = context.candidateSplit } = {}) => {
-      if (context.resolvedPane) return context.resolvedPane;
-      if (!allowSplit || !SPLITS.has(split)) return (context.resolvedPane = context.pane);
-      const method = `split${split[0].toUpperCase()}${split.slice(1)}`;
-      context.createdPane = context.pane[method]({ activate: false });
-      return (context.resolvedPane = context.createdPane);
-    };
-    return context;
-  }
-
-  transitionToClaim(claim) {
-    if (this.activeClaim?.target !== claim.target) {
-      this.activeClaim?.target.adapter?.onDragLeave?.(this.activeClaim.context);
-    }
-    this.activeClaim = claim;
-  }
-
-  clearActiveClaim() {
-    this.cancelPendingLeave();
-    const claim = this.activeClaim;
-    this.activeClaim = null;
-    try {
-      claim?.target.adapter?.onDragLeave?.(claim.context);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      this.hideOverlay();
-    }
-  }
-
-  cancelPendingLeave() {
-    if (this.leaveFrame != null) cancelAnimationFrame(this.leaveFrame);
-    this.leaveFrame = null;
-  }
-
-  updateOverlay(context, proposal) {
-    if (!context.target.adapter?.showOverlay && !context.target.builtin) return this.hideOverlay();
-    const split = proposal.allowSplit === false ? null : context.candidateSplit;
-    const rect = context.dropElement.getBoundingClientRect();
-    const bounds = boundsForSplit(rect, split);
-    // Move a fixed-size, text-free rectangle instead of laying out and painting
-    // a new box for every preview. Keep fractional pane bounds intact.
-    const transform = `translate(${bounds.left}px, ${bounds.top}px) scale(${bounds.width}, ${bounds.height})`;
-    if (this.overlay.style.transform !== transform) this.overlay.style.transform = transform;
-    // The top layer keeps the preview above every pane item's own stacking
-    // contexts and makes these viewport bounds independent of containment.
-    if (this.overlay.isConnected && !this.overlay.matches(":popover-open")) {
-      this.overlay.showPopover();
-    }
-    this.overlay.classList.add("visible");
-  }
-
-  hideOverlay() {
-    this.overlay?.classList.remove("visible");
-    if (this.overlay?.matches(":popover-open")) this.overlay.hidePopover();
-  }
-
-  setDropEffect(dataTransfer, effect) {
-    if (!dataTransfer) return;
-    dataTransfer.dropEffect = effect === "move" ? "move" : effect === "link" ? "link" : "copy";
-  }
-
-  rollbackCreatedPane(context) {
-    const pane = context?.createdPane;
-    if (pane?.isAlive?.() && pane.getItems().length === 0) pane.destroy();
   }
 }
 

@@ -21,6 +21,30 @@ describe("CommandRegistry", () => {
 
   afterEach(() => registry.destroy());
 
+  it("dispatches in another document without reaching the owning window's listeners", async () => {
+    const frame = document.createElement("iframe");
+    parent.append(frame);
+    const childWindow = frame.contentWindow;
+    const root = document.createElement("div");
+    root.className = "auxiliary-command-root";
+    childWindow.document.body.append(root);
+    const observation = registry.attach(childWindow);
+    const local = jasmine.createSpy("local");
+    const main = jasmine.createSpy("main");
+    registry.add(childWindow, "test:auxiliary", local);
+    registry.add(window, "test:auxiliary", main);
+    await registry.dispatch(root, "test:auxiliary");
+    expect(local).toHaveBeenCalledTimes(1);
+    expect(main).not.toHaveBeenCalled();
+    expect(registry.findCommands({ target: root }).map(({ name }) => name)).toContain(
+      "test:auxiliary",
+    );
+    observation.dispose();
+    root.dispatchEvent(new CustomEvent("test:auxiliary", { bubbles: true }));
+    expect(local).toHaveBeenCalledTimes(1);
+    frame.remove();
+  });
+
   describe("when a command event is dispatched on an element", () => {
     it("invokes callbacks with selectors matching the target", () => {
       let called = false;

@@ -261,6 +261,22 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.invoke("lumine:window", action, ...args);
   }
 
+  invokeAuxiliaryWindow(action, ...args) {
+    return ipcRenderer.invoke("lumine:auxiliary-window", action, ...args);
+  }
+
+  onAuxiliaryWindowEvent(callback) {
+    return ipcHelpers.on(ipcRenderer, "auxiliary-window-event", (_event, detail) =>
+      callback(detail),
+    );
+  }
+
+  onAuxiliaryWindowCommand(callback) {
+    return ipcHelpers.on(ipcRenderer, "auxiliary-window-command", (_event, detail) =>
+      callback(detail),
+    );
+  }
+
   invokeApp(action, ...args) {
     return ipcRenderer.invoke("lumine:app", action, ...args);
   }

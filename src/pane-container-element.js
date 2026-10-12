@@ -24,7 +24,7 @@ class PaneContainerElement extends HTMLElement {
   connectedMoveCallback() {}
 
   rootChanged(root) {
-    const focusedElement = this.hasFocus() ? document.activeElement : null;
+    const focusedElement = this.hasFocus() ? this.ownerDocument.activeElement : null;
     const oldView = this.firstChild;
     if (root != null) {
       const view = this.views.getView(root);
@@ -44,7 +44,9 @@ class PaneContainerElement extends HTMLElement {
   }
 
   hasFocus() {
-    return this === document.activeElement || this.contains(document.activeElement);
+    return (
+      this === this.ownerDocument.activeElement || this.contains(this.ownerDocument.activeElement)
+    );
   }
 }
 

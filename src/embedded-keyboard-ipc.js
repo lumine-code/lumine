@@ -26,7 +26,10 @@ function outerFrame(frame, main) {
 }
 
 class Session {
-  constructor(contents, { testing, createBroker, nativeInput, reportError, isWindowFocused }) {
+  constructor(
+    contents,
+    { testing, createBroker, nativeInput, reportError, isWindowFocused, sendCommand },
+  ) {
     this.contents = contents;
     this.testing = testing;
     this.nativeInput = nativeInput || new NativeFrameInput(contents);
@@ -48,7 +51,8 @@ class Session {
           this.snapshot.revision === descriptor.revision &&
           EmbeddedPaneKeymapBroker.ALLOWED_COMMANDS.has(descriptor.command)
         ) {
-          this.contents.send(COMMAND_CHANNEL, descriptor);
+          if (sendCommand) sendCommand(descriptor);
+          else this.contents.send(COMMAND_CHANNEL, descriptor);
         }
       },
       replay: (input) => {
@@ -313,6 +317,7 @@ module.exports = function attachEmbeddedKeyboardIpc(
     testing = false,
     createBroker = (options) => new EmbeddedPaneKeymapBroker(options),
     nativeInput,
+    sendCommand,
     isWindowFocused = () => contents.isFocused(),
     reportError = (error) => console.error("Embedded frame keyboard routing failed", error),
   } = {},
@@ -366,6 +371,7 @@ module.exports = function attachEmbeddedKeyboardIpc(
     nativeInput,
     reportError,
     isWindowFocused,
+    sendCommand,
   });
   registry.sessions.set(contents, session);
   let disposed = false;
@@ -382,7 +388,7 @@ module.exports = function attachEmbeddedKeyboardIpc(
     }
   };
   contents.once("destroyed", dispose);
-  return { dispose, clear: session.clear };
+  return { dispose, clear: session.clear, update: (snapshot) => session.update(snapshot) };
 };
 
 module.exports.STATE_CHANNEL = STATE_CHANNEL;

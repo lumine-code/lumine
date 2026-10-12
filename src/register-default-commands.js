@@ -9,6 +9,7 @@ function settleSaveCommand(result) {
 }
 
 function paneForCommand(workspace, event) {
+  if (event?.context?.pane && !event.context.pane.isDestroyed()) return event.context.pane;
   let element = event?.target;
   if (element?.nodeType !== 1) element = element?.parentElement;
   for (
@@ -60,9 +61,15 @@ function paneItemCommands(notifications) {
         if (split) options.splitDirection = direction;
         else {
           options.targetPane = workspace
-            .getElement()
-            .nearestVisiblePaneInDirection(direction, sourcePane, { item })
+            .getWindowForElement(event.target)
+            ?.getElement()
+            ?.nearestVisiblePaneInDirection(direction, sourcePane, { item })
             ?.getModel();
+          if (!options.targetPane)
+            options.targetPane = workspace
+              .getElement()
+              .nearestVisiblePaneInDirection(direction, sourcePane, { item })
+              ?.getModel();
           if (!options.targetPane) return;
         }
         return settle(() =>
@@ -88,74 +95,74 @@ module.exports = function ({
     {
       "pane:show-next-recently-used-item": {
         description: "Step through the pane's tabs in the order they were last used.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().activateNextRecentlyUsedItem();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).activateNextRecentlyUsedItem();
         },
       },
       "pane:show-previous-recently-used-item": {
         description: "Step back through the pane's tabs in the order they were last used.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().activatePreviousRecentlyUsedItem();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).activatePreviousRecentlyUsedItem();
         },
       },
       "pane:move-active-item-to-top-of-stack": {
         description: "Mark the active tab as the most recently used one.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().moveActiveItemToTopOfStack();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).moveActiveItemToTopOfStack();
         },
       },
-      "pane:show-next-item": function () {
-        return this.getModel().getActivePane().activateNextItem();
+      "pane:show-next-item": function (event) {
+        return paneForCommand(this.getModel(), event).activateNextItem();
       },
-      "pane:show-previous-item": function () {
-        return this.getModel().getActivePane().activatePreviousItem();
+      "pane:show-previous-item": function (event) {
+        return paneForCommand(this.getModel(), event).activatePreviousItem();
       },
-      "pane:show-item-1": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(0);
+      "pane:show-item-1": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(0);
       },
-      "pane:show-item-2": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(1);
+      "pane:show-item-2": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(1);
       },
-      "pane:show-item-3": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(2);
+      "pane:show-item-3": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(2);
       },
-      "pane:show-item-4": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(3);
+      "pane:show-item-4": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(3);
       },
-      "pane:show-item-5": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(4);
+      "pane:show-item-5": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(4);
       },
-      "pane:show-item-6": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(5);
+      "pane:show-item-6": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(5);
       },
-      "pane:show-item-7": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(6);
+      "pane:show-item-7": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(6);
       },
-      "pane:show-item-8": function () {
-        return this.getModel().getActivePane().activateItemAtIndex(7);
+      "pane:show-item-8": function (event) {
+        return paneForCommand(this.getModel(), event).activateItemAtIndex(7);
       },
       "pane:show-item-9": {
         description: "Show the last tab in the pane, however many there are.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().activateLastItem();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).activateLastItem();
         },
       },
       "pane:move-item-right": {
         description: "Move the active tab one place along, within its own pane.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().moveItemRight();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).moveItemRight();
         },
       },
       "pane:move-item-left": {
         description: "Move the active tab one place back, within its own pane.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().moveItemLeft();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).moveItemLeft();
         },
       },
       "pane:toggle-pending-item": {
         description: "Keep a previewed tab open, or hand it back to preview.",
-        didDispatch: function () {
-          return this.getModel().getActivePane().togglePendingItem();
+        didDispatch: function (event) {
+          return paneForCommand(this.getModel(), event).togglePendingItem();
         },
       },
       "window:increase-font-size": function () {
@@ -318,11 +325,15 @@ module.exports = function ({
       "window:toggle-bottom-dock": function () {
         return this.getModel().getBottomDock().toggle();
       },
-      "window:focus-next-pane": function () {
-        return this.getModel().activateNextPane();
+      "window:focus-next-pane": function (event) {
+        return (
+          event.context?.pane.getContainer() ?? this.getModel().getActivePaneContainer()
+        ).activateNextPane();
       },
-      "window:focus-previous-pane": function () {
-        return this.getModel().activatePreviousPane();
+      "window:focus-previous-pane": function (event) {
+        return (
+          event.context?.pane.getContainer() ?? this.getModel().getActivePaneContainer()
+        ).activatePreviousPane();
       },
       ...paneItemCommands(notificationManager),
       "window:save-all": function () {
@@ -360,15 +371,15 @@ module.exports = function ({
       },
       "core:close": {
         description: "Close the active center tab, or its empty pane, or the window.",
-        didDispatch: function () {
-          return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
+        didDispatch: function (event) {
+          return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow(event?.context);
         },
       },
-      "core:save": function () {
-        return settleSaveCommand(this.getModel().saveActivePaneItem());
+      "core:save": function (event) {
+        return settleSaveCommand(this.getModel().saveActivePaneItem(event?.context));
       },
-      "core:save-as": function () {
-        return this.getModel().saveActivePaneItemAs();
+      "core:save-as": function (event) {
+        return this.getModel().saveActivePaneItemAs(event?.context);
       },
       "modal:go-back": {
         hiddenInCommandPalette: true,

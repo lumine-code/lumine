@@ -1,4 +1,6 @@
-const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
+const PanelContainer = require("./panel-container");
+const Panel = require("./panel");
 
 /**
  * @public
@@ -13,13 +15,34 @@ module.exports = class EditorWindow {
     this.editorContainer = editorContainer;
     this.windowService = windowService;
     this.main = main;
+    this.persistentId = main ? "main" : windowService.persistentId;
     this.requestClose = requestClose;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
     this.destroyed = false;
+    this.willDestroyCallbacks = new Set();
+    this.didDestroyCallbacks = new Set();
     this.domWindow = null;
     this.element = null;
     editorContainer.editorWindow = this;
+    this.panelContainers = main
+      ? workspace.panelContainers
+      : Object.fromEntries(
+          ["header", "footer", "modal"].map((location) => [
+            location,
+            new PanelContainer({
+              location,
+              viewRegistry: workspace.viewRegistry,
+            }),
+          ]),
+        );
+    if (!main && workspace.viewRegistry) {
+      this.subscriptions.add({
+        dispose: () => {
+          for (const container of Object.values(this.panelContainers)) container.destroy();
+        },
+      });
+    }
   }
 
   /**
@@ -92,6 +115,35 @@ module.exports = class EditorWindow {
     return this.element;
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Add a panel to this window's title bar region.
+   * @param {Object} options - Panel item, visibility and priority.
+   * @returns {Panel} The window-local panel.
+   */
+  addHeaderPanel(options) {
+    return this.panelContainers.header.addPanel(new Panel(options, this.workspace.viewRegistry));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Add a panel to this window's status bar region.
+   * @param {Object} options - Panel item, visibility and priority.
+   * @returns {Panel} The window-local panel.
+   */
+  addFooterPanel(options) {
+    return this.panelContainers.footer.addPanel(new Panel(options, this.workspace.viewRegistry));
+  }
+
+  /** @private */
+  getPanelContainers() {
+    return this.panelContainers;
+  }
+
   /** @private Bind presentation only after its document and root are ready. */
   setPresentation(domWindow, element) {
     if (this.destroyed) throw new Error("The editor window has been destroyed.");
@@ -117,7 +169,8 @@ module.exports = class EditorWindow {
    * Subscribe before the window's presentation is released.
    */
   onWillDestroy(callback) {
-    return this.emitter.on("will-destroy", callback);
+    this.willDestroyCallbacks.add(callback);
+    return new Disposable(() => this.willDestroyCallbacks.delete(callback));
   }
 
   /**
@@ -127,7 +180,8 @@ module.exports = class EditorWindow {
    * Subscribe after the window's presentation is released.
    */
   onDidDestroy(callback) {
-    return this.emitter.on("did-destroy", callback);
+    this.didDestroyCallbacks.add(callback);
+    return new Disposable(() => this.didDestroyCallbacks.delete(callback));
   }
 
   /**
@@ -154,10 +208,120 @@ module.exports = class EditorWindow {
    * @public
    * @status public
    *
+   * Subscribe when this native window is maximized.
+   * @param {Function} callback - The observer.
+   * @returns {Disposable} Removes the observation.
+   */
+  onDidMaximize(callback) {
+    return this.windowService.onDidMaximize(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Subscribe when this native window leaves maximization.
+   * @param {Function} callback - The observer.
+   * @returns {Disposable} Removes the observation.
+   */
+  onDidUnmaximize(callback) {
+    return this.windowService.onDidUnmaximize(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Subscribe when this native window enters fullscreen.
+   * @param {Function} callback - The observer.
+   * @returns {Disposable} Removes the observation.
+   */
+  onDidEnterFullScreen(callback) {
+    return this.windowService.onDidEnterFullScreen(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Subscribe when this native window leaves fullscreen.
+   * @param {Function} callback - The observer.
+   * @returns {Disposable} Removes the observation.
+   */
+  onDidLeaveFullScreen(callback) {
+    return this.windowService.onDidLeaveFullScreen(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Set the native bounds of this presentation.
+   * @param {Object} bounds - x, y, width and height.
+   * @returns {Promise} Completes when the bounds have been applied.
+   */
+  setBounds(bounds) {
+    if (this.windowService.setBounds) return this.windowService.setBounds(bounds);
+    return Promise.all([
+      this.windowService.setPosition(bounds.x, bounds.y),
+      this.windowService.setSize(bounds.width, bounds.height),
+    ]);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Set the attachment offset of native sheets in this window.
+   * @param {Number} offset - The title bar height in pixels.
+   * @returns {Promise|undefined} Completes when supported by the platform.
+   */
+  setSheetOffset(offset) {
+    return this.windowService.setSheetOffset?.(offset);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Choose a save path in a native dialog attached to this window.
+   * @param {Object} options - Electron save dialog options.
+   * @returns {Promise<Object>} The selected filePath or a cancelled result.
+   */
+  showSaveDialog(options = {}) {
+    return this.windowService.showSaveDialog(options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Ask for a decision in a native dialog attached to this window.
+   * @param {Object} options - The message, detail and button labels.
+   * @returns {Promise<Number>} The selected button index.
+   */
+  confirm(options) {
+    return this.windowService.confirm(options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Read the native window's state.
    */
   getState() {
     return this.windowService.getState();
+  }
+
+  /** @private Native state is pushed on geometry events so snapshots remain synchronous. */
+  serializeGeometry() {
+    const state = this.windowService.state;
+    return {
+      bounds: state?.bounds,
+      maximized: !!state?.maximized,
+      fullScreen: !!state?.fullScreen,
+    };
   }
 
   /**
@@ -222,11 +386,13 @@ module.exports = class EditorWindow {
         errors.push(error);
       }
     };
-    attempt(() => this.emitter.emit("will-destroy", this));
+    for (const callback of [...this.willDestroyCallbacks]) attempt(() => callback(this));
+    this.willDestroyCallbacks.clear();
     attempt(() => this.subscriptions.dispose());
     this.element = null;
     this.domWindow = null;
-    attempt(() => this.emitter.emit("did-destroy", this));
+    for (const callback of [...this.didDestroyCallbacks]) attempt(() => callback(this));
+    this.didDestroyCallbacks.clear();
     attempt(() => this.emitter.dispose());
     if (errors.length === 1) throw errors[0];
     if (errors.length) throw new AggregateError(errors, "Unable to release the editor window.");

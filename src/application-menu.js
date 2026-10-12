@@ -42,9 +42,7 @@ module.exports = class MacApplicationMenu {
     if (this.lastFocusedWindow == null) this.lastFocusedWindow = window;
 
     const focusHandler = () => {
-      this.lastFocusedWindow = window;
-      const template = this.windowTemplates.get(window);
-      if (template) this.setActiveTemplate(template);
+      this.focusWindow(window);
     };
 
     window.on("focus", focusHandler);
@@ -66,6 +64,12 @@ module.exports = class MacApplicationMenu {
     });
 
     this.enableWindowSpecificItems(true);
+  }
+
+  focusWindow(window) {
+    this.lastFocusedWindow = window;
+    const template = this.windowTemplates.get(window);
+    if (template) this.setActiveTemplate(template);
   }
 
   flattenMenuTemplate(template) {

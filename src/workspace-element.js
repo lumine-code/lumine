@@ -38,14 +38,15 @@ function observeScrollbarStyle(callback) {
 
 class WorkspaceElement extends HTMLElement {
   connectedCallback() {
-    this.focus();
-    this.htmlElement = document.querySelector("html");
-    this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
+    if (this.ownerDocument.hasFocus()) this.focus();
+    this.htmlElement = this.ownerDocument.documentElement;
+    if (!this.editorWindow || this.editorWindow.isMain())
+      this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
   }
 
   disconnectedCallback() {
     this.subscriptions.dispose();
-    this.htmlElement.removeEventListener("mouseleave", this.handleCenterLeave);
+    this.htmlElement?.removeEventListener("mouseleave", this.handleCenterLeave);
   }
 
   initializeContent() {
@@ -157,7 +158,7 @@ class WorkspaceElement extends HTMLElement {
     let fontSize = this.config.get("editor.fontSize");
     let fontFamily = this.config.get("editor.fontFamily");
     let lineHeight = this.config.get("editor.lineHeight");
-    let pixelRatio = window.devicePixelRatio;
+    let pixelRatio = this.ownerDocument.defaultView.devicePixelRatio;
     let adjustedLineHeight;
 
     // The config schema allows `editor.lineHeight` to be either a bare number
@@ -213,13 +214,19 @@ class WorkspaceElement extends HTMLElement {
   --editor-font-family: ${fontFamily};
   --editor-line-height: ${adjustedLineHeight};
 }`;
+    if (this.editorWindow && !this.editorWindow.isMain()) {
+      this.style.setProperty("--editor-font-size", `${fontSize}px`);
+      this.style.setProperty("--editor-font-family", fontFamily);
+      this.style.setProperty("--editor-line-height", adjustedLineHeight);
+      return;
+    }
     this.styleManager.addStyleSheet(styleSheetSource, {
       sourcePath: "global-text-editor-styles",
       priority: -1,
     });
   }
 
-  initialize(model, { config, project, styleManager, viewRegistry }) {
+  initialize(model, { config, project, styleManager, viewRegistry, editorWindow }) {
     this.handleCenterEnter = this.handleCenterEnter.bind(this);
     this.handleCenterLeave = this.handleCenterLeave.bind(this);
     this.handleEdgesMouseMove = _.throttle(this.handleEdgesMouseMove.bind(this), 100);
@@ -234,6 +241,8 @@ class WorkspaceElement extends HTMLElement {
     this.project = project;
     this.config = config;
     this.styleManager = styleManager;
+    this.editorWindow = editorWindow ?? model.getMainWindow();
+    if (this.editorWindow && !this.editorWindow.isMain()) return this.initializeAuxiliary();
     if (this.viewRegistry == null) {
       throw new Error("Must pass a viewRegistry parameter when initializing WorkspaceElements");
     }
@@ -308,6 +317,31 @@ class WorkspaceElement extends HTMLElement {
     return this;
   }
 
+  initializeAuxiliary() {
+    this.subscriptions = new CompositeDisposable();
+    this.classList.add("workspace", "auxiliary-workspace");
+    this.setAttribute("tabindex", -1);
+    this.initializeContent();
+    this.paneContainer = this.editorWindow.getEditorContainer().getElement();
+    this.verticalAxis.appendChild(this.paneContainer);
+    const panels = this.editorWindow.getPanelContainers();
+    this.panelContainers = Object.fromEntries(
+      Object.entries(panels).map(([location, container]) => [location, container.getElement()]),
+    );
+    this.insertBefore(this.panelContainers.header, this.horizontalAxis);
+    this.append(this.panelContainers.footer, this.panelContainers.modal);
+    this.addEventListener("focus", this.handleFocus.bind(this));
+    this.addEventListener("wheel", this.handleCtrlWheel, { capture: true, passive: false });
+    this.subscriptions.add(
+      new Disposable(() =>
+        this.removeEventListener("wheel", this.handleCtrlWheel, { capture: true }),
+      ),
+    );
+    this.observeScrollbarStyle();
+    this.observeTextEditorFontConfig();
+    return this;
+  }
+
   destroy() {
     this.subscriptions.dispose();
   }
@@ -354,7 +388,8 @@ class WorkspaceElement extends HTMLElement {
     const { x, y, distanceScale } = sourceEditorElement.getComponent().normalizedWheelDeltas(event);
 
     let anyAccepted = false;
-    for (const pane of this.model.getCenter().getPanes()) {
+    for (const pane of this.editorWindow?.getEditorContainer().getPanes() ??
+      this.model.getCenter().getPanes()) {
       const item = pane.getActiveItem();
       if (!this.model.isTextEditor(item)) continue;
       const component = item.getElement().getComponent();
@@ -411,7 +446,9 @@ class WorkspaceElement extends HTMLElement {
   }
 
   handleFocus(_event) {
-    this.model.getActivePane().activate();
+    const pane =
+      this.editorWindow?.getEditorContainer().getActivePane() ?? this.model.getActivePane();
+    pane.activate();
   }
 
   nearestVisiblePaneInDirection(direction, pane, { item } = {}) {
@@ -431,6 +468,7 @@ class WorkspaceElement extends HTMLElement {
       .filter((otherPaneView) => {
         if (
           otherPaneView.getModel() === pane ||
+          otherPaneView.ownerDocument !== paneView.ownerDocument ||
           (item && !otherPaneView.getModel().isItemAllowed(item))
         )
           return false;

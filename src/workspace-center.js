@@ -47,7 +47,9 @@ module.exports = class WorkspaceCenter {
         if (container === this.activePaneContainer)
           this.emitter.emit("did-stop-changing-active-pane-item", item);
       }),
-      container.onDidAddPane((event) => this.emitter.emit("did-add-pane", event)),
+      container.onDidAddPane((event) => {
+        if (!event.transferred) this.emitter.emit("did-add-pane", event);
+      }),
       container.onWillDestroyPane((event) => this.emitter.emit("will-destroy-pane", event)),
       container.onDidDestroyPane((event) => this.emitter.emit("did-destroy-pane", event)),
       container.onDidAddPaneItem((event) => this.emitter.emit("did-add-pane-item", event)),
@@ -123,11 +125,24 @@ module.exports = class WorkspaceCenter {
   }
 
   serialize() {
-    return this.paneContainer.serialize();
+    return {
+      main: this.paneContainer.serialize(),
+      activeWindowId: this.activePaneContainer.getWindow()?.persistentId ?? "main",
+      windows: this.getPaneContainers()
+        .filter((container) => container !== this.paneContainer)
+        .map((container) => {
+          const window = container.getWindow();
+          return {
+            id: window.persistentId,
+            ...window.serializeGeometry(),
+            container: container.serialize(),
+          };
+        }),
+    };
   }
 
   deserialize(state, deserializerManager) {
-    this.paneContainer.deserialize(state, deserializerManager);
+    this.paneContainer.deserialize(state.main ?? state, deserializerManager);
   }
 
   activate() {

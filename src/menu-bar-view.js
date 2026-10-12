@@ -2,8 +2,13 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { parseMnemonic, renderMnemonic } = require("./menu-view");
 
 module.exports = class MenuBarView {
-  constructor(menuManager, { autoHide = false, altGivesFocus = true } = {}) {
+  constructor(
+    menuManager,
+    { autoHide = false, altGivesFocus = true, document: domDocument = globalThis.document } = {},
+  ) {
     this.menuManager = menuManager;
+    this.document = domDocument;
+    this.window = domDocument.defaultView;
     this.autoHide = Boolean(autoHide);
     this.altGivesFocus = altGivesFocus !== false;
     this.maxWidth = Infinity;
@@ -19,7 +24,7 @@ module.exports = class MenuBarView {
     this.destroyed = false;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
-    this.element = document.createElement("div");
+    this.element = this.document.createElement("div");
     this.element.classList.add("app-menu");
     this.element.setAttribute("role", "menubar");
     this.element.tabIndex = -1;
@@ -36,12 +41,15 @@ module.exports = class MenuBarView {
     this.boundWindowClick = (event) => this.onWindowClick(event);
     // Observe Alt usage before an embedded surface consumes its keyboard or
     // pointer events. Only a standalone Alt press should focus the menu.
-    document.body.addEventListener("keydown", this.boundKeyDown, true);
-    document.body.addEventListener("keyup", this.boundKeyUp, true);
-    window.addEventListener("wheel", this.boundWheel, { capture: true, passive: true });
-    window.addEventListener("mousedown", this.boundMouseDown, { capture: true, passive: true });
-    window.addEventListener("blur", this.boundWindowBlur);
-    window.addEventListener("click", this.boundWindowClick);
+    this.document.body.addEventListener("keydown", this.boundKeyDown, true);
+    this.document.body.addEventListener("keyup", this.boundKeyUp, true);
+    this.window.addEventListener("wheel", this.boundWheel, { capture: true, passive: true });
+    this.window.addEventListener("mousedown", this.boundMouseDown, {
+      capture: true,
+      passive: true,
+    });
+    this.window.addEventListener("blur", this.boundWindowBlur);
+    this.window.addEventListener("click", this.boundWindowClick);
     this.element.addEventListener("focusout", this.boundFocusOut);
     this.subscriptions.add(menuManager.onDidChange(() => this.scheduleUpdate()));
     this.renderTemplate();
@@ -57,7 +65,7 @@ module.exports = class MenuBarView {
   }
 
   scheduleUpdate() {
-    if (this.popup || this.element.contains(document.activeElement)) {
+    if (this.popup || this.element.contains(this.document.activeElement)) {
       this.pendingUpdate = true;
       return;
     }
@@ -65,7 +73,8 @@ module.exports = class MenuBarView {
   }
 
   applyPendingUpdate() {
-    if (!this.pendingUpdate || this.popup || this.element.contains(document.activeElement)) return;
+    if (!this.pendingUpdate || this.popup || this.element.contains(this.document.activeElement))
+      return;
     this.pendingUpdate = false;
     this.renderTemplate();
   }
@@ -86,7 +95,7 @@ module.exports = class MenuBarView {
   }
 
   createButton(template, { overflow = false } = {}) {
-    const element = document.createElement("div");
+    const element = this.document.createElement("div");
     element.classList.add("menu-label");
     element.setAttribute("role", "menuitem");
     element.setAttribute("aria-haspopup", "menu");
@@ -145,6 +154,7 @@ module.exports = class MenuBarView {
     button.element.focus({ preventScroll: true });
     this.setTemporarilyVisible(true);
     const popup = this.menuManager.showPopup({
+      target: this.previousFocus,
       template,
       anchor: button.element,
       dismissBoundary: button.element,
@@ -172,7 +182,7 @@ module.exports = class MenuBarView {
       this.setTemporarilyVisible(false);
       this.applyPendingUpdate();
       this.endSession({
-        restoreFocus: restoreFocus !== false && this.element.contains(document.activeElement),
+        restoreFocus: restoreFocus !== false && this.element.contains(this.document.activeElement),
       });
     });
   }
@@ -206,8 +216,8 @@ module.exports = class MenuBarView {
 
   blur() {
     const focusWasOwned =
-      this.element.contains(document.activeElement) ||
-      Boolean(this.popup?.element.contains(document.activeElement));
+      this.element.contains(this.document.activeElement) ||
+      Boolean(this.popup?.element.contains(this.document.activeElement));
     this.popupGeneration = (this.popupGeneration ?? 0) + 1;
     this.popup?.close({ cancelled: true, restoreFocus: false });
     this.popup = null;
@@ -225,10 +235,10 @@ module.exports = class MenuBarView {
 
   beginSession() {
     if (this.previousFocus?.isConnected) return;
-    const activeElement = document.activeElement;
+    const activeElement = this.document.activeElement;
     if (
       activeElement &&
-      activeElement !== document.body &&
+      activeElement !== this.document.body &&
       !this.element.contains(activeElement) &&
       !this.popup?.element.contains(activeElement)
     ) {
@@ -353,7 +363,7 @@ module.exports = class MenuBarView {
   onFocusOut(event) {
     if (this.popup || this.element.contains(event.relatedTarget)) return;
     requestAnimationFrame(() => {
-      if (!this.popup && !this.element.contains(document.activeElement)) this.blur();
+      if (!this.popup && !this.element.contains(this.document.activeElement)) this.blur();
     });
   }
 
@@ -422,12 +432,12 @@ module.exports = class MenuBarView {
     this.destroyed = true;
     this.blur();
     this.subscriptions.dispose();
-    document.body.removeEventListener("keydown", this.boundKeyDown, true);
-    document.body.removeEventListener("keyup", this.boundKeyUp, true);
-    window.removeEventListener("wheel", this.boundWheel, { capture: true });
-    window.removeEventListener("mousedown", this.boundMouseDown, { capture: true });
-    window.removeEventListener("blur", this.boundWindowBlur);
-    window.removeEventListener("click", this.boundWindowClick);
+    this.document.body.removeEventListener("keydown", this.boundKeyDown, true);
+    this.document.body.removeEventListener("keyup", this.boundKeyUp, true);
+    this.window.removeEventListener("wheel", this.boundWheel, { capture: true });
+    this.window.removeEventListener("mousedown", this.boundMouseDown, { capture: true });
+    this.window.removeEventListener("blur", this.boundWindowBlur);
+    this.window.removeEventListener("click", this.boundWindowClick);
     this.element.removeEventListener("focusout", this.boundFocusOut);
     this.element.remove();
     this.emitter.dispose();

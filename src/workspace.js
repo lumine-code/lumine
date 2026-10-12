@@ -15,6 +15,8 @@ const ModalFlow = require("./modal-flow");
 const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const EditorWindow = require("./editor-window");
+const transferPaneLayout = require("./pane-window-transfer");
+const { fileEditorForItem, embeddedEditorForItem } = require("./item-text-editors");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
 // Builds detached dialog models and their optional modal hosts with this
@@ -398,10 +400,11 @@ module.exports = class Workspace extends Model {
     this.incoming = new Map();
     this.editorWindows = new Set();
     this.mainEditorWindow = null;
+    this.windowOperations = new Map();
   }
 
   /** @private Wire the physical main window at the environment composition root. */
-  initializeEditorWindows(windowService) {
+  initializeEditorWindows(windowService, domWindow) {
     this.windowService = windowService;
     const main = new EditorWindow({
       workspace: this,
@@ -413,6 +416,7 @@ module.exports = class Workspace extends Model {
     for (const location of ["left", "right", "bottom"]) {
       this.paneContainers[location].paneContainer.editorWindow = main;
     }
+    if (domWindow) main.setPresentation(domWindow, this.getElement());
     this.registerEditorWindow(main);
     return main;
   }
@@ -459,6 +463,33 @@ module.exports = class Workspace extends Model {
    * @public
    * @status public
    *
+   * Create an additional editor window sharing this workspace's documents and packages.
+   * @param {Object} options - Optional native bounds and visibility.
+   * @returns {Promise<EditorWindow>} The ready presentation window.
+   */
+  openEditorWindow(options = {}) {
+    if (!this.editorWindowHost || !this.isAlive())
+      return Promise.reject(new Error("This workspace cannot open an editor window."));
+    return this.editorWindowHost.open(options);
+  }
+
+  /** @private Prevent close and transfer from mutating the same container concurrently. */
+  runWindowOperation(windows, callback) {
+    if (windows.some((window) => this.windowOperations.has(window)))
+      return Promise.reject(new Error("An editor window operation is already in progress."));
+    const operation = Promise.resolve().then(callback);
+    for (const window of windows) this.windowOperations.set(window, operation);
+    return operation.finally(() => {
+      for (const window of windows) {
+        if (this.windowOperations.get(window) === operation) this.windowOperations.delete(window);
+      }
+    });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Observe current and future presentation windows of this workspace.
    * @param {Function} callback - Receives each EditorWindow once.
    * @returns {Disposable} Removes the observation.
@@ -477,6 +508,186 @@ module.exports = class Workspace extends Model {
    */
   getFocusedWindow() {
     return this.getWindows().find((editorWindow) => editorWindow.getDocument()?.hasFocus()) ?? null;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the presentation containing a DOM element, including embedded frames.
+   * @param {Element} element - An element belonging to a workspace presentation.
+   * @returns {EditorWindow|null} The owning presentation.
+   */
+  getWindowForElement(element) {
+    let ownerDocument = element?.ownerDocument;
+    while (ownerDocument) {
+      const presentation = this.getWindows().find(
+        (candidate) => candidate.getDocument() === ownerDocument,
+      );
+      if (presentation) return presentation;
+      try {
+        ownerDocument = ownerDocument.defaultView?.frameElement?.ownerDocument;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Capture a command's presentation and document targets before asynchronous work.
+   * @param {Event|Element} eventOrElement - The dispatch event or original DOM target.
+   * @returns {Object} window, pane, item, editor, fileEditor and embeddedEditor.
+   */
+  resolveCommandContext(eventOrElement) {
+    const target = eventOrElement?.target ?? eventOrElement;
+    const window =
+      this.getWindowForElement(target) ?? this.getFocusedWindow() ?? this.getMainWindow();
+    let element = target?.nodeType === 1 ? target : target?.parentElement;
+    let pane = null;
+    while (element) {
+      const candidate = element.closest?.("lumine-pane")?.getModel?.();
+      if (candidate && this.getPanes().includes(candidate)) {
+        pane = candidate;
+        break;
+      }
+      try {
+        element = element.ownerDocument?.defaultView?.frameElement;
+      } catch {
+        break;
+      }
+    }
+    const documentPane =
+      pane?.getContainer().getLocation() === "center"
+        ? pane
+        : (window?.getEditorContainer().getActivePane() ?? this.getCenter().getActivePane());
+    pane ??= documentPane;
+    const documentItem = documentPane?.getActiveItem();
+    const directEditor = this.getTextEditorForElement(target, { includeMini: false });
+    return Object.freeze({
+      window,
+      pane,
+      item: pane?.getActiveItem(),
+      editor: directEditor ?? (documentItem instanceof TextEditor ? documentItem : undefined),
+      fileEditor: fileEditorForItem(documentItem),
+      embeddedEditor: directEditor ?? embeddedEditorForItem(documentItem),
+      documentPane,
+      documentItem,
+    });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Close one presentation after its document panes have accepted closing.
+   * @param {EditorWindow} editorWindow - A window belonging to this workspace.
+   * @returns {Promise<Boolean>} Whether the window closed.
+   */
+  async closeEditorWindow(editorWindow) {
+    if (!this.editorWindows.has(editorWindow)) return false;
+    if (editorWindow.isMain()) {
+      await this.windowService.close();
+      return true;
+    }
+    const pending = this.windowOperations.get(editorWindow);
+    if (pending) return false;
+    return this.runWindowOperation([editorWindow], async () => {
+      const container = editorWindow.getEditorContainer();
+      if (
+        !(await container.confirmClose({
+          windowCloseRequested: true,
+          projectHasPaths: this.project.getPaths().length > 0,
+        }))
+      )
+        return false;
+      await this.releaseEditorWindow(editorWindow);
+      return true;
+    });
+  }
+
+  /** @private Release an accepted close or an empty transfer source, attempting every cleanup. */
+  async releaseEditorWindow(editorWindow) {
+    const container = editorWindow.getEditorContainer();
+    const domWindow = editorWindow.getDOMWindow();
+    const errors = [];
+    for (const cleanup of [
+      () => container.destroy(),
+      () => this.getCenter().removePaneContainer(container),
+      () => editorWindow.destroy(),
+      () => editorWindow.windowService.close(),
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (
+      this.viewRegistry.animationFrameWindow === domWindow ||
+      this.viewRegistry.preferredAnimationFrameWindow === domWindow
+    )
+      this.viewRegistry.setAnimationFrameWindow(this.getMainWindow()?.getDOMWindow());
+    if (errors.length) throw new AggregateError(errors, "Unable to release the editor window.");
+  }
+
+  /** @private Reset/restore owns document teardown and must not ask for another close approval. */
+  async discardEditorWindows() {
+    for (const window of this.getWindows().filter((window) => !window.isMain()))
+      await this.releaseEditorWindow(window);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Present an existing document pane in a new window without reopening its items.
+   * @param {Pane} pane - A document pane belonging to this workspace.
+   * @returns {Promise<EditorWindow>} The new presentation.
+   */
+  async detachPane(pane) {
+    const source = pane?.getContainer();
+    if (!source || source.getLocation() !== "center" || !this.getPanes().includes(pane))
+      throw new Error("Only document panes of this workspace can be detached.");
+    return this.runWindowOperation([source.getWindow()], async () => {
+      const destination = await this.openEditorWindow({ show: false });
+      this.windowOperations.set(destination, this.windowOperations.get(source.getWindow()));
+      try {
+        await transferPaneLayout(this, source, destination.getEditorContainer(), [pane]);
+      } catch (error) {
+        await this.releaseEditorWindow(destination);
+        throw error;
+      } finally {
+        this.windowOperations.delete(destination);
+      }
+      await destination.windowService.show();
+      await destination.focus();
+      return destination;
+    });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Reattach an additional window's complete pane layout to the main window.
+   * @param {EditorWindow} editorWindow - An additional window of this workspace.
+   * @returns {Promise<EditorWindow>} The main presentation after reattachment.
+   */
+  async attachWindow(editorWindow) {
+    if (!this.editorWindows.has(editorWindow) || editorWindow.isMain())
+      throw new Error("Only an additional window of this workspace can be attached.");
+    const main = this.getMainWindow();
+    return this.runWindowOperation([editorWindow, main], async () => {
+      const source = editorWindow.getEditorContainer();
+      await transferPaneLayout(this, source, main.getEditorContainer(), source.getPanes());
+      await this.releaseEditorWindow(editorWindow);
+      await main.focus();
+      return main;
+    });
   }
 
   observeFileDocuments() {
@@ -688,8 +899,7 @@ module.exports = class Workspace extends Model {
       }
       this.consumeServices(this.packageManager);
       if (this.windowService) {
-        const main = this.initializeEditorWindows(this.windowService);
-        if (domWindow) main.setPresentation(domWindow, this.getElement());
+        this.initializeEditorWindows(this.windowService, domWindow);
       }
     } finally {
       this.#resettingItemOpens--;
@@ -812,6 +1022,38 @@ module.exports = class Workspace extends Model {
     } catch (error) {
       this.#recoverPersistentItems(persistentItems, assertLayoutCurrent, error);
     }
+  }
+
+  /** @private Restore physical hosts after the shared project's buffers and main layout. */
+  async restoreEditorWindows(state, deserializers, options = {}, assertCurrent = () => {}) {
+    if (options.locations && !options.locations.includes("center")) return;
+    const guard = this.#layoutGuard(assertCurrent);
+    guard();
+    await this.discardEditorWindows();
+    guard();
+    const center = state.paneContainers?.center;
+    for (const saved of center?.windows ?? []) {
+      const window = await this.openEditorWindow({
+        show: false,
+        bounds: saved.bounds,
+        persistentId: saved.id,
+      });
+      try {
+        guard();
+        window.getEditorContainer().deserialize(saved.container, deserializers);
+        if (saved.maximized) await window.maximize();
+        if (saved.fullScreen) await window.windowService.setFullScreen(true);
+        guard();
+        await window.windowService.show();
+      } catch (error) {
+        await this.releaseEditorWindow(window);
+        throw error;
+      }
+    }
+    const active = this.getWindows().find(
+      (window) => window.persistentId === center?.activeWindowId,
+    );
+    active?.getEditorContainer().getActivePane().activate();
   }
 
   /**
@@ -3099,7 +3341,8 @@ module.exports = class Workspace extends Model {
    * Targets the center rather than the focused pane container, for the reason
    * given on {@link #destroyActivePaneItem}.
    */
-  saveActivePaneItem() {
+  saveActivePaneItem(context) {
+    if (context) return context.documentPane?.saveItem(context.documentItem);
     return this.getCenter().getActivePane().saveActiveItem();
   }
 
@@ -3117,8 +3360,9 @@ module.exports = class Workspace extends Model {
    * Targets the center rather than the focused pane container, for the reason
    * given on {@link #destroyActivePaneItem}.
    */
-  saveActivePaneItemAs() {
-    this.getCenter().getActivePane().saveActiveItemAs();
+  saveActivePaneItemAs(context) {
+    if (context) return context.documentPane?.saveItemAs(context.documentItem);
+    return this.getCenter().getActivePane().saveActiveItemAs();
   }
 
   /**
@@ -3201,7 +3445,8 @@ module.exports = class Workspace extends Model {
    * @returns {Pane|undefined} The pane that received focus.
    */
   focusPaneInDirection(direction, { sourcePane = this.getActivePane() } = {}) {
-    const pane = this.getElement().nearestVisiblePaneInDirection(direction, sourcePane)?.getModel();
+    const root = sourcePane?.getContainer().getWindow()?.getElement() ?? this.getElement();
+    const pane = root.nearestVisiblePaneInDirection(direction, sourcePane)?.getModel();
     pane?.activate();
     return pane;
   }
@@ -3333,13 +3578,16 @@ module.exports = class Workspace extends Model {
    * Targets the center rather than the focused pane container, for the reason
    * given on {@link #destroyActivePaneItem}.
    */
-  closeActivePaneItemOrEmptyPaneOrWindow() {
-    if (this.getCenter().getActivePaneItem() != null) {
-      this.getCenter().getActivePane().destroyActiveItem();
-    } else if (this.getCenter().getPanes().length > 1) {
-      this.getCenter().destroyActivePane();
+  closeActivePaneItemOrEmptyPaneOrWindow(context) {
+    const pane = context?.documentPane ?? this.getCenter().getActivePane();
+    const item = context ? context.documentItem : pane.getActiveItem();
+    const container = pane.getContainer();
+    if (item != null) {
+      return pane.destroyItem(item);
+    } else if (container.getPanes().length > 1) {
+      return pane.destroy();
     } else if (this.config.get("core.closeEmptyWindows")) {
-      lumine.window.close();
+      return (container.getWindow() ?? this.windowService).close();
     }
   }
 

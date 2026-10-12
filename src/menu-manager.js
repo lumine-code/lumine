@@ -81,6 +81,7 @@ module.exports = class MenuManager {
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
     this.contextViewManager = null;
+    this.contextViewManagers = new Map();
     this.template = [];
     // Top-level menus the platform file declares. They belong to the menu bar
     // rather than to whichever package fills them, so `unmerge` must not splice
@@ -98,7 +99,7 @@ module.exports = class MenuManager {
 
   initialize({ resourcePath }) {
     this.resourcePath = resourcePath;
-    this.contextViewManager ??= new ContextViewManager();
+    this.ensureContextViewManager();
     this.disposables.add(this.keymapManager.onDidReloadKeymap(() => this.update()));
     this.update();
     this.initialized = true;
@@ -111,7 +112,8 @@ module.exports = class MenuManager {
       this.pendingUpdateOperation = null;
     }
     this.disposables.dispose();
-    this.contextViewManager?.destroy();
+    for (const manager of this.contextViewManagers.values()) manager.destroy();
+    this.contextViewManagers.clear();
     this.contextViewManager = null;
     this.emitter.dispose();
   }
@@ -134,9 +136,19 @@ module.exports = class MenuManager {
     return _.deepClone(this.template);
   }
 
-  ensureContextViewManager() {
-    this.contextViewManager ??= new ContextViewManager();
-    return this.contextViewManager;
+  ensureContextViewManager(document = globalThis.document) {
+    let manager = this.contextViewManagers.get(document);
+    if (!manager) {
+      manager = new ContextViewManager({ document });
+      this.contextViewManagers.set(document, manager);
+    }
+    if (document === globalThis.document) this.contextViewManager = manager;
+    return manager;
+  }
+
+  releaseDocument(document) {
+    this.contextViewManagers.get(document)?.destroy();
+    this.contextViewManagers.delete(document);
   }
 
   /**
@@ -150,7 +162,7 @@ module.exports = class MenuManager {
    */
   createMenuBar(options = {}) {
     const MenuBarView = require("./menu-bar-view");
-    this.ensureContextViewManager();
+    this.ensureContextViewManager(options.document);
     return new MenuBarView(this, options);
   }
 
@@ -165,7 +177,12 @@ module.exports = class MenuManager {
    */
   showPopup(options = {}) {
     const { showMenuPopup } = require("./menu-view");
-    return showMenuPopup(this.ensureContextViewManager(), options);
+    const document =
+      options.target?.ownerDocument ??
+      options.anchor?.ownerDocument ??
+      options.anchor?.target?.ownerDocument ??
+      globalThis.document;
+    return showMenuPopup(this.ensureContextViewManager(document), options);
   }
 
   /**

@@ -52,6 +52,7 @@ const RuntimeService = require("./runtime-service");
 const Workspace = require("./workspace");
 const WorkspaceDropManager = require("./workspace-drop-manager");
 const PaneItemTransferService = require("./pane-item-transfer-service");
+const AuxiliaryWindowHost = require("./auxiliary-window-host");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
 const Pane = require("./pane");
@@ -486,6 +487,9 @@ class Environment {
     });
 
     this.workspace.initializeEditorWindows(this.window);
+    this.commands.resolveContext = (event) => this.workspace?.resolveCommandContext(event);
+    this.auxiliaryWindowHost = new AuxiliaryWindowHost(this);
+    this.workspace.editorWindowHost = this.auxiliaryWindowHost;
 
     this.#projectStateController = new ProjectStateController({
       project: this.project,
@@ -854,6 +858,7 @@ class Environment {
       capture(() => this.notifications.clear());
 
       await cleanup(() => this.packages.reset());
+      await cleanup(() => this.workspace.discardEditorWindows());
       capture(() => this.hooks.clear());
       capture(() => this.workspace.reset(this.packages));
       capture(() => this.registerDefaultOpeners());
@@ -1111,6 +1116,12 @@ class Environment {
         this.applicationDelegate.onApplicationMenuCommand(
           this.dispatchApplicationMenuCommand.bind(this),
         ),
+      );
+      this.disposables.add(
+        this.applicationDelegate.onAuxiliaryWindowCommand(({ id, command, args }) => {
+          const presentation = this.workspace.getWindows().find((window) => window.getId() === id);
+          if (presentation) this.dispatchApplicationMenuCommand(command, args?.[0], presentation);
+        }),
       );
       this.disposables.add(
         this.applicationDelegate.onURIMessage(this.dispatchURIMessage.bind(this)),
@@ -1696,6 +1707,12 @@ class Environment {
     startTime = Date.now();
     if (state.workspace) {
       this.workspace.deserialize(state.workspace, this.deserializers, options, assertCurrent);
+      await this.workspace.restoreEditorWindows(
+        state.workspace,
+        this.deserializers,
+        options,
+        assertCurrent,
+      );
     }
     assertCurrent();
     this.deserializeTimings.workspace = Date.now() - startTime;
@@ -1751,11 +1768,16 @@ class Environment {
     this.document.body.classList.add(`platform-${process.platform}`);
   }
 
-  dispatchApplicationMenuCommand(command, arg) {
-    let { activeElement } = this.document;
+  dispatchApplicationMenuCommand(
+    command,
+    arg,
+    presentation = this.workspace.getFocusedWindow() ?? this.workspace.getMainWindow(),
+  ) {
+    const document = presentation?.getDocument() ?? this.document;
+    let { activeElement } = document;
     // Use the workspace element if body has focus
-    if (activeElement === this.document.body) {
-      activeElement = this.workspace.getElement();
+    if (activeElement === document.body) {
+      activeElement = presentation?.getElement() ?? this.workspace.getElement();
     }
     this.commands.dispatch(activeElement, command, arg);
   }

@@ -1,5 +1,6 @@
 const { find } = require("@lumine-code/underscore-plus");
-const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
+const { fileEditorForItem, embeddedEditorForItem } = require("./item-text-editors");
 const Pane = require("./pane");
 const ItemRegistry = require("./item-registry");
 const { createPaneContainerElement } = require("./pane-container-element");
@@ -241,6 +242,80 @@ module.exports = class PaneContainer {
     return this.getActivePane().getActiveItem();
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Get the file-content editor of this container's active item.
+   * @returns {TextEditor|undefined} The editor, including a notebook's backing source.
+   */
+  getActiveFileTextEditor() {
+    return fileEditorForItem(this.getActivePaneItem());
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the editor being edited inside this container's active item.
+   * @returns {TextEditor|undefined} The editor, including an active notebook cell.
+   */
+  getActiveEmbeddedTextEditor() {
+    return embeddedEditorForItem(this.getActivePaneItem());
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe this window-local active file-content editor.
+   * @param {Function} callback - Receives the current and future TextEditor or undefined.
+   * @returns {Disposable} Removes the observation.
+   */
+  observeActiveFileTextEditor(callback) {
+    return this.observeItemTextEditor(fileEditorForItem, callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe the active editable editor inside this container's active item.
+   * @param {Function} callback - Receives the current and future TextEditor or undefined.
+   * @returns {Disposable} Removes the observation.
+   */
+  observeActiveEmbeddedTextEditor(callback) {
+    return this.observeItemTextEditor(embeddedEditorForItem, callback);
+  }
+
+  /** @private */
+  observeItemTextEditor(resolve, callback) {
+    let previous = Symbol("unobserved");
+    let nested;
+    const update = () => {
+      const editor = resolve(this.getActivePaneItem());
+      if (editor !== previous) {
+        previous = editor;
+        callback(editor);
+      }
+    };
+    const subscriptions = new CompositeDisposable();
+    const select = () => {
+      nested?.dispose();
+      nested = this.getActivePaneItem()?.onDidChangeActiveTextEditors?.(update);
+      update();
+    };
+    subscriptions.add(this.onDidChangeActivePaneItem(select));
+    const disposal = new Disposable(() => {
+      this.subscriptions.remove(disposal);
+      subscriptions.dispose();
+      nested?.dispose();
+    });
+    this.subscriptions.add(disposal);
+    select();
+    return disposal;
+  }
+
   // Commit a composite synchronous operation before notifying workspace
   // observers. Any container touched on this synchronous call stack joins the
   // same group, including a center activated by an empty dock hiding itself.
@@ -382,6 +457,10 @@ module.exports = class PaneContainer {
   }
 
   didAddPane(event) {
+    if (event.transferred) {
+      this.emitter.emit("did-add-pane", event);
+      return;
+    }
     const items = [...event.pane.getItems()];
     for (const item of items) this.registerItem(item);
     this.emitter.emit("did-add-pane", event);

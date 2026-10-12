@@ -107,7 +107,12 @@ module.exports = class WindowEventHandler {
         this.lumineEnvironment.commands.add(
           ".native-key-bindings",
           command,
-          (_event) => this.applicationDelegate.performWebContentsAction(action),
+          (event) => {
+            const presentation = event.context?.window;
+            return presentation && !presentation.isMain()
+              ? presentation.windowService.invoke("performWebContentsAction", action)
+              : this.applicationDelegate.performWebContentsAction(action);
+          },
           false,
         ),
       );

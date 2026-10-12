@@ -153,6 +153,8 @@ module.exports = KeymapManager = (function () {
       }
       this.watchSubscriptions = {};
       this.customKeystrokeResolvers = [];
+      this.additionalFrameKeyboardBridges = new Set();
+      this.documentTargets = new WeakMap();
       this.clear();
     }
 
@@ -173,7 +175,7 @@ module.exports = KeymapManager = (function () {
       this.keyBindings = [];
       this.queuedKeyboardEvents = [];
       this.queuedKeystrokes = [];
-      this.frameKeyboardBridge?.refresh();
+      this.updateFrameKeyboardBridges();
       return (this.bindingsToDisable = []);
     }
 
@@ -184,7 +186,7 @@ module.exports = KeymapManager = (function () {
      * Unwatch all watched paths.
      */
     destroy() {
-      this.frameKeyboardBridge?.clear();
+      this.updateFrameKeyboardBridges("clear");
       this.cancelPendingState();
       this.clearQueuedKeystrokes();
       this.pendingKeyupMatcher?.clear();
@@ -387,7 +389,7 @@ module.exports = KeymapManager = (function () {
         throwOnInvalidSelector,
       );
       this.keyBindings.push(...Array.from(addedKeyBindings || []));
-      this.frameKeyboardBridge?.refresh();
+      this.updateFrameKeyboardBridges();
       return new Disposable(() => {
         for (var keyBinding of Array.from(addedKeyBindings)) {
           var index = this.keyBindings.indexOf(keyBinding);
@@ -395,13 +397,13 @@ module.exports = KeymapManager = (function () {
             this.keyBindings.splice(index, 1);
           }
         }
-        this.frameKeyboardBridge?.refresh();
+        this.updateFrameKeyboardBridges();
       });
     }
 
     removeBindingsFromSource(source) {
       this.keyBindings = this.keyBindings.filter((keyBinding) => keyBinding.source !== source);
-      this.frameKeyboardBridge?.refresh();
+      this.updateFrameKeyboardBridges();
       return undefined;
     }
 
@@ -438,6 +440,7 @@ module.exports = KeymapManager = (function () {
         params = {};
       }
       const { keystrokes, command, target, keyBindings } = params;
+      const document = target?.ownerDocument ?? globalThis.document;
 
       let bindings = keyBindings != null ? keyBindings : this.keyBindings;
 
@@ -633,7 +636,13 @@ module.exports = KeymapManager = (function () {
      * @param event - A `KeyboardEvent` of type 'keydown'
      */
     handleKeyboardEvent(event, param) {
-      const document = this.documentContext || globalThis.document;
+      const document = this.documentContext || event.target?.ownerDocument || globalThis.document;
+      if (this.keyboardDocument && this.keyboardDocument !== document) {
+        this.cancelPendingState();
+        this.clearQueuedKeystrokes();
+        this.pendingKeyupMatcher.clear();
+      }
+      this.keyboardDocument = document;
       // Handling keyboard events is complicated and very nuanced. The complexity
       // is all due to supporting multi-stroke bindings. An example binding we'll
       // use throughout this very long comment:
@@ -746,9 +755,8 @@ module.exports = KeymapManager = (function () {
       // If the event's target is document.body, assign it to defaultTarget instead
       // to provide a catch-all element when nothing is focused.
       let { target } = event;
-      if (event.target === document.body && this.defaultTarget != null) {
-        target = this.defaultTarget;
-      }
+      if (event.target === document.body)
+        target = this.defaultTargetForDocument(document) ?? target;
 
       // First screen for any bindings that match the current keystrokes,
       // regardless of their current selector. Matching strings is cheaper than
@@ -932,6 +940,7 @@ module.exports = KeymapManager = (function () {
      * @returns {Boolean} Whether this event belongs to that target's pending keyboard sequence.
      */
     shouldContinuePendingKeyboardEvent(event, { target = event?.target } = {}) {
+      const document = target?.ownerDocument ?? globalThis.document;
       if (
         !target ||
         !["keydown", "keyup"].includes(event?.type) ||
@@ -940,7 +949,7 @@ module.exports = KeymapManager = (function () {
       )
         return false;
       const logicalTarget = (value) =>
-        value === document.body && this.defaultTarget ? this.defaultTarget : value;
+        value === document.body ? (this.defaultTargetForDocument(document) ?? value) : value;
       target = logicalTarget(target);
       if (
         this.pendingPartialMatches != null &&
@@ -972,12 +981,12 @@ module.exports = KeymapManager = (function () {
      */
     addKeystrokeResolver(resolver) {
       this.customKeystrokeResolvers.push(resolver);
-      this.frameKeyboardBridge?.refresh();
+      this.updateFrameKeyboardBridges();
       return new Disposable(() => {
         const index = this.customKeystrokeResolvers.indexOf(resolver);
         if (index >= 0) {
           this.customKeystrokeResolvers.splice(index, 1);
-          this.frameKeyboardBridge?.refresh();
+          this.updateFrameKeyboardBridges();
         }
       });
     }
@@ -1008,9 +1017,42 @@ module.exports = KeymapManager = (function () {
      * @returns {Disposable} Registration to dispose before retiring the host.
      */
     registerFrameHost(root) {
-      if (!this.frameKeyboardBridge)
-        throw new Error("The workspace keyboard bridge is not initialized.");
-      return this.frameKeyboardBridge.registerHost(root);
+      const bridge = [this.frameKeyboardBridge, ...this.additionalFrameKeyboardBridges].find(
+        (bridge) => bridge?.document === root?.ownerDocument,
+      );
+      if (!bridge) throw new Error("The workspace keyboard bridge is not initialized.");
+      return bridge.registerHost(root);
+    }
+
+    /** @private Register a physical window's native frame input bridge. */
+    addFrameKeyboardBridge(bridge) {
+      this.additionalFrameKeyboardBridges.add(bridge);
+      return new Disposable(() => this.additionalFrameKeyboardBridges.delete(bridge));
+    }
+
+    /** @private Refresh or clear every physical presentation's embedded keymap snapshot. */
+    updateFrameKeyboardBridges(action = "refresh") {
+      for (const bridge of new Set([
+        this.frameKeyboardBridge,
+        ...(this.additionalFrameKeyboardBridges ?? []),
+      ]))
+        bridge?.[action]();
+    }
+
+    /** @private A body event falls back to its own workspace root. */
+    defaultTargetForDocument(document) {
+      if (this.documentTargets.has(document)) return this.documentTargets.get(document);
+      if (!this.defaultTarget?.ownerDocument || this.defaultTarget.ownerDocument === document)
+        return this.defaultTarget;
+      return document.querySelector("lumine-workspace") ?? document.body;
+    }
+
+    /** @private Associate body events with a presentation's own editor root. */
+    addDocumentTarget(document, target) {
+      this.documentTargets.set(document, target);
+      return new Disposable(() => {
+        if (this.documentTargets.get(document) === target) this.documentTargets.delete(document);
+      });
     }
 
     /**
@@ -1018,6 +1060,8 @@ module.exports = KeymapManager = (function () {
      */
 
     simulateTextInput(keydownEvent) {
+      const document = keydownEvent.target?.ownerDocument ?? globalThis.document;
+      const window = document.defaultView;
       let character;
       if ((character = characterForKeyboardEvent(keydownEvent))) {
         const textInputEvent = document.createEvent("TextEvent");
@@ -1059,6 +1103,7 @@ module.exports = KeymapManager = (function () {
     // one of its ancestors. This is used by {@link #handleKeyboardEvent} to determine
     // if there are any partial matches for the keyboard event.
     findPartialMatches(partialMatchCandidates, target) {
+      const document = target?.ownerDocument ?? globalThis.document;
       const partialMatches = [];
       const ignoreKeystrokes = new Set();
 
@@ -1162,10 +1207,14 @@ module.exports = KeymapManager = (function () {
     // After we match a binding, we call this method to dispatch a custom event
     // based on the binding's command.
     dispatchCommandEvent(command, target, keyboardEvent) {
+      const document = target?.ownerDocument ?? globalThis.document;
       // Here we use prototype chain injection to add CommandEvent methods to this
       // custom event to support aborting key bindings and simulated bubbling for
       // detached targets.
-      const commandEvent = new CustomEvent(command, { bubbles: true, cancelable: true });
+      const commandEvent = new document.defaultView.CustomEvent(command, {
+        bubbles: true,
+        cancelable: true,
+      });
       commandEvent.__proto__ = CommandEvent.prototype;
       commandEvent.originalEvent = keyboardEvent;
 
@@ -1185,6 +1234,7 @@ module.exports = KeymapManager = (function () {
     // Chromium does not bubble events dispatched on detached targets, which makes
     // testing a pain in the ass. This method simulates bubbling manually.
     simulateBubblingOnDetachedTarget(target, commandEvent) {
+      const window = target?.ownerDocument?.defaultView ?? globalThis.window;
       Object.defineProperty(commandEvent, "target", {
         get() {
           return target;

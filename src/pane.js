@@ -163,14 +163,43 @@ module.exports = class Pane {
     return this.container;
   }
 
-  setContainer(container) {
+  setContainer(container, { transferred = false } = {}) {
     if (container && container !== this.container) {
+      if (transferred) {
+        const previous = this.container;
+        if (!previous || previous.workspace !== container.workspace) {
+          throw new Error("A pane transfer must stay within its owning workspace.");
+        }
+        for (const item of this.items) assertItemLocation(item, container.getLocation());
+        for (const item of this.items) {
+          if (!previous.itemRegistry.hasItem(item) || container.itemRegistry.hasItem(item)) {
+            throw new Error("A pane transfer requires exclusive item ownership.");
+          }
+        }
+        for (const item of this.items) {
+          previous.itemRegistry.removeItem(item);
+          container.itemRegistry.addItem(item);
+        }
+        previous.paneActivationOrder.delete(this);
+        this.container = container;
+        container.didAddPane({ pane: this, transferred: true });
+        this.emitter.emit("did-change-container", {
+          oldContainer: previous,
+          newContainer: container,
+        });
+        return;
+      }
       for (const item of this.items) {
         assertItemLocation(item, container.getLocation());
         container.assertItemAvailable(item, this);
       }
+      const previous = this.container;
       this.container = container;
       container.didAddPane({ pane: this });
+      this.emitter.emit("did-change-container", {
+        oldContainer: previous,
+        newContainer: container,
+      });
     }
   }
 
@@ -298,10 +327,33 @@ module.exports = class Pane {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActive(callback) {
-    return this.container.onDidChangeActivePane((activePane) => {
-      const isActive = this === activePane;
-      callback(isActive);
-    });
+    let subscription;
+    const subscriptions = new CompositeDisposable();
+    const bind = () => {
+      if (subscription) {
+        subscriptions.remove(subscription);
+        subscription.dispose();
+      }
+      subscription = this.container.onDidChangeActivePane((activePane) =>
+        callback(this === activePane),
+      );
+      subscriptions.add(subscription);
+    };
+    bind();
+    subscriptions.add(this.emitter.on("did-change-container", bind));
+    return subscriptions;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe a change of presentation window while retaining this pane.
+   * @param {Function} callback - Receives sourceWindow and targetWindow.
+   * @returns {Disposable} Removes the observation.
+   */
+  onDidChangeWindow(callback) {
+    return this.emitter.on("did-change-window", callback);
   }
 
   /**
@@ -1246,7 +1298,7 @@ module.exports = class Pane {
     const uri = item.getURI?.() ?? item.getUri?.() ?? null;
     const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
-    const response = await this.applicationDelegate.confirm({
+    const response = await (this.container?.getWindow() ?? this.applicationDelegate).confirm({
       message: `'${title}' has changed on disk. Do you want to overwrite this file with your changes?`,
       detail: "The contents of the buffer may be stale.",
 
@@ -1261,6 +1313,7 @@ module.exports = class Pane {
   }
 
   promptToSaveItem(item, options = {}) {
+    const window = this.container?.getWindow() ?? this.applicationDelegate;
     return new Promise((resolve, reject) => {
       if (!this.shouldPromptToSaveItem(item, options)) {
         return resolve(true);
@@ -1278,7 +1331,7 @@ module.exports = class Pane {
       const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
       const saveDialog = (saveButtonText, saveFn, message) => {
-        this.applicationDelegate
+        window
           .confirm({
             message,
             detail: "Your changes will be lost if you close this item without saving.",
@@ -1444,7 +1497,8 @@ module.exports = class Pane {
     const itemPath = item.getPath();
     if (itemPath && !saveOptions.defaultPath) saveOptions.defaultPath = itemPath;
 
-    const { filePath: newItemPath } = await this.applicationDelegate.showSaveDialog(saveOptions);
+    const window = this.container?.getWindow() ?? this.applicationDelegate;
+    const { filePath: newItemPath } = await window.showSaveDialog(saveOptions);
     if (!newItemPath) {
       return nextAction ? nextAction(new SaveCancelledError("Save Cancelled")) : undefined;
     }

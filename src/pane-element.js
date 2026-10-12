@@ -8,7 +8,7 @@ class PaneElement extends HTMLElement {
     this.subscriptions = new CompositeDisposable();
     this.inlineDisplayStyles = new WeakMap();
     this.subscribeToDOMEvents();
-    this.itemViews = document.createElement("div");
+    this.itemViews = this.ownerDocument.createElement("div");
   }
 
   connectedCallback() {
@@ -155,7 +155,7 @@ class PaneElement extends HTMLElement {
     }
     const hasFocus = this.hasFocus();
     const movingView = this.model.movingItem && this.views.getView(this.model.movingItem);
-    const retainsMovingFocus = movingView?.contains(document.activeElement);
+    const retainsMovingFocus = movingView?.contains(this.ownerDocument.activeElement);
     const itemView = this.views.getView(item);
     const itemPath = typeof item.getPath === "function" ? item.getPath() : null;
     if (itemPath) {
@@ -188,7 +188,7 @@ class PaneElement extends HTMLElement {
     if (this.attached) {
       this.showItemView(itemView);
     }
-    if (hasFocus && !retainsMovingFocus && !itemView.contains(document.activeElement)) {
+    if (hasFocus && !retainsMovingFocus && !itemView.contains(this.ownerDocument.activeElement)) {
       itemView.focus();
     }
   }
@@ -215,7 +215,7 @@ class PaneElement extends HTMLElement {
   itemRemoved({ item, index: _index, destroyed: _destroyed, moved, retainView }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
-      const hadFocus = viewToRemove.contains(document.activeElement);
+      const hadFocus = viewToRemove.contains(this.ownerDocument.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
       if (!retainView && (!moved || viewToRemove.parentNode === this.itemViews))
         viewToRemove.remove();
@@ -247,7 +247,9 @@ class PaneElement extends HTMLElement {
   }
 
   hasFocus() {
-    return this === document.activeElement || this.contains(document.activeElement);
+    return (
+      this === this.ownerDocument.activeElement || this.contains(this.ownerDocument.activeElement)
+    );
   }
 }
 

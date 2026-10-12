@@ -16,6 +16,7 @@ module.exports = class EmbeddedPaneKeyboardBridge {
     document,
     transport = ipcRenderer,
     enabled = true,
+    root = workspace.getElement(),
   }) {
     Object.assign(this, { keymaps, workspace, views, window, document, transport });
     this.enabled = enabled;
@@ -43,7 +44,7 @@ module.exports = class EmbeddedPaneKeyboardBridge {
     this.window.addEventListener("blur", this.deferRefresh);
     this.observer = new this.window.MutationObserver(this.refreshBound);
     this.observer.observe(this.document.body, { childList: true, subtree: true, attributes: true });
-    this.workspaceHost = this.registerHost(this.workspace.getElement());
+    this.workspaceHost = this.registerHost(root);
   }
 
   registerHost(root) {

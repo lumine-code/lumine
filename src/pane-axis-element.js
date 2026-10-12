@@ -66,14 +66,14 @@ class PaneAxisElement extends HTMLElement {
     const prevElement = view.previousSibling;
     // if previous element is not pane resize element, then insert new resize element
     if (prevElement != null && !this.isPaneResizeHandleElement(prevElement)) {
-      resizeHandle = document.createElement("lumine-pane-resize-handle");
+      resizeHandle = this.ownerDocument.createElement("lumine-pane-resize-handle");
       this.insertBefore(resizeHandle, view);
     }
 
     const nextElement = view.nextSibling;
     // if next element isnot resize element, then insert new resize element
     if (nextElement != null && !this.isPaneResizeHandleElement(nextElement)) {
-      resizeHandle = document.createElement("lumine-pane-resize-handle");
+      resizeHandle = this.ownerDocument.createElement("lumine-pane-resize-handle");
       this.insertBefore(resizeHandle, nextElement);
     }
     refreshPaneLayout(this);
@@ -94,7 +94,7 @@ class PaneAxisElement extends HTMLElement {
   childReplaced({ index, oldChild, newChild }) {
     let focusedElement;
     if (this.hasFocus()) {
-      focusedElement = document.activeElement;
+      focusedElement = this.ownerDocument.activeElement;
     }
     const oldView = this.viewRegistry.getView(oldChild);
     const newView = this.viewRegistry.getView(newChild);
@@ -106,7 +106,7 @@ class PaneAxisElement extends HTMLElement {
     // axis has its surviving child moved out before the obsolete axis goes.
     if (oldView.parentNode === this) oldView.remove();
     refreshPaneLayout(this);
-    if (document.activeElement === document.body) {
+    if (this.ownerDocument.activeElement === this.ownerDocument.body) {
       return focusedElement != null ? focusedElement.focus() : undefined;
     }
   }
@@ -116,7 +116,9 @@ class PaneAxisElement extends HTMLElement {
   }
 
   hasFocus() {
-    return this === document.activeElement || this.contains(document.activeElement);
+    return (
+      this === this.ownerDocument.activeElement || this.contains(this.ownerDocument.activeElement)
+    );
   }
 }
 

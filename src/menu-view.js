@@ -46,8 +46,11 @@ function renderMnemonic(element, label, enabled = true) {
 }
 
 function commandTarget(explicitTarget, document) {
+  const presentation = globalThis.lumine?.workspace?.getWindowForElement?.(document.body);
   return (
     explicitTarget ||
+    presentation?.getEditorContainer()?.getActivePaneItem()?.getElement?.() ||
+    presentation?.getEditorContainer()?.getActivePane()?.getElement?.() ||
     globalThis.lumine?.workspace?.getActiveTextEditor?.()?.getElement?.() ||
     globalThis.lumine?.workspace?.getActivePane?.()?.getElement?.() ||
     globalThis.lumine?.views?.getView?.(globalThis.lumine?.workspace) ||

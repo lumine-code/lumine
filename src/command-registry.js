@@ -56,10 +56,17 @@ module.exports = class CommandRegistry {
     this.handleCommandEvent = this.handleCommandEvent.bind(this);
     this.keymapManager = keymapManager;
     this.rootNode = null;
+    this.rootNodes = new Set();
     this.clear();
   }
 
   clear() {
+    for (const root of this.rootNodes) {
+      for (const name in this.registeredCommands) {
+        root.removeEventListener(name, this.handleCommandEvent, true);
+      }
+    }
+    this.emitter?.dispose();
     this.registeredCommands = {};
     this.selectorBasedListenersByCommandName = {};
     this.inlineListenersByCommandName = {};
@@ -67,20 +74,30 @@ module.exports = class CommandRegistry {
   }
 
   attach(rootNode) {
-    this.rootNode = rootNode;
-    for (const command in this.selectorBasedListenersByCommandName) {
-      this.commandRegistered(command);
+    if (this.rootNodes.has(rootNode)) return new Disposable();
+    this.rootNodes.add(rootNode);
+    this.rootNode ??= rootNode;
+    const commands = new Set([
+      ...Object.keys(this.selectorBasedListenersByCommandName),
+      ...Object.keys(this.inlineListenersByCommandName),
+    ]);
+    for (const command of commands) {
+      rootNode.addEventListener(command, this.handleCommandEvent, { capture: true });
+      this.registeredCommands[command] = true;
     }
+    return new Disposable(() => this.detach(rootNode));
+  }
 
-    for (const command in this.inlineListenersByCommandName) {
-      this.commandRegistered(command);
+  detach(rootNode) {
+    if (!this.rootNodes.delete(rootNode)) return;
+    for (const name in this.registeredCommands) {
+      rootNode.removeEventListener(name, this.handleCommandEvent, true);
     }
+    if (this.rootNode === rootNode) this.rootNode = this.rootNodes.values().next().value ?? null;
   }
 
   destroy() {
-    for (const commandName in this.registeredCommands) {
-      this.rootNode.removeEventListener(commandName, this.handleCommandEvent, true);
-    }
+    for (const root of [...this.rootNodes]) this.detach(root);
   }
 
   /**
@@ -224,6 +241,10 @@ module.exports = class CommandRegistry {
    * @returns {Array<Object>} Command descriptors containing the documented keys.
    */
   findCommands({ target }) {
+    const targetWindow =
+      target?.ownerDocument?.defaultView ??
+      target?.defaultView ??
+      (target?.window === target ? target : window);
     const commandNames = new Set();
     const commands = [];
     let currentTarget = target;
@@ -250,10 +271,10 @@ module.exports = class CommandRegistry {
         }
       }
 
-      if (currentTarget === window) {
+      if (currentTarget === targetWindow) {
         break;
       }
-      currentTarget = currentTarget.parentNode || window;
+      currentTarget = currentTarget.parentNode || targetWindow;
     }
 
     return commands;
@@ -410,6 +431,10 @@ module.exports = class CommandRegistry {
   }
 
   handleCommandEvent(event) {
+    const targetWindow =
+      event.target?.ownerDocument?.defaultView ??
+      event.target?.defaultView ??
+      (event.target?.window === event.target ? event.target : window);
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let matched = [];
@@ -428,6 +453,10 @@ module.exports = class CommandRegistry {
       },
     });
     Object.defineProperty(dispatchedEvent, "target", { value: currentTarget });
+    if (this.resolveContext)
+      Object.defineProperty(dispatchedEvent, "context", {
+        value: this.resolveContext(event),
+      });
     Object.defineProperty(dispatchedEvent, "preventDefault", {
       value() {
         return event.preventDefault();
@@ -488,13 +517,13 @@ module.exports = class CommandRegistry {
           matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
         }
 
-        if (currentTarget === window) {
+        if (currentTarget === targetWindow) {
           break;
         }
         if (propagationStopped) {
           break;
         }
-        currentTarget = currentTarget.parentNode || window;
+        currentTarget = currentTarget.parentNode || targetWindow;
       }
 
       this.emitter.emit("did-dispatch", dispatchedEvent);
@@ -511,10 +540,10 @@ module.exports = class CommandRegistry {
   }
 
   commandRegistered(commandName) {
-    if (this.rootNode != null && !this.registeredCommands[commandName]) {
-      this.rootNode.addEventListener(commandName, this.handleCommandEvent, {
-        capture: true,
-      });
+    if (this.rootNodes.size && !this.registeredCommands[commandName]) {
+      for (const root of this.rootNodes) {
+        root.addEventListener(commandName, this.handleCommandEvent, { capture: true });
+      }
       return (this.registeredCommands[commandName] = true);
     }
   }

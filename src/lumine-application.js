@@ -509,6 +509,38 @@ const handleWindowAction = async (event, action, ...args) => {
 };
 ipcMain.handle("lumine:window", handleWindowAction);
 
+ipcMain.handle("lumine:auxiliary-window", (event, action, ...args) => {
+  if (event.senderFrame !== event.sender.mainFrame)
+    throw new Error("Only the workspace runtime may address its presentation windows.");
+  const broker = currentLumineWindow(event).auxiliaryWindowBroker;
+  switch (action) {
+    case "prepare":
+      return broker.prepare(args[0]);
+    case "resolve":
+      return broker.resolve(args[0]);
+    case "cancel":
+      return broker.cancel(args[0]);
+    case "invoke":
+      return broker.invoke(...args);
+    default:
+      throw new Error(`Unknown auxiliary window request: ${action}`);
+  }
+});
+
+ipcMain.on("lumine:auxiliary-window-keyboard-state", (event, id, snapshot) => {
+  try {
+    if (event.senderFrame !== event.sender.mainFrame || event.senderFrame.isDestroyed())
+      throw new Error("Only the workspace runtime may publish embedded keymaps.");
+    event.returnValue = currentLumineWindow(event).auxiliaryWindowBroker.invoke(
+      id,
+      "updateEmbeddedKeyboard",
+      snapshot,
+    );
+  } catch {
+    event.returnValue = { ok: false };
+  }
+});
+
 const handleWindowBroadcast = (event, eventName, ...args) => {
   assertString(eventName, "eventName");
   const application = currentApplication();
@@ -1340,11 +1372,11 @@ module.exports = class LumineApplication extends EventEmitter {
     } else {
       this.on("application:minimize", () => {
         const window = this.focusedWindow();
-        if (window) window.minimize();
+        if (window) (window.getFocusedNativeWindow?.() ?? window).minimize();
       });
       this.on("application:zoom", function () {
         const window = this.focusedWindow();
-        if (window) window.maximize();
+        if (window) (window.getFocusedNativeWindow?.() ?? window).maximize();
       });
     }
 

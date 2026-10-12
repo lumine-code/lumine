@@ -53,6 +53,13 @@ function getScheduler() {
 }
 
 module.exports = class TextEditorComponent {
+  get document() {
+    return this.element?.ownerDocument ?? globalThis.document;
+  }
+
+  get window() {
+    return this.document.defaultView;
+  }
   static setScheduler(newScheduler) {
     scheduler = newScheduler;
   }
@@ -156,7 +163,7 @@ module.exports = class TextEditorComponent {
     this.horizontalPixelPositionsByScreenLineId = new Map(); // Values are maps from column to horizontal pixel positions
     this.blockDecorationsToMeasure = new Set();
     this.blockDecorationsByElement = new WeakMap();
-    this.blockDecorationSentinel = document.createElement("div");
+    this.blockDecorationSentinel = this.document.createElement("div");
     this.blockDecorationSentinel.style.height = "1px";
     this.heightsByBlockDecoration = new WeakMap();
     this.blockDecorationResizeObserver = new ResizeObserver(
@@ -529,11 +536,11 @@ module.exports = class TextEditorComponent {
       const { blockDecorationMeasurementArea } = this.refs;
       const sentinelElements = new Set();
 
-      blockDecorationMeasurementArea.appendChild(document.createElement("div"));
+      blockDecorationMeasurementArea.appendChild(this.document.createElement("div"));
       this.blockDecorationsToMeasure.forEach((decoration) => {
         const { item } = decoration.getProperties();
         const decorationElement = TextEditor.viewForItem(item);
-        if (document.contains(decorationElement)) {
+        if (this.document.contains(decorationElement)) {
           const parentElement = decorationElement.parentElement;
 
           if (!decorationElement.previousSibling) {
@@ -730,7 +737,7 @@ module.exports = class TextEditorComponent {
     // hover tooltips mount editors for their code blocks all the time.
     this.element.addEventListener("wheel", this.didMouseWheel, { passive: false });
 
-    const clientContainer = document.createElement("div");
+    const clientContainer = this.document.createElement("div");
     let style = clientContainer.style;
     style.position = "relative";
     style.contain = "strict";
@@ -742,7 +749,7 @@ module.exports = class TextEditorComponent {
     this.refs.clientContainer = clientContainer;
     this.element.appendChild(clientContainer);
 
-    const scrollContainer = document.createElement("div");
+    const scrollContainer = this.document.createElement("div");
     scrollContainer.className = "scroll-view";
     style = scrollContainer.style;
     style.position = "absolute";
@@ -758,7 +765,7 @@ module.exports = class TextEditorComponent {
     this.refs.scrollContainer = scrollContainer;
     clientContainer.appendChild(scrollContainer);
 
-    const content = document.createElement("div");
+    const content = this.document.createElement("div");
     content.addEventListener("mousedown", this.didMouseDownOnContent);
     style = content.style;
     style.contain = "strict";
@@ -767,7 +774,7 @@ module.exports = class TextEditorComponent {
     this.refs.content = content;
     scrollContainer.appendChild(content);
 
-    const lineTiles = document.createElement("div");
+    const lineTiles = this.document.createElement("div");
     lineTiles.className = "lines";
     style = lineTiles.style;
     style.position = "absolute";
@@ -783,7 +790,7 @@ module.exports = class TextEditorComponent {
     this.refs.cursorsAndInput = cursorsAndInputComponent;
     lineTiles.appendChild(cursorsAndInputComponent.element);
 
-    const blockDecorationMeasurementArea = document.createElement("div");
+    const blockDecorationMeasurementArea = this.document.createElement("div");
     style = blockDecorationMeasurementArea.style;
     style.contain = "strict";
     style.position = "absolute";
@@ -795,7 +802,7 @@ module.exports = class TextEditorComponent {
   }
 
   buildCharacterMeasurementLine() {
-    const characterMeasurementLine = document.createElement("div");
+    const characterMeasurementLine = this.document.createElement("div");
     characterMeasurementLine.className = "line dummy";
     characterMeasurementLine.style.position = "absolute";
     characterMeasurementLine.style.visibility = "hidden";
@@ -811,8 +818,8 @@ module.exports = class TextEditorComponent {
       ["koreanCharacterSpan", KOREAN_CHARACTER],
     ];
     for (const [ref, character] of measurementSpans) {
-      const wrapper = document.createElement("div");
-      const span = document.createElement("span");
+      const wrapper = this.document.createElement("div");
+      const span = this.document.createElement("span");
       span.textContent = character;
       this.refs[ref] = span;
       wrapper.appendChild(span);
@@ -1211,7 +1218,7 @@ module.exports = class TextEditorComponent {
     }
     if (placeholderText != null) {
       if (!this.placeholderTextElement) {
-        this.placeholderTextElement = document.createElement("div");
+        this.placeholderTextElement = this.document.createElement("div");
         this.placeholderTextElement.className = "placeholder-text";
       }
       if (placeholderText !== this.lastPlaceholderText) {
@@ -1312,7 +1319,7 @@ module.exports = class TextEditorComponent {
         const horizontalScrollbar = new DummyScrollbarComponent(horizontalScrollbarProps);
 
         // Force a "corner" to render where the two scrollbars meet at the lower right
-        const scrollbarCorner = document.createElement("div");
+        const scrollbarCorner = this.document.createElement("div");
         scrollbarCorner.className = "scrollbar-corner";
         const style = scrollbarCorner.style;
         style.position = "absolute";
@@ -2206,7 +2213,7 @@ module.exports = class TextEditorComponent {
     let claim = null;
 
     if (avoidOverflow !== false) {
-      const computedStyle = window.getComputedStyle(element);
+      const computedStyle = this.window.getComputedStyle(element);
       marginLeft = parseInt(computedStyle.marginLeft) || 0;
       const marginTop = parseInt(computedStyle.marginTop) || 0;
       const marginBottom = parseInt(computedStyle.marginBottom) || 0;
@@ -3233,7 +3240,7 @@ module.exports = class TextEditorComponent {
     let lastMousemoveEvent;
 
     const animationFrameLoop = () => {
-      window.requestAnimationFrame(() => {
+      this.window.requestAnimationFrame(() => {
         if (dragging && this.visible) {
           // IntersectionObserver reports visibility changes asynchronously. A
           // pane can therefore lose its layout while `visible` is still true;
@@ -3254,16 +3261,16 @@ module.exports = class TextEditorComponent {
 
     function didMouseUp() {
       this.stopDragging = null;
-      window.removeEventListener("mousemove", didMouseMove);
-      window.removeEventListener("mouseup", didMouseUp, { capture: true });
+      this.window.removeEventListener("mousemove", didMouseMove);
+      this.window.removeEventListener("mouseup", didMouseUp, { capture: true });
       if (dragging) {
         dragging = false;
         didStopDragging();
       }
     }
 
-    window.addEventListener("mousemove", didMouseMove);
-    window.addEventListener("mouseup", didMouseUp, { capture: true });
+    this.window.addEventListener("mousemove", didMouseMove);
+    this.window.addEventListener("mouseup", didMouseUp, { capture: true });
     this.stopDragging = didMouseUp;
   }
 
@@ -3367,7 +3374,7 @@ module.exports = class TextEditorComponent {
     if (this.cursorsBlinking) {
       this.cursorsBlinkedOff = false;
       this.cursorsBlinking = false;
-      window.clearInterval(this.cursorBlinkIntervalHandle);
+      this.window.clearInterval(this.cursorBlinkIntervalHandle);
       this.cursorBlinkIntervalHandle = null;
       this.scheduleUpdate();
     }
@@ -3375,7 +3382,7 @@ module.exports = class TextEditorComponent {
 
   startCursorBlinking() {
     if (!this.cursorsBlinking) {
-      this.cursorBlinkIntervalHandle = window.setInterval(
+      this.cursorBlinkIntervalHandle = this.window.setInterval(
         () => {
           this.cursorsBlinkedOff = !this.cursorsBlinkedOff;
           this.scheduleUpdate(true);
@@ -3925,7 +3932,7 @@ module.exports = class TextEditorComponent {
     //
     // This should work wherever the point in question is rendered and visible
     // within the viewport — e.g., anywhere the user clicks.
-    let inherentRange = document.caretRangeFromPoint(targetClientLeft, targetClientTop);
+    let inherentRange = this.document.caretRangeFromPoint(targetClientLeft, targetClientTop);
 
     if (inherentRange && textNodes.includes(inherentRange.startContainer)) {
       // The range identified a text node on this line. Now we can convert the
@@ -4572,11 +4579,11 @@ module.exports = class TextEditorComponent {
   }
 
   getWindowInnerHeight() {
-    return window.innerHeight;
+    return this.window.innerHeight;
   }
 
   getWindowInnerWidth() {
-    return window.innerWidth;
+    return this.window.innerWidth;
   }
 
   getLineHeight() {
@@ -5025,23 +5032,32 @@ module.exports = class TextEditorComponent {
   }
 };
 
-let rangeForMeasurement;
+const measurementRanges = new WeakMap();
+function measurementRange(node) {
+  const ownerDocument = node?.ownerDocument ?? globalThis.document;
+  let range = measurementRanges.get(ownerDocument);
+  if (!range) {
+    range = ownerDocument.createRange();
+    measurementRanges.set(ownerDocument, range);
+  }
+  return range;
+}
 function clientRectForRange(textNode, startIndex, endIndex) {
-  rangeForMeasurement ??= document.createRange();
+  const rangeForMeasurement = measurementRange(textNode);
   rangeForMeasurement.setStart(textNode, startIndex);
   rangeForMeasurement.setEnd(textNode, endIndex);
   return rangeForMeasurement.getBoundingClientRect();
 }
 
 function clientRectsForRange(textNode, startIndex, endIndex) {
-  rangeForMeasurement ??= document.createRange();
+  const rangeForMeasurement = measurementRange(textNode);
   rangeForMeasurement.setStart(textNode, startIndex);
   rangeForMeasurement.setEnd(textNode, endIndex);
   return rangeForMeasurement.getClientRects();
 }
 
 function clientRectsForTextNode(textNode, startIndex = null, endIndex = null) {
-  rangeForMeasurement ??= document.createRange();
+  const rangeForMeasurement = measurementRange(textNode);
   if (startIndex === null) {
     rangeForMeasurement.setStartBefore(textNode);
   } else {
@@ -5056,7 +5072,7 @@ function clientRectsForTextNode(textNode, startIndex = null, endIndex = null) {
 }
 
 function boundingClientRectForTextNodes(textNodes) {
-  rangeForMeasurement ??= document.createRange();
+  const rangeForMeasurement = measurementRange(textNodes[0]);
   rangeForMeasurement.setStartBefore(textNodes[0]);
   rangeForMeasurement.setEndAfter(textNodes[textNodes.length - 1]);
   return rangeForMeasurement.getBoundingClientRect();
@@ -5066,7 +5082,7 @@ function boundingClientRectForTextNodes(textNodes) {
 // column on that screen line, returns the `DOMRect`s that make up that
 // range.
 function clientRectsForTextNodes(textNodes, startColumn, endColumn) {
-  rangeForMeasurement ??= document.createRange();
+  const rangeForMeasurement = measurementRange(textNodes[0]);
   let [startTextNode, startOffset] = textNodeAndOffsetForColumn(textNodes, startColumn);
   let [endTextNode, endOffset] = textNodeAndOffsetForColumn(textNodes, endColumn);
 

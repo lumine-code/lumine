@@ -60,6 +60,7 @@ if (process.platform === "win32") {
 if (process.type === "renderer") {
   lumineExport.Task = require("../src/task");
   lumineExport.TextEditor = require("../src/text-editor");
+  lumineExport.WindowContributionRegistry = require("../src/window-contribution-registry");
 }
 
 module.exports = lumineExport;

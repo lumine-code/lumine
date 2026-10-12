@@ -152,12 +152,16 @@ async function requireAvailablePort(port) {
 async function listWindows(port) {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`);
   const targets = await response.json();
-  return targets.filter(
-    (target) =>
-      target.type === "page" &&
-      target.url.includes("index.html") &&
-      !target.url.startsWith("devtools://"),
-  );
+  return targets
+    .filter(
+      (target) =>
+        target.type === "page" &&
+        (target.url.includes("index.html") || target.url === "about:blank") &&
+        !target.url.startsWith("devtools://"),
+    )
+    .sort(
+      (left, right) => Number(left.url === "about:blank") - Number(right.url === "about:blank"),
+    );
 }
 
 async function connect({ port, window = 0, timeout = 20000 }) {
