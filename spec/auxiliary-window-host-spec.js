@@ -333,4 +333,34 @@ describe("Auxiliary editor windows", () => {
     expect(changed).toHaveSize(1);
     expect(disposed).toHaveBeenCalledTimes(1);
   });
+  it("keeps dock commands on the global editing item while bar and root commands remain local", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    const mainEditor = await workspace.open();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const extraEditor = workspace.buildTextEditor();
+    extra.getEditorContainer().getActivePane().activateItem(extraEditor, { activatePane: true });
+    const root = document.createElement("div");
+    const panel = {
+      element: root,
+      getTitle: () => "Global navigation",
+      getAllowedLocations: () => ["left"],
+    };
+    const dockPane = workspace.getLeftDock().getPanes()[0];
+    dockPane.activateItem(panel, { activatePane: true });
+    const context = workspace.resolveCommandContext(root);
+    expect(context.window).toBe(workspace.getMainWindow());
+    expect(context.pane).toBe(dockPane);
+    expect(context.documentPane).toBe(extra.getEditorContainer().getActivePane());
+    expect(context.fileEditor).toBe(extraEditor);
+    expect(workspace.resolveCommandContext(workspace.getMainWindow().getElement()).fileEditor).toBe(
+      mainEditor,
+    );
+    spyOn(extraEditor, "getURI").and.returnValue("extra-document");
+    const saved = spyOn(extraEditor, "save").and.resolveTo();
+    const mainSave = spyOn(mainEditor, "save").and.resolveTo();
+    lumine.commands.dispatch(root, "core:save");
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(mainSave).not.toHaveBeenCalled();
+  });
 });

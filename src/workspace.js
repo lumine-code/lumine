@@ -610,7 +610,9 @@ module.exports = class Workspace extends Model {
     const documentPane =
       pane?.getContainer().getLocation() === "center"
         ? pane
-        : (window?.getEditorContainer().getActivePane() ?? this.getCenter().getActivePane());
+        : pane
+          ? this.getCenter().getActivePane()
+          : (window?.getEditorContainer().getActivePane() ?? this.getCenter().getActivePane());
     pane ??= documentPane;
     const documentItem = documentPane?.getActiveItem();
     const directEditor = this.getTextEditorForElement(target, { includeMini: false });
