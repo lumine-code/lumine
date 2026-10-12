@@ -479,6 +479,7 @@ describe("Workspace", () => {
             isSingleton: () => true,
             getURI: () => ITEM_URI,
             getDefaultLocation: jasmine.createSpy().and.returnValue("left"),
+            getAllowedLocations: () => ["left", "right"],
             getElement: () => document.createElement("div"),
           };
           dock.getActivePane().addItem(item);
@@ -1257,6 +1258,7 @@ describe("Workspace", () => {
       const uri = "lumine://test-pane-for-item";
       const item = {
         isSingleton: () => true,
+        getAllowedLocations: () => ["center", "left"],
         element: document.createElement("div"),
         getURI() {
           return uri;
@@ -1291,6 +1293,7 @@ describe("Workspace", () => {
         getTitle: () => "Item",
         getElement: () => el,
         getURI: () => URI,
+        getAllowedLocations: () => ["center", "left"],
       };
     });
 
@@ -1774,25 +1777,61 @@ describe("Workspace", () => {
   describe("active pane containers", () => {
     it("maintains the active pane and item globally across active pane containers", () => {
       const leftDock = workspace.getLeftDock();
-      const leftItem1 = { isSingleton: () => true, element: document.createElement("div") };
-      const leftItem2 = { isSingleton: () => true, element: document.createElement("div") };
-      const leftItem3 = { isSingleton: () => true, element: document.createElement("div") };
+      const leftItem1 = {
+        getAllowedLocations: () => ["left"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const leftItem2 = {
+        getAllowedLocations: () => ["left"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const leftItem3 = {
+        getAllowedLocations: () => ["left"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
       const leftPane1 = leftDock.getActivePane();
       leftPane1.addItems([leftItem1, leftItem2]);
       const leftPane2 = leftPane1.splitDown({ items: [leftItem3] });
 
       const rightDock = workspace.getRightDock();
-      const rightItem1 = { isSingleton: () => true, element: document.createElement("div") };
-      const rightItem2 = { isSingleton: () => true, element: document.createElement("div") };
-      const rightItem3 = { isSingleton: () => true, element: document.createElement("div") };
+      const rightItem1 = {
+        getAllowedLocations: () => ["right"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const rightItem2 = {
+        getAllowedLocations: () => ["right"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const rightItem3 = {
+        getAllowedLocations: () => ["right"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
       const rightPane1 = rightDock.getActivePane();
       rightPane1.addItems([rightItem1, rightItem2]);
       const rightPane2 = rightPane1.splitDown({ items: [rightItem3] });
 
       const bottomDock = workspace.getBottomDock();
-      const bottomItem1 = { isSingleton: () => true, element: document.createElement("div") };
-      const bottomItem2 = { isSingleton: () => true, element: document.createElement("div") };
-      const bottomItem3 = { isSingleton: () => true, element: document.createElement("div") };
+      const bottomItem1 = {
+        getAllowedLocations: () => ["bottom"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const bottomItem2 = {
+        getAllowedLocations: () => ["bottom"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
+      const bottomItem3 = {
+        getAllowedLocations: () => ["bottom"],
+        isSingleton: () => true,
+        element: document.createElement("div"),
+      };
       const bottomPane1 = bottomDock.getActivePane();
       bottomPane1.addItems([bottomItem1, bottomItem2]);
       const bottomPane2 = bottomPane1.splitDown({ items: [bottomItem3] });
@@ -1908,7 +1947,10 @@ describe("Workspace", () => {
       const pane2 = pane1.splitRight({
         items: [copyableElement("div"), copyableElement("div")],
       });
-      lumine.workspace.getLeftDock().getActivePane().addItem(copyableElement("div"));
+      lumine.workspace
+        .getLeftDock()
+        .getActivePane()
+        .addItem(copyableElement("div", ["left"]));
 
       const emittedItems = [];
       lumine.workspace.onDidStopChangingActivePaneItem((item) => emittedItems.push(item));
@@ -5461,6 +5503,7 @@ describe("Workspace", () => {
         isSingleton: () => true,
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "right",
+        getAllowedLocations: () => ["center", "right"],
         getElement: () => document.createElement("div"),
       };
       const centerPane = workspace.getActivePane();

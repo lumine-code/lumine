@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const etch = require("@lumine-code/etch");
 
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
@@ -37,7 +38,7 @@ describe("Dock", () => {
 
       const dock = lumine.workspace.getLeftDock();
       const occupiedPane = dock.getActivePane();
-      occupiedPane.addItem(document.createElement("div"));
+      occupiedPane.addItem(copyableElement("div", [dock.getLocation()]));
       const emptyPane = occupiedPane.splitRight();
       const itemViews = emptyPane.getElement().querySelector(":scope > .item-views");
       const items = lumine.contextMenu
@@ -60,9 +61,9 @@ describe("Dock", () => {
       lumine.config.set("core.destroyEmptyPanes", false);
       const dock = lumine.workspace.getLeftDock();
       const occupiedPane = dock.getActivePane();
-      occupiedPane.addItem(document.createElement("div"));
+      occupiedPane.addItem(copyableElement("div", [dock.getLocation()]));
       const emptiedPane = occupiedPane.splitRight({
-        items: [document.createElement("div")],
+        items: [copyableElement("div", [dock.getLocation()])],
       });
 
       await emptiedPane.destroyActiveItem();
@@ -80,9 +81,9 @@ describe("Dock", () => {
 
       for (const dock of docks) {
         const pane1 = dock.getActivePane();
-        pane1.addItem(document.createElement("div"));
-        const pane2 = pane1.splitRight({ items: [document.createElement("div")] });
-        const pane3 = pane2.splitRight({ items: [document.createElement("div")] });
+        pane1.addItem(copyableElement("div", [dock.getLocation()]));
+        const pane2 = pane1.splitRight({ items: [copyableElement("div", [dock.getLocation()])] });
+        const pane3 = pane2.splitRight({ items: [copyableElement("div", [dock.getLocation()])] });
         pane2.activate();
         pane3.activate();
 
@@ -434,7 +435,7 @@ describe("Dock", () => {
     it("reserves its saved geometry without painting provisional contents", () => {
       jasmine.attachToDOM(lumine.workspace.getElement());
       const dock = lumine.workspace.getLeftDock();
-      const item = document.createElement("div");
+      const item = copyableElement("div", ["left"]);
 
       dock.beginInitialRestore({ size: 173, visible: true });
       dock.getActivePane().addItem(item);
@@ -528,10 +529,14 @@ describe("Dock", () => {
 
     it("removes splits whose items do not deserialize", () => {
       const restoredItem = {
+        getAllowedLocations: () => ["left"],
         element: document.createElement("div"),
         serialize: () => ({ deserializer: "DockTestItem" }),
       };
-      const transientItem = { element: document.createElement("div") };
+      const transientItem = {
+        getAllowedLocations: () => ["left"],
+        element: document.createElement("div"),
+      };
       lumine.deserializers.add({
         name: "DockTestItem",
         deserialize: () => restoredItem,
@@ -661,6 +666,7 @@ describe("Dock", () => {
       const targetDock = lumine.workspace.getRightDock();
       const targetPane = targetDock.getActivePane();
       const item = {
+        getAllowedLocations: () => ["left", "right"],
         element: document.createElement("div"),
         getDefaultLocation() {
           return "right";

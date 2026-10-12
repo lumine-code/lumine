@@ -10,6 +10,7 @@ let activeStateTransaction = null;
 
 module.exports = class PaneContainer {
   constructor(params) {
+    this.workspace = params.workspace;
     let applicationDelegate, deserializerManager, notificationManager;
     ({
       config: this.config,
@@ -411,6 +412,17 @@ module.exports = class PaneContainer {
   // item left registered makes its own container refuse it ever after.
   registerItem(item) {
     this.itemRegistry.addItem(item);
+  }
+
+  assertItemAvailable(item, pane) {
+    if (this.itemRegistry.hasItem(item)) {
+      throw new Error("The workspace can only contain one instance of a pane item.");
+    }
+    if (
+      this.workspace?.getPanes().some((owner) => owner !== pane && owner.getItems().includes(item))
+    ) {
+      throw new Error("The workspace can only contain one instance of a pane item.");
+    }
   }
 
   unregisterItem(item) {

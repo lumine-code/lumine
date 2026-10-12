@@ -49,6 +49,7 @@ module.exports = class Dock {
     this.emitter = new Emitter();
 
     this.paneContainer = new PaneContainer({
+      workspace: params.workspace,
       location: this.location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,

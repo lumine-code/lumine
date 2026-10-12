@@ -55,6 +55,44 @@ describe("workspace pane item operations", () => {
     subscription.dispose();
   });
 
+  it("rejects disallowed direct additions before changing the center or dock", () => {
+    const dockOnly = viewItem({ singleton: true });
+    dockOnly.getAllowedLocations = () => ["left"];
+    expect(() => sourcePane.addItem(dockOnly)).toThrowError(/center/);
+    const dockPane = workspace.getLeftDock().getActivePane();
+    expect(() => dockPane.addItem(item)).toThrowError(/left/);
+    expect(sourcePane.getItems()).toEqual([item]);
+    expect(dockPane.getItems()).toEqual([]);
+    expect(() => dockPane.addItem(dockOnly)).not.toThrow();
+  });
+
+  it("rejects direct duplicate ownership across center and docks before moving its DOM", () => {
+    item.getAllowedLocations = () => ["center", "left"];
+    const dockPane = workspace.getLeftDock().getActivePane();
+    const parent = item.element.parentNode;
+    const added = jasmine.createSpy("added");
+    const subscription = dockPane.onDidAddItem(added);
+    expect(() => dockPane.addItem(item)).toThrowError(/one instance/);
+    expect(sourcePane.getItems()).toEqual([item]);
+    expect(dockPane.getItems()).toEqual([]);
+    expect(item.element.parentNode).toBe(parent);
+    expect(added).not.toHaveBeenCalled();
+    subscription.dispose();
+    sourcePane.moveItemToPane(item, dockPane);
+    expect(() => sourcePane.addItem(item)).toThrowError(/one instance/);
+    expect(dockPane.getItems()).toEqual([item]);
+  });
+
+  it("validates split items before changing the layout", () => {
+    const invalid = viewItem({ singleton: true });
+    invalid.getAllowedLocations = () => ["left"];
+    const panes = workspace.getPanes();
+    expect(() => sourcePane.splitDown({ items: [invalid] })).toThrowError(/center/);
+    expect(workspace.getPanes()).toEqual(panes);
+    expect(() => sourcePane.splitDown({ items: [item] })).toThrowError(/one instance/);
+    expect(workspace.getPanes()).toEqual(panes);
+  });
+
   it("copies view state into a fresh item without deduplicating its URI", async () => {
     const result = await workspace.copyPaneItem(item, { targetPane });
     expect(result.pane).toBe(targetPane);

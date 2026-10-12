@@ -130,6 +130,8 @@ describe("pane text editor sizing", () => {
 
   it("scrolls a direct text editor in a dock's pane container", async () => {
     const editor = buildEditor();
+    // This document fixture explicitly permits a dock; standard editors are center-only.
+    editor.getAllowedLocations = () => ["bottom"];
     const container = createContainer("bottom");
     container.getActivePane().addItem(editor);
     await expectWheelScroll(editor);

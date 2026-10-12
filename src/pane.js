@@ -3,7 +3,7 @@ const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
-const { assertCenterItemContract } = require("./pane-item-contract");
+const { assertCenterItemContract, assertItemLocation } = require("./pane-item-contract");
 
 let nextInstanceId = 1;
 
@@ -161,9 +161,8 @@ module.exports = class Pane {
   setContainer(container) {
     if (container && container !== this.container) {
       for (const item of this.items) {
-        assertCenterItemContract(item, container.getLocation());
-        if (container.itemRegistry.hasItem(item))
-          throw new Error("The workspace can only contain one instance of a pane item.");
+        assertItemLocation(item, container.getLocation());
+        container.assertItemAvailable(item, this);
       }
       this.container = container;
       container.didAddPane({ pane: this });
@@ -764,13 +763,13 @@ module.exports = class Pane {
     }
 
     if (this.items.includes(item)) return;
-    assertCenterItemContract(
-      item,
-      this.container?.getLocation() ||
-        (isItemAllowedInLocation(item, "center") ? "center" : "dock"),
-    );
-    if (this.container?.itemRegistry.hasItem(item)) {
-      throw new Error("The workspace can only contain one instance of a pane item.");
+    if (this.container) {
+      assertItemLocation(item, this.container.getLocation());
+      this.container.assertItemAvailable(item, this);
+    } else {
+      // Constructors stage items before their destination container exists.
+      // setContainer validates the actual location before registering them.
+      assertCenterItemContract(item, isItemAllowedInLocation(item, "center") ? "center" : "dock");
     }
 
     // Detached editors grow with their content by default. Direct pane
@@ -985,9 +984,7 @@ module.exports = class Pane {
    */
   moveItemToPane(item, pane, index, { preserveSourcePane = false } = {}) {
     if (!this.items.includes(item) || pane === this) return;
-    assertCenterItemContract(item, pane.getContainer()?.getLocation() || "center");
-    if (!pane.isItemAllowed(item))
-      throw new Error("The destination pane does not allow this item.");
+    assertItemLocation(item, pane.getContainer()?.getLocation() || "center");
     // Reparent the live view before removal can collapse its source layout.
     const sourceView = this.element?.views.getView(item);
     if (sourceView?.isConnected) {
@@ -1553,9 +1550,8 @@ module.exports = class Pane {
   split(orientation, side, params) {
     for (const item of params?.items || []) {
       if (!item) continue;
-      assertCenterItemContract(item, this.container.getLocation());
-      if (this.container.itemRegistry.hasItem(item))
-        throw new Error("The workspace can only contain one instance of a pane item.");
+      assertItemLocation(item, this.container.getLocation());
+      this.container.assertItemAvailable(item, null);
     }
     return this.transactActiveState(() => {
       if (this.parent.orientation !== orientation) {

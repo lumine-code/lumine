@@ -482,6 +482,7 @@ module.exports = class Workspace extends Model {
 
   createCenter() {
     return new WorkspaceCenter({
+      workspace: this,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
       notificationManager: this.notificationManager,
@@ -496,6 +497,7 @@ module.exports = class Workspace extends Model {
 
   createDock(location) {
     return new Dock({
+      workspace: this,
       location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
