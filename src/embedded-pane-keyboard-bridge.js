@@ -27,9 +27,18 @@ module.exports = class EmbeddedPaneKeyboardBridge {
     this.disposed = false;
     this.refreshBound = () => this.refresh();
     this.deferRefresh = () => queueMicrotask(() => this.refresh());
+    this.frameLoaded = (event) => {
+      if (event.target?.matches?.("iframe") && this.activeFrame() === event.target)
+        this.refresh({ force: true });
+    };
     this.commandListener = (_event, descriptor) => this.dispatch(descriptor);
+    this.nativeFocused = () => this.refresh({ force: true });
+    this.nativeBlurred = () => this.clear();
     this.transport.on(COMMAND_CHANNEL, this.commandListener);
+    this.transport.on("did-focus-window", this.nativeFocused);
+    this.transport.on("did-blur-window", this.nativeBlurred);
     this.document.addEventListener("focusin", this.refreshBound, true);
+    this.document.addEventListener("load", this.frameLoaded, true);
     this.window.addEventListener("focus", this.deferRefresh);
     this.window.addEventListener("blur", this.deferRefresh);
     this.observer = new this.window.MutationObserver(this.refreshBound);
@@ -115,7 +124,7 @@ module.exports = class EmbeddedPaneKeyboardBridge {
     return output;
   }
 
-  refresh() {
+  refresh({ force = false } = {}) {
     if (this.disposed || !this.enabled) return;
     const frame = this.activeFrame();
     if (!frame) {
@@ -132,7 +141,7 @@ module.exports = class EmbeddedPaneKeyboardBridge {
       this.keymaps.getPartialMatchTimeout(),
       serializable,
     ]);
-    if (this.current?.frame === frame && this.current.fingerprint === fingerprint) return;
+    if (!force && this.current?.frame === frame && this.current.fingerprint === fingerprint) return;
     let hostId = this.ids.get(frame);
     if (!hostId) {
       hostId = randomUUID();
@@ -220,8 +229,11 @@ module.exports = class EmbeddedPaneKeyboardBridge {
     this.hosts.clear();
     this.observer.disconnect();
     this.document.removeEventListener("focusin", this.refreshBound, true);
+    this.document.removeEventListener("load", this.frameLoaded, true);
     this.window.removeEventListener("focus", this.deferRefresh);
     this.window.removeEventListener("blur", this.deferRefresh);
     this.transport.removeListener(COMMAND_CHANNEL, this.commandListener);
+    this.transport.removeListener("did-focus-window", this.nativeFocused);
+    this.transport.removeListener("did-blur-window", this.nativeBlurred);
   }
 };

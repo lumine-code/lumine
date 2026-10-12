@@ -161,6 +161,26 @@ describe("embedded pane keyboard renderer bridge", () => {
     expect(bridge.current.revision).toBeGreaterThan(command.revision);
   });
 
+  it("rearms a loaded active frame with a new revision while leaving inactive loads alone", () => {
+    const previous = descriptor();
+    frame.dispatchEvent(new Event("load"));
+    expect(bridge.current.revision).toBeGreaterThan(previous.revision);
+    const revision = bridge.current.revision;
+    const other = document.createElement("iframe");
+    root.appendChild(other);
+    other.dispatchEvent(new Event("load"));
+    expect(bridge.current.revision).toBe(revision);
+  });
+
+  it("rearms native window focus after main retires an iframe's keyboard context", () => {
+    const previous = descriptor();
+    transport.emit("did-blur-window");
+    expect(bridge.current).toBeNull();
+    transport.emit("did-focus-window");
+    expect(bridge.current.frame).toBe(frame);
+    expect(bridge.current.revision).toBeGreaterThan(previous.revision);
+  });
+
   it("retires explicit host frames before outside-host lifetime retention", () => {
     registration = bridge.registerHost(root);
     const command = descriptor();
