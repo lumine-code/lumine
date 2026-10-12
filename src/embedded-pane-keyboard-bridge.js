@@ -156,7 +156,10 @@ module.exports = class EmbeddedPaneKeyboardBridge {
       bindings: serializable,
     };
     const acknowledgement = this.transport.sendSync(STATE_CHANNEL, snapshot);
-    if (!acknowledgement?.ok || acknowledgement.isMainFrame) {
+    const nativeChild =
+      acknowledgement?.isMainFrame === false &&
+      Number.isSafeInteger(acknowledgement.focusedFrameId);
+    if (!acknowledgement?.ok || (acknowledgement.pending !== true && !nativeChild)) {
       this.current = null;
       return;
     }

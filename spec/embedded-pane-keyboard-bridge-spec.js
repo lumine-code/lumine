@@ -78,6 +78,29 @@ describe("embedded pane keyboard renderer bridge", () => {
     expect(snapshot.bindings[1].depth).toBeGreaterThan(0);
   });
 
+  it("retains a trusted pending candidate until the first native child input binds it", () => {
+    transport.sendSync.and.returnValue({ ok: true, pending: true, isMainFrame: true });
+    bridge.refresh({ force: true });
+    const pending = descriptor();
+    expect(bridge.current.frame).toBe(frame);
+    spyOn(keymaps, "dispatchCommandEvent").and.callThrough();
+    transport.emit("lumine:embedded-keyboard-command", {}, pending);
+    expect(keymaps.dispatchCommandEvent).toHaveBeenCalledTimes(1);
+    expect(keymaps.dispatchCommandEvent.calls.mostRecent().args[1]).toBe(frame);
+  });
+
+  it("does not retain an unarmed main-frame acknowledgement", () => {
+    transport.sendSync.and.returnValue({ ok: true, pending: false, isMainFrame: true });
+    bridge.refresh({ force: true });
+    expect(bridge.current).toBeNull();
+  });
+
+  it("does not mistake missing native focus for an armed child frame", () => {
+    transport.sendSync.and.returnValue({ ok: true, focusedFrameId: null, isMainFrame: false });
+    bridge.refresh({ force: true });
+    expect(bridge.current).toBeNull();
+  });
+
   it("resolves the containing workspace pane past an embedded standalone pane", () => {
     const innerContainer = new PaneContainer({
       config: lumine.config,
