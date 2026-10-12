@@ -24,18 +24,25 @@ function paneForCommand(workspace, event) {
 
 function paneItemCommands(notifications) {
   const commands = {};
-  const settle = (work) =>
-    Promise.resolve()
-      .then(work)
-      .catch((error) => {
-        if (error.code === "ABORT_ERR" || error.name === "AbortError") return;
-        if (error.name === "PaneItemOperationError") notifications.addWarning(error.message);
-        else
-          notifications.addError("Unable to complete the pane operation.", {
-            detail: error.message,
-            dismissable: true,
-          });
+  const report = (error) => {
+    if (error.code === "ABORT_ERR" || error.name === "AbortError") return;
+    if (error.name === "PaneItemOperationError") notifications.addWarning(error.message);
+    else
+      notifications.addError("Unable to complete the pane operation.", {
+        detail: error.message,
+        dismissable: true,
       });
+  };
+  const settle = (work) => {
+    // Capture the exact source document during dispatch, before another queued
+    // navigation can replace the item that this command is about.
+    try {
+      return Promise.resolve(work()).catch(report);
+    } catch (error) {
+      report(error);
+      return Promise.resolve();
+    }
+  };
   for (const direction of ["up", "down", "left", "right"]) {
     commands[`window:focus-pane-${direction}`] = {
       description: `Focus the nearest visible pane ${direction}, including docks.`,

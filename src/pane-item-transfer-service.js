@@ -127,7 +127,14 @@ class PaneItemTransferService {
   }
 
   async disposeUnpresentedCopy(copy, source) {
-    if (!copy || typeof copy !== "object" || copy === source || this.workspace.paneForItem(copy))
+    if (
+      !copy ||
+      typeof copy !== "object" ||
+      copy === source ||
+      copy.isDestroyed?.() ||
+      copy.destroyed === true ||
+      this.workspace.paneForItem(copy)
+    )
       return;
     if (this.hasIndependentCopyView(copy, source)) await copy.destroy?.();
   }
@@ -218,6 +225,7 @@ class PaneItemTransferService {
         typeof copy !== "object" ||
         copy === item ||
         copy.isDestroyed?.() ||
+        copy.destroyed === true ||
         this.workspace.paneForItem(copy)
       ) {
         throw new PaneItemOperationError(

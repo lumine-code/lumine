@@ -183,6 +183,23 @@ describe("workspace pane item operations", () => {
     expect(workspace.getCenter().getPanes().length).toBe(2);
   });
 
+  it("rejects a changed document generation whose URI has remained the same", async () => {
+    let revision = 0;
+    let finish;
+    const copy = viewItem();
+    item.getPaneItemRevision = () => revision;
+    item.copy = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const operation = workspace.copyPaneItem(item, { splitDirection: "down" });
+    revision++;
+    finish(copy);
+    await expectAsync(operation).toBeRejectedWith(jasmine.objectContaining({ code: "ABORT_ERR" }));
+    expect(copy.destroy).toHaveBeenCalled();
+    expect(workspace.getCenter().getPanes().length).toBe(2);
+  });
+
   it("does not steal focus when an asynchronous copy finishes after navigation elsewhere", async () => {
     let finish;
     item.copy = () =>
@@ -238,6 +255,14 @@ describe("workspace pane item operations", () => {
     await lumine.commands.dispatch(workspace.getElement(), "pane:split-down-and-copy-active-item");
     expect(workspace.getCenter().getPanes().length).toBe(3);
     expect(workspace.getActivePaneItem()).not.toBe(item);
+  });
+
+  it("captures the command's source before a queued document replacement can retarget it", async () => {
+    const dispatch = lumine.commands.dispatch(item.element, "pane:split-down-and-copy-active-item");
+    item.navigate("test://replacement");
+    await dispatch;
+    expect(workspace.getCenter().getPanes().length).toBe(2);
+    expect(sourcePane.getActiveItem()).toBe(item);
   });
 
   it("selects a permitted directional destination past a forbidden dock", async () => {
