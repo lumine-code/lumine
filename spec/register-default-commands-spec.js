@@ -73,7 +73,9 @@ describe("registerDefaultCommands", () => {
         `pane:split-${direction}-and-copy-active-item`,
       ]) {
         expect(commands.get(command).length).toBe(1);
-        expect(commands.get(command)[0].description).toMatch(/\.$/);
+        if (command.startsWith("pane:split-"))
+          expect(commands.get(command)[0].description).toBeUndefined();
+        else expect(commands.get(command)[0].description).toMatch(/\.$/);
       }
     }
     for (const oldDirection of ["above", "below", "on-left", "on-right"]) {
@@ -82,6 +84,24 @@ describe("registerDefaultCommands", () => {
       expect(commands.has(`window:copy-active-item-to-pane-${oldDirection}`)).toBe(false);
     }
   });
+
+  for (const rejection of [null, "Copy provider failed"]) {
+    it(`reports a ${rejection === null ? "null" : "string"} provider rejection at the pane command boundary`, async () => {
+      const addError = jasmine.createSpy("addError");
+      const commands = commandsRegisteredOn("win32", { notificationManager: { addError } });
+      const [listener] = commands.get("pane:split-right-and-copy-active-item");
+      const sourcePane = { getActiveItem: () => ({}) };
+      const workspace = {
+        getActivePane: () => sourcePane,
+        copyPaneItem: () => Promise.reject(rejection),
+      };
+      await expectAsync(listener.didDispatch.call({ getModel: () => workspace })).toBeResolved();
+      expect(addError).toHaveBeenCalledWith("Unable to complete the pane operation.", {
+        detail: String(rejection),
+        dismissable: true,
+      });
+    });
+  }
 
   it("registers macOS application-management commands only on macOS", () => {
     const macOSCommands = commandNamesRegisteredOn("darwin");

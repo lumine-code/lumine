@@ -22,14 +22,86 @@ function paneForCommand(workspace, event) {
   return workspace.getActivePane();
 }
 
+const PANE_ITEM_COMMANDS = {
+  "window:focus-pane-up": {
+    description: "Focus the nearest visible pane above, including docks.",
+    direction: "up",
+    action: "focus",
+  },
+  "window:focus-pane-down": {
+    description: "Focus the nearest visible pane below, including docks.",
+    direction: "down",
+    action: "focus",
+  },
+  "window:focus-pane-left": {
+    description: "Focus the nearest visible pane on the left, including docks.",
+    direction: "left",
+    action: "focus",
+  },
+  "window:focus-pane-right": {
+    description: "Focus the nearest visible pane on the right, including docks.",
+    direction: "right",
+    action: "focus",
+  },
+  "pane:move-active-item-up": {
+    description: "Move the active tab to the nearest allowed pane above.",
+    direction: "up",
+    action: "move",
+  },
+  "pane:move-active-item-down": {
+    description: "Move the active tab to the nearest allowed pane below.",
+    direction: "down",
+    action: "move",
+  },
+  "pane:move-active-item-left": {
+    description: "Move the active tab to the nearest allowed pane on the left.",
+    direction: "left",
+    action: "move",
+  },
+  "pane:move-active-item-right": {
+    description: "Move the active tab to the nearest allowed pane on the right.",
+    direction: "right",
+    action: "move",
+  },
+  "pane:copy-active-item-up": {
+    description: "Copy the active tab to the nearest allowed pane above.",
+    direction: "up",
+    action: "copy",
+  },
+  "pane:copy-active-item-down": {
+    description: "Copy the active tab to the nearest allowed pane below.",
+    direction: "down",
+    action: "copy",
+  },
+  "pane:copy-active-item-left": {
+    description: "Copy the active tab to the nearest allowed pane on the left.",
+    direction: "left",
+    action: "copy",
+  },
+  "pane:copy-active-item-right": {
+    description: "Copy the active tab to the nearest allowed pane on the right.",
+    direction: "right",
+    action: "copy",
+  },
+  "pane:split-up-and-move-active-item": { direction: "up", action: "move", split: true },
+  "pane:split-down-and-move-active-item": { direction: "down", action: "move", split: true },
+  "pane:split-left-and-move-active-item": { direction: "left", action: "move", split: true },
+  "pane:split-right-and-move-active-item": { direction: "right", action: "move", split: true },
+  "pane:split-up-and-copy-active-item": { direction: "up", action: "copy", split: true },
+  "pane:split-down-and-copy-active-item": { direction: "down", action: "copy", split: true },
+  "pane:split-left-and-copy-active-item": { direction: "left", action: "copy", split: true },
+  "pane:split-right-and-copy-active-item": { direction: "right", action: "copy", split: true },
+};
+
 function paneItemCommands(notifications) {
   const commands = {};
   const report = (error) => {
-    if (error.code === "ABORT_ERR" || error.name === "AbortError") return;
-    if (error.name === "PaneItemOperationError") notifications.addWarning(error.message);
+    if (error?.code === "ABORT_ERR" || error?.name === "AbortError") return;
+    const message = error?.message ?? String(error);
+    if (error?.name === "PaneItemOperationError") notifications.addWarning(message);
     else
       notifications.addError("Unable to complete the pane operation.", {
-        detail: error.message,
+        detail: message,
         dismissable: true,
       });
   };
@@ -43,42 +115,30 @@ function paneItemCommands(notifications) {
       return Promise.resolve();
     }
   };
-  for (const direction of ["up", "down", "left", "right"]) {
-    commands[`window:focus-pane-${direction}`] = {
-      description: `Focus the nearest visible pane ${direction}, including docks.`,
+  for (const [name, definition] of Object.entries(PANE_ITEM_COMMANDS)) {
+    const { direction, action, split, description } = definition;
+    commands[name] = {
+      ...(description ? { description } : {}),
       didDispatch(event) {
         const workspace = this.getModel();
-        return workspace.focusPaneInDirection(direction, {
-          sourcePane: paneForCommand(workspace, event),
-        });
+        const sourcePane = paneForCommand(workspace, event);
+        if (action === "focus") return workspace.focusPaneInDirection(direction, { sourcePane });
+        const item = sourcePane?.getActiveItem();
+        if (!item) return;
+        const options = { sourcePane };
+        if (split) options.splitDirection = direction;
+        else {
+          options.targetPane = workspace
+            .getElement()
+            .nearestVisiblePaneInDirection(direction, sourcePane, { item })
+            ?.getModel();
+          if (!options.targetPane) return;
+        }
+        return settle(() =>
+          workspace[action === "move" ? "movePaneItem" : "copyPaneItem"](item, options),
+        );
       },
     };
-    for (const action of ["move", "copy"]) {
-      for (const split of [false, true]) {
-        const name = split
-          ? `pane:split-${direction}-and-${action}-active-item`
-          : `pane:${action}-active-item-${direction}`;
-        commands[name] = {
-          description: `${action === "move" ? "Move" : "Copy"} this pane's active tab ${split ? "into a new split" : "to the nearest allowed pane"} ${direction}.`,
-          didDispatch(event) {
-            const workspace = this.getModel();
-            const sourcePane = paneForCommand(workspace, event);
-            const item = sourcePane?.getActiveItem();
-            if (!item) return;
-            const options = { sourcePane };
-            if (split) options.splitDirection = direction;
-            else {
-              options.targetPane = workspace
-                .getElement()
-                .nearestVisiblePaneInDirection(direction, sourcePane, { item })
-                ?.getModel();
-              if (!options.targetPane) return;
-            }
-            return settle(() => workspace[`${action}PaneItem`](item, options));
-          },
-        };
-      }
-    }
   }
   return commands;
 }
