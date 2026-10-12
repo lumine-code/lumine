@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const PaneContainer = require("../src/pane-container");
 
 describe("PaneElement", function () {
@@ -60,7 +61,7 @@ describe("PaneElement", function () {
       expect(watermarkStyle().backgroundColor).toBe("rgb(1, 2, 3)");
       expect(watermarkStyle().webkitMaskImage).toContain("lumine-raw.svg");
 
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       pane.addItem(item);
       expect(watermarkStyle().content).toBe("none");
 
@@ -164,7 +165,7 @@ describe("PaneElement", function () {
       }
       paneElement.style.removeProperty("--empty-pane-content-offset");
       expect(getComputedStyle(paneElement.itemViews).containerType).toBe("size");
-      pane.addItem(document.createElement("div"));
+      pane.addItem(copyableElement("div"));
       expect(getComputedStyle(paneElement.itemViews).containerType).toBe("normal");
       expect(watermarkStyle().content).toBe("none");
     });
@@ -183,9 +184,9 @@ describe("PaneElement", function () {
 
   describe("when the active item changes", function () {
     it("hides all item elements except the active one", function () {
-      const item1 = document.createElement("div");
-      const item2 = document.createElement("div");
-      const item3 = document.createElement("div");
+      const item1 = copyableElement("div");
+      const item2 = copyableElement("div");
+      const item3 = copyableElement("div");
       pane.addItem(item1);
       pane.addItem(item2);
       pane.addItem(item3);
@@ -213,8 +214,8 @@ describe("PaneElement", function () {
       // Splitting a pane replaces it with an axis containing it, so the pane
       // element is detached and reattached. An item activated during that
       // window is only hidden, never shown, so reattaching has to show it.
-      const item1 = document.createElement("div");
-      const item2 = document.createElement("div");
+      const item1 = copyableElement("div");
+      const item2 = copyableElement("div");
       pane.addItem(item1);
       pane.addItem(item2);
       jasmine.attachToDOM(paneElement);
@@ -232,9 +233,9 @@ describe("PaneElement", function () {
     });
 
     it("transfers focus to the new item if the previous item was focused", function () {
-      const item1 = document.createElement("div");
+      const item1 = copyableElement("div");
       item1.tabIndex = -1;
-      const item2 = document.createElement("div");
+      const item2 = copyableElement("div");
       item2.tabIndex = -1;
       pane.addItem(item1);
       pane.addItem(item2);
@@ -250,7 +251,7 @@ describe("PaneElement", function () {
       // Removing the focused element drops focus on `body` without firing any
       // blur event. With no next item to hand focus to, the pane element
       // itself has to take it, or the workspace ends up with nothing focused.
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       item.tabIndex = -1;
       pane.addItem(item);
       jasmine.attachToDOM(paneElement);
@@ -266,10 +267,14 @@ describe("PaneElement", function () {
 
     describe("if the active item is a model object", () =>
       it("retrieves the associated view from lumine.views and appends it to the itemViews div", function () {
-        class TestModel {}
+        class TestModel {
+          isSingleton() {
+            return true;
+          }
+        }
 
         lumine.views.addViewProvider(TestModel, function (model) {
-          const view = document.createElement("div");
+          const view = copyableElement("div");
           view.model = model;
           return view;
         });
@@ -289,9 +294,9 @@ describe("PaneElement", function () {
 
     describe("when the new active implements .getPath()", function () {
       it("adds the file path and file name as a data attribute on the pane", function () {
-        const item1 = document.createElement("div");
+        const item1 = copyableElement("div");
         item1.getPath = () => "/foo/bar.txt";
-        const item2 = document.createElement("div");
+        const item2 = copyableElement("div");
         pane.addItem(item1);
         pane.addItem(item2);
 
@@ -316,7 +321,7 @@ describe("PaneElement", function () {
         let [item1, item2] = [];
 
         beforeEach(function () {
-          item1 = document.createElement("div");
+          item1 = copyableElement("div");
           item1.path = "/foo/bar.txt";
           item1.changePathCallbacks = [];
           item1.setPath = function (path) {
@@ -337,7 +342,7 @@ describe("PaneElement", function () {
             };
           };
 
-          item2 = document.createElement("div");
+          item2 = copyableElement("div");
 
           pane.addItem(item1);
           pane.addItem(item2);
@@ -374,8 +379,8 @@ describe("PaneElement", function () {
   describe("when an item is removed from the pane", function () {
     describe("when the destroyed item is an element", () =>
       it("removes the item from the itemViews div", function () {
-        const item1 = document.createElement("div");
-        const item2 = document.createElement("div");
+        const item1 = copyableElement("div");
+        const item2 = copyableElement("div");
         pane.addItem(item1);
         pane.addItem(item2);
         paneElement = pane.getElement();
@@ -390,10 +395,14 @@ describe("PaneElement", function () {
 
     describe("when the destroyed item is a model", () =>
       it("removes the model's associated view", function () {
-        class TestModel {}
+        class TestModel {
+          isSingleton() {
+            return true;
+          }
+        }
 
         lumine.views.addViewProvider(TestModel, function (model) {
-          const view = document.createElement("div");
+          const view = copyableElement("div");
           model.element = view;
           view.model = model;
           return view;
@@ -415,7 +424,7 @@ describe("PaneElement", function () {
 
   describe("when the pane element is focused", function () {
     it("transfers focus to the active view", function () {
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       item.tabIndex = -1;
       pane.activateItem(item);
       jasmine.attachToDOM(paneElement);
@@ -430,7 +439,7 @@ describe("PaneElement", function () {
     });
 
     it("reaches the active view even when no focus event is delivered", function () {
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       item.tabIndex = -1;
       pane.activateItem(item);
       jasmine.attachToDOM(paneElement);
@@ -463,8 +472,8 @@ describe("PaneElement", function () {
     });
 
     it("does not re-activate the pane when focus changes within the pane", function () {
-      const item = document.createElement("div");
-      const itemChild = document.createElement("div");
+      const item = copyableElement("div");
+      const itemChild = copyableElement("div");
       item.tabIndex = -1;
       itemChild.tabIndex = -1;
       item.appendChild(itemChild);
@@ -519,7 +528,7 @@ describe("PaneElement", function () {
   describe("resize", () =>
     it("shrinks independently of its contents' width", function () {
       jasmine.attachToDOM(containerElement);
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       item.style.width = "2000px";
       item.style.height = "30px";
       paneElement.insertBefore(item, paneElement.children[0]);

@@ -414,59 +414,8 @@ class WorkspaceElement extends HTMLElement {
     this.model.getActivePane().activate();
   }
 
-  focusPaneViewAbove() {
-    this.focusPaneViewInDirection("above");
-  }
-
-  focusPaneViewBelow() {
-    this.focusPaneViewInDirection("below");
-  }
-
-  focusPaneViewOnLeft() {
-    this.focusPaneViewInDirection("left");
-  }
-
-  focusPaneViewOnRight() {
-    this.focusPaneViewInDirection("right");
-  }
-
-  focusPaneViewInDirection(direction, _pane) {
-    const activePane = this.model.getActivePane();
-    const paneToFocus = this.nearestVisiblePaneInDirection(direction, activePane);
-    paneToFocus && paneToFocus.focus();
-  }
-
-  moveActiveItemToPaneAbove(params) {
-    this.moveActiveItemToNearestPaneInDirection("above", params);
-  }
-
-  moveActiveItemToPaneBelow(params) {
-    this.moveActiveItemToNearestPaneInDirection("below", params);
-  }
-
-  moveActiveItemToPaneOnLeft(params) {
-    this.moveActiveItemToNearestPaneInDirection("left", params);
-  }
-
-  moveActiveItemToPaneOnRight(params) {
-    this.moveActiveItemToNearestPaneInDirection("right", params);
-  }
-
-  moveActiveItemToNearestPaneInDirection(direction, params) {
-    const activePane = this.model.getActivePane();
-    const nearestPaneView = this.nearestVisiblePaneInDirection(direction, activePane);
-    if (nearestPaneView == null) {
-      return;
-    }
-    if (params && params.keepOriginal) {
-      activePane.getContainer().copyActiveItemToPane(nearestPaneView.getModel());
-    } else {
-      activePane.getContainer().moveActiveItemToPane(nearestPaneView.getModel());
-    }
-    nearestPaneView.focus();
-  }
-
-  nearestVisiblePaneInDirection(direction, pane) {
+  nearestVisiblePaneInDirection(direction, pane, { item } = {}) {
+    if (!pane || pane.isDestroyed()) return;
     const distance = function (pointA, pointB) {
       const x = pointB.x - pointA.x;
       const y = pointB.y - pointA.y;
@@ -476,19 +425,24 @@ class WorkspaceElement extends HTMLElement {
     const paneView = pane.getElement();
     const box = this.boundingBoxForPaneView(paneView);
 
-    const paneViews = lumine.workspace
+    const paneViews = this.model
       .getVisiblePanes()
       .map((otherPane) => otherPane.getElement())
       .filter((otherPaneView) => {
+        if (
+          otherPaneView.getModel() === pane ||
+          (item && !otherPaneView.getModel().isItemAllowed(item))
+        )
+          return false;
         const otherBox = this.boundingBoxForPaneView(otherPaneView);
         switch (direction) {
           case "left":
             return otherBox.right.x <= box.left.x;
           case "right":
             return otherBox.left.x >= box.right.x;
-          case "above":
+          case "up":
             return otherBox.bottom.y <= box.top.y;
-          case "below":
+          case "down":
             return otherBox.top.y >= box.bottom.y;
         }
       })
@@ -500,9 +454,9 @@ class WorkspaceElement extends HTMLElement {
             return distance(box.left, boxA.right) - distance(box.left, boxB.right);
           case "right":
             return distance(box.right, boxA.left) - distance(box.right, boxB.left);
-          case "above":
+          case "up":
             return distance(box.top, boxA.bottom) - distance(box.top, boxB.bottom);
-          case "below":
+          case "down":
             return distance(box.bottom, boxA.top) - distance(box.bottom, boxB.top);
         }
       });

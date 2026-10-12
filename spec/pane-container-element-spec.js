@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const PaneContainer = require("../src/pane-container");
 const PaneAxis = require("../src/pane-axis");
 
@@ -68,11 +69,11 @@ describe("PaneContainerElement", function () {
       const container = new PaneContainer(params);
       const containerElement = container.getElement();
       const leftPane = container.getActivePane();
-      const leftItem = document.createElement("div");
+      const leftItem = copyableElement("div");
       leftItem.tabIndex = -1;
       leftPane.addItem(leftItem);
       const rightPane = leftPane.splitRight();
-      const rightItem = document.createElement("div");
+      const rightItem = copyableElement("div");
       rightItem.tabIndex = -1;
       rightPane.addItem(rightItem);
 
@@ -93,10 +94,10 @@ describe("PaneContainerElement", function () {
       const container = new PaneContainer(params);
       const containerElement = container.getElement();
       const leftPane = container.getActivePane();
-      const unfocusableItem = document.createElement("div");
+      const unfocusableItem = copyableElement("div");
       leftPane.addItem(unfocusableItem);
       const rightPane = leftPane.splitRight();
-      const rightItem = document.createElement("div");
+      const rightItem = copyableElement("div");
       rightItem.tabIndex = -1;
       rightPane.addItem(rightItem);
 

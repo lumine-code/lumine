@@ -528,6 +528,7 @@ class Environment {
       windowService: this.window,
       applicationDelegate: this.applicationDelegate,
     });
+    this.workspace.paneItemTransferService = this.paneItemTransfers;
 
     this.themes.workspace = this.workspace;
     this.repositories.attachWorkspace(this.workspace);

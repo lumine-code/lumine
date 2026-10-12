@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const PaneContainer = require("../src/pane-container");
 const { Emitter } = require("@lumine-code/event-kit");
 
@@ -21,6 +22,10 @@ describe("PaneContainer", () => {
     beforeEach(() => {
       // This is a dummy item to prevent panes from being empty on deserialization
       class Item {
+        isSingleton() {
+          return true;
+        }
+
         static deserialize() {
           return new this();
         }
@@ -240,8 +245,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{}, {}]);
-      container.getRoot().splitRight({ items: [{}, {}] });
+      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container
+        .getRoot()
+        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -260,8 +267,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{}, {}]);
-      container.getRoot().splitRight({ items: [{}, {}] });
+      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container
+        .getRoot()
+        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -283,6 +292,7 @@ describe("PaneContainer", () => {
     it("does not expose already-destroyed items while the container is being destroyed", () => {
       const disposedEmitter = new Emitter();
       const stubItem = {
+        isSingleton: () => true,
         destroy() {
           disposedEmitter.dispose();
         },
@@ -292,6 +302,7 @@ describe("PaneContainer", () => {
       };
       const activeItemEmitter = new Emitter();
       const activeItem = {
+        isSingleton: () => true,
         destroy() {
           activeItemEmitter.emit("did-destroy");
         },
@@ -314,10 +325,10 @@ describe("PaneContainer", () => {
     let container, pane1, pane2, item1, item2, item3, item4, observed, panes;
 
     beforeEach(() => {
-      item1 = {};
-      item2 = {};
-      item3 = {};
-      item4 = {};
+      item1 = { isSingleton: () => true };
+      item2 = { isSingleton: () => true };
+      item3 = { isSingleton: () => true };
+      item4 = { isSingleton: () => true };
       container = new PaneContainer(params);
       pane1 = container.getActivePane();
       pane1.addItems([item1, item2]);
@@ -355,7 +366,12 @@ describe("PaneContainer", () => {
     });
 
     it("moves the active item to a split without publishing its source's fallback", () => {
-      const split = pane1.splitRight({ moveActiveItem: true });
+      const split = pane1.transactActiveState(() => {
+        const split = pane1.splitRight({ activate: false });
+        pane1.moveItemToPane(item1, split, undefined, { preserveSourcePane: true });
+        split.activateItem(item1, { activatePane: true });
+        return split;
+      });
 
       expect(container.getActivePane()).toBe(split);
       expect(pane1.getActiveItem()).toBe(item2);
@@ -366,7 +382,12 @@ describe("PaneContainer", () => {
     it("moves a sole active item to a split without publishing an empty or unrelated pane", () => {
       pane1.removeItem(item2, false);
       observed.length = 0;
-      const split = pane1.splitRight({ moveActiveItem: true });
+      const split = pane1.transactActiveState(() => {
+        const split = pane1.splitRight({ activate: false });
+        pane1.moveItemToPane(item1, split, undefined, { preserveSourcePane: true });
+        split.activateItem(item1, { activatePane: true });
+        return split;
+      });
 
       expect(container.getActivePane()).toBe(split);
       expect(container.getActivePaneItem()).toBe(item1);
@@ -375,9 +396,9 @@ describe("PaneContainer", () => {
     });
 
     it("copies an active item into a split and publishes the copy once", () => {
-      const copy = {};
+      const copy = { isSingleton: () => true };
       item1.copy = () => copy;
-      const split = pane1.splitRight({ copyActiveItem: true });
+      const split = pane1.splitRight({ items: [item1.copy()] });
 
       expect(container.getActivePane()).toBe(split);
       expect(pane1.getActiveItem()).toBe(item1);
@@ -409,7 +430,10 @@ describe("PaneContainer", () => {
     it("moves the sole active item into a populated pane without publishing its previous item", () => {
       lumine.config.set("core.destroyEmptyPanes", true);
       pane1.removeItem(item2, false);
-      container.moveActiveItemToPane(pane2);
+      pane1.transactActiveState(() => {
+        pane1.moveItemToPane(item1, pane2);
+        pane2.activateItem(item1);
+      });
 
       expect(container.getActivePane()).toBe(pane2);
       expect(pane2.getActiveItem()).toBe(item1);
@@ -418,7 +442,10 @@ describe("PaneContainer", () => {
     });
 
     it("retains the source's final fallback when a move leaves the source active", () => {
-      container.moveActiveItemToPane(pane2);
+      pane1.transactActiveState(() => {
+        pane1.moveItemToPane(item1, pane2);
+        pane2.activateItem(item1);
+      });
 
       expect(container.getActivePane()).toBe(pane1);
       expect(pane2.getActiveItem()).toBe(item1);
@@ -522,8 +549,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{}, {}]);
-      container.getRoot().splitRight({ items: [{}, {}] });
+      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container
+        .getRoot()
+        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -583,14 +612,14 @@ describe("PaneContainer", () => {
   describe("::observePaneItems()", () =>
     it("invokes observers with all current and future pane items", () => {
       const container = new PaneContainer(params);
-      container.getRoot().addItems([{}, {}]);
-      container.getRoot().splitRight({ items: [{}] });
+      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container.getRoot().splitRight({ items: [{ isSingleton: () => true }] });
       const pane2 = container.getPanes()[1];
       const observed = [];
       container.observePaneItems((pane) => observed.push(pane));
 
-      const pane3 = pane2.splitDown({ items: [{}] });
-      pane3.addItems([{}, {}]);
+      const pane3 = pane2.splitDown({ items: [{ isSingleton: () => true }] });
+      pane3.addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
 
       expect(observed).toEqual(container.getPaneItems());
     }));
@@ -600,6 +629,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       class TestItem {
+        isSingleton() {
+          return true;
+        }
+
         shouldPromptToSave() {
           return true;
         }
@@ -650,6 +683,10 @@ describe("PaneContainer", () => {
   describe("::onWillDestroyPane(callback)", () => {
     it("invokes the given callback before panes or their items are destroyed", () => {
       class TestItem {
+        isSingleton() {
+          return true;
+        }
+
         constructor() {
           this._isDestroyed = false;
         }
@@ -719,9 +756,9 @@ describe("PaneContainer", () => {
     it("invokes the given callbacks when an item will be destroyed on any pane", async () => {
       const container = new PaneContainer(params);
       const pane1 = container.getRoot();
-      const item1 = {};
-      const item2 = {};
-      const item3 = {};
+      const item1 = { isSingleton: () => true };
+      const item2 = { isSingleton: () => true };
+      const item3 = { isSingleton: () => true };
 
       pane1.addItem(item1);
       const events = [];
@@ -765,6 +802,7 @@ describe("PaneContainer", () => {
       pane1.splitRight();
 
       const item1 = {
+        isSingleton: () => true,
         saved: false,
         getURI() {
           return "";
@@ -777,6 +815,7 @@ describe("PaneContainer", () => {
         },
       };
       const item2 = {
+        isSingleton: () => true,
         saved: false,
         getURI() {
           return "";
@@ -789,6 +828,7 @@ describe("PaneContainer", () => {
         },
       };
       const item3 = {
+        isSingleton: () => true,
         saved: false,
         getURI() {
           return "";
@@ -820,6 +860,7 @@ describe("PaneContainer", () => {
       const pane2 = pane1.splitRight();
 
       const item1 = {
+        isSingleton: () => true,
         saved: false,
         getURI() {
           return "";
@@ -832,6 +873,7 @@ describe("PaneContainer", () => {
         },
       };
       const item2 = {
+        isSingleton: () => true,
         saved: false,
         getURI() {
           return "";
@@ -864,44 +906,11 @@ describe("PaneContainer", () => {
     });
   });
 
-  describe("::moveActiveItemToPane(destPane) and ::copyActiveItemToPane(destPane)", () => {
-    let container, pane1, pane2, item1;
-
-    beforeEach(() => {
-      class TestItem {
-        constructor(id) {
-          this.id = id;
-        }
-        copy() {
-          return new TestItem(this.id);
-        }
-      }
-
-      container = new PaneContainer(params);
-      pane1 = container.getRoot();
-      item1 = new TestItem("1");
-      pane2 = pane1.splitRight({ items: [item1] });
-    });
-
-    describe("::::moveActiveItemToPane(destPane)", () =>
-      it("moves active item to given pane and focuses it", () => {
-        container.moveActiveItemToPane(pane1);
-        expect(pane1.getActiveItem()).toBe(item1);
-      }));
-
-    describe("::::copyActiveItemToPane(destPane)", () =>
-      it("copies active item to given pane and focuses it", () => {
-        container.copyActiveItemToPane(pane1);
-        expect(container.paneForItem(item1)).toBe(pane2);
-        expect(pane1.getActiveItem().id).toBe(item1.id);
-      }));
-  });
-
   describe("when the active pane is closed", () => {
     let container;
 
     const focusableItem = () => {
-      const element = document.createElement("div");
+      const element = copyableElement("div");
       element.tabIndex = -1;
       return element;
     };

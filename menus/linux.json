@@ -371,19 +371,19 @@
             },
             {
               "label": "Focus Pane Above",
-              "command": "window:focus-pane-above"
+              "command": "window:focus-pane-up"
             },
             {
               "label": "Focus Pane Below",
-              "command": "window:focus-pane-below"
+              "command": "window:focus-pane-down"
             },
             {
               "label": "Focus Pane On Left",
-              "command": "window:focus-pane-on-left"
+              "command": "window:focus-pane-left"
             },
             {
               "label": "Focus Pane On Right",
-              "command": "window:focus-pane-on-right"
+              "command": "window:focus-pane-right"
             },
             {
               "type": "separator"

@@ -33,6 +33,10 @@ class TextEditorElement extends HTMLElement {
     this.component?.didDetach();
   }
 
+  connectedMoveCallback() {
+    this.component?.didMove();
+  }
+
   static get observedAttributes() {
     return ["mini", "placeholder-text", "gutter-hidden", "readonly"];
   }

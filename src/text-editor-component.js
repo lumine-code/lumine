@@ -2409,19 +2409,7 @@ module.exports = class TextEditorComponent {
   didAttach() {
     if (!this.attached) {
       this.attached = true;
-      this.intersectionObserver = new IntersectionObserver((entries, observer) => {
-        // Disconnecting stops observation but leaves already-queued entries.
-        // A pane collapse reparents this editor and creates a new observer;
-        // the old observer must not hide that newly attached view afterwards.
-        if (!this.attached || observer !== this.intersectionObserver) return;
-        const { intersectionRect } = entries[entries.length - 1];
-        if (intersectionRect.width > 0 || intersectionRect.height > 0) {
-          this.didShow();
-        } else {
-          this.didHide();
-        }
-      });
-      this.intersectionObserver.observe(this.element);
+      this.observeVisibility();
 
       this.resizeObserver = new ResizeObserver(this.didResize.bind(this));
       this.observeResizeTargets();
@@ -2450,6 +2438,29 @@ module.exports = class TextEditorComponent {
       }
       this.constructor.attachedComponents.add(this);
     }
+  }
+
+  observeVisibility() {
+    this.intersectionObserver = new IntersectionObserver((entries, observer) => {
+      // Disconnecting stops observation but leaves already-queued entries.
+      // A pane collapse reparents this editor and creates a new observer;
+      // the old observer must not hide that newly attached view afterwards.
+      if (!this.attached || observer !== this.intersectionObserver) return;
+      const { intersectionRect } = entries[entries.length - 1];
+      if (intersectionRect.width > 0 || intersectionRect.height > 0) {
+        this.didShow();
+      } else {
+        this.didHide();
+      }
+    });
+    this.intersectionObserver.observe(this.element);
+  }
+
+  didMove() {
+    if (!this.attached) return;
+    this.intersectionObserver.disconnect();
+    this.observeVisibility();
+    this.didResize();
   }
 
   // Observes the boxes whose size the component's measurements depend on.

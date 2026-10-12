@@ -62,6 +62,27 @@ describe("registerDefaultCommands", () => {
     return new Set(commandsRegisteredOn(platform).keys());
   }
 
+  it("registers the twenty directional pane operations exactly once with descriptions", () => {
+    const commands = commandsRegisteredOn("win32");
+    for (const direction of ["up", "down", "left", "right"]) {
+      for (const command of [
+        `window:focus-pane-${direction}`,
+        `pane:move-active-item-${direction}`,
+        `pane:copy-active-item-${direction}`,
+        `pane:split-${direction}-and-move-active-item`,
+        `pane:split-${direction}-and-copy-active-item`,
+      ]) {
+        expect(commands.get(command).length).toBe(1);
+        expect(commands.get(command)[0].description).toMatch(/\.$/);
+      }
+    }
+    for (const oldDirection of ["above", "below", "on-left", "on-right"]) {
+      expect(commands.has(`window:focus-pane-${oldDirection}`)).toBe(false);
+      expect(commands.has(`window:move-active-item-to-pane-${oldDirection}`)).toBe(false);
+      expect(commands.has(`window:copy-active-item-to-pane-${oldDirection}`)).toBe(false);
+    }
+  });
+
   it("registers macOS application-management commands only on macOS", () => {
     const macOSCommands = commandNamesRegisteredOn("darwin");
     const windowsCommands = commandNamesRegisteredOn("win32");

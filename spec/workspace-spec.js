@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const path = require("path");
 const etch = require("@lumine-code/etch");
 const temp = require("@lumine-code/fs-temp").track();
@@ -99,6 +100,7 @@ describe("Workspace", () => {
       windowService: lumine.window,
       applicationDelegate: lumine.applicationDelegate,
     });
+    workspace.paneItemTransferService = lumine.paneItemTransfers;
   }
 
   describe("serialization", () => {
@@ -118,8 +120,15 @@ describe("Workspace", () => {
 
       it("constructs the view with the same panes", async () => {
         const pane1 = lumine.workspace.getActivePane();
-        const pane2 = pane1.splitRight({ copyActiveItem: true });
-        const pane3 = pane2.splitRight({ copyActiveItem: true });
+        const pane2 = pane1.getActiveItem()
+          ? (
+              await workspace.copyPaneItem(pane1.getActiveItem(), {
+                sourcePane: pane1,
+                splitDirection: "right",
+              })
+            ).pane
+          : pane1.splitRight();
+        const pane3 = pane2.splitRight();
         let pane4 = null;
 
         await lumine.workspace.open(null).then((editor) => editor.setText("An untitled editor."));
@@ -257,6 +266,7 @@ describe("Workspace", () => {
             const dock = lumine.workspace.getRightDock();
             const ITEM_URI = "lumine://test";
             const item = {
+              isSingleton: () => true,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getAllowedLocations: () => ["left", "right"],
@@ -275,6 +285,7 @@ describe("Workspace", () => {
           it("rejects a saved location outside an item's implicit default", async () => {
             const ITEM_URI = "lumine://implicit-location-test";
             const item = {
+              isSingleton: () => true,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getElement: () => document.createElement("div"),
@@ -292,7 +303,7 @@ describe("Workspace", () => {
           });
 
           it("keeps an item without location hooks in the center", async () => {
-            const item = document.createElement("div");
+            const item = copyableElement("div");
 
             await lumine.workspace.open(item, { location: "bottom" });
 
@@ -353,6 +364,7 @@ describe("Workspace", () => {
 
           it("uses the location specified by the model's `getDefaultLocation()` method", async () => {
             const item = {
+              isSingleton: () => true,
               getDefaultLocation: jasmine.createSpy().and.returnValue("right"),
               getElement: () => document.createElement("div"),
             };
@@ -372,6 +384,7 @@ describe("Workspace", () => {
           it("prefers the last location the user used for that item", async () => {
             const ITEM_URI = "lumine://test";
             const item = {
+              isSingleton: () => true,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getAllowedLocations: () => ["left", "right"],
@@ -463,6 +476,7 @@ describe("Workspace", () => {
           const dock = lumine.workspace.getRightDock();
           const ITEM_URI = "lumine://test";
           const item = {
+            isSingleton: () => true,
             getURI: () => ITEM_URI,
             getDefaultLocation: jasmine.createSpy().and.returnValue("left"),
             getElement: () => document.createElement("div"),
@@ -496,14 +510,14 @@ describe("Workspace", () => {
 
     describe("when called with an item rather than a URI", () => {
       it("adds the item itself to the workspace", async () => {
-        const item = document.createElement("div");
+        const item = copyableElement("div");
         await lumine.workspace.open(item);
         expect(lumine.workspace.getActivePaneItem()).toBe(item);
       });
 
       describe("when the active pane already contains the item", () => {
         it("activates the item", async () => {
-          const item = document.createElement("div");
+          const item = copyableElement("div");
 
           await lumine.workspace.open(item);
           await lumine.workspace.open();
@@ -518,7 +532,7 @@ describe("Workspace", () => {
 
       describe("when the item already exists in another pane", () => {
         it("activates the item in the pane that already contains it", async () => {
-          const item = document.createElement("div");
+          const item = copyableElement("div");
 
           await lumine.workspace.open(item);
           const originalPane = lumine.workspace.getActivePane();
@@ -538,9 +552,9 @@ describe("Workspace", () => {
       describe("with an explicit pane", () => {
         it("does not materialize the split until the item is ready", async () => {
           const anchorPane = workspace.getActivePane();
-          const anchorItem = document.createElement("div");
+          const anchorItem = copyableElement("div");
           anchorPane.addItem(anchorItem);
-          const item = document.createElement("div");
+          const item = copyableElement("div");
           let resolveItem;
           const itemPromise = new Promise((resolve) => (resolveItem = resolve));
           const createItem = spyOn(workspace, "createItemForURI").and.returnValue(itemPromise);
@@ -989,7 +1003,11 @@ describe("Workspace", () => {
         lumine.config.set("core.maxTextEditors", 1);
         workspace.addOpener((uri) =>
           uri === "lumine://a-view"
-            ? { getTitle: () => "A view", element: document.createElement("div") }
+            ? {
+                isSingleton: () => true,
+                getTitle: () => "A view",
+                element: document.createElement("div"),
+              }
             : undefined,
         );
 
@@ -1019,24 +1037,28 @@ describe("Workspace", () => {
       it("returns the resource returned by the custom opener", async () => {
         const fooOpener = (pathToOpen, options) => {
           if (pathToOpen != null ? pathToOpen.match(/\.foo/) : undefined) {
-            return { foo: pathToOpen, options };
+            return { isSingleton: () => true, foo: pathToOpen, options };
           }
         };
         const barOpener = (pathToOpen) => {
           if (pathToOpen != null ? pathToOpen.match(/^bar:\/\//) : undefined) {
-            return { bar: pathToOpen };
+            return { isSingleton: () => true, bar: pathToOpen };
           }
         };
         workspace.addOpener(fooOpener);
         workspace.addOpener(barOpener);
 
         const pathToOpen = lumine.project.getDirectories()[0].resolve("a.foo");
-        expect(await workspace.open(pathToOpen, { hey: "there" })).toEqual({
-          foo: pathToOpen,
-          options: { hey: "there" },
-        });
+        expect(await workspace.open(pathToOpen, { hey: "there" })).toEqual(
+          jasmine.objectContaining({
+            foo: pathToOpen,
+            options: { hey: "there" },
+          }),
+        );
 
-        expect(await workspace.open("bar://baz")).toEqual({ bar: "bar://baz" });
+        expect(await workspace.open("bar://baz")).toEqual(
+          jasmine.objectContaining({ bar: "bar://baz" }),
+        );
       });
     });
 
@@ -1234,6 +1256,7 @@ describe("Workspace", () => {
     it("can identify the pane and pane container for a given item or URI", () => {
       const uri = "lumine://test-pane-for-item";
       const item = {
+        isSingleton: () => true,
         element: document.createElement("div"),
         getURI() {
           return uri;
@@ -1264,6 +1287,7 @@ describe("Workspace", () => {
     beforeEach(() => {
       const el = document.createElement("div");
       item = {
+        isSingleton: () => true,
         getTitle: () => "Item",
         getElement: () => el,
         getURI: () => URI,
@@ -1343,6 +1367,7 @@ describe("Workspace", () => {
     const buildItem = (title, persistent = false) => {
       let destroyed = false;
       return {
+        isSingleton: () => true,
         element: document.createElement("div"),
         getTitle: () => title,
         isPersistentDockItem: () => persistent,
@@ -1666,6 +1691,7 @@ describe("Workspace", () => {
     describe("when the location resolves to a dock", () => {
       it("adds or shows the item and its dock if it is not currently visible, and otherwise hides the containing dock", async () => {
         const item1 = {
+          isSingleton: () => true,
           getDefaultLocation() {
             return "left";
           },
@@ -1675,6 +1701,7 @@ describe("Workspace", () => {
         };
 
         const item2 = {
+          isSingleton: () => true,
           getDefaultLocation() {
             return "left";
           },
@@ -1711,6 +1738,7 @@ describe("Workspace", () => {
     describe("when the location resolves to the center", () => {
       it("adds or shows the item if it is not currently the active pane item, and otherwise removes the item", async () => {
         const item1 = {
+          isSingleton: () => true,
           getDefaultLocation() {
             return "center";
           },
@@ -1720,6 +1748,7 @@ describe("Workspace", () => {
         };
 
         const item2 = {
+          isSingleton: () => true,
           getDefaultLocation() {
             return "center";
           },
@@ -1745,33 +1774,33 @@ describe("Workspace", () => {
   describe("active pane containers", () => {
     it("maintains the active pane and item globally across active pane containers", () => {
       const leftDock = workspace.getLeftDock();
-      const leftItem1 = { element: document.createElement("div") };
-      const leftItem2 = { element: document.createElement("div") };
-      const leftItem3 = { element: document.createElement("div") };
+      const leftItem1 = { isSingleton: () => true, element: document.createElement("div") };
+      const leftItem2 = { isSingleton: () => true, element: document.createElement("div") };
+      const leftItem3 = { isSingleton: () => true, element: document.createElement("div") };
       const leftPane1 = leftDock.getActivePane();
       leftPane1.addItems([leftItem1, leftItem2]);
       const leftPane2 = leftPane1.splitDown({ items: [leftItem3] });
 
       const rightDock = workspace.getRightDock();
-      const rightItem1 = { element: document.createElement("div") };
-      const rightItem2 = { element: document.createElement("div") };
-      const rightItem3 = { element: document.createElement("div") };
+      const rightItem1 = { isSingleton: () => true, element: document.createElement("div") };
+      const rightItem2 = { isSingleton: () => true, element: document.createElement("div") };
+      const rightItem3 = { isSingleton: () => true, element: document.createElement("div") };
       const rightPane1 = rightDock.getActivePane();
       rightPane1.addItems([rightItem1, rightItem2]);
       const rightPane2 = rightPane1.splitDown({ items: [rightItem3] });
 
       const bottomDock = workspace.getBottomDock();
-      const bottomItem1 = { element: document.createElement("div") };
-      const bottomItem2 = { element: document.createElement("div") };
-      const bottomItem3 = { element: document.createElement("div") };
+      const bottomItem1 = { isSingleton: () => true, element: document.createElement("div") };
+      const bottomItem2 = { isSingleton: () => true, element: document.createElement("div") };
+      const bottomItem3 = { isSingleton: () => true, element: document.createElement("div") };
       const bottomPane1 = bottomDock.getActivePane();
       bottomPane1.addItems([bottomItem1, bottomItem2]);
       const bottomPane2 = bottomPane1.splitDown({ items: [bottomItem3] });
 
       const center = workspace.getCenter();
-      const centerItem1 = { element: document.createElement("div") };
-      const centerItem2 = { element: document.createElement("div") };
-      const centerItem3 = { element: document.createElement("div") };
+      const centerItem1 = { isSingleton: () => true, element: document.createElement("div") };
+      const centerItem2 = { isSingleton: () => true, element: document.createElement("div") };
+      const centerItem3 = { isSingleton: () => true, element: document.createElement("div") };
       const centerPane1 = center.getActivePane();
       centerPane1.addItems([centerItem1, centerItem2]);
       const centerPane2 = centerPane1.splitDown({ items: [centerItem3] });
@@ -1877,9 +1906,9 @@ describe("Workspace", () => {
     it("invokes observers when the active item of the active pane stops changing", async () => {
       const pane1 = lumine.workspace.getCenter().getActivePane();
       const pane2 = pane1.splitRight({
-        items: [document.createElement("div"), document.createElement("div")],
+        items: [copyableElement("div"), copyableElement("div")],
       });
-      lumine.workspace.getLeftDock().getActivePane().addItem(document.createElement("div"));
+      lumine.workspace.getLeftDock().getActivePane().addItem(copyableElement("div"));
 
       const emittedItems = [];
       lumine.workspace.onDidStopChangingActivePaneItem((item) => emittedItems.push(item));
@@ -1902,7 +1931,7 @@ describe("Workspace", () => {
       lumine.hooks.on("core:pane-item-used", paneItemUsed);
       lumine.hooks.on("core:text-editor-used", textEditorUsed);
 
-      lumine.workspace.getActivePane().addItem(document.createElement("div"));
+      lumine.workspace.getActivePane().addItem(copyableElement("div"));
 
       expect(paneItemUsed.calls.count()).toBe(1);
       expect(textEditorUsed).not.toHaveBeenCalled();
@@ -2311,7 +2340,7 @@ describe("Workspace", () => {
     describe("when the workspace center's active pane item is not a text editor", () => {
       it("returns undefined", () => {
         const workspaceCenter = workspace.getCenter();
-        const nonEditorItem = document.createElement("div");
+        const nonEditorItem = copyableElement("div");
         workspaceCenter.getActivePane().activateItem(nonEditorItem);
 
         expect(workspace.getActiveTextEditor()).toBeUndefined();
@@ -2414,6 +2443,7 @@ describe("Workspace", () => {
       const element = document.createElement("div");
       element.tabIndex = -1;
       return {
+        isSingleton: () => true,
         element,
         getAllowedLocations: () => ["center", "left", "right", "bottom"],
       };
@@ -2474,7 +2504,7 @@ describe("Workspace", () => {
       expect(sourceActivations).toEqual([]);
     });
 
-    it("enlists the center fallback caused by a focused empty dock hiding itself", () => {
+    it("avoids a center fallback while atomically moving the focused dock item", () => {
       const centerPane = workspace.getCenter().getActivePane();
       centerPane.addItem(new TextEditor());
       movedItem.element.focus();
@@ -2483,7 +2513,7 @@ describe("Workspace", () => {
 
       moveAndActivate();
 
-      expect(centerActivation).toHaveBeenCalled();
+      expect(centerActivation).not.toHaveBeenCalled();
       expect(workspace.getActivePaneContainer()).toBe(destinationDock);
       expect(workspace.getActivePaneItem()).toBe(movedItem);
       expect(containers).toEqual([destinationDock]);
@@ -2552,7 +2582,7 @@ describe("Workspace", () => {
       expect(activeItems).toEqual([selectedRightEditor]);
     });
 
-    it("does not expose the source fallback editor when splitting its active item", () => {
+    it("does not expose the source fallback editor when splitting its active item", async () => {
       const editor = new TextEditor();
       const fallbackEditor = new TextEditor();
       pane.addItems([editor, fallbackEditor]);
@@ -2560,7 +2590,10 @@ describe("Workspace", () => {
       workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
       workspace.onDidChangeActivePaneItem((item) => activeItems.push(item));
 
-      const split = pane.splitRight({ moveActiveItem: true });
+      const { pane: split } = await workspace.movePaneItem(editor, {
+        sourcePane: pane,
+        splitDirection: "right",
+      });
 
       expect(workspace.getActivePane()).toBe(split);
       expect(pane.getActiveItem()).toBe(fallbackEditor);
@@ -2593,7 +2626,7 @@ describe("Workspace", () => {
 
     it("invokes the observer when the workspace center's active pane item changes from an editor item to a non-editor item", () => {
       const editor = new TextEditor();
-      const nonEditorItem = document.createElement("div");
+      const nonEditorItem = copyableElement("div");
       pane.activateItem(editor);
 
       workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
@@ -2604,8 +2637,8 @@ describe("Workspace", () => {
     it("does not invoke the observer when the workspace center's active pane item changes from a non-editor item to another non-editor item", () => {
       workspace.onDidChangeActiveTextEditor((editor) => observed.push(editor));
 
-      const nonEditorItem1 = document.createElement("div");
-      const nonEditorItem2 = document.createElement("div");
+      const nonEditorItem1 = copyableElement("div");
+      const nonEditorItem2 = copyableElement("div");
       pane.activateItem(nonEditorItem1);
       pane.activateItem(nonEditorItem2);
 
@@ -2636,6 +2669,7 @@ describe("Workspace", () => {
       // The protocol shape a notebook-like item implements: a backing editor
       // holding the file, an embedded editor being edited, one change signal.
       item = {
+        isSingleton: () => true,
         getTitle: () => "Fake Notebook",
         getFileTextEditor: () => fileEditor,
         getActiveEmbeddedTextEditor: () => activeEmbedded,
@@ -2736,7 +2770,7 @@ describe("Workspace", () => {
       workspace.onDidChangeActiveFileTextEditor((e) => files.push(e));
       workspace.onDidChangeActiveEmbeddedTextEditor((e) => embedded.push(e));
 
-      pane.activateItem(document.createElement("div"));
+      pane.activateItem(copyableElement("div"));
 
       expect(workspace.getActiveFileTextEditor()).toBeUndefined();
       expect(workspace.getActiveEmbeddedTextEditor()).toBeUndefined();
@@ -2765,7 +2799,7 @@ describe("Workspace", () => {
       lumine.grammars.assignLanguageMode(editor, "source.js");
       expect(editor.getGrammar().name).toBe("JavaScript");
 
-      workspace.getActivePane().splitRight({ copyActiveItem: true });
+      await workspace.copyPaneItem(workspace.getActivePaneItem(), { splitDirection: "right" });
       const newEditor = workspace.getActiveTextEditor();
       expect(newEditor).not.toBe(editor);
       expect(newEditor.getGrammar().name).toBe("JavaScript");
@@ -2869,6 +2903,7 @@ describe("Workspace", () => {
     it("does not mark a read-only removed item as document-edited", () => {
       const item = {
         getFileState: () => "removed",
+        isSingleton: () => true,
         onDidChangeFileState: () => ({ dispose() {} }),
       };
       lumine.workspace.getActivePane().addItem(item);
@@ -2882,6 +2917,7 @@ describe("Workspace", () => {
     function addFileBackedItem(initialState) {
       const emitter = new Emitter();
       const item = {
+        isSingleton: () => true,
         fileState: initialState,
         destroyed: false,
         getFileState() {
@@ -2925,7 +2961,11 @@ describe("Workspace", () => {
   });
 
   describe("adding panels", () => {
-    class TestItem {}
+    class TestItem {
+      isSingleton() {
+        return true;
+      }
+    }
 
     // Don't use ES6 classes because then we'll have to call `super()` which we
     // can't do with HTMLElement
@@ -5134,7 +5174,14 @@ describe("Workspace", () => {
       lumine.config.set("core.closeEmptyWindows", true);
 
       const pane1 = lumine.workspace.getActivePane();
-      const pane2 = pane1.splitRight({ copyActiveItem: true });
+      const pane2 = pane1.getActiveItem()
+        ? (
+            await workspace.copyPaneItem(pane1.getActiveItem(), {
+              sourcePane: pane1,
+              splitDirection: "right",
+            })
+          ).pane
+        : pane1.splitRight();
 
       expect(lumine.workspace.getCenter().getPanes().length).toBe(2);
       expect(pane2.getItems().length).toBe(1);
@@ -5155,12 +5202,14 @@ describe("Workspace", () => {
 
       // The dock items should not be closed
       await lumine.workspace.open({
+        isSingleton: () => true,
         getTitle: () => "Permanent Dock Item",
         element: document.createElement("div"),
         getDefaultLocation: () => "left",
         isPermanentDockItem: () => true,
       });
       await lumine.workspace.open({
+        isSingleton: () => true,
         getTitle: () => "Impermanent Dock Item",
         element: document.createElement("div"),
         getDefaultLocation: () => "left",
@@ -5333,7 +5382,7 @@ describe("Workspace", () => {
       expect(cGrammarUsed).toHaveBeenCalled();
 
       // Hooks are triggered when editors are added in other ways.
-      lumine.workspace.getActivePane().splitRight({ copyActiveItem: true });
+      await workspace.copyPaneItem(workspace.getActivePaneItem(), { splitDirection: "right" });
       lumine.grammars.assignLanguageMode(lumine.workspace.getActiveTextEditor(), "source.python");
       expect(pythonGrammarUsed).toHaveBeenCalled();
     });
@@ -5392,8 +5441,10 @@ describe("Workspace", () => {
     it("stores the new location if it's not the default", () => {
       const ITEM_URI = "lumine://test";
       const item = {
+        isSingleton: () => true,
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "left",
+        getAllowedLocations: () => ["center", "left", "right"],
         getElement: () => document.createElement("div"),
       };
       const centerPane = workspace.getActivePane();
@@ -5407,6 +5458,7 @@ describe("Workspace", () => {
     it("clears the location if it's the default", () => {
       const ITEM_URI = "lumine://test";
       const item = {
+        isSingleton: () => true,
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "right",
         getElement: () => document.createElement("div"),

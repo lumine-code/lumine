@@ -119,6 +119,16 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * Returns a `String` containing the title of the item to display on its
  * associated tab.
  *
+ * #### `copy({signal})` or `isSingleton()`
+ *
+ * Every center item must implement `copy({signal})`, returning a fresh live item
+ * or a Promise for one, with an independent detached view root. Views may share
+ * their underlying document, but own their subscriptions, selection and viewport.
+ * Honor the AbortSignal before publishing a copy and release abandoned resources.
+ * A view whose design permits only one instance declares `isSingleton() === true`;
+ * it supports focus and move operations, including split and move, but no copy.
+ * Serialization and URI openers are not substitutes for this copy contract.
+ *
  * ### Optional Methods
  *
  * #### `getElement()`
@@ -237,11 +247,6 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  *
  * Called by the workspace so it can be notified when the item's file state
  * changes. The callback receives the new state. Must return a `Disposable`.
- *
- * #### `copy()`
- *
- * Create a copy of the item. If defined, the workspace will call this method to
- * duplicate the item when splitting panes via certain split commands.
  *
  * #### `getPreferredHeight()`
  *
@@ -3083,6 +3088,48 @@ module.exports = class Workspace extends Model {
    */
   getActivePane() {
     return this.getActivePaneContainer().getActivePane();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Focus the nearest visible pane in a direction, including visible docks.
+   * @param {String} direction - up, down, left or right.
+   * @param {Object} [options]
+   * @param {Pane} [options.sourcePane] - The pane from which to navigate.
+   * @returns {Pane|undefined} The pane that received focus.
+   */
+  focusPaneInDirection(direction, { sourcePane = this.getActivePane() } = {}) {
+    const pane = this.getElement().nearestVisiblePaneInDirection(direction, sourcePane)?.getModel();
+    pane?.activate();
+    return pane;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Move an exact item to an existing pane or a new split, preserving its live view.
+   * @param item - The item to move.
+   * @param {Object} options - sourcePane, targetPane or splitDirection, index and activatePane.
+   * @returns {Promise<Object>} The final {pane, item}.
+   */
+  async movePaneItem(item, options = {}) {
+    return this.paneItemTransferService.movePaneItem(item, options);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Copy an exact item before creating its destination. Singleton items refuse copying.
+   * @param item - The item whose document and view state should be copied.
+   * @param {Object} options - sourcePane, targetPane or splitDirection, index, activatePane and signal.
+   * @returns {Promise<Object>} The final {pane, item}; cancellation rejects with ABORT_ERR.
+   */
+  copyPaneItem(item, options = {}) {
+    return this.paneItemTransferService.copyPaneItem(item, options);
   }
 
   /**

@@ -345,27 +345,6 @@ module.exports = class PaneContainer {
     return this.activateNextPane();
   }
 
-  moveActiveItemToPane(destPane) {
-    const item = this.activePane.getActiveItem();
-
-    if (!destPane.isItemAllowed(item)) {
-      return;
-    }
-
-    return this.transactActiveState(() => {
-      this.activePane.moveItemToPane(item, destPane);
-      destPane.setActiveItem(item);
-    });
-  }
-
-  copyActiveItemToPane(destPane) {
-    const item = this.activePane.copyActiveItem();
-
-    if (item && destPane.isItemAllowed(item)) {
-      return this.transactActiveState(() => destPane.activateItem(item));
-    }
-  }
-
   destroyEmptyPanes() {
     for (let pane of this.getPanes()) {
       if (pane.items.length === 0) {

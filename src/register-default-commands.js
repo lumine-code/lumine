@@ -8,6 +8,74 @@ function settleSaveCommand(result) {
   });
 }
 
+function paneForCommand(workspace, event) {
+  let element = event?.target;
+  if (element?.nodeType !== 1) element = element?.parentElement;
+  for (
+    let paneElement = element?.closest?.("lumine-pane");
+    paneElement;
+    paneElement = paneElement.parentElement?.closest("lumine-pane")
+  ) {
+    const pane = paneElement.getModel?.();
+    if (workspace.getPanes().includes(pane) && !pane.isDestroyed()) return pane;
+  }
+  return workspace.getActivePane();
+}
+
+function paneItemCommands(notifications) {
+  const commands = {};
+  const settle = (work) =>
+    Promise.resolve()
+      .then(work)
+      .catch((error) => {
+        if (error.code === "ABORT_ERR" || error.name === "AbortError") return;
+        if (error.name === "PaneItemOperationError") notifications.addWarning(error.message);
+        else
+          notifications.addError("Unable to complete the pane operation.", {
+            detail: error.message,
+            dismissable: true,
+          });
+      });
+  for (const direction of ["up", "down", "left", "right"]) {
+    commands[`window:focus-pane-${direction}`] = {
+      description: `Focus the nearest visible pane ${direction}, including docks.`,
+      didDispatch(event) {
+        const workspace = this.getModel();
+        return workspace.focusPaneInDirection(direction, {
+          sourcePane: paneForCommand(workspace, event),
+        });
+      },
+    };
+    for (const action of ["move", "copy"]) {
+      for (const split of [false, true]) {
+        const name = split
+          ? `pane:split-${direction}-and-${action}-active-item`
+          : `pane:${action}-active-item-${direction}`;
+        commands[name] = {
+          description: `${action === "move" ? "Move" : "Copy"} this pane's active tab ${split ? "into a new split" : "to the nearest allowed pane"} ${direction}.`,
+          didDispatch(event) {
+            const workspace = this.getModel();
+            const sourcePane = paneForCommand(workspace, event);
+            const item = sourcePane?.getActiveItem();
+            if (!item) return;
+            const options = { sourcePane };
+            if (split) options.splitDirection = direction;
+            else {
+              options.targetPane = workspace
+                .getElement()
+                .nearestVisiblePaneInDirection(direction, sourcePane, { item })
+                ?.getModel();
+              if (!options.targetPane) return;
+            }
+            return settle(() => workspace[`${action}PaneItem`](item, options));
+          },
+        };
+      }
+    }
+  }
+  return commands;
+}
+
 module.exports = function ({
   commandRegistry,
   commandInstaller,
@@ -258,50 +326,7 @@ module.exports = function ({
       "window:focus-previous-pane": function () {
         return this.getModel().activatePreviousPane();
       },
-      "window:focus-pane-above": function () {
-        return this.focusPaneViewAbove();
-      },
-      "window:focus-pane-below": function () {
-        return this.focusPaneViewBelow();
-      },
-      "window:focus-pane-on-left": function () {
-        return this.focusPaneViewOnLeft();
-      },
-      "window:focus-pane-on-right": function () {
-        return this.focusPaneViewOnRight();
-      },
-      "window:move-active-item-to-pane-above": function () {
-        return this.moveActiveItemToPaneAbove();
-      },
-      "window:move-active-item-to-pane-below": function () {
-        return this.moveActiveItemToPaneBelow();
-      },
-      "window:move-active-item-to-pane-on-left": function () {
-        return this.moveActiveItemToPaneOnLeft();
-      },
-      "window:move-active-item-to-pane-on-right": function () {
-        return this.moveActiveItemToPaneOnRight();
-      },
-      "window:copy-active-item-to-pane-above": function () {
-        return this.moveActiveItemToPaneAbove({
-          keepOriginal: true,
-        });
-      },
-      "window:copy-active-item-to-pane-below": function () {
-        return this.moveActiveItemToPaneBelow({
-          keepOriginal: true,
-        });
-      },
-      "window:copy-active-item-to-pane-on-left": function () {
-        return this.moveActiveItemToPaneOnLeft({
-          keepOriginal: true,
-        });
-      },
-      "window:copy-active-item-to-pane-on-right": function () {
-        return this.moveActiveItemToPaneOnRight({
-          keepOriginal: true,
-        });
-      },
+      ...paneItemCommands(notificationManager),
       "window:save-all": function () {
         return settleSaveCommand(this.getModel().saveAll());
       },
@@ -432,46 +457,6 @@ module.exports = function ({
         didDispatch: function () {
           return this.getModel().splitDown();
         },
-      },
-      "pane:split-left-and-copy-active-item": function () {
-        return this.getModel().splitLeft({
-          copyActiveItem: true,
-        });
-      },
-      "pane:split-right-and-copy-active-item": function () {
-        return this.getModel().splitRight({
-          copyActiveItem: true,
-        });
-      },
-      "pane:split-up-and-copy-active-item": function () {
-        return this.getModel().splitUp({
-          copyActiveItem: true,
-        });
-      },
-      "pane:split-down-and-copy-active-item": function () {
-        return this.getModel().splitDown({
-          copyActiveItem: true,
-        });
-      },
-      "pane:split-left-and-move-active-item": function () {
-        return this.getModel().splitLeft({
-          moveActiveItem: true,
-        });
-      },
-      "pane:split-right-and-move-active-item": function () {
-        return this.getModel().splitRight({
-          moveActiveItem: true,
-        });
-      },
-      "pane:split-up-and-move-active-item": function () {
-        return this.getModel().splitUp({
-          moveActiveItem: true,
-        });
-      },
-      "pane:split-down-and-move-active-item": function () {
-        return this.getModel().splitDown({
-          moveActiveItem: true,
-        });
       },
       "pane:close": {
         description: "Close every tab in this pane, and the pane with them.",

@@ -186,6 +186,7 @@ describe("pane text editor sizing", () => {
   it("keeps an editor embedded within a composite pane item content-sized", () => {
     const editor = buildEditor();
     const item = document.createElement("div");
+    item.isSingleton = () => true;
     item.appendChild(editor.getElement());
     lumine.workspace.getActivePane().addItem(item);
     expect(editor.getAutoHeight()).toBe(true);

@@ -65,10 +65,10 @@
     "cmdorctrl-k cmdorctrl-alt-w": "pane:close-other-items",
     "cmdorctrl-k cmdorctrl-p": "window:focus-previous-pane",
     "cmdorctrl-k cmdorctrl-n": "window:focus-next-pane",
-    "cmdorctrl-k cmdorctrl-up": "window:focus-pane-above",
-    "cmdorctrl-k cmdorctrl-down": "window:focus-pane-below",
-    "cmdorctrl-k cmdorctrl-left": "window:focus-pane-on-left",
-    "cmdorctrl-k cmdorctrl-right": "window:focus-pane-on-right"
+    "cmdorctrl-k cmdorctrl-up": "window:focus-pane-up",
+    "cmdorctrl-k cmdorctrl-down": "window:focus-pane-down",
+    "cmdorctrl-k cmdorctrl-left": "window:focus-pane-left",
+    "cmdorctrl-k cmdorctrl-right": "window:focus-pane-right"
   },
   "lumine-text-editor": {
     // Platform Bindings

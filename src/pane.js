@@ -3,6 +3,7 @@ const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
+const { assertCenterItemContract } = require("./pane-item-contract");
 
 let nextInstanceId = 1;
 
@@ -159,6 +160,11 @@ module.exports = class Pane {
 
   setContainer(container) {
     if (container && container !== this.container) {
+      for (const item of this.items) {
+        assertCenterItemContract(item, container.getLocation());
+        if (container.itemRegistry.hasItem(item))
+          throw new Error("The workspace can only contain one instance of a pane item.");
+      }
       this.container = container;
       container.didAddPane({ pane: this });
     }
@@ -172,7 +178,7 @@ module.exports = class Pane {
    * @private
    */
   isItemAllowed(item) {
-    return isItemAllowedInLocation(item, this.getContainer().getLocation());
+    return isItemAllowedInLocation(item, this.getContainer()?.getLocation() || "center");
   }
 
   setFlexScale(flexScale) {
@@ -758,6 +764,14 @@ module.exports = class Pane {
     }
 
     if (this.items.includes(item)) return;
+    assertCenterItemContract(
+      item,
+      this.container?.getLocation() ||
+        (isItemAllowedInLocation(item, "center") ? "center" : "dock"),
+    );
+    if (this.container?.itemRegistry.hasItem(item)) {
+      throw new Error("The workspace can only contain one instance of a pane item.");
+    }
 
     // Detached editors grow with their content by default. Direct pane
     // documents instead use the viewport unless their owner chose a size.
@@ -780,7 +794,7 @@ module.exports = class Pane {
 
     this.items.splice(index, 0, item);
     const lastPendingItem = this.getPendingItem();
-    const replacingPendingItem = lastPendingItem != null && !moved;
+    const replacingPendingItem = lastPendingItem != null && !moved && !options.copied;
     if (replacingPendingItem) this.pendingItem = null;
     if (pending) this.setPendingItem(item);
 
@@ -888,7 +902,7 @@ module.exports = class Pane {
     return items;
   }
 
-  removeItem(item, moved) {
+  removeItem(item, moved, { preservePane = false } = {}) {
     return this.transactActiveState(() => {
       const index = this.items.indexOf(item);
       if (index === -1) return;
@@ -930,7 +944,7 @@ module.exports = class Pane {
       const shouldDestroyEmptyPanes = this.container
         ? this.container.shouldDestroyEmptyPanes()
         : this.config.get("core.destroyEmptyPanes");
-      if (this.items.length === 0 && shouldDestroyEmptyPanes) this.destroy();
+      if (this.items.length === 0 && shouldDestroyEmptyPanes && !preservePane) this.destroy();
     });
   }
 
@@ -969,10 +983,20 @@ module.exports = class Pane {
    * @param {Pane} pane - to which to move the item.
    * @param {Number} index - indicating the index to which to move the item in the given pane.
    */
-  moveItemToPane(item, pane, index) {
+  moveItemToPane(item, pane, index, { preserveSourcePane = false } = {}) {
+    if (!this.items.includes(item) || pane === this) return;
+    assertCenterItemContract(item, pane.getContainer()?.getLocation() || "center");
+    if (!pane.isItemAllowed(item))
+      throw new Error("The destination pane does not allow this item.");
+    // Reparent the live view before removal can collapse its source layout.
+    const sourceView = this.element?.views.getView(item);
+    if (sourceView?.isConnected) {
+      const destinationElement = pane.getElement();
+      if (destinationElement.isConnected) destinationElement.itemViews.moveBefore(sourceView, null);
+    }
     return this.transactActiveState(() =>
       pane.transactActiveState(() => {
-        this.removeItem(item, true);
+        this.removeItem(item, true, { preservePane: preserveSourcePane });
         return pane.addItem(item, { index, moved: true });
       }),
     );
@@ -1372,12 +1396,6 @@ module.exports = class Pane {
     }
   }
 
-  copyActiveItem() {
-    if (this.activeItem && typeof this.activeItem.copy === "function") {
-      return this.activeItem.copy();
-    }
-  }
-
   /**
    * @category Lifecycle
    */
@@ -1480,7 +1498,6 @@ module.exports = class Pane {
    *
    * @param {Object} [params] - with the following keys:
    * @param {Array} [params.items] - of items to add to the new pane.
-   * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
    */
@@ -1496,7 +1513,6 @@ module.exports = class Pane {
    *
    * @param {Object} [params] - with the following keys:
    * @param {Array} [params.items] - of items to add to the new pane.
-   * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
    */
@@ -1512,7 +1528,6 @@ module.exports = class Pane {
    *
    * @param {Object} [params] - with the following keys:
    * @param {Array} [params.items] - of items to add to the new pane.
-   * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
    */
@@ -1528,7 +1543,6 @@ module.exports = class Pane {
    *
    * @param {Object} [params] - with the following keys:
    * @param {Array} [params.items] - of items to add to the new pane.
-   * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
    */
@@ -1537,12 +1551,13 @@ module.exports = class Pane {
   }
 
   split(orientation, side, params) {
+    for (const item of params?.items || []) {
+      if (!item) continue;
+      assertCenterItemContract(item, this.container.getLocation());
+      if (this.container.itemRegistry.hasItem(item))
+        throw new Error("The workspace can only contain one instance of a pane item.");
+    }
     return this.transactActiveState(() => {
-      if (params && params.copyActiveItem) {
-        if (!params.items) params.items = [];
-        params.items.push(this.copyActiveItem());
-      }
-
       if (this.parent.orientation !== orientation) {
         this.parent.replaceChild(
           this,
@@ -1580,9 +1595,6 @@ module.exports = class Pane {
           this.parent.insertChildAfter(this, newPane);
           break;
       }
-
-      if (params && params.moveActiveItem && this.activeItem)
-        this.moveItemToPane(this.activeItem, newPane);
 
       if (!params || params.activate !== false) {
         newPane.activate();

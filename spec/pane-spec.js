@@ -291,10 +291,7 @@ describe("Pane", () => {
       const spy = jasmine.createSpy("onDidTerminatePendingState").and.returnValue(fakeDisposable);
 
       const pane = new Pane(paneParams({ items: [] }));
-      const item = {
-        getTitle: () => "",
-        onDidTerminatePendingState: spy,
-      };
+      const item = { isSingleton: () => true, getTitle: () => "", onDidTerminatePendingState: spy };
       pane.addItem(item);
 
       expect(spy).toHaveBeenCalled();
@@ -305,10 +302,7 @@ describe("Pane", () => {
       const spy = jasmine.createSpy("onDidDestroy").and.returnValue(fakeDisposable);
 
       const pane = new Pane(paneParams({ items: [] }));
-      const item = {
-        getTitle: () => "",
-        onDidDestroy: spy,
-      };
+      const item = { isSingleton: () => true, getTitle: () => "", onDidDestroy: spy };
       pane.addItem(item);
 
       expect(spy).toHaveBeenCalled();
@@ -1291,26 +1285,6 @@ describe("Pane", () => {
         });
       });
 
-      describe("when `moveActiveItem: true` is passed in the params", () => {
-        it("moves the active item", () => {
-          const pane2 = pane1.splitLeft({ moveActiveItem: true });
-          expect(pane2.getActiveItem()).toBe(item1);
-        });
-      });
-
-      describe("when `copyActiveItem: true` is passed in the params", () => {
-        it("duplicates the active item", () => {
-          const pane2 = pane1.splitLeft({ copyActiveItem: true });
-          expect(pane2.getActiveItem()).toEqual(pane1.getActiveItem());
-        });
-
-        it("does nothing if the active item doesn't implement .copy()", () => {
-          item1.copy = null;
-          const pane2 = pane1.splitLeft({ copyActiveItem: true });
-          expect(pane2.getActiveItem()).toBeUndefined();
-        });
-      });
-
       describe("when the parent is a column", () => {
         it("replaces itself with a row and inserts a new pane to the left of itself", () => {
           pane1.splitDown();
@@ -1330,20 +1304,6 @@ describe("Pane", () => {
           const pane3 = pane1.splitRight({ items: [new Item("C")] });
           expect(container.root.orientation).toBe("horizontal");
           expect(container.root.children).toEqual([pane1, pane3, pane2]);
-        });
-      });
-
-      describe("when `moveActiveItem: true` is passed in the params", () => {
-        it("moves the active item", () => {
-          const pane2 = pane1.splitRight({ moveActiveItem: true });
-          expect(pane2.getActiveItem()).toBe(item1);
-        });
-      });
-
-      describe("when `copyActiveItem: true` is passed in the params", () => {
-        it("duplicates the active item", () => {
-          const pane2 = pane1.splitRight({ copyActiveItem: true });
-          expect(pane2.getActiveItem()).toEqual(pane1.getActiveItem());
         });
       });
 
@@ -1378,20 +1338,6 @@ describe("Pane", () => {
         });
       });
 
-      describe("when `moveActiveItem: true` is passed in the params", () => {
-        it("moves the active item", () => {
-          const pane2 = pane1.splitUp({ moveActiveItem: true });
-          expect(pane2.getActiveItem()).toBe(item1);
-        });
-      });
-
-      describe("when `copyActiveItem: true` is passed in the params", () => {
-        it("duplicates the active item", () => {
-          const pane2 = pane1.splitUp({ copyActiveItem: true });
-          expect(pane2.getActiveItem()).toEqual(pane1.getActiveItem());
-        });
-      });
-
       describe("when the parent is a row", () => {
         it("replaces itself with a column and inserts a new pane above itself", () => {
           pane1.splitRight();
@@ -1414,20 +1360,6 @@ describe("Pane", () => {
         });
       });
 
-      describe("when `moveActiveItem: true` is passed in the params", () => {
-        it("moves the active item", () => {
-          const pane2 = pane1.splitDown({ moveActiveItem: true });
-          expect(pane2.getActiveItem()).toBe(item1);
-        });
-      });
-
-      describe("when `copyActiveItem: true` is passed in the params", () => {
-        it("duplicates the active item", () => {
-          const pane2 = pane1.splitDown({ copyActiveItem: true });
-          expect(pane2.getActiveItem()).toEqual(pane1.getActiveItem());
-        });
-      });
-
       describe("when the parent is a row", () => {
         it("replaces itself with a column and inserts a new pane below itself", () => {
           pane1.splitRight();
@@ -1436,36 +1368,6 @@ describe("Pane", () => {
           const column = container.root.children[0];
           expect(column.orientation).toBe("vertical");
           expect(column.children).toEqual([pane1, pane3, pane2]);
-        });
-      });
-    });
-
-    describe("when the pane is empty", () => {
-      describe("when `moveActiveItem: true` is passed in the params", () => {
-        it("gracefully ignores the moveActiveItem parameter", () => {
-          pane1.destroyItem(item1);
-          expect(pane1.getActiveItem()).toBe(undefined);
-
-          const pane2 = pane1.split("horizontal", "before", {
-            moveActiveItem: true,
-          });
-          expect(container.root.children).toEqual([pane2, pane1]);
-
-          expect(pane2.getActiveItem()).toBe(undefined);
-        });
-      });
-
-      describe("when `copyActiveItem: true` is passed in the params", () => {
-        it("gracefully ignores the copyActiveItem parameter", () => {
-          pane1.destroyItem(item1);
-          expect(pane1.getActiveItem()).toBe(undefined);
-
-          const pane2 = pane1.split("horizontal", "before", {
-            copyActiveItem: true,
-          });
-          expect(container.root.children).toEqual([pane2, pane1]);
-
-          expect(pane2.getActiveItem()).toBe(undefined);
         });
       });
     });
@@ -1770,7 +1672,7 @@ describe("Pane", () => {
     });
 
     it("restores the correct item when it doesn't implement getURI() and some items weren't deserialized", () => {
-      const unserializable = {};
+      const unserializable = { isSingleton: () => true };
       pane.addItem(unserializable, { index: 0 });
       pane.items[2].getURI = null;
       pane.activateItemAtIndex(2);
@@ -1780,7 +1682,7 @@ describe("Pane", () => {
 
     it("does not include items that cannot be deserialized", () => {
       spyOn(console, "warn");
-      const unserializable = {};
+      const unserializable = { isSingleton: () => true };
       pane.activateItem(unserializable);
 
       const newPane = Pane.deserialize(pane.serialize(), lumine);
@@ -1817,7 +1719,7 @@ describe("Pane", () => {
     it("does not serialize the reference to the items in the itemStack for pane items that will not be serialized", () => {
       const [item1, item2, item3] = pane.getItems();
       pane.itemStack = [item2, item1, item3];
-      const unserializable = {};
+      const unserializable = { isSingleton: () => true };
       pane.activateItem(unserializable);
 
       const newPane = Pane.deserialize(pane.serialize(), lumine);

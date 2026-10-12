@@ -1,4 +1,5 @@
 const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { refreshPaneLayout } = require("./pane-layout");
 require("./pane-resize-handle-element");
 
 class PaneAxisElement extends HTMLElement {
@@ -10,10 +11,12 @@ class PaneAxisElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.subscriptions.dispose();
+    this.subscriptions?.dispose();
     this.subscriptions = null;
     this.model.getChildren().map((child) => this.childRemoved({ child }));
   }
+
+  connectedMoveCallback() {}
 
   initialize(model, viewRegistry) {
     this.model = model;
@@ -21,11 +24,9 @@ class PaneAxisElement extends HTMLElement {
     if (this.subscriptions == null) {
       this.subscriptions = this.subscribeToModel();
     }
-    const iterable = this.model.getChildren();
-    for (let index = 0; index < iterable.length; index++) {
-      const child = iterable[index];
-      this.childAdded({ child, index });
-    }
+    // A new axis can wrap an already connected pane. Populate only after this
+    // destination is connected, so moving the pane never detaches its subtree.
+    this.model.getChildren().forEach((child, index) => this.childAdded({ child, index }));
 
     switch (this.model.getOrientation()) {
       case "horizontal":
@@ -56,7 +57,11 @@ class PaneAxisElement extends HTMLElement {
   childAdded({ child, index }) {
     let resizeHandle;
     const view = this.viewRegistry.getView(child);
-    this.insertBefore(view, this.children[index * 2]);
+    if (!this.isConnected && view.isConnected) return;
+    const reference = this.children[index * 2] || null;
+    if (view === reference) return;
+    if (view.isConnected) this.moveBefore(view, reference);
+    else this.insertBefore(view, reference);
 
     const prevElement = view.previousSibling;
     // if previous element is not pane resize element, then insert new resize element
@@ -69,18 +74,21 @@ class PaneAxisElement extends HTMLElement {
     // if next element isnot resize element, then insert new resize element
     if (nextElement != null && !this.isPaneResizeHandleElement(nextElement)) {
       resizeHandle = document.createElement("lumine-pane-resize-handle");
-      return this.insertBefore(resizeHandle, nextElement);
+      this.insertBefore(resizeHandle, nextElement);
     }
+    refreshPaneLayout(this);
   }
 
   childRemoved({ child }) {
     const view = this.viewRegistry.getView(child);
+    if (view.parentNode !== this) return;
     const siblingView = view.previousSibling;
     // make sure next sibling view is pane resize view
     if (siblingView != null && this.isPaneResizeHandleElement(siblingView)) {
       siblingView.remove();
     }
-    return view.remove();
+    view.remove();
+    refreshPaneLayout(this);
   }
 
   childReplaced({ index, oldChild, newChild }) {
@@ -88,8 +96,16 @@ class PaneAxisElement extends HTMLElement {
     if (this.hasFocus()) {
       focusedElement = document.activeElement;
     }
-    this.childRemoved({ child: oldChild, index });
-    this.childAdded({ child: newChild, index });
+    const oldView = this.viewRegistry.getView(oldChild);
+    const newView = this.viewRegistry.getView(newChild);
+    if (!this.isConnected && newView.isConnected) return;
+    const reference = oldView.parentNode === this ? oldView : this.children[index * 2] || null;
+    if (this.isConnected && newView.isConnected) this.moveBefore(newView, reference);
+    else this.insertBefore(newView, reference);
+    // Connecting a wrapping axis already moved oldView into it. A collapsing
+    // axis has its surviving child moved out before the obsolete axis goes.
+    if (oldView.parentNode === this) oldView.remove();
+    refreshPaneLayout(this);
     if (document.activeElement === document.body) {
       return focusedElement != null ? focusedElement.focus() : undefined;
     }

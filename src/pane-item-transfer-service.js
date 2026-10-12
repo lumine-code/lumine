@@ -1,5 +1,7 @@
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 const { normalizeDescriptor } = require("./workspace-drop-protocol");
+const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
+const { PaneItemOperationError, assertItemLocation } = require("./pane-item-contract");
 
 function cancelledError() {
   return Object.assign(new Error("The pane item transfer was cancelled"), { code: "ABORT_ERR" });
@@ -23,6 +25,7 @@ class PaneItemTransferService {
     this.windowService = windowService;
     this.applicationDelegate = applicationDelegate;
     this.scopes = new Set();
+    this.operations = new Set();
   }
 
   /**
@@ -41,7 +44,208 @@ class PaneItemTransferService {
   }
 
   cancelAll() {
+    for (const operation of this.operations) operation.controller.abort();
     for (const scope of [...this.scopes]) scope.dispose();
+  }
+
+  assertLocalItem(item, sourcePane) {
+    if (this.destroyed || !this.workspace.isAlive()) throw cancelledError();
+    if (
+      !sourcePane ||
+      sourcePane.isDestroyed() ||
+      this.workspace.paneForItem(item) !== sourcePane
+    ) {
+      throw new PaneItemOperationError(
+        "ITEM_UNAVAILABLE",
+        "The source pane item is no longer available.",
+      );
+    }
+  }
+
+  prepareDestination(item, sourcePane, options) {
+    const { targetPane, splitDirection } = options;
+    if (targetPane && splitDirection) {
+      throw new PaneItemOperationError(
+        "INVALID_DESTINATION",
+        "Choose a destination pane or a split direction.",
+      );
+    }
+    if (splitDirection && !["up", "down", "left", "right"].includes(splitDirection)) {
+      throw new PaneItemOperationError(
+        "INVALID_DIRECTION",
+        "The pane direction must be up, down, left or right.",
+      );
+    }
+    const anchor = targetPane || (splitDirection ? sourcePane : null);
+    if (!anchor || anchor.isDestroyed() || !this.workspace.getPanes().includes(anchor)) {
+      throw new PaneItemOperationError(
+        "PANE_UNAVAILABLE",
+        "The destination pane is no longer available.",
+      );
+    }
+    assertItemLocation(item, anchor.getContainer().getLocation());
+    return anchor;
+  }
+
+  movePaneItem(item, options = {}) {
+    const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
+    this.assertLocalItem(item, sourcePane);
+    const anchor = this.prepareDestination(item, sourcePane, options);
+    return sourcePane.transactActiveState(() => {
+      const pane = options.splitDirection
+        ? anchor[
+            `split${options.splitDirection[0].toUpperCase()}${options.splitDirection.slice(1)}`
+          ]({ activate: false })
+        : anchor;
+      if (pane === sourcePane) {
+        if (Number.isInteger(options.index)) sourcePane.moveItem(item, options.index);
+      } else {
+        sourcePane.moveItemToPane(item, pane, options.index, {
+          preserveSourcePane:
+            !!options.splitDirection && sourcePane.getContainer().getLocation() === "center",
+        });
+      }
+      if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
+      pane.activateItem(item, { activatePane: options.activatePane !== false });
+      return { pane, item };
+    });
+  }
+
+  hasIndependentCopyView(copy, source) {
+    const root = this.workspace.viewRegistry.getView(copy);
+    if (!(root instanceof HTMLElement) || root.isConnected || root.parentNode) return false;
+    const items = new Set([source, ...this.workspace.getPaneItems()]);
+    for (const item of items) {
+      if (item === copy) continue;
+      const liveRoot = this.workspace.viewRegistry.getView(item);
+      if (root === liveRoot || root.contains(liveRoot) || liveRoot?.contains(root)) return false;
+    }
+    return true;
+  }
+
+  async disposeUnpresentedCopy(copy, source) {
+    if (!copy || typeof copy !== "object" || copy === source || this.workspace.paneForItem(copy))
+      return;
+    if (this.hasIndependentCopyView(copy, source)) await copy.destroy?.();
+  }
+
+  async copyPaneItem(item, options = {}) {
+    const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
+    this.assertLocalItem(item, sourcePane);
+    if (item.isSingleton?.() === true) {
+      throw new PaneItemOperationError(
+        "SINGLETON",
+        "This view has one instance and can be moved, but cannot be copied.",
+      );
+    }
+    if (typeof item.copy !== "function") {
+      throw new PaneItemOperationError(
+        "COPY_CONTRACT",
+        "This pane item does not implement copy({signal}).",
+      );
+    }
+    const anchor = this.prepareDestination(item, sourcePane, options);
+    const controller = new AbortController();
+    const operation = { controller };
+    this.operations.add(operation);
+    const subscriptions = new CompositeDisposable();
+    const abort = () => controller.abort();
+    const observe = (object, name, callback = abort) => {
+      if (typeof object[name] === "function") subscriptions.add(object[name](callback));
+    };
+    observe(item, "onDidDestroy");
+    observe(item, "onDidChangeURI");
+    observe(item, "onDidChangePath");
+    observe(sourcePane, "onWillDestroy");
+    observe(sourcePane, "onDidRemoveItem", ({ item: removed }) => {
+      if (removed === item) abort();
+    });
+    if (anchor !== sourcePane) observe(anchor, "onWillDestroy");
+    if (options.signal) {
+      if (options.signal.aborted) abort();
+      options.signal.addEventListener("abort", abort, { once: true });
+      subscriptions.add(new Disposable(() => options.signal.removeEventListener("abort", abort)));
+    }
+    const uri = itemURI(item);
+    const revision = item.getPaneItemRevision?.();
+    const copyMethod = item.copy;
+    let mayFocus = options.activatePane !== false;
+    observe(this.workspace, "onDidChangeActivePane", () => {
+      mayFocus = false;
+    });
+    observe(this.workspace, "onDidChangeActivePaneItem", () => {
+      mayFocus = false;
+    });
+    let copy;
+    let committed = false;
+    try {
+      if (controller.signal.aborted) throw cancelledError();
+      const pendingCopy = Promise.resolve(copyMethod.call(item, { signal: controller.signal }));
+      copy = await new Promise((resolve, reject) => {
+        const cancel = () => reject(cancelledError());
+        controller.signal.addEventListener("abort", cancel, { once: true });
+        pendingCopy.then(
+          (result) => {
+            controller.signal.removeEventListener("abort", cancel);
+            if (controller.signal.aborted) {
+              // A provider may finish after cancellation despite receiving a signal.
+              // Never dispose a returned source, mounted item or shared view root.
+              void this.disposeUnpresentedCopy(result, item).catch((error) => console.error(error));
+              reject(cancelledError());
+            } else resolve(result);
+          },
+          (error) => {
+            controller.signal.removeEventListener("abort", cancel);
+            reject(error);
+          },
+        );
+      });
+      if (
+        controller.signal.aborted ||
+        itemURI(item) !== uri ||
+        item.copy !== copyMethod ||
+        item.getPaneItemRevision?.() !== revision
+      )
+        throw cancelledError();
+      this.assertLocalItem(item, sourcePane);
+      this.prepareDestination(item, sourcePane, options);
+      if (
+        !copy ||
+        typeof copy !== "object" ||
+        copy === item ||
+        copy.isDestroyed?.() ||
+        this.workspace.paneForItem(copy)
+      ) {
+        throw new PaneItemOperationError(
+          "INVALID_COPY",
+          "copy({signal}) must return a fresh, live pane item.",
+        );
+      }
+      assertItemLocation(copy, anchor.getContainer().getLocation());
+      if (!this.hasIndependentCopyView(copy, item)) {
+        throw new PaneItemOperationError(
+          "INVALID_COPY_VIEW",
+          "A copied pane item must have its own detached view root.",
+        );
+      }
+      if (controller.signal.aborted) throw cancelledError();
+      return sourcePane.transactActiveState(() => {
+        const pane = options.splitDirection
+          ? anchor[
+              `split${options.splitDirection[0].toUpperCase()}${options.splitDirection.slice(1)}`
+            ]({ items: [copy], activate: false })
+          : anchor;
+        if (!options.splitDirection) pane.addItem(copy, { index: options.index, copied: true });
+        if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
+        pane.activateItem(copy, { activatePane: mayFocus });
+        committed = true;
+        return { pane, item: copy };
+      });
+    } finally {
+      subscriptions.dispose();
+      this.operations.delete(operation);
+      if (!committed) await this.disposeUnpresentedCopy(copy, item);
+    }
   }
 
   destroy() {
@@ -490,7 +694,12 @@ class PaneItemTransferScope {
       if (sourceIndex !== targetIndex) targetPane.moveItem(item, targetIndex);
     } else {
       targetIndex = Math.max(0, Math.min(targetIndex, targetPane.getItems().length));
-      sourcePane.moveItemToPane(item, targetPane, targetIndex);
+      this.service.movePaneItem(item, {
+        sourcePane,
+        targetPane,
+        index: targetIndex,
+        activatePane: false,
+      });
     }
   }
 

@@ -33,6 +33,8 @@ class PaneElement extends HTMLElement {
     this.attached = false;
   }
 
+  connectedMoveCallback() {}
+
   initializeContent() {
     // `observeActive()` runs during initialization, before this element is
     // connected. Preserve the class it applies so a restored active pane does
@@ -172,7 +174,11 @@ class PaneElement extends HTMLElement {
     // Exactly one view is ever shown, so hiding the one that was showing beats
     // walking every view the pane has accumulated — that walk turns switching
     // tabs into work proportional to how many items have been opened.
-    if (this.visibleItemView && this.visibleItemView !== itemView) {
+    if (
+      this.visibleItemView &&
+      this.visibleItemView !== itemView &&
+      this.visibleItemView.parentNode === this.itemViews
+    ) {
       this.hideItemView(this.visibleItemView);
     }
     this.visibleItemView = itemView;
@@ -203,12 +209,12 @@ class PaneElement extends HTMLElement {
     }
   }
 
-  itemRemoved({ item, index: _index, destroyed: _destroyed }) {
+  itemRemoved({ item, index: _index, destroyed: _destroyed, moved }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
       const hadFocus = viewToRemove.contains(document.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
-      viewToRemove.remove();
+      if (!moved || viewToRemove.parentNode === this.itemViews) viewToRemove.remove();
       // Removing the focused element drops focus on `body` without firing any
       // blur event, so nothing downstream can notice. This is how destroying
       // the last item used to unfocus the workspace: `activeItemChanged(null)`
@@ -217,7 +223,7 @@ class PaneElement extends HTMLElement {
       // itself for a pane that is now empty. A caller that moves focus after
       // the removal (moving an item activates the destination pane) still wins:
       // it runs after this does.
-      if (hadFocus && !this.model.isDestroyed()) this.focusActiveView();
+      if (hadFocus && !moved && !this.model.isDestroyed()) this.focusActiveView();
     }
   }
 

@@ -1,4 +1,5 @@
 const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { refreshPaneLayout } = require("./pane-layout");
 
 class PaneContainerElement extends HTMLElement {
   constructor() {
@@ -20,17 +21,25 @@ class PaneContainerElement extends HTMLElement {
     this.classList.add("panes");
   }
 
+  connectedMoveCallback() {}
+
   rootChanged(root) {
     const focusedElement = this.hasFocus() ? document.activeElement : null;
-    if (this.firstChild != null) {
-      this.firstChild.remove();
-    }
+    const oldView = this.firstChild;
     if (root != null) {
       const view = this.views.getView(root);
-      this.appendChild(view);
+      if (view !== oldView) {
+        const reference = oldView?.parentNode === this ? oldView : null;
+        if (view.isConnected && this.isConnected) this.moveBefore(view, reference);
+        else this.insertBefore(view, reference);
+      }
+      if (oldView && oldView !== view && oldView.parentNode === this) oldView.remove();
+      refreshPaneLayout(this);
       if (focusedElement != null) {
         focusedElement.focus();
       }
+    } else {
+      oldView?.remove();
     }
   }
 
