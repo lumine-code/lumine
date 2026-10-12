@@ -99,10 +99,21 @@ describe("Dock", () => {
 
   describe("hover-area hit testing", () => {
     it("reports no hover area before the dock has rendered", () => {
-      const dock = lumine.workspace.getLeftDock();
-      expect(dock.refs && dock.refs.innerElement).toBeFalsy();
-      expect(dock.pointWithinHoverArea({ x: 0, y: 0 })).toBe(false);
-      expect(dock.pointWithinHoverArea({ x: 0, y: 0 }, true)).toBe(false);
+      const Dock = require("../src/dock");
+      const dock = new Dock({
+        ...lumine.workspace.getLeftDock(),
+        workspace: lumine.workspace,
+        didChangeActivePane: () => {},
+        didChangeActivePaneItem: () => {},
+        didDestroyPaneItem: () => {},
+      });
+      try {
+        expect(dock.refs && dock.refs.innerElement).toBeFalsy();
+        expect(dock.pointWithinHoverArea({ x: 0, y: 0 })).toBe(false);
+        expect(dock.pointWithinHoverArea({ x: 0, y: 0 }, true)).toBe(false);
+      } finally {
+        dock.destroy();
+      }
     });
   });
 

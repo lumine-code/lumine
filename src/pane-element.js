@@ -171,8 +171,13 @@ class PaneElement extends HTMLElement {
       if (item.onDidChangePath != null) {
         this.changePathDisposable = item.onDidChangePath(() => {
           const itemPath = item.getPath();
-          this.dataset.activeItemName = path.basename(itemPath);
-          this.dataset.activeItemPath = itemPath;
+          if (itemPath) {
+            this.dataset.activeItemName = path.basename(itemPath);
+            this.dataset.activeItemPath = itemPath;
+          } else {
+            delete this.dataset.activeItemName;
+            delete this.dataset.activeItemPath;
+          }
         });
       }
     }
