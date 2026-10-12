@@ -4,6 +4,20 @@ const PartialKeyupMatcher = require("../src/partial-keyup-matcher.js");
 const { KeyBinding } = require("../src/key-binding");
 
 describe("PartialKeyupMatcher", () => {
+  it("queries the next keyup and exact owner without consuming the pending match", () => {
+    const matcher = new PartialKeyupMatcher();
+    const binding = keyBindingArgHelper("ctrl-shift-tab ^ctrl ^shift");
+    const target = {};
+    matcher.addPendingMatch(binding, target);
+    assert.equal(matcher.canMatchForTarget("^ctrl", target), true);
+    assert.equal(matcher.canMatchForTarget("^ctrl", target), true);
+    assert.equal(matcher.canMatchForTarget("^shift", target), false);
+    assert.equal(matcher.canMatchForTarget("^ctrl", {}), false);
+    matcher.getMatches("^ctrl");
+    assert.equal(matcher.canMatchForTarget("^shift", target), true);
+    matcher.clear();
+    assert.equal(matcher.canMatchForTarget("^shift", target), false);
+  });
   it("returns a simple single-modifier-keyup match", () => {
     const matcher = new PartialKeyupMatcher();
     const kb = keyBindingArgHelper("ctrl-tab ^ctrl");

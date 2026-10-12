@@ -62,6 +62,112 @@ describe("KeymapManager", function () {
   afterEach(function () {
     return keymapManager.destroy();
   });
+  describe("pending keyboard relay query", () => {
+    let target, other;
+    beforeEach(() => {
+      target = document.createElement("div");
+      target.className = "relay-host";
+      other = document.createElement("div");
+      other.className = "relay-host";
+      keymapManager.add("relay-test", {
+        ".relay-host": { "alt-z up": "relay:up" },
+      });
+    });
+
+    it("only requests events from the exact pending host without changing state", () => {
+      const arrow = buildKeydownEvent({ key: "ArrowUp", target });
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(arrow), false);
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "z", altKey: true, target }));
+      const queue = [...keymapManager.queuedKeyboardEvents];
+      const matches = keymapManager.pendingPartialMatches;
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(arrow), true);
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(arrow), true);
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(arrow, { target: other }),
+        false,
+      );
+      assert.equal(arrow.defaultPrevented, false);
+      assert.deepEqual(keymapManager.queuedKeyboardEvents, queue);
+      assert.equal(keymapManager.pendingPartialMatches, matches);
+    });
+
+    it("relays a wrong suffix to cancel the chord while keeping that suffix native", () => {
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "z", altKey: true, target }));
+      const suffix = buildKeydownEvent({ key: "x", target });
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(suffix), true);
+      keymapManager.handleKeyboardEvent(suffix);
+      assert.equal(suffix.defaultPrevented, false);
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(suffix), false);
+    });
+
+    it("normalizes a queued body event to the default host target", () => {
+      keymapManager.defaultTarget = target;
+      keymapManager.handleKeyboardEvent(
+        buildKeydownEvent({ key: "z", altKey: true, target: document.body }),
+      );
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(
+          buildKeydownEvent({ key: "ArrowUp", target }),
+        ),
+        true,
+      );
+    });
+
+    it("requests only the retained target's next keyup after the partial timeout", () => {
+      keymapManager.add("relay-keyup", {
+        ".relay-host": { "ctrl-y": "relay:down", "ctrl-y ^ctrl": "relay:release" },
+      });
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "y", ctrlKey: true, target }));
+      getFakeClock().tick(keymapManager.getPartialMatchTimeout());
+      const release = buildKeyupEvent({ key: "Control", target });
+      assert.equal(keymapManager.pendingPartialMatches, null);
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(release), true);
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(release), true);
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(release, { target: other }),
+        false,
+      );
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(buildKeyupEvent({ key: "x", target })),
+        false,
+      );
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(buildKeydownEvent({ key: "x", target })),
+        false,
+      );
+      keymapManager.handleKeyboardEvent(release);
+      assert.equal(release.defaultPrevented, true);
+      assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(release), false);
+    });
+
+    it("keeps pending ownership private to the manager and clears it on reset", () => {
+      keymapManager.add("relay-keyup", {
+        ".relay-host": { "ctrl-y": "relay:down", "ctrl-y ^ctrl": "relay:release" },
+      });
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "y", ctrlKey: true, target }));
+      const release = buildKeyupEvent({ key: "Control", target });
+      const separate = new KeymapManager();
+      try {
+        assert.equal(separate.shouldContinuePendingKeyboardEvent(release), false);
+        assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(release), true);
+        keymapManager.clear();
+        assert.equal(keymapManager.shouldContinuePendingKeyboardEvent(release), false);
+      } finally {
+        separate.destroy();
+      }
+    });
+
+    it("keeps composition input outside the relay", () => {
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "z", altKey: true, target }));
+      assert.equal(
+        keymapManager.shouldContinuePendingKeyboardEvent(
+          new KeyboardEvent("keydown", { key: "x", isComposing: true }),
+          { target },
+        ),
+        false,
+      );
+    });
+  });
   it("does not reload a cleared keymap when its readiness callback was already queued", async () => {
     let resolveReady;
     const handle = {

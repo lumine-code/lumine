@@ -1,11 +1,30 @@
 module.exports = class PartialKeyupMatcher {
   constructor() {
     this._pendingMatches = new Set();
+    this._targets = new WeakMap();
   }
 
-  addPendingMatch(keyBinding) {
+  addPendingMatch(keyBinding, target) {
     this._pendingMatches.add(keyBinding);
+    this._targets.set(keyBinding, target ? new WeakRef(target) : null);
     keyBinding["nextKeyUpIndex"] = 0;
+  }
+
+  canMatchForTarget(keystroke, target) {
+    keystroke = this._normalizeKeystroke(keystroke);
+    for (const binding of this._pendingMatches) {
+      if (
+        this._targets.get(binding)?.deref() === target &&
+        this._normalizeKeystroke(binding.getKeyups()[binding["nextKeyUpIndex"]]) === keystroke
+      )
+        return true;
+    }
+    return false;
+  }
+
+  clear() {
+    this._pendingMatches.clear();
+    this._targets = new WeakMap();
   }
 
   // Returns matching bindingss, if any.
@@ -37,6 +56,7 @@ module.exports = class PartialKeyupMatcher {
     if (keyBinding["nextKeyUpIndex"] === keyBinding.getKeyups().length - 1) {
       // Full match. Remove and return it.
       this._pendingMatches.delete(keyBinding);
+      this._targets.delete(keyBinding);
       matches.add(keyBinding);
     } else {
       // Partial match. Increment what we're looking for next.

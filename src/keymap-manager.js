@@ -102,10 +102,6 @@ module.exports = KeymapManager = (function () {
       this.prototype.defaultTarget = null;
       this.prototype.pendingPartialMatches = null;
       this.prototype.pendingStateTimeoutHandle = null;
-
-      // Pending matches to bindings that begin with keydowns and end with a subset
-      // of matching keyups
-      this.prototype.pendingKeyupMatcher = new PartialKeyupMatcher();
     }
     /**
      * @category Class Methods
@@ -173,6 +169,7 @@ module.exports = KeymapManager = (function () {
       this.watchStartPromises = {};
       this.emitter?.dispose();
       this.emitter = new Emitter();
+      this.pendingKeyupMatcher = new PartialKeyupMatcher();
       this.keyBindings = [];
       this.queuedKeyboardEvents = [];
       this.queuedKeystrokes = [];
@@ -186,6 +183,9 @@ module.exports = KeymapManager = (function () {
      * Unwatch all watched paths.
      */
     destroy() {
+      this.cancelPendingState();
+      this.clearQueuedKeystrokes();
+      this.pendingKeyupMatcher?.clear();
       for (var filePath in this.watchSubscriptions) {
         var subscription = this.watchSubscriptions[filePath];
         subscription.dispose();
@@ -827,7 +827,7 @@ module.exports = KeymapManager = (function () {
               dispatchedExactMatch = exactMatchCandidate;
               eventHandled = true;
               for (var pendingKeyupMatch of Array.from(pendingKeyupMatchCandidates)) {
-                this.pendingKeyupMatcher.addPendingMatch(pendingKeyupMatch);
+                this.pendingKeyupMatcher.addPendingMatch(pendingKeyupMatch, target);
               }
               break;
             }
@@ -909,6 +909,42 @@ module.exports = KeymapManager = (function () {
      */
     keystrokeForKeyboardEvent(event) {
       return keystrokeForKeyboardEvent(event, this.customKeystrokeResolvers);
+    }
+
+    /**
+     * @public
+     * @status extended
+     *
+     * Determine whether an iframe bridge should relay a pending chord event for
+     * its host target. This query does not dispatch, prevent default or advance
+     * matching state. Relay wrong suffixes too so they can end a pending chord;
+     * ordinary editable input stays native when this returns false. A retained
+     * keyup rule only requests its next matching keyup, even after a timeout.
+     * @param event - A keydown or keyup KeyboardEvent from the embedded document.
+     * @param {Object} [options]
+     * @param {HTMLElement} [options.target] - Stable host element used when relaying events. Defaults to event.target.
+     * @returns {Boolean} Whether this event belongs to that target's pending keyboard sequence.
+     */
+    shouldContinuePendingKeyboardEvent(event, { target = event?.target } = {}) {
+      if (
+        !target ||
+        !["keydown", "keyup"].includes(event?.type) ||
+        event.isComposing ||
+        (event.keyCode === 229 && event.key !== "Dead")
+      )
+        return false;
+      const logicalTarget = (value) =>
+        value === document.body && this.defaultTarget ? this.defaultTarget : value;
+      target = logicalTarget(target);
+      if (
+        this.pendingPartialMatches != null &&
+        logicalTarget(this.queuedKeyboardEvents[0]?.target) === target
+      )
+        return true;
+      return (
+        event.type === "keyup" &&
+        this.pendingKeyupMatcher.canMatchForTarget(this.keystrokeForKeyboardEvent(event), target)
+      );
     }
 
     /**
