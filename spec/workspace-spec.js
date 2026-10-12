@@ -266,7 +266,7 @@ describe("Workspace", () => {
             const dock = lumine.workspace.getRightDock();
             const ITEM_URI = "lumine://test";
             const item = {
-              isSingleton: () => true,
+              canCopy: () => false,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getAllowedLocations: () => ["left", "right"],
@@ -285,7 +285,7 @@ describe("Workspace", () => {
           it("rejects a saved location outside an item's implicit default", async () => {
             const ITEM_URI = "lumine://implicit-location-test";
             const item = {
-              isSingleton: () => true,
+              canCopy: () => false,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getElement: () => document.createElement("div"),
@@ -364,7 +364,7 @@ describe("Workspace", () => {
 
           it("uses the location specified by the model's `getDefaultLocation()` method", async () => {
             const item = {
-              isSingleton: () => true,
+              canCopy: () => false,
               getDefaultLocation: jasmine.createSpy().and.returnValue("right"),
               getElement: () => document.createElement("div"),
             };
@@ -384,7 +384,7 @@ describe("Workspace", () => {
           it("prefers the last location the user used for that item", async () => {
             const ITEM_URI = "lumine://test";
             const item = {
-              isSingleton: () => true,
+              canCopy: () => false,
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
               getAllowedLocations: () => ["left", "right"],
@@ -476,7 +476,7 @@ describe("Workspace", () => {
           const dock = lumine.workspace.getRightDock();
           const ITEM_URI = "lumine://test";
           const item = {
-            isSingleton: () => true,
+            canCopy: () => false,
             getURI: () => ITEM_URI,
             getDefaultLocation: jasmine.createSpy().and.returnValue("left"),
             getAllowedLocations: () => ["left", "right"],
@@ -1005,7 +1005,7 @@ describe("Workspace", () => {
         workspace.addOpener((uri) =>
           uri === "lumine://a-view"
             ? {
-                isSingleton: () => true,
+                canCopy: () => false,
                 getTitle: () => "A view",
                 element: document.createElement("div"),
               }
@@ -1038,12 +1038,12 @@ describe("Workspace", () => {
       it("returns the resource returned by the custom opener", async () => {
         const fooOpener = (pathToOpen, options) => {
           if (pathToOpen != null ? pathToOpen.match(/\.foo/) : undefined) {
-            return { isSingleton: () => true, foo: pathToOpen, options };
+            return { canCopy: () => false, foo: pathToOpen, options };
           }
         };
         const barOpener = (pathToOpen) => {
           if (pathToOpen != null ? pathToOpen.match(/^bar:\/\//) : undefined) {
-            return { isSingleton: () => true, bar: pathToOpen };
+            return { canCopy: () => false, bar: pathToOpen };
           }
         };
         workspace.addOpener(fooOpener);
@@ -1257,7 +1257,7 @@ describe("Workspace", () => {
     it("can identify the pane and pane container for a given item or URI", () => {
       const uri = "lumine://test-pane-for-item";
       const item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         getAllowedLocations: () => ["center", "left"],
         element: document.createElement("div"),
         getURI() {
@@ -1289,7 +1289,7 @@ describe("Workspace", () => {
     beforeEach(() => {
       const el = document.createElement("div");
       item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         getTitle: () => "Item",
         getElement: () => el,
         getURI: () => URI,
@@ -1370,7 +1370,7 @@ describe("Workspace", () => {
     const buildItem = (title, persistent = false) => {
       let destroyed = false;
       return {
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
         getTitle: () => title,
         isPersistentDockItem: () => persistent,
@@ -1694,7 +1694,7 @@ describe("Workspace", () => {
     describe("when the location resolves to a dock", () => {
       it("adds or shows the item and its dock if it is not currently visible, and otherwise hides the containing dock", async () => {
         const item1 = {
-          isSingleton: () => true,
+          canCopy: () => false,
           getDefaultLocation() {
             return "left";
           },
@@ -1704,7 +1704,7 @@ describe("Workspace", () => {
         };
 
         const item2 = {
-          isSingleton: () => true,
+          canCopy: () => false,
           getDefaultLocation() {
             return "left";
           },
@@ -1741,7 +1741,7 @@ describe("Workspace", () => {
     describe("when the location resolves to the center", () => {
       it("adds or shows the item if it is not currently the active pane item, and otherwise removes the item", async () => {
         const item1 = {
-          isSingleton: () => true,
+          canCopy: () => false,
           getDefaultLocation() {
             return "center";
           },
@@ -1751,7 +1751,7 @@ describe("Workspace", () => {
         };
 
         const item2 = {
-          isSingleton: () => true,
+          canCopy: () => false,
           getDefaultLocation() {
             return "center";
           },
@@ -1779,17 +1779,17 @@ describe("Workspace", () => {
       const leftDock = workspace.getLeftDock();
       const leftItem1 = {
         getAllowedLocations: () => ["left"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const leftItem2 = {
         getAllowedLocations: () => ["left"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const leftItem3 = {
         getAllowedLocations: () => ["left"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const leftPane1 = leftDock.getActivePane();
@@ -1799,17 +1799,17 @@ describe("Workspace", () => {
       const rightDock = workspace.getRightDock();
       const rightItem1 = {
         getAllowedLocations: () => ["right"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const rightItem2 = {
         getAllowedLocations: () => ["right"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const rightItem3 = {
         getAllowedLocations: () => ["right"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const rightPane1 = rightDock.getActivePane();
@@ -1819,17 +1819,17 @@ describe("Workspace", () => {
       const bottomDock = workspace.getBottomDock();
       const bottomItem1 = {
         getAllowedLocations: () => ["bottom"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const bottomItem2 = {
         getAllowedLocations: () => ["bottom"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const bottomItem3 = {
         getAllowedLocations: () => ["bottom"],
-        isSingleton: () => true,
+        canCopy: () => false,
         element: document.createElement("div"),
       };
       const bottomPane1 = bottomDock.getActivePane();
@@ -1837,9 +1837,9 @@ describe("Workspace", () => {
       const bottomPane2 = bottomPane1.splitDown({ items: [bottomItem3] });
 
       const center = workspace.getCenter();
-      const centerItem1 = { isSingleton: () => true, element: document.createElement("div") };
-      const centerItem2 = { isSingleton: () => true, element: document.createElement("div") };
-      const centerItem3 = { isSingleton: () => true, element: document.createElement("div") };
+      const centerItem1 = { canCopy: () => false, element: document.createElement("div") };
+      const centerItem2 = { canCopy: () => false, element: document.createElement("div") };
+      const centerItem3 = { canCopy: () => false, element: document.createElement("div") };
       const centerPane1 = center.getActivePane();
       centerPane1.addItems([centerItem1, centerItem2]);
       const centerPane2 = centerPane1.splitDown({ items: [centerItem3] });
@@ -2485,7 +2485,7 @@ describe("Workspace", () => {
       const element = document.createElement("div");
       element.tabIndex = -1;
       return {
-        isSingleton: () => true,
+        canCopy: () => false,
         element,
         getAllowedLocations: () => ["center", "left", "right", "bottom"],
       };
@@ -2711,7 +2711,7 @@ describe("Workspace", () => {
       // The protocol shape a notebook-like item implements: a backing editor
       // holding the file, an embedded editor being edited, one change signal.
       item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         getTitle: () => "Fake Notebook",
         getFileTextEditor: () => fileEditor,
         getActiveEmbeddedTextEditor: () => activeEmbedded,
@@ -2945,7 +2945,7 @@ describe("Workspace", () => {
     it("does not mark a read-only removed item as document-edited", () => {
       const item = {
         getFileState: () => "removed",
-        isSingleton: () => true,
+        canCopy: () => false,
         onDidChangeFileState: () => ({ dispose() {} }),
       };
       lumine.workspace.getActivePane().addItem(item);
@@ -2959,7 +2959,7 @@ describe("Workspace", () => {
     function addFileBackedItem(initialState) {
       const emitter = new Emitter();
       const item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         fileState: initialState,
         destroyed: false,
         getFileState() {
@@ -3004,8 +3004,8 @@ describe("Workspace", () => {
 
   describe("adding panels", () => {
     class TestItem {
-      isSingleton() {
-        return true;
+      canCopy() {
+        return false;
       }
     }
 
@@ -5244,14 +5244,14 @@ describe("Workspace", () => {
 
       // The dock items should not be closed
       await lumine.workspace.open({
-        isSingleton: () => true,
+        canCopy: () => false,
         getTitle: () => "Permanent Dock Item",
         element: document.createElement("div"),
         getDefaultLocation: () => "left",
         isPermanentDockItem: () => true,
       });
       await lumine.workspace.open({
-        isSingleton: () => true,
+        canCopy: () => false,
         getTitle: () => "Impermanent Dock Item",
         element: document.createElement("div"),
         getDefaultLocation: () => "left",
@@ -5483,7 +5483,7 @@ describe("Workspace", () => {
     it("stores the new location if it's not the default", () => {
       const ITEM_URI = "lumine://test";
       const item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "left",
         getAllowedLocations: () => ["center", "left", "right"],
@@ -5500,7 +5500,7 @@ describe("Workspace", () => {
     it("clears the location if it's the default", () => {
       const ITEM_URI = "lumine://test";
       const item = {
-        isSingleton: () => true,
+        canCopy: () => false,
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "right",
         getAllowedLocations: () => ["center", "right"],

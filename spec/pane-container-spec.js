@@ -22,8 +22,8 @@ describe("PaneContainer", () => {
     beforeEach(() => {
       // This is a dummy item to prevent panes from being empty on deserialization
       class Item {
-        isSingleton() {
-          return true;
+        canCopy() {
+          return false;
         }
 
         static deserialize() {
@@ -245,10 +245,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container.getRoot().addItems([{ canCopy: () => false }, { canCopy: () => false }]);
       container
         .getRoot()
-        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
+        .splitRight({ items: [{ canCopy: () => false }, { canCopy: () => false }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -267,10 +267,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container.getRoot().addItems([{ canCopy: () => false }, { canCopy: () => false }]);
       container
         .getRoot()
-        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
+        .splitRight({ items: [{ canCopy: () => false }, { canCopy: () => false }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -292,7 +292,7 @@ describe("PaneContainer", () => {
     it("does not expose already-destroyed items while the container is being destroyed", () => {
       const disposedEmitter = new Emitter();
       const stubItem = {
-        isSingleton: () => true,
+        canCopy: () => false,
         destroy() {
           disposedEmitter.dispose();
         },
@@ -302,7 +302,7 @@ describe("PaneContainer", () => {
       };
       const activeItemEmitter = new Emitter();
       const activeItem = {
-        isSingleton: () => true,
+        canCopy: () => false,
         destroy() {
           activeItemEmitter.emit("did-destroy");
         },
@@ -325,10 +325,10 @@ describe("PaneContainer", () => {
     let container, pane1, pane2, item1, item2, item3, item4, observed, panes;
 
     beforeEach(() => {
-      item1 = { isSingleton: () => true };
-      item2 = { isSingleton: () => true };
-      item3 = { isSingleton: () => true };
-      item4 = { isSingleton: () => true };
+      item1 = { canCopy: () => false };
+      item2 = { canCopy: () => false };
+      item3 = { canCopy: () => false };
+      item4 = { canCopy: () => false };
       container = new PaneContainer(params);
       pane1 = container.getActivePane();
       pane1.addItems([item1, item2]);
@@ -396,7 +396,7 @@ describe("PaneContainer", () => {
     });
 
     it("copies an active item into a split and publishes the copy once", () => {
-      const copy = { isSingleton: () => true };
+      const copy = { canCopy: () => false };
       item1.copy = () => copy;
       const split = pane1.splitRight({ items: [item1.copy()] });
 
@@ -549,10 +549,10 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       container = new PaneContainer(params);
-      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      container.getRoot().addItems([{ canCopy: () => false }, { canCopy: () => false }]);
       container
         .getRoot()
-        .splitRight({ items: [{ isSingleton: () => true }, { isSingleton: () => true }] });
+        .splitRight({ items: [{ canCopy: () => false }, { canCopy: () => false }] });
       [pane1, pane2] = container.getPanes();
 
       observed = [];
@@ -612,14 +612,14 @@ describe("PaneContainer", () => {
   describe("::observePaneItems()", () =>
     it("invokes observers with all current and future pane items", () => {
       const container = new PaneContainer(params);
-      container.getRoot().addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
-      container.getRoot().splitRight({ items: [{ isSingleton: () => true }] });
+      container.getRoot().addItems([{ canCopy: () => false }, { canCopy: () => false }]);
+      container.getRoot().splitRight({ items: [{ canCopy: () => false }] });
       const pane2 = container.getPanes()[1];
       const observed = [];
       container.observePaneItems((pane) => observed.push(pane));
 
-      const pane3 = pane2.splitDown({ items: [{ isSingleton: () => true }] });
-      pane3.addItems([{ isSingleton: () => true }, { isSingleton: () => true }]);
+      const pane3 = pane2.splitDown({ items: [{ canCopy: () => false }] });
+      pane3.addItems([{ canCopy: () => false }, { canCopy: () => false }]);
 
       expect(observed).toEqual(container.getPaneItems());
     }));
@@ -629,8 +629,8 @@ describe("PaneContainer", () => {
 
     beforeEach(() => {
       class TestItem {
-        isSingleton() {
-          return true;
+        canCopy() {
+          return false;
         }
 
         shouldPromptToSave() {
@@ -683,8 +683,8 @@ describe("PaneContainer", () => {
   describe("::onWillDestroyPane(callback)", () => {
     it("invokes the given callback before panes or their items are destroyed", () => {
       class TestItem {
-        isSingleton() {
-          return true;
+        canCopy() {
+          return false;
         }
 
         constructor() {
@@ -756,9 +756,9 @@ describe("PaneContainer", () => {
     it("invokes the given callbacks when an item will be destroyed on any pane", async () => {
       const container = new PaneContainer(params);
       const pane1 = container.getRoot();
-      const item1 = { isSingleton: () => true };
-      const item2 = { isSingleton: () => true };
-      const item3 = { isSingleton: () => true };
+      const item1 = { canCopy: () => false };
+      const item2 = { canCopy: () => false };
+      const item3 = { canCopy: () => false };
 
       pane1.addItem(item1);
       const events = [];
@@ -802,7 +802,7 @@ describe("PaneContainer", () => {
       pane1.splitRight();
 
       const item1 = {
-        isSingleton: () => true,
+        canCopy: () => false,
         saved: false,
         getURI() {
           return "";
@@ -815,7 +815,7 @@ describe("PaneContainer", () => {
         },
       };
       const item2 = {
-        isSingleton: () => true,
+        canCopy: () => false,
         saved: false,
         getURI() {
           return "";
@@ -828,7 +828,7 @@ describe("PaneContainer", () => {
         },
       };
       const item3 = {
-        isSingleton: () => true,
+        canCopy: () => false,
         saved: false,
         getURI() {
           return "";
@@ -860,7 +860,7 @@ describe("PaneContainer", () => {
       const pane2 = pane1.splitRight();
 
       const item1 = {
-        isSingleton: () => true,
+        canCopy: () => false,
         saved: false,
         getURI() {
           return "";
@@ -873,7 +873,7 @@ describe("PaneContainer", () => {
         },
       };
       const item2 = {
-        isSingleton: () => true,
+        canCopy: () => false,
         saved: false,
         getURI() {
           return "";

@@ -523,6 +523,8 @@ module.exports = class PaneContainer {
   }
 
   assertItemAvailable(item, pane) {
+    this.itemRegistry.assertItemAvailable(item);
+    this.globalItemRegistry?.assertItemAvailable(item);
     if (this.itemRegistry.hasItem(item) || this.globalItemRegistry?.hasItem(item)) {
       throw new Error("The workspace can only contain one instance of a pane item.");
     }

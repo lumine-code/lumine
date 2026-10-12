@@ -291,7 +291,7 @@ describe("Pane", () => {
       const spy = jasmine.createSpy("onDidTerminatePendingState").and.returnValue(fakeDisposable);
 
       const pane = new Pane(paneParams({ items: [] }));
-      const item = { isSingleton: () => true, getTitle: () => "", onDidTerminatePendingState: spy };
+      const item = { canCopy: () => false, getTitle: () => "", onDidTerminatePendingState: spy };
       pane.addItem(item);
 
       expect(spy).toHaveBeenCalled();
@@ -302,7 +302,7 @@ describe("Pane", () => {
       const spy = jasmine.createSpy("onDidDestroy").and.returnValue(fakeDisposable);
 
       const pane = new Pane(paneParams({ items: [] }));
-      const item = { isSingleton: () => true, getTitle: () => "", onDidDestroy: spy };
+      const item = { canCopy: () => false, getTitle: () => "", onDidDestroy: spy };
       pane.addItem(item);
 
       expect(spy).toHaveBeenCalled();
@@ -1672,7 +1672,7 @@ describe("Pane", () => {
     });
 
     it("restores the correct item when it doesn't implement getURI() and some items weren't deserialized", () => {
-      const unserializable = { isSingleton: () => true };
+      const unserializable = { canCopy: () => false };
       pane.addItem(unserializable, { index: 0 });
       pane.items[2].getURI = null;
       pane.activateItemAtIndex(2);
@@ -1682,7 +1682,7 @@ describe("Pane", () => {
 
     it("does not include items that cannot be deserialized", () => {
       spyOn(console, "warn");
-      const unserializable = { isSingleton: () => true };
+      const unserializable = { canCopy: () => false };
       pane.activateItem(unserializable);
 
       const newPane = Pane.deserialize(pane.serialize(), lumine);
@@ -1719,7 +1719,7 @@ describe("Pane", () => {
     it("does not serialize the reference to the items in the itemStack for pane items that will not be serialized", () => {
       const [item1, item2, item3] = pane.getItems();
       pane.itemStack = [item2, item1, item3];
-      const unserializable = { isSingleton: () => true };
+      const unserializable = { canCopy: () => false };
       pane.activateItem(unserializable);
 
       const newPane = Pane.deserialize(pane.serialize(), lumine);

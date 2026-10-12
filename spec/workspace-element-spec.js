@@ -362,7 +362,7 @@ describe("WorkspaceElement", () => {
     it("shows the toggle button when the dock is open", async () => {
       await Promise.all([
         lumine.workspace.open({
-          isSingleton: () => true,
+          canCopy: () => false,
           element: document.createElement("div"),
           getDefaultLocation() {
             return "left";
@@ -372,7 +372,7 @@ describe("WorkspaceElement", () => {
           },
         }),
         lumine.workspace.open({
-          isSingleton: () => true,
+          canCopy: () => false,
           element: document.createElement("div"),
           getDefaultLocation() {
             return "right";
@@ -382,7 +382,7 @@ describe("WorkspaceElement", () => {
           },
         }),
         lumine.workspace.open({
-          isSingleton: () => true,
+          canCopy: () => false,
           element: document.createElement("div"),
           getDefaultLocation() {
             return "bottom";
@@ -524,7 +524,7 @@ describe("WorkspaceElement", () => {
         else pane.splitDown();
 
         await lumine.workspace.open({
-          isSingleton: () => true,
+          canCopy: () => false,
           element: document.createElement("div"),
           getDefaultLocation() {
             return location;

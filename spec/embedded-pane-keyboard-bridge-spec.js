@@ -22,7 +22,7 @@ describe("embedded pane keyboard renderer bridge", () => {
       .getActivePane()
       .activateItem({
         element: root,
-        isSingleton: () => true,
+        canCopy: () => false,
         getTitle: () => "Frame Host",
       });
     keymaps = new KeymapManager();

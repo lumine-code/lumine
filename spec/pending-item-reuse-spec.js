@@ -18,7 +18,7 @@ describe("Pending pane item reuse", () => {
     const emitter = new Emitter();
     return {
       uri,
-      isSingleton: () => true,
+      canCopy: () => false,
       element: document.createElement("div"),
       getURI() {
         return this.uri;

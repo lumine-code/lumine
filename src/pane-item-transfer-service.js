@@ -140,15 +140,10 @@ class PaneItemTransferService {
   }
 
   async copyPaneItem(item, options = {}) {
+    if (item?.canCopy?.() === false) return null;
     options = { ...options };
     const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
     this.assertLocalItem(item, sourcePane);
-    if (item.isSingleton?.() === true) {
-      throw new PaneItemOperationError(
-        "SINGLETON",
-        "This view has one instance and can be moved, but cannot be copied.",
-      );
-    }
     if (typeof item.copy !== "function") {
       throw new PaneItemOperationError(
         "COPY_CONTRACT",

@@ -123,14 +123,21 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * Returns a `String` containing the title of the item to display on its
  * associated tab.
  *
- * #### `copy({signal})` or `isSingleton()`
+ * #### `copy({signal})` or `canCopy()`
  *
  * Every center item must implement `copy({signal})`, returning a fresh live item
  * or a Promise for one, with an independent detached view root. Views may share
  * their underlying document, but own their subscriptions, selection and viewport.
  * Honor the AbortSignal before publishing a copy and release abandoned resources.
- * A view whose design permits only one instance declares `isSingleton() === true`;
- * it supports focus and move operations, including split and move, but no copy.
+ * A view that does not support copying declares `canCopy() === false`.
+ * Copy and split-copy operations then silently resolve to null without changing
+ * panes, focus or preview state. Focus and move, including split-move, remain available.
+ * Copy policy is independent of uniqueness: `getSingletonKey()` returns a
+ * namespaced non-empty String to allow one item per logical resource in this
+ * workspace. A constant key identifies a workspace tool; a resource key permits
+ * separate result sets. Omit it or return null when uniqueness is not required.
+ * Changing a singleton key emits `onDidChangeSingletonKey`, or `onDidChangeURI`
+ * when the key follows the URI. Reopening a key activates its existing item.
  * Serialization and URI openers are not substitutes for this copy contract.
  * Copy factories capture document and view state before awaiting initialization.
  * Retargeting items emit `onDidChangeURI` after every document publication, even
@@ -2278,6 +2285,12 @@ module.exports = class Workspace extends Model {
         }
         if (!item) return;
 
+        const singleton = this.#paneItemRegistry.getItemForSingletonKey(item.getSingletonKey?.());
+        if (singleton && singleton !== item) {
+          if (!itemWasProvided) discardUnpresentedItem();
+          item = singleton;
+        }
+
         // An opener may return an item that is already in the workspace, e.g.
         // a package reusing a singleton view for its URI. Adding such an item
         // to a second pane is illegal, so activate it where it already lives.
@@ -3471,7 +3484,7 @@ module.exports = class Workspace extends Model {
    * Copy an exact item before creating its destination. Singleton items refuse copying.
    * @param item - The item whose document and view state should be copied.
    * @param {Object} options - sourcePane, targetPane or splitDirection, index, activatePane and signal.
-   * @returns {Promise<Object>} The final {pane, item}; cancellation rejects with ABORT_ERR.
+   * @returns {Promise<Object|null>} The final {pane, item}, or null when copying is disabled; cancellation rejects with ABORT_ERR.
    */
   copyPaneItem(item, options = {}) {
     return this.paneItemTransferService.copyPaneItem(item, options);

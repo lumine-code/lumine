@@ -16,7 +16,7 @@ function viewItem({
     getTitle: () => "Test View",
     getURI: () => uri,
     getPaneItemRevision: () => revision,
-    isSingleton: () => singleton,
+    canCopy: () => !singleton,
     copy: () => viewItem({ uri }),
     onDidChangeURI: (callback) => emitter.on("uri", callback),
     onDidDestroy: (callback) => emitter.on("destroy", callback),
@@ -216,7 +216,7 @@ describe("workspace pane item operations", () => {
   for (const direction of ["up", "down", "left", "right"]) {
     it(`moves a sole singleton into a new ${direction} split while preserving the explicit split`, async () => {
       lumine.config.set("core.destroyEmptyPanes", true);
-      item.isSingleton = () => true;
+      item.canCopy = () => false;
       targetPane.destroy();
       const result = await workspace.movePaneItem(item, { sourcePane, splitDirection: direction });
       expect(workspace.getCenter().getPanes().length).toBe(2);
@@ -229,13 +229,11 @@ describe("workspace pane item operations", () => {
 
   for (const destination of ["existing", "split"]) {
     it(`refuses singleton copying to ${destination} without touching preview, layout or focus`, async () => {
-      item.isSingleton = () => true;
+      item.canCopy = () => false;
       sourcePane.setPendingItem(item);
       const panes = workspace.getPanes();
       const options = destination === "split" ? { splitDirection: "down" } : { targetPane };
-      await expectAsync(workspace.copyPaneItem(item, options)).toBeRejectedWith(
-        jasmine.objectContaining({ code: "SINGLETON" }),
-      );
+      await expectAsync(workspace.copyPaneItem(item, options)).toBeResolvedTo(null);
       expect(workspace.getPanes()).toEqual(panes);
       expect(workspace.getActivePane()).toBe(sourcePane);
       expect(sourcePane.getPendingItem()).toBe(item);
@@ -442,6 +440,25 @@ describe("workspace pane item operations", () => {
     await lumine.commands.dispatch(workspace.getElement(), "pane:split-down-and-copy-active-item");
     expect(workspace.getCenter().getPanes().length).toBe(3);
     expect(workspace.getActivePaneItem()).not.toBe(item);
+  });
+
+  it("silently skips every copy command without touching layout, preview, focus or the provider", async () => {
+    item.canCopy = () => false;
+    sourcePane.setPendingItem(item);
+    const panes = workspace.getPanes();
+    const warnings = spyOn(lumine.notifications, "addWarning");
+    const errors = spyOn(lumine.notifications, "addError");
+    const copy = spyOn(item, "copy").and.callThrough();
+    for (const direction of ["up", "down", "left", "right"]) {
+      await lumine.commands.dispatch(item.element, `pane:copy-active-item-${direction}`);
+      await lumine.commands.dispatch(item.element, `pane:split-${direction}-and-copy-active-item`);
+    }
+    expect(workspace.getPanes()).toEqual(panes);
+    expect(workspace.getActivePane()).toBe(sourcePane);
+    expect(sourcePane.getPendingItem()).toBe(item);
+    expect(copy).not.toHaveBeenCalled();
+    expect(warnings).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it("captures the command's source before a queued document replacement can retarget it", async () => {

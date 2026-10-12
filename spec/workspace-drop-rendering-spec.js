@@ -48,7 +48,7 @@ describe("workspace drop preview rendering", () => {
     overlayStyle = manager.overlay.style.cssText;
     pane = lumine.workspace.getCenter().getActivePane();
     item = document.createElement("div");
-    item.isSingleton = () => true;
+    item.canCopy = () => false;
     controls = document.createElement("button");
     controls.textContent = "Pane Controls";
     controls.style.cssText =

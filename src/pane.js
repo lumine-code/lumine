@@ -189,6 +189,8 @@ module.exports = class Pane {
         });
         return;
       }
+      container.itemRegistry.assertItemsAvailable(this.items);
+      container.globalItemRegistry?.assertItemsAvailable(this.items);
       for (const item of this.items) {
         assertItemLocation(item, container.getLocation());
         container.assertItemAvailable(item, this);
@@ -1726,6 +1728,9 @@ module.exports = class Pane {
   }
 
   split(orientation, side, params) {
+    const incomingItems = (params?.items || []).filter(Boolean);
+    this.container.itemRegistry.assertItemsAvailable(incomingItems);
+    this.container.globalItemRegistry?.assertItemsAvailable(incomingItems);
     for (const item of params?.items || []) {
       if (!item) continue;
       assertItemLocation(item, this.container.getLocation());

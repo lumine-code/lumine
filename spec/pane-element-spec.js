@@ -268,8 +268,8 @@ describe("PaneElement", function () {
     describe("if the active item is a model object", () =>
       it("retrieves the associated view from lumine.views and appends it to the itemViews div", function () {
         class TestModel {
-          isSingleton() {
-            return true;
+          canCopy() {
+            return false;
           }
         }
 
@@ -396,8 +396,8 @@ describe("PaneElement", function () {
     describe("when the destroyed item is a model", () =>
       it("removes the model's associated view", function () {
         class TestModel {
-          isSingleton() {
-            return true;
+          canCopy() {
+            return false;
           }
         }
 
