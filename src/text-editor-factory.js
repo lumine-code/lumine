@@ -98,10 +98,12 @@ module.exports = class TextEditorFactory {
       };
       this.managedEditors.set(editor, entry);
       entry.subscriptions.add(editor.onDidDestroy(() => this.removeEntry(entry)));
-      this.updateAndMonitorEditorSettings(entry);
+      this.updateAndMonitorEditorSettings(entry).catch((error) => this.reportSettingsError(error));
       entry.subscriptions.add(
         editor.buffer.onDidChangeLanguageMode((newLanguageMode, oldLanguageMode) => {
-          this.updateAndMonitorEditorSettings(entry, oldLanguageMode);
+          this.updateAndMonitorEditorSettings(entry, oldLanguageMode).catch((error) =>
+            this.reportSettingsError(error),
+          );
         }),
       );
 
@@ -154,10 +156,27 @@ module.exports = class TextEditorFactory {
           updatedSettings[paramName] = newSettings[paramName];
         }
       }
-      if (_.size(updatedSettings) > 0) editor.update(updatedSettings);
+      if (_.size(updatedSettings) > 0) this.updateEditorSettings(editor, updatedSettings);
     } else {
-      editor.update(this.textEditorParamsForScope(newLanguageMode.rootScopeDescriptor));
+      this.updateEditorSettings(
+        editor,
+        this.textEditorParamsForScope(newLanguageMode.rootScopeDescriptor),
+      );
     }
+  }
+
+  updateEditorSettings(editor, settings) {
+    // Settings are applied synchronously; rendering completes independently.
+    // This owner must observe that completion even though callers do not await it.
+    try {
+      Promise.resolve(editor.update(settings)).catch((error) => this.reportSettingsError(error));
+    } catch (error) {
+      this.reportSettingsError(error);
+    }
+  }
+
+  reportSettingsError(error) {
+    console.error("Unable to finish an editor settings update.", error);
   }
 
   subscribeToSettingsForEditorScope(editor) {
@@ -172,7 +191,7 @@ module.exports = class TextEditorFactory {
         this.config.onDidChange(settingKey, configOptions, ({ newValue }) => {
           for (const maintainedEditor of this.managedEditors.keys()) {
             if (maintainedEditor.getRootScopeDescriptor().isEqual(scopeDescriptor)) {
-              maintainedEditor.update({ [paramName]: newValue });
+              this.updateEditorSettings(maintainedEditor, { [paramName]: newValue });
             }
           }
         }),

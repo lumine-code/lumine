@@ -196,6 +196,19 @@ describe("TextEditorRegistry", function () {
   });
 
   describe("TextEditorFactory.maintainConfig(editor)", function () {
+    it("observes rejected editor render completions while configuring settings", async () => {
+      const failure = new Error("Editor rendering failed");
+      spyOn(editor, "update").and.callFake(() => Promise.reject(failure));
+      const diagnostic = spyOn(console, "error");
+      factory.maintainConfig(editor);
+      await initialPackageActivation;
+      await Promise.resolve();
+      expect(diagnostic).toHaveBeenCalledWith(
+        "Unable to finish an editor settings update.",
+        failure,
+      );
+    });
+
     it("rejects values that are not live TextEditors", function () {
       expect(() => factory.maintainConfig({})).toThrowError(TypeError);
       const destroyed = new TextEditor();
