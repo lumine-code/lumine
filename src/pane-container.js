@@ -11,6 +11,7 @@ let activeStateTransaction = null;
 module.exports = class PaneContainer {
   constructor(params) {
     this.workspace = params.workspace;
+    this.globalItemRegistry = params.globalItemRegistry;
     let applicationDelegate, deserializerManager, notificationManager;
     ({
       config: this.config,
@@ -82,6 +83,7 @@ module.exports = class PaneContainer {
 
   deserialize(state, deserializerManager) {
     if (state.version !== SERIALIZATION_VERSION) return;
+    for (const item of this.getPaneItems()) this.unregisterItem(item);
     this.itemRegistry = new ItemRegistry();
     this.paneActivationOrder.clear();
     this.setRoot(deserializerManager.deserialize(state.root));
@@ -113,6 +115,14 @@ module.exports = class PaneContainer {
 
   onDidAddPane(fn) {
     return this.emitter.on("did-add-pane", fn);
+  }
+
+  onDidTransferPaneItem(fn) {
+    return this.emitter.on("did-transfer-pane-item", fn);
+  }
+
+  didTransferPaneItem() {
+    this.emitter.emit("did-transfer-pane-item");
   }
 
   observePanes(fn) {
@@ -361,11 +371,13 @@ module.exports = class PaneContainer {
   }
 
   didAddPane(event) {
+    const items = [...event.pane.getItems()];
+    for (const item of items) this.registerItem(item);
     this.emitter.emit("did-add-pane", event);
-    const items = event.pane.getItems();
     for (let i = 0, length = items.length; i < length; i++) {
       const item = items[i];
-      this.didAddPaneItem(item, event.pane, i);
+      if (event.pane.getItems().includes(item) && this.itemRegistry.hasItem(item))
+        this.didAddPaneItem(item, event.pane, i);
     }
   }
 
@@ -411,11 +423,17 @@ module.exports = class PaneContainer {
   // the item lives, so the ledger is kept up to date either way: a moved-out
   // item left registered makes its own container refuse it ever after.
   registerItem(item) {
-    this.itemRegistry.addItem(item);
+    this.globalItemRegistry?.addItem(item);
+    try {
+      this.itemRegistry.addItem(item);
+    } catch (error) {
+      this.globalItemRegistry?.removeItem(item);
+      throw error;
+    }
   }
 
   assertItemAvailable(item, pane) {
-    if (this.itemRegistry.hasItem(item)) {
+    if (this.itemRegistry.hasItem(item) || this.globalItemRegistry?.hasItem(item)) {
       throw new Error("The workspace can only contain one instance of a pane item.");
     }
     if (
@@ -427,10 +445,11 @@ module.exports = class PaneContainer {
 
   unregisterItem(item) {
     this.itemRegistry.removeItem(item);
+    this.globalItemRegistry?.removeItem(item);
   }
 
   didAddPaneItem(item, pane, index, options = {}) {
-    this.registerItem(item);
+    if (!this.itemRegistry.hasItem(item) || !pane.getItems().includes(item)) return;
     this.emitter.emit("did-add-pane-item", {
       item,
       pane,

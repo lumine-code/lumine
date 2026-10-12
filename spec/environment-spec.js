@@ -1082,6 +1082,7 @@ describe("Environment", () => {
         it("doesn't prompt the user to restore state", async () => {
           const dock = lumine.workspace.getLeftDock();
           dock.getActivePane().addItem({
+            getAllowedLocations: () => ["left"],
             getTitle() {
               return "title";
             },
@@ -1106,7 +1107,8 @@ describe("Environment", () => {
       describe("when a dock has a modified editor", () => {
         it("prompts the user to restore the state", async () => {
           const dock = lumine.workspace.getLeftDock();
-          dock.getActivePane().addItem(editor);
+          editor.getAllowedLocations = () => ["center", "left"];
+          lumine.workspace.paneForItem(editor).moveItemToPane(editor, dock.getActivePane());
           spyOn(lumine.window, "confirm").and.returnValue(Promise.resolve(1));
           spyOn(lumine.project, "addPath");
           spyOn(lumine.workspace, "open");

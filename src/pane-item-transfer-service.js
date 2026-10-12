@@ -187,6 +187,17 @@ class PaneItemTransferService {
     observe(this.workspace, "onDidChangeActivePaneItem", () => {
       contextUnchanged = false;
     });
+    const origin = sourcePane.element;
+    let focusOrigin = document.activeElement;
+    const focusChanged = (event) => {
+      if (focusOrigin === document.body && origin?.contains(event.target))
+        focusOrigin = event.target;
+      else if (event.target !== focusOrigin) contextUnchanged = false;
+    };
+    document.addEventListener("focusin", focusChanged, true);
+    subscriptions.add(
+      new Disposable(() => document.removeEventListener("focusin", focusChanged, true)),
+    );
     let copy;
     let committed = false;
     try {

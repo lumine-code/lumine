@@ -209,12 +209,13 @@ class PaneElement extends HTMLElement {
     }
   }
 
-  itemRemoved({ item, index: _index, destroyed: _destroyed, moved }) {
+  itemRemoved({ item, index: _index, destroyed: _destroyed, moved, retainView }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
       const hadFocus = viewToRemove.contains(document.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
-      if (!moved || viewToRemove.parentNode === this.itemViews) viewToRemove.remove();
+      if (!retainView && (!moved || viewToRemove.parentNode === this.itemViews))
+        viewToRemove.remove();
       // Removing the focused element drops focus on `body` without firing any
       // blur event, so nothing downstream can notice. This is how destroying
       // the last item used to unfocus the workspace: `activeItemChanged(null)`

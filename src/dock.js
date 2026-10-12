@@ -50,6 +50,7 @@ module.exports = class Dock {
 
     this.paneContainer = new PaneContainer({
       workspace: params.workspace,
+      globalItemRegistry: params.globalItemRegistry,
       location: this.location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
@@ -76,6 +77,7 @@ module.exports = class Dock {
         params.didChangeActivePaneItem(this, item),
       ),
       this.paneContainer.onDidDestroyPaneItem((item) => params.didDestroyPaneItem(item)),
+      this.paneContainer.onDidTransferPaneItem(() => this.handleDidRemovePaneItem()),
     );
   }
 
@@ -317,8 +319,8 @@ module.exports = class Dock {
     }
   }
 
-  handleDidRemovePaneItem() {
-    if (this.state.restoring) return;
+  handleDidRemovePaneItem({ retainView } = {}) {
+    if (this.state.restoring || retainView) return;
     // Hide the dock if you remove the last item.
     if (this.paneContainer.getPaneItems().length === 0) {
       this.setState({ visible: false, hovered: false, size: null });

@@ -31,6 +31,8 @@ class StylesElement extends HTMLElement {
     this.subscriptions = new CompositeDisposable();
   }
 
+  connectedMoveCallback() {}
+
   static get observedAttributes() {
     return ["context"];
   }

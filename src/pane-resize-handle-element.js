@@ -30,6 +30,12 @@ class PaneResizeHandleElement extends HTMLElement {
     this.resizeStopped(false);
   }
 
+  connectedMoveCallback() {
+    this.isHorizontal = this.parentElement?.classList.contains("horizontal") === true;
+    this.classList.toggle("horizontal", this.isHorizontal);
+    this.classList.toggle("vertical", !this.isHorizontal);
+  }
+
   resizeToFitContent() {
     // clear flex-grow css style of both pane
     if (this.previousSibling != null) {

@@ -3,7 +3,11 @@ const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
-const { assertCenterItemContract, assertItemLocation } = require("./pane-item-contract");
+const {
+  PaneItemOperationError,
+  assertCenterItemContract,
+  assertItemLocation,
+} = require("./pane-item-contract");
 
 let nextInstanceId = 1;
 
@@ -101,6 +105,7 @@ module.exports = class Pane {
     this.alive = true;
     this.subscriptionsPerItem = new WeakMap();
     this.pendingItemSubscription = null;
+    this.emptyPaneHoldCount = 0;
     this.items = [];
     this.itemStack = [];
     this.container = null;
@@ -791,6 +796,13 @@ module.exports = class Pane {
       );
     }
 
+    try {
+      this.container?.registerItem(item);
+    } catch (error) {
+      this.unsubscribeFromItem(item);
+      throw error;
+    }
+
     this.items.splice(index, 0, item);
     const lastPendingItem = this.getPendingItem();
     const replacingPendingItem = lastPendingItem != null && !moved && !options.copied;
@@ -803,19 +815,32 @@ module.exports = class Pane {
       moved,
       ...(options.transferred ? { transferred: true } : {}),
     });
+    this.assertAddedItem(item);
     if (this.container) {
       // A moved item is not *added* as far as the workspace is concerned, but
       // it does now live in this container, so the registry follows it.
-      if (moved) {
-        this.container.registerItem(item);
-      } else {
+      if (!moved) {
         this.container.didAddPaneItem(item, this, index, options);
       }
     }
+    this.assertAddedItem(item);
 
     if (replacingPendingItem) this.destroyItem(lastPendingItem);
     if (!this.getActiveItem()) this.setActiveItem(item);
     return item;
+  }
+
+  assertAddedItem(item) {
+    const destroyed = item.isDestroyed?.() || item.destroyed === true;
+    if (destroyed && this.items.includes(item)) {
+      this.removeItem(item, false, { preservePane: true });
+    }
+    if (this.isDestroyed() || !this.items.includes(item) || destroyed) {
+      throw new PaneItemOperationError(
+        "ITEM_UNAVAILABLE",
+        "The pane item was removed while being added.",
+      );
+    }
   }
 
   setPendingItem(item) {
@@ -901,18 +926,22 @@ module.exports = class Pane {
     return items;
   }
 
-  removeItem(item, moved, { preservePane = false } = {}) {
+  removeItem(item, moved, { preservePane = false, retainView = false } = {}) {
     return this.transactActiveState(() => {
       const index = this.items.indexOf(item);
       if (index === -1) return;
-      if (this.getPendingItem() === item) this.pendingItem = null;
-      this.removeItemFromStack(item);
       this.emitter.emit("will-remove-item", {
         item,
         index,
         destroyed: !moved,
         moved,
       });
+      if (this.getPendingItem() === item) {
+        this.pendingItem = null;
+        this.pendingItemSubscription?.dispose();
+        this.pendingItemSubscription = null;
+      }
+      this.removeItemFromStack(item);
       this.unsubscribeFromItem(item);
 
       if (item === this.activeItem) {
@@ -925,25 +954,31 @@ module.exports = class Pane {
         }
       }
       this.items.splice(index, 1);
-      this.emitter.emit("did-remove-item", {
-        item,
-        index,
-        destroyed: !moved,
-        moved,
-      });
-      if (this.container) {
-        // As in `addItem`: a move destroys nothing, but the item has left this
-        // container and the registry has to say so.
-        if (moved) {
-          this.container.unregisterItem(item);
-        } else {
-          this.container.didDestroyPaneItem({ item, index, pane: this });
+      const removal = { item, index, destroyed: !moved, moved };
+      if (retainView) Object.defineProperty(removal, "retainView", { value: true });
+      try {
+        this.emitter.emit("did-remove-item", removal);
+      } finally {
+        if (this.container) {
+          // As in `addItem`: a move destroys nothing, but the item has left this
+          // container and the registry has to say so.
+          if (moved) {
+            this.container.unregisterItem(item);
+          } else {
+            this.container.didDestroyPaneItem({ item, index, pane: this });
+          }
         }
+        const shouldDestroyEmptyPanes = this.container
+          ? this.container.shouldDestroyEmptyPanes()
+          : this.config.get("core.destroyEmptyPanes");
+        if (
+          this.items.length === 0 &&
+          shouldDestroyEmptyPanes &&
+          !preservePane &&
+          this.emptyPaneHoldCount === 0
+        )
+          this.destroy();
       }
-      const shouldDestroyEmptyPanes = this.container
-        ? this.container.shouldDestroyEmptyPanes()
-        : this.config.get("core.destroyEmptyPanes");
-      if (this.items.length === 0 && shouldDestroyEmptyPanes && !preservePane) this.destroy();
     });
   }
 
@@ -985,16 +1020,101 @@ module.exports = class Pane {
   moveItemToPane(item, pane, index, { preserveSourcePane = false } = {}) {
     if (!this.items.includes(item) || pane === this) return;
     assertItemLocation(item, pane.getContainer()?.getLocation() || "center");
-    // Reparent the live view before removal can collapse its source layout.
     const sourceView = this.element?.views.getView(item);
-    if (sourceView?.isConnected) {
-      const destinationElement = pane.getElement();
-      if (destinationElement.isConnected) destinationElement.itemViews.moveBefore(sourceView, null);
-    }
+    const state = {
+      index: this.items.indexOf(item),
+      activeItem: this.activeItem,
+      pendingItem: this.getPendingItem(),
+      watchedPending: !!this.pendingItemSubscription,
+      stack: [...this.itemStack],
+      focusedElement: this.element?.contains(document.activeElement)
+        ? document.activeElement
+        : null,
+    };
+    const owner = () =>
+      this.container?.workspace?.paneForItem(item) ||
+      (this.items.includes(item) ? this : pane.getItems().includes(item) ? pane : null);
+    let accepted = false;
+    this.emptyPaneHoldCount++;
     return this.transactActiveState(() =>
       pane.transactActiveState(() => {
-        this.removeItem(item, true, { preservePane: preserveSourcePane });
-        return pane.addItem(item, { index, moved: true });
+        try {
+          // The source stays connected until removal observers have run and
+          // the destination has been revalidated. A rejected move can return
+          // the exact view without detaching an iframe or destroying a pane.
+          this.removeItem(item, true, { preservePane: true, retainView: true });
+          if (
+            pane.isDestroyed() ||
+            this.items.includes(item) ||
+            owner() ||
+            item.isDestroyed?.() ||
+            item.destroyed === true
+          ) {
+            throw new PaneItemOperationError(
+              "PANE_UNAVAILABLE",
+              "The pane item or its destination changed during the move.",
+            );
+          }
+          if (sourceView?.isConnected) {
+            const destinationElement = pane.getElement();
+            if (destinationElement.isConnected) {
+              const display =
+                this.element.inlineDisplayStyles.get(sourceView) ||
+                (sourceView.style.display === "none" ? "" : sourceView.style.display);
+              destinationElement.inlineDisplayStyles.set(sourceView, display);
+              destinationElement.itemViews.moveBefore(sourceView, null);
+            }
+          }
+          const result = pane.addItem(item, { index, moved: true });
+          accepted = true;
+          this.container?.didTransferPaneItem();
+          return result;
+        } catch (error) {
+          if (
+            !this.isDestroyed() &&
+            !item.isDestroyed?.() &&
+            item.destroyed !== true &&
+            (!owner() || owner() === this)
+          ) {
+            if (!this.items.includes(item)) this.addItem(item, { index: state.index, moved: true });
+            if (state.pendingItem === item) {
+              this.setPendingItem(item);
+              if (state.watchedPending) {
+                if (item instanceof TextEditor)
+                  this.pendingItemSubscription = item.getBuffer().onDidChange(({ origin }) => {
+                    if (origin === "edit") this.clearPendingItem();
+                  });
+                else if (typeof item.onDidChange === "function")
+                  this.pendingItemSubscription = item.onDidChange(() => this.clearPendingItem());
+              }
+            }
+            this.itemStack = [
+              ...state.stack.filter((entry) => this.items.includes(entry)),
+              ...this.itemStack.filter((entry) => !state.stack.includes(entry)),
+            ];
+            this.setActiveItem(this.items.includes(state.activeItem) ? state.activeItem : item);
+            if (
+              state.focusedElement?.isConnected &&
+              (document.activeElement === document.body ||
+                this.element?.contains(document.activeElement))
+            )
+              state.focusedElement.focus();
+          }
+          throw error;
+        } finally {
+          this.emptyPaneHoldCount--;
+          const shouldDestroy = this.container
+            ? this.container.shouldDestroyEmptyPanes()
+            : this.config.get("core.destroyEmptyPanes");
+          if (
+            accepted &&
+            !preserveSourcePane &&
+            this.items.length === 0 &&
+            shouldDestroy &&
+            this.emptyPaneHoldCount === 0
+          )
+            this.destroy();
+        }
       }),
     );
   }
@@ -1462,6 +1582,7 @@ module.exports = class Pane {
       this.emitter.dispose();
       for (let item of this.items.slice()) {
         if (typeof item.destroy === "function") item.destroy();
+        if (this.items.includes(item)) this.removeItem(item, false, { preservePane: true });
       }
       if (this.container) this.container.didDestroyPane({ pane: this });
     });

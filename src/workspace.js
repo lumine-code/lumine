@@ -21,6 +21,7 @@ const layoutDrag = require("./layout-drag");
 const ModalDialogFactory = require("./modal-dialog-factory");
 const FileDocumentRegistry = require("./file-document-registry");
 const ItemOpenRequestManager = require("./item-open-request-manager");
+const ItemRegistry = require("./item-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 
@@ -285,6 +286,7 @@ module.exports = class Workspace extends Model {
   #itemOpenRequests;
   #resettingItemOpens = 0;
   #layoutGeneration = 0;
+  #paneItemRegistry = new ItemRegistry();
 
   constructor(params) {
     super(...arguments);
@@ -483,6 +485,7 @@ module.exports = class Workspace extends Model {
   createCenter() {
     return new WorkspaceCenter({
       workspace: this,
+      globalItemRegistry: this.#paneItemRegistry,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
       notificationManager: this.notificationManager,
@@ -498,6 +501,7 @@ module.exports = class Workspace extends Model {
   createDock(location) {
     return new Dock({
       workspace: this,
+      globalItemRegistry: this.#paneItemRegistry,
       location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,

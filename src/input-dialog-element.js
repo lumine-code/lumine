@@ -9,6 +9,8 @@ class InputDialogElement extends HTMLElement {
     this.model?.didDetachElement();
   }
 
+  connectedMoveCallback() {}
+
   getModel() {
     return this.model ?? null;
   }
