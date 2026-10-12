@@ -35,6 +35,7 @@ module.exports = class BufferedNodeProcess extends BufferedProcess {
    * @param {String} options.stderr.data - Standard-error data.
    * @param {Function} [options.exit] - Receives the process exit status.
    * @param {Number} options.exit.code - The exit status.
+   * @category Construction
    */
   constructor({ command, args, options = {}, stdout, stderr, exit }) {
     options.env = options.env || Object.create(process.env);

@@ -61,6 +61,10 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @category Rendering
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -166,7 +170,7 @@ class TextEditorElement extends HTMLElement {
    * @public
    * @status extended
    *
-   * get the width of an `x` character displayed in this element.
+   * Get the width of an `x` character displayed in this element.
    *
    * @returns {Number} of pixels.
    */
@@ -231,6 +235,10 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @category Scrolling
+   */
+
+  /**
    * @public
    * @status essential
    *
@@ -253,6 +261,10 @@ class TextEditorElement extends HTMLElement {
   hasFocus() {
     return this.getComponent().focused;
   }
+
+  /**
+   * @category Coordinates
+   */
 
   /**
    * @public
@@ -285,7 +297,7 @@ class TextEditorElement extends HTMLElement {
    * cause a synchronous DOM update in order to measure the requested
    * horizontal pixel position if it isn't already cached.
    *
-   * @param screenPosition - A {@link Point}-like object that represents a buffer position.
+   * @param screenPosition - A {@link Point}-like object that represents a screen position.
    * @returns {Object} with two values: `top` and `left`, representing the pixel position.
    */
   pixelPositionForScreenPosition(screenPosition) {
@@ -345,6 +357,10 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @category Decorations
+   */
+
+  /**
    * @public
    * @status experimental
    *
@@ -375,6 +391,7 @@ class TextEditorElement extends HTMLElement {
    *
    * @param {Decoration} blockDecoration the decoration being interactively sized
    * @returns {Disposable} ends the pin
+   * @category Scrolling
    */
   pinScrollAnchorToBlockDecoration(blockDecoration) {
     return this.getComponent().pinScrollAnchorToBlockDecoration(blockDecoration);

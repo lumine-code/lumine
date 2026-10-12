@@ -101,6 +101,10 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @category Registering Commands
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -218,6 +222,10 @@ module.exports = class CommandRegistry {
       }
     });
   }
+
+  /**
+   * @category Accessing Commands
+   */
 
   /**
    * @public
@@ -360,6 +368,10 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @category Dispatching Commands
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -384,6 +396,10 @@ module.exports = class CommandRegistry {
     Object.defineProperty(event, "target", { value: target });
     return this.handleCommandEvent(event);
   }
+
+  /**
+   * @category Event Subscription
+   */
 
   /**
    * @public

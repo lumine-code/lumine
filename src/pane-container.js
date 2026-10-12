@@ -54,6 +54,7 @@ module.exports = class PaneContainer {
    *
    * Get the editor window presenting this container.
    * @returns {EditorWindow|null} The presentation, or null before attachment.
+   * @category Pane Container Details
    */
   getWindow() {
     return this.editorWindow ?? null;
@@ -259,6 +260,7 @@ module.exports = class PaneContainer {
    *
    * Get the file-content editor of this container's active item.
    * @returns {TextEditor|undefined} The editor, including a notebook's backing source.
+   * @category Text Editors
    */
   getActiveFileTextEditor() {
     return fileEditorForItem(this.getActivePaneItem());
@@ -270,6 +272,7 @@ module.exports = class PaneContainer {
    *
    * Get the editor being edited inside this container's active item.
    * @returns {TextEditor|undefined} The editor, including an active notebook cell.
+   * @category Text Editors
    */
   getActiveEmbeddedTextEditor() {
     return embeddedEditorForItem(this.getActivePaneItem());
@@ -282,6 +285,7 @@ module.exports = class PaneContainer {
    * Observe this window-local active file-content editor.
    * @param {Function} callback - Receives the current and future TextEditor or undefined.
    * @returns {Disposable} Removes the observation.
+   * @category Event Subscription
    */
   observeActiveFileTextEditor(callback) {
     return this.observeItemTextEditor(fileEditorForItem, callback);
@@ -294,6 +298,7 @@ module.exports = class PaneContainer {
    * Observe the active editable editor inside this container's active item.
    * @param {Function} callback - Receives the current and future TextEditor or undefined.
    * @returns {Disposable} Removes the observation.
+   * @category Event Subscription
    */
   observeActiveEmbeddedTextEditor(callback) {
     return this.observeItemTextEditor(embeddedEditorForItem, callback);

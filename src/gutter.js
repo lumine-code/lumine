@@ -122,6 +122,10 @@ module.exports = class Gutter {
   }
 
   /**
+   * @category Decorations
+   */
+
+  /**
    * @public
    * @status essential
    *

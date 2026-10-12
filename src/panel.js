@@ -71,9 +71,9 @@ module.exports = class Panel {
    * @public
    * @status public
    *
-   * Invoke the given callback when the pane hidden or shown.
+   * Invoke the given callback when this panel is hidden or shown.
    *
-   * @param {Function} callback - to be called when the pane is destroyed.
+   * @param {Function} callback - to be called when the panel's visibility changes.
    * @param {Boolean} callback.visible - true when the panel has been shown
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -95,9 +95,9 @@ module.exports = class Panel {
    * @public
    * @status public
    *
-   * Invoke the given callback when the pane is destroyed.
+   * Invoke the given callback when this panel is destroyed.
    *
-   * @param {Function} callback - to be called when the pane is destroyed.
+   * @param {Function} callback - to be called when the panel is destroyed.
    * @param {Panel} callback.panel - this panel
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -148,6 +148,7 @@ module.exports = class Panel {
    * @status public
    *
    * @returns {Boolean} true when the panel is visible.
+   * @category Visibility
    */
   isVisible() {
     return this.visible;
@@ -157,7 +158,8 @@ module.exports = class Panel {
    * @public
    * @status public
    *
-   * Hide this panel
+   * Hide this panel.
+   * @category Visibility
    */
   hide() {
     let wasVisible = this.visible;
@@ -175,6 +177,7 @@ module.exports = class Panel {
    *
    * @param {Object} [options]
    * @param options.crumb - Modal panels only. A `String`, or `true` to use the label the panel declared when it was added. The panel announces "display me now and take me into the breadcrumb": the modal that is visible at this moment becomes the previous entry of the window's modal trail, the breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape) or a click on an earlier crumb returns to it. Without `crumb` the panel is shown standalone, exactly as before — and showing a modal standalone ends whatever trail another flow had built.
+   * @category Visibility
    */
   show(options) {
     if (options != null) {

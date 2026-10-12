@@ -164,6 +164,8 @@ class InputDialog {
     return ["input-dialog"];
   }
 
+  /** @category DOM Access */
+
   /**
    * @public
    * @status experimental
@@ -182,6 +184,7 @@ class InputDialog {
    *
    * Return whether this dialog has been destroyed.
    * @returns {boolean}
+   * @category Lifecycle
    */
   isDestroyed() {
     return this.destroyed;
@@ -257,6 +260,8 @@ class InputDialog {
     return this.dialogSource.resume();
   }
 
+  /** @category Event Subscription */
+
   /**
    * @public
    * @status experimental
@@ -292,6 +297,7 @@ class InputDialog {
    * @status experimental
    *
    * Clears the query editor text.
+   * @category Query
    */
   reset() {
     this.queryEditor.setText("");
@@ -308,6 +314,7 @@ class InputDialog {
    *
    * Destroys the dialog and cleans up resources.
    * @returns {Promise} Resolves when destruction is complete
+   * @category Lifecycle
    */
   destroy() {
     if (this.destroyPromise) return this.destroyPromise;
@@ -359,6 +366,8 @@ class InputDialog {
       throw new AggregateError(failures, "Failed to completely destroy the dialog model.");
     }
   }
+
+  /** @category Asynchronous Sources */
 
   /**
    * @public
@@ -509,6 +518,8 @@ class InputDialog {
   }
 
   recordActionRecent() {}
+
+  /** @category Actions */
 
   /**
    * @public
@@ -708,6 +719,7 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when an action starts.
+   * @category Event Subscription
    */
   onDidStartAction(callback) {
     return this.emitter.on("did-start-action", callback);
@@ -718,6 +730,7 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when an action finishes.
+   * @category Event Subscription
    */
   onDidFinishAction(callback) {
     return this.emitter.on("did-finish-action", callback);
@@ -792,6 +805,7 @@ class InputDialog {
    * @status experimental
    *
    * Update one or more documented dialog options.
+   * @category Configuration
    */
   update(props = {}) {
     this.validateUpdateProps(props);
@@ -814,6 +828,8 @@ class InputDialog {
     if ("commands" in props) this.prepareActionCommandListeners(props.commands);
     if ("source" in props) this.dialogSource.validate(props.source ?? null);
   }
+
+  /** @category Messages */
 
   /**
    * @public
@@ -899,6 +915,8 @@ class InputDialog {
     return this.setLoadingState(null);
   }
 
+  /** @category Query */
+
   /**
    * @public
    * @status experimental
@@ -918,6 +936,8 @@ class InputDialog {
   setPlaceholderText(placeholderText) {
     return this.update({ placeholderText });
   }
+
+  /** @category Custom Content */
 
   /**
    * @public
@@ -1214,6 +1234,8 @@ class InputDialog {
 
     return "";
   }
+
+  /** @category Query */
 
   /**
    * @public

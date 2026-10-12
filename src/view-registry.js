@@ -72,6 +72,7 @@ module.exports = class ViewRegistry {
    * @param {Element} root - The component's DOM root within a pane item.
    * @param {Object} participant - prepareWindowChange, didAttachToWindow, didChangeWindow and cancelWindowChange callbacks.
    * @returns {Disposable} Removes this component's lifecycle participation.
+   * @category Window Participants
    */
   addWindowParticipant(root, participant) {
     if (this.windowParticipants.has(root))
@@ -175,6 +176,10 @@ module.exports = class ViewRegistry {
       },
     };
   }
+
+  /**
+   * @category Views
+   */
 
   /**
    * @public

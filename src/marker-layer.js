@@ -298,12 +298,17 @@ class MarkerLayer {
    * @status public
    *
    * Get the role of the marker layer e.g. `lumine.selection`.
+   * @category Marker Layer Details
    */
 
   // Returns a `String`.
   getRole() {
     return this.role;
   }
+
+  /**
+   * @category Range Tracking
+   */
 
   /**
    * @public
@@ -368,7 +373,7 @@ class MarkerLayer {
    * @public
    * @status public
    *
-   * Create a marker at with its head at the given position with no tail.
+   * Create a marker with its head at the given position and no tail.
    *
    * @param {Point} position - or point-compatible `Array`
    * @param [options] - An `Object` with the following keys:

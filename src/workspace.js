@@ -485,6 +485,7 @@ module.exports = class Workspace extends Model {
    *
    * Get this workspace's main presentation window.
    * @returns {EditorWindow|null} The main window, or null before window initialization.
+   * @category Windows
    */
   getMainWindow() {
     return this.mainEditorWindow;
@@ -496,6 +497,7 @@ module.exports = class Workspace extends Model {
    *
    * Get all presentation windows belonging to this workspace.
    * @returns {Array<EditorWindow>} The current windows.
+   * @category Windows
    */
   getWindows() {
     return [...this.editorWindows];
@@ -508,6 +510,7 @@ module.exports = class Workspace extends Model {
    * Create an additional editor window sharing this workspace's documents and packages.
    * @param {Object} options - Optional native bounds and visibility.
    * @returns {Promise<EditorWindow>} The ready presentation window.
+   * @category Windows
    */
   openEditorWindow(options = {}) {
     if (!this.editorWindowHost || !this.isAlive())
@@ -553,6 +556,7 @@ module.exports = class Workspace extends Model {
    * Observe current and future presentation windows of this workspace.
    * @param {Function} callback - Receives each EditorWindow once.
    * @returns {Disposable} Removes the observation.
+   * @category Event Subscription
    */
   observeWindows(callback) {
     for (const editorWindow of this.getWindows()) callback(editorWindow);
@@ -565,6 +569,7 @@ module.exports = class Workspace extends Model {
    *
    * Get the presentation window whose document currently has focus.
    * @returns {EditorWindow|null} The focused window, or null when the workspace lacks focus.
+   * @category Windows
    */
   getFocusedWindow() {
     return this.getWindows().find((editorWindow) => editorWindow.getDocument()?.hasFocus()) ?? null;
@@ -577,6 +582,7 @@ module.exports = class Workspace extends Model {
    * Get the presentation containing a DOM element, including embedded frames.
    * @param {Element} element - An element belonging to a workspace presentation.
    * @returns {EditorWindow|null} The owning presentation.
+   * @category Windows
    */
   getWindowForElement(element) {
     let ownerDocument = element?.ownerDocument;
@@ -601,6 +607,7 @@ module.exports = class Workspace extends Model {
    * Capture a command's presentation and document targets before asynchronous work.
    * @param {Event|Element} eventOrElement - The dispatch event or original DOM target.
    * @returns {Object} window, pane, item, editor, fileEditor and embeddedEditor.
+   * @category Command Context
    */
   resolveCommandContext(eventOrElement) {
     const target = eventOrElement?.target ?? eventOrElement;
@@ -648,6 +655,7 @@ module.exports = class Workspace extends Model {
    * Close one presentation after its document panes have accepted closing.
    * @param {EditorWindow} editorWindow - A window belonging to this workspace.
    * @returns {Promise<Boolean>} Whether the window closed.
+   * @category Windows
    */
   async closeEditorWindow(editorWindow) {
     if (!this.editorWindows.has(editorWindow)) return false;
@@ -715,6 +723,7 @@ module.exports = class Workspace extends Model {
    * Present an existing document pane in a new window without reopening its items.
    * @param {Pane} pane - A document pane belonging to this workspace.
    * @returns {Promise<EditorWindow>} The new presentation.
+   * @category Windows
    */
   async detachPane(pane) {
     const source = pane?.getContainer();
@@ -746,6 +755,7 @@ module.exports = class Workspace extends Model {
    * Move one exact document tab into a new editor window sharing this workspace.
    * @param {Object} item - A live center pane item.
    * @returns {Promise<EditorWindow>} The additional presentation.
+   * @category Windows
    */
   async detachItem(item) {
     const pane = this.paneForItem(item);
@@ -775,6 +785,7 @@ module.exports = class Workspace extends Model {
    * Reattach an additional window's complete pane layout to the main window.
    * @param {EditorWindow} editorWindow - An additional window of this workspace.
    * @returns {Promise<EditorWindow>} The main presentation after reattachment.
+   * @category Windows
    */
   async attachWindow(editorWindow) {
     if (!this.editorWindows.has(editorWindow) || editorWindow.isMain())
@@ -829,6 +840,7 @@ module.exports = class Workspace extends Model {
    * @param {Function} descriptor.beginFileOperation - Defer filesystem reactions.
    * @param {Function} descriptor.endFileOperation - Resume and reconcile reactions.
    * @returns {Disposable} The document registration.
+   * @category File Operations
    */
   registerFileDocument(descriptor) {
     return this.fileDocuments.register(descriptor);
@@ -843,6 +855,7 @@ module.exports = class Workspace extends Model {
    *
    * @param {Array<Object>} plannedRenames - Entries with oldPath, newPath and isDirectory.
    * @returns {Object} A transaction with a ready promise and an asynchronous complete(confirmedRenames) method.
+   * @category File Operations
    */
   beginFileMove(plannedRenames) {
     const documents = this.fileDocuments.beginFileMove(plannedRenames);
@@ -1221,6 +1234,7 @@ module.exports = class Workspace extends Model {
    * @param options - An optional `Object` that may contain the following key:
    * @param options.locations - An `Array` of the pane container locations to empty. Defaults to all four.
    * @returns {Promise} that resolves once they are empty.
+   * @category Layout
    */
   async clear(options = {}, assertCurrent = () => {}) {
     const assertLayoutCurrent = this.#layoutGuard(assertCurrent);
@@ -3018,6 +3032,7 @@ module.exports = class Workspace extends Model {
    *
    * @param object - An `Object` you want to perform the check against.
    * @returns {Boolean} that is `true` if `object` is a `TextEditor`.
+   * @category Text Editors
    */
   isTextEditor(object) {
     return object instanceof TextEditor;
@@ -3030,6 +3045,7 @@ module.exports = class Workspace extends Model {
    * Create a new text editor.
    *
    * @returns {TextEditor}
+   * @category Text Editors
    */
   buildTextEditor(params) {
     const editor = this.textEditorFactory.build(params);
@@ -3073,6 +3089,7 @@ module.exports = class Workspace extends Model {
    *
    * @param options - The initial SelectList options.
    * @returns {SelectList}
+   * @category Dialogs
    */
   buildSelectList(options) {
     return this.modalDialogFactory.buildSelectList(options);
@@ -3107,6 +3124,7 @@ module.exports = class Workspace extends Model {
    * @param {Number} [hostOptions.priority=100] - Panel ordering priority.
    * @param {String} [hostOptions.className] - Class names for the panel element.
    * @returns {SelectListHost}
+   * @category Dialogs
    */
   addSelectList(modelOrOptions, hostOptions) {
     return this.modalDialogFactory.addSelectList(modelOrOptions, hostOptions);
@@ -3134,6 +3152,7 @@ module.exports = class Workspace extends Model {
    *
    * @param options - The initial InputDialog options.
    * @returns {InputDialog}
+   * @category Dialogs
    */
   buildInputDialog(options) {
     return this.modalDialogFactory.buildInputDialog(options);
@@ -3157,13 +3176,14 @@ module.exports = class Workspace extends Model {
    * @param {Number} [hostOptions.priority=100] - Panel ordering priority.
    * @param {String} [hostOptions.className] - Class names for the panel element.
    * @returns {InputDialogHost}
+   * @category Dialogs
    */
   addInputDialog(modelOrOptions, hostOptions) {
     return this.modalDialogFactory.addInputDialog(modelOrOptions, hostOptions);
   }
 
   /**
-   * @category Modal flow
+   * @category Modal Flow
    */
 
   // The keeper of the window's modal breadcrumb trail. Internal — packages
@@ -3229,6 +3249,7 @@ module.exports = class Workspace extends Model {
    *
    * @param {Function} callback - receiving the trail as {@link #getModalTrail} reports it.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @category Event Subscription
    */
   onDidChangeModalTrail(callback) {
     return this.getModalFlow().onDidChangeTrail(callback);
@@ -3242,6 +3263,7 @@ module.exports = class Workspace extends Model {
    * reopened.
    *
    * @returns {Promise} that is resolved when the item is opened
+   * @category Opening
    */
   reopenItem() {
     const uri = this.destroyedItemURIs.pop();
@@ -3288,6 +3310,7 @@ module.exports = class Workspace extends Model {
    * @param {Function} [options.canReusePendingItem] - Synchronously checks `(item, uri, openOptions)` without changing the item. It is checked at this opener's position in the opener order, before constructing a new item.
    * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Throw `AbortError` to cancel an open superseded by item-owned navigation or reload. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
    * @returns {Disposable} on which `.dispose()` can be called to remove the opener.
+   * @category Opening
    */
   addOpener(opener, options = {}) {
     if (options.canReusePendingItem && typeof options.reusePendingItem !== "function") {
@@ -3340,6 +3363,7 @@ module.exports = class Workspace extends Model {
    * Get all text editors in the workspace, if they are pane items.
    *
    * @returns {Array} of {@link TextEditor TextEditors}.
+   * @category Text Editors
    */
   getTextEditors() {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
@@ -3369,6 +3393,7 @@ module.exports = class Workspace extends Model {
    * Get the workspace center's active item if it is a {@link TextEditor}.
    *
    * @returns {TextEditor} or `undefined` if the workspace center's current active item is not a {@link TextEditor}.
+   * @category Text Editors
    */
   getActiveTextEditor() {
     const activeItem = this.getCenter().getActivePaneItem();
@@ -3391,6 +3416,7 @@ module.exports = class Workspace extends Model {
    * @param {Object} [options]
    * @param {Boolean} [options.includeMini=true] - Whether mini editors qualify.
    * @returns {TextEditor|null} The containing editor, or `null`.
+   * @category Text Editors
    */
   getTextEditorForElement(target, { includeMini = true } = {}) {
     let element = target?.nodeType === 1 ? target.closest?.("lumine-text-editor") : null;
@@ -3414,6 +3440,7 @@ module.exports = class Workspace extends Model {
    * @param {Object} [options]
    * @param {Boolean} [options.includeMini=true] - Whether mini editors qualify.
    * @returns {TextEditor|null} The focused editor, or `null`.
+   * @category Text Editors
    */
   getFocusedTextEditor(options) {
     return this.getTextEditorForElement(document.activeElement, options);
@@ -3432,6 +3459,7 @@ module.exports = class Workspace extends Model {
    * while a richer view of the file is open.
    *
    * @returns {TextEditor} or `undefined` when the active item holds no file content.
+   * @category Text Editors
    */
   getActiveFileTextEditor() {
     const activeItem = this.getCenter().getActivePaneItem();
@@ -3461,6 +3489,7 @@ module.exports = class Workspace extends Model {
    * {@link #onDidChangeActiveEmbeddedTextEditor}.
    *
    * @returns {TextEditor} or `undefined` when nothing editable is active.
+   * @category Text Editors
    */
   getActiveEmbeddedTextEditor() {
     const activeItem = this.getCenter().getActivePaneItem();
@@ -3621,6 +3650,7 @@ module.exports = class Workspace extends Model {
    * @param item - The item to move.
    * @param {Object} options - sourcePane, targetPane or splitDirection, index and activatePane.
    * @returns {Promise<Object>} The final {pane, item}.
+   * @category Pane Items
    */
   async movePaneItem(item, options = {}) {
     return this.paneItemTransferService.movePaneItem(item, options);
@@ -3634,6 +3664,7 @@ module.exports = class Workspace extends Model {
    * @param item - The item whose document and view state should be copied.
    * @param {Object} options - sourcePane, targetPane or splitDirection, index, activatePane and signal.
    * @returns {Promise<Object|null>} The final {pane, item}, or null when copy() is absent or canCopy() returns false; cancellation rejects with ABORT_ERR.
+   * @category Pane Items
    */
   copyPaneItem(item, options = {}) {
     return this.paneItemTransferService.copyPaneItem(item, options);
@@ -3668,6 +3699,7 @@ module.exports = class Workspace extends Model {
    *
    * @param {String} uri - uri
    * @returns {Dock}, the {@link WorkspaceCenter}, or `undefined` if no item exists with the given URI.
+   * @category Pane Locations
    */
   paneContainerForURI(uri) {
     return this.getPaneContainers().find((container) => container.paneForURI(uri));
@@ -3681,6 +3713,7 @@ module.exports = class Workspace extends Model {
    *
    * @param item - the Item that the returned pane container must contain.
    * @returns {Dock}, the {@link WorkspaceCenter}, or `undefined` if no pane container contains the given item.
+   * @category Pane Locations
    */
   paneContainerForItem(item) {
     return this.getPaneContainers().find((container) => container.paneForItem(item));
@@ -3739,6 +3772,7 @@ module.exports = class Workspace extends Model {
    *
    * Targets the center rather than the focused pane container, for the reason
    * given on {@link #destroyActivePaneItem}.
+   * @category Pane Items
    */
   closeActivePaneItemOrEmptyPaneOrWindow(context) {
     const pane = context?.documentPane ?? this.getCenter().getActivePane();
@@ -3910,6 +3944,7 @@ module.exports = class Workspace extends Model {
    * @returns {Disposable} on which `.dispose()` ends the drag. It is safe to
    *   call more than once, which these gestures usually need: a mouseup, a
    *   mousemove that finds no button held any more, a teardown mid-drag.
+   * @category Layout
    */
   beginLayoutDrag() {
     return layoutDrag.beginLayoutDrag();

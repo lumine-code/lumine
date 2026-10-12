@@ -126,6 +126,10 @@ module.exports = class ThemeManager {
   }
 
   /**
+   * @category CSS Variables
+   */
+
+  /**
    * @public
    * @status essential
    *
@@ -149,6 +153,7 @@ module.exports = class ThemeManager {
    *
    * @param {Function} callback Function called after the cascade changes.
    * @returns {Disposable} Dispose to stop observing variable changes.
+   * @category Event Subscription
    */
   onDidChangeVariables(callback) {
     let scheduled = false;
@@ -203,7 +208,7 @@ module.exports = class ThemeManager {
   }
 
   /**
-   * @category Accessing Available Themes
+   * @category Theme Packs
    */
 
   getAvailableNames() {
@@ -938,6 +943,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
    *
    * @param {Function} mutate - applying the change to the document.
    * @returns {Promise} that resolves once the change has been applied.
+   * @category Appearance
    */
   updateAppearance(mutate) {
     return this.applyWithCrossFade(() => {

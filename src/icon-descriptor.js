@@ -59,6 +59,8 @@ const NONE = create({ render: "none" });
  * @memberof require('lumine')
  */
 const Icon = {
+  /** @category Construction */
+
   /**
    * @public
    * @status public
@@ -151,6 +153,8 @@ const Icon = {
   none() {
     return NONE;
   },
+
+  /** @category Descriptor Helpers */
 
   /**
    * @public

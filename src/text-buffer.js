@@ -726,6 +726,7 @@ class TextBuffer {
    * before {@link #onDidStopChanging} observers are invoked following a change.
    *
    * @returns {Number}
+   * @category Config
    */
   getStoppedChangingDelay() {
     return this.stoppedChangingDelay;
@@ -2766,9 +2767,9 @@ class TextBuffer {
     // Used for deserialization
   }
 
-  /*
-  Language Modes
-  */
+  /**
+   * @category Language Modes
+   */
 
   /**
    * @public
@@ -2832,6 +2833,7 @@ class TextBuffer {
    * @param callback.languageMode - The buffer's new language mode `Object`. See {@link TextBuffer#setLanguageMode} for its interface.
    * @param callback.oldLanguageMode - The buffer's old language mode `Object`. See {@link TextBuffer#setLanguageMode} for its interface.
    * @returns {Disposable} that can be used to stop the callback from being called.
+   * @category Event Subscription
    */
   onDidChangeLanguageMode(callback) {
     return this.emitter.on("did-change-language-mode", ({ newMode, oldMode }) =>
@@ -3591,6 +3593,7 @@ class TextBuffer {
    * @status experimental
    *
    * @returns {Promise} that resolves once this buffer's file watcher has been armed and is delivering external-change events. Watching is served asynchronously by the file-watcher worker; this lets callers wait for it before relying on external-change detection. Resolves immediately when the buffer has no path or a custom data source that watches synchronously.
+   * @category Buffer Operations
    */
   getFileWatchStartPromise() {
     return this.fileWatchStartPromise || Promise.resolve();

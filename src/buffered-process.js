@@ -230,6 +230,7 @@ module.exports = class BufferedProcess {
    * @status public
    *
    * Terminate the process.
+   * @category Process Control
    */
   kill() {
     if (this.killed) return;

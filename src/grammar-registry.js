@@ -72,10 +72,14 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @category Language Modes
+   */
+
+  /**
    * @public
    * @status extended
    *
-   * set a {@link TextBuffer}'s language mode based on its path and content,
+   * Set a {@link TextBuffer}'s language mode based on its path and content,
    * and continue to update its language mode as grammars are added or updated, or
    * the buffer's file path changes. Repeated calls share one maintenance setup;
    * each returned disposable releases one lease.
@@ -333,6 +337,10 @@ module.exports = class GrammarRegistry {
       grammars: this,
     });
   }
+
+  /**
+   * @category Grammar Selection
+   */
 
   /**
    * @public
@@ -668,6 +676,10 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @category Event Subscription
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -710,6 +722,10 @@ module.exports = class GrammarRegistry {
   onDidRemoveGrammar(callback) {
     return this.emitter.on("did-remove-grammar", callback);
   }
+
+  /**
+   * @category Language Injections
+   */
 
   /**
    * @public
@@ -992,6 +1008,10 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @category Loading Grammars
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -1068,6 +1088,10 @@ module.exports = class GrammarRegistry {
     }
     return new TreeSitterGrammar(this, grammarPath, params);
   }
+
+  /**
+   * @category Grammars
+   */
 
   /**
    * @public

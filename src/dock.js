@@ -139,6 +139,7 @@ module.exports = class Dock {
    * @status extended
    *
    * Show the dock and focus its active {@link Pane}.
+   * @category Activation
    */
   activate() {
     this.getActivePane().activate();
@@ -149,6 +150,7 @@ module.exports = class Dock {
    * @status extended
    *
    * Show the dock without focusing it.
+   * @category Visibility
    */
   show() {
     if (this.state.restoring) {
@@ -164,6 +166,7 @@ module.exports = class Dock {
    *
    * Hide the dock and activate the {@link WorkspaceCenter} if the dock was
    * was previously focused.
+   * @category Visibility
    */
   hide() {
     if (this.state.restoring) {
@@ -179,6 +182,7 @@ module.exports = class Dock {
    *
    * Toggle the dock's visibility without changing the {@link Workspace}'s
    * active pane container.
+   * @category Visibility
    */
   toggle() {
     if (this.state.restoring) {
@@ -197,6 +201,7 @@ module.exports = class Dock {
    * Check if the dock is visible.
    *
    * @returns {Boolean}
+   * @category Visibility
    */
   isVisible() {
     return this.state.visible;

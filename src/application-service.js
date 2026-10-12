@@ -13,6 +13,8 @@ class ApplicationService {
     this.applicationDelegate = applicationDelegate;
   }
 
+  /** @category Application Information */
+
   /**
    * @public
    * @status public
@@ -115,6 +117,8 @@ class ApplicationService {
     return /stable|beta|rc|nightly/.test(this.getReleaseChannel());
   }
 
+  /** @category Application Lifecycle */
+
   /**
    * @public
    * @status public
@@ -128,6 +132,8 @@ class ApplicationService {
   openWindow(params) {
     return this.applicationDelegate.open(params);
   }
+
+  /** @category System Integration */
 
   /**
    * @public
@@ -171,10 +177,13 @@ class ApplicationService {
    *   defaults to `true`.
    * @returns {Promise} resolving to `{outcome: 'success', result: outputPath}`,
    *   or `{outcome: 'failure', error}` when the document could not be printed.
+   * @category Printing
    */
   printToPDF(html, outputPath, options = {}) {
     return this.applicationDelegate.invokeApp("printToPDF", html, outputPath, options);
   }
+
+  /** @category Protocol Handling */
 
   /**
    * @public
@@ -207,6 +216,7 @@ class ApplicationService {
    * Load an operating-system file icon as a data URL.
    *
    * @returns {Promise} resolving to a data-URL `String`, or `null`.
+   * @category System Integration
    */
   getFileIcon(filePath, options = {}) {
     return this.applicationDelegate.invokeApp("getFileIcon", filePath, options);
@@ -219,6 +229,7 @@ class ApplicationService {
    * Restart Lumine with the current launch options.
    *
    * @returns {Promise} that resolves when restart is scheduled.
+   * @category Application Lifecycle
    */
   restart() {
     return this.applicationDelegate.invokeApp("restart");

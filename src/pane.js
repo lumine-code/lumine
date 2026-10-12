@@ -581,6 +581,7 @@ module.exports = class Pane {
    *
    * @param {Function} callback - synchronous work to perform; async callbacks and Promise return values are rejected. A thrown error still commits notifications for changes already made and clears the transaction.
    * @returns {*} the callback's return value.
+   * @category Activation
    */
   transactActiveState(callback) {
     if (this.container) return this.container.transactActiveState(callback);
@@ -1407,6 +1408,7 @@ module.exports = class Pane {
    * @status public
    *
    * Save the active item.
+   * @category Saving Items
    */
   saveActiveItem(nextAction) {
     return this.saveItem(this.getActiveItem(), nextAction);
@@ -1421,6 +1423,7 @@ module.exports = class Pane {
    *
    * @param {Function} [nextAction] - which will be called after the item is successfully saved.
    * @returns {Promise} that resolves when the save is complete
+   * @category Saving Items
    */
   saveActiveItemAs(nextAction) {
     return this.saveItemAs(this.getActiveItem(), nextAction);
@@ -1435,6 +1438,7 @@ module.exports = class Pane {
    * @param item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
    * @returns {Promise} that resolves when the save is complete, or rejects if the save could not be completed.
+   * @category Saving Items
    */
   saveItem(item, nextAction) {
     if (!item) return Promise.resolve();
@@ -1500,6 +1504,7 @@ module.exports = class Pane {
    *
    * @param item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
+   * @category Saving Items
    */
   async saveItemAs(item, nextAction) {
     if (!item) return;
@@ -1533,6 +1538,7 @@ module.exports = class Pane {
    * Save all saveable items whose file state is not unmodified.
    *
    * @returns {Promise} that resolves when all items have been saved.
+   * @category Saving Items
    */
   async saveItems() {
     const promises = [];
@@ -1595,6 +1601,7 @@ module.exports = class Pane {
    * Determine whether the pane is active.
    *
    * @returns {Boolean}
+   * @category Activation
    */
   isActive() {
     return this.container && this.container.getActivePane() === this;
@@ -1605,6 +1612,7 @@ module.exports = class Pane {
    * @status public
    *
    * Makes this pane the *active* pane, causing it to gain focus.
+   * @category Activation
    */
   activate() {
     if (this.isDestroyed()) throw new Error("Pane has been destroyed");

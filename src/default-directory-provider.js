@@ -35,6 +35,8 @@ const MAX_REMEMBERED_DIRECTORIES = 5000;
  * service; the methods below are the shape that contract expects.
  */
 module.exports = class DefaultDirectoryProvider {
+  /** @category Resolving Directories */
+
   /**
    * @public
    * @status public
@@ -105,6 +107,7 @@ module.exports = class DefaultDirectoryProvider {
    *
    * @param {String} uri - The path that should be normalized.
    * @returns {String} with normalized path.
+   * @category Path Normalization
    */
   normalizePath(uri) {
     let matchData, pathWithNormalizedDiskDriveLetter;

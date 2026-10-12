@@ -119,6 +119,10 @@ module.exports = class MenuManager {
   }
 
   /**
+   * @category Event Subscription
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -150,6 +154,10 @@ module.exports = class MenuManager {
     this.contextViewManagers.get(document)?.destroy();
     this.contextViewManagers.delete(document);
   }
+
+  /**
+   * @category Creating Menu Controls
+   */
 
   /**
    * @public
@@ -199,6 +207,10 @@ module.exports = class MenuManager {
     this.ensureContextViewManager();
     return new SelectBoxView(this, options);
   }
+
+  /**
+   * @category Managing Application Menu
+   */
 
   /**
    * @public

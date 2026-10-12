@@ -16,9 +16,13 @@ class WindowService {
     this.lumineEnvironment = lumineEnvironment;
   }
 
+  /** @category Window Information */
+
   /**
    * @public
    * @status public
+   *
+   * Get the native identity of the current window.
    *
    * @returns {Number} stable numeric id of the current Lumine window.
    */
@@ -33,10 +37,13 @@ class WindowService {
    * Subscribe before the current editor window is destroyed.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @category Event Subscription
    */
   onWillDestroy(callback) {
     return this.lumineEnvironment.emitter.on("will-destroy", callback);
   }
+
+  /** @category Startup */
 
   /**
    * @public
@@ -60,10 +67,13 @@ class WindowService {
    * Set the filename represented by the native window.
    * @param {String} filename - The current path, or an empty string.
    * @returns {Promise} Completes after the native property is set.
+   * @category Native Presentation
    */
   setRepresentedFilename(filename) {
     return this.applicationDelegate.setRepresentedFilename(filename);
   }
+
+  /** @category Window Modes */
 
   /**
    * @public
@@ -105,9 +115,13 @@ class WindowService {
     return Boolean(getWindowLoadSettings().headless);
   }
 
+  /** @category Startup */
+
   /**
    * @public
    * @status extended
+   *
+   * Get the paths supplied when the current window was opened.
    *
    * @returns {Array<String>} paths supplied when the current window was opened.
    */
@@ -119,6 +133,8 @@ class WindowService {
    * @public
    * @status public
    *
+   * Get the time taken to load the current window.
+   *
    * @returns {Number|null} The completed window load time in milliseconds, or `null` before loading completes.
    */
   getLoadTime() {
@@ -129,15 +145,21 @@ class WindowService {
    * @public
    * @status public
    *
+   * Get startup timing markers for the current window.
+   *
    * @returns {Object} startup timing markers for the current window.
    */
   getStartupMarkers() {
     return StartupTime.exportData()?.markers || [];
   }
 
+  /** @category Window State */
+
   /**
    * @public
    * @status public
+   *
+   * Get a snapshot of the current window's native state.
    *
    * @returns {Promise<Object>} A serializable state snapshot with `id`, `position`, `size`, `maximized`, `fullScreen`, and `visible` fields.
    */
@@ -145,9 +167,13 @@ class WindowService {
     return this.applicationDelegate.invokeWindow("getState");
   }
 
+  /** @category Window Geometry */
+
   /**
    * @public
    * @status public
+   *
+   * Get the current content size.
    *
    * @returns {Promise<Object>} The current content size as `{width, height}`.
    */
@@ -172,6 +198,8 @@ class WindowService {
   /**
    * @public
    * @status public
+   *
+   * Get the current screen position.
    *
    * @returns {Promise<Object>} The current screen position as `{x, y}`.
    */
@@ -204,6 +232,8 @@ class WindowService {
   center() {
     return this.applicationDelegate.invokeWindow("center");
   }
+
+  /** @category Window Management */
 
   /**
    * @public
@@ -301,6 +331,8 @@ class WindowService {
     return this.applicationDelegate.invokeWindow("unmaximize");
   }
 
+  /** @category Window State */
+
   /**
    * @public
    * @status public
@@ -337,6 +369,8 @@ class WindowService {
     return this.applicationDelegate.invokeWindow("isVisible");
   }
 
+  /** @category Window Management */
+
   /**
    * @public
    * @status public
@@ -361,6 +395,8 @@ class WindowService {
   async toggleFullScreen() {
     return this.setFullScreen(!(await this.isFullScreen()));
   }
+
+  /** @category Dialogs */
 
   /**
    * @public
@@ -421,6 +457,7 @@ class WindowService {
    *
    * @param url - The `String` URL to download.
    * @returns {Promise} that resolves when the download is started.
+   * @category Downloads
    */
   downloadURL(url) {
     return this.applicationDelegate.invokeWindow("downloadURL", url);
@@ -430,7 +467,10 @@ class WindowService {
    * @public
    * @status public
    *
+   * Get the primary display's available work-area size.
+   *
    * @returns {Promise<Object>} The primary display's available work-area size as `{width, height}`.
+   * @category Window Geometry
    */
   getPrimaryDisplayWorkAreaSize() {
     return this.applicationDelegate.invokeWindow("getPrimaryDisplayWorkAreaSize");
@@ -446,10 +486,13 @@ class WindowService {
    *
    * @param offsetY - A non-negative integer number of pixels.
    * @returns {Promise} that resolves when the request is applied.
+   * @category Native Presentation
    */
   setSheetOffset(offsetY) {
     return this.applicationDelegate.setSheetOffset(offsetY);
   }
+
+  /** @category Developer Tools */
 
   /**
    * @public
@@ -502,6 +545,8 @@ class WindowService {
     return this.applicationDelegate.invokeWindow("executeJavaScriptInDevTools", code);
   }
 
+  /** @category Window Messaging */
+
   /**
    * @public
    * @status public
@@ -518,6 +563,8 @@ class WindowService {
     }
     return this.applicationDelegate.broadcastToOtherWindows(eventName, ...args);
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public

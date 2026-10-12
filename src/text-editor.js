@@ -902,6 +902,10 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @category View State
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -1832,6 +1836,7 @@ module.exports = class TextEditor {
    * @status essential
    *
    * @returns {Boolean} `true` if this editor has no content.
+   * @category Reading Text
    */
   isEmpty() {
     return this.buffer.isEmpty();
@@ -5337,6 +5342,10 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @category Overtype Behavior
+   */
+
+  /**
    * @public
    * @status essential
    *
@@ -5405,7 +5414,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * Gets the column at which column will soft wrap
+   * Get the column at which screen lines soft wrap.
+   * @category Soft Wrap Behavior
    */
   getSoftWrapColumn() {
     // An auto-width editor derives its viewport from its content, so wrapping
@@ -5777,6 +5787,7 @@ module.exports = class TextEditor {
    * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
    * @returns {Object|null} A Tree-sitter syntax node, or `null`.
+   * @category Syntax Trees
    */
   getSyntaxNodeAtBufferPosition(bufferPosition, where) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5801,6 +5812,7 @@ module.exports = class TextEditor {
    * @param bufferRange - A {@link Range} or `Array` of two `[row, column]` points.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
    * @returns {Object|null} A Tree-sitter syntax node, or `null`.
+   * @category Syntax Trees
    */
   getSyntaxNodeContainingBufferRange(bufferRange, where) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5820,6 +5832,7 @@ module.exports = class TextEditor {
    *
    * @param {String} queryType - The grammar query property to inspect, such as `tagsQuery`.
    * @returns {Boolean} Whether the query is declared by a current language layer.
+   * @category Grammar Queries
    */
   hasGrammarQuery(queryType) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5846,6 +5859,7 @@ module.exports = class TextEditor {
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels this query when aborted.
    * @returns {Promise} A promise resolving to `{grammar, captures}` groups for current language layers.
+   * @category Grammar Queries
    */
   async getGrammarQueryCaptureGroups(queryType, { signal } = {}) {
     const languageMode = this.buffer.getLanguageMode();
@@ -7376,6 +7390,7 @@ module.exports = class TextEditor {
    * @public
    * @status public
    *
+   * Get the comment delimiters at a given buffer position.
    *
    * Lumine allows language bundles to define comment delimiters in several
    * places. For instance, a grammar author can place delimiter metadata in the
@@ -7391,9 +7406,6 @@ module.exports = class TextEditor {
    * Some languages don't specify all their delimiters in their configuration,
    * but this method will return all the information that it can discern.
    *
-   * * point - A {@link Point} or point-compatible `Array`.
-   *
-   *
    * * `line`: If present, a `String` representing a line comment delimiter.
    *   (If `undefined`, there is no known line comment delimiter for the given
    *   buffer position.)
@@ -7402,7 +7414,9 @@ module.exports = class TextEditor {
    *   `undefined`, there are no known block comment delimiters for the given
    *   buffer position.)
    *
-   * @returns {Object} Information about the appropriate comment delimiters at the buffer position.
+   * @param point - A {@link Point} or point-compatible `Array`.
+   * @returns {Object|null} The appropriate comment delimiters, or `null` when none are known.
+   * @category Managing Syntax Scopes
    */
   getCommentDelimitersForBufferPosition(point) {
     point = Point.fromObject(point);

@@ -80,6 +80,8 @@ class InputDialogHost {
     );
   }
 
+  /** @category Model and Panel */
+
   /**
    * @public
    * @status experimental
@@ -135,6 +137,8 @@ class InputDialogHost {
     }
     return panel;
   }
+
+  /** @category Visibility */
 
   /**
    * @public
@@ -234,10 +238,13 @@ class InputDialogHost {
    *
    * Return whether this host has been destroyed.
    * @returns {Boolean}
+   * @category Lifecycle
    */
   isDestroyed() {
     return this.destroyed;
   }
+
+  /** @category Focus and Query */
 
   /**
    * @public
@@ -270,6 +277,7 @@ class InputDialogHost {
    *
    * Open the shared picker for actions available on the model.
    * @returns {Promise} Resolves to whether the action picker opened.
+   * @category Actions
    */
   async showActions() {
     this.assertAlive();
@@ -294,6 +302,8 @@ class InputDialogHost {
       throw error;
     }
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public
@@ -406,6 +416,7 @@ class InputDialogHost {
    * Destroy the host and its panel. A model created from options is destroyed
    * with it; a model passed to the factory remains alive.
    * @returns {Promise} Resolves when owned resources have been destroyed.
+   * @category Lifecycle
    */
   destroy() {
     return this.beginDestroy({ fromModel: false, fromPanel: false });

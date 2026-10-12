@@ -9,6 +9,8 @@ class RuntimeService {
     this.lumineEnvironment = lumineEnvironment;
   }
 
+  /** @category Event Subscription */
+
   /**
    * @public
    * @status extended
@@ -33,6 +35,8 @@ class RuntimeService {
     return this.lumineEnvironment.emitter.on("did-throw-error", callback);
   }
 
+  /** @category Shell Environment */
+
   /**
    * @public
    * @status extended
@@ -51,6 +55,8 @@ class RuntimeService {
   /**
    * @public
    * @status extended
+   *
+   * Get the time taken to load the shell environment.
    *
    * @returns {Number|null} The shell-environment load time captured at bootstrap, or `null` when no timing was recorded.
    */

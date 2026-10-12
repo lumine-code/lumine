@@ -1230,6 +1230,7 @@ module.exports = class Selection {
    * @status public
    *
    * Creates a fold containing the current selection.
+   * @category Folds
    */
   fold() {
     const range = this.getBufferRange();

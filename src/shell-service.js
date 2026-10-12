@@ -11,6 +11,8 @@ class ShellService {
     this.applicationDelegate = applicationDelegate;
   }
 
+  /** @category File Operations */
+
   /**
    * @public
    * @status public
@@ -47,6 +49,8 @@ class ShellService {
     return this.applicationDelegate.openPath(filePath);
   }
 
+  /** @category Application Launching */
+
   /**
    * @public
    * @status public
@@ -64,6 +68,8 @@ class ShellService {
   openApplication(executablePath, args = [], options = {}) {
     return this.applicationDelegate.openApplication(executablePath, args, options);
   }
+
+  /** @category External URLs */
 
   /**
    * @public

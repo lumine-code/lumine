@@ -52,6 +52,10 @@ module.exports = class TextEditorRegistry {
   }
 
   /**
+   * @category Registration
+   */
+
+  /**
    * @public
    * @status essential
    *
@@ -128,6 +132,10 @@ module.exports = class TextEditorRegistry {
   }
 
   /**
+   * @category Querying
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -151,6 +159,10 @@ module.exports = class TextEditorRegistry {
   getEditors() {
     return Array.from(this.editors.keys());
   }
+
+  /**
+   * @category Event Subscription
+   */
 
   /**
    * @public

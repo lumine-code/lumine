@@ -31,7 +31,7 @@ class Point {
    *
    * Convert any point-compatible object to a {@link Point}.
    *
-   * @param object - This can be an object that's already a {@link Point}, in which case it's simply returned; or an array containing two `Numbers` representing the row and column.
+   * @param object - A {@link Point}, an array containing the row and column, or an object with `row` and `column` properties. An existing point is returned unless copying is requested.
    * @param copy - An optional boolean indicating whether to force the copying of objects that are already points.
    * @returns {Point} A point based on the given object.
    */
@@ -95,7 +95,8 @@ class Point {
    * @status public
    *
    * Ensure the given {@link Point} is valid by throwing a `TypeError` if
-   * either its `row` or its `column` is not an integer.
+   * either its `row` or its `column` is not a number, or is `NaN`.
+   * @category Validation
    */
   static assertValid(point) {
     if (!isActualNumber(point.row) || !isActualNumber(point.column)) {
@@ -136,6 +137,7 @@ class Point {
    * @status public
    *
    * @returns {Point} new {@link Point} with the row and column negated.
+   * @category Operations
    */
   negate() {
     return new Point(-this.row, -this.column);

@@ -40,7 +40,7 @@ class Range {
    *
    * Convert any range-compatible object to a {@link Range}.
    *
-   * @param object - This can be an object that's already a {@link Range}, in which case it's simply returned, or an array containing two {@link Point Points} or point-compatible arrays.
+   * @param object - A {@link Range}, an array containing two point-compatible endpoints, or an object with `start` and `end` properties. An existing range is returned unless copying is requested.
    * @param copy - An optional boolean indicating whether to force the copying of objects that are already ranges.
    * @returns {Range} A range based on the given object.
    */
@@ -183,6 +183,7 @@ class Range {
    * @status public
    *
    * @returns {Range} new range with the start and end positions negated.
+   * @category Operations
    */
   negate() {
     return new this.constructor(this.start.negate(), this.end.negate());

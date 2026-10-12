@@ -159,6 +159,10 @@ class Marker {
   }
 
   /**
+   * @category Managing the marker's range
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -343,6 +347,10 @@ class Marker {
   }
 
   /**
+   * @category Marker Details
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -406,6 +414,7 @@ class Marker {
    *
    * @param {Marker} other - other marker
    * @returns {Boolean} indicating whether this marker is equivalent to another marker, meaning they have the same range and options.
+   * @category Comparing to other markers
    */
   isEqual(other) {
     return (
@@ -433,6 +442,10 @@ class Marker {
   }
 
   /**
+   * @category Properties
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -458,13 +471,18 @@ class Marker {
   }
 
   /**
+   * @category Construction and Destruction
+   */
+
+  /**
    * @public
    * @status public
    *
    * Creates and returns a new `Marker` with the same properties as this
    * marker.
    *
-   * * `params` `Object`
+   * @param {Object} [options] - Marker options and custom properties to override in the copy.
+   * @returns {Marker} A new marker on the same layer.
    */
   copy(options = {}) {
     const snapshot = this.getSnapshot(null, false);
@@ -480,7 +498,7 @@ class Marker {
    * @public
    * @status public
    *
-   * Destroys the marker, causing it to emit the 'destroyed' event.
+   * Destroy the marker and notify its destruction observers.
    */
   destroy(suppressMarkerLayerUpdateEvents) {
     if (this.isDestroyed()) {
@@ -497,6 +515,10 @@ class Marker {
   }
 
   /**
+   * @category Comparing to other markers
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -507,6 +529,10 @@ class Marker {
   compare(other) {
     return this.layer.compareMarkers(this.id, other.id);
   }
+
+  /**
+   * @category Range Queries
+   */
 
   /**
    * @public

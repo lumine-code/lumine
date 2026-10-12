@@ -34,7 +34,7 @@ module.exports = class ScopeDescriptor {
   }
 
   /**
-   * @category Construction and Destruction
+   * @category Construction
    */
 
   /**
@@ -54,8 +54,14 @@ module.exports = class ScopeDescriptor {
   }
 
   /**
+   * @category Scope Details
+   */
+
+  /**
    * @public
    * @status public
+   *
+   * Get the ordered syntax scope names.
    *
    * @returns {Array} of `Strings`
    */

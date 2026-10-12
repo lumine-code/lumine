@@ -26,6 +26,8 @@ class FileWatchHandle {
     this.#path = targetPath;
   }
 
+  /** @category Observation State */
+
   /**
    * @public
    * @status public
@@ -66,6 +68,8 @@ class FileWatchHandle {
   get isDisposed() {
     return this.#disposed;
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public
@@ -156,6 +160,7 @@ class FileWatchHandle {
    * Await closed to confirm release. Cancelling before ready rejects ready
    * with an AbortError. Repeated disposal has no effect.
    * @returns {void}
+   * @category Lifecycle
    */
   dispose() {
     if (this.#disposed) return;

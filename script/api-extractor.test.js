@@ -140,6 +140,79 @@ test("normalizes CRLF input", (context) => {
   assert.equal(api.memberCount, 7);
 });
 
+test("member categories override sections without recategorizing following class members", (context) => {
+  const source = fs
+    .readFileSync(fixturePath, "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace(
+      "  /**\n   * @public\n   * @status experimental",
+      "  /** @category Values */\n  static defaults = {};\n\n  /**\n   * @public\n   * @status experimental",
+    )
+    .replace(
+      "  /**\n   * @public\n   * @status public\n   *\n   * Whether the service is ready.",
+      "  /** @category State */\n\n  /**\n   * @public\n   * @status public\n   *\n   * Whether the service is ready.",
+    );
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const service = extractApi({ editorRoot: root, parser }).classes.find(
+    ({ name }) => name === "FixtureService",
+  );
+
+  assert.deepEqual(
+    service.members.map(({ name, category }) => [name, category]),
+    [
+      ["create", "Methods"],
+      ["transform", "Transformation"],
+      ["collect", "Values"],
+      ["ready", "State"],
+      ["label", "State"],
+    ],
+  );
+});
+
+test("member categories override sections without recategorizing following object members", (context) => {
+  const source = sourceWithObjects()
+    .replace(/\r\n/g, "\n")
+    .replace(
+      "  /**\n   * @public\n   * @status public\n   *\n   * Normalize a value using a separately declared implementation.",
+      "  /** @category Values */\n\n  /**\n   * @public\n   * @status public\n   *\n   * Normalize a value using a separately declared implementation.",
+    )
+    .replace(
+      "   * Normalize a value using a separately declared implementation.\n",
+      "   * Normalize a value using a separately declared implementation.\n   *\n   * @category Normalization\n",
+    );
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const object = extractApi({ editorRoot: root, parser }).objects.find(
+    ({ name }) => name === "fixtureTools",
+  );
+
+  assert.deepEqual(
+    object.members.map(({ name, category }) => [name, category]),
+    [
+      ["version", "Methods"],
+      ["normalize", "Normalization"],
+      ["ready", "Values"],
+    ],
+  );
+});
+
+test("rejects public members grouped under private implementation sections", (context) => {
+  const source = fs
+    .readFileSync(fixturePath, "utf8")
+    .replace(
+      "class FixtureService {",
+      "class FixtureService {\n  /** @category Private Utility Methods */",
+    );
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  assert.throws(
+    () => extractApi({ editorRoot: root, parser }),
+    /FixtureService\.create cannot be grouped under "Private Utility Methods"/,
+  );
+});
+
 test("records a documented class's superclass", (context) => {
   const source = fs
     .readFileSync(fixturePath, "utf8")

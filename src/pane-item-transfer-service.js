@@ -40,6 +40,7 @@ class PaneItemTransferService {
    * Own a group of source sessions and destination operations.
    *
    * @returns {PaneItemTransferScope} Dispose the scope when its caller unloads.
+   * @category Construction and Destruction
    */
   createScope() {
     if (this.destroyed) throw cancelledError();
@@ -433,6 +434,7 @@ class PaneItemTransferScope {
    * @param pane - The pane containing the item.
    * @param item - The exact item to move.
    * @returns {Object} A serializable workspace drag descriptor.
+   * @category Transfer Sessions
    */
   createTransfer(pane, item) {
     this.assertAvailable();
@@ -514,6 +516,7 @@ class PaneItemTransferScope {
    * @status extended
    *
    * Abandon a retained source session without destroying its item.
+   * @category Transfer Sessions
    */
   release(token, reason = "transfer abandoned") {
     const record = this.sessions.get(token);
@@ -530,6 +533,7 @@ class PaneItemTransferScope {
    * Validate a complete descriptor before resolving or creating a destination.
    *
    * @returns {Object|null} Prepared transfer state, or null for an unsupported payload.
+   * @category Drop Operations
    */
   prepareDrop(descriptor, pane) {
     this.assertAvailable();
@@ -582,6 +586,7 @@ class PaneItemTransferScope {
    * Complete a prepared drop, staging remote content before source commit.
    *
    * @returns {Promise<Object>} The destination pane and item.
+   * @category Drop Operations
    */
   async performDrop(context, prepared) {
     this.assertAvailable();
@@ -840,6 +845,7 @@ class PaneItemTransferScope {
    * The source remains intact until the destination acknowledges its content.
    *
    * @returns {Promise<Object>} The destination window id after source commit.
+   * @category Drop Operations
    */
   async openInNewWindow(pane, item) {
     const descriptor = this.createTransfer(pane, item);
@@ -868,6 +874,7 @@ class PaneItemTransferScope {
    * @status extended
    *
    * Cancel outstanding source sessions and prevent destination work from committing.
+   * @category Construction and Destruction
    */
   dispose() {
     if (this.disposed) return;

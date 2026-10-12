@@ -495,6 +495,7 @@ module.exports = class PackageManager {
    * @param name - Package name.
    * @returns {String|undefined} One of `loaded`, `activating`, `active`, or
    * `deactivating`. An unloaded or unknown package has no current lifecycle record.
+   * @category Package Lifecycle
    */
   getPackageLifecycleState(name) {
     return this.packageLifecycles.get(name)?.state;
@@ -530,6 +531,7 @@ module.exports = class PackageManager {
    * @status public
    *
    * @returns {Boolean} indicating whether package activation has occurred.
+   * @category Package Lifecycle
    */
   hasActivatedInitialPackages() {
     return this.initialPackagesActivated;
@@ -587,6 +589,7 @@ module.exports = class PackageManager {
    * @status public
    *
    * @returns {Boolean} indicating whether package loading has occurred.
+   * @category Package Lifecycle
    */
   hasLoadedInitialPackages() {
     return this.initialPackagesLoaded;
@@ -598,6 +601,7 @@ module.exports = class PackageManager {
    *
    * @returns {Boolean} indicating whether the initial package bootstrap has
    * completed.
+   * @category Package Lifecycle
    */
   hasInitializedInitialPackages() {
     return this.initialPackagesInitialized;
@@ -991,6 +995,7 @@ module.exports = class PackageManager {
    * use those registrations without making `activate()` responsible for
    * deserialization ordering.
    *
+   * @category Package Lifecycle
    */
   initializePackages() {
     if (!this.initialPackagesLoaded || this.initialPackagesInitialized) return;
@@ -1350,6 +1355,7 @@ module.exports = class PackageManager {
    * @param options
    * @param options.serialize - Serialize an active package before teardown. Defaults to true.
    * @returns {Promise<Package>} Resolves with the unloaded package after teardown.
+   * @category Package Lifecycle
    */
   unloadPackage(name, { serialize = true, preserveModuleCache = false } = {}) {
     const pack = this.getLoadedPackage(name);
@@ -1508,6 +1514,7 @@ module.exports = class PackageManager {
    * @param keyPath - Exact service name.
    * @param versionRange - Semantic version range required by the caller.
    * @returns {Promise<Boolean>} Whether a compatible non-null service is published.
+   * @category Services
    */
   async requestService(keyPath, versionRange) {
     return this.serviceHub.hasProvider(keyPath, versionRange);
@@ -1542,6 +1549,7 @@ module.exports = class PackageManager {
    *
    * @param name - Package name or path.
    * @returns {Promise<Package>} The started package. This never waits for a future trigger.
+   * @category Package Lifecycle
    */
   startPackage(name) {
     if (this.isPackageDisabled(name)) {
@@ -1573,6 +1581,7 @@ module.exports = class PackageManager {
    *
    * @param name - Package name or path.
    * @returns {Promise<Package>} The active package.
+   * @category Package Lifecycle
    */
   activatePackage(name) {
     if (this.isPackageDisabled(name)) {
@@ -1865,6 +1874,7 @@ module.exports = class PackageManager {
    * @param options
    * @param options.serialize - Serialize an active package before teardown. Defaults to true.
    * @returns {Promise<void>} Resolves when the package reaches `loaded`.
+   * @category Package Lifecycle
    */
   async deactivatePackage(name, { serialize = true } = {}) {
     const pack = this.getLoadedPackage(name);

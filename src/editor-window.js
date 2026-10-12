@@ -46,6 +46,8 @@ module.exports = class EditorWindow {
     }
   }
 
+  /** @category Window Information */
+
   /**
    * @public
    * @status public
@@ -86,6 +88,8 @@ module.exports = class EditorWindow {
     return this.editorContainer;
   }
 
+  /** @category DOM Access */
+
   /**
    * @public
    * @status public
@@ -115,6 +119,7 @@ module.exports = class EditorWindow {
    * @param {Object} message - Structured-cloneable message data.
    * @param {String} origin - The expected target origin, or "*" for an opaque sandbox.
    * @param {Array} ports - Transferable ports owned by the caller.
+   * @category Frame Messaging
    */
   postMessageToFrame(frame, message, origin = "*", ports = []) {
     if (this.destroyed || frame.ownerDocument !== this.getDocument())
@@ -134,6 +139,8 @@ module.exports = class EditorWindow {
       this.element = this.workspace.getElement();
     return this.element;
   }
+
+  /** @category Panels */
 
   /**
    * @public
@@ -201,10 +208,13 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Determine whether this presentation has been destroyed.
+   * @category Lifecycle
    */
   isDestroyed() {
     return this.destroyed;
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public
@@ -296,6 +306,8 @@ module.exports = class EditorWindow {
     return this.windowService.onDidLeaveFullScreen(callback);
   }
 
+  /** @category Window Geometry */
+
   /**
    * @public
    * @status public
@@ -319,6 +331,7 @@ module.exports = class EditorWindow {
    * Set the document path represented by this native window.
    * @param {String} filename - The current path, or an empty string.
    * @returns {Promise} Completes after the native property is set.
+   * @category Native Presentation
    */
   setRepresentedFilename(filename) {
     return this.windowService.setRepresentedFilename(filename);
@@ -331,10 +344,13 @@ module.exports = class EditorWindow {
    * Set the attachment offset of native sheets in this window.
    * @param {Number} offset - The title bar height in pixels.
    * @returns {Promise|undefined} Completes when supported by the platform.
+   * @category Native Presentation
    */
   setSheetOffset(offset) {
     return this.windowService.setSheetOffset?.(offset);
   }
+
+  /** @category Dialogs */
 
   /**
    * @public
@@ -365,6 +381,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Read the native window's state.
+   * @category Window Information
    */
   getState() {
     return this.windowService.getState();
@@ -379,6 +396,8 @@ module.exports = class EditorWindow {
       fullScreen: !!state?.fullScreen,
     };
   }
+
+  /** @category Window Management */
 
   /**
    * @public

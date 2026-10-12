@@ -17,6 +17,7 @@ module.exports = class SelectListHost extends InputDialogHost {
    *
    * Return the complete detached select-list model.
    * @returns {SelectList}
+   * @category Model and Panel
    */
   getModel() {
     return super.getModel();

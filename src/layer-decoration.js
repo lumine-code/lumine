@@ -23,6 +23,10 @@ module.exports = class LayerDecoration {
   }
 
   /**
+   * @category Construction and Destruction
+   */
+
+  /**
    * @public
    * @status essential
    *
@@ -57,6 +61,10 @@ module.exports = class LayerDecoration {
   getMarkerLayer() {
     return this.markerLayer;
   }
+
+  /**
+   * @category Properties
+   */
 
   /**
    * @public

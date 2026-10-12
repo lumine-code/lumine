@@ -64,6 +64,10 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @category Reading and Writing Text
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -202,6 +206,10 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @category Native Data
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -286,6 +294,10 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @category Reading and Writing Text
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -296,6 +308,10 @@ module.exports = class Clipboard {
   read() {
     return clipboard.readText();
   }
+
+  /**
+   * @category Find Pasteboard
+   */
 
   /**
    * @public
@@ -320,6 +336,10 @@ module.exports = class Clipboard {
   readFindText() {
     return clipboard.readFindText();
   }
+
+  /**
+   * @category Images
+   */
 
   /**
    * @public
@@ -348,6 +368,10 @@ module.exports = class Clipboard {
   writeImage(image) {
     return clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
   }
+
+  /**
+   * @category Primary Selection
+   */
 
   /**
    * @public
@@ -390,6 +414,7 @@ module.exports = class Clipboard {
    * * `metadata` The metadata stored by an earlier call to {@link #write}.
    *
    * @returns {Promise} that resolves to an `Object` with the following keys:
+   * @category Reading and Writing Text
    */
   readWithMetadata() {
     const didRead = this.read();

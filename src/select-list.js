@@ -482,6 +482,7 @@ class SelectList extends InputDialog {
    *
    * Destroys the select list and cleans up resources.
    * @returns {Promise} Resolves when destruction is complete
+   * @category Lifecycle
    */
   async destroyNow() {
     this.filterMatcher = null;
@@ -549,6 +550,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the parsed search text and package metadata.
+   * @category Query
    */
   getParsedQuery() {
     return this.parseQuery(this.getQuery());
@@ -561,6 +563,7 @@ class SelectList extends InputDialog {
    * Replace the asynchronous source and keep local filtering aligned with its
    * mode. Query sources own filtering; snapshot sources and a null source use
    * the list's current parsed query.
+   * @category Asynchronous Sources
    */
   setSource(source) {
     const previousSelection = this.model ? this.selectionSnapshot() : null;
@@ -821,6 +824,8 @@ class SelectList extends InputDialog {
     return this.renderItems();
   }
 
+  /** @category Items */
+
   /**
    * @public
    * @status experimental
@@ -836,6 +841,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return all items in current filtered order.
+   * @category Filtering
    */
   getFilteredItems() {
     return this.model.getFilteredItems();
@@ -846,6 +852,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the currently displayed page without UI rows.
+   * @category Pagination
    */
   getDisplayedItems() {
     return this.model.getDisplayedItems();
@@ -866,6 +873,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the number of filtered matches.
+   * @category Filtering
    */
   getMatchCount() {
     return this.model.getFilteredItems().length;
@@ -876,6 +884,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when source items change.
+   * @category Event Subscription
    */
   onDidChangeItems(callback) {
     return this.emitter.on("did-change-items", callback);
@@ -886,6 +895,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when the logical selection changes.
+   * @category Event Subscription
    */
   onDidChangeSelection(callback) {
     return this.emitter.on("did-change-selection", callback);
@@ -1084,6 +1094,7 @@ class SelectList extends InputDialog {
    * @param {boolean} [options.followSelection] - Let the selection's own
    *   scroll-into-view stand instead of restoring the previous position
    * @returns {Promise} Resolves when the expanded list has rendered
+   * @category Pagination
    */
   async showMore({ followSelection = false } = {}) {
     if (!this.model.hasMore()) return false;
@@ -1139,6 +1150,8 @@ class SelectList extends InputDialog {
     }
     return scoredCandidates.map(({ candidate }) => candidate);
   }
+
+  /** @category Filtering */
 
   /**
    * @public
@@ -1205,6 +1218,8 @@ class SelectList extends InputDialog {
     this.matchIndicesMap?.set(itemId, indexes);
     return indexes;
   }
+
+  /** @category Selection */
 
   /**
    * @public
@@ -1481,6 +1496,8 @@ class SelectList extends InputDialog {
     return this.selectItem(item);
   }
 
+  /** @category Scrolling */
+
   /**
    * @public
    * @status experimental
@@ -1529,6 +1546,8 @@ class SelectList extends InputDialog {
     return true;
   }
 
+  /** @category Pagination */
+
   /**
    * @public
    * @status experimental
@@ -1564,6 +1583,8 @@ class SelectList extends InputDialog {
     this.publishSelectionChange(previousSelection, "pagination");
     return this.updateComponent();
   }
+
+  /** @category Recent Items */
 
   /**
    * @public
@@ -1669,10 +1690,13 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when recent item IDs change.
+   * @category Event Subscription
    */
   onDidChangeRecentItemIds(callback) {
     return this.emitter.on("did-change-recent-item-ids", callback);
   }
+
+  /** @category Confirmation */
 
   /**
    * @public
@@ -1698,6 +1722,8 @@ class SelectList extends InputDialog {
       this.emitter.emit("did-confirm-empty-selection", { list: this });
     }
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public

@@ -37,6 +37,8 @@ module.exports = class WindowContributionRegistry {
     for (const registration of this.registrations) this.addInstance(registration, editorWindow);
   }
 
+  /** @category Registering Contributions */
+
   /**
    * @public
    * @status public
@@ -150,6 +152,7 @@ module.exports = class WindowContributionRegistry {
    * @status public
    *
    * Release the service and all its current and future presentation instances.
+   * @category Lifecycle
    */
   dispose() {
     if (this.disposed) return;

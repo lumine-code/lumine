@@ -177,7 +177,7 @@ class DisplayMarker {
   }
 
   /**
-   * @category TextEditorMarker Details
+   * @category Marker Details
    */
 
   /**

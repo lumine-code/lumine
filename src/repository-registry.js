@@ -1425,6 +1425,7 @@ module.exports = class RepositoryRegistry {
    * @param repository - The {@link GitRepository} to work with.
    * @param operation - An async `Function` called with the repository.
    * @returns {Promise} for whatever the operation returned.
+   * @category Operations
    */
   async runOperation(repository, operation) {
     const entry = this.entryByRepository.get(repository) || this.register(repository);
@@ -1691,6 +1692,10 @@ module.exports = class RepositoryRegistry {
   performOperation(repository, operationName, args = []) {
     return this.operationManager.performOperation(repository, operationName, args);
   }
+
+  /**
+   * @category Operations
+   */
 
   /**
    * @public

@@ -44,6 +44,8 @@ const Grim = require("@lumine-code/grim");
  * ```
  */
 module.exports = class Task {
+  /** @category Construction */
+
   /**
    * @public
    * @status public
@@ -135,6 +137,8 @@ module.exports = class Task {
     }
   }
 
+  /** @category Task Execution */
+
   /**
    * @public
    * @status public
@@ -163,6 +167,8 @@ module.exports = class Task {
     this.send({ event: "start", args });
     return undefined;
   }
+
+  /** @category Messaging */
 
   /**
    * @public
@@ -198,6 +204,8 @@ module.exports = class Task {
     return child.connected !== false && child.exitCode == null && child.signalCode == null;
   }
 
+  /** @category Event Subscription */
+
   /**
    * @public
    * @status public
@@ -218,6 +226,8 @@ module.exports = class Task {
       callback(...args);
     });
   }
+
+  /** @category Task Execution */
 
   /**
    * @public

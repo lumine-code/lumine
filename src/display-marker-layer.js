@@ -89,6 +89,10 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @category Range Tracking
+   */
+
+  /**
    * @public
    * @status experimental
    *

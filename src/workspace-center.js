@@ -88,6 +88,7 @@ module.exports = class WorkspaceCenter {
    * @status public
    *
    * Get all document containers in this center.
+   * @category Pane Containers
    */
   getPaneContainers() {
     return [...this.containers.keys()];
@@ -98,6 +99,7 @@ module.exports = class WorkspaceCenter {
    * @status public
    *
    * Observe current and future document containers.
+   * @category Event Subscription
    */
   observePaneContainers(callback) {
     for (const container of this.getPaneContainers()) callback(container);

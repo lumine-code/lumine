@@ -524,6 +524,8 @@ module.exports = class IconRegistry {
     );
   }
 
+  /** @category Icon Providers */
+
   /**
    * @public
    * @status essential
@@ -582,6 +584,8 @@ module.exports = class IconRegistry {
   updateContextSensitivity() {
     this.contextSensitive = this.registrations.some((r) => r.provider.usesContext === true);
   }
+
+  /** @category Resolving Icons */
 
   /**
    * @public
@@ -770,6 +774,8 @@ module.exports = class IconRegistry {
     return CORE_NONE;
   }
 
+  /** @category Rendering Icons */
+
   /**
    * @public
    * @status essential
@@ -934,6 +940,8 @@ module.exports = class IconRegistry {
       this.prunePathKey(key);
     }
   }
+
+  /** @category Cache Invalidation */
 
   /**
    * @public
@@ -1154,6 +1162,8 @@ module.exports = class IconRegistry {
     }
   }
 
+  /** @category Icon Overrides */
+
   /**
    * @public
    * @status extended
@@ -1195,6 +1205,8 @@ module.exports = class IconRegistry {
       this.invalidate({ types: [type] });
     });
   }
+
+  /** @category Event Subscription */
 
   /**
    * @public

@@ -82,6 +82,7 @@ class SecretStore {
    * once on its own.
    *
    * @returns {Promise} resolving to a `Boolean`.
+   * @category Encryption
    */
   async isEncryptionAvailable() {
     if (this.encryptionAvailable === true) return true;

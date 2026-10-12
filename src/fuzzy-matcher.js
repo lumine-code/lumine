@@ -70,6 +70,8 @@ class Matcher {
     this.fuzzyMatcher = fuzzyMatcher;
   }
 
+  /** @category Matching */
+
   /**
    * @public
    * @status essential
@@ -115,6 +117,7 @@ class Matcher {
    *
    * @param {Array<String>} candidates - The new candidates.
    * @returns {Matcher} This matcher.
+   * @category Candidate Sets
    */
   setCandidates(candidates) {
     return setCandidates(this, candidates);
@@ -135,6 +138,8 @@ class Matcher {
  * @memberof lumine.tools
  */
 const fuzzyMatcher = {
+  /** @category Candidate Sets */
+
   /**
    * @public
    * @status essential
@@ -158,6 +163,8 @@ const fuzzyMatcher = {
    * @returns {Matcher} The created or updated matcher.
    */
   setCandidates: setCandidates,
+
+  /** @category Matching */
 
   /**
    * @public

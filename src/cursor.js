@@ -946,6 +946,7 @@ module.exports = class Cursor extends Model {
    * @status public
    *
    * Deselects the current selection.
+   * @category Selections
    */
   clearSelection(options) {
     if (this.selection) this.selection.clear(options);

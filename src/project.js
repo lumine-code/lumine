@@ -587,6 +587,7 @@ module.exports = class Project extends Model {
    *
    * @param {Array} projectPaths - of `String` paths to the directories the window should have open.
    * @returns {Promise} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.
+   * @category Managing Project State
    */
   async setState(projectPaths) {
     // A project built outside an environment has no window state to set.
@@ -755,6 +756,7 @@ module.exports = class Project extends Model {
    *
    * @param {String} projectPath - One of the project's root directories.
    * @returns {Promise} that resolves with the {@link FileWatchHandle} associated with this project root once it has initialized and is ready to start sending events. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
+   * @category Filesystem Watching
    */
   getWatcherPromise(projectPath) {
     const watcher = this.watchersByPath.get(projectPath);
@@ -900,7 +902,7 @@ module.exports = class Project extends Model {
   }
 
   /**
-   * @category Crawling files
+   * @category File Indexing
    */
 
   /**
@@ -1024,6 +1026,7 @@ module.exports = class Project extends Model {
    * @param callback.removed - An `Array` of `String` absolute paths no longer in it.
    * @param callback.indexing - A `Boolean`, `true` while a crawl is still running.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @category Event Subscription
    */
   observeFilePaths(callback) {
     return this.fileIndexOrBuild().observe(callback);

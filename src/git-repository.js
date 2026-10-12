@@ -288,6 +288,7 @@ module.exports = class GitRepository {
    * @status public
    *
    * @returns {Object} stable write facade assigned by lumine.repositories. Its methods are enabled by repositories.operations-provider services.
+   * @category Operations
    */
   getOperations() {
     return this.operations;
@@ -306,6 +307,7 @@ module.exports = class GitRepository {
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @category Event Subscription
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -573,6 +575,10 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @category References
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -613,6 +619,7 @@ module.exports = class GitRepository {
    *
    * @param filePath - The `String` path to check.
    * @returns {Boolean}
+   * @category Repository Details
    */
   isSubmodule(filePath) {
     if (!filePath || this.isDestroyed()) return false;
@@ -657,6 +664,10 @@ module.exports = class GitRepository {
     }
     return { ahead: 0, behind: 0 };
   }
+
+  /**
+   * @category Git Configuration
+   */
 
   /**
    * @public
@@ -705,6 +716,10 @@ module.exports = class GitRepository {
       ),
     );
   }
+
+  /**
+   * @category References
+   */
 
   /**
    * @public
@@ -1410,6 +1425,10 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @category References
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -1456,6 +1475,10 @@ module.exports = class GitRepository {
   refreshRefsSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh("refs", options);
   }
+
+  /**
+   * @category Retrieving Diffs
+   */
 
   /**
    * @public
@@ -1538,6 +1561,10 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @category Reading History
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -1616,6 +1643,10 @@ module.exports = class GitRepository {
       changedFiles: Object.freeze(changedFiles || files || []),
     });
   }
+
+  /**
+   * @category Reading File Contents
+   */
 
   /**
    * @public
@@ -1699,6 +1730,7 @@ module.exports = class GitRepository {
    * Describe HEAD as a ref name (`git describe --contains --all
    * --always`). Returns a `Promise` resolving to the `String` description, or
    * `""` when the branch is unborn.
+   * @category References
    */
   getDescription() {
     return this.repositoryHostRequest((client, descriptor, requestSignal) =>
@@ -1719,6 +1751,7 @@ module.exports = class GitRepository {
    * @param {Boolean} [options.showRemote=false] - Include remote branches.
    * @param {String} [options.pattern] - Limit branch names by pattern.
    * @returns {Promise} resolving to an `Array` of refname `Strings`.
+   * @category References
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
     assertGitRevision(commit, { label: "commit" });
@@ -1740,6 +1773,7 @@ module.exports = class GitRepository {
    *
    * @param filePath - A `String` path, absolute or repository-relative.
    * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
+   * @category Repository Details
    */
   getFileMode(filePath) {
     return this.repositoryHostRequest((client, descriptor, requestSignal) =>
@@ -1758,6 +1792,7 @@ module.exports = class GitRepository {
    * @param {Object} [options] - Read options.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to an `Array` of path `Strings`.
+   * @category Repository Details
    */
   async getSubmodulePaths(options = {}) {
     if (this.isDestroyed()) {
@@ -1787,6 +1822,7 @@ module.exports = class GitRepository {
    * @param {Boolean} [options.ignoreWhitespace] - Ignore whitespace-only changes when attributing a line, so a reindent does not reassign every line it touched.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
+   * @category Reading History
    */
   async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
     assertGitRevision(revision, { allowNull: true });

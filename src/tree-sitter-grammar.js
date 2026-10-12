@@ -192,6 +192,10 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @category Grammar Details
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -240,6 +244,10 @@ module.exports = class TreeSitterGrammar {
   scopeNameForScopeId(id) {
     return this.scopeNamesById.get(id);
   }
+
+  /**
+   * @category Language Loading
+   */
 
   /**
    * @public
@@ -578,6 +586,10 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @category Queries
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -798,6 +810,10 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @category Event Subscription
+   */
+
+  /**
    * @public
    * @status extended
    *
@@ -935,6 +951,10 @@ module.exports = class TreeSitterGrammar {
     }
     throwLifecycleErrors(failures, "Grammar failed to deactivate cleanly");
   }
+
+  /**
+   * @category Language Injections
+   */
 
   /**
    * @public

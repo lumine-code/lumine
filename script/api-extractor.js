@@ -379,7 +379,14 @@ function parseDoc(comments, { context, strict }) {
       .map((doc) => doc.category)
       .filter(Boolean)
       .at(-1);
-    return { ...primary, category: primary.category || category || null };
+    // A standalone category comment opens a section. A category in a member's
+    // own documentation overrides that member only, leaving the section intact.
+    const sectionCategory = jsdoc
+      .filter((doc) => !doc.documented)
+      .map((doc) => doc.category)
+      .filter(Boolean)
+      .at(-1);
+    return { ...primary, category: primary.category || category || null, sectionCategory };
   }
 
   return null;
@@ -604,7 +611,7 @@ function parseFile(filePath, sourceInput, options) {
         const context = `${name}.${memberName}`;
         const memberDoc = parseDoc(member.leadingComments || [], { ...options, context });
         if (!memberDoc) continue;
-        if (memberDoc.category) category = memberDoc.category;
+        if (memberDoc.sectionCategory) category = memberDoc.sectionCategory;
         if (!memberDoc.documented) continue;
         const implementation =
           member.type === "ObjectMethod"
@@ -626,7 +633,7 @@ function parseFile(filePath, sourceInput, options) {
               : kind === "set"
                 ? `.${publicName} = value`
                 : functionSignature(implementation, source, `.${publicName}`),
-          category,
+          category: memberDoc.category || category,
           visibility: memberDoc.visibility,
           description: memberDoc.description,
           summary: memberDoc.summary,
@@ -678,12 +685,12 @@ function parseFile(filePath, sourceInput, options) {
       const members = [];
       let category = "Methods";
       for (const member of node.body.body) {
-        if (!["ClassMethod", "ClassPrivateMethod"].includes(member.type)) continue;
         const memberName = member.kind === "constructor" ? "constructor" : propertyName(member.key);
         const context = `${name}${member.static ? "." : "#"}${memberName}`;
         const memberDoc = parseDoc(member.leadingComments || [], { ...options, context });
         if (!memberDoc) continue;
-        if (memberDoc.category) category = memberDoc.category;
+        if (memberDoc.sectionCategory) category = memberDoc.sectionCategory;
+        if (!["ClassMethod", "ClassPrivateMethod"].includes(member.type)) continue;
         if (!memberDoc.documented) continue;
         const parameters = mergeParameters(astParameters(member, source), memberDoc.parameters, {
           strict: options.strict,
@@ -695,7 +702,7 @@ function parseFile(filePath, sourceInput, options) {
           static: Boolean(member.static),
           async: Boolean(member.async),
           signature: signatureFor(member, source, name),
-          category,
+          category: memberDoc.category || category,
           visibility: memberDoc.visibility,
           description: memberDoc.description,
           summary: memberDoc.summary,
@@ -850,6 +857,18 @@ function validateLinks(classes, functions) {
   }
 }
 
+function validateCategories(types) {
+  for (const type of types) {
+    for (const member of type.members) {
+      if (/^private\b/i.test(member.category)) {
+        throw new Error(
+          `Public API member ${type.name}${member.static ? "." : "#"}${member.name} cannot be grouped under "${member.category}".`,
+        );
+      }
+    }
+  }
+}
+
 function extractApi({ editorRoot, parser, strict = true }) {
   if (!editorRoot) throw new Error("extractApi requires editorRoot.");
   if (!parser?.parse) throw new Error("extractApi requires a parser with a parse() method.");
@@ -889,7 +908,10 @@ function extractApi({ editorRoot, parser, strict = true }) {
   if (missingObjects.length) {
     throw new Error(`Required API objects were not extracted: ${missingObjects.join(", ")}.`);
   }
-  if (strict) validateLinks([...classes, ...objects], functions);
+  if (strict) {
+    validateCategories([...classes, ...objects]);
+    validateLinks([...classes, ...objects], functions);
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     name: packageMetadata.productName || packageMetadata.name,

@@ -148,6 +148,7 @@ class WorkspaceDropManager {
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - Provider priority.
    * @returns {Disposable} A disposable that unregisters the provider.
+   * @category Providers and Targets
    */
   addProvider(provider, { priority = 0 } = {}) {
     if (
@@ -178,6 +179,7 @@ class WorkspaceDropManager {
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - Priority among targets at the same depth.
    * @returns {Disposable} A disposable that unregisters the target.
+   * @category Providers and Targets
    */
   addTarget(element, adapter = {}, { priority = 0 } = {}) {
     if (!element?.addEventListener)
@@ -203,6 +205,7 @@ class WorkspaceDropManager {
    * @param {Function} [callbacks.commit] - Called after a target accepts the move; return or resolve to `false` to reject it.
    * @param {Function} [callbacks.rollback] - Called when the move is abandoned or rejected.
    * @returns {Object} An object containing the serializable session `token`.
+   * @category Drag Sessions
    */
   createSession(value, { commit, rollback } = {}) {
     const token = crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
@@ -223,6 +226,7 @@ class WorkspaceDropManager {
    *
    * @param token - A session token.
    * @returns {*} the retained value, or `undefined` outside its source window.
+   * @category Drag Sessions
    */
   getSession(token) {
     token = this.sessionToken(token);
@@ -238,6 +242,7 @@ class WorkspaceDropManager {
    * @param token - A session token.
    * @param result - Structured-cloneable result details. Cross-window callers include `sourceWindowId`.
    * @returns {Promise} resolving to whether the source accepted the move.
+   * @category Drag Sessions
    */
   async commit(token, result = {}) {
     return this.settleSession("commit", token, result);
@@ -254,6 +259,7 @@ class WorkspaceDropManager {
    * @param {Object} [options] - Cross-window routing when no drag descriptor was read locally.
    * @param {Number} [options.sourceWindowId] - The source window of a programmatic transfer.
    * @returns {Promise} resolving to whether the rollback was delivered.
+   * @category Drag Sessions
    */
   async rollback(token, reason, { sourceWindowId } = {}) {
     return this.settleSession("rollback", token, { reason, sourceWindowId });
@@ -374,6 +380,7 @@ class WorkspaceDropManager {
    * @param dataTransfer - The drag's `DataTransfer`.
    * @param descriptor - A descriptor containing `kind`, `items`, source metadata, effect, and allowed locations.
    * @returns {Object} the normalized descriptor written to the transfer.
+   * @category Data Transfer
    */
   write(dataTransfer, descriptor) {
     return write(dataTransfer, descriptor);
@@ -387,6 +394,7 @@ class WorkspaceDropManager {
    *
    * @param dataTransfer - The drag's `DataTransfer`.
    * @returns {Object|null} an offer object, or `null` when the drag is unsupported.
+   * @category Data Transfer
    */
   inspect(dataTransfer) {
     return inspect(dataTransfer);
@@ -400,6 +408,7 @@ class WorkspaceDropManager {
    *
    * @param dataTransfer - The drop's readable `DataTransfer`.
    * @returns {Object|null} a normalized descriptor, or `null` when it is malformed or unavailable.
+   * @category Data Transfer
    */
   read(dataTransfer) {
     const descriptor = read(dataTransfer);

@@ -48,6 +48,10 @@ class HistoryManager {
   }
 
   /**
+   * @category Recent Projects
+   */
+
+  /**
    * @public
    * @status public
    *
@@ -82,6 +86,7 @@ class HistoryManager {
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @category Event Subscription
    */
   onDidChangeProjects(callback) {
     return this.emitter.on("did-change-projects", callback);

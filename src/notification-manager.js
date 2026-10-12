@@ -221,6 +221,7 @@ module.exports = class NotificationManager {
    * @status public
    *
    * Request audible or visual attention from notification consumers.
+   * @category Requesting Attention
    */
   beep() {
     this.emitter.emit("did-beep");
