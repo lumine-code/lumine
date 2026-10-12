@@ -138,7 +138,7 @@ class Session {
     }
     const focused = this.contents.focusedFrame;
     const outer = outerFrame(focused, this.contents.mainFrame);
-    if (snapshot.enabled && !outer) {
+    if (snapshot.enabled && !outer && focused !== this.contents.mainFrame) {
       this.clear();
       return { ...this.info(), ok: false };
     }
@@ -162,7 +162,7 @@ class Session {
     this.leafKey = frameKey(focused);
     this.outerKey = frameKey(outer);
     this.generation++;
-    return this.info();
+    return { ...this.info(), pending: !!snapshot.enabled && !outer };
   }
 
   handleInput(event, input) {
@@ -185,6 +185,7 @@ class Session {
     const focused = this.contents.focusedFrame;
     const outer = outerFrame(focused, this.contents.mainFrame);
     if (!outer) return;
+    if (this.outerId == null) this.outerId = outer.frameTreeNodeId;
     if (outer.frameTreeNodeId !== this.outerId) {
       this.clear();
       return;

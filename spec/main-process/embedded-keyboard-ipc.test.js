@@ -108,6 +108,22 @@ describe("embedded pane keyboard IPC", function () {
     assert.strictEqual(state.sent[0][1].command, "pane:move-active-item-up");
   });
 
+  it("arms a trusted DOM host before child focus and handles its first native chord", function () {
+    const state = fixtures();
+    mount(state);
+    state.contents.focusedFrame = state.main;
+    const info = state.sync(snapshot());
+    assert.isTrue(info.ok);
+    assert.isTrue(info.pending);
+    assert.isTrue(info.isMainFrame);
+    assert.isFalse(input(state, key("a", "KeyA")));
+    state.contents.focusedFrame = state.child;
+    assert.isTrue(input(state, key("z", "KeyZ", true)));
+    assert.isTrue(input(state, key("ArrowUp", "ArrowUp")));
+    assert.lengthOf(state.sent, 1);
+    assert.strictEqual(state.sent[0][1].hostId, "view");
+  });
+
   it("restores a failed printable prefix before its suffix into the original frame", async function () {
     const state = fixtures();
     mount(state);
