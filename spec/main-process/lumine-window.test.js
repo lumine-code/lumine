@@ -30,6 +30,17 @@ describe("LumineWindow", function () {
     sinon.restore();
   });
 
+  it("retires native frame keyboard listeners when its window closes", async function () {
+    const window = new LumineWindow(app, service, {
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    });
+    assert.strictEqual(window.browserWindow.webContents.listenerCount("before-input-event"), 1);
+    window.browserWindow.emit("closed");
+    await window.closedPromise;
+    assert.strictEqual(window.browserWindow.webContents.listenerCount("before-input-event"), 0);
+  });
+
   describe("creating a real window", function () {
     let resourcePath, windowInitializationScript, lumineHome, browserWindow;
     let original, extraWindows, devPackageLinks;

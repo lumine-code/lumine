@@ -6,6 +6,7 @@ const url = require("url");
 const { EventEmitter } = require("events");
 const crypto = require("crypto");
 const StartupTime = require("./startup-time");
+const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 
 // Packaged builds ship the icon under resourcesPath; a source checkout falls
 // back to the repo's own copy. Parameterized by filename rather than a single
@@ -124,8 +125,14 @@ module.exports = class LumineWindow extends EventEmitter {
     this.lumineApplication.registerLumineWindow?.(this);
 
     this.handleEvents();
+    this.embeddedKeyboardIpc = attachEmbeddedKeyboardIpc(this.browserWindow.webContents, {
+      testing: !!this.isSpec,
+      isWindowFocused: () => this.browserWindow.isFocused?.() === true,
+    });
+    this.browserWindow.on("blur", this.embeddedKeyboardIpc.clear);
 
     this.loadSettings = Object.assign({}, settings);
+    this.loadSettings.embeddedPaneKeyboardBroker = true;
     this.loadSettings.windowStateId = this.windowStateId;
     this.loadSettings.appVersion = app.getVersion();
     this.loadSettings.appName = getAppName();
@@ -253,6 +260,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      this.embeddedKeyboardIpc?.dispose();
       void this.lumineApplication
         .releaseFileWatchSession(this)
         .catch((error) => console.error(error));
