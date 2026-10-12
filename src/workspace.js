@@ -124,30 +124,43 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * Returns a `String` containing the title of the item to display on its
  * associated tab.
  *
- * #### `copy({signal})` or `canCopy()`
+ * ### Optional Methods
  *
- * Every center item must implement `copy({signal})`, returning a fresh live item
- * or a Promise for one, with an independent detached view root. Views may share
+ * #### `copy({signal})`
+ *
+ * Returns a fresh live item or a Promise for one, with an independent detached
+ * view root. If omitted, copy and split-copy operations silently resolve to
+ * null without changing panes, focus or preview state. Focus and move,
+ * including split-move, remain available. Views may share
  * their underlying document, but own their subscriptions, selection and viewport.
  * Honor the AbortSignal before publishing a copy and release abandoned resources.
- * A view that does not support copying declares `canCopy() === false`.
- * Copy and split-copy operations then silently resolve to null without changing
- * panes, focus or preview state. Focus and move, including split-move, remain available.
- * Copy policy is independent of uniqueness: `getSingletonKey()` returns a
- * namespaced non-empty String to allow one item per logical resource in this
- * workspace. A constant key identifies a workspace tool; a resource key permits
- * separate result sets. Omit it or return null when uniqueness is not required.
- * Changing a singleton key emits `onDidChangeSingletonKey`, or `onDidChangeURI`
- * when the key follows the URI. Reopening a key activates its existing item.
  * Serialization and URI openers are not substitutes for this copy contract.
  * Copy factories capture document and view state before awaiting initialization.
  * Retargeting items emit `onDidChangeURI` after every document publication, even
- * if its URI returns to an earlier value. An optional `getPaneItemRevision()`
- * returns a monotonic revision so asynchronous copies also detect document
- * replacement with an unchanged URI. Moving and copying promote previews only
- * after committing and invoke `terminatePendingState()` to cancel pending reuse.
+ * if its URI returns to an earlier value. Moving and copying promote previews
+ * only after committing and invoke `terminatePendingState()` to cancel pending reuse.
  *
- * ### Optional Methods
+ * #### `canCopy()`
+ *
+ * Returns a Boolean to restrict an item's copy capability. Returning false
+ * silently skips copy and split-copy without notifications or changes to panes,
+ * focus or preview state. If omitted, a callable `copy()` method enables copying.
+ * Returning true does not enable copying when the item has no `copy()` method.
+ *
+ * #### `getSingletonKey()`
+ *
+ * Returns a namespaced non-empty String to allow one item per logical resource
+ * in this workspace. A constant key identifies a workspace tool; a resource key
+ * permits separate result sets. Omit it or return null when uniqueness is not
+ * required. Resource uniqueness is independent of copy capability.
+ * Changing a singleton key emits `onDidChangeSingletonKey`, or `onDidChangeURI`
+ * when the key follows the URI. Reopening a key activates its existing item.
+ *
+ * #### `getPaneItemRevision()`
+ *
+ * Returns a monotonic document revision so asynchronous copies detect document
+ * replacement with an unchanged URI. Omit it when the item does not retarget its
+ * document, or use `onDidChangeURI` when its URI always changes with the document.
  *
  * #### Presentation window lifecycle
  *
@@ -3617,10 +3630,10 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
-   * Copy an exact item before creating its destination. Singleton items refuse copying.
+   * Copy an exact item before creating its destination, if the item supports copying.
    * @param item - The item whose document and view state should be copied.
    * @param {Object} options - sourcePane, targetPane or splitDirection, index, activatePane and signal.
-   * @returns {Promise<Object|null>} The final {pane, item}, or null when copying is disabled; cancellation rejects with ABORT_ERR.
+   * @returns {Promise<Object|null>} The final {pane, item}, or null when copy() is absent or canCopy() returns false; cancellation rejects with ABORT_ERR.
    */
   copyPaneItem(item, options = {}) {
     return this.paneItemTransferService.copyPaneItem(item, options);

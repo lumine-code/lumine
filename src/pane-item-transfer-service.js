@@ -238,16 +238,15 @@ class PaneItemTransferService {
   }
 
   async copyPaneItem(item, options = {}) {
-    if (item?.canCopy?.() === false) return null;
+    if (
+      item &&
+      typeof item === "object" &&
+      (typeof item.copy !== "function" || item.canCopy?.() === false)
+    )
+      return null;
     options = { ...options };
     const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
     this.assertLocalItem(item, sourcePane);
-    if (typeof item.copy !== "function") {
-      throw new PaneItemOperationError(
-        "COPY_CONTRACT",
-        "This pane item does not implement copy({signal}).",
-      );
-    }
     const anchor = this.prepareDestination(item, sourcePane, options);
     const controller = new AbortController();
     const operation = { controller };

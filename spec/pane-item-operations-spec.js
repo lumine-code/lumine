@@ -49,13 +49,14 @@ describe("workspace pane item operations", () => {
     targetPane = sourcePane.splitRight({ activate: false });
   });
 
-  it("requires the center item contract before changing pane state", () => {
-    const invalid = { element: document.createElement("div") };
+  it("accepts center items without copy or canCopy methods", () => {
+    const readOnly = { element: document.createElement("div"), getTitle: () => "Read-only view" };
     const additions = jasmine.createSpy("additions");
     const subscription = sourcePane.onDidAddItem(additions);
-    expect(() => sourcePane.addItem(invalid)).toThrowError(/copy/);
-    expect(sourcePane.getItems()).toEqual([item]);
-    expect(additions).not.toHaveBeenCalled();
+    sourcePane.addItem(readOnly);
+    expect(sourcePane.getItems()).toEqual([item, readOnly]);
+    expect(workspace.paneForItem(readOnly)).toBe(sourcePane);
+    expect(additions).toHaveBeenCalledTimes(1);
     subscription.dispose();
   });
 
@@ -108,6 +109,7 @@ describe("workspace pane item operations", () => {
   });
 
   it("copies view state into a fresh item without deduplicating its URI", async () => {
+    delete item.canCopy;
     const result = await workspace.copyPaneItem(item, { targetPane });
     expect(result.pane).toBe(targetPane);
     expect(result.item).not.toBe(item);
@@ -116,6 +118,32 @@ describe("workspace pane item operations", () => {
     expect(workspace.paneForItem(item)).toBe(sourcePane);
     expect(workspace.paneForItem(result.item)).toBe(targetPane);
     expect(workspace.getActivePane()).toBe(targetPane);
+  });
+
+  it("moves and splits an item without copy or canCopy while retaining its live view", async () => {
+    delete item.copy;
+    delete item.canCopy;
+    const element = item.element;
+    await workspace.movePaneItem(item, { targetPane });
+    expect(workspace.paneForItem(item)).toBe(targetPane);
+    expect(item.element).toBe(element);
+    const result = await workspace.movePaneItem(item, { splitDirection: "down" });
+    expect(result.item).toBe(item);
+    expect(workspace.paneForItem(item)).toBe(result.pane);
+    expect(item.element).toBe(element);
+    expect(element.isConnected).toBe(true);
+  });
+
+  it("silently skips an item with canCopy returning true but no copy method", async () => {
+    delete item.copy;
+    sourcePane.setPendingItem(item);
+    const panes = workspace.getPanes();
+    await expectAsync(workspace.copyPaneItem(item, { splitDirection: "down" })).toBeResolvedTo(
+      null,
+    );
+    expect(workspace.getPanes()).toEqual(panes);
+    expect(workspace.getActivePane()).toBe(sourcePane);
+    expect(sourcePane.getPendingItem()).toBe(item);
   });
 
   it("preserves focused descendant input when moving its live pane item", async () => {
@@ -442,24 +470,33 @@ describe("workspace pane item operations", () => {
     expect(workspace.getActivePaneItem()).not.toBe(item);
   });
 
-  it("silently skips every copy command without touching layout, preview, focus or the provider", async () => {
-    item.canCopy = () => false;
-    sourcePane.setPendingItem(item);
-    const panes = workspace.getPanes();
-    const warnings = spyOn(lumine.notifications, "addWarning");
-    const errors = spyOn(lumine.notifications, "addError");
-    const copy = spyOn(item, "copy").and.callThrough();
-    for (const direction of ["up", "down", "left", "right"]) {
-      await lumine.commands.dispatch(item.element, `pane:copy-active-item-${direction}`);
-      await lumine.commands.dispatch(item.element, `pane:split-${direction}-and-copy-active-item`);
-    }
-    expect(workspace.getPanes()).toEqual(panes);
-    expect(workspace.getActivePane()).toBe(sourcePane);
-    expect(sourcePane.getPendingItem()).toBe(item);
-    expect(copy).not.toHaveBeenCalled();
-    expect(warnings).not.toHaveBeenCalled();
-    expect(errors).not.toHaveBeenCalled();
-  });
+  for (const capability of ["disabled", "missing"]) {
+    it(`silently skips every copy command when copying is ${capability} without touching layout, preview, focus or the provider`, async () => {
+      if (capability === "disabled") item.canCopy = () => false;
+      sourcePane.setPendingItem(item);
+      const panes = workspace.getPanes();
+      const warnings = spyOn(lumine.notifications, "addWarning");
+      const errors = spyOn(lumine.notifications, "addError");
+      const copy = spyOn(item, "copy").and.callThrough();
+      if (capability === "missing") {
+        delete item.copy;
+        delete item.canCopy;
+      }
+      for (const direction of ["up", "down", "left", "right"]) {
+        await lumine.commands.dispatch(item.element, `pane:copy-active-item-${direction}`);
+        await lumine.commands.dispatch(
+          item.element,
+          `pane:split-${direction}-and-copy-active-item`,
+        );
+      }
+      expect(workspace.getPanes()).toEqual(panes);
+      expect(workspace.getActivePane()).toBe(sourcePane);
+      expect(sourcePane.getPendingItem()).toBe(item);
+      expect(copy).not.toHaveBeenCalled();
+      expect(warnings).not.toHaveBeenCalled();
+      expect(errors).not.toHaveBeenCalled();
+    });
+  }
 
   it("captures the command's source before a queued document replacement can retarget it", async () => {
     const dispatch = lumine.commands.dispatch(item.element, "pane:split-down-and-copy-active-item");

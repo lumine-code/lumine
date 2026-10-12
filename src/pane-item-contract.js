@@ -13,13 +13,6 @@ function assertCenterItemContract(item, location = "center") {
   if (!item || typeof item !== "object") {
     throw new PaneItemOperationError("INVALID_ITEM", "A pane item must be an object.");
   }
-  if (item.canCopy?.() === false) return;
-  if (typeof item.copy !== "function") {
-    throw new PaneItemOperationError(
-      "COPY_CONTRACT",
-      "A center pane item must implement copy({signal}) or declare canCopy() === false.",
-    );
-  }
 }
 
 function assertItemLocation(item, location) {
