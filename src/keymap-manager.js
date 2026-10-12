@@ -173,6 +173,7 @@ module.exports = KeymapManager = (function () {
       this.keyBindings = [];
       this.queuedKeyboardEvents = [];
       this.queuedKeystrokes = [];
+      this.frameKeyboardBridge?.refresh();
       return (this.bindingsToDisable = []);
     }
 
@@ -183,6 +184,7 @@ module.exports = KeymapManager = (function () {
      * Unwatch all watched paths.
      */
     destroy() {
+      this.frameKeyboardBridge?.clear();
       this.cancelPendingState();
       this.clearQueuedKeystrokes();
       this.pendingKeyupMatcher?.clear();
@@ -385,6 +387,7 @@ module.exports = KeymapManager = (function () {
         throwOnInvalidSelector,
       );
       this.keyBindings.push(...Array.from(addedKeyBindings || []));
+      this.frameKeyboardBridge?.refresh();
       return new Disposable(() => {
         for (var keyBinding of Array.from(addedKeyBindings)) {
           var index = this.keyBindings.indexOf(keyBinding);
@@ -392,11 +395,13 @@ module.exports = KeymapManager = (function () {
             this.keyBindings.splice(index, 1);
           }
         }
+        this.frameKeyboardBridge?.refresh();
       });
     }
 
     removeBindingsFromSource(source) {
       this.keyBindings = this.keyBindings.filter((keyBinding) => keyBinding.source !== source);
+      this.frameKeyboardBridge?.refresh();
       return undefined;
     }
 
@@ -628,6 +633,7 @@ module.exports = KeymapManager = (function () {
      * @param event - A `KeyboardEvent` of type 'keydown'
      */
     handleKeyboardEvent(event, param) {
+      const document = this.documentContext || globalThis.document;
       // Handling keyboard events is complicated and very nuanced. The complexity
       // is all due to supporting multi-stroke bindings. An example binding we'll
       // use throughout this very long comment:
@@ -966,10 +972,12 @@ module.exports = KeymapManager = (function () {
      */
     addKeystrokeResolver(resolver) {
       this.customKeystrokeResolvers.push(resolver);
+      this.frameKeyboardBridge?.refresh();
       return new Disposable(() => {
         const index = this.customKeystrokeResolvers.indexOf(resolver);
         if (index >= 0) {
-          return this.customKeystrokeResolvers.splice(index, 1);
+          this.customKeystrokeResolvers.splice(index, 1);
+          this.frameKeyboardBridge?.refresh();
         }
       });
     }
@@ -985,6 +993,24 @@ module.exports = KeymapManager = (function () {
      */
     getPartialMatchTimeout() {
       return this.partialMatchTimeout;
+    }
+
+    /**
+     * @public
+     * @status extended
+     *
+     * Register iframe descendants of a pane item host for native directional
+     * pane shortcuts. The parent iframe element supplies the keymap scope;
+     * child scripts do not send commands or keyboard messages. Dispose before
+     * retaining a retired frame outside its host. Custom keystroke resolvers
+     * disable native routing because their functions cannot cross processes.
+     * @param {HTMLElement} root - Host element in the workspace document.
+     * @returns {Disposable} Registration to dispose before retiring the host.
+     */
+    registerFrameHost(root) {
+      if (!this.frameKeyboardBridge)
+        throw new Error("The workspace keyboard bridge is not initialized.");
+      return this.frameKeyboardBridge.registerHost(root);
     }
 
     /**

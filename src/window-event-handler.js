@@ -1,6 +1,7 @@
 const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const listen = require("./delegated-listener");
 const { debounce } = require("@lumine-code/underscore-plus");
+const EmbeddedPaneKeyboardBridge = require("./embedded-pane-keyboard-bridge");
 
 // Handles low-level events related to the `window`.
 module.exports = class WindowEventHandler {
@@ -32,6 +33,18 @@ module.exports = class WindowEventHandler {
   initialize(window, document) {
     this.window = window;
     this.document = document;
+    if (document.body?.nodeType === 1 && typeof window.MutationObserver === "function") {
+      this.frameKeyboardBridge = new EmbeddedPaneKeyboardBridge({
+        keymaps: this.lumineEnvironment.keymaps,
+        workspace: this.lumineEnvironment.workspace,
+        views: this.lumineEnvironment.views,
+        window,
+        document,
+        enabled:
+          this.applicationDelegate.getWindowLoadSettings?.()?.embeddedPaneKeyboardBroker === true,
+      });
+      this.lumineEnvironment.keymaps.frameKeyboardBridge = this.frameKeyboardBridge;
+    }
     // Derive the initial visual state from the document instead of inheriting
     // a stale class when focus changed before this handler was installed. Some
     // embedders supply a minimal document-like object without `hasFocus`; keep
@@ -105,6 +118,9 @@ module.exports = class WindowEventHandler {
   }
 
   unsubscribe() {
+    this.frameKeyboardBridge?.dispose();
+    if (this.lumineEnvironment.keymaps.frameKeyboardBridge === this.frameKeyboardBridge)
+      this.lumineEnvironment.keymaps.frameKeyboardBridge = null;
     this.subscriptions.dispose();
   }
 
