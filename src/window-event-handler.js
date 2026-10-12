@@ -33,7 +33,11 @@ module.exports = class WindowEventHandler {
   initialize(window, document) {
     this.window = window;
     this.document = document;
-    if (document.body?.nodeType === 1 && typeof window.MutationObserver === "function") {
+    if (
+      document === window.document &&
+      document.body?.nodeType === 1 &&
+      typeof window.MutationObserver === "function"
+    ) {
       this.frameKeyboardBridge = new EmbeddedPaneKeyboardBridge({
         keymaps: this.lumineEnvironment.keymaps,
         workspace: this.lumineEnvironment.workspace,

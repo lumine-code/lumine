@@ -23,6 +23,22 @@ describe("WindowEventHandler", () => {
     lumine.installWindowEventHandler();
   });
 
+  it("keeps secondary documents outside the native renderer keyboard bridge", () => {
+    const rendererBridge = lumine.keymaps.frameKeyboardBridge;
+    const secondaryHandler = new WindowEventHandler({
+      lumineEnvironment: lumine,
+      applicationDelegate: lumine.applicationDelegate,
+    });
+    try {
+      secondaryHandler.initialize(window, document.implementation.createHTMLDocument());
+      expect(secondaryHandler.frameKeyboardBridge).toBeUndefined();
+      expect(lumine.keymaps.frameKeyboardBridge).toBe(rendererBridge);
+    } finally {
+      secondaryHandler.unsubscribe();
+    }
+    expect(lumine.keymaps.frameKeyboardBridge).toBe(rendererBridge);
+  });
+
   it("marks an unhandled drag as unavailable", () => {
     const event = {
       dataTransfer: { dropEffect: "move" },
