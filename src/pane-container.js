@@ -1,6 +1,7 @@
 const { find } = require("@lumine-code/underscore-plus");
 const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const { fileEditorForItem, embeddedEditorForItem } = require("./item-text-editors");
+const { confirmItemsClose } = require("./pane-item-close-batch");
 const Pane = require("./pane");
 const ItemRegistry = require("./item-registry");
 const { createPaneContainerElement } = require("./pane-container-element");
@@ -56,6 +57,15 @@ module.exports = class PaneContainer {
    */
   getWindow() {
     return this.editorWindow ?? null;
+  }
+
+  /** @private Prevent unrelated pane mutations from invalidating a pending presentation transfer. */
+  assertMutable() {
+    if (
+      this.workspace?.windowOperations?.has(this.getWindow()) &&
+      !this.workspace.windowMutationDepth
+    )
+      throw new Error("The editor window is completing a pane operation.");
   }
 
   getElement() {
@@ -206,6 +216,7 @@ module.exports = class PaneContainer {
   }
 
   setRoot(root) {
+    this.assertMutable();
     this.root = root;
     this.root.setParent(this);
     this.root.setContainer(this);
@@ -391,14 +402,11 @@ module.exports = class PaneContainer {
   }
 
   async confirmClose(options) {
-    for (const pane of this.getPanes()) {
-      for (const item of pane.getItems()) {
-        // Native dialogs must be answered one at a time, and cancellation
-        // makes every later prompt unnecessary.
-        if (!(await pane.promptToSaveItem(item, options))) return false;
-      }
-    }
-    return true;
+    return confirmItemsClose(
+      this.workspace,
+      this.getPanes().flatMap((pane) => pane.getItems().map((item) => ({ pane, item }))),
+      options,
+    );
   }
 
   activateNextPane() {

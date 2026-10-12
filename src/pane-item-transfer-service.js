@@ -2,6 +2,11 @@ const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item
 const { normalizeDescriptor } = require("./workspace-drop-protocol");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const { PaneItemOperationError, assertItemLocation } = require("./pane-item-contract");
+const {
+  awaitLifecycleCleanup,
+  captureLifecycleError,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 
 function cancelledError() {
   return Object.assign(new Error("The pane item transfer was cancelled"), { code: "ABORT_ERR" });
@@ -93,30 +98,127 @@ class PaneItemTransferService {
     const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
     this.assertLocalItem(item, sourcePane);
     const anchor = this.prepareDestination(item, sourcePane, options);
-    return sourcePane.transactActiveState(() => {
-      const pane = options.splitDirection
-        ? anchor[
-            `split${options.splitDirection[0].toUpperCase()}${options.splitDirection.slice(1)}`
-          ]({ activate: false })
-        : anchor;
-      if (pane === sourcePane) {
-        if (Number.isInteger(options.index)) sourcePane.moveItem(item, options.index);
-      } else {
-        sourcePane.moveItemToPane(item, pane, options.index, {
-          preserveSourcePane:
-            !!options.splitDirection && sourcePane.getContainer().getLocation() === "center",
-        });
-      }
-      if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
-      item.terminatePendingState?.();
-      pane.activateItem(item, { activatePane: options.activatePane !== false });
-      return { pane, item };
-    });
+    const sourceWindow = sourcePane.getContainer().getWindow();
+    const targetWindow = anchor.getContainer().getWindow();
+    if (sourceWindow && targetWindow && sourceWindow !== targetWindow) {
+      if (!targetWindow.isMain() && anchor.getContainer().getLocation() !== "center")
+        throw new PaneItemOperationError("DOCK_WINDOW", "Dock items belong to the main window.");
+      return this.workspace.runWindowOperation([sourceWindow, targetWindow], () =>
+        this.moveBetweenPresentations(
+          item,
+          sourcePane,
+          anchor,
+          { ...options },
+          { sourceWindow, targetWindow },
+        ),
+      );
+    }
+    return this.commitLocalMove(item, sourcePane, anchor, options);
+  }
+
+  commitLocalMove(item, sourcePane, anchor, options, privileged = false) {
+    const commit = () =>
+      sourcePane.transactActiveState(() => {
+        const pane = options.splitDirection
+          ? anchor[
+              `split${options.splitDirection[0].toUpperCase()}${options.splitDirection.slice(1)}`
+            ]({ activate: false })
+          : anchor;
+        if (pane === sourcePane) {
+          if (Number.isInteger(options.index)) sourcePane.moveItem(item, options.index);
+        } else {
+          sourcePane.moveItemToPane(item, pane, options.index, {
+            preserveSourcePane:
+              options.preserveSourcePane ||
+              (!!options.splitDirection && sourcePane.getContainer().getLocation() === "center"),
+          });
+        }
+        if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
+        item.terminatePendingState?.();
+        pane.activateItem(item, { activatePane: options.activatePane !== false });
+        return { pane, item };
+      });
+    return privileged ? this.workspace.runWindowMutation(commit) : commit();
+  }
+
+  async moveBetweenPresentations(item, source, target, options, context) {
+    const sourceIndex = source.getItems().indexOf(item);
+    const sourceActiveItem = source.getActiveItem();
+    const targetActiveItem = target.getActiveItem();
+    this.workspace.viewRegistry.getView(item);
+    const state = await item.prepareWindowChange?.(context);
+    let moved = false;
+    let result;
+    const failures = [];
+    try {
+      this.assertLocalItem(item, source);
+      this.prepareDestination(item, source, options);
+      if (
+        context.sourceWindow.isDestroyed() ||
+        context.targetWindow.isDestroyed() ||
+        context.targetWindow.windowService.closed ||
+        source.getContainer().getWindow() !== context.sourceWindow ||
+        target.getContainer().getWindow() !== context.targetWindow
+      )
+        throw cancelledError();
+      result = this.commitLocalMove(
+        item,
+        source,
+        target,
+        {
+          ...options,
+          preserveSourcePane: true,
+        },
+        true,
+      );
+      moved = true;
+      await item.didChangeWindow?.({ ...context, state });
+      if (context.targetWindow.windowService.closed) throw cancelledError();
+      if (
+        source.isAlive() &&
+        source.getItems().length === 0 &&
+        source.getContainer().shouldDestroyEmptyPanes()
+      )
+        this.workspace.runWindowMutation(() => source.destroy());
+    } catch (error) {
+      failures.push(error);
+      if (moved && source.isAlive() && target.getItems().includes(item)) {
+        captureLifecycleError(failures, () =>
+          this.workspace.runWindowMutation(() =>
+            source.transactActiveState(() => {
+              target.moveItemToPane(item, source, sourceIndex, { preserveSourcePane: true });
+              if (sourceActiveItem && source.getItems().includes(sourceActiveItem))
+                source.activateItem(sourceActiveItem);
+              if (targetActiveItem && target.getItems().includes(targetActiveItem))
+                target.activateItem(targetActiveItem, { activatePane: false });
+            }),
+          ),
+        );
+        await awaitLifecycleCleanup(failures, () =>
+          item.didChangeWindow?.({
+            sourceWindow: context.targetWindow,
+            targetWindow: context.sourceWindow,
+            state,
+            rollback: true,
+          }),
+        );
+      } else if (!moved)
+        await awaitLifecycleCleanup(failures, () =>
+          item.cancelWindowChange?.({ ...context, state }),
+        );
+    } finally {
+      captureLifecycleError(failures, () => {
+        if (typeof state?.dispose === "function") state.dispose();
+      });
+    }
+    throwLifecycleErrors(failures, "Unable to move the presentation and release its view state.");
+    return result;
   }
 
   hasIndependentCopyView(copy, source) {
     const root = this.workspace.viewRegistry.getView(copy);
-    if (!(root instanceof HTMLElement) || root.isConnected || root.parentNode) return false;
+    if (!root || root.nodeType !== 1 || !root.ownerDocument || root.isConnected || root.parentNode)
+      return false;
     const items = new Set([source, ...this.workspace.getPaneItems()]);
     for (const item of items) {
       if (item === copy) continue;
@@ -183,6 +285,10 @@ class PaneItemTransferService {
       contextUnchanged = false;
     });
     const origin = sourcePane.element;
+    const document =
+      origin?.ownerDocument ??
+      sourcePane.getContainer().getWindow()?.getDocument() ??
+      globalThis.document;
     let focusOrigin = document.activeElement;
     const focusChanged = (event) => {
       if (focusOrigin === document.body && origin?.contains(event.target))

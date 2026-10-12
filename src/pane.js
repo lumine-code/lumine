@@ -805,6 +805,7 @@ module.exports = class Pane {
    * @returns {*} added item.
    */
   addItem(item, options = {}) {
+    this.container?.assertMutable?.();
     const index = options.index != null ? options.index : this.getActiveItemIndex() + 1;
     const moved = options.moved != null ? options.moved : false;
     const pending = options.pending != null ? options.pending : false;
@@ -981,6 +982,7 @@ module.exports = class Pane {
   }
 
   removeItem(item, moved, { preservePane = false, retainView = false } = {}) {
+    this.container?.assertMutable?.();
     return this.transactActiveState(() => {
       const index = this.items.indexOf(item);
       if (index === -1) return;
@@ -1055,6 +1057,7 @@ module.exports = class Pane {
    * @param {Number} newIndex - indicating the index to which to move the item.
    */
   moveItem(item, newIndex) {
+    this.container?.assertMutable?.();
     const oldIndex = this.items.indexOf(item);
     this.items.splice(oldIndex, 1);
     this.items.splice(newIndex, 0, item);
@@ -1072,6 +1075,12 @@ module.exports = class Pane {
    * @param {Number} index - indicating the index to which to move the item in the given pane.
    */
   moveItemToPane(item, pane, index, { preserveSourcePane = false } = {}) {
+    this.container?.assertMutable?.();
+    pane.getContainer()?.assertMutable?.();
+    const document =
+      this.element?.ownerDocument ??
+      this.container?.getWindow()?.getDocument() ??
+      globalThis.document;
     if (!this.items.includes(item) || pane === this) return;
     assertItemLocation(item, pane.getContainer()?.getLocation() || "center");
     const sourceView = this.element?.views.getView(item);
@@ -1113,7 +1122,10 @@ module.exports = class Pane {
           }
           if (sourceView?.isConnected) {
             const destinationElement = pane.getElement();
-            if (destinationElement.isConnected) {
+            if (
+              destinationElement.isConnected &&
+              sourceView.ownerDocument === destinationElement.ownerDocument
+            ) {
               const display =
                 this.element.inlineDisplayStyles.get(sourceView) ||
                 (sourceView.style.display === "none" ? "" : sourceView.style.display);
@@ -1623,6 +1635,7 @@ module.exports = class Pane {
    * itself will not be destroyed.
    */
   destroy() {
+    this.container?.assertMutable?.();
     if (this.container && this.container.isAlive() && this.container.getPanes().length === 1) {
       return this.destroyItems();
     }
@@ -1728,6 +1741,7 @@ module.exports = class Pane {
   }
 
   split(orientation, side, params) {
+    this.container?.assertMutable?.();
     const incomingItems = (params?.items || []).filter(Boolean);
     this.container.itemRegistry.assertItemsAvailable(incomingItems);
     this.container.globalItemRegistry?.assertItemsAvailable(incomingItems);

@@ -37,8 +37,20 @@ module.exports = class ViewRegistry {
 
   clear() {
     this.views = new WeakMap();
+    this.paneItemDocuments = new WeakMap();
     this.providers = [];
     this.clearDocumentRequests();
+  }
+
+  /** @private Rebind presentation-only listeners after initial mounting or DOM adoption. */
+  didAttachPaneItem(item, pane, element) {
+    if (this.paneItemDocuments.get(item) === element.ownerDocument) return;
+    const window = pane.getContainer()?.getWindow();
+    if (!window || window.getDocument() !== element.ownerDocument) return;
+    const result = item.didAttachToWindow?.({ window, document: element.ownerDocument });
+    if (result?.then)
+      throw new TypeError("didAttachToWindow must bind presentation listeners synchronously.");
+    this.paneItemDocuments.set(item, element.ownerDocument);
   }
 
   /**

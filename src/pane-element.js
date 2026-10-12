@@ -7,6 +7,7 @@ class PaneElement extends HTMLElement {
     this.attached = false;
     this.subscriptions = new CompositeDisposable();
     this.inlineDisplayStyles = new WeakMap();
+    this.itemViewsByItem = new Map();
     this.subscribeToDOMEvents();
     this.itemViews = this.ownerDocument.createElement("div");
   }
@@ -34,6 +35,12 @@ class PaneElement extends HTMLElement {
   }
 
   connectedMoveCallback() {}
+
+  adoptedCallback() {
+    if (!this.model || !this.views) return;
+    for (const [item, view] of this.itemViewsByItem)
+      if (this.itemViews.contains(view)) this.views.didAttachPaneItem(item, this.model, view);
+  }
 
   initializeContent() {
     // `observeActive()` runs during initialization, before this element is
@@ -173,6 +180,8 @@ class PaneElement extends HTMLElement {
     if (!this.itemViews.contains(itemView)) {
       this.itemViews.appendChild(itemView);
     }
+    this.itemViewsByItem.set(item, itemView);
+    this.views.didAttachPaneItem(item, this.model, itemView);
     // Exactly one view is ever shown, so hiding the one that was showing beats
     // walking every view the pane has accumulated — that walk turns switching
     // tabs into work proportional to how many items have been opened.
@@ -213,6 +222,7 @@ class PaneElement extends HTMLElement {
   }
 
   itemRemoved({ item, index: _index, destroyed: _destroyed, moved, retainView }) {
+    this.itemViewsByItem.delete(item);
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
       const hadFocus = viewToRemove.contains(this.ownerDocument.activeElement);
@@ -232,6 +242,7 @@ class PaneElement extends HTMLElement {
   }
 
   paneDestroyed() {
+    this.itemViewsByItem.clear();
     this.subscriptions.dispose();
     if (this.changePathDisposable != null) {
       this.changePathDisposable.dispose();

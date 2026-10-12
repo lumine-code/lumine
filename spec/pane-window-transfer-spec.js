@@ -90,4 +90,36 @@ describe("Pane window transfer", () => {
     expect(target.getPaneItems()).toEqual([]);
     expect(editor.isDestroyed()).toBeFalse();
   });
+
+  it("attempts every rollback and preparation disposal after a failed presentation", async () => {
+    const first = await workspace.open();
+    const second = await workspace.open(undefined, { forceNew: true });
+    const pane = workspace.paneForItem(first);
+    const firstDispose = jasmine.createSpy("firstDispose");
+    const secondDispose = jasmine.createSpy("secondDispose");
+    first.prepareWindowChange = () => ({ dispose: firstDispose });
+    second.prepareWindowChange = () => ({ dispose: secondDispose });
+    first.didChangeWindow = ({ rollback }) => {
+      throw new Error(rollback ? "rollback failed" : "mount failed");
+    };
+    const rolledBack = jasmine.createSpy("rolledBack");
+    second.didChangeWindow = ({ rollback }) => {
+      if (rollback) rolledBack();
+    };
+    let failure;
+    try {
+      await transferPaneLayout(workspace, source, target, [pane]);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure.errors.map((error) => error.message)).toEqual([
+      "mount failed",
+      "rollback failed",
+    ]);
+    expect(rolledBack).toHaveBeenCalledTimes(1);
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(secondDispose).toHaveBeenCalledTimes(1);
+    expect(pane.getItems()).toEqual([first, second]);
+    expect(pane.getContainer()).toBe(source);
+  });
 });

@@ -1252,47 +1252,52 @@ class Environment {
 
   async prepareToUnloadEditorWindow() {
     try {
-      await this.saveState({ isUnloading: true });
-    } catch (error) {
-      console.error(error);
-    }
+      await this.workspace?.whenWindowOperationsIdle();
+      try {
+        await this.saveState({ isUnloading: true });
+      } catch (error) {
+        console.error(error);
+      }
 
-    const closing =
-      !this.workspace ||
-      (await this.workspace.confirmClose({
-        windowCloseRequested: true,
-        projectHasPaths: this.project.getPaths().length > 0,
-      }));
+      const closing =
+        !this.workspace ||
+        (await this.workspace.confirmClose({
+          windowCloseRequested: true,
+          projectHasPaths: this.project.getPaths().length > 0,
+        }));
 
-    if (closing) {
-      this.unloading = true;
-      // Package deactivation runs while the window is still visible. Mark the
-      // document first so package-owned empty-workspace UI can disappear
-      // without briefly leaving core's empty-pane mark behind on its own.
-      this.document.body.classList.add("is-unloading");
-      // Every orderly unload deactivates, reload included. Skipping it there
-      // used to be how a package that would not finish deactivating was kept
-      // from hanging the reload; `timeout` is that guarantee now, and it holds
-      // for every package rather than for the one that misbehaved. The cost is
-      // the slowest single deactivation, since they run concurrently.
-      //
-      // What this buys is a teardown that happens while the environment is
-      // still whole: deactivation finishes, the reply crosses to the main
-      // process, and only then does the window navigate. Anything a package
-      // deferred to a later frame on its way out therefore runs before
-      // `destroy()` takes the workspace away.
-      await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
-      // Watchers are not package-owned, and stopping them only from the later
-      // DOM unload hook is too late for a caller that must release a project or
-      // configuration directory before the renderer disappears. In
-      // particular, Windows keeps the directory undeletable until the watcher
-      // worker confirms its handles are closed.
-      await this.fileWatchClient.close();
-      this.stateStore.close();
-      this.projectStateIndex.close();
-      this.workspace.closeStateStore();
+      if (closing) {
+        this.unloading = true;
+        // Package deactivation runs while the window is still visible. Mark the
+        // document first so package-owned empty-workspace UI can disappear
+        // without briefly leaving core's empty-pane mark behind on its own.
+        this.document.body.classList.add("is-unloading");
+        // Every orderly unload deactivates, reload included. Skipping it there
+        // used to be how a package that would not finish deactivating was kept
+        // from hanging the reload; `timeout` is that guarantee now, and it holds
+        // for every package rather than for the one that misbehaved. The cost is
+        // the slowest single deactivation, since they run concurrently.
+        //
+        // What this buys is a teardown that happens while the environment is
+        // still whole: deactivation finishes, the reply crosses to the main
+        // process, and only then does the window navigate. Anything a package
+        // deferred to a later frame on its way out therefore runs before
+        // `destroy()` takes the workspace away.
+        await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
+        // Watchers are not package-owned, and stopping them only from the later
+        // DOM unload hook is too late for a caller that must release a project or
+        // configuration directory before the renderer disappears. In
+        // particular, Windows keeps the directory undeletable until the watcher
+        // worker confirms its handles are closed.
+        await this.fileWatchClient.close();
+        this.stateStore.close();
+        this.projectStateIndex.close();
+        this.workspace.closeStateStore();
+      } else if (this.workspace) this.workspace.windowLifecycleChanging = false;
+      return closing;
+    } finally {
+      if (!this.unloading && this.workspace) this.workspace.windowLifecycleChanging = false;
     }
-    return closing;
   }
 
   unloadEditorWindow() {
@@ -1706,13 +1711,13 @@ class Environment {
 
     startTime = Date.now();
     if (state.workspace) {
-      this.workspace.deserialize(state.workspace, this.deserializers, options, assertCurrent);
-      await this.workspace.restoreEditorWindows(
+      const prepared = await this.workspace.prepareEditorWindowRestore(
         state.workspace,
-        this.deserializers,
         options,
         assertCurrent,
       );
+      this.workspace.deserialize(prepared.state, this.deserializers, options, assertCurrent);
+      await this.workspace.restoreEditorWindows(prepared, this.deserializers, assertCurrent);
     }
     assertCurrent();
     this.deserializeTimings.workspace = Date.now() - startTime;

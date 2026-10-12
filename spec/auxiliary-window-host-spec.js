@@ -106,4 +106,123 @@ describe("Auxiliary editor windows", () => {
       binding.dispose();
     }
   });
+
+  it("detaches one exact tab and preserves the other tabs' order", async () => {
+    const workspace = lumine.workspace;
+    const first = await workspace.open();
+    const second = await workspace.open(undefined, { forceNew: true });
+    const third = await workspace.open(undefined, { forceNew: true });
+    const pane = workspace.paneForItem(first);
+    const element = second.getElement();
+    const attached = [];
+    second.didAttachToWindow = ({ document }) => attached.push(document);
+    const extra = await workspace.detachItem(second);
+    expect(pane.getItems()).toEqual([first, third]);
+    expect(extra.getEditorContainer().getPaneItems()).toEqual([second]);
+    expect(second.getElement()).toBe(element);
+    expect(element.ownerDocument).toBe(extra.getDocument());
+    expect(attached).toEqual([extra.getDocument()]);
+    await workspace.movePaneItem(second, { targetPane: pane, index: 1 });
+    expect(pane.getItems()).toEqual([first, second, third]);
+    expect(attached).toEqual([extra.getDocument(), document]);
+  });
+
+  it("restores the exact tab and its view after a destination presentation failure", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    const pane = workspace.paneForItem(editor);
+    const extra = await workspace.openEditorWindow({ show: false });
+    editor.prepareWindowChange = () => ({ scroll: 23 });
+    editor.didChangeWindow = ({ state, rollback }) => {
+      expect(state).toEqual({ scroll: 23 });
+      if (!rollback) throw new Error("unable to mount");
+    };
+    await expectAsync(
+      workspace.movePaneItem(editor, { targetPane: extra.getEditorContainer().getActivePane() }),
+    ).toBeRejectedWithError("unable to mount");
+    expect(editor.isDestroyed()).toBeFalse();
+    expect(pane.getItems()).toEqual([editor]);
+    expect(editor.getElement().ownerDocument).toBe(document);
+    expect(extra.getEditorContainer().getPaneItems()).toEqual([]);
+  });
+
+  it("asks once for a document when every one of its views is closing", async () => {
+    lumine.config.set("core.promptOnCloseDirtyBuffer", true);
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("unsaved document");
+    editor.shouldPromptToSave.and.callThrough();
+    const extra = await workspace.openEditorWindow({ show: false });
+    extra.getEditorContainer().getActivePane().activateItem(editor.copy());
+    const mainConfirm = spyOn(workspace.getMainWindow(), "confirm").and.resolveTo(2);
+    const extraConfirm = spyOn(extra, "confirm").and.resolveTo(2);
+    expect(editor.getFileState()).not.toBe("unmodified");
+    expect(
+      editor.shouldPromptToSave({
+        lastView: true,
+        windowCloseRequested: true,
+        projectHasPaths: false,
+      }),
+    ).toBeTrue();
+    expect(workspace.paneForItem(editor).getContainer().getWindow()).toBe(
+      workspace.getMainWindow(),
+    );
+    expect(
+      await workspace.confirmClose({ windowCloseRequested: true, projectHasPaths: false }),
+    ).toBeTrue();
+    expect(mainConfirm).toHaveBeenCalledTimes(1);
+    expect(extraConfirm).not.toHaveBeenCalled();
+  });
+
+  it("closes an additional view silently while its dirty document stays open elsewhere", async () => {
+    lumine.config.set("core.promptOnCloseDirtyBuffer", true);
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("keep these edits");
+    editor.shouldPromptToSave.and.callThrough();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const copy = editor.copy();
+    extra.getEditorContainer().getActivePane().activateItem(copy);
+    const confirm = spyOn(extra, "confirm").and.resolveTo(1);
+    expect(await extra.close()).toBeTrue();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(copy.isDestroyed()).toBeTrue();
+    expect(editor.getText()).toBe("keep these edits");
+    expect(editor.isDestroyed()).toBeFalse();
+  });
+
+  it("restores unavailable native windows' unsaved tabs into main before deserializing views", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("preserve a failed host's document");
+    const extra = await workspace.detachPane(workspace.paneForItem(editor));
+    const state = lumine.serialize({ isUnloading: true });
+    spyOn(workspace, "openEditorWindow").and.rejectWith(new Error("native host unavailable"));
+    const warning = spyOn(lumine.notifications, "addWarning");
+    await lumine.deserialize(state);
+    expect(extra.isDestroyed()).toBeTrue();
+    expect(workspace.getWindows()).toEqual([workspace.getMainWindow()]);
+    expect(workspace.getTextEditors()).toHaveSize(1);
+    expect(workspace.getActiveTextEditor().getText()).toBe("preserve a failed host's document");
+    expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the source layout while an asynchronous presentation is prepared", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    const pane = workspace.paneForItem(editor);
+    let complete;
+    editor.prepareWindowChange = () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      });
+    const transfer = workspace.detachPane(pane);
+    await conditionPromise(() => complete);
+    expect(() => pane.splitRight()).toThrowError(/completing a pane operation/);
+    expect(() => pane.destroy()).toThrowError(/completing a pane operation/);
+    expect(editor.isDestroyed()).toBeFalse();
+    complete();
+    const extra = await transfer;
+    expect(workspace.paneForItem(editor).getContainer()).toBe(extra.getEditorContainer());
+  });
 });

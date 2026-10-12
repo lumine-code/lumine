@@ -336,6 +336,35 @@ module.exports = function ({
         ).activatePreviousPane();
       },
       ...paneItemCommands(notificationManager),
+      "pane:detach": {
+        description: "Move this pane and its tabs into an additional editor window.",
+        didDispatch: function (event) {
+          const workspace = this.getModel();
+          const pane = paneForCommand(workspace, event);
+          if (!pane) return;
+          return workspace
+            .detachPane(pane)
+            .catch((error) =>
+              notificationManager.addWarning("Unable to detach this pane.", {
+                detail: error.message,
+              }),
+            );
+        },
+      },
+      "window:attach-to-main-window": {
+        description: "Move every pane of this editor window back into the main window.",
+        didDispatch: function (event) {
+          const window = event?.context?.window;
+          if (!window || window.isMain()) return;
+          return this.getModel()
+            .attachWindow(window)
+            .catch((error) =>
+              notificationManager.addWarning("Unable to attach this window.", {
+                detail: error.message,
+              }),
+            );
+        },
+      },
       "window:save-all": function () {
         return settleSaveCommand(this.getModel().saveAll());
       },

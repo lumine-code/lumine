@@ -41,6 +41,12 @@ module.exports = class AuxiliaryWindowHost {
       editorWindow.persistentId = descriptor.persistentId;
       editorWindow.subscriptions.add(new Disposable(() => service.destroy()));
       const document = domWindow.document;
+      Object.defineProperty(domWindow, "lumine", { value: environment, configurable: true });
+      editorWindow.subscriptions.add(
+        new Disposable(() => {
+          delete domWindow.lumine;
+        }),
+      );
       document.title = "Lumine";
       document.documentElement.className = environment.document.documentElement.className;
       document.body.className = environment.document.body.className;
@@ -60,6 +66,8 @@ module.exports = class AuxiliaryWindowHost {
         styleManager: environment.styles,
         viewRegistry: environment.views,
       });
+      for (const theme of environment.themes.getActiveThemes())
+        root.classList.add(`theme-${theme.name}`);
       document.body.append(root);
       editorWindow.subscriptions.add(
         new Disposable(() => {

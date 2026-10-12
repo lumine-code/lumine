@@ -391,6 +391,17 @@
             {
               "label": "Close Pane",
               "command": "pane:close"
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "label": "Detach Pane",
+              "command": "pane:detach"
+            },
+            {
+              "label": "Attach to Main Window",
+              "command": "window:attach-to-main-window"
             }
           ]
         },
@@ -687,6 +698,13 @@
       {
         "label": "Close Pane",
         "command": "pane:close"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Detach Pane",
+        "command": "pane:detach"
       },
       {
         "type": "separator"

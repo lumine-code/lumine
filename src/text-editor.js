@@ -1869,15 +1869,19 @@ module.exports = class TextEditor {
 
   // Determine whether the user should be prompted to save before closing
   // this editor.
-  shouldPromptToSave({ windowCloseRequested, projectHasPaths } = {}) {
+  shouldPromptToSave({ windowCloseRequested, projectHasPaths, lastView } = {}) {
     if (!lumine.config.get("core.promptOnCloseDirtyBuffer")) {
       return false;
     }
+    if (lastView === false) return false;
 
     if (windowCloseRequested && projectHasPaths && lumine.stateStore.isConnected()) {
       return this.getFileState() === "conflicted" || this.getFileState() === "removed";
     } else {
-      return this.getFileState() !== "unmodified" && !this.buffer.hasMultipleEditors();
+      return (
+        this.getFileState() !== "unmodified" &&
+        (lastView === true || !this.buffer.hasMultipleEditors())
+      );
     }
   }
 

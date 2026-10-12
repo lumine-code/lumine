@@ -962,19 +962,25 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   addActiveThemeClasses(themes = this.getActiveThemes()) {
-    const workspaceElement = this.viewRegistry.getView(this.workspace);
-    if (workspaceElement) {
-      for (const pack of themes) {
-        workspaceElement.classList.add(`theme-${pack.name}`);
+    const roots = new Set([
+      this.viewRegistry.getView(this.workspace),
+      ...(this.workspace.getWindows?.() ?? []).map((window) => window.getElement()),
+    ]);
+    for (const workspaceElement of roots)
+      if (workspaceElement) {
+        for (const pack of themes) {
+          workspaceElement.classList.add(`theme-${pack.name}`);
+        }
       }
-    }
   }
 
   removeActiveThemeClasses(themes = this.getActiveThemes()) {
-    const workspaceElement = this.viewRegistry.getView(this.workspace);
-    if (!workspaceElement) return;
-    for (const pack of themes) {
-      workspaceElement.classList.remove(`theme-${pack.name}`);
-    }
+    const roots = new Set([
+      this.viewRegistry.getView(this.workspace),
+      ...(this.workspace.getWindows?.() ?? []).map((window) => window.getElement()),
+    ]);
+    for (const workspaceElement of roots)
+      if (workspaceElement)
+        for (const pack of themes) workspaceElement.classList.remove(`theme-${pack.name}`);
   }
 };

@@ -2,6 +2,7 @@
 
 const TextEditor = require("./text-editor");
 const PaneContainer = require("./pane-container");
+const { confirmItemsClose } = require("./pane-item-close-batch");
 const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 /**
@@ -487,9 +488,11 @@ module.exports = class WorkspaceCenter {
   }
 
   confirmClose(options) {
-    return Promise.all(
-      this.getPaneContainers().map((container) => container.confirmClose(options)),
-    ).then((results) => results.every(Boolean));
+    return confirmItemsClose(
+      this.params.workspace,
+      this.getPanes().flatMap((pane) => pane.getItems().map((item) => ({ pane, item }))),
+      options,
+    );
   }
 
   /**

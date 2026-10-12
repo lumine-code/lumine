@@ -17,6 +17,7 @@ const WorkspaceCenter = require("./workspace-center");
 const EditorWindow = require("./editor-window");
 const transferPaneLayout = require("./pane-window-transfer");
 const { fileEditorForItem, embeddedEditorForItem } = require("./item-text-editors");
+const { confirmItemsClose } = require("./pane-item-close-batch");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
 // Builds detached dialog models and their optional modal hosts with this
@@ -147,6 +148,27 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * after committing and invoke `terminatePendingState()` to cancel pending reuse.
  *
  * ### Optional Methods
+ *
+ * #### Presentation window lifecycle
+ *
+ * `didAttachToWindow({window, document})` synchronously binds presentation-only
+ * listeners after first mounting or DOM adoption. Use that document and its
+ * defaultView for UI, while retaining workspace-owned models and resources.
+ *
+ * `prepareWindowChange({sourceWindow, targetWindow})` may asynchronously capture
+ * state that DOM adoption cannot retain, such as an iframe's browsing context.
+ * Its returned state is passed to `didChangeWindow({...context, state})` after
+ * movement. Rollback invokes that method with reversed windows and
+ * `rollback: true`; a preparation cancelled before movement invokes
+ * `cancelWindowChange({...context, state})`. A returned state may implement
+ * `dispose()` to release temporary resources after commit or rollback.
+ * These methods preserve the live document, terminal or kernel; they do not
+ * reopen an item through its URI. Layout mutations in participating windows
+ * remain locked while their presentation operation is pending.
+ *
+ * `getPaneItemDocument()` may return a shared document object used by independent
+ * views. Close batches confirm that document once, passing `lastView` to
+ * `shouldPromptToSave`. Text editors use their buffer as the document identity.
  *
  * #### `getElement()`
  *
@@ -482,6 +504,8 @@ module.exports = class Workspace extends Model {
 
   /** @private Prevent close and transfer from mutating the same container concurrently. */
   runWindowOperation(windows, callback) {
+    if (this.windowLifecycleChanging)
+      return Promise.reject(new Error("The workspace windows are preparing to unload."));
     if (windows.some((window) => this.windowOperations.has(window)))
       return Promise.reject(new Error("An editor window operation is already in progress."));
     const operation = Promise.resolve().then(callback);
@@ -491,6 +515,22 @@ module.exports = class Workspace extends Model {
         if (this.windowOperations.get(window) === operation) this.windowOperations.delete(window);
       }
     });
+  }
+
+  /** @private A synchronous mutation phase excludes external layout changes during transfer. */
+  runWindowMutation(callback) {
+    this.windowMutationDepth = (this.windowMutationDepth ?? 0) + 1;
+    try {
+      return callback();
+    } finally {
+      this.windowMutationDepth--;
+    }
+  }
+
+  /** @private Finish transfers before serializing or releasing the shared runtime. */
+  async whenWindowOperationsIdle() {
+    this.windowLifecycleChanging = true;
+    await Promise.allSettled([...new Set(this.windowOperations.values())]);
   }
 
   /**
@@ -604,11 +644,17 @@ module.exports = class Workspace extends Model {
     if (pending) return false;
     return this.runWindowOperation([editorWindow], async () => {
       const container = editorWindow.getEditorContainer();
+      const items = container.getPaneItems();
       if (
         !(await container.confirmClose({
-          windowCloseRequested: true,
+          windowCloseRequested: false,
           projectHasPaths: this.project.getPaths().length > 0,
         }))
+      )
+        return false;
+      if (
+        container.getPaneItems().length !== items.length ||
+        container.getPaneItems().some((item, index) => item !== items[index])
       )
         return false;
       await this.releaseEditorWindow(editorWindow);
@@ -622,7 +668,7 @@ module.exports = class Workspace extends Model {
     const domWindow = editorWindow.getDOMWindow();
     const errors = [];
     for (const cleanup of [
-      () => container.destroy(),
+      () => this.runWindowMutation(() => container.destroy()),
       () => this.getCenter().removePaneContainer(container),
       () => editorWindow.destroy(),
       () => editorWindow.windowService.close(),
@@ -665,7 +711,9 @@ module.exports = class Workspace extends Model {
       try {
         await transferPaneLayout(this, source, destination.getEditorContainer(), [pane]);
       } catch (error) {
-        await this.releaseEditorWindow(destination);
+        if (destination.getEditorContainer().getPaneItems().length === 0)
+          await this.releaseEditorWindow(destination);
+        else await destination.windowService.show();
         throw error;
       } finally {
         this.windowOperations.delete(destination);
@@ -674,6 +722,35 @@ module.exports = class Workspace extends Model {
       await destination.focus();
       return destination;
     });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Move one exact document tab into a new editor window sharing this workspace.
+   * @param {Object} item - A live center pane item.
+   * @returns {Promise<EditorWindow>} The additional presentation.
+   */
+  async detachItem(item) {
+    const pane = this.paneForItem(item);
+    if (!pane || pane.getContainer().getLocation() !== "center")
+      throw new Error("Only document tabs of this workspace can be detached.");
+    const destination = await this.openEditorWindow({ show: false });
+    try {
+      await this.movePaneItem(item, {
+        sourcePane: pane,
+        targetPane: destination.getEditorContainer().getActivePane(),
+      });
+    } catch (error) {
+      if (destination.getEditorContainer().getPaneItems().length === 0)
+        await this.releaseEditorWindow(destination);
+      else await destination.windowService.show();
+      throw error;
+    }
+    await destination.windowService.show();
+    await destination.focus();
+    return destination;
   }
 
   /**
@@ -1031,20 +1108,69 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  /** @private Restore physical hosts after the shared project's buffers and main layout. */
-  async restoreEditorWindows(state, deserializers, options = {}, assertCurrent = () => {}) {
-    if (options.locations && !options.locations.includes("center")) return;
+  /** @private Prepare hosts before deserializing documents; unavailable hosts restore in main. */
+  async prepareEditorWindowRestore(state, options = {}, assertCurrent = () => {}) {
+    const prepared = { state, retiring: [], windows: [] };
+    if (options.locations && !options.locations.includes("center")) return prepared;
     const guard = this.#layoutGuard(assertCurrent);
     guard();
-    await this.discardEditorWindows();
-    guard();
-    const center = state.paneContainers?.center;
-    for (const saved of center?.windows ?? []) {
-      const window = await this.openEditorWindow({
-        show: false,
-        bounds: saved.bounds,
-        persistentId: saved.id,
-      });
+    prepared.retiring = this.getWindows().filter((window) => !window.isMain());
+    const original = state.paneContainers?.center;
+    const center = original?.main
+      ? { ...original, main: { ...original.main }, windows: [] }
+      : original;
+    prepared.state = { ...state, paneContainers: { ...state.paneContainers, center } };
+    try {
+      for (const saved of original?.windows ?? []) {
+        try {
+          const window = await this.openEditorWindow({
+            show: false,
+            bounds: saved.bounds,
+            persistentId: saved.id,
+          });
+          prepared.windows.push({ saved, window });
+          guard();
+        } catch (error) {
+          guard();
+          const incoming = saved.container.root;
+          const root = center.main.root;
+          center.main.root =
+            root?.deserializer === "Pane" && !root.items.length
+              ? incoming
+              : {
+                  deserializer: "PaneAxis",
+                  orientation: "horizontal",
+                  flexScale: 1,
+                  children: [root, incoming],
+                };
+          if (original.activeWindowId === saved.id) {
+            center.activeWindowId = "main";
+            center.main.activePaneId = saved.container.activePaneId;
+          }
+          this.notificationManager.addWarning(
+            "An editor window could not be restored. Its tabs were restored in the main window.",
+            { detail: error.message },
+          );
+        }
+      }
+    } catch (error) {
+      for (const { window } of prepared.windows)
+        if (!window.isDestroyed() && !window.getEditorContainer().getPaneItems().length)
+          await this.releaseEditorWindow(window);
+      throw error;
+    }
+
+    return prepared;
+  }
+
+  /** @private Restore each prepared physical layout using the shared project's buffers. */
+  async restoreEditorWindows(prepared, deserializers, assertCurrent = () => {}) {
+    const guard = this.#layoutGuard(assertCurrent);
+    for (const window of prepared.retiring) {
+      guard();
+      await this.releaseEditorWindow(window);
+    }
+    for (const { saved, window } of prepared.windows) {
       try {
         guard();
         window.getEditorContainer().deserialize(saved.container, deserializers);
@@ -1057,6 +1183,7 @@ module.exports = class Workspace extends Model {
         throw error;
       }
     }
+    const center = prepared.state.paneContainers?.center;
     const active = this.getWindows().find(
       (window) => window.persistentId === center?.activeWindowId,
     );
@@ -3336,9 +3463,11 @@ module.exports = class Workspace extends Model {
 
   confirmClose(options) {
     const locations = options?.locations || ALL_LOCATIONS;
-    return Promise.all(
-      locations.map((location) => this.paneContainers[location].confirmClose(options)),
-    ).then((results) => !results.includes(false));
+    return confirmItemsClose(
+      this,
+      this.getPanesIn(locations).flatMap((pane) => pane.getItems().map((item) => ({ pane, item }))),
+      options,
+    );
   }
 
   /**
