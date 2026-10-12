@@ -13,6 +13,7 @@ describe("embedded pane keyboard renderer bridge", () => {
     jasmine.attachToDOM(element);
     spyOn(document, "hasFocus").and.returnValue(true);
     root = document.createElement("div");
+    root.tabIndex = -1;
     frame = document.createElement("iframe");
     frame.className = "native-frame-test";
     root.appendChild(frame);
@@ -48,6 +49,8 @@ describe("embedded pane keyboard renderer bridge", () => {
     bridge.refresh();
   });
   afterEach(() => {
+    if (root?.isConnected) root.focus();
+    frame?.remove();
     registration?.dispose();
     registration = null;
     bridge.dispose();
