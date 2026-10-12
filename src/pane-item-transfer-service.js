@@ -140,6 +140,7 @@ class PaneItemTransferService {
   }
 
   async copyPaneItem(item, options = {}) {
+    options = { ...options };
     const sourcePane = options.sourcePane || this.workspace.paneForItem(item);
     this.assertLocalItem(item, sourcePane);
     if (item.isSingleton?.() === true) {

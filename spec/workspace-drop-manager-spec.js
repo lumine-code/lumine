@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const path = require("path");
 const { Disposable } = require("@lumine-code/event-kit");
 const { MIME_PREFIX } = require("../src/workspace-drop-manager");
@@ -185,7 +186,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("routes the complete event sequence and creates a split only during perform", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const dataTransfer = new TestDataTransfer();
     manager.write(dataTransfer, {
       kind: "spec-item",
@@ -235,8 +236,8 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("creates a drop split without activating its empty context", async () => {
-    const initialItem = document.createElement("div");
-    const droppedItem = document.createElement("div");
+    const initialItem = copyableElement("div");
+    const droppedItem = copyableElement("div");
     pane.addItem(initialItem);
     const observed = [];
     disposables.push(lumine.workspace.onDidChangeActivePaneItem((item) => observed.push(item)));
@@ -292,7 +293,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("classifies native files asynchronously, opens files in a split and folders here", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const directoryPath = path.join(__dirname, "fixtures");
     const dataTransfer = new TestDataTransfer();
@@ -307,7 +308,7 @@ describe("WorkspaceDropManager", () => {
     const openingFile = new Promise((resolve) => (finishOpeningFile = resolve));
     spyOn(lumine.workspace, "open").and.callFake(async (_filePath, { pane: targetPane }) => {
       await openingFile;
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       targetPane.addItem(item);
       return item;
     });
@@ -336,7 +337,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("opens a native folder in the current window without proposing a split", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const directoryPath = path.join(__dirname, "fixtures");
     const dataTransfer = new TestDataTransfer();
     dataTransfer.files = [{ path: directoryPath }];
@@ -358,7 +359,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("opens only file entries from a mixed tree-view descriptor", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const directoryPath = path.join(__dirname, "fixtures");
     const dataTransfer = new TestDataTransfer();
@@ -373,7 +374,7 @@ describe("WorkspaceDropManager", () => {
     });
     dataTransfer.mode = "protected";
     spyOn(lumine.workspace, "open").and.callFake(async (_filePath, { pane: targetPane }) => {
-      const item = document.createElement("div");
+      const item = copyableElement("div");
       targetPane.addItem(item);
       return item;
     });
@@ -389,7 +390,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("materializes a tree-view split with its first opened item", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const dataTransfer = new TestDataTransfer();
     manager.write(dataTransfer, {
@@ -399,7 +400,7 @@ describe("WorkspaceDropManager", () => {
       items: [{ type: "file", path: filePath }],
     });
     dataTransfer.mode = "protected";
-    const item = document.createElement("div");
+    const item = copyableElement("div");
     let finishOpeningFile;
     const openingFile = new Promise((resolve) => (finishOpeningFile = () => resolve(item)));
     const createItem = spyOn(lumine.workspace, "createItemForURI").and.returnValue(openingFile);
@@ -421,7 +422,7 @@ describe("WorkspaceDropManager", () => {
   });
 
   it("rolls back a split when none of its dropped files can be opened", async () => {
-    pane.addItem(document.createElement("div"));
+    pane.addItem(copyableElement("div"));
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const dataTransfer = new TestDataTransfer();
     dataTransfer.files = [{ path: filePath }];

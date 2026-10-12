@@ -268,6 +268,24 @@ describe("workspace pane item operations", () => {
     expect(workspace.getActivePane()).toBe(targetPane);
   });
 
+  it("captures destination options before awaiting a provider", async () => {
+    let finish;
+    item.copy = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const options = { targetPane, activatePane: false };
+    const operation = workspace.copyPaneItem(item, options);
+    delete options.targetPane;
+    options.splitDirection = "down";
+    options.activatePane = true;
+    finish(viewItem());
+    const result = await operation;
+    expect(result.pane).toBe(targetPane);
+    expect(workspace.getCenter().getPanes().length).toBe(2);
+    expect(workspace.getActivePane()).toBe(sourcePane);
+  });
+
   it("terminates provider preview navigation after committing without cancelling its own copy", async () => {
     sourcePane.setPendingItem(item);
     item.terminatePendingState = jasmine

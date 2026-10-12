@@ -1,3 +1,4 @@
+const { copyableElement } = require("./helpers/pane-item-fixtures");
 const TextEditor = require("../src/text-editor");
 
 describe("WorkspaceCenter", () => {
@@ -29,14 +30,14 @@ describe("WorkspaceCenter", () => {
       const observed = [];
 
       const editorAddedBeforeRegisteringObserver = new TextEditor();
-      const nonEditorItemAddedBeforeRegisteringObserver = document.createElement("div");
+      const nonEditorItemAddedBeforeRegisteringObserver = copyableElement("div");
       pane.activateItem(editorAddedBeforeRegisteringObserver);
       pane.activateItem(nonEditorItemAddedBeforeRegisteringObserver);
 
       workspaceCenter.observeTextEditors((editor) => observed.push(editor));
 
       const editorAddedAfterRegisteringObserver = new TextEditor();
-      const nonEditorItemAddedAfterRegisteringObserver = document.createElement("div");
+      const nonEditorItemAddedAfterRegisteringObserver = copyableElement("div");
       pane.activateItem(editorAddedAfterRegisteringObserver);
       pane.activateItem(nonEditorItemAddedAfterRegisteringObserver);
 
