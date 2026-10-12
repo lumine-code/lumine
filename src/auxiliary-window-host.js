@@ -76,6 +76,7 @@ module.exports = class AuxiliaryWindowHost {
         }),
       );
       editorWindow.subscriptions.add(environment.commands.attach(domWindow));
+      editorWindow.subscriptions.add(environment.tooltips.attachWindow(domWindow));
       editorWindow.subscriptions.add(environment.keymaps.addDocumentTarget(document, root));
       const dropSurface = environment.workspaceDrops.attachPresentation(root);
       editorWindow.subscriptions.add(

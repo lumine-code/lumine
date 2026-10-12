@@ -3,7 +3,15 @@
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { createFocusTrap } = require("focus-trap");
 
-const HOST_OPTIONS = new Set(["item", "crumb", "visible", "restoreFocus", "priority", "className"]);
+const HOST_OPTIONS = new Set([
+  "item",
+  "crumb",
+  "visible",
+  "restoreFocus",
+  "priority",
+  "className",
+  "window",
+]);
 const INTERACTIVE_SELECTOR =
   "input, textarea, select, button, a[href], [tabindex], lumine-text-editor";
 
@@ -20,11 +28,21 @@ class InputDialogHost {
     validateHostOptions(options);
     this.model = model;
     this.services = services;
+    this.window =
+      options.window ?? services.workspace.getFocusedWindow() ?? services.workspace.getMainWindow();
+    if (!services.workspace.getWindows().includes(this.window) || this.window.isDestroyed())
+      throw new Error("A modal host requires a live editor window of its workspace.");
+    this.document = this.window.getDocument();
     this.options = { ...options };
     this.ownsModel = ownsModel;
     this.didDestroyCallback = didDestroy;
     this.emitter = new Emitter();
     this.disposables = new CompositeDisposable();
+    this.disposables.add(
+      this.window.onWillDestroy(() => {
+        void this.destroy();
+      }),
+    );
     this.panelDisposables = null;
     this.panel = null;
     this.focusTrap = null;
@@ -49,7 +67,7 @@ class InputDialogHost {
         void this.destroyFromModel();
       }),
       model.onDidRequestCancel(({ reason }) => {
-        if (reason === "actions-toggle") this.services.workspace.popModal();
+        if (reason === "actions-toggle") this.window.getModalFlow().pop();
         else this.cancel(reason);
       }),
       model.onDidRequestActions(() => this.consumeUiAction(this.showActions())),
@@ -85,7 +103,7 @@ class InputDialogHost {
     this.assertAlive();
     if (this.panel) return this.panel;
 
-    const panel = this.services.workspace.addModalPanel({
+    const panel = this.window.addModalPanel({
       item: this.options.item ?? this.model,
       visible: false,
       crumb: this.options.crumb,
@@ -112,7 +130,7 @@ class InputDialogHost {
     }
     if (this.options.visible === true) {
       this.options.visible = false;
-      this.pendingOpenerElement = document.activeElement;
+      this.pendingOpenerElement = this.document.activeElement;
       panel.show();
     }
     return panel;
@@ -134,7 +152,7 @@ class InputDialogHost {
     validateShowOptions(options);
     this.options.visible = false;
     this.suspendedByFlow = false;
-    if (!this.isVisible()) this.pendingOpenerElement = document.activeElement;
+    if (!this.isVisible()) this.pendingOpenerElement = this.document.activeElement;
     const panelOptions = {};
     this.openingQueryProvided = Object.prototype.hasOwnProperty.call(options, "query");
     this.selectOpeningQuery = options.selectQuery !== false;
@@ -464,7 +482,7 @@ class InputDialogHost {
   }
 
   willShowPanel() {
-    if (!this.suspendedByFlow) this.pendingOpenerElement = document.activeElement;
+    if (!this.suspendedByFlow) this.pendingOpenerElement = this.document.activeElement;
   }
 
   willHidePanel() {
@@ -475,7 +493,7 @@ class InputDialogHost {
     const resuming = this.suspendedByFlow;
     this.suspendedByFlow = false;
     if (!resuming) {
-      this.openerElement = this.pendingOpenerElement ?? document.activeElement;
+      this.openerElement = this.pendingOpenerElement ?? this.document.activeElement;
       this.pendingOpenerElement = null;
     }
     if (!resuming) this.sourcePromise = null;
@@ -546,6 +564,7 @@ class InputDialogHost {
   installFocusPolicy() {
     const element = this.panel.getElement();
     this.focusTrap = createFocusTrap(element, {
+      document: this.document,
       fallbackFocus: element,
       initialFocus: this.model.getQueryEditor().getElement(),
       escapeDeactivates: false,
@@ -571,8 +590,8 @@ class InputDialogHost {
 
   activateFocusTrap() {
     if (!this.pointerPolicyActive) {
-      document.addEventListener("mousedown", this.boundPointerDown, true);
-      document.addEventListener("touchstart", this.boundPointerDown, true);
+      this.document.addEventListener("mousedown", this.boundPointerDown, true);
+      this.document.addEventListener("touchstart", this.boundPointerDown, true);
       this.pointerPolicyActive = true;
     }
     this.focusTrap?.activate();
@@ -582,8 +601,8 @@ class InputDialogHost {
   deactivateFocusPolicy() {
     this.focusTrap?.deactivate();
     if (!this.pointerPolicyActive) return;
-    document.removeEventListener("mousedown", this.boundPointerDown, true);
-    document.removeEventListener("touchstart", this.boundPointerDown, true);
+    this.document.removeEventListener("mousedown", this.boundPointerDown, true);
+    this.document.removeEventListener("touchstart", this.boundPointerDown, true);
     this.pointerPolicyActive = false;
   }
 
@@ -606,7 +625,7 @@ class InputDialogHost {
     }
     const generation = this.panelLifecycleGeneration;
     requestAnimationFrame(() => {
-      if (!document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
+      if (!this.document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
       if (this.model.isActionPending()) return;
       this.cancel("focus-lost");
     });

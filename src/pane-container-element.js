@@ -30,7 +30,8 @@ class PaneContainerElement extends HTMLElement {
       const view = this.views.getView(root);
       if (view !== oldView) {
         const reference = oldView?.parentNode === this ? oldView : null;
-        if (view.isConnected && this.isConnected) this.moveBefore(view, reference);
+        if (view.isConnected && this.isConnected && view.ownerDocument === this.ownerDocument)
+          this.moveBefore(view, reference);
         else this.insertBefore(view, reference);
       }
       if (oldView && oldView !== view && oldView.parentNode === this) oldView.remove();

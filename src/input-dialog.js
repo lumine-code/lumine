@@ -590,7 +590,8 @@ class InputDialog {
 
   describeDialogAction(action, context) {
     let target = this.getElement();
-    if (action.dispatch === "workspace") target = this.services.workspace.getElement();
+    if (action.dispatch === "workspace")
+      target = this.host?.window.getElement() ?? this.services.workspace.getElement();
     if (action.dispatch === "opener") target = context.opener ?? this.getElement();
     const bindingTarget = this.queryEditor.getElement();
     const descriptor = this.services.commandRegistry.getCommandPresentation(action.command, {
@@ -623,7 +624,8 @@ class InputDialog {
 
   async dispatchAction({ action, context, signal }) {
     let target = this.getElement();
-    if (action.dispatch === "workspace") target = this.services.workspace.getElement();
+    if (action.dispatch === "workspace")
+      target = this.host?.window.getElement() ?? this.services.workspace.getElement();
     if (action.dispatch === "opener") target = context.opener ?? this.getElement();
 
     const previousDispatchedActionCommand = this.dispatchedActionCommand;
@@ -652,7 +654,7 @@ class InputDialog {
     const message = options?.message ?? "Perform this action?";
     const confirmText = options?.confirmText ?? "Confirm";
     const cancelText = options?.cancelText ?? "Cancel";
-    const response = await this.services.applicationDelegate.confirm({
+    const response = await (this.host?.window ?? this.services.applicationDelegate).confirm({
       message,
       detail: options?.detail,
       buttons: [confirmText, cancelText],
@@ -1280,7 +1282,9 @@ class InputDialog {
    * Use the active editor's single-line selection as the query.
    */
   setQueryFromSelection() {
-    const editor = this.services.workspace.getActiveTextEditor();
+    const editor =
+      this.host?.window.getEditorContainer().getActiveTextEditor() ??
+      this.services.workspace.getActiveTextEditor();
     if (!editor) return false;
     const text = editor.getSelectedText();
     if (!text || /\n/.test(text)) return false;

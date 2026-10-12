@@ -225,4 +225,48 @@ describe("Auxiliary editor windows", () => {
     const extra = await transfer;
     expect(workspace.paneForItem(editor).getContainer()).toBe(extra.getEditorContainer());
   });
+
+  it("hosts modal input and independent breadcrumb trails in the requested windows", async () => {
+    const workspace = lumine.workspace;
+    const extra = await workspace.openEditorWindow({ show: false });
+    const main = workspace.getMainWindow();
+    const mainHost = workspace.addInputDialog({ prompt: "Main" }, { window: main });
+    const extraHost = workspace.addInputDialog({ prompt: "Extra" }, { window: extra });
+    try {
+      await mainHost.show({ query: "main query" });
+      await extraHost.show({ query: "extra query" });
+      expect(mainHost.getPanel().getElement().ownerDocument).toBe(document);
+      expect(extraHost.getPanel().getElement().ownerDocument).toBe(extra.getDocument());
+      expect(extraHost.getModel().getQueryEditor().getElement().ownerDocument).toBe(
+        extra.getDocument(),
+      );
+      expect(mainHost.isVisible()).toBeTrue();
+      expect(extraHost.isVisible()).toBeTrue();
+      expect(mainHost.getModel().getQuery()).toBe("main query");
+      expect(extraHost.getModel().getQuery()).toBe("extra query");
+      expect(extra.getModalFlow()).not.toBe(main.getModalFlow());
+    } finally {
+      await mainHost.destroy();
+      await extraHost.destroy();
+    }
+  });
+
+  it("shows and cancels tooltips in their anchor's physical document", async () => {
+    const extra = await lumine.workspace.openEditorWindow({ show: false });
+    const button = extra.getDocument().createElement("button");
+    button.textContent = "Tooltip anchor";
+    extra.getElement().append(button);
+    const registration = lumine.tooltips.add(button, { title: "Local tooltip", delay: 0 });
+    try {
+      const tooltip = lumine.tooltips.findTooltips(button)[0];
+      tooltip.show();
+      expect(tooltip.getTooltipElement().ownerDocument).toBe(extra.getDocument());
+      expect(extra.getDocument().body.querySelector(".tooltip")).toBe(tooltip.getTooltipElement());
+      const domWindow = extra.getDOMWindow();
+      extra.getDocument().body.dispatchEvent(new domWindow.MouseEvent("click", { bubbles: true }));
+      expect(tooltip.getTooltipElement().classList.contains("in")).toBeFalse();
+    } finally {
+      registration.dispose();
+    }
+  });
 });

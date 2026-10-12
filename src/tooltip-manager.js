@@ -86,9 +86,32 @@ module.exports = class TooltipManager {
     this.tooltips = new Map();
     this.tooltipCancellationEvents = ["click", "contextmenu", "auxclick"];
     this.boundPointerAction = (event) => this.cancelTooltipsForPointerAction(event);
-    for (const eventName of this.tooltipCancellationEvents) {
-      window.addEventListener(eventName, this.boundPointerAction, true);
-    }
+    this.windows = new Map();
+    this.attachWindow(window);
+  }
+
+  /** @private A document owns cancellation and resize events for its tooltips. */
+  attachWindow(window) {
+    if (this.windows.has(window)) return new Disposable();
+    const hide = () => {
+      for (const [target, tooltips] of this.tooltips)
+        if (target.ownerDocument === window.document)
+          for (const tooltip of tooltips) tooltip.cancel();
+    };
+    for (const event of this.tooltipCancellationEvents)
+      window.addEventListener(event, this.boundPointerAction, true);
+    window.addEventListener("resize", hide);
+    window.addEventListener("blur", hide);
+    const disposable = new Disposable(() => {
+      hide();
+      for (const event of this.tooltipCancellationEvents)
+        window.removeEventListener(event, this.boundPointerAction, true);
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("blur", hide);
+      this.windows.delete(window);
+    });
+    this.windows.set(window, disposable);
+    return disposable;
   }
 
   /**
@@ -223,12 +246,7 @@ module.exports = class TooltipManager {
       tooltip.hide();
     };
 
-    // note: adding a listener here adds a new listener for every tooltip element that's registered.  Adding unnecessary listeners is bad for performance.  It would be better to add/remove listeners when tooltips are actually created in the dom.
-    window.addEventListener("resize", hideTooltip);
-
     const disposable = new Disposable(() => {
-      window.removeEventListener("resize", hideTooltip);
-
       hideTooltip();
       tooltip.destroy();
 
@@ -266,6 +284,7 @@ module.exports = class TooltipManager {
 
   cancelTooltipsForPointerAction(event) {
     for (const [target, tooltips] of this.tooltips) {
+      if (target.ownerDocument !== event.target?.ownerDocument) continue;
       for (const tooltip of tooltips) {
         const clickTriggered = tooltip.options.trigger.split(/\s+/).includes("click");
         const clickedTrigger =
@@ -281,9 +300,7 @@ module.exports = class TooltipManager {
   }
 
   destroy() {
-    for (const eventName of this.tooltipCancellationEvents) {
-      window.removeEventListener(eventName, this.boundPointerAction, true);
-    }
+    for (const disposable of this.windows.values()) disposable.dispose();
     for (const tooltips of this.tooltips.values()) {
       for (const tooltip of tooltips) {
         tooltip.cancel();

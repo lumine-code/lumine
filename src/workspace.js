@@ -445,7 +445,7 @@ module.exports = class Workspace extends Model {
     for (const location of ["left", "right", "bottom"]) {
       this.paneContainers[location].paneContainer.editorWindow = main;
     }
-    if (domWindow) main.setPresentation(domWindow, this.getElement());
+    if (domWindow) main.setPresentation(domWindow, this.element ?? null);
     this.registerEditorWindow(main);
     return main;
   }
@@ -3081,6 +3081,7 @@ module.exports = class Workspace extends Model {
    *
    * @param {SelectList|Object} [modelOrOptions] - A detached model or its construction options.
    * @param {Object} [hostOptions] - Options belonging to the modal host only.
+   * @param {EditorWindow} [hostOptions.window] - The presentation to host in, captured when the host is created; defaults to the focused or main window.
    * @param {*} [hostOptions.item] - Panel item; defaults to the model.
    * @param {String} [hostOptions.crumb] - Declared modal-flow label.
    * @param {Boolean} [hostOptions.visible=false] - Show when the host is first materialized.
@@ -3171,7 +3172,8 @@ module.exports = class Workspace extends Model {
    *
    * @returns {Boolean} — `false` when there is no step to go back to.
    */
-  popModal() {
+  popModal(window) {
+    if (window && !window.isMain()) return window.getModalFlow().pop();
     return this.modalFlowKeeper ? this.modalFlowKeeper.pop() : false;
   }
 
@@ -4070,6 +4072,7 @@ module.exports = class Workspace extends Model {
    *
    * @param {Object} options
    * @param options.item - Your panel content. It can be a DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the model option. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {EditorWindow} [options.window] - The explicit presentation; defaults to the main window.
    * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
    * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
    * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
@@ -4078,6 +4081,7 @@ module.exports = class Workspace extends Model {
    * @returns {Panel}
    */
   addModalPanel(options = {}) {
+    if (options.window) return options.window.addModalPanel(options);
     return this.addPanel("modal", options);
   }
 

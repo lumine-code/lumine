@@ -7,19 +7,27 @@ const listen = require("./delegated-listener");
 // This tooltip class is derived from Bootstrap 3, but modified to not require
 // jQuery, which is an expensive dependency we want to eliminate.
 
-let followThroughTimer = null;
+const followStates = new WeakMap();
+function followState(document) {
+  let state = followStates.get(document);
+  if (!state) {
+    state = { timer: null, departing: null };
+    followStates.set(document, state);
+  }
+  return state;
+}
 
 // The tooltip that has been left but is still on screen, waiting out its hide
 // delay. The follow-through window opens the moment a visible tooltip is left,
 // so the next tooltip entered within it shows immediately — well before this
 // one has finished leaving. Handing the window over means retiring this one at
 // that point rather than leaving the two overlapping for the hide delay.
-let departingTooltip = null;
 
-function startFollowThroughTimer() {
-  clearTimeout(followThroughTimer);
-  followThroughTimer = setTimeout(function () {
-    followThroughTimer = null;
+function startFollowThroughTimer(document) {
+  const state = followState(document);
+  clearTimeout(state.timer);
+  state.timer = setTimeout(function () {
+    state.timer = null;
   }, Tooltip.FOLLOW_THROUGH_DURATION);
 }
 
@@ -57,6 +65,7 @@ Tooltip.DEFAULTS = {
 };
 
 Tooltip.prototype.init = function (element, options) {
+  const document = element.nodeType === 9 ? element : element.ownerDocument;
   this.enabled = true;
   this.element = element;
   this.options = this.getOptions(options);
@@ -164,6 +173,10 @@ Tooltip.prototype.stopObservingMutations = function () {
 };
 
 Tooltip.prototype.handleMutations = function () {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const window = document.defaultView;
   window.requestAnimationFrame(
     function () {
       this.stopObservingMutations();
@@ -205,6 +218,10 @@ Tooltip.prototype.getDelegateOptions = function () {
 };
 
 Tooltip.prototype.enter = function (event) {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const follow = followState(document);
   if (event) {
     if (event.currentTarget !== this.element) {
       this.getDelegateComponent(event.currentTarget).enter(event);
@@ -223,7 +240,7 @@ Tooltip.prototype.enter = function (event) {
 
   this.hoverState = "in";
 
-  if (!this.options.delay || !this.options.delay.show || followThroughTimer) {
+  if (!this.options.delay || !this.options.delay.show || follow.timer) {
     return this.show();
   }
 
@@ -244,6 +261,8 @@ Tooltip.prototype.isInStateTrue = function () {
 };
 
 Tooltip.prototype.leave = function (event) {
+  const document = this.element?.ownerDocument ?? globalThis.document;
+  const follow = followState(document);
   if (event) {
     if (event.currentTarget !== this.element) {
       this.getDelegateComponent(event.currentTarget).leave(event);
@@ -263,8 +282,8 @@ Tooltip.prototype.leave = function (event) {
   // entering another tooltip before this one finishes its hide delay does
   // not wait for the normal show delay.
   if (this.getTooltipElement().classList.contains("in")) {
-    startFollowThroughTimer();
-    departingTooltip = this;
+    startFollowThroughTimer(document);
+    follow.departing = this;
   }
 
   if (!this.options.delay || !this.options.delay.hide) return this.hide();
@@ -278,16 +297,27 @@ Tooltip.prototype.leave = function (event) {
 };
 
 Tooltip.prototype.show = function () {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const window = document.defaultView;
+  const follow = followState(document);
   if (this.hasContent() && this.enabled) {
+    if (this.viewport?.ownerDocument !== document && this.options.viewport) {
+      this.viewport =
+        typeof this.options.viewport === "function"
+          ? this.options.viewport.call(this, this.element)
+          : document.querySelector(this.options.viewport.selector || this.options.viewport);
+    }
     // Read before retiring anything below, since hiding a tooltip reopens the
     // window itself.
-    const isFollowThrough = followThroughTimer != null;
+    const isFollowThrough = follow.timer != null;
 
     // Whatever was on its way out has been handed over to this one, and two
     // tooltips must never share the screen: retire it now rather than letting
     // its hide delay run out on top of this one.
-    if (departingTooltip && departingTooltip !== this) {
-      departingTooltip.hide();
+    if (follow.departing && follow.departing !== this) {
+      follow.departing.hide();
     }
 
     if (this.hideOnClickOutsideOfTooltip) {
@@ -382,6 +412,10 @@ Tooltip.prototype.show = function () {
 };
 
 Tooltip.prototype.applyPlacement = function (offset, placement) {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const window = document.defaultView;
   const tip = this.getTooltipElement();
 
   const width = tip.offsetWidth;
@@ -461,9 +495,14 @@ Tooltip.prototype.setContent = function () {
 };
 
 Tooltip.prototype.hide = function (callback, { followThrough = true } = {}) {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const window = document.defaultView;
+  const follow = followState(document);
   this.inState = {};
 
-  if (departingTooltip === this) departingTooltip = null;
+  if (follow.departing === this) follow.departing = null;
   clearTimeout(this.timeout);
 
   if (this.hideOnClickOutsideOfTooltip) {
@@ -490,11 +529,11 @@ Tooltip.prototype.hide = function (callback, { followThrough = true } = {}) {
   this.hoverState = null;
 
   if (followThrough) {
-    startFollowThroughTimer();
+    startFollowThroughTimer(document);
   } else {
-    clearTimeout(followThroughTimer);
-    followThroughTimer = null;
-    departingTooltip = null;
+    clearTimeout(follow.timer);
+    follow.timer = null;
+    follow.departing = null;
   }
 
   return this;
@@ -584,12 +623,18 @@ Tooltip.prototype.getTitle = function () {
 };
 
 Tooltip.prototype.getUID = function (prefix) {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
   do prefix += ~~(Math.random() * 1000000);
   while (document.getElementById(prefix));
   return prefix;
 };
 
 Tooltip.prototype.getTooltipElement = function () {
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
   if (!this.tip) {
     let div = document.createElement("div");
     div.innerHTML = this.options.template;
@@ -634,7 +679,11 @@ Tooltip.prototype.toggle = function (event) {
 };
 
 Tooltip.prototype.destroy = function () {
-  if (departingTooltip === this) departingTooltip = null;
+  const document =
+    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
+    globalThis.document;
+  const follow = followState(document);
+  if (follow.departing === this) follow.departing = null;
   clearTimeout(this.timeout);
   this.tip && this.tip.remove();
   this.disposables.dispose();

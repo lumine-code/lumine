@@ -23,6 +23,7 @@ module.exports = class ModalDialogFactory {
     this.hostByModel = new WeakMap();
     this.hosts = new Set();
     this.destroyed = false;
+    this.windowServices = new Map();
     this.actionService = new ModalActionService({
       createSelectListHost: (options, hostOptions) => this.addSelectList(options, hostOptions),
       commandRegistry: services.commandRegistry,
@@ -77,13 +78,22 @@ module.exports = class ModalDialogFactory {
 
     let host;
     try {
-      host = new Host(model, this.services, hostOptions, {
-        ownsModel,
-        didDestroy: () => {
-          if (this.hostByModel.get(model) === host) this.hostByModel.delete(model);
-          this.hosts.delete(host);
+      const window =
+        hostOptions.window ??
+        this.services.workspace.getFocusedWindow() ??
+        this.services.workspace.getMainWindow();
+      host = new Host(
+        model,
+        this.servicesForWindow(window),
+        { ...hostOptions, window },
+        {
+          ownsModel,
+          didDestroy: () => {
+            if (this.hostByModel.get(model) === host) this.hostByModel.delete(model);
+            this.hosts.delete(host);
+          },
         },
-      });
+      );
     } catch (error) {
       if (ownsModel) void model.destroy();
       throw error;
@@ -93,11 +103,42 @@ module.exports = class ModalDialogFactory {
     return host;
   }
 
+  servicesForWindow(window) {
+    if (window.isMain()) return this.services;
+    if (!this.windowServices.has(window)) {
+      const actionService = new ModalActionService({
+        createSelectListHost: (options, hostOptions) =>
+          this.addSelectList(options, { ...hostOptions, window }),
+        commandRegistry: this.services.commandRegistry,
+        keymapManager: this.services.keymapManager,
+        workspace: this.services.workspace,
+      });
+      const subscription = window.onWillDestroy(() => {
+        this.windowServices.delete(window);
+        subscription.dispose();
+        void actionService.destroy();
+      });
+      this.windowServices.set(window, {
+        services: Object.freeze({ ...this.services, actionService }),
+        actionService,
+        subscription,
+      });
+    }
+    return this.windowServices.get(window).services;
+  }
+
   destroy() {
     if (this.destroyPromise) return this.destroyPromise;
     this.destroyed = true;
     const hosts = Array.from(this.hosts, (host) => host.destroy());
-    this.destroyPromise = Promise.allSettled([this.actionService.destroy(), ...hosts]);
+    const services = [...this.windowServices.values()];
+    this.windowServices.clear();
+    services.forEach(({ subscription }) => subscription.dispose());
+    this.destroyPromise = Promise.allSettled([
+      this.actionService.destroy(),
+      ...services.map(({ actionService }) => actionService.destroy()),
+      ...hosts,
+    ]);
     return this.destroyPromise;
   }
 

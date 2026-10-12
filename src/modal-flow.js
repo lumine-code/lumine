@@ -24,6 +24,21 @@ module.exports = class ModalFlow {
     this.positionStrip = this.positionStrip.bind(this);
   }
 
+  get document() {
+    return this.workspace.getElement().ownerDocument;
+  }
+  get window() {
+    return this.document.defaultView;
+  }
+
+  destroy() {
+    this.clear();
+    this.subscriptions?.dispose();
+    this.window.removeEventListener("resize", this.positionStrip);
+    this.strip?.remove();
+    this.emitter.dispose();
+  }
+
   // A modal panel asked to be displayed as a flow step. Called by Panel::show
   // when it is given a crumb; `label` is already resolved against the panel's
   // declared crumb.
@@ -261,7 +276,7 @@ module.exports = class ModalFlow {
     const strip = this.getStrip();
     strip.textContent = "";
     this.stack.forEach(({ label }, index) => {
-      const crumb = document.createElement("span");
+      const crumb = this.document.createElement("span");
       crumb.classList.add("modal-breadcrumb");
       crumb.textContent = label;
       if (index === this.stack.length - 1) {
@@ -278,14 +293,14 @@ module.exports = class ModalFlow {
 
   getStrip() {
     if (!this.strip) {
-      this.strip = document.createElement("div");
+      this.strip = this.document.createElement("div");
       this.strip.classList.add("modal-breadcrumbs");
       this.strip.style.display = "none";
       // Every crumb belongs to the active modal surface, including the current
       // (non-clickable) one. Keep a press anywhere on the strip from blurring
       // the dialog before a previous crumb can navigate the flow.
       this.strip.addEventListener("mousedown", (event) => event.preventDefault());
-      window.addEventListener("resize", this.positionStrip);
+      this.window.addEventListener("resize", this.positionStrip);
     }
     if (!this.strip.isConnected) {
       this.workspace.getElement().appendChild(this.strip);

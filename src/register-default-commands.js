@@ -410,8 +410,8 @@ module.exports = function ({
       },
       "modal:go-back": {
         hiddenInCommandPalette: true,
-        didDispatch() {
-          return this.getModel().popModal();
+        didDispatch(event) {
+          return this.getModel().popModal(event?.context?.window);
         },
       },
     },

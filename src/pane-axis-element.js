@@ -60,7 +60,8 @@ class PaneAxisElement extends HTMLElement {
     if (!this.isConnected && view.isConnected) return;
     const reference = this.children[index * 2] || null;
     if (view === reference) return;
-    if (view.isConnected) this.moveBefore(view, reference);
+    if (view.isConnected && view.ownerDocument === this.ownerDocument)
+      this.moveBefore(view, reference);
     else this.insertBefore(view, reference);
 
     const prevElement = view.previousSibling;
@@ -100,7 +101,8 @@ class PaneAxisElement extends HTMLElement {
     const newView = this.viewRegistry.getView(newChild);
     if (!this.isConnected && newView.isConnected) return;
     const reference = oldView.parentNode === this ? oldView : this.children[index * 2] || null;
-    if (this.isConnected && newView.isConnected) this.moveBefore(newView, reference);
+    if (this.isConnected && newView.isConnected && newView.ownerDocument === this.ownerDocument)
+      this.moveBefore(newView, reference);
     else this.insertBefore(newView, reference);
     // Connecting a wrapping axis already moved oldView into it. A collapsing
     // axis has its surviving child moved out before the obsolete axis goes.

@@ -1,6 +1,7 @@
 const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const PanelContainer = require("./panel-container");
 const Panel = require("./panel");
+const ModalFlow = require("./modal-flow");
 
 /**
  * @public
@@ -112,6 +113,8 @@ module.exports = class EditorWindow {
    * Get this window's workspace command root.
    */
   getElement() {
+    if (this.main && !this.destroyed && !this.element && this.domWindow)
+      this.element = this.workspace.getElement();
     return this.element;
   }
 
@@ -137,6 +140,30 @@ module.exports = class EditorWindow {
    */
   addFooterPanel(options) {
     return this.panelContainers.footer.addPanel(new Panel(options, this.workspace.viewRegistry));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Add a modal panel to this presentation's own document.
+   * @param {Object} options - Panel content, visibility and modal options.
+   * @returns {Panel} The local modal panel.
+   */
+  addModalPanel(options) {
+    const panel = new Panel(options, this.workspace.viewRegistry);
+    panel.flowKeeper = this.getModalFlow();
+    return this.panelContainers.modal.addPanel(panel);
+  }
+
+  /** @private Own a separate breadcrumb trail for this document. */
+  getModalFlow() {
+    if (this.main) return this.workspace.getModalFlow();
+    if (!this.modalFlow) {
+      this.modalFlow = new ModalFlow(this);
+      this.subscriptions.add(new Disposable(() => this.modalFlow.destroy()));
+    }
+    return this.modalFlow;
   }
 
   /** @private */
