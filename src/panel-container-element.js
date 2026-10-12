@@ -28,6 +28,10 @@ class PanelContainerElement extends HTMLElement {
       this.appendChild(this.model.dock.getElement());
     }
 
+    // Providers may register panels before this presentation builds its DOM.
+    // Replay that existing model state once, then observe future additions.
+    for (const [index, panel] of this.model.getPanels().entries())
+      this.panelAdded({ panel, index });
     return this;
   }
 

@@ -1,3 +1,5 @@
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { Disposable } = require("@lumine-code/event-kit");
 const AuxiliaryWindowService = require("./auxiliary-window-service");
 const EditorWindow = require("./editor-window");
@@ -47,6 +49,44 @@ module.exports = class AuxiliaryWindowHost {
           delete domWindow.lumine;
         }),
       );
+      const bootstrap = document.createElement("script");
+      bootstrap.src = pathToFileURL(
+        path.join(environment.application.getResourcePath(), "static", "auxiliary-window.js"),
+      ).href;
+      let bootstrapTimeout;
+      await new Promise((resolve, reject) => {
+        bootstrap.onload = resolve;
+        bootstrap.onerror = () =>
+          reject(new Error("The editor window presentation could not initialize."));
+        bootstrapTimeout = setTimeout(
+          () => reject(new Error("The editor window presentation timed out.")),
+          15000,
+        );
+        document.head.append(bootstrap);
+      }).finally(() => {
+        clearTimeout(bootstrapTimeout);
+        bootstrap.onload = bootstrap.onerror = null;
+      });
+      editorWindow.subscriptions.add(
+        new Disposable(() => {
+          bootstrap.remove();
+          delete domWindow.luminePresentation;
+        }),
+      );
+      if (!workspace.isAlive() || environment.unloading || service.closed)
+        throw new Error("The workspace closed while preparing its editor window.");
+      // Developer tools inspect this document while evaluating shared runtime
+      // APIs and Node modules in the single opening environment.
+      const consoleGlobals = { editorWindow };
+      for (const name of ["require", "process", "Buffer"])
+        if (environment.domWindow[name]) consoleGlobals[name] = environment.domWindow[name];
+      for (const [name, value] of Object.entries(consoleGlobals))
+        Object.defineProperty(domWindow, name, { value, configurable: true });
+      editorWindow.subscriptions.add(
+        new Disposable(() => {
+          for (const name of Object.keys(consoleGlobals)) delete domWindow[name];
+        }),
+      );
       document.title = "Lumine";
       document.documentElement.className = environment.document.documentElement.className;
       document.body.className = environment.document.body.className;
@@ -76,6 +116,7 @@ module.exports = class AuxiliaryWindowHost {
         }),
       );
       editorWindow.subscriptions.add(environment.commands.attach(domWindow));
+      editorWindow.subscriptions.add(environment.views.attachPresentationDocument(document));
       editorWindow.subscriptions.add(environment.tooltips.attachWindow(domWindow));
       editorWindow.subscriptions.add(environment.keymaps.addDocumentTarget(document, root));
       const dropSurface = environment.workspaceDrops.attachPresentation(root);
@@ -129,7 +170,7 @@ module.exports = class AuxiliaryWindowHost {
             environment.commands.dispatch(environment.domWindow, "window:reload"),
           "window:toggle-full-screen": async () =>
             service.setFullScreen(!(await service.isFullScreen())),
-          "window:toggle-dev-tools": () => service.openDevTools(),
+          "window:toggle-dev-tools": () => service.toggleDevTools(),
         }),
         service.onDidRequestClose(() => {
           void editorWindow.close().catch((error) =>

@@ -12,6 +12,18 @@ describe("PanelContainer", () => {
     container = new PanelContainer({ viewRegistry: lumine.views });
   });
 
+  it("presents panels registered before its lazy DOM is created", () => {
+    const item = document.createElement("div");
+    const panel = new Panel({ item }, lumine.views);
+    container.addPanel(panel);
+    const element = container.getElement();
+    expect(element.children.length).toBe(1);
+    expect(element.firstElementChild).toBe(panel.getElement());
+    expect(element.contains(item)).toBeTrue();
+    panel.destroy();
+    expect(element.children.length).toBe(0);
+  });
+
   describe("::addPanel(panel)", () => {
     it("emits an onDidAddPanel event with the index the panel was inserted at", () => {
       const addPanelSpy = jasmine.createSpy();

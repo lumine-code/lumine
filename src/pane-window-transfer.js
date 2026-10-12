@@ -85,7 +85,10 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
   try {
     for (const item of items) {
       workspace.viewRegistry.getView(item);
-      preparations.push({ item, state: await item.prepareWindowChange?.(context) });
+      preparations.push({
+        item,
+        state: await workspace.viewRegistry.preparePaneItemWindowChange(item, context),
+      });
     }
     if (
       source.isDestroyed() ||
@@ -106,8 +109,8 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
       throw new Error("The pane changed while its window transfer was being prepared.");
   } catch (error) {
     const errors = [error];
-    for (const { item, state } of preparations.reverse()) {
-      await awaitLifecycleCleanup(errors, () => item.cancelWindowChange?.({ ...context, state }));
+    for (const { state } of preparations.reverse()) {
+      await awaitLifecycleCleanup(errors, () => state.cancel());
       captureLifecycleError(errors, () => {
         if (typeof state?.dispose === "function") state.dispose();
       });
@@ -149,7 +152,7 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
       }),
     );
     bindItemViews(workspace, selected, targetWindow);
-    for (const { item, state } of preparations) await item.didChangeWindow?.({ ...context, state });
+    for (const { state } of preparations) await state.didChange(context);
     if (target.isDestroyed() || targetWindow?.windowService.closed)
       throw new Error("The destination window closed before its presentation was committed.");
     committed = true;
@@ -179,12 +182,11 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
         ),
       );
       captureLifecycleError(failures, () => bindItemViews(workspace, selected, sourceWindow));
-      for (const { item, state } of preparations)
+      for (const { state } of preparations)
         await awaitLifecycleCleanup(failures, () =>
-          item.didChangeWindow?.({
+          state.didChange({
             sourceWindow: targetWindow,
             targetWindow: sourceWindow,
-            state,
             rollback: true,
           }),
         );

@@ -20,6 +20,7 @@ const RUNTIME_ASSETS = [
   "exports/lumine.js",
   "static/index.html",
   "static/index.js",
+  "static/auxiliary-window.js",
   "resources/app-icons/lumine.png",
   "resources/app-icons/lumine-safe.png",
   "resources/app-icons/lumine-dev.png",

@@ -108,6 +108,23 @@ module.exports = class EditorWindow {
 
   /**
    * @public
+   * @status extended
+   *
+   * Send a message to an embedded frame from its physical parent window.
+   * @param {HTMLIFrameElement} frame - A frame belonging to this window's document.
+   * @param {Object} message - Structured-cloneable message data.
+   * @param {String} origin - The expected target origin, or "*" for an opaque sandbox.
+   * @param {Array} ports - Transferable ports owned by the caller.
+   */
+  postMessageToFrame(frame, message, origin = "*", ports = []) {
+    if (this.destroyed || frame.ownerDocument !== this.getDocument())
+      throw new Error("The embedded frame does not belong to this editor window.");
+    if (this.main) frame.contentWindow.postMessage(message, origin, ports);
+    else this.domWindow.luminePresentation.postMessage(frame.contentWindow, message, origin, ports);
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Get this window's workspace command root.
@@ -293,6 +310,18 @@ module.exports = class EditorWindow {
       this.windowService.setPosition(bounds.x, bounds.y),
       this.windowService.setSize(bounds.width, bounds.height),
     ]);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Set the document path represented by this native window.
+   * @param {String} filename - The current path, or an empty string.
+   * @returns {Promise} Completes after the native property is set.
+   */
+  setRepresentedFilename(filename) {
+    return this.windowService.setRepresentedFilename(filename);
   }
 
   /**

@@ -66,6 +66,9 @@ module.exports = class AuxiliaryWindowService {
   setFullScreen(value) {
     return this.invoke("setFullScreen", value);
   }
+  setRepresentedFilename(filename) {
+    return this.invoke("setRepresentedFilename", filename);
+  }
   setTitle(title) {
     return this.invoke("setTitle", title);
   }
@@ -80,6 +83,9 @@ module.exports = class AuxiliaryWindowService {
   }
   openDevTools() {
     return this.invoke("openDevTools");
+  }
+  toggleDevTools() {
+    return this.invoke("toggleDevTools");
   }
   closeDevTools() {
     return this.invoke("closeDevTools");

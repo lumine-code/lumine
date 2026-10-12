@@ -98,6 +98,13 @@ const configSchema = {
         type: "boolean",
         default: false,
       },
+      closeEmptyDetachedWindows: {
+        title: "Close Empty Detached Windows",
+        description:
+          "Close an empty detached window when it receives the Close Tab command. This is independent of Close Empty Windows for the main window.",
+        type: "boolean",
+        default: false,
+      },
       promptOnSaveConflictedFile: {
         title: "Prompt on Conflict",
         description:

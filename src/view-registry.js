@@ -36,8 +36,12 @@ module.exports = class ViewRegistry {
   }
 
   clear() {
+    for (const observer of this.participantObservers?.values() ?? []) observer.disconnect();
     this.views = new WeakMap();
     this.paneItemDocuments = new WeakMap();
+    this.windowParticipants = new Map();
+    this.participantDocuments = new WeakMap();
+    this.participantObservers = new Map();
     this.providers = [];
     this.clearDocumentRequests();
   }
@@ -51,6 +55,121 @@ module.exports = class ViewRegistry {
     if (result?.then)
       throw new TypeError("didAttachToWindow must bind presentation listeners synchronously.");
     this.paneItemDocuments.set(item, element.ownerDocument);
+    for (const [root, participant] of this.windowParticipants)
+      if (root === element || element.contains(root))
+        this.bindWindowParticipant(root, participant, window);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Register a presentation component that needs state preparation across documents.
+   * @param {Element} root - The component's DOM root within a pane item.
+   * @param {Object} participant - prepareWindowChange, didAttachToWindow, didChangeWindow and cancelWindowChange callbacks.
+   * @returns {Disposable} Removes this component's lifecycle participation.
+   */
+  addWindowParticipant(root, participant) {
+    if (this.windowParticipants.has(root))
+      throw new Error("The presentation component is already registered.");
+    this.windowParticipants.set(root, participant);
+    this.attachPresentationDocument(root.ownerDocument);
+    if (root.isConnected) {
+      const window = this.lumineEnvironment.workspace.getWindowForElement(root);
+      if (window) this.bindWindowParticipant(root, participant, window);
+    }
+    return new Disposable(() => {
+      if (this.windowParticipants.get(root) === participant) this.windowParticipants.delete(root);
+    });
+  }
+
+  /** @private Rebind embedded components created or adopted after their pane first mounted. */
+  attachPresentationDocument(document) {
+    if (this.participantObservers.has(document)) return new Disposable();
+    const refresh = () => {
+      const window = this.lumineEnvironment.workspace
+        .getWindows()
+        .find((window) => window.getDocument() === document);
+      if (!window) return;
+      for (const [root, participant] of this.windowParticipants)
+        if (root.isConnected && root.ownerDocument === document)
+          this.bindWindowParticipant(root, participant, window);
+    };
+    const observer = new document.defaultView.MutationObserver(refresh);
+    observer.observe(document.body, { childList: true, subtree: true });
+    this.participantObservers.set(document, observer);
+    return new Disposable(() => {
+      observer.disconnect();
+      if (this.participantObservers.get(document) === observer)
+        this.participantObservers.delete(document);
+    });
+  }
+
+  bindWindowParticipant(root, participant, window) {
+    if (this.participantDocuments.get(root) === root.ownerDocument) return;
+    participant.didAttachToWindow?.({ window, document: root.ownerDocument });
+    this.participantDocuments.set(root, root.ownerDocument);
+  }
+
+  /** @private Capture an item and its registered embedded presentation components together. */
+  async preparePaneItemWindowChange(item, context) {
+    const view = this.getView(item);
+    const entries = new Set([
+      item,
+      ...[...this.windowParticipants]
+        .filter(([root]) => root === view || view.contains(root))
+        .map(([, participant]) => participant),
+    ]);
+    const states = [];
+    const {
+      awaitLifecycleCleanup,
+      captureLifecycleError,
+      throwLifecycleErrors,
+    } = require("./package-lifecycle-errors");
+    try {
+      for (const participant of entries)
+        states.push({ participant, state: await participant.prepareWindowChange?.(context) });
+    } catch (error) {
+      const errors = [error];
+      for (const { participant, state } of states) {
+        await awaitLifecycleCleanup(errors, () =>
+          participant.cancelWindowChange?.({ ...context, state }),
+        );
+        captureLifecycleError(errors, () => {
+          if (typeof state?.dispose === "function") state.dispose();
+        });
+      }
+      throwLifecycleErrors(errors, "Unable to prepare the pane item's presentation components.");
+    }
+    return {
+      async didChange(context) {
+        const errors = [];
+        for (const { participant, state } of states) {
+          if (context.rollback)
+            await awaitLifecycleCleanup(errors, () =>
+              participant.didChangeWindow?.({ ...context, state }),
+            );
+          else await participant.didChangeWindow?.({ ...context, state });
+        }
+        throwLifecycleErrors(errors, "Unable to restore the pane item's presentation components.");
+      },
+      async cancel() {
+        const errors = [];
+        for (const { participant, state } of states)
+          await awaitLifecycleCleanup(errors, () =>
+            participant.cancelWindowChange?.({ ...context, state }),
+          );
+        throwLifecycleErrors(errors, "Unable to cancel the presentation preparations.");
+      },
+      dispose() {
+        const errors = [];
+        for (const { state } of states)
+          captureLifecycleError(errors, () => {
+            if (typeof state?.dispose === "function") state.dispose();
+          });
+        throwLifecycleErrors(errors, "Unable to release the presentation preparations.");
+      },
+    };
   }
 
   /**

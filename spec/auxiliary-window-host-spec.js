@@ -269,4 +269,68 @@ describe("Auxiliary editor windows", () => {
       registration.dispose();
     }
   });
+  it("uses an independent setting for closing an empty detached window", async () => {
+    const workspace = lumine.workspace;
+    const main = workspace.getMainWindow();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const mainClose = spyOn(main, "close").and.resolveTo(true);
+    const extraClose = spyOn(extra, "close").and.resolveTo(true);
+    lumine.config.set("core.closeEmptyWindows", true);
+    lumine.config.set("core.closeEmptyDetachedWindows", false);
+    lumine.commands.dispatch(extra.getElement(), "core:close");
+    expect(extraClose).not.toHaveBeenCalled();
+    lumine.commands.dispatch(main.getElement(), "core:close");
+    expect(mainClose).toHaveBeenCalledTimes(1);
+    lumine.config.set("core.closeEmptyWindows", false);
+    lumine.config.set("core.closeEmptyDetachedWindows", true);
+    lumine.commands.dispatch(extra.getElement(), "core:close");
+    expect(extraClose).toHaveBeenCalledTimes(1);
+    lumine.commands.dispatch(main.getElement(), "core:close");
+    expect(mainClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles developer tools on the dispatch window", async () => {
+    const extra = await lumine.workspace.openEditorWindow({ show: false });
+    expect(extra.getDOMWindow().lumine).toBe(lumine);
+    expect(extra.getDOMWindow().editorWindow).toBe(extra);
+    expect(extra.getDOMWindow().require).toBe(window.require);
+    expect(extra.getDOMWindow().process).toBe(window.process);
+    const toggle = spyOn(extra.windowService, "toggleDevTools").and.resolveTo();
+    const mainToggle = spyOn(lumine.window, "toggleDevTools").and.resolveTo();
+    lumine.commands.dispatch(extra.getElement(), "window:toggle-dev-tools");
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(mainToggle).not.toHaveBeenCalled();
+  });
+  it("binds late presentation participants once and removes their transfer participation", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    const root = document.createElement("div");
+    const item = {
+      canCopy: () => false,
+      getTitle: () => "Component owner",
+      getElement: () => root,
+    };
+    await workspace.open(item);
+    const component = document.createElement("div");
+    root.append(component);
+    const bound = [];
+    const changed = [];
+    const disposed = jasmine.createSpy("prepared state disposal");
+    const registration = lumine.views.addWindowParticipant(component, {
+      didAttachToWindow: (context) => bound.push(context.window),
+      prepareWindowChange: () => ({ value: "checkpoint", dispose: disposed }),
+      didChangeWindow: (context) => changed.push(context),
+    });
+    expect(bound).toEqual([workspace.getMainWindow()]);
+    const extra = await workspace.detachPane(workspace.paneForItem(item));
+    expect(bound).toEqual([workspace.getMainWindow(), extra]);
+    expect(changed).toHaveSize(1);
+    expect(changed[0].state.value).toBe("checkpoint");
+    expect(component.ownerDocument).toBe(extra.getDocument());
+    expect(disposed).toHaveBeenCalledTimes(1);
+    registration.dispose();
+    await workspace.attachWindow(extra);
+    expect(changed).toHaveSize(1);
+    expect(disposed).toHaveBeenCalledTimes(1);
+  });
 });

@@ -183,7 +183,13 @@ class PaneElement extends HTMLElement {
     }
 
     if (!this.itemViews.contains(itemView)) {
-      this.itemViews.appendChild(itemView);
+      if (
+        itemView.isConnected &&
+        this.itemViews.isConnected &&
+        itemView.ownerDocument === this.itemViews.ownerDocument
+      )
+        this.itemViews.moveBefore(itemView, null);
+      else this.itemViews.appendChild(itemView);
     }
     this.itemViewsByItem.set(item, itemView);
     this.views.didAttachPaneItem(item, this.model, itemView);

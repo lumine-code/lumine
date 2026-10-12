@@ -1127,6 +1127,9 @@ module.exports = class Workspace extends Model {
             show: false,
             bounds: saved.bounds,
             persistentId: saved.id,
+            replacesWindowId: prepared.retiring
+              .find((window) => window.persistentId === saved.id)
+              ?.getId(),
           });
           prepared.windows.push({ saved, window });
           guard();
@@ -3730,8 +3733,11 @@ module.exports = class Workspace extends Model {
       return pane.destroyItem(item);
     } else if (container.getPanes().length > 1) {
       return pane.destroy();
-    } else if (this.config.get("core.closeEmptyWindows")) {
-      return (container.getWindow() ?? this.windowService).close();
+    } else {
+      const window = container.getWindow();
+      const setting =
+        window && !window.isMain() ? "core.closeEmptyDetachedWindows" : "core.closeEmptyWindows";
+      if (this.config.get(setting)) return (window ?? this.windowService).close();
     }
   }
 

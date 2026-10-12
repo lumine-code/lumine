@@ -27,6 +27,26 @@ module.exports = class AuxiliaryWindowBroker {
 
   prepare(options = {}) {
     if (this.destroyed) throw new Error("The workspace window has closed.");
+    const persistentId =
+      options.persistentId === undefined ? crypto.randomUUID() : options.persistentId;
+    if (
+      typeof persistentId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(persistentId)
+    )
+      throw new TypeError("An editor window persistent identity must be a UUID.");
+    const existing = [...this.windows.values()].find(
+      (entry) => entry.persistentId === persistentId,
+    );
+    if (
+      (existing && existing.id !== options.replacesWindowId) ||
+      [...this.pending.values()].some((entry) => entry.persistentId === persistentId)
+    )
+      throw new Error("This editor window identity is already in use.");
+    if (
+      options.replacesWindowId !== undefined &&
+      (!existing || existing.id !== options.replacesWindowId)
+    )
+      throw new Error("A replacement must address this workspace's existing editor window.");
     const bounds = { ...(options.bounds ?? {}) };
     assertBounds(bounds);
     // A saved display can disappear between sessions. Keep the complete
@@ -51,7 +71,7 @@ module.exports = class AuxiliaryWindowBroker {
     const request = {
       token,
       bounds,
-      persistentId: options.persistentId ?? crypto.randomUUID(),
+      persistentId,
       ready,
       resolve,
     };
@@ -72,6 +92,7 @@ module.exports = class AuxiliaryWindowBroker {
         ...request.bounds,
         frame: false,
         show: false,
+        ...(this.owner.presentationIcon && { icon: this.owner.presentationIcon }),
         webPreferences: { backgroundThrottling: false },
       },
     };
@@ -239,12 +260,21 @@ module.exports = class AuxiliaryWindowBroker {
         if (typeof args[0] !== "string") throw new TypeError("A window title must be a string.");
         window.setTitle(args[0]);
         return;
+      case "setRepresentedFilename":
+        if (typeof args[0] !== "string")
+          throw new TypeError("A represented filename must be a string.");
+        window.setRepresentedFilename(args[0]);
+        return;
       case "close":
         record.closeApproved = true;
         window.close();
         return;
       case "openDevTools":
         window.webContents.openDevTools({ mode: "detach" });
+        return;
+      case "toggleDevTools":
+        if (window.webContents.isDevToolsOpened()) window.webContents.closeDevTools();
+        else window.webContents.openDevTools({ mode: "detach" });
         return;
       case "closeDevTools":
         window.webContents.closeDevTools();

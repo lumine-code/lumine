@@ -146,7 +146,7 @@ class PaneItemTransferService {
     const sourceActiveItem = source.getActiveItem();
     const targetActiveItem = target.getActiveItem();
     this.workspace.viewRegistry.getView(item);
-    const state = await item.prepareWindowChange?.(context);
+    const state = await this.workspace.viewRegistry.preparePaneItemWindowChange(item, context);
     let moved = false;
     let result;
     const failures = [];
@@ -172,7 +172,7 @@ class PaneItemTransferService {
         true,
       );
       moved = true;
-      await item.didChangeWindow?.({ ...context, state });
+      await state.didChange(context);
       if (context.targetWindow.windowService.closed) throw cancelledError();
       if (
         source.isAlive() &&
@@ -195,17 +195,13 @@ class PaneItemTransferService {
           ),
         );
         await awaitLifecycleCleanup(failures, () =>
-          item.didChangeWindow?.({
+          state.didChange({
             sourceWindow: context.targetWindow,
             targetWindow: context.sourceWindow,
-            state,
             rollback: true,
           }),
         );
-      } else if (!moved)
-        await awaitLifecycleCleanup(failures, () =>
-          item.cancelWindowChange?.({ ...context, state }),
-        );
+      } else if (!moved) await awaitLifecycleCleanup(failures, () => state.cancel());
     } finally {
       captureLifecycleError(failures, () => {
         if (typeof state?.dispose === "function") state.dispose();

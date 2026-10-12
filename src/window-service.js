@@ -55,6 +55,18 @@ class WindowService {
 
   /**
    * @public
+   * @status extended
+   *
+   * Set the filename represented by the native window.
+   * @param {String} filename - The current path, or an empty string.
+   * @returns {Promise} Completes after the native property is set.
+   */
+  setRepresentedFilename(filename) {
+    return this.applicationDelegate.setRepresentedFilename(filename);
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Determine whether the current window is in development mode.

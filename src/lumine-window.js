@@ -102,6 +102,7 @@ module.exports = class LumineWindow extends EventEmitter {
     if (process.platform === "linux" || process.platform === "win32") {
       options.icon = nativeImage.createFromPath(iconPath);
     }
+    this.presentationIcon = options.icon;
     // The dock icon is one per app, not per window, so with several windows
     // open in different modes the most recently created one wins — the same
     // "last one drawn" rule the taskbar/dock already applies to everything

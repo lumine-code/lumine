@@ -119,3 +119,59 @@ test("cancelling and destroying a workspace release pending clients and native c
   assert.equal(broker.windows.size, 0);
   assert.throws(() => broker.prepare(), /closed/);
 });
+
+test("developer tools toggle on the addressed presentation", async () => {
+  const { broker, window } = fixture();
+  let opened = false;
+  let openedCount = 0;
+  let closedCount = 0;
+  window.webContents.isDevToolsOpened = () => opened;
+  window.webContents.openDevTools = () => {
+    opened = true;
+    openedCount++;
+  };
+  window.webContents.closeDevTools = () => {
+    opened = false;
+    closedCount++;
+  };
+  const token = broker.prepare();
+  broker.didCreateWindow(window, { frameName: token });
+  const descriptor = await broker.resolve(token);
+  broker.invoke(descriptor.id, "toggleDevTools");
+  assert.equal(opened, true);
+  broker.invoke(descriptor.id, "toggleDevTools");
+  assert.equal(opened, false);
+  assert.equal(openedCount, 1);
+  assert.equal(closedCount, 1);
+  broker.destroy();
+});
+
+test("saved presentation identities are valid and cannot alias another host", () => {
+  const { broker } = fixture();
+  for (const persistentId of ["main", "", null, {}, []])
+    assert.throws(() => broker.prepare({ persistentId }), /must be a UUID/);
+  const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
+  const token = broker.prepare({ persistentId });
+  assert.throws(() => broker.prepare({ persistentId }), /already in use/);
+  broker.cancel(token);
+  assert.ok(broker.prepare({ persistentId }));
+  broker.destroy();
+});
+
+test("restore may prepare a replacement for its own old host before closing it", async () => {
+  const { broker, window } = fixture();
+  const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
+  const token = broker.prepare({ persistentId });
+  broker.didCreateWindow(window, { frameName: token });
+  const descriptor = await broker.resolve(token);
+  assert.throws(() => broker.prepare({ persistentId }), /already in use/);
+  assert.throws(() => broker.prepare({ persistentId, replacesWindowId: -99 }), /already in use/);
+  const replacement = broker.prepare({ persistentId, replacesWindowId: descriptor.id });
+  assert.equal(window.destroyed, undefined);
+  assert.throws(
+    () => broker.prepare({ persistentId, replacesWindowId: descriptor.id }),
+    /already in use/,
+  );
+  broker.cancel(replacement);
+  broker.destroy();
+});
