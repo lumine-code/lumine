@@ -53,6 +53,8 @@ class PaneItemTransferService {
     if (
       !sourcePane ||
       sourcePane.isDestroyed() ||
+      item?.isDestroyed?.() ||
+      item?.destroyed === true ||
       this.workspace.paneForItem(item) !== sourcePane
     ) {
       throw new PaneItemOperationError(
@@ -106,6 +108,7 @@ class PaneItemTransferService {
         });
       }
       if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
+      item.terminatePendingState?.();
       pane.activateItem(item, { activatePane: options.activatePane !== false });
       return { pane, item };
     });
@@ -169,12 +172,12 @@ class PaneItemTransferService {
     const uri = itemURI(item);
     const revision = item.getPaneItemRevision?.();
     const copyMethod = item.copy;
-    let mayFocus = options.activatePane !== false;
+    let contextUnchanged = true;
     observe(this.workspace, "onDidChangeActivePane", () => {
-      mayFocus = false;
+      contextUnchanged = false;
     });
     observe(this.workspace, "onDidChangeActivePaneItem", () => {
-      mayFocus = false;
+      contextUnchanged = false;
     });
     let copy;
     let committed = false;
@@ -183,7 +186,8 @@ class PaneItemTransferService {
       const pendingCopy = Promise.resolve(copyMethod.call(item, { signal: controller.signal }));
       copy = await new Promise((resolve, reject) => {
         const cancel = () => reject(cancelledError());
-        controller.signal.addEventListener("abort", cancel, { once: true });
+        if (controller.signal.aborted) cancel();
+        else controller.signal.addEventListener("abort", cancel, { once: true });
         pendingCopy.then(
           (result) => {
             controller.signal.removeEventListener("abort", cancel);
@@ -236,8 +240,17 @@ class PaneItemTransferService {
             ]({ items: [copy], activate: false })
           : anchor;
         if (!options.splitDirection) pane.addItem(copy, { index: options.index, copied: true });
+        // Promotion can abort a provider's pending navigation. The copy has
+        // committed, so its source observers must no longer cancel this work.
+        subscriptions.dispose();
         if (sourcePane.getPendingItem() === item) sourcePane.clearPendingItem();
-        pane.activateItem(copy, { activatePane: mayFocus });
+        item.terminatePendingState?.();
+        copy.terminatePendingState?.();
+        if (contextUnchanged || this.workspace.getActivePane() !== pane) {
+          pane.activateItem(copy, {
+            activatePane: contextUnchanged && options.activatePane !== false,
+          });
+        }
         committed = true;
         return { pane, item: copy };
       });

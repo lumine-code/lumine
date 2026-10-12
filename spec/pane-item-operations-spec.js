@@ -168,6 +168,21 @@ describe("workspace pane item operations", () => {
     expect(workspace.getCenter().getPanes().length).toBe(2);
   });
 
+  it("observes cancellation that occurs synchronously inside a copy factory", async () => {
+    let finish;
+    item.copy = () => {
+      item.navigate("test://replaced");
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    };
+    const operation = workspace.copyPaneItem(item, { splitDirection: "down" });
+    await expectAsync(operation).toBeRejectedWith(jasmine.objectContaining({ code: "ABORT_ERR" }));
+    finish(viewItem());
+    await Promise.resolve();
+    expect(workspace.getCenter().getPanes().length).toBe(2);
+  });
+
   it("does not steal focus when an asynchronous copy finishes after navigation elsewhere", async () => {
     let finish;
     item.copy = () =>
@@ -180,6 +195,33 @@ describe("workspace pane item operations", () => {
     const result = await operation;
     expect(workspace.getActivePane()).toBe(targetPane);
     expect(workspace.paneForItem(result.item)).toBe(result.pane);
+  });
+
+  it("preserves the user's selected destination item after an asynchronous copy", async () => {
+    let finish;
+    item.copy = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const operation = workspace.copyPaneItem(item, { targetPane });
+    const selected = viewItem({ uri: "test://selected" });
+    targetPane.activateItem(selected, { activatePane: true });
+    finish(viewItem());
+    const result = await operation;
+    expect(targetPane.getActiveItem()).toBe(selected);
+    expect(targetPane.getItems()).toContain(result.item);
+    expect(workspace.getActivePane()).toBe(targetPane);
+  });
+
+  it("terminates provider preview navigation after committing without cancelling its own copy", async () => {
+    sourcePane.setPendingItem(item);
+    item.terminatePendingState = jasmine
+      .createSpy("terminatePendingState")
+      .and.callFake(() => item.navigate(item.getURI()));
+    const result = await workspace.copyPaneItem(item, { splitDirection: "down" });
+    expect(result.pane.getActiveItem()).toBe(result.item);
+    expect(item.terminatePendingState).toHaveBeenCalled();
+    expect(sourcePane.getPendingItem()).toBeNull();
   });
 
   it("targets the containing pane item when dispatch comes from an embedded editor", async () => {

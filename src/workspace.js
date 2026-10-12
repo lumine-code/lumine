@@ -128,6 +128,12 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * A view whose design permits only one instance declares `isSingleton() === true`;
  * it supports focus and move operations, including split and move, but no copy.
  * Serialization and URI openers are not substitutes for this copy contract.
+ * Copy factories capture document and view state before awaiting initialization.
+ * Retargeting items emit `onDidChangeURI` after every document publication, even
+ * if its URI returns to an earlier value. An optional `getPaneItemRevision()`
+ * returns a monotonic revision so asynchronous copies also detect document
+ * replacement with an unchanged URI. Moving and copying promote previews only
+ * after committing and invoke `terminatePendingState()` to cancel pending reuse.
  *
  * ### Optional Methods
  *
