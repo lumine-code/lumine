@@ -342,13 +342,11 @@ module.exports = function ({
           const workspace = this.getModel();
           const pane = paneForCommand(workspace, event);
           if (!pane) return;
-          return workspace
-            .detachPane(pane)
-            .catch((error) =>
-              notificationManager.addWarning("Unable to detach this pane.", {
-                detail: error.message,
-              }),
-            );
+          return workspace.detachPane(pane).catch((error) =>
+            notificationManager.addWarning("Unable to detach this pane.", {
+              detail: error.message,
+            }),
+          );
         },
       },
       "window:attach-to-main-window": {
