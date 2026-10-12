@@ -363,4 +363,23 @@ describe("Auxiliary editor windows", () => {
     expect(saved).toHaveBeenCalledTimes(1);
     expect(mainSave).not.toHaveBeenCalled();
   });
+  it("rebinds text editor observers and releases the cursor timer from its original window", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    const editor = await workspace.open();
+    const component = editor.getElement().getComponent();
+    component.startCursorBlinking();
+    const originalHandle = component.cursorBlinkIntervalHandle;
+    const originalWindow = component.cursorBlinkWindow;
+    const cancel = spyOn(originalWindow, "clearInterval").and.callThrough();
+    const extra = await workspace.detachPane(workspace.paneForItem(editor));
+    expect(cancel).toHaveBeenCalledWith(originalHandle);
+    expect(component.blockDecorationWindow).toBe(extra.getDOMWindow());
+    expect(component.resizeObserver instanceof extra.getDOMWindow().ResizeObserver).toBeTrue();
+    component.startCursorBlinking();
+    expect(component.cursorBlinkWindow).toBe(extra.getDOMWindow());
+    component.stopCursorBlinking();
+    await workspace.attachWindow(extra);
+    expect(component.blockDecorationWindow).toBe(window);
+  });
 });

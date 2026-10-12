@@ -166,7 +166,9 @@ module.exports = class TextEditorComponent {
     this.blockDecorationSentinel = this.document.createElement("div");
     this.blockDecorationSentinel.style.height = "1px";
     this.heightsByBlockDecoration = new WeakMap();
-    this.blockDecorationResizeObserver = new ResizeObserver(
+    this.blockDecorationElements = new Set();
+    this.blockDecorationWindow = this.window;
+    this.blockDecorationResizeObserver = new this.window.ResizeObserver(
       this.didResizeBlockDecorations.bind(this),
     );
     this.lineComponentsByScreenLineId = new Map();
@@ -2416,15 +2418,24 @@ module.exports = class TextEditorComponent {
   didAttach() {
     if (!this.attached) {
       this.attached = true;
+      if (this.blockDecorationWindow !== this.window) {
+        this.blockDecorationResizeObserver.disconnect();
+        this.blockDecorationWindow = this.window;
+        this.blockDecorationResizeObserver = new this.window.ResizeObserver(
+          this.didResizeBlockDecorations.bind(this),
+        );
+        for (const element of this.blockDecorationElements)
+          this.blockDecorationResizeObserver.observe(element);
+      }
       this.observeVisibility();
 
-      this.resizeObserver = new ResizeObserver(this.didResize.bind(this));
+      this.resizeObserver = new this.window.ResizeObserver(this.didResize.bind(this));
       this.observeResizeTargets();
 
       this.layoutDragSubscription = onDidEndLayoutDrag(this.didEndLayoutDrag.bind(this));
 
       if (this.refs.gutterContainer) {
-        this.gutterContainerResizeObserver = new ResizeObserver(
+        this.gutterContainerResizeObserver = new this.window.ResizeObserver(
           this.didResizeGutterContainer.bind(this),
         );
         this.gutterContainerResizeObserver.observe(this.refs.gutterContainer.element);
@@ -2448,7 +2459,7 @@ module.exports = class TextEditorComponent {
   }
 
   observeVisibility() {
-    this.intersectionObserver = new IntersectionObserver((entries, observer) => {
+    this.intersectionObserver = new this.window.IntersectionObserver((entries, observer) => {
       // Disconnecting stops observation but leaves already-queued entries.
       // A pane collapse reparents this editor and creates a new observer;
       // the old observer must not hide that newly attached view afterwards.
@@ -2501,6 +2512,7 @@ module.exports = class TextEditorComponent {
   didDetach() {
     if (this.attached) {
       this.scrollAnimator.cancel();
+      this.stopDragging?.call(this);
       this.focused = false;
       this.stopCursorBlinking();
       this.debouncedResumeCursorBlinking.cancel();
@@ -3259,18 +3271,19 @@ module.exports = class TextEditorComponent {
       }
     }
 
+    const dragWindow = this.window;
     function didMouseUp() {
       this.stopDragging = null;
-      this.window.removeEventListener("mousemove", didMouseMove);
-      this.window.removeEventListener("mouseup", didMouseUp, { capture: true });
+      dragWindow.removeEventListener("mousemove", didMouseMove);
+      dragWindow.removeEventListener("mouseup", didMouseUp, { capture: true });
       if (dragging) {
         dragging = false;
         didStopDragging();
       }
     }
 
-    this.window.addEventListener("mousemove", didMouseMove);
-    this.window.addEventListener("mouseup", didMouseUp, { capture: true });
+    dragWindow.addEventListener("mousemove", didMouseMove);
+    dragWindow.addEventListener("mouseup", didMouseUp, { capture: true });
     this.stopDragging = didMouseUp;
   }
 
@@ -3374,7 +3387,8 @@ module.exports = class TextEditorComponent {
     if (this.cursorsBlinking) {
       this.cursorsBlinkedOff = false;
       this.cursorsBlinking = false;
-      this.window.clearInterval(this.cursorBlinkIntervalHandle);
+      this.cursorBlinkWindow.clearInterval(this.cursorBlinkIntervalHandle);
+      this.cursorBlinkWindow = null;
       this.cursorBlinkIntervalHandle = null;
       this.scheduleUpdate();
     }
@@ -3382,7 +3396,8 @@ module.exports = class TextEditorComponent {
 
   startCursorBlinking() {
     if (!this.cursorsBlinking) {
-      this.cursorBlinkIntervalHandle = this.window.setInterval(
+      this.cursorBlinkWindow = this.window;
+      this.cursorBlinkIntervalHandle = this.cursorBlinkWindow.setInterval(
         () => {
           this.cursorsBlinkedOff = !this.cursorsBlinkedOff;
           this.scheduleUpdate(true);
@@ -4492,6 +4507,7 @@ module.exports = class TextEditorComponent {
       this.blockDecorationsToMeasure.add(decoration);
       this.blockDecorationsByElement.set(element, decoration);
       this.blockDecorationResizeObserver.observe(element);
+      this.blockDecorationElements.add(element);
 
       this.scheduleUpdate();
     }
@@ -4508,6 +4524,7 @@ module.exports = class TextEditorComponent {
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
           this.blockDecorationResizeObserver.unobserve(element);
+          this.blockDecorationElements.delete(element);
           this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         } else if (!wasValid && isValid) {
@@ -4532,6 +4549,7 @@ module.exports = class TextEditorComponent {
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
           this.blockDecorationResizeObserver.unobserve(element);
+          this.blockDecorationElements.delete(element);
           this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         }
