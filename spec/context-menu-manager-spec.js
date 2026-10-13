@@ -40,6 +40,32 @@ describe("ContextMenuManager", function () {
   });
 
   describe("::add(itemsBySelector)", function () {
+    it("preserves fresh checkbox and radio states through every merge", function () {
+      let enabled = true;
+      contextMenu.add({
+        ".child": [
+          {
+            label: "Mode",
+            type: "checkbox",
+            command: "test:toggle-mode",
+            created() {
+              this.checked = enabled;
+            },
+          },
+          {
+            label: "Scope",
+            submenu: [{ label: "File", type: "radio", checked: false }],
+          },
+        ],
+      });
+      const first = contextMenu.templateForElement(grandchild);
+      expect(first[0].checked).toBe(true);
+      expect(first[1].submenu[0].checked).toBe(false);
+      enabled = false;
+      expect(contextMenu.templateForElement(grandchild)[0].checked).toBe(false);
+      expect(first[0].checked).toBe(true);
+    });
+
     it("can add top-level menu items that can be removed with the returned disposable", function () {
       const disposable = contextMenu.add({
         ".parent": [{ label: "A", command: "a" }],

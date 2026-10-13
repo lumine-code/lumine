@@ -98,6 +98,7 @@ function cloneMenuItem(item) {
     "label",
     "id",
     "enabled",
+    "checked",
     "visible",
     "command",
     "submenu",
