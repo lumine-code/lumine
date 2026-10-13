@@ -5,7 +5,7 @@ const path = require("path");
 const zlib = require("zlib");
 const CSON = require("@lumine-code/season");
 const semver = require("semver");
-const tar = require("tar");
+const archiveRuntime = new (require("./tar-runtime-loader"))();
 const {
   cloneUrlForRepository,
   formatPackageSource,
@@ -319,6 +319,10 @@ class PackageInstallationService {
     return `https://codeload.github.com/${match[1]}/${match[2]}/tar.gz/${resolved.sha.toLowerCase()}`;
   }
 
+  loadArchive() {
+    return archiveRuntime.load();
+  }
+
   async fetchTarball(url, stage, resolved, requestedSource) {
     const archivePath = path.join(stage, ".lumine-archive.tar.gz");
     let response;
@@ -344,6 +348,7 @@ class PackageInstallationService {
 
     // GitHub wraps the tree in a single directory named after the repository
     // and the ref, which is stripped; the archive holds no history to remove.
+    const tar = await this.loadArchive();
     await tar.x({
       file: archivePath,
       cwd: stage,

@@ -249,7 +249,22 @@ ${JSON.stringify(manifest, null, 2)}
     expect(written.apmInstallSource.sha).toBe(SHA);
   });
 
+  it("cleans the stage and allows retry when the archive runtime cannot load", async () => {
+    const load = spyOn(service, "loadArchive").and.rejectWith(
+      new Error("Archive import unavailable"),
+    );
+    await expectAsync(service.install(pack())).toBeRejectedWithError("Archive import unavailable");
+    expect(fs.readdirSync(root)).toEqual([]);
+    expect(npmCalls).toBe(0);
+    load.and.callThrough();
+    const installed = await service.install(pack());
+    expect(installed.resolvedSha).toBe(SHA);
+    expect(fs.existsSync(path.join(installed.target, "package.json"))).toBe(true);
+    expect(npmCalls).toBe(1);
+  });
+
   it("fetches a package hosted anywhere else with git", async () => {
+    const load = spyOn(service, "loadArchive").and.callThrough();
     manifest.repository = "https://git.example.test/owner/repo.git";
     service.fetchUrl = async () => {
       throw new Error("a non-GitHub package has no archive to download");
@@ -271,6 +286,7 @@ ${JSON.stringify(manifest, null, 2)}
     expect(gitCalls).toEqual(["init", "remote", "fetch", "checkout"]);
     expect(fs.existsSync(path.join(installed.target, ".git"))).toBe(false);
     expect(installed.metadata.apmInstallSource.origin).toBe("git.example.test/owner/repo");
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("rejects a mismatched manifest before npm runs", async () => {
