@@ -7,12 +7,23 @@ const {
 } = require("./package-lifecycle-errors");
 
 function snapshot(node) {
-  if (node instanceof Pane) return { pane: node };
+  if (node instanceof Pane) return { pane: node, flexScale: node.getFlexScale() };
   return {
     orientation: node.getOrientation(),
     flexScale: node.getFlexScale(),
     children: node.getChildren().map(snapshot),
   };
+}
+
+function horizontalChildren(layout) {
+  if (layout.orientation !== "horizontal") return [layout];
+  const total = layout.children.reduce((sum, child) => sum + child.flexScale, 0);
+  if (total === 0) return [layout];
+  // Flatten only matching axes. Each group retains its share of the new row,
+  // and its children retain their relative widths, including collapsed panes.
+  return layout.children.flatMap((child) =>
+    horizontalChildren({ ...child, flexScale: (layout.flexScale * child.flexScale) / total }),
+  );
 }
 
 function without(layout, removed) {
@@ -24,7 +35,10 @@ function without(layout, removed) {
 
 function restore(layout, container) {
   if (!layout) return new Pane({ ...container.workspace.getCenter().params, container });
-  if (layout.pane) return layout.pane;
+  if (layout.pane) {
+    layout.pane.setFlexScale(layout.flexScale);
+    return layout.pane;
+  }
   return new PaneAxis(
     {
       orientation: layout.orientation,
@@ -137,7 +151,7 @@ module.exports = async function transferPaneLayout(
     : {
         orientation: "horizontal",
         flexScale: 1,
-        children: [targetLayout, movedLayout],
+        children: [targetLayout, movedLayout].flatMap(horizontalChildren),
       };
   const originalActive = source.getActivePane();
   let sourceReplacement;
