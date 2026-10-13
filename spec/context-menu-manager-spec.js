@@ -48,7 +48,6 @@ describe("ContextMenuManager", function () {
             label: "Mode",
             type: "checkbox",
             command: "test:toggle-mode",
-            mouseBindingLabel: "LMB",
             created() {
               this.checked = enabled;
             },
@@ -61,7 +60,6 @@ describe("ContextMenuManager", function () {
       });
       const first = contextMenu.templateForElement(grandchild);
       expect(first[0].checked).toBe(true);
-      expect(first[0].mouseBindingLabel).toBe("LMB");
       expect(first[1].submenu[0].checked).toBe(false);
       enabled = false;
       expect(contextMenu.templateForElement(grandchild)[0].checked).toBe(false);

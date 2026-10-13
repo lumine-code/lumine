@@ -78,7 +78,7 @@ describe("HTML menu UI", () => {
     commands.dispose();
   });
 
-  it("shows mouse shortcuts alongside keyboard shortcuts", () => {
+  it("shows keyboard shortcuts without extra mouse shortcut labels", () => {
     const popup = showMenuPopup(contextViews, {
       anchor: target,
       target,
@@ -91,10 +91,7 @@ describe("HTML menu UI", () => {
         },
       ],
     });
-    const expected = require("@lumine-code/underscore-plus").humanizeKeystroke("cmdorctrl-LMB");
-    expect(popup.element.querySelector(".menu-item-keystroke").textContent).toBe(
-      `${expected} · Ctrl+K`,
-    );
+    expect(popup.element.querySelector(".menu-item-keystroke").textContent).toBe("Ctrl+K");
   });
 
   it("reserves a check column only for checkbox and radio rows", () => {

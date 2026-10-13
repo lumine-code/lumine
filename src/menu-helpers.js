@@ -99,7 +99,6 @@ function cloneMenuItem(item) {
     "id",
     "enabled",
     "checked",
-    "mouseBindingLabel",
     "visible",
     "command",
     "submenu",

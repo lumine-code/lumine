@@ -67,24 +67,6 @@ function bindingLabel(command, target) {
   return binding?.keystrokes ? _.humanizeKeystroke(binding.keystrokes) : "";
 }
 
-function mouseBindingLabel(label) {
-  if (!label) return "";
-  return String(label)
-    .split(",")
-    .map((gesture) => {
-      const text = gesture.trim();
-      if (/^wheel /i.test(text)) return text;
-      return _.humanizeKeystroke(
-        text
-          .replace(/\+/g, "-")
-          .replace(/\b(cmdorctrl|cmd|ctrl|alt|option|shift)\b/gi, (modifier) =>
-            modifier.toLowerCase(),
-          ),
-      );
-    })
-    .join(", ");
-}
-
 class MenuItemView {
   constructor(list, template) {
     this.list = list;
@@ -147,12 +129,8 @@ class MenuItemView {
       this.element.setAttribute("aria-haspopup", "menu");
       this.element.setAttribute("aria-expanded", "false");
     } else {
-      this.keystrokeElement.textContent = [
-        mouseBindingLabel(template.mouseBindingLabel),
-        template.keyBindingLabel || bindingLabel(template.command, this.popup.options.target),
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      this.keystrokeElement.textContent =
+        template.keyBindingLabel || bindingLabel(template.command, this.popup.options.target);
     }
     this.element.appendChild(this.keystrokeElement);
 
