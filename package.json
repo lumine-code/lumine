@@ -45,7 +45,7 @@
     "@vscode/ripgrep": "1.18.0",
     "about": "github:lumine-code/about#139795339e772db7e82f35d7b8bcce0c1b409323",
     "async": "3.2.6",
-    "background-tips": "github:lumine-code/background-tips#31fbf4c9985f0c5809ed8c9dd5186cdfb7c70669",
+    "background-tips": "github:lumine-code/background-tips#96e627b04809b2f8cf4d7e349c13ec9daa8f3d59",
     "color": "5.0.3",
     "command-palette": "github:lumine-code/command-palette#d1aac8b769e27b7b663743fec0690b4a546de122",
     "dedent": "^1.7.2",
