@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600">
+  <title>Lumine — A modern, extensible text editor built on the Pulsar and Atom legacy.</title>
+  <rect width="1600" height="600" fill="#f2f1ee"/>
+  <g font-family="Segoe UI, sans-serif" fill="#161616"><path d="M64 0V600 M1120 0V600 M1536 0V600 M0 72H1600 M0 488H1600" fill="none" stroke="#ccc9c0" stroke-width="1"/>
+    <text x="112" y="45" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="start">LUMINE / TEXT EDITOR</text>
+    <text x="1488" y="45" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="end">OPEN SOURCE</text>
+    <text x="106" y="305" font-size="176" font-weight="600" letter-spacing="-9">Lumine</text>
+    <text x="112" y="382" font-size="26">A modern, extensible text editor built on the Pulsar and Atom legacy.</text>
+    <g transform="translate(1200 152) scale(2)"><defs><radialGradient id="lumine-gold" cx="36%" cy="24%" r="74%">
+      <stop offset="0%" stop-color="#f6c952"/>
+      <stop offset="58%" stop-color="#cf9723"/>
+      <stop offset="100%" stop-color="#9a6214"/>
+    </radialGradient></defs><circle cx="64" cy="64" r="60" fill="url(#lumine-gold)"/><g fill="#fff">
+    <path d="M64 19 69.36 51.07 80.26 47.74 76.93 58.64 109 64 76.93 69.36 80.26 80.26 69.36 76.93 64 109 58.64 76.93 47.74 80.26 51.07 69.36 19 64 51.07 58.64 47.74 47.74 58.64 51.07Z"/>
+  </g></g>
+    <path d="M64 488H384" stroke="#8a5900" stroke-width="3"/>
+    <text x="112" y="552" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="start">YOUR EDITOR. YOUR WAY.</text>
+    <text x="1488" y="552" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="end">LUMINE-CODE.GITHUB.IO</text></g>
+</svg>

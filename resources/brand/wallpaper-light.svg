@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <title>Lumine wallpaper</title>
+  <rect width="1920" height="1080" fill="#f2f1ee"/>
+  <g font-family="Segoe UI, sans-serif" fill="#161616"><path d="M96 0V1080 M608 0V1080 M1312 0V1080 M1824 0V1080 M0 96H1920 M0 900H1920 M0 984H1920" fill="none" stroke="#ccc9c0" stroke-width="1"/>
+    <text x="136" y="62" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="start">LUMINE / WORKSPACE</text>
+    <g transform="translate(880 310) scale(1.25)"><defs><radialGradient id="lumine-gold" cx="36%" cy="24%" r="74%">
+      <stop offset="0%" stop-color="#f6c952"/>
+      <stop offset="58%" stop-color="#cf9723"/>
+      <stop offset="100%" stop-color="#9a6214"/>
+    </radialGradient></defs><circle cx="64" cy="64" r="60" fill="url(#lumine-gold)"/><g fill="#fff">
+    <path d="M64 19 69.36 51.07 80.26 47.74 76.93 58.64 109 64 76.93 69.36 80.26 80.26 69.36 76.93 64 109 58.64 76.93 47.74 80.26 51.07 69.36 19 64 51.07 58.64 47.74 47.74 58.64 51.07Z"/>
+  </g></g>
+    <text x="960" y="615" text-anchor="middle" font-size="112" font-weight="600" letter-spacing="-5">Lumine</text>
+    <text x="960" y="682" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="middle">YOUR EDITOR. YOUR WAY.</text>
+    <path d="M96 900H352" stroke="#8a5900" stroke-width="3"/>
+    <text x="136" y="950" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="start">OPEN SOURCE / EXTENSIBLE</text>
+    <text x="1784" y="950" fill="#69665f" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" text-anchor="end">LUMINE-CODE.GITHUB.IO</text></g>
+</svg>

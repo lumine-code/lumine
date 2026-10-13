@@ -6,7 +6,10 @@ Fork of [pulsar-edit/pulsar](https://github.com/pulsar-edit/pulsar).
 
 Website: https://lumine-code.github.io
 
-![Lumine](https://github.com/lumine-code/lumine/blob/master/resources/brand/banner.png?raw=true)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="resources/brand/banner-dark.png">
+  <img src="resources/brand/banner.png" alt="Lumine — your editor, your way." width="1600">
+</picture>
 
 ![view-1](https://github.com/lumine-code/lumine/blob/master/.github/gallery/view-1.png?raw=true)
 

@@ -2,7 +2,7 @@
  * Renders every Lumine branding asset from the master art in
  * `resources/app-icons/lumine.svg`: the application icon for all three
  * platforms, the document icon, the Windows installer's bitmaps and Start-menu
- * tiles, the raw mark, and the square badge.
+ * tiles, the raw mark, the square badge, and the website-style marketing art.
  *
  * Two sibling SVGs carry the same mark recolored for a run mode --
  * `lumine-safe.svg` (safe mode) and `lumine-dev.svg` (dev mode). Those only
@@ -19,6 +19,7 @@
  *                  files; write nothing, exit 1 on any drift
  *   --out <dir>    write under <dir> instead of the repo, for eyeballing a
  *                  design change without dirtying the tree
+ *   --brand-only   only render the README banners and desktop wallpapers
  *
  * Before this script the rasters were hand-exported from art that no longer
  * matched lumine.svg: every white element carried a drop shadow the vector
@@ -48,6 +49,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 const { app, BrowserWindow, Menu } = require("electron");
+const brandAssets = require("./brand-art");
 
 // This utility uses a hidden frameless window. Suppress Electron's in-window
 // menu on Windows and Linux while leaving the macOS system menu intact.
@@ -66,8 +68,9 @@ const MODE_VARIANTS = [
   { name: "dev", svg: path.join(APP_ICONS_DIR, "lumine-dev.svg") },
 ];
 
-// Must be at least the largest asset (the 1024px icns slice). Every capture is
-// a rect out of this one viewport, so the stage is laid out and shown once
+// The icon stage is at least as large as the 1024px icns slice; marketing art
+// expands it to 1920x1080. Every capture is a rect out of this one viewport,
+// so the stage is laid out and shown once
 // rather than resized per asset — a resize means another relayout plus another
 // frame wait, and the small icon sizes would hit the Windows ~132px minimum
 // window width.
@@ -121,12 +124,15 @@ function scriptArgs(argv) {
 }
 
 function parseArgs(argv) {
-  const options = { check: false, outDir: REPO_ROOT };
+  const options = { check: false, outDir: REPO_ROOT, brandOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
       case "--check":
         options.check = true;
+        break;
+      case "--brand-only":
+        options.brandOnly = true;
         break;
       case "--out":
         options.outDir = path.resolve(argv[++i] ?? fail("--out needs a value"));
@@ -429,12 +435,12 @@ const SHELL_HTML = `<!doctype html><meta charset="utf-8"><style>
   svg { display: block; }
 </style><div id="stage"></div>`;
 
-async function openStage() {
+async function openStage(width = STAGE, height = STAGE) {
   const win = new BrowserWindow({
     x: 0,
     y: 0,
-    width: STAGE,
-    height: STAGE,
+    width,
+    height,
     // width/height are the viewport, not the outer frame; frameless also
     // sidesteps the Windows minimum-window-width clamp.
     useContentSize: true,
@@ -479,7 +485,7 @@ async function assertWordmarkFont(win) {
   );
   if (!available) {
     fail(
-      `the installer sidebar's wordmark needs ${WORDMARK_FAMILY} ${WORDMARK_WEIGHT}, which this ` +
+      `the branding artwork needs ${WORDMARK_FAMILY} ${WORDMARK_WEIGHT}, which this ` +
         "machine does not have — regenerate on Windows (see the header of this script)",
     );
   }
@@ -493,9 +499,9 @@ async function capture(win, { markup, background, width, height }) {
        stage.style.width = ${JSON.stringify(`${width}px`)};
        stage.style.height = ${JSON.stringify(`${height}px`)};
        stage.innerHTML = ${JSON.stringify(markup)};
-       return new Promise((resolve) => {
+       return document.fonts.ready.then(() => new Promise((resolve) => {
          requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
-       });
+       }));
      })()`,
   );
 
@@ -868,6 +874,21 @@ async function renderAsset(win, asset) {
     }
     case "png":
       return renderPng(win, asset.markup, asset.size, label);
+    case "opaque-png": {
+      // The compositor can return the previous 2px probe frame on the first
+      // large opaque capture. Drain it, then capture the same art after the
+      // next pair of animation frames, as the two-pass icon renderer does.
+      await capture(win, asset);
+      const bgra = await capture(win, asset);
+      assertOpaque(bgra, label);
+      assertNotUniform(bgra, label);
+      const rgba = Buffer.from(bgra);
+      for (let i = 0; i < rgba.length; i += 4) {
+        rgba[i] = bgra[i + 2];
+        rgba[i + 2] = bgra[i];
+      }
+      return encodePngRgba(rgba, asset.width, asset.height);
+    }
     // Nothing to rasterize: the markup is the file. It still goes through the
     // asset table so --check covers it and it lands beside the art it derives
     // from.
@@ -901,12 +922,16 @@ async function renderAsset(win, asset) {
 async function main() {
   const options = parseArgs(scriptArgs(process.argv));
   const art = readMasterArt(MASTER_SVG);
-  const assets = assetList(art);
-  for (const variant of MODE_VARIANTS) {
-    assets.push(...modeVariantAssets(readMasterArt(variant.svg), variant.name));
+  const description = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"))).description;
+  const assets = brandAssets(art, description);
+  if (!options.brandOnly) {
+    assets.push(...assetList(art));
+    for (const variant of MODE_VARIANTS) {
+      assets.push(...modeVariantAssets(readMasterArt(variant.svg), variant.name));
+    }
   }
 
-  const win = await openStage();
+  const win = await openStage(1920, 1080);
   await assertOpaqueBgra(win);
   await assertWordmarkFont(win);
 
@@ -941,7 +966,9 @@ async function main() {
     fs.writeFileSync(target, asset.bytes);
     console.log(`  ${String(asset.bytes.length).padStart(8)}  ${asset.file}`);
   }
-  const sources = [MASTER_SVG, ...MODE_VARIANTS.map((v) => v.svg)].map((p) => path.basename(p));
+  const sources = [MASTER_SVG, ...(options.brandOnly ? [] : MODE_VARIANTS.map((v) => v.svg))].map(
+    (p) => path.basename(p),
+  );
   console.log(`branding: ${rendered.length} assets written from ${sources.join(", ")}`);
   app.exit(0);
 }
