@@ -11,21 +11,25 @@ Website: https://lumine-code.github.io
   <img src="resources/brand/banner.png" alt="Lumine — your editor, your way." width="1600">
 </picture>
 
-<div>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/01-dark.png">
-  <img src=".github/gallery/01-light.png" alt="01 — Python editing and project navigation." width="1600" align="top">
-</picture><picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/02-dark.png">
-  <img src=".github/gallery/02-light.png" alt="02 — Markdown source and live preview side by side." width="1600" align="top">
-</picture><picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/03-dark.png">
-  <img src=".github/gallery/03-light.png" alt="03 — Installed and bundled packages." width="1600" align="top">
-</picture><picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/04-dark.png">
-  <img src=".github/gallery/04-light.png" alt="04 — Versions and installation details in About." width="1600" align="top">
+  <img src=".github/gallery/01-light.png" alt="01 — Python editing and project navigation." width="1600">
 </picture>
-</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/02-dark.png">
+  <img src=".github/gallery/02-light.png" alt="02 — Markdown source and live preview side by side." width="1600">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/03-dark.png">
+  <img src=".github/gallery/03-light.png" alt="03 — Installed and bundled packages." width="1600">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/04-dark.png">
+  <img src=".github/gallery/04-light.png" alt="04 — Versions and installation details in About." width="1600">
+</picture>
 
 ## Features
 
