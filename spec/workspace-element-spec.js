@@ -343,7 +343,7 @@ describe("WorkspaceElement", () => {
       window.removeEventListener("mousemove", workspaceElement.handleEdgesMouseMove);
       workspaceElement.htmlElement.removeEventListener(
         "mouseleave",
-        workspaceElement.handleCenterLeave,
+        workspaceElement.handleWindowLeave,
       );
 
       jasmine.DEFAULT_TIMEOUT_INTERVAL = 10000;
@@ -355,7 +355,7 @@ describe("WorkspaceElement", () => {
       window.addEventListener("mousemove", workspaceElement.handleEdgesMouseMove);
       workspaceElement.htmlElement.addEventListener(
         "mouseleave",
-        workspaceElement.handleCenterLeave,
+        workspaceElement.handleWindowLeave,
       );
     });
 
@@ -518,6 +518,53 @@ describe("WorkspaceElement", () => {
     });
 
     for (const location of ["left", "right", "bottom"]) {
+      it(`hides the ${location} dock toggle when the pointer leaves the window and restores it on return`, async () => {
+        const dock = lumine.workspace[`get${location[0].toUpperCase()}${location.slice(1)}Dock`]();
+        const edge = {
+          left: { clientX: 2, clientY: 150 },
+          right: { clientX: 598, clientY: 150 },
+          bottom: { clientX: 300, clientY: 299 },
+        }[location];
+        const docks = [
+          lumine.workspace.getLeftDock(),
+          lumine.workspace.getRightDock(),
+          lumine.workspace.getBottomDock(),
+        ];
+        dock.refs.toggleButton.refs.innerElement.style.transition = "none";
+        workspaceElement.htmlElement.addEventListener(
+          "mouseleave",
+          workspaceElement.handleWindowLeave,
+        );
+
+        try {
+          for (const visible of [false, true]) {
+            if (visible) dock.show();
+            await moveMouse(edge);
+            expect(dock.state.hovered).toBe(true);
+            expect(dock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
+
+            // Chromium can report the last point inside the window on exit.
+            // That point still belongs to the dock's expanded hover area.
+            workspaceElement.htmlElement.dispatchEvent(new MouseEvent("mouseleave", edge));
+            advanceClock(100);
+            await waitForFrames(() => true, { frames: 2, description: "window leave render" });
+
+            expect(workspaceElement.hoveredDock).toBeNull();
+            for (const candidate of docks) expectToggleButtonHidden(candidate);
+            expect(dock.isVisible()).toBe(visible);
+
+            await moveMouse(edge);
+            expect(dock.state.hovered).toBe(true);
+            expect(dock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
+          }
+        } finally {
+          workspaceElement.htmlElement.removeEventListener(
+            "mouseleave",
+            workspaceElement.handleWindowLeave,
+          );
+        }
+      });
+
       it(`switches hit testing between the ${location} dock toggle and an intersecting pane resize handle`, async () => {
         const pane = lumine.workspace.getActivePane();
         if (location === "bottom") pane.splitRight();
@@ -578,6 +625,65 @@ describe("WorkspaceElement", () => {
         expect(dock.isVisible()).toBe(true);
       });
     }
+
+    it("cancels a pending mouse move when the pointer leaves the window", async () => {
+      const dock = lumine.workspace.getLeftDock();
+      dock.refs.toggleButton.refs.innerElement.style.transition = "none";
+      workspaceElement.handleEdgesMouseMove.cancel();
+      workspaceElement.htmlElement.addEventListener(
+        "mouseleave",
+        workspaceElement.handleWindowLeave,
+      );
+
+      try {
+        advanceClock(100);
+        const updateHoveredDock = spyOn(workspaceElement, "updateHoveredDock").and.callThrough();
+        workspaceElement.handleEdgesMouseMove(
+          new MouseEvent("mousemove", {
+            clientX: 300,
+            clientY: 150,
+          }),
+        );
+        expect(updateHoveredDock.calls.count()).toBe(1);
+
+        workspaceElement.handleEdgesMouseMove(
+          new MouseEvent("mousemove", {
+            clientX: 2,
+            clientY: 150,
+          }),
+        );
+        expect(updateHoveredDock.calls.count()).toBe(1);
+
+        workspaceElement.htmlElement.dispatchEvent(
+          new MouseEvent("mouseleave", {
+            clientX: 2,
+            clientY: 150,
+          }),
+        );
+        advanceClock(100);
+        await waitForFrames(() => true, { frames: 2, description: "pending hover cancellation" });
+
+        expect(updateHoveredDock.calls.count()).toBe(1);
+        expect(workspaceElement.hoveredDock).toBeFalsy();
+        expectToggleButtonHidden(dock);
+
+        workspaceElement.handleEdgesMouseMove(
+          new MouseEvent("mousemove", {
+            clientX: 2,
+            clientY: 150,
+          }),
+        );
+        await waitForFrames(() => true, { frames: 2, description: "window re-entry render" });
+        expect(updateHoveredDock.calls.count()).toBe(2);
+        expectToggleButtonVisible(dock, "icon-chevron-right");
+      } finally {
+        workspaceElement.htmlElement.removeEventListener(
+          "mouseleave",
+          workspaceElement.handleWindowLeave,
+        );
+        workspaceElement.handleEdgesMouseMove.cancel();
+      }
+    });
 
     // Coordinates below are relative to the workspace element, not to the
     // viewport. `pointWithinHoverArea` compares against

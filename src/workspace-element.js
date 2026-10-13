@@ -41,12 +41,12 @@ class WorkspaceElement extends HTMLElement {
     if (this.ownerDocument.hasFocus()) this.focus();
     this.htmlElement = this.ownerDocument.documentElement;
     if (!this.editorWindow || this.editorWindow.isMain())
-      this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
+      this.htmlElement.addEventListener("mouseleave", this.handleWindowLeave);
   }
 
   disconnectedCallback() {
     this.subscriptions.dispose();
-    this.htmlElement?.removeEventListener("mouseleave", this.handleCenterLeave);
+    this.htmlElement?.removeEventListener("mouseleave", this.handleWindowLeave);
   }
 
   initializeContent() {
@@ -229,6 +229,7 @@ class WorkspaceElement extends HTMLElement {
   initialize(model, { config, project, styleManager, viewRegistry, editorWindow }) {
     this.handleCenterEnter = this.handleCenterEnter.bind(this);
     this.handleCenterLeave = this.handleCenterLeave.bind(this);
+    this.handleWindowLeave = this.handleWindowLeave.bind(this);
     this.handleEdgesMouseMove = _.throttle(this.handleEdgesMouseMove.bind(this), 100);
     this.handleDockDragEnd = this.handleDockDragEnd.bind(this);
     this.handleDragStart = this.handleDragStart.bind(this);
@@ -262,6 +263,7 @@ class WorkspaceElement extends HTMLElement {
         this.paneContainer.removeEventListener("mouseleave", this.handleCenterLeave);
         this.removeEventListener("wheel", this.handleCtrlWheel, { capture: true });
         window.removeEventListener("mousemove", this.handleEdgesMouseMove);
+        this.handleEdgesMouseMove.cancel();
         window.removeEventListener("dragend", this.handleDockDragEnd);
         window.removeEventListener("dragstart", this.handleDragStart);
         window.removeEventListener("dragend", this.handleDragEnd, true);
@@ -411,11 +413,26 @@ class WorkspaceElement extends HTMLElement {
   }
 
   handleCenterLeave(event) {
-    // If the cursor leaves the center, we start listening to determine whether one of the docs is
+    // If the cursor leaves the center, we start listening to determine whether one of the docks is
     // being hovered.
     this.cursorInCenter = false;
     this.updateHoveredDock({ x: event.pageX, y: event.pageY });
     window.addEventListener("dragend", this.handleDockDragEnd);
+  }
+
+  handleWindowLeave() {
+    // Dock hit areas extend past the window edges, so leaving the document must
+    // clear hover explicitly. A queued mouse move must not restore it afterward.
+    this.handleEdgesMouseMove.cancel();
+    this.cursorInCenter = false;
+    for (const dock of [
+      this.model.getLeftDock(),
+      this.model.getRightDock(),
+      this.model.getBottomDock(),
+    ]) {
+      dock.setHovered(false);
+    }
+    window.removeEventListener("dragend", this.handleDockDragEnd);
   }
 
   handleEdgesMouseMove(event) {
