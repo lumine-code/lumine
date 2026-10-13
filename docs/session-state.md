@@ -8,6 +8,8 @@ Separate snapshots let two windows keep their own pane layout, editors and packa
 
 `lumine.project.setState(paths)` runs changes sequentially in the current window. It saves the outgoing session before confirming closure and captures changes made by Save or Save As during that confirmation. Restoring a project replaces the workspace center while keeping docks and their retained buffers alive.
 
+An in-place change restores the current window's own snapshot for the incoming project first. A window without its own history can adopt the most recently saved snapshot only while no other window has that project open.
+
 Resetting or closing the window invalidates pending changes. Once an outstanding asynchronous step settles, the cancelled transition rejects with `ABORT_ERR` and releases any unused reservation. Requests queued before the reset are cancelled too; later requests wait for the old operation to finish before using the new generation.
 
 Asynchronous workspace opens have their own lifetime. Resetting or destroying the workspace cancels preview, permanent and split opens, including requests still reading their saved location. A cancelled `workspace.open()` resolves to `undefined`; late opener-owned results are disposed while caller-supplied and already-attached items retain their ownership. Opens in the new generation do not wait for an obsolete URI request.

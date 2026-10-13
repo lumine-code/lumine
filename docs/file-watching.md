@@ -4,7 +4,7 @@ Lumine observes fixed filesystem paths through one native worker shared by the a
 
 ## Public API
 
-Import `watchFile` and `watchDirectory` from `lumine`. Both return a `FileWatchHandle` synchronously. `watchDirectory(path)` observes the directory and its immediate children; pass `{recursive: true}` to observe descendants. Missing targets remain observed through existing ancestors and become active at the requested location when created.
+Import `watchFile` and `watchDirectory` from `lumine`. Both return a `FileWatchHandle` synchronously. `watchDirectory(path)` observes the directory and its immediate children; pass `{recursive: true}` to observe descendants. Missing targets remain observed through existing ancestors and become active at the requested location when created. The [FileWatchHandle API reference](https://lumine-code.github.io/api/#class-filewatchhandle) documents the complete handle contract.
 
 ```js
 const { watchFile } = require("lumine");
@@ -20,7 +20,7 @@ handle.dispose();
 await handle.closed;
 ```
 
-`ready` resolves once observation is armed; attach listeners before awaiting it. An authoritative initial read after readiness closes the gap between constructing a document and starting observation. `dispose()` stops callbacks immediately, including during startup. `closed` resolves once owned observation resources are released, without waiting for a stalled filesystem metadata read; its late result is ignored. Disposing before readiness rejects `ready` with `ABORT_ERR`. Subscriptions returned by the three event methods are individually disposable.
+`ready` resolves once observation is armed; attach listeners before awaiting it. An authoritative initial read after readiness closes the gap between constructing a document and starting observation. Keep the handle with the package's disposables and release it when the package deactivates or the owning document closes. `dispose()` is synchronous and idempotent and stops callbacks immediately, including during startup. `closed` resolves once owned observation resources are released, without waiting for a stalled filesystem metadata read; its late result is ignored. Disposing before readiness rejects `ready` with `ABORT_ERR`. Subscriptions returned by the three event methods are individually disposable.
 
 Changes are batches of `{action, path}` entries with `created`, `updated` or `deleted` actions. Paths are absolute and retain the subscriber's spelling. Events are coalesced hints to read current state, not a history of filesystem operations. Atomic replacement remains an update at the same filename. The service does not apply project ignore rules.
 
@@ -30,7 +30,7 @@ Native content hints also cover writes that preserve file size and modification 
 
 `onDidInvalidate` delivers `{path, reason, generation}` after observation has recovered from interrupted delivery. Changes in that interval are not replayed. Reread the affected state before relying on later deltas. Runtime errors retain their code, path and backend. The application retries worker failures with backoff while retaining subscription ownership.
 
-For project consumers, use `project.onDidChangeFiles` and `project.onDidInvalidateFiles`. The latter names `rootPaths` instead of a single path. File discovery, repository state and document caches reconcile those roots. Language-server sessions affected by recovery restart once per recovery generation and receive their open documents again, including unsaved contents.
+For project consumers, use `project.onDidChangeFiles` and `project.onDidInvalidateFiles` so packages share project observation. The latter names `rootPaths` instead of a single path. File discovery, repository state and document caches reconcile those roots. Use both callbacks when maintaining a project cache, and await `project.getWatcherPromise(rootPath)` before changing files in a test. Language-server sessions affected by recovery restart once per recovery generation and receive their open documents again, including unsaved contents.
 
 Delivery acknowledgements retry after a transport failure with bounded backoff and one pending retry per session. Queue overflow triggers invalidation even when the overflowing batch leaves no changes to deliver. Session shutdown attempts owner-level release even when an individual unsubscribe fails.
 
@@ -40,7 +40,7 @@ An external rename does not retarget a document or its watcher. The original pat
 
 Documents participate in editor-initiated moves through `workspace.registerFileDocument({owner, getPath, setPath, beginFileOperation, endFileOperation})`. Register a shared model once rather than each view. Path updates must preserve edits, undo history and view state. The operation hooks defer filesystem reactions while disk changes are pending and reconcile after retargeting.
 
-Before an editor-owned move, call `workspace.beginFileMove(plannedRenames)`. Complete its transaction with the actual successful `{oldPath, newPath, isDirectory}` effects, including partial results when an operation fails. An empty result releases guards after rollback. Copies, Save As and temporary implementation renames are not global document moves. Only the initiating workspace retargets its documents.
+Before an editor-owned move, call `workspace.beginFileMove(plannedRenames)`. Complete its transaction with the actual successful `{oldPath, newPath, isDirectory}` effects, including partial results when an operation fails. An empty result releases guards after rollback. Copies, Save As and temporary implementation renames are not global document moves. Only the initiating workspace retargets its documents. The [Workspace API reference](https://lumine-code.github.io/api/#workspace-instance-beginfilemove) describes the transaction methods.
 
 Custom TextBuffer data sources retain their own identity and stream transformations during moves when they provide `setPath(target)`, which may return a Promise. This method opts the source into workspace filesystem moves and must update its existing `getPath()` result. Core reattaches its notifications and emits one path change after relocation, including when the provider also emits `onDidRename`. Sources without `setPath` remain under their provider's relocation policy and are excluded from automatic filesystem moves.
 
@@ -64,7 +64,9 @@ Use `onWillReload` to retire transient editing state before the loaded patch mov
 
 The main process owns configuration subscriptions and renderer sessions; the worker alone loads the native addon. Reload or crash releases only that renderer session. An armed recursive directory source also serves subscriptions and location guards below it, preserving each subscriber's shallow or recursive scope. A broader recursive source takes over existing descendants after arming, and its readiness waits for their native handles to close. Shallow sources never take over recursive subscriptions or descendants they cannot observe.
 
-The native library uses ReadDirectoryChangesW on Windows, inotify on Linux and FSEvents on macOS. There is no renderer `fs.watch`, polling backend, Watchman selection or public snapshot API. Root symlinks are resolved and revalidated; recursive observation does not traverse nested symlinks or junctions. Subscribe explicitly through such a path to observe its target.
+The native library uses ReadDirectoryChangesW on Windows, inotify on Linux and FSEvents on macOS. There is no renderer `fs.watch`, polling backend, Watchman selection or public snapshot API. Root symlinks are resolved and revalidated, including when a previously missing target appears; recursive observation does not traverse nested symlinks or junctions. Subscribe explicitly through such a path to observe its target.
+
+On macOS, FSEvents observes existing content roots and reports ancestor moves. Symlink entries and missing-path anchors use shared vnode guards that observe directory membership and relocation without subscribing to descendant content events. Even an alias guard at `/` avoids a filesystem-wide FSEvents stream. Packages use the same public observation API on Windows, macOS and Linux.
 
 Concurrent subscriptions share preliminary filesystem reads as well as physical sources. Those reads are retained only while pending. Within one plan, a directory used as both a location guard and a main binding reuses the metadata already read. Borrowing a covering source uses that plan's directory identities when available, while readiness still waits for native arming and retired descendant cleanup. Each subscription verifies its topology with fresh reads after its sources are armed, preserving detection of changes during startup.
 
