@@ -702,7 +702,10 @@ describe("Environment", () => {
 
       const keydown = new KeyboardEvent("keydown");
       lumineEnv.document.dispatchEvent(keydown);
-      await wait(lumineEnv.saveStateDebounceInterval);
+      await conditionPromise(
+        () => idleCallbacks.length > 0,
+        "the workspace snapshot idle callback",
+      );
       idleCallbacks.shift()?.();
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: false });
       expect(lumineEnv.saveState).not.toHaveBeenCalledWith({ isUnloading: true });
@@ -710,7 +713,10 @@ describe("Environment", () => {
       lumineEnv.saveState.calls.reset();
       const mousedown = new MouseEvent("mousedown");
       lumineEnv.document.dispatchEvent(mousedown);
-      await wait(lumineEnv.saveStateDebounceInterval);
+      await conditionPromise(
+        () => idleCallbacks.length > 0,
+        "the workspace snapshot idle callback",
+      );
       idleCallbacks.shift()?.();
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: false });
       expect(lumineEnv.saveState).not.toHaveBeenCalledWith({ isUnloading: true });
@@ -719,6 +725,7 @@ describe("Environment", () => {
     });
 
     it("ignores mousedown/keydown events happening after calling prepareToUnloadEditorWindow", async () => {
+      jasmine.useRealClock();
       const lumineEnv = new Environment({
         applicationDelegate: global.lumine.applicationDelegate,
       });
@@ -742,13 +749,19 @@ describe("Environment", () => {
       await lumineEnv.prepareToUnloadEditorWindow();
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: true });
 
-      await wait(lumineEnv.saveStateDebounceInterval);
+      await conditionPromise(
+        () => idleCallbacks.length > 0,
+        "the workspace snapshot idle callback",
+      );
       idleCallbacks.shift()();
       expect(lumineEnv.saveState.calls.count()).toBe(1);
 
       mousedown = new MouseEvent("mousedown");
       lumineEnv.document.dispatchEvent(mousedown);
-      await wait(lumineEnv.saveStateDebounceInterval);
+      await conditionPromise(
+        () => idleCallbacks.length > 0,
+        "the workspace snapshot idle callback",
+      );
       idleCallbacks.shift()();
       expect(lumineEnv.saveState.calls.count()).toBe(1);
 

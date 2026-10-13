@@ -683,21 +683,55 @@ class Environment {
   }
 
   attachSaveStateListeners() {
-    const saveState = _.debounce(() => {
-      this.domWindow.requestIdleCallback(() => {
-        if (!this.unloading) this.saveState({ isUnloading: false });
-      });
-    }, this.saveStateDebounceInterval);
-    this.document.addEventListener("mousedown", saveState, { capture: true });
-    this.document.addEventListener("keydown", saveState, { capture: true });
-    this.disposables.add(
-      new Disposable(() => {
-        this.document.removeEventListener("mousedown", saveState, {
-          capture: true,
-        });
-        this.document.removeEventListener("keydown", saveState, {
-          capture: true,
-        });
+    if (this.saveStateListeners) {
+      this.disposables.remove(this.saveStateListeners);
+      this.saveStateListeners.dispose();
+    }
+    if (!this.document || !this.domWindow) return;
+    const owner = new CompositeDisposable();
+    this.saveStateListeners = owner;
+    this.disposables.add(owner);
+    const timers = require("node:timers");
+    let pending;
+    const saveState = (event) => {
+      timers.clearTimeout(pending);
+      const sourceWindow = event.target?.ownerDocument?.defaultView ?? this.domWindow;
+      pending = timers.setTimeout(() => {
+        pending = null;
+        const save = () => {
+          if (!this.unloading && !this.#destroyed)
+            Promise.resolve(this.saveState({ isUnloading: false })).catch((error) => {
+              console.error("Unable to save the workspace snapshot", error);
+            });
+        };
+        const window = !sourceWindow.closed ? sourceWindow : this.domWindow;
+        if (window.requestIdleCallback) window.requestIdleCallback(save, { timeout: 1000 });
+        else save();
+      }, this.saveStateDebounceInterval);
+    };
+    const listen = (document, editorWindow) => {
+      document.addEventListener("mousedown", saveState, { capture: true });
+      document.addEventListener("keydown", saveState, { capture: true });
+      const lease = new CompositeDisposable(
+        new Disposable(() => {
+          document.removeEventListener("mousedown", saveState, { capture: true });
+          document.removeEventListener("keydown", saveState, { capture: true });
+        }),
+      );
+      if (editorWindow)
+        lease.add(
+          editorWindow.onWillDestroy(() => {
+            owner.remove(lease);
+            lease.dispose();
+          }),
+        );
+      owner.add(lease);
+    };
+    listen(this.document);
+    owner.add(
+      new Disposable(() => timers.clearTimeout(pending)),
+      this.workspace.observeWindows((window) => {
+        if (!window.isMain() && window.getDocument()) listen(window.getDocument(), window);
       }),
     );
   }
@@ -866,6 +900,7 @@ class Environment {
       // observers only after that reset so fragment and viewer registrations
       // remain visible for the duration of the next window lifecycle.
       capture(() => this.workspace.initialize({ configDirPath: this.getConfigDirPath() }));
+      capture(() => this.attachSaveStateListeners());
       capture(() => this.pasteProviders.clear());
       capture(() => this.views.clear());
       capture(() => this.pathsWithWaitSessions.clear());

@@ -403,6 +403,17 @@ module.exports = class EditorWindow {
    * @public
    * @status public
    *
+   * Show this native window without changing its document or pane layout.
+   * @returns {Promise} Resolves when the native window has been shown.
+   */
+  show() {
+    return this.windowService.show();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Focus this window.
    */
   focus() {
