@@ -1,6 +1,7 @@
 const Module = require("module");
 const path = require("path");
 const semver = require("semver");
+const ModuleLoader = require("./module-loader");
 
 // Extend semver.Range to memoize matched versions for speed
 class Range extends semver.Range {
@@ -144,6 +145,7 @@ exports.register = function ({ resourcePath, devMode } = {}) {
 
   cache.registered = true;
   cache.resourcePath = resourcePath;
+  ModuleLoader.setResourcePath(resourcePath);
   cache.resourcePathWithTrailingSlash = `${resourcePath}${path.sep}`;
   registerBuiltins(devMode);
 };

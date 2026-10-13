@@ -91,4 +91,4 @@ const setupDeprecations = function () {
 setupGlobals();
 handleEvents();
 setupDeprecations();
-const handler = require(taskPath);
+const handler = require("./module-utils").requireModule(taskPath);

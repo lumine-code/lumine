@@ -5,6 +5,7 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const sourceMapSupport = require("source-map-support");
+const ModuleLoader = require("./module-loader");
 
 const babelCompiler = require("./babel");
 // JSX and TypeScript always use Babel, without pragma sniffing. Delegate to the
@@ -68,6 +69,10 @@ exports.resetCacheStats = function () {
 
 function compileFileAtPath(compiler, filePath, extension) {
   const sourceCode = fs.readFileSync(filePath, "utf8");
+  return compileSource(compiler, sourceCode, filePath, extension);
+}
+
+function compileSource(compiler, sourceCode, filePath, extension) {
   if (compiler.shouldCompile(sourceCode, filePath)) {
     const cachePath = compiler.getCachePath(sourceCode, filePath);
     let compiledCode = readCachedJavaScript(cachePath);
@@ -110,6 +115,9 @@ exports.install = function (resourcesPath, nodeRequire) {
     // source-map-support module, but we've overridden it to read the javascript
     // code from our cache directory.
     retrieveSourceMap: function (filePath) {
+      const moduleMap = ModuleLoader.getSourceMap(filePath);
+      if (moduleMap) return moduleMap;
+      filePath = ModuleLoader.getSourcePath(filePath);
       if (!cacheDirectory || !fs.isFileSync(filePath)) {
         return null;
       }
@@ -196,37 +204,11 @@ exports.install = function (resourcesPath, nodeRequire) {
     return this.rawStack;
   };
 
-  Object.keys(COMPILERS).forEach(function (extension) {
+  ModuleLoader.install((sourceCode, filePath) => {
+    const extension = path.extname(filePath);
     const compiler = COMPILERS[extension];
-    // Node's built-in loader for this extension, captured before we replace it.
-    // For `.js` on Node 22.12+ this loader is ESM-aware: it routes
-    // `type: module` files through `require(esm)` rather than compiling them as
-    // CommonJS. We defer to it for any file we don't transpile ourselves, so
-    // that ESM dependencies load correctly instead of failing to parse.
-    const defaultLoader = nodeRequire.extensions[extension];
-
-    Object.defineProperty(nodeRequire.extensions, extension, {
-      enumerable: true,
-      writable: false,
-      value: function (module, filePath) {
-        const sourceCode = fs.readFileSync(filePath, "utf8");
-        if (!compiler.shouldCompile(sourceCode, filePath)) {
-          if (defaultLoader) return defaultLoader(module, filePath);
-          return module._compile(sourceCode, filePath);
-        }
-        const cachePath = compiler.getCachePath(sourceCode, filePath);
-        let compiledCode = readCachedJavaScript(cachePath);
-        if (compiledCode != null) {
-          cacheStats[extension].hits++;
-        } else {
-          cacheStats[extension].misses++;
-          compiledCode = compiler.compile(sourceCode, filePath);
-          writeCachedJavaScript(cachePath, compiledCode);
-        }
-        return module._compile(compiledCode, filePath);
-      },
-    });
-  });
+    return compiler ? compileSource(compiler, sourceCode, filePath, extension) : sourceCode;
+  }, nodeRequire);
 };
 
 exports.supportedExtensions = Object.keys(COMPILERS);

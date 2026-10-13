@@ -79,6 +79,18 @@ describe("Babel transpiler support", function () {
     }
   });
 
+  it("preserves static and asynchronous native imports while removing types", () => {
+    const compiled = Babel.compile(
+      'import { basename } from "node:path"; export const name: string = basename("a/b"); export const load = () => import("node:fs");',
+      "native-modules.ts",
+    );
+
+    expect(compiled).toContain('import { basename } from "node:path"');
+    expect(compiled).toContain('import("node:fs")');
+    expect(compiled).toContain("export const name =");
+    expect(compiled).not.toContain("require(");
+  });
+
   describe("when a .js file starts with /** @babel */;", () =>
     it("transpiles it using babel", function () {
       const transpiled = require("./fixtures/babel/babel-comment.js");
@@ -170,9 +182,12 @@ module.exports = <p>Menu > Settings } Advanced</p>;`;
     }));
 
   describe("when a .js file does not start with 'use babel';", function () {
-    it("does not transpile it using babel", function () {
-      spyOn(console, "error");
-      expect(() => require("./fixtures/babel/invalid.js")).toThrow();
+    it("loads its native ESM without invoking Babel", function () {
+      spyOn(Babel, "compile").and.callThrough();
+      const loaded = require("./fixtures/babel/invalid.js");
+
+      expect(loaded.default).toBe(42);
+      expect(Babel.compile).not.toHaveBeenCalled();
     });
 
     it("does not try to log to stdout or stderr while parsing the file", function () {

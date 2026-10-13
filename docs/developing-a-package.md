@@ -50,9 +50,31 @@ module.exports = {
 };
 ```
 
+## CommonJS and native ESM
+
+CommonJS and native ES modules can coexist in one package. Use `.cjs` for an explicit CommonJS file, `.mjs` for an explicit ES module, or `"type": "module"` in `package.json` to make `.js` files ESM. Set `main` to the entry file, including its extension. Babel removes JSX, TypeScript types and legacy syntax while preserving `import`, `export` and asynchronous `import()`.
+
+Native relative imports include the full filename: `import View from "./view.jsx"` or `import helper from "./helper.js"`. JSON imports require an attribute: `import config from "./config.json" with { type: "json" }`. Native ESM does not provide CommonJS's `require`, `module`, `exports` or `__dirname`; use `import.meta.dirname`, `import.meta.filename` and `new URL("./asset.svg", import.meta.url)` for source-relative paths. Both `import { Disposable } from "lumine"` and `require("lumine")` expose the same editor API.
+
+The package entry is loaded synchronously before bootstrap. Its ESM graph must therefore be synchronous too: keep top-level `await` in implementations loaded lazily with `await import("./implementation.js")`, where initialization can be awaited. A CommonJS consumer of an ESM default export reads `require("./view.mjs").default`; a native import uses `import View from "./view.mjs"`. TypeScript's explicit CommonJS `export = value` remains supported in CommonJS files.
+
+Each loaded package has a module generation. A normal unload advances that generation, so the next load gets fresh JavaScript, JSX, TypeScript and JSON modules. Old callbacks retain the dependencies of their own generation. An unload with `preserveModuleCache: true` retains the same identities for updater rollback. Public source paths and source maps still refer to the real files; the loader's private generation filenames are not files on disk. Node retains retired ESM generations until the window closes, so `deactivate()` must dispose subscriptions, services, views and other resources independently of module-cache cleanup.
+
+For lazy CommonJS dependencies inside an ESM implementation, use the generation-bound `import.meta.require` supplied by the editor. The fallback keeps the module usable in ordinary Node:
+
+```js
+import { createRequire } from "node:module";
+
+const require = import.meta.require ?? createRequire(import.meta.url);
+```
+
+A lifecycle spec that unloads a package reacquires its constructors and services from the current package generation. A top-level native import, `import.meta.require` or a CommonJS spec's local `require` deliberately stays with the spec's original generation. Use the current `Package.mainModule` or a fresh `createRequire(import.meta.url)` in ESM and `createRequire(__filename)` in CommonJS when the spec needs the replacement generation. Task handlers can also export their function as a native ESM default; asynchronous imports inside a handler complete through its existing `this.async()` callback.
+
 ## Bootstrap and lazy work
 
 `activate(state, {signal, cause})` is synchronous. Register public commands, openers, hooks, and services before it returns; command handlers and openers can call package-owned `ensure` functions to load heavy modules on first use. A service consumer is passive and never activates its provider, so a provider should publish a lightweight facade whose methods can load the expensive implementation asynchronously.
+
+Use native `import()` in those asynchronous methods when a dependency exposes an ESM build, uses top-level `await` or must initialize on first use. Await it before using its exports, and share an initialization promise where callers can overlap. The editor's Node-loaded package modules use Node resolution and conditional `import` exports; code embedded in an isolated browser frame uses the frame's browser loader instead and needs browser URLs or its own bundled assets.
 
 Window hooks are available through `lumine.hooks`. Core emits one-shot events such as `core:pane-item-used`, `core:text-editor-used`, and `core:grammar-used`; packages subscribe in `activate()` and dispose subscriptions in `deactivate()`.
 

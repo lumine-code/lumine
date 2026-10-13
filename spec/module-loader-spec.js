@@ -1,0 +1,609 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { spawnSync } = require("node:child_process");
+const temp = require("@lumine-code/fs-temp").track();
+const ModuleLoader = require("../src/module-loader");
+const Package = require("../src/package");
+const { requireModule } = require("../src/module-utils");
+
+describe("native package module loading", () => {
+  let directory;
+  let discoveredDirectories;
+
+  function write(relativePath, source) {
+    const filePath = path.join(directory, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, source);
+    return filePath;
+  }
+
+  function buildPackage() {
+    return new Package({
+      path: directory,
+      metadata: JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8")),
+      packageManager: lumine.packages,
+      config: lumine.config,
+      styleManager: lumine.styles,
+      notificationManager: lumine.notifications,
+      keymapManager: lumine.keymaps,
+      commandRegistry: lumine.commands,
+      grammarRegistry: lumine.grammars,
+      themeManager: lumine.themes,
+      menuManager: lumine.menu,
+      contextMenuManager: lumine.contextMenu,
+      deserializerManager: lumine.deserializers,
+      viewRegistry: lumine.views,
+    });
+  }
+
+  beforeEach(() => {
+    discoveredDirectories = [];
+    directory = fs.realpathSync(temp.mkdirSync("native-package-modules"));
+    write(
+      "package.json",
+      JSON.stringify({
+        name: path.basename(directory),
+        version: "1.0.0",
+        type: "module",
+        main: "main.js",
+        engines: { lumine: "^1.0.0" },
+      }),
+    );
+    ModuleLoader.registerPackage(directory);
+  });
+
+  afterEach(() => {
+    for (const root of [directory, ...discoveredDirectories]) {
+      Package.prototype.clearRequireCache.call({ path: root });
+    }
+    temp.cleanupSync();
+  });
+
+  it("allows CommonJS to load a native ESM default that imports CommonJS", () => {
+    write("helper.cjs", "module.exports = { value: 42 };");
+    const main = write(
+      "main.js",
+      'import helper from "./helper.cjs"; export default { value: helper.value };',
+    );
+    const consumer = write("consumer.cjs", 'module.exports = require("./main.js").default;');
+
+    expect(requireModule(main).value).toBe(42);
+    expect(require(consumer)).toBe(requireModule(main));
+  });
+
+  it("honors explicit CommonJS packages while allowing their .mjs modules", () => {
+    write("package.json", JSON.stringify({ name: path.basename(directory), type: "commonjs" }));
+    const main = write("main.js", "module.exports = { value: 42 };");
+    const native = write("native.mjs", 'import main from "./main.js"; export default main;');
+
+    expect(requireModule(native)).toBe(require(main));
+    expect(require(main).value).toBe(42);
+  });
+
+  it("adopts CommonJS loaded before discovery without duplicating its exports", async () => {
+    const discovered = fs.realpathSync(temp.mkdirSync("early-commonjs-package"));
+    discoveredDirectories.push(discovered);
+    const main = path.join(discovered, "main.cjs");
+    fs.writeFileSync(main, "module.exports = { value: 42 };");
+    const first = require(main);
+    ModuleLoader.registerPackage(discovered);
+
+    expect(require(main)).toBe(first);
+    expect((await import(pathToFileURL(main).href)).default).toBe(first);
+  });
+
+  it("unifies managed require and import after a native ESM preload", async () => {
+    const discovered = fs.realpathSync(temp.mkdirSync("early-esm-package"));
+    discoveredDirectories.push(discovered);
+    const main = path.join(discovered, "main.mjs");
+    fs.writeFileSync(main, "export default { value: 42 };");
+    const first = requireModule(main);
+    ModuleLoader.registerPackage(discovered);
+    const managed = requireModule(main);
+
+    expect(managed).not.toBe(first);
+    expect((await import(pathToFileURL(main).href)).default).toBe(managed);
+    expect(managed.value).toBe(42);
+  });
+
+  it("unifies managed native ESM even when its explicit CommonJS interop returns a plain object", async () => {
+    const discovered = fs.realpathSync(temp.mkdirSync("early-esm-commonjs-interop"));
+    discoveredDirectories.push(discovered);
+    const main = path.join(discovered, "main.mjs");
+    fs.writeFileSync(
+      main,
+      'const api = { value: 42 }; export { api as "module.exports" }; export default api;',
+    );
+    const first = require(main);
+    ModuleLoader.registerPackage(discovered);
+    const managed = require(main);
+    const native = await import(pathToFileURL(main).href);
+
+    expect(managed).not.toBe(first);
+    expect(native.default).toBe(managed);
+    expect(native["module.exports"]).toBe(managed);
+  });
+
+  it("preserves named exports when native ESM later imports an adopted CommonJS generation", async () => {
+    const discovered = fs.realpathSync(temp.mkdirSync("early-commonjs-namespace"));
+    discoveredDirectories.push(discovered);
+    const helper = path.join(discovered, "helper.cjs");
+    const main = path.join(discovered, "main.mjs");
+    fs.writeFileSync(helper, "exports.foo = 1;");
+    const adopted = require(helper);
+    fs.writeFileSync(
+      main,
+      'export default { prior: import.meta.require("./helper.cjs"), load: () => import("./helper.cjs") };',
+    );
+    ModuleLoader.registerPackage(discovered);
+    const first = requireModule(main);
+    expect(first.prior).toBe(adopted);
+    fs.writeFileSync(helper, "exports.bar = 2;");
+    ModuleLoader.invalidatePackage(discovered);
+    const namespace = await first.load();
+
+    expect(namespace.foo).toBe(1);
+    expect(namespace.bar).toBeUndefined();
+    expect(namespace.default).toBe(adopted);
+  });
+
+  it("exposes the same Lumine API through native default and named imports", () => {
+    const main = write(
+      "main.js",
+      'import api, { Point, Disposable, TextEditor } from "lumine"; export default { api, Point, Disposable, TextEditor };',
+    );
+    const loaded = requireModule(main);
+    const api = require("lumine");
+
+    expect(loaded.api).toBe(api);
+    expect(loaded.Point).toBe(api.Point);
+    expect(loaded.Disposable).toBe(api.Disposable);
+    expect(loaded.TextEditor).toBe(api.TextEditor);
+  });
+
+  it("compiles a native TypeScript and TSX dependency graph without rewriting its imports", () => {
+    write(
+      "view.tsx",
+      '/** @jsx createElement */\nimport type { Unused } from "./absent.ts";\nconst createElement = (...args: unknown[]) => args;\nexport default <div title="native" />;',
+    );
+    const main = write(
+      "main.ts",
+      'import view from "./view.tsx"; export const value: number = 42; export default view;',
+    );
+    const loaded = require(main);
+
+    expect(loaded.value).toBe(42);
+    expect(loaded.default).toEqual(["div", { title: "native" }]);
+  });
+
+  it("keeps import and require export conditions distinct and awaits native top-level await", async () => {
+    write(
+      "node_modules/conditional/package.json",
+      JSON.stringify({
+        name: "conditional",
+        type: "module",
+        exports: { import: "./import.js", require: "./require.cjs" },
+      }),
+    );
+    write(
+      "node_modules/conditional/import.js",
+      'await Promise.resolve(); export const mode = "import";',
+    );
+    write("node_modules/conditional/require.cjs", 'module.exports = { mode: "require" };');
+    const main = write(
+      "main.cjs",
+      'module.exports = { synchronous: require("conditional"), load: () => import("conditional") };',
+    );
+    const loaded = require(main);
+
+    expect(loaded.synchronous.mode).toBe("require");
+    expect((await loaded.load()).mode).toBe("import");
+  });
+
+  it("requires native ESM relative extensions instead of applying CommonJS inference", () => {
+    write("helper.js", "export default 42;");
+    const main = write("main.js", 'import value from "./helper"; export default value;');
+
+    expect(() => require(main)).toThrowMatching((error) => error.code === "ERR_MODULE_NOT_FOUND");
+  });
+
+  it("reports top-level await to synchronous consumers while allowing native async imports", async () => {
+    const main = write("main.js", "await Promise.resolve(); export const value = 42;");
+
+    expect(() => require(main)).toThrowMatching(
+      (error) => error.code === "ERR_REQUIRE_ASYNC_MODULE",
+    );
+    expect((await import(pathToFileURL(main).href)).value).toBe(42);
+  });
+
+  it("loads a new complete ESM and CommonJS graph after invalidation", () => {
+    const common = write("common.cjs", "module.exports = { version: 1 };");
+    const dependency = write("dependency.js", "export const state = { version: 1 };");
+    const main = write(
+      "main.js",
+      'import common from "./common.cjs"; import { state } from "./dependency.js"; export default { common, state };',
+    );
+    const first = requireModule(main);
+    fs.writeFileSync(common, "module.exports = { version: 2 };");
+    fs.writeFileSync(dependency, "export const state = { version: 2 };");
+    ModuleLoader.invalidatePackage(directory);
+    const second = requireModule(main);
+
+    expect(second).not.toBe(first);
+    expect(second.common).not.toBe(first.common);
+    expect(second.state).not.toBe(first.state);
+    expect(second.common.version).toBe(2);
+    expect(second.state.version).toBe(2);
+    expect(first.common.version).toBe(1);
+    expect(first.state.version).toBe(1);
+  });
+
+  it("keeps late dynamic imports in the generation of the calling module", async () => {
+    write("dependency.js", "export const version = 1;");
+    const main = write("main.js", 'export default { load: () => import("./dependency.js") };');
+    const first = requireModule(main);
+    expect((await first.load()).version).toBe(1);
+    Package.prototype.clearRequireCache.call({ path: directory });
+    write("dependency.js", "export const version = 2;");
+    const second = requireModule(main);
+
+    expect((await second.load()).version).toBe(2);
+    expect((await first.load()).version).toBe(1);
+  });
+
+  it("reloads native JSON modules with the JavaScript graph that imports them", () => {
+    write("settings.json", '{"version":1}');
+    const main = write(
+      "main.js",
+      'import settings from "./settings.json" with { type: "json" }; export default settings;',
+    );
+    const first = requireModule(main);
+    write("settings.json", '{"version":2}');
+    ModuleLoader.invalidatePackage(directory);
+    const second = requireModule(main);
+
+    expect(second).not.toBe(first);
+    expect(second.version).toBe(2);
+    expect(first.version).toBe(1);
+  });
+
+  it("shares a retired JSON object's runtime changes with the first later native import", async () => {
+    write("settings.json", '{"version":1}');
+    const main = write(
+      "main.js",
+      'export default { prior: import.meta.require("./settings.json"), load: () => import("./settings.json", { with: { type: "json" } }) };',
+    );
+    const first = requireModule(main);
+    first.prior.runtimeValue = 7;
+    write("settings.json", '{"version":2}');
+    ModuleLoader.invalidatePackage(directory);
+    const namespace = await first.load();
+
+    expect(namespace.default).toBe(first.prior);
+    expect(namespace.default.version).toBe(1);
+    expect(namespace.default.runtimeValue).toBe(7);
+  });
+
+  it("keeps deferred CommonJS dependencies in the generation of the calling module", () => {
+    write("dependency.cjs", "module.exports = { version: 1 };");
+    const main = write("main.cjs", 'module.exports = { load: () => require("./dependency.cjs") };');
+    const first = require(main);
+    expect(first.load().version).toBe(1);
+    Package.prototype.clearRequireCache.call({ path: directory });
+    write("dependency.cjs", "module.exports = { version: 2 };");
+    const second = require(main);
+
+    expect(second.load().version).toBe(2);
+    expect(first.load().version).toBe(1);
+  });
+
+  it("keeps import.meta.require in the generation of the native ESM caller", () => {
+    const dependency = write("dependency.cjs", "module.exports = { version: 1 };");
+    const main = write(
+      "main.js",
+      'export default { load: () => import.meta.require("./dependency.cjs"), resolve: () => import.meta.require.resolve("./dependency.cjs") };',
+    );
+    const first = requireModule(main);
+    expect(first.load().version).toBe(1);
+    expect(first.resolve()).toBe(dependency);
+    ModuleLoader.invalidatePackage(directory);
+    write("dependency.cjs", "module.exports = { version: 2 };");
+    const second = requireModule(main);
+
+    expect(second.load().version).toBe(2);
+    expect(first.load().version).toBe(1);
+    expect(second.resolve()).toBe(dependency);
+  });
+
+  it("keeps original CommonJS named exports when an old ESM caller imports their namespace later", async () => {
+    write("helper.cjs", "exports.foo = 1;");
+    const main = write(
+      "main.js",
+      'export default { prior: import.meta.require("./helper.cjs"), load: () => import("./helper.cjs") };',
+    );
+    const first = requireModule(main);
+    write("helper.cjs", "exports.bar = 2;");
+    ModuleLoader.invalidatePackage(directory);
+    const second = requireModule(main);
+    const oldNamespace = await first.load();
+    const newNamespace = await second.load();
+
+    expect(oldNamespace.foo).toBe(1);
+    expect(oldNamespace.bar).toBeUndefined();
+    expect(oldNamespace.default).toBe(first.prior);
+    expect(newNamespace.bar).toBe(2);
+    expect(newNamespace.foo).toBeUndefined();
+    expect(newNamespace.default).toBe(second.prior);
+  });
+
+  it("preserves CommonJS directives with comments and leaves quoted expressions unchanged", () => {
+    for (const [filename, start, strict] of [
+      ["strict.cjs", '"use strict"\n', true],
+      ["block-comment.cjs", '"use strict" /* keep the directive */\n', true],
+      ["line-comment.cjs", '"use strict" // keep the directive\n', true],
+      ["expression.cjs", '"use strict"\n+1;\n', false],
+    ]) {
+      const main = write(
+        filename,
+        start + "module.exports = { strict: (function () { return this; })() === undefined };",
+      );
+
+      expect(require(main).strict).withContext(filename).toBe(strict);
+    }
+  });
+
+  it("reads an updated package type when CommonJS changes to native ESM", () => {
+    write("package.json", '{"type":"commonjs"}');
+    const main = write("main.js", "module.exports = { version: 1 };");
+    const first = requireModule(main);
+    write("package.json", '{"type":"module"}');
+    write("main.js", "export default { version: 2 };");
+    ModuleLoader.invalidatePackage(directory);
+
+    expect(requireModule(main).version).toBe(2);
+    expect(first.version).toBe(1);
+  });
+
+  it("reads an updated package type when native ESM changes to CommonJS", () => {
+    const main = write("main.js", "export default { version: 1 };");
+    const first = requireModule(main);
+    write("package.json", '{"type":"commonjs"}');
+    write("main.js", "module.exports = { version: 2 };");
+    ModuleLoader.invalidatePackage(directory);
+
+    expect(requireModule(main).version).toBe(2);
+    expect(first.version).toBe(1);
+  });
+
+  it("preserves original public paths for ESM, CommonJS and asset resolution", () => {
+    write("asset.txt", "native asset");
+    const common = write(
+      "common.cjs",
+      'module.exports = { filename: __filename, dirname: __dirname, moduleFilename: module.filename, resolved: require.resolve("./sibling.cjs") };',
+    );
+    const sibling = write("sibling.cjs", "module.exports = {};");
+    const main = write(
+      "main.js",
+      'import fs from "node:fs"; import common from "./common.cjs"; export default { common, meta: { url: import.meta.url, filename: import.meta.filename, dirname: import.meta.dirname }, resolved: import.meta.resolve("./sibling.cjs"), asset: fs.readFileSync(new URL("./asset.txt", import.meta.url), "utf8") };',
+    );
+    const loaded = requireModule(main);
+
+    expect(loaded.common.filename).toBe(common);
+    expect(loaded.common.moduleFilename).toBe(common);
+    expect(loaded.common.dirname).toBe(directory);
+    expect(loaded.common.resolved).toBe(sibling);
+    expect(loaded.meta.url).toBe(pathToFileURL(main).href);
+    expect(loaded.meta.filename).toBe(main);
+    expect(loaded.meta.dirname).toBe(directory);
+    expect(loaded.resolved).toBe(pathToFileURL(sibling).href);
+    expect(loaded.asset).toBe("native asset");
+  });
+
+  it("exposes real require.resolve paths and active source cache entries to outside callers", () => {
+    const main = write("main.cjs", "module.exports = { version: 1 };");
+    const descriptor = write("descriptor.json", '{"name":"native descriptor"}');
+    const resolvedMain = require.resolve(main);
+    const resolvedDescriptor = require.resolve(descriptor);
+
+    expect(resolvedMain).toBe(main);
+    expect(resolvedDescriptor).toBe(descriptor);
+    expect(fs.existsSync(resolvedMain)).toBe(true);
+    expect(fs.existsSync(resolvedDescriptor)).toBe(true);
+    const first = require(main);
+    expect(require.cache[resolvedMain]?.exports).toBe(first);
+    expect(require.cache[resolvedDescriptor]?.exports).toBeUndefined();
+    const metadata = require(descriptor);
+    expect(require.cache[resolvedDescriptor]?.exports).toBe(metadata);
+    ModuleLoader.invalidatePackage(directory);
+    expect(require.cache[resolvedMain]).toBeUndefined();
+    expect(require.cache[resolvedDescriptor]).toBeUndefined();
+    write("main.cjs", "module.exports = { version: 2 };");
+    const second = require(main);
+
+    expect(second.version).toBe(2);
+    expect(require.cache[resolvedMain]?.exports).toBe(second);
+  });
+
+  it("compiles the first JSX require in a fresh standalone Node process", () => {
+    const main = write(
+      "main.jsx",
+      'const etch = { dom: (...args) => args }; module.exports = <button title="cold" />;',
+    );
+    const cacheDirectory = temp.mkdirSync("cold-native-module-compile-cache");
+    const script = `
+const CompileCache = require(${JSON.stringify(require.resolve("../src/compile-cache"))});
+CompileCache.setCacheDirectory(${JSON.stringify(cacheDirectory)});
+CompileCache.install(process.resourcesPath, require);
+require(${JSON.stringify(require.resolve("../src/module-loader"))}).registerPackage(${JSON.stringify(directory)});
+process.stdout.write(JSON.stringify(require(${JSON.stringify(main)})));
+`;
+    const result = spawnSync(process.execPath, ["-e", script], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      encoding: "utf8",
+      timeout: 15000,
+      windowsHide: true,
+    });
+
+    expect(result.status)
+      .withContext(result.stderr || result.error?.message)
+      .toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(["button", { title: "cold" }]);
+  });
+
+  it("uses one generation through both a symlinked package path and its real path", () => {
+    const linked = path.join(temp.mkdirSync("native-package-link"), "package");
+    fs.symlinkSync(directory, linked, process.platform === "win32" ? "junction" : "dir");
+    ModuleLoader.registerPackage(linked);
+    const main = write("main.js", "export default { version: 1 };");
+    const first = requireModule(path.join(linked, "main.js"));
+
+    expect(requireModule(main)).toBe(first);
+    write("main.js", "export default { version: 2 };");
+    Package.prototype.clearRequireCache.call({ path: linked });
+    const second = requireModule(main);
+    expect(second).not.toBe(first);
+    expect(requireModule(path.join(linked, "main.js"))).toBe(second);
+    expect(second.version).toBe(2);
+  });
+
+  it("preserves module identities across unload for rollback and advances them on a normal unload", () => {
+    write("dependency.js", "export const state = {};");
+    write(
+      "main.js",
+      'import { state } from "./dependency.js"; export default { state, version: 1 };',
+    );
+    let pack = buildPackage();
+    pack.load();
+    const first = pack.requireMainModule();
+    pack.unload({ preserveModuleCache: true });
+    write(
+      "main.js",
+      'import { state } from "./dependency.js"; export default { state, version: 2 };',
+    );
+    pack = buildPackage();
+    pack.load();
+    const rollback = pack.requireMainModule();
+    expect(rollback).toBe(first);
+    expect(rollback.version).toBe(1);
+    pack.unload();
+    pack = buildPackage();
+    pack.load();
+    const updated = pack.requireMainModule();
+
+    expect(updated).not.toBe(first);
+    expect(updated.state).not.toBe(first.state);
+    expect(updated.version).toBe(2);
+    pack.unload();
+  });
+
+  it("initializes, activates and unloads native ESM commands and service registrations across generations", async () => {
+    const name = path.basename(directory);
+    const serviceName = `${name}.service`;
+    const command = `${name}:run`;
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
+    manifest.providedServices = { [serviceName]: { versions: { "1.0.0": "provideService" } } };
+    write("package.json", JSON.stringify(manifest));
+    function writeMain(version) {
+      write(
+        "main.js",
+        `import { Disposable } from "lumine";
+export default {
+  version: ${version},
+  events: [],
+  initialize(_state, { subscriptions }) {
+    this.events.push("initialize");
+    this.subscriptions = subscriptions;
+    subscriptions.add(new Disposable(() => this.events.push("cleanup")));
+  },
+  activate() {
+    this.events.push("activate");
+    this.subscriptions.add(lumine.commands.add("lumine-workspace", ${JSON.stringify(command)}, () => this.events.push("command")));
+  },
+  provideService() { return this; },
+  deactivate() { this.events.push("deactivate"); }
+};`,
+      );
+    }
+    writeMain(1);
+    const received = [];
+    const disposed = [];
+    const { Disposable } = require("lumine");
+    const subscription = lumine.packages.serviceHub.consume(serviceName, "^1.0.0", (service) => {
+      received.push(service);
+      return new Disposable(() => disposed.push(service));
+    });
+    const workspace = lumine.views.getView(lumine.workspace);
+    try {
+      let pack = lumine.packages.loadPackage(directory);
+      await lumine.packages.startPackage(name);
+      const first = pack.mainModule;
+      expect(first.events).toEqual(["initialize", "activate"]);
+      expect(received).toEqual([first]);
+      lumine.commands.dispatch(workspace, command);
+      expect(first.events).toEqual(["initialize", "activate", "command"]);
+      await lumine.packages.unloadPackage(name);
+      expect(first.events).toEqual(["initialize", "activate", "command", "deactivate", "cleanup"]);
+      expect(disposed).toEqual([first]);
+      expect(lumine.packages.serviceHub.hasProvider(serviceName, "^1.0.0")).toBe(false);
+      lumine.commands.dispatch(workspace, command);
+      expect(first.events.filter((event) => event === "command").length).toBe(1);
+      writeMain(2);
+      pack = lumine.packages.loadPackage(directory);
+      await lumine.packages.startPackage(name);
+      const second = pack.mainModule;
+
+      expect(second).not.toBe(first);
+      expect(second.version).toBe(2);
+      expect(second.events).toEqual(["initialize", "activate"]);
+      expect(received).toEqual([first, second]);
+      lumine.commands.dispatch(workspace, command);
+      expect(second.events).toEqual(["initialize", "activate", "command"]);
+      await lumine.packages.unloadPackage(name);
+      expect(disposed).toEqual([first, second]);
+    } finally {
+      if (lumine.packages.getLoadedPackage(name)) await lumine.packages.unloadPackage(name);
+      subscription.dispose();
+    }
+  });
+
+  it("reports errors against the original package source path", () => {
+    for (const [filename, source, line] of [
+      ["main.js", 'export function fail() { throw new Error("native source failure"); }', 1],
+      [
+        "typed.ts",
+        'export function fail(): never {\n  throw new Error("native source failure");\n}',
+        2,
+      ],
+    ]) {
+      const main = write(filename, source);
+      let failure;
+      try {
+        require(main).fail();
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure.message).toBe("native source failure");
+      expect(
+        failure.stack.includes(`${main}:${line}:`) ||
+          failure.stack.includes(`${pathToFileURL(main).href}:${line}:`),
+      )
+        .withContext(failure.stack)
+        .toBe(true);
+      expect(failure.stack).not.toContain(".lumine-generation-");
+    }
+  });
+
+  it("keeps source-map text and malformed diagnostics from preventing module execution", () => {
+    const literal = "sourceMappingURL=data:application/json;base64,eyJ4IjoxfQ==";
+    const main = write("map-literal.cjs", `module.exports = ${JSON.stringify(literal)};`);
+    const malformed = write(
+      "malformed-map.cjs",
+      "module.exports = 42;\n//# sourceMappingURL=data:application/json;base64,not-a-map",
+    );
+
+    expect(require(main)).toBe(literal);
+    expect(require(malformed)).toBe(42);
+  });
+});

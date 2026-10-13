@@ -1,6 +1,7 @@
 const path = require("path");
 const temp = require("@lumine-code/fs-temp").track();
 const CompileCache = require("../src/compile-cache");
+const { requireModule } = require("../src/module-utils");
 
 describe("TypeScript transpiler support", function () {
   const fixtureDirectory = path.join(__dirname, "fixtures", "typescript");
@@ -39,7 +40,7 @@ describe("TypeScript transpiler support", function () {
     expect(transpiled(3)).toBe(4);
   });
 
-  it("transforms ES module imports and named exports to CommonJS", function () {
+  it("loads native ES module imports and named exports after removing types", function () {
     const transpiled = require("./fixtures/typescript/modules.ts");
     expect(transpiled.value).toBe(4);
     expect(transpiled.label).toBe("TypeScript");
@@ -80,7 +81,7 @@ describe("TypeScript transpiler support", function () {
     });
 
     it("preserves the imported JSX factory and groups fragments without a wrapper", function () {
-      const node = require("./fixtures/typescript/fragment.tsx");
+      const node = requireModule(path.join(fixtureDirectory, "fragment.tsx"));
       expect(node.tag).toBe("div");
       expect(node.children.map((child) => child.tag)).toEqual(["span", "span"]);
     });

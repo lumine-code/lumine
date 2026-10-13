@@ -2,6 +2,14 @@ const Task = require("../src/task");
 const Grim = require("@lumine-code/grim");
 
 describe("Task", function () {
+  it("loads a native ESM handler and awaits its asynchronous dependency through the task callback", async function () {
+    const result = await new Promise((resolve) => {
+      Task.once(require.resolve("./fixtures/native-esm-task-handler.mjs"), resolve);
+    });
+
+    expect(result).toEqual({ name: "task", position: [2, 3] });
+  });
+
   describe("@once(taskPath, args..., callback)", () =>
     it("terminates the process after it completes", async function () {
       let handlerResult = null;

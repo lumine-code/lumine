@@ -7,6 +7,7 @@ const dedent = require("dedent");
 
 const CompileCache = require("./compile-cache");
 const ModuleCache = require("./module-cache");
+const ModuleLoader = require("./module-loader");
 const BufferedProcess = require("./buffered-process");
 const { requireModule } = require("./module-utils");
 const {
@@ -149,6 +150,7 @@ module.exports = class Package {
       try {
         this.loadScopeActive = true;
         this.validateActivationMetadata();
+        ModuleLoader.registerPackage(this.path);
         ModuleCache.add(this.path, this.metadata);
         this.moduleCacheRegistered = true;
 
@@ -275,22 +277,7 @@ module.exports = class Package {
 
   clearRequireCache() {
     if (typeof this.path !== "string" || this.path.length === 0) return;
-    const roots = new Set([path.resolve(this.path)]);
-    try {
-      roots.add(fs.realpathSync(this.path));
-    } catch {
-      // An uninstall can remove the directory before final teardown. The
-      // configured package path still identifies cache entries in that case.
-    }
-    for (const modulePath of Object.keys(require.cache)) {
-      if (
-        [...roots].some(
-          (root) => modulePath === root || modulePath.startsWith(`${root}${path.sep}`),
-        )
-      ) {
-        delete require.cache[modulePath];
-      }
-    }
+    ModuleLoader.invalidatePackage(this.path);
   }
 
   shouldRequireMainModuleOnLoad() {

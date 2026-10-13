@@ -2,8 +2,9 @@ let presets = [
   [
     "@lumine-code/babel-preset",
     {
-      // transform ES modules to commonjs
-      keepModules: false,
+      // Node's loader handles both native ESM and CommonJS. Only compile JSX,
+      // types and legacy syntax; preserve static and asynchronous imports.
+      keepModules: true,
       // Strip type-only imports and preserve the factory used by JSX views.
       typescript: {
         onlyRemoveTypeImports: false,
@@ -20,7 +21,39 @@ let presets = [
   ],
 ];
 
-let plugins = [];
+// `export =` is TypeScript's explicit CommonJS export. Retain that syntax's
+// meaning even though Babel's ESM transform is disabled for native imports.
+let plugins = [
+  function commonJSTypeScriptExport({ types }) {
+    return {
+      visitor: {
+        TSExportAssignment(path, state) {
+          state.commonJSExport = true;
+          path.replaceWith(
+            types.expressionStatement(
+              types.assignmentExpression(
+                "=",
+                types.memberExpression(types.identifier("module"), types.identifier("exports")),
+                path.node.expression,
+              ),
+            ),
+          );
+        },
+      },
+      post(file) {
+        // The TS preset marks a file as ESM when its last type-only import is
+        // removed. An explicit CommonJS export must remain CommonJS instead.
+        if (!this.commonJSExport) return;
+        file.path.traverse({
+          ExportNamedDeclaration(path) {
+            if (!path.node.declaration && !path.node.source && path.node.specifiers.length === 0)
+              path.remove();
+          },
+        });
+      },
+    };
+  },
+];
 
 module.exports = {
   presets: presets,

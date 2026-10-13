@@ -9,4 +9,4 @@ const node = (
   </div>
 );
 
-export = node;
+export default node;
