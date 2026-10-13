@@ -641,6 +641,9 @@
   "context-menu": {
     "lumine-text-editor": [
       {
+        "type": "separator"
+      },
+      {
         "label": "Undo",
         "command": "core:undo"
       },
@@ -653,7 +656,8 @@
       },
       {
         "label": "Cut",
-        "command": "core:cut"
+        "command": "core:cut",
+        "afterGroupContaining": ["core:redo"]
       },
       {
         "label": "Copy",
@@ -664,12 +668,16 @@
         "command": "core:paste"
       },
       {
-        "label": "Delete",
-        "command": "core:delete"
+        "type": "separator"
       },
       {
         "label": "Select All",
-        "command": "core:select-all"
+        "command": "core:select-all",
+        "afterGroupContaining": ["core:paste"]
+      },
+      {
+        "label": "Delete",
+        "command": "core:delete"
       },
       {
         "type": "separator"
@@ -681,7 +689,23 @@
       },
       {
         "label": "Split Up",
-        "command": "pane:split-up-and-copy-active-item"
+        "command": "pane:split-up-and-copy-active-item",
+        "afterGroupContaining": [
+          {
+            "id": "diff-view:editor-context"
+          },
+          "image-editor:open-in-new-tab",
+          "link:open",
+          {
+            "id": "color-inline:editor-context"
+          },
+          "spell-check:check-selected",
+          "tasklist-tools:toggle-tick",
+          "core:select-all",
+          "core:paste",
+          "core:redo",
+          "core:undo"
+        ]
       },
       {
         "label": "Split Down",
@@ -696,8 +720,28 @@
         "command": "pane:split-right-and-copy-active-item"
       },
       {
+        "type": "separator"
+      },
+      {
         "label": "Close Pane",
-        "command": "pane:close"
+        "command": "pane:close",
+        "afterGroupContaining": [
+          "pane:split-up-and-copy-active-item",
+          {
+            "id": "diff-view:editor-context"
+          },
+          "image-editor:open-in-new-tab",
+          "link:open",
+          {
+            "id": "color-inline:editor-context"
+          },
+          "spell-check:check-selected",
+          "tasklist-tools:toggle-tick",
+          "core:select-all",
+          "core:paste",
+          "core:redo",
+          "core:undo"
+        ]
       },
       {
         "type": "separator"
