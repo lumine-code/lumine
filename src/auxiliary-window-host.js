@@ -43,6 +43,14 @@ module.exports = class AuxiliaryWindowHost {
       editorWindow.persistentId = descriptor.persistentId;
       editorWindow.subscriptions.add(new Disposable(() => service.destroy()));
       const document = domWindow.document;
+      // about:blank has no doctype and uses quirks-mode inline layout. Parse the
+      // presentation shell before installing bindings so every window uses the
+      // same standards-mode geometry as static/index.html.
+      document.open();
+      document.write(
+        '<!doctype html><html><head><title>Lumine</title></head><body tabindex="-1"></body></html>',
+      );
+      document.close();
       Object.defineProperty(domWindow, "lumine", { value: environment, configurable: true });
       editorWindow.subscriptions.add(
         new Disposable(() => {

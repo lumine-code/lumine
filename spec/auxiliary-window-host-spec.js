@@ -5,6 +5,83 @@ describe("Auxiliary editor windows", () => {
     await lumine.workspace.discardEditorWindows();
   });
 
+  it("uses standards-mode geometry for icon-only lines and inline controls", async () => {
+    const workspace = lumine.workspace;
+    const extra = await workspace.openEditorWindow({ show: false });
+    const mainDocument = workspace.getMainWindow().getDocument();
+    const extraDocument = extra.getDocument();
+    expect(extraDocument.compatMode).toBe("CSS1Compat");
+    expect(extraDocument.compatMode).toBe(mainDocument.compatMode);
+    expect(extraDocument.doctype.name).toBe("html");
+    expect(extraDocument.body.tabIndex).toBe(-1);
+    const samples = [];
+    for (const document of [mainDocument, extraDocument]) {
+      const sample = document.createElement("div");
+      sample.style.cssText =
+        "position:absolute;top:100px;left:20px;width:80px;font:16px/32px Arial;";
+      const icon = document.createElement("span");
+      icon.style.cssText =
+        "display:inline-block;width:14px;height:14px;vertical-align:text-bottom;";
+      const control = document.createElement("button");
+      control.textContent = "Control";
+      const iconLine = document.createElement("div");
+      iconLine.append(icon);
+      const controlLine = document.createElement("div");
+      controlLine.append(control);
+      sample.append(iconLine, controlLine);
+      document.body.append(sample);
+      samples.push({ sample, icon, control });
+    }
+    try {
+      const geometry = ({ sample, icon, control }) => {
+        const root = sample.getBoundingClientRect();
+        const relative = (element) => {
+          const bounds = element.getBoundingClientRect();
+          return [bounds.x - root.x, bounds.y - root.y, bounds.width, bounds.height];
+        };
+        return [root.height, relative(icon), relative(control)];
+      };
+      expect(geometry(samples[1])).toEqual(geometry(samples[0]));
+    } finally {
+      for (const { sample } of samples) sample.remove();
+    }
+  });
+
+  it("aligns matching status-bar icons and text across presentation documents", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    const service = (
+      await lumine.packages.activatePackage("status-bar")
+    ).mainModule.provideStatusBar();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const samples = [];
+    const tiles = [];
+    try {
+      for (const window of [workspace.getMainWindow(), extra]) {
+        const document = window.getDocument();
+        const bar = service.forWindow(window);
+        const icon = document.createElement("status-bar-tile");
+        icon.className = "icon icon-light-bulb is-icon-only";
+        const text = document.createElement("status-bar-tile");
+        text.textContent = "Status";
+        tiles.push(bar.addRightTile({ item: icon }), bar.addRightTile({ item: text }));
+        samples.push({ document, bar, icon, text });
+      }
+      for (const { icon } of samples) icon.getBoundingClientRect();
+      await Promise.all(samples.map(({ document }) => document.fonts.ready));
+      const geometry = ({ bar, icon, text }) => {
+        const root = bar.element.getBoundingClientRect();
+        return [icon, text].map((item) => {
+          const bounds = item.getBoundingClientRect();
+          return [bounds.top - root.top, bounds.height];
+        });
+      };
+      expect(geometry(samples[1])).toEqual(geometry(samples[0]));
+    } finally {
+      for (const tile of tiles) tile.destroy();
+    }
+  });
+
   it("presents live panes and reattaches a split layout without duplicating models", async () => {
     const workspace = lumine.workspace;
     const editor = await workspace.open();
