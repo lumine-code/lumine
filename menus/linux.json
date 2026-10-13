@@ -12,6 +12,10 @@
           "command": "application:new-window"
         },
         {
+          "label": "New &Detached Window",
+          "command": "window:new-detached-window"
+        },
+        {
           "type": "separator"
         },
         {

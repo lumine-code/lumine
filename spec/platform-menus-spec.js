@@ -108,6 +108,15 @@ describe("platform menus", function () {
     for (const platform of PLATFORMS) menus[platform] = readMenu(platform);
   });
 
+  it("places the shared-session window action beside New Window", function () {
+    for (const platform of PLATFORMS) {
+      const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;
+      const index = items.findIndex((item) => item.command === "application:new-window");
+      expect(items[index + 1].command).toBe("window:new-detached-window");
+      expect(strip(items[index + 1].label)).toBe("New Detached Window");
+    }
+  });
+
   it("declares the same items on every platform outside the allow-list", function () {
     const flattened = {};
     for (const platform of PLATFORMS) flattened[platform] = flatten(menus[platform].menu);

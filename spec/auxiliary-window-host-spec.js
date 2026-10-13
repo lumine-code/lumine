@@ -5,6 +5,38 @@ describe("Auxiliary editor windows", () => {
     await lumine.workspace.discardEditorWindows();
   });
 
+  it("creates an empty additional window from the application menu command", async () => {
+    const workspace = lumine.workspace;
+    const paths = lumine.project.getPaths();
+    const openIndependentWindow = spyOn(lumine.application, "openWindow");
+    jasmine.attachToDOM(workspace.getElement());
+    lumine.commands.dispatch(workspace.getElement(), "window:new-detached-window");
+    await conditionPromise(() => workspace.getWindows().length === 2);
+    const extra = workspace.getWindows().find((window) => !window.isMain());
+    expect(extra.getEditorContainer().getPaneItems()).toEqual([]);
+    expect(extra.getElement().getModel()).toBe(workspace);
+    expect(extra.getDOMWindow().lumine).toBe(lumine);
+    expect(lumine.project.getPaths()).toEqual(paths);
+    expect(openIndependentWindow).not.toHaveBeenCalled();
+    lumine.commands.dispatch(extra.getElement(), "window:new-detached-window");
+    await conditionPromise(() => workspace.getWindows().length === 3);
+    expect(openIndependentWindow).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed new-window request without an unhandled rejection", async () => {
+    jasmine.attachToDOM(lumine.workspace.getElement());
+    spyOn(lumine.workspace, "openEditorWindow").and.rejectWith(
+      new Error("Native host unavailable"),
+    );
+    const error = spyOn(lumine.notifications, "addError");
+    lumine.commands.dispatch(lumine.workspace.getElement(), "window:new-detached-window");
+    await conditionPromise(() => error.calls.count() === 1);
+    expect(error).toHaveBeenCalledWith("Unable to open a detached window.", {
+      detail: "Native host unavailable",
+      dismissable: true,
+    });
+  });
+
   it("uses standards-mode geometry for icon-only lines and inline controls", async () => {
     const workspace = lumine.workspace;
     const extra = await workspace.openEditorWindow({ show: false });

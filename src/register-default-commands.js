@@ -186,6 +186,20 @@ module.exports = function ({
       "application:new-window": function () {
         return ipcRenderer.send("command", "application:new-window");
       },
+      "window:new-detached-window": {
+        description: "Open an empty additional editor window in this workspace.",
+        didDispatch: async function () {
+          try {
+            const window = await this.getModel().openEditorWindow();
+            await window.focus();
+          } catch (error) {
+            notificationManager.addError("Unable to open a detached window.", {
+              detail: error.message,
+              dismissable: true,
+            });
+          }
+        },
+      },
       "application:new-file": function () {
         return ipcRenderer.send("command", "application:new-file");
       },
