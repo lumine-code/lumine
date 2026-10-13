@@ -238,7 +238,9 @@ module.exports = class ContextMenuManager {
   // underscore-plus for both single strokes and chords.
   addAccelerators(template, target) {
     for (const item of template) {
-      if (item.command) {
+      // Key bindings dispatch the command without a detail payload, so they
+      // cannot advertise a parameterized variant of that command.
+      if (item.command && item.commandDetail == null) {
         const bindings = this.keymapManager.findKeyBindings({ command: item.command, target });
         const keystrokes = bindings?.[0]?.keystrokes;
         if (keystrokes) item.keyBindingLabel = _.humanizeKeystroke(keystrokes);

@@ -111,6 +111,42 @@ describe("MacApplicationMenu", () => {
       assert.deepStrictEqual(sentCommands, [["core:save", detail]]);
     });
 
+    it("only infers accelerators for commands without a detail payload at every depth", () => {
+      const details = [{ redistribute: true }, {}, false, 0, "alternate"];
+      const template = [
+        { label: "Plain", command: "layout" },
+        { label: "Null Detail", command: "layout", commandDetail: null },
+        ...details.map((commandDetail, index) => ({
+          label: `Variant ${index}`,
+          command: "layout",
+          commandDetail,
+        })),
+        {
+          label: "Nested",
+          submenu: [
+            { label: "Plain", command: "layout" },
+            { label: "Variant", command: "layout", commandDetail: { sequentize: true } },
+          ],
+        },
+      ];
+
+      applicationMenu.translateTemplate(template, { layout: ["ctrl-s"] });
+      assert.strictEqual(template[0].accelerator, "Ctrl+S");
+      assert.strictEqual(template[1].accelerator, "Ctrl+S");
+      for (const [index, detail] of details.entries()) {
+        const variant = template[index + 2];
+        assert.isUndefined(variant.accelerator);
+        assert.strictEqual(variant.label, `Variant ${index}`);
+        variant.click();
+        assert.deepStrictEqual(sentCommands.at(-1), ["layout", detail]);
+      }
+      const nested = template.at(-1).submenu;
+      assert.strictEqual(nested[0].accelerator, "Ctrl+S");
+      assert.isUndefined(nested[1].accelerator);
+      nested[1].click();
+      assert.deepStrictEqual(sentCommands.at(-1), ["layout", { sequentize: true }]);
+    });
+
     it("ignores inherited binding-map keys after structured clone", () => {
       const template = [{ label: "Break", command: "constructor" }];
       applicationMenu.translateTemplate(template, {});

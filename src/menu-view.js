@@ -130,7 +130,10 @@ class MenuItemView {
       this.element.setAttribute("aria-expanded", "false");
     } else {
       this.keystrokeElement.textContent =
-        template.keyBindingLabel || bindingLabel(template.command, this.popup.options.target);
+        template.keyBindingLabel ||
+        (template.commandDetail == null
+          ? bindingLabel(template.command, this.popup.options.target)
+          : "");
     }
     this.element.appendChild(this.keystrokeElement);
 

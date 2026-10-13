@@ -94,6 +94,59 @@ describe("HTML menu UI", () => {
     expect(popup.element.querySelector(".menu-item-keystroke").textContent).toBe("Ctrl+K");
   });
 
+  it("infers shortcuts only for plain commands and preserves variant dispatch details", async () => {
+    target.classList.add("menu-ui-binding-target");
+    const bindings = lumine.keymaps.add("menu-ui-spec", {
+      ".menu-ui-binding-target": { "ctrl-k": "menu-ui-spec:run" },
+    });
+    const details = [];
+    const commands = lumine.commands.add(target, {
+      "menu-ui-spec:run": (event) => details.push(event.detail),
+    });
+    const detail = { redistribute: true };
+    try {
+      const popup = showMenuPopup(contextViews, {
+        anchor: target,
+        target,
+        template: [
+          { label: "Run", command: "menu-ui-spec:run" },
+          { label: "Run with Options", command: "menu-ui-spec:run", commandDetail: detail },
+          {
+            label: "Variants",
+            submenu: [
+              {
+                label: "Nested Variant",
+                command: "menu-ui-spec:run",
+                commandDetail: { sequentize: true },
+              },
+              {
+                label: "Explicit Shortcut",
+                command: "menu-ui-spec:run",
+                commandDetail: detail,
+                keyBindingLabel: "Custom",
+              },
+            ],
+          },
+        ],
+      });
+      expect(popup.rootList.items[0].keystrokeElement.textContent).toBe(
+        process.platform === "darwin" ? "⌃K" : "Ctrl+K",
+      );
+      expect(popup.rootList.items[1].keystrokeElement.textContent).toBe("");
+      const submenu = popup.openSubmenu(popup.rootList.items[2]);
+      expect(submenu.items.map((item) => item.keystrokeElement.textContent)).toEqual([
+        "",
+        "Custom",
+      ]);
+      popup.rootList.items[1].element.click();
+      await Promise.resolve();
+      expect(details).toEqual([detail]);
+    } finally {
+      commands.dispose();
+      bindings.dispose();
+    }
+  });
+
   it("reserves a check column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(

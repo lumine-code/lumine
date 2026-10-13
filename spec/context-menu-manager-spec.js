@@ -807,6 +807,45 @@ describe("ContextMenuManager", function () {
       ]);
     });
 
+    it("only infers key bindings for commands without a detail payload", function () {
+      contextMenu.clear();
+      const details = [{ redistribute: true }, {}, false, 0, "alternate"];
+      contextMenu.add({
+        ".parent": [
+          { label: "Plain", command: "test:my-command" },
+          { label: "Null Detail", command: "test:my-command", commandDetail: null },
+          ...details.map((commandDetail, index) => ({
+            label: `Variant ${index}`,
+            command: "test:my-command",
+            commandDetail,
+          })),
+          {
+            label: "Nested",
+            submenu: [
+              { label: "Plain", command: "test:my-other-command" },
+              {
+                label: "Variant",
+                command: "test:my-other-command",
+                commandDetail: { sequentize: true },
+              },
+            ],
+          },
+        ],
+      });
+
+      const template = contextMenu.templateForElement(child);
+      expect(template[0].keyBindingLabel).toBe(controlALabel);
+      expect(template[1].keyBindingLabel).toBe(controlALabel);
+      for (const [index, detail] of details.entries()) {
+        expect(template[index + 2].keyBindingLabel).toBeUndefined();
+        expect(template[index + 2].commandDetail).toEqual(detail);
+      }
+      const nested = template.at(-1).submenu;
+      expect(nested[0].keyBindingLabel).toBe(shiftBLabel);
+      expect(nested[1].keyBindingLabel).toBeUndefined();
+      expect(nested[1].commandDetail).toEqual({ sequentize: true });
+    });
+
     it("does not add accelerators when only a descendant of the right-clicked element is bound", function () {
       const dispatchedEvent = { target: parent };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([

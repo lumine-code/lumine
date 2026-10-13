@@ -141,9 +141,12 @@ module.exports = class MacApplicationMenu {
       if (item.command) {
         // Structured clone does not preserve the renderer's null prototype, so
         // inherited Object keys must never masquerade as real bindings.
-        const keystrokes = Object.hasOwn(keystrokesByCommand, item.command)
-          ? keystrokesByCommand[item.command]
-          : null;
+        // Key bindings dispatch the command without a detail payload, so a
+        // parameterized menu action must not borrow its accelerator.
+        const keystrokes =
+          item.commandDetail == null && Object.hasOwn(keystrokesByCommand, item.command)
+            ? keystrokesByCommand[item.command]
+            : null;
         if (keystrokes && keystrokes.length > 0) {
           const keystroke = keystrokes[0];
           if (keystroke.includes(" ")) {
