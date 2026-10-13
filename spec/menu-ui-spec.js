@@ -214,7 +214,8 @@ describe("HTML menu UI", () => {
     });
     const options = {
       keyBindingCommand: "menu-ui-spec:shared-action",
-      keyBindingTarget() {
+      keyBindingTarget(invokingElement) {
+        expect(invokingElement).toBe(this);
         return this.ownerDocument.getElementById("menu-tooltip-shared-editor");
       },
     };
@@ -247,8 +248,30 @@ describe("HTML menu UI", () => {
         expect(withoutTarget.rootList.items[0].keystrokeElement.textContent).toBe(
           title.querySelector(".keystroke").textContent,
         );
+        withoutTarget.close();
       } finally {
         unscoped.dispose();
+      }
+      for (const keyBindingTarget of [null, () => null]) {
+        const suppressed = lumine.tooltips.add(target, {
+          title: "Action",
+          html: false,
+          keyBindingCommand: options.keyBindingCommand,
+          keyBindingTarget,
+        });
+        try {
+          title.innerHTML = lumine.tooltips.findTooltips(target).at(-1).getTitle();
+          expect(title.querySelector(".keystroke")).toBeNull();
+          const withoutEditor = showMenuPopup(contextViews, {
+            target,
+            anchor: target,
+            template: [{ label: "Action", command: options.keyBindingCommand, keyBindingTarget }],
+          });
+          expect(withoutEditor.rootList.items[0].keystrokeElement.textContent).toBe("");
+          withoutEditor.close();
+        } finally {
+          suppressed.dispose();
+        }
       }
     } finally {
       tooltip.dispose();

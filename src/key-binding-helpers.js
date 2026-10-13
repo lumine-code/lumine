@@ -7,4 +7,9 @@ function keyBindingLabelForCommand(keymapManager, command, target) {
   return binding?.keystrokes ? _.humanizeKeystroke(binding.keystrokes) : undefined;
 }
 
-module.exports = { keyBindingLabelForCommand };
+function resolveKeyBindingTarget(option, invokingElement, fallback) {
+  if (option === undefined) return fallback;
+  return typeof option === "function" ? option.call(invokingElement, invokingElement) : option;
+}
+
+module.exports = { keyBindingLabelForCommand, resolveKeyBindingTarget };
