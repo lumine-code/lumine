@@ -1135,7 +1135,11 @@ module.exports = class RepositoryRegistry {
    */
   getCommandContext(event, { scope = "repository" } = {}) {
     const element = event?.target?.closest?.("lumine-text-editor:not([mini])");
-    const editor = element?.getModel?.() || this.workspace?.getActiveTextEditor?.() || null;
+    const editor =
+      element?.getModel?.() ||
+      event?.context?.embeddedEditor ||
+      this.workspace?.getActiveTextEditor?.() ||
+      null;
     const filePath = editor?.getPath?.() || null;
     const repository =
       scope === "file" ? (filePath ? this.getForPath(filePath) : null) : this.getActiveRepository();

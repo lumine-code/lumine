@@ -2765,6 +2765,26 @@ describe("RepositoryRegistry", () => {
   });
 
   describe("command context", () => {
+    it("uses the captured window editor when dispatch comes from a local non-editor surface", () => {
+      const first = new FakeRepository(temp.mkdirSync("context-local-window"));
+      const other = new FakeRepository(temp.mkdirSync("context-other-window"));
+      const local = { getPath: () => path.join(first.getWorkingDirectory(), "local.js") };
+      repositories.push(first, other);
+      registry.register(first);
+      registry.register(other);
+      registry.workspace = {
+        getActiveTextEditor: () => ({
+          getPath: () => path.join(other.getWorkingDirectory(), "other.js"),
+        }),
+      };
+      const context = registry.getCommandContext(
+        { context: { embeddedEditor: local } },
+        { scope: "file" },
+      );
+      expect(context.editor).toBe(local);
+      expect(context.repository).toBe(first);
+    });
+
     it("keeps repository commands on pinned B while file commands follow focused A or originating C", () => {
       const first = new FakeRepository(temp.mkdirSync("context-focused-a"));
       const pinned = new FakeRepository(temp.mkdirSync("context-pinned-b"));
