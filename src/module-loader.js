@@ -286,12 +286,13 @@ function load(url, context, nextLoad) {
     // Still let Node validate JSON import attributes for this request.
     if (extension === ".json") {
       nextLoad(original.url, context);
-      const retired = retiredModules.get(fileURLToPath(url));
-      // Node's JSON translator shares default exports with require.cache.
-      // Restore that retired entry for a first late native JSON import too.
-      if (retired) require.cache[fileURLToPath(url)] = retired;
     }
-    return saved;
+    // Native CommonJS and JSON translators share default exports with
+    // require.cache. A first late import must use the retired runtime object,
+    // including mutations, rather than evaluating its saved source again.
+    const retired = retiredModules.get(fileURLToPath(url));
+    if (retired) require.cache[fileURLToPath(url)] = retired;
+    return { ...saved, shortCircuit: true };
   }
   if (extension === ".json") {
     const result = { ...nextLoad(original.url, context), shortCircuit: true };
@@ -556,7 +557,8 @@ function retireModules(entry) {
     // exposing modules belonging to an unloaded package.
     if (
       [...roots].some((root) => modulePath === root || modulePath.startsWith(root + path.sep)) &&
-      (ownerOf(exports.getSourcePath(modulePath)) === entry || !packages.has([...roots][0]))
+      (ownerOf(exports.getSourcePath(modulePath)) === entry ||
+        (!entry.kind && !packages.has([...roots][0])))
     ) {
       if (GENERATION_PREFIX.test(path.basename(modulePath)) || entry.kind === "dependency")
         retiredModules.set(modulePath, require.cache[modulePath]);

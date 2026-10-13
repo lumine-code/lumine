@@ -358,6 +358,76 @@ describe("native package module loading", () => {
     expect(second.state).not.toBe(first.state);
   });
 
+  it("preserves an old installed CommonJS object for its first late native import after an update", async () => {
+    write(
+      "node_modules/cjs-late-import/package.json",
+      '{"name":"cjs-late-import","version":"1.0.0","type":"commonjs","main":"index.cjs"}',
+    );
+    const implementation = write(
+      "node_modules/cjs-late-import/index.cjs",
+      "exports.SharedModel = class SharedModel { static version = 1; }; exports.state = {};",
+    );
+    const main = write(
+      "main.cjs",
+      'module.exports = { library: require("cjs-late-import"), load: () => import("cjs-late-import") };',
+    );
+    const first = require(main);
+    first.library.state.updatedAtRuntime = true;
+    write(
+      "node_modules/cjs-late-import/index.cjs",
+      "exports.SharedModel = class SharedModel { static version = 2; }; exports.state = {};",
+    );
+    const before = fs.statSync(implementation);
+    fs.utimesSync(implementation, new Date(), new Date(before.mtimeMs + 2000));
+    ModuleLoader.invalidatePackage(directory);
+    const second = require(main);
+
+    expect(second.library.SharedModel.version).toBe(2);
+    const oldImport = await first.load();
+    expect(oldImport.default).toBe(first.library);
+    expect(oldImport.SharedModel).toBe(first.library.SharedModel);
+    expect(oldImport.default.state.updatedAtRuntime).toBeTrue();
+    expect((await second.load()).default).toBe(second.library);
+    expect(require(implementation)).toBe(second.library);
+    expect(require.cache[implementation].exports).toBe(second.library);
+  });
+
+  it("retains an unchanged nested library's CommonJS cache when its parent library changes", async () => {
+    const parentManifest = write(
+      "node_modules/parent-library/package.json",
+      '{"name":"parent-library","version":"1.0.0","type":"commonjs","main":"index.cjs"}',
+    );
+    write(
+      "node_modules/parent-library/index.cjs",
+      'module.exports = { child: require("child-library") };',
+    );
+    write(
+      "node_modules/parent-library/node_modules/child-library/package.json",
+      '{"name":"child-library","version":"1.0.0","type":"commonjs","main":"index.cjs"}',
+    );
+    const childPath = write(
+      "node_modules/parent-library/node_modules/child-library/index.cjs",
+      "exports.SharedModel = class SharedModel {}; exports.state = {};",
+    );
+    const main = write("main.cjs", 'module.exports = require("parent-library");');
+    const first = require(main);
+    const childModule = require.cache[childPath];
+    fs.writeFileSync(
+      parentManifest,
+      '{"name":"parent-library","version":"1.0.1","type":"commonjs","main":"index.cjs"}',
+    );
+    ModuleLoader.invalidatePackage(directory);
+    const second = require(main);
+
+    expect(second).not.toBe(first);
+    expect(second.child).toBe(first.child);
+    expect(second.child.SharedModel).toBe(first.child.SharedModel);
+    expect(require.cache[childPath]).toBe(childModule);
+    const imported = await import(pathToFileURL(childPath).href);
+    expect(imported.default).toBe(first.child);
+    expect(imported.SharedModel).toBe(first.child.SharedModel);
+  });
+
   it("requires native ESM relative extensions instead of applying CommonJS inference", () => {
     write("helper.js", "export default 42;");
     const main = write("main.js", 'import value from "./helper"; export default value;');
