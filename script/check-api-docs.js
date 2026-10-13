@@ -5,6 +5,7 @@ const path = require("node:path");
 const parser = require("@babel/parser");
 const { apiSourceFiles, extractApi } = require("./api-extractor");
 const { validateDocumentationExamples } = require("./api-doc-examples");
+const { validateDocumentationContracts } = require("./api-doc-contracts");
 
 const editorRoot = path.resolve(__dirname, "..");
 const primitiveReferences = [
@@ -32,7 +33,9 @@ function proseFromComment(value) {
   return withoutMarkdownCode(
     value
       .split(/\r?\n/)
-      .map((line) => line.replace(/(@(?:param|returns?|type)\s+)\{[^}\n]+\}/, "$1"))
+      .map((line) =>
+        line.replace(/(@(?:param|returns?|type|throws|exception)\s+)\{[^}\n]+\}/, "$1"),
+      )
       .join("\n"),
   );
 }
@@ -134,6 +137,7 @@ function checkDocumentationSyntax(api) {
 
 const api = extractApi({ editorRoot, parser });
 checkDocumentationSyntax(api);
+validateDocumentationContracts(api);
 validateDocumentationExamples(api, parser);
 console.log(
   `API documentation is valid: ${api.classes.length} classes, ${api.objects.length} objects, ${api.memberCount} members, ${api.functions.length} functions`,

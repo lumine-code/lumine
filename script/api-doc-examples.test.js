@@ -49,3 +49,27 @@ test("checks object member examples and rejects malformed JSON", () => {
   };
   assert.throws(() => validateDocumentationExamples(api, parser), /Icon#classes/);
 });
+
+test("rejects unclosed fences instead of silently skipping broken examples", () => {
+  for (const description of [
+    "```js\nconst view = document.createElement('div');",
+    "~~~ts\nconst count: number = 1;",
+  ]) {
+    assert.throws(
+      () => validateDocumentationExamples(documentation(description), parser),
+      /src\/example.js:10: example: unclosed code fence/,
+    );
+  }
+  assert.doesNotThrow(() =>
+    validateDocumentationExamples(
+      documentation("````text\n``` is literal content here\n````"),
+      parser,
+    ),
+  );
+});
+
+test("validates examples in typed failure descriptions", () => {
+  const api = documentation("Load a view.");
+  api.functions[0].throws = [{ type: "Error", description: "```js\nconst = ;\n```" }];
+  assert.throws(() => validateDocumentationExamples(api, parser), /src\/example.js:10: example:/);
+});

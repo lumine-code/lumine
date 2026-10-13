@@ -140,6 +140,65 @@ test("normalizes CRLF input", (context) => {
   assert.equal(api.memberCount, 7);
 });
 
+test("extracts typed error contracts for class methods, object methods and functions", (context) => {
+  const source = sourceWithObjects()
+    .replace(
+      "Transform a value.",
+      "Transform a value.\n   * @throws {TypeError} When the value cannot be transformed.",
+    )
+    .replace(
+      "Normalize a value using a separately declared implementation.",
+      "Normalize a value using a separately declared implementation.\n   * @exception {Error} When normalization fails.",
+    )
+    .replace(
+      "Render a fixture. See",
+      "Render a fixture.\n * @throws {Error} When rendering fails.\n *\n * @desc See",
+    );
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const api = extractApi({ editorRoot: root, parser });
+  assert.deepEqual(
+    api.classes
+      .find(({ name }) => name === "FixtureService")
+      .members.find(({ name }) => name === "transform").throws,
+    [{ type: "TypeError", description: "When the value cannot be transformed." }],
+  );
+  assert.deepEqual(api.objects[0].members.find(({ name }) => name === "normalize").throws, [
+    { type: "Error", description: "When normalization fails." },
+  ]);
+  assert.deepEqual(api.functions.find(({ name }) => name === "render").throws, [
+    { type: "Error", description: "When rendering fails." },
+  ]);
+});
+
+test("rejects untyped error contracts and validates links in error descriptions", (context) => {
+  for (const [tag, expected] of [
+    ["@throws When transformation fails.", /@throws.*structured type/],
+    ["@throws {Error} See {@link FixtureService#missing}.", /Unresolved JSDoc link/],
+  ]) {
+    const source = fs
+      .readFileSync(fixturePath, "utf8")
+      .replace("Transform a value.", `Transform a value.\n   * ${tag}`);
+    const root = editorFixture(source);
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    assert.throws(() => extractApi({ editorRoot: root, parser }), expected);
+  }
+});
+
+test("requires visibility on documentation containing only an error contract", (context) => {
+  for (const tag of ["throws", "exception"]) {
+    const source =
+      fs.readFileSync(fixturePath, "utf8") +
+      `\n/** @${tag} {Error} On failure. */\nfunction fail() {}\n`;
+    const root = editorFixture(source);
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    assert.throws(
+      () => extractApi({ editorRoot: root, parser }),
+      /fail must declare @public or @private/,
+    );
+  }
+});
+
 test("member categories override sections without recategorizing following class members", (context) => {
   const source = fs
     .readFileSync(fixturePath, "utf8")
@@ -223,6 +282,75 @@ test("records a documented class's superclass", (context) => {
 
   assert.equal(api.classes.find(({ name }) => name === "FixtureService").superClass, "Environment");
   assert.equal(api.classes.find(({ name }) => name === "Environment").superClass, null);
+});
+
+test("extracts documented class fields and keeps their categories local", (context) => {
+  const source = fs.readFileSync(fixturePath, "utf8").replace(
+    "class FixtureService {",
+    `class FixtureService {
+  /**
+   * @public
+   * @status public
+   *
+   * The shared format version.
+   * @type {String}
+   * @category Constants
+   */
+  static VERSION = "1";
+
+  /**
+   * @public
+   * @status public
+   *
+   * The instance label.
+   * @type {String}
+   */
+  labelValue = "";
+`,
+  );
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const service = extractApi({ editorRoot: root, parser }).classes.find(
+    ({ name }) => name === "FixtureService",
+  );
+  assert.deepEqual(
+    service.members
+      .slice(0, 3)
+      .map(({ name, kind, static: isStatic, signature, category, propertyType }) => ({
+        name,
+        kind,
+        isStatic,
+        signature,
+        category,
+        propertyType,
+      })),
+    [
+      {
+        name: "VERSION",
+        kind: "property",
+        isStatic: true,
+        signature: ".VERSION",
+        category: "Constants",
+        propertyType: "String",
+      },
+      {
+        name: "labelValue",
+        kind: "property",
+        isStatic: false,
+        signature: "::labelValue",
+        category: "Properties",
+        propertyType: "String",
+      },
+      {
+        name: "create",
+        kind: "method",
+        isStatic: true,
+        signature: ".create()",
+        category: "Methods",
+        propertyType: null,
+      },
+    ],
+  );
 });
 
 test("requires the canonical API source registry", (context) => {

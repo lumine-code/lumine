@@ -307,6 +307,8 @@ function parseJsdoc(raw, context, strict) {
       "param",
       "return",
       "returns",
+      "throws",
+      "exception",
       "type",
     ].includes(tag.name),
   );
@@ -338,6 +340,9 @@ function parseJsdoc(raw, context, strict) {
   const returnTag = tags.find((tag) => tag.name === "returns" || tag.name === "return");
   const typeTag = tags.find((tag) => tag.name === "type");
   const parsedReturn = returnTag ? parseReturnTag(returnTag.value) : null;
+  const throws = tags
+    .filter((tag) => tag.name === "throws" || tag.name === "exception")
+    .map((tag) => parseReturnTag(tag.value));
   if (strict && returnTag && !parsedReturn.type) {
     throw new Error(`@${returnTag.name} on ${context} must declare a type in braces.`);
   }
@@ -345,6 +350,9 @@ function parseJsdoc(raw, context, strict) {
     throw new Error(
       `@${returnTag.name} on ${context} must use a structured type, not {@link ...}.`,
     );
+  }
+  if (strict && throws.some((entry) => !entry.type || entry.type.startsWith("@link "))) {
+    throw new Error(`@throws on ${context} must declare a structured type in braces.`);
   }
   if (strict && typeTag && !/^\s*\{(?!@link\b)[^}]+\}/.test(typeTag.value)) {
     throw new Error(`@type on ${context} must declare a structured type in braces.`);
@@ -362,6 +370,7 @@ function parseJsdoc(raw, context, strict) {
       .map((tag) => parseParamTag(tag.value))
       .filter(Boolean),
     returns: parsedReturn,
+    throws,
     propertyType,
     documented: true,
     format: "jsdoc",
@@ -647,6 +656,7 @@ function parseFile(filePath, sourceInput, options) {
           ),
           returnType: memberDoc.returns?.type || null,
           returnDescription: memberDoc.returns?.description || "",
+          throws: memberDoc.throws || [],
           propertyType: memberDoc.propertyType,
           line: member.loc.start.line,
         });
@@ -690,6 +700,26 @@ function parseFile(filePath, sourceInput, options) {
         const memberDoc = parseDoc(member.leadingComments || [], { ...options, context });
         if (!memberDoc) continue;
         if (memberDoc.sectionCategory) category = memberDoc.sectionCategory;
+        if (member.type === "ClassProperty" && memberDoc.documented) {
+          const publicName = memberDoc.alias || memberName;
+          members.push({
+            name: publicName,
+            kind: "property",
+            static: Boolean(member.static),
+            async: false,
+            signature: `${member.static ? "." : "::"}${publicName}`,
+            category: memberDoc.category || (category === "Methods" ? "Properties" : category),
+            visibility: memberDoc.visibility,
+            description: memberDoc.description,
+            summary: memberDoc.summary,
+            parameters: [],
+            returnType: null,
+            returnDescription: "",
+            propertyType: memberDoc.propertyType,
+            line: member.loc.start.line,
+          });
+          continue;
+        }
         if (!["ClassMethod", "ClassPrivateMethod"].includes(member.type)) continue;
         if (!memberDoc.documented) continue;
         const parameters = mergeParameters(astParameters(member, source), memberDoc.parameters, {
@@ -709,6 +739,7 @@ function parseFile(filePath, sourceInput, options) {
           parameters,
           returnType: memberDoc.returns?.type || null,
           returnDescription: memberDoc.returns?.description || "",
+          throws: memberDoc.throws || [],
           propertyType: memberDoc.propertyType,
           line: member.loc.start.line,
         });
@@ -754,12 +785,14 @@ function parseFile(filePath, sourceInput, options) {
         name: doc.alias || node.id.name,
         accessPath: callablePath(node.id.name, doc),
         signature: functionSignature(node, source, callablePath(node.id.name, doc)),
+        async: Boolean(node.async),
         visibility: doc.visibility,
         description: doc.description,
         summary: doc.summary,
         parameters,
         returnType: doc.returns?.type || null,
         returnDescription: doc.returns?.description || "",
+        throws: doc.throws || [],
         source: sourcePath,
         sourcePath,
         repository: sourceInput.repository,
@@ -810,6 +843,11 @@ function documentationEntries(classes, functions) {
           className: cls.name,
           text: member.returnDescription,
         },
+        ...(member.throws || []).map((entry) => ({
+          context: `${cls.name}${member.static ? "." : "#"}${member.name} thrown error`,
+          className: cls.name,
+          text: entry.description,
+        })),
       ]),
     ]),
     ...functions.flatMap((fn) => [
@@ -824,6 +862,11 @@ function documentationEntries(classes, functions) {
         className: null,
         text: fn.returnDescription,
       },
+      ...(fn.throws || []).map((entry) => ({
+        context: `${fn.name} thrown error`,
+        className: null,
+        text: entry.description,
+      })),
     ]),
   ];
 }
