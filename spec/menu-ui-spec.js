@@ -78,6 +78,58 @@ describe("HTML menu UI", () => {
     commands.dispose();
   });
 
+  it("shows mouse shortcuts alongside keyboard shortcuts", () => {
+    const popup = showMenuPopup(contextViews, {
+      anchor: target,
+      target,
+      template: [
+        {
+          label: "Run",
+          command: "menu-ui-spec:run",
+          mouseBindingLabel: "cmdorctrl+LMB",
+          keyBindingLabel: "Ctrl+K",
+        },
+      ],
+    });
+    const expected = require("@lumine-code/underscore-plus").humanizeKeystroke("cmdorctrl-LMB");
+    expect(popup.element.querySelector(".menu-item-keystroke").textContent).toBe(
+      `${expected} · Ctrl+K`,
+    );
+  });
+
+  it("reserves a shared check column and aligns plain, checkbox and radio labels", () => {
+    const style = document.createElement("style");
+    style.textContent = require("node:fs").readFileSync(
+      require("node:path").join(__dirname, "../static/lumine-ui/styles/menus.css"),
+      "utf8",
+    );
+    document.head.appendChild(style);
+    try {
+      const popup = showMenuPopup(contextViews, {
+        anchor: target,
+        template: [
+          { label: "Plain" },
+          { label: "Checkbox", type: "checkbox", checked: true },
+          { label: "Radio", type: "radio", checked: true },
+        ],
+      });
+      const rows = [...popup.element.querySelectorAll(".menu-item")];
+      const positions = rows.map(
+        (row) => row.querySelector(".menu-item-name").getBoundingClientRect().left,
+      );
+      expect(positions[0]).toBe(positions[1]);
+      expect(positions[1]).toBe(positions[2]);
+      const marker = getComputedStyle(rows[1], "::before");
+      expect(parseFloat(marker.left) + parseFloat(marker.width)).toBeLessThan(
+        positions[1] - rows[1].getBoundingClientRect().left,
+      );
+      expect(rows[1].getAttribute("role")).toBe("menuitemcheckbox");
+      expect(rows[2].getAttribute("role")).toBe("menuitemradio");
+    } finally {
+      style.remove();
+    }
+  });
+
   it("refreshes an open recent-project menu after removing an entry with RMB", async () => {
     const paths = ["C:\\projects\\one"];
     const remainingPaths = ["C:\\projects\\two"];
