@@ -992,7 +992,8 @@ async function main() {
     MASTER_SVG,
     ...(options.brandOnly || options.galleryOnly ? [] : MODE_VARIANTS.map((v) => v.svg)),
   ].map((p) => path.basename(p));
-  console.log(`branding: ${rendered.length} assets written from ${sources.join(", ")}`);
+  const sourceLabel = options.galleryOnly ? "authentic gallery captures" : sources.join(", ");
+  console.log(`branding: ${rendered.length} assets written from ${sourceLabel}`);
   app.exit(0);
 }
 

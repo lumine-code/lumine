@@ -1,30 +1,38 @@
 {
   "capturedOn": "2026-10-13",
-  "context": "Authentic captures of a Lumine development build on Windows, using the One light theme and an isolated example workspace.",
+  "context": "Authentic, rectangular content captures of a Lumine development build on Windows, using the One light theme and default editor font settings. System window borders and rounded OS corners are excluded.",
   "scenes": [
     {
-      "file": "view-1.jpg",
+      "file": "view-1.png",
       "label": "01 / CODE",
       "title": "Code and project navigation",
-      "description": "Python editing with syntax highlighting and the project tree."
+      "description": "Python editing with syntax highlighting and the project tree.",
+      "light": "01-light.png",
+      "dark": "01-dark.png"
     },
     {
-      "file": "view-2.jpg",
+      "file": "view-2.png",
       "label": "02 / DOCUMENT",
       "title": "Source and preview, side by side",
-      "description": "A live Markdown preview beside its source in a split pane."
+      "description": "A live Markdown preview beside its source in a split pane.",
+      "light": "02-light.png",
+      "dark": "02-dark.png"
     },
     {
-      "file": "view-3.jpg",
+      "file": "view-3.png",
       "label": "03 / EXTEND",
       "title": "Packages and settings",
-      "description": "Manage installed and bundled packages from the editor."
+      "description": "Manage installed and bundled packages from the editor.",
+      "light": "03-light.png",
+      "dark": "03-dark.png"
     },
     {
-      "file": "view-4.jpg",
+      "file": "view-4.png",
       "label": "04 / ABOUT",
       "title": "Know your installation",
-      "description": "Versions, documentation and updates in the redesigned About pane."
+      "description": "Versions, documentation and updates in the redesigned About pane.",
+      "light": "04-light.png",
+      "dark": "04-dark.png"
     }
   ]
 }
