@@ -33,8 +33,9 @@ module.exports = function galleryAssets(root) {
         <text x="96" y="42" font-family="Consolas, monospace" font-size="20" letter-spacing="1.5" fill="${palette.muted}">${escapeXml(scene.label)}</text>
         <text x="96" y="94" font-size="40" font-weight="600" letter-spacing="-1">${escapeXml(scene.title)}</text>
         <text x="96" y="132" font-size="24" fill="${palette.muted}">${escapeXml(scene.description)}</text>
-        <rect x="95.5" y="159.5" width="1409" height="881" fill="none" stroke="${palette.line}"/>
-        <image x="96" y="160" width="1408" height="880" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${scene.image}"/>
+        <defs><clipPath id="capture"><rect x="96" y="160" width="1408" height="880" rx="12"/></clipPath></defs>
+        <rect x="95.5" y="159.5" width="1409" height="881" rx="12.5" fill="none" stroke="${palette.line}"/>
+        <image x="96" y="160" width="1408" height="880" preserveAspectRatio="xMidYMid meet" clip-path="url(#capture)" href="data:image/png;base64,${scene.image}"/>
       </g>`;
       return {
         file: `.github/gallery/${scene[theme]}`,
