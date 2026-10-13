@@ -414,6 +414,332 @@ describe("ContextMenuManager", function () {
     });
   });
 
+  describe("named groups", function () {
+    const commands = (template) => template.map((item) => item.command);
+
+    for (const registrationOrder of [
+      ["policy", "package"],
+      ["package", "policy"],
+    ]) {
+      it(`orders contributions across DOM levels with ${registrationOrder[0]} registered first`, () => {
+        const definitions = {
+          policy: {
+            ".parent": {
+              groupOrder: ["history", "clipboard", "extensions"],
+              items: [
+                { label: "Undo", command: "test:undo", group: "history", order: 10 },
+                { label: "Copy", command: "test:copy", group: "clipboard", order: 10 },
+              ],
+            },
+          },
+          package: {
+            ".grandchild": [
+              { label: "Paste", command: "test:paste", group: "clipboard", order: 20 },
+            ],
+            ".child": [{ label: "Redo", command: "test:redo", group: "history", order: 20 }],
+          },
+        };
+        for (const provider of registrationOrder) contextMenu.add(definitions[provider]);
+
+        expect(contextMenu.templateForElement(grandchild)).toEqual([
+          { label: "Undo", id: "Undo", command: "test:undo" },
+          { label: "Redo", id: "Redo", command: "test:redo" },
+          { type: "separator" },
+          { label: "Copy", id: "Copy", command: "test:copy" },
+          { label: "Paste", id: "Paste", command: "test:paste" },
+        ]);
+        expect(definitions.policy[".parent"].groupOrder).toEqual([
+          "history",
+          "clipboard",
+          "extensions",
+        ]);
+        expect(definitions.package[".child"][0].group).toBe("history");
+      });
+    }
+
+    it("uses the closest policy before a more specific ancestor policy", () => {
+      parent.classList.add("specific");
+      contextMenu.add({
+        ".parent.specific": {
+          groupOrder: ["second", "first"],
+          items: [],
+        },
+        ".child": {
+          groupOrder: ["first", "second"],
+          items: [],
+        },
+        ".grandchild": [
+          { label: "Second", command: "test:second", group: "second" },
+          { label: "First", command: "test:first", group: "first" },
+        ],
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:first",
+        undefined,
+        "test:second",
+      ]);
+    });
+
+    it("inherits an ancestor policy through an items-only descriptor", () => {
+      contextMenu.add({
+        ".parent": {
+          groupOrder: ["first", "second"],
+          items: [],
+        },
+        ".child": {
+          items: [
+            { label: "Second", command: "test:second", group: "second" },
+            { label: "First", command: "test:first", group: "first" },
+          ],
+        },
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:first",
+        undefined,
+        "test:second",
+      ]);
+    });
+
+    it("retains the closest shared submenu layout while merging ancestor actions", () => {
+      contextMenu.add({
+        ".child": {
+          groupOrder: ["primary", "secondary"],
+          items: [
+            {
+              label: "Navigate",
+              group: "primary",
+              order: 10,
+              groupOrder: ["forward", "back"],
+              submenu: [
+                { label: "Previous", command: "test:previous", group: "back", order: 10 },
+                { label: "Next", command: "test:next", group: "forward", order: 10 },
+              ],
+            },
+            { label: "Local Action", command: "test:local", group: "primary", order: 20 },
+            { label: "Other Action", command: "test:other", group: "secondary", order: 10 },
+          ],
+        },
+        ".parent": [
+          {
+            label: "Navigate",
+            group: "secondary",
+            order: 90,
+            groupOrder: ["back", "forward"],
+            submenu: [{ label: "Go to Line", command: "test:line", group: "forward", order: 20 }],
+          },
+        ],
+      });
+
+      const template = contextMenu.templateForElement(grandchild);
+      expect(commands(template)).toEqual([undefined, "test:local", undefined, "test:other"]);
+      expect(template[0].label).toBe("Navigate");
+      expect(commands(template[0].submenu)).toEqual([
+        "test:next",
+        "test:line",
+        undefined,
+        "test:previous",
+      ]);
+    });
+
+    it("uses selector specificity for policies at the same DOM level", () => {
+      grandchild.classList.add("specific");
+      contextMenu.add({
+        ".grandchild.specific": {
+          groupOrder: ["first", "second"],
+          items: [],
+        },
+      });
+      contextMenu.add({
+        ".grandchild": {
+          groupOrder: ["second", "first"],
+          items: [
+            { label: "Second", command: "test:second", group: "second" },
+            { label: "First", command: "test:first", group: "first" },
+          ],
+        },
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:first",
+        undefined,
+        "test:second",
+      ]);
+    });
+
+    it("restores an earlier policy when the equally specific later policy is disposed", () => {
+      contextMenu.add({
+        ".child": {
+          groupOrder: ["first", "second"],
+          items: [
+            { label: "First", command: "test:first", group: "first" },
+            { label: "Second", command: "test:second", group: "second" },
+          ],
+        },
+      });
+      const laterPolicy = contextMenu.add({
+        ".child": { groupOrder: ["second", "first"], items: [] },
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:second",
+        undefined,
+        "test:first",
+      ]);
+      laterPolicy.dispose();
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:first",
+        undefined,
+        "test:second",
+      ]);
+    });
+
+    it("cuts ancestor policies at a context-menu boundary", () => {
+      contextMenu.add({
+        ".parent": { groupOrder: ["second", "first"], items: [] },
+        ".child": [
+          { label: "First", command: "test:first", group: "first" },
+          { label: "Second", command: "test:second", group: "second" },
+        ],
+      });
+      child.setAttribute("data-context-menu-boundary", "");
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:first",
+        "test:second",
+      ]);
+      child.removeAttribute("data-context-menu-boundary");
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:second",
+        undefined,
+        "test:first",
+      ]);
+    });
+
+    it("removes empty groups after shouldDisplay changes and package disposal", () => {
+      let showHistory = true;
+      contextMenu.add({
+        ".parent": {
+          groupOrder: ["history", "clipboard", "extensions"],
+          items: [
+            {
+              label: "Undo",
+              command: "test:undo",
+              group: "history",
+              shouldDisplay: () => showHistory,
+            },
+          ],
+        },
+      });
+      const packageMenu = contextMenu.add({
+        ".child": [
+          { type: "separator" },
+          { label: "Copy", command: "test:copy", group: "clipboard" },
+          { type: "separator" },
+        ],
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:undo",
+        undefined,
+        "test:copy",
+      ]);
+      showHistory = false;
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual(["test:copy"]);
+      packageMenu.dispose();
+      expect(contextMenu.templateForElement(grandchild)).toEqual([]);
+      showHistory = true;
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual(["test:undo"]);
+    });
+
+    it("preserves separately fenced legacy blocks in the extensions group", () => {
+      contextMenu.add({
+        ".parent": {
+          groupOrder: ["history", "extensions", "clipboard"],
+          items: [
+            { label: "Undo", command: "test:undo", group: "history" },
+            { label: "Copy", command: "test:copy", group: "clipboard" },
+          ],
+        },
+        ".grandchild": [
+          { type: "separator" },
+          { label: "Run B", command: "test:b", afterGroupContaining: ["test:a"] },
+          { type: "separator" },
+        ],
+        ".child": [
+          { type: "separator" },
+          { label: "Run A", command: "test:a" },
+          { type: "separator" },
+        ],
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:undo",
+        undefined,
+        "test:a",
+        undefined,
+        "test:b",
+        undefined,
+        "test:copy",
+      ]);
+    });
+
+    it("applies legacy positioning within named groups and strips all layout metadata", () => {
+      contextMenu.add({
+        ".child": {
+          groupOrder: ["actions", "extensions"],
+          items: [
+            {
+              label: "B",
+              command: "test:b",
+              group: "actions",
+              order: 10,
+              after: ["test:a"],
+            },
+            { label: "A", command: "test:a", group: "actions", order: 20 },
+            {
+              label: "Submenu",
+              group: "extensions",
+              groupOrder: ["create", "close"],
+              submenu: [
+                { label: "Close", command: "test:close", group: "close", order: 10 },
+                { label: "Open", command: "test:open", group: "create", order: 10 },
+              ],
+            },
+          ],
+        },
+      });
+
+      const template = contextMenu.templateForElement(grandchild);
+      expect(commands(template)).toEqual(["test:a", "test:b", undefined, undefined]);
+      expect(commands(template[3].submenu)).toEqual(["test:open", undefined, "test:close"]);
+      const allItems = [...template, ...template[3].submenu];
+      for (const item of allItems) {
+        for (const key of ["group", "order", "groupOrder", "sortBy", "after"]) {
+          expect(Object.hasOwn(item, key)).toBe(false);
+        }
+      }
+    });
+
+    it("accepts a selector descriptor that sorts items by label", () => {
+      contextMenu.add({
+        ".child": {
+          sortBy: "label",
+          items: [
+            { label: "Zebra", command: "test:zebra" },
+            { label: "Alpha", command: "test:alpha" },
+          ],
+        },
+      });
+
+      expect(commands(contextMenu.templateForElement(grandchild))).toEqual([
+        "test:alpha",
+        "test:zebra",
+      ]);
+    });
+  });
+
   describe("::templateForEvent(target)", function () {
     let [keymaps, item] = [];
     const controlALabel = process.platform === "darwin" ? "⌃A" : "Ctrl+A";

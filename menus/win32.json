@@ -5,30 +5,42 @@
       "submenu": [
         {
           "label": "&New File",
-          "command": "application:new-file"
+          "command": "application:new-file",
+          "group": "new",
+          "order": 10
         },
         {
           "label": "New &Window",
-          "command": "application:new-window"
+          "command": "application:new-window",
+          "group": "new",
+          "order": 40
         },
         {
           "label": "New &Detached Window",
-          "command": "window:new-detached-window"
+          "command": "window:new-detached-window",
+          "group": "new",
+          "order": 50
         },
         {
           "type": "separator"
         },
         {
           "label": "&Open File…",
-          "command": "application:open-file"
+          "command": "application:open-file",
+          "group": "files",
+          "order": 10
         },
         {
           "label": "Open Folder…",
-          "command": "application:open-folder"
+          "command": "application:open-folder",
+          "group": "projects",
+          "order": 10
         },
         {
           "label": "Add Project Folder…",
-          "command": "application:add-project-folder"
+          "command": "application:add-project-folder",
+          "group": "projects",
+          "order": 20
         },
         {
           "label": "Reopen Project",
@@ -40,79 +52,122 @@
             {
               "type": "separator"
             }
-          ]
+          ],
+          "group": "projects",
+          "order": 50
         },
         {
           "label": "Reopen Last &Item",
-          "command": "pane:reopen-closed-item"
+          "command": "pane:reopen-closed-item",
+          "group": "projects",
+          "order": 60
         },
         {
           "type": "separator"
         },
         {
           "label": "Se&ttings",
-          "command": "application:show-settings"
+          "command": "application:show-settings",
+          "group": "settings",
+          "order": 10
         },
         {
           "type": "separator"
         },
         {
           "label": "Config…",
-          "command": "application:open-your-config"
+          "command": "application:open-your-config",
+          "group": "preferences",
+          "order": 10
         },
         {
           "label": "Init Script…",
-          "command": "application:open-your-init-script"
+          "command": "application:open-your-init-script",
+          "group": "preferences",
+          "order": 20
         },
         {
           "label": "Keymap…",
-          "command": "application:open-your-keymap"
+          "command": "application:open-your-keymap",
+          "group": "preferences",
+          "order": 30
         },
         {
           "label": "Snippets…",
-          "command": "application:open-your-snippets"
+          "command": "application:open-your-snippets",
+          "group": "preferences",
+          "order": 40
         },
         {
           "label": "Stylesheet…",
-          "command": "application:open-your-stylesheet"
+          "command": "application:open-your-stylesheet",
+          "group": "preferences",
+          "order": 50
         },
         {
           "type": "separator"
         },
         {
           "label": "&Save",
-          "command": "core:save"
+          "command": "core:save",
+          "group": "save",
+          "order": 10
         },
         {
           "label": "Save &As…",
-          "command": "core:save-as"
+          "command": "core:save-as",
+          "group": "save",
+          "order": 20
         },
         {
           "label": "Save A&ll",
-          "command": "window:save-all"
+          "command": "window:save-all",
+          "group": "save",
+          "order": 30
         },
         {
           "type": "separator"
         },
         {
           "label": "&Close Tab",
-          "command": "core:close"
+          "command": "core:close",
+          "group": "close",
+          "order": 10
         },
         {
           "label": "Close &Pane",
-          "command": "pane:close"
+          "command": "pane:close",
+          "group": "close",
+          "order": 30
         },
         {
           "label": "Clos&e Window",
-          "command": "window:close"
+          "command": "window:close",
+          "group": "close",
+          "order": 40
         },
         {
           "type": "separator"
         },
         {
           "label": "E&xit",
-          "command": "application:quit"
+          "command": "application:quit",
+          "group": "quit",
+          "order": 10
         }
+      ],
+      "groupOrder": [
+        "new",
+        "files",
+        "projects",
+        "save",
+        "properties",
+        "external",
+        "settings",
+        "preferences",
+        "extensions",
+        "close",
+        "quit"
       ]
     },
     {
@@ -120,89 +175,128 @@
       "submenu": [
         {
           "label": "&Undo",
-          "command": "core:undo"
+          "command": "core:undo",
+          "group": "history",
+          "order": 10
         },
         {
           "label": "&Redo",
-          "command": "core:redo"
+          "command": "core:redo",
+          "group": "history",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "Cu&t",
-          "command": "core:cut"
+          "command": "core:cut",
+          "group": "clipboard",
+          "order": 10
         },
         {
           "label": "&Copy",
-          "command": "core:copy"
+          "command": "core:copy",
+          "group": "clipboard",
+          "order": 20
         },
         {
           "label": "Copy Pat&h",
-          "command": "editor:copy-path"
+          "command": "editor:copy-path",
+          "group": "clipboard",
+          "order": 30
         },
         {
           "label": "&Paste",
-          "command": "core:paste"
+          "command": "core:paste",
+          "group": "clipboard",
+          "order": 40
         },
         {
           "label": "Paste Without Reformatting",
-          "command": "editor:paste-without-reformatting"
+          "command": "editor:paste-without-reformatting",
+          "group": "clipboard",
+          "order": 50
         },
         {
           "label": "Select &All",
-          "command": "core:select-all"
+          "command": "core:select-all",
+          "group": "clipboard",
+          "order": 80
         },
         {
           "type": "separator"
         },
         {
           "label": "Toggle Comme&nts",
-          "command": "editor:toggle-line-comments"
+          "command": "editor:toggle-line-comments",
+          "group": "editing",
+          "order": 10
         },
         {
           "label": "Lines",
           "submenu": [
             {
               "label": "&Indent",
-              "command": "editor:indent-selected-rows"
+              "command": "editor:indent-selected-rows",
+              "group": "indent",
+              "order": 10
             },
             {
               "label": "&Outdent",
-              "command": "editor:outdent-selected-rows"
+              "command": "editor:outdent-selected-rows",
+              "group": "indent",
+              "order": 20
             },
             {
               "label": "&Auto Indent",
-              "command": "editor:auto-indent"
+              "command": "editor:auto-indent",
+              "group": "indent",
+              "order": 30
             },
             {
               "type": "separator"
             },
             {
               "label": "Move Line &Up",
-              "command": "editor:move-line-up"
+              "command": "editor:move-line-up",
+              "group": "lines",
+              "order": 10
             },
             {
               "label": "Move Line &Down",
-              "command": "editor:move-line-down"
+              "command": "editor:move-line-down",
+              "group": "lines",
+              "order": 20
             },
             {
               "label": "Du&plicate Lines",
-              "command": "editor:duplicate-lines"
+              "command": "editor:duplicate-lines",
+              "group": "lines",
+              "order": 30
             },
             {
               "label": "D&elete Line",
-              "command": "editor:delete-line"
+              "command": "editor:delete-line",
+              "group": "lines",
+              "order": 40
             },
             {
               "label": "&Join Lines",
-              "command": "editor:join-lines"
+              "command": "editor:join-lines",
+              "group": "lines",
+              "order": 50
             },
             {
               "label": "Collapse &Blank Lines",
-              "command": "editor:collapse-blank-lines"
+              "command": "editor:collapse-blank-lines",
+              "group": "alignment",
+              "order": 10
             }
-          ]
+          ],
+          "group": "editing",
+          "order": 20,
+          "groupOrder": ["indent", "lines", "alignment", "sorting", "extensions"]
         },
         {
           "label": "Columns",
@@ -215,115 +309,186 @@
               "label": "Move Selection &Right",
               "command": "editor:move-selection-right"
             }
-          ]
+          ],
+          "group": "editing",
+          "order": 30
         },
         {
           "label": "Text",
           "submenu": [
             {
               "label": "&Upper Case",
-              "command": "editor:upper-case"
+              "command": "editor:upper-case",
+              "group": "case",
+              "order": 10
             },
             {
               "label": "&Lower Case",
-              "command": "editor:lower-case"
+              "command": "editor:lower-case",
+              "group": "case",
+              "order": 20
             },
             {
               "label": "Collapse Content &Spaces",
-              "command": "editor:collapse-content-spaces"
+              "command": "editor:collapse-content-spaces",
+              "group": "transform",
+              "order": 5
             },
             {
               "type": "separator"
             },
             {
               "label": "Delete to End of &Word",
-              "command": "editor:delete-to-end-of-word"
+              "command": "editor:delete-to-end-of-word",
+              "group": "delete",
+              "order": 10
             },
             {
               "label": "Delete to Previous Word Boundary",
-              "command": "editor:delete-to-previous-word-boundary"
+              "command": "editor:delete-to-previous-word-boundary",
+              "group": "delete",
+              "order": 20
             },
             {
               "label": "Delete to Next Word Boundary",
-              "command": "editor:delete-to-next-word-boundary"
+              "command": "editor:delete-to-next-word-boundary",
+              "group": "delete",
+              "order": 30
             },
             {
               "label": "Delete to Next Line Content",
-              "command": "editor:delete-to-next-line-content"
+              "command": "editor:delete-to-next-line-content",
+              "group": "delete",
+              "order": 40
             },
             {
               "label": "&Delete Line",
-              "command": "editor:delete-line"
+              "command": "editor:delete-line",
+              "group": "delete",
+              "order": 50
             },
             {
               "type": "separator"
             },
             {
               "label": "&Transpose",
-              "command": "editor:transpose"
+              "command": "editor:transpose",
+              "group": "transform",
+              "order": 60
             }
-          ]
+          ],
+          "group": "editing",
+          "order": 40,
+          "groupOrder": ["case", "transform", "insert", "delete", "extensions"]
         },
         {
           "label": "Folding",
           "submenu": [
             {
               "label": "&Fold",
-              "command": "editor:fold-current-row"
+              "command": "editor:fold-current-row",
+              "group": "manual",
+              "order": 10
             },
             {
               "label": "&Unfold",
-              "command": "editor:unfold-current-row"
+              "command": "editor:unfold-current-row",
+              "group": "manual",
+              "order": 20
             },
             {
               "label": "Fol&d All",
-              "command": "editor:fold-all"
+              "command": "editor:fold-all",
+              "group": "manual",
+              "order": 40
             },
             {
               "label": "Unfold &All",
-              "command": "editor:unfold-all"
+              "command": "editor:unfold-all",
+              "group": "manual",
+              "order": 50
             },
             {
               "type": "separator"
             },
             {
               "label": "Fold Level 1",
-              "command": "editor:fold-at-indent-level-1"
+              "command": "editor:fold-at-indent-level-1",
+              "group": "levels",
+              "order": 10
             },
             {
               "label": "Fold Level 2",
-              "command": "editor:fold-at-indent-level-2"
+              "command": "editor:fold-at-indent-level-2",
+              "group": "levels",
+              "order": 20
             },
             {
               "label": "Fold Level 3",
-              "command": "editor:fold-at-indent-level-3"
+              "command": "editor:fold-at-indent-level-3",
+              "group": "levels",
+              "order": 30
             },
             {
               "label": "Fold Level 4",
-              "command": "editor:fold-at-indent-level-4"
+              "command": "editor:fold-at-indent-level-4",
+              "group": "levels",
+              "order": 40
             },
             {
               "label": "Fold Level 5",
-              "command": "editor:fold-at-indent-level-5"
+              "command": "editor:fold-at-indent-level-5",
+              "group": "levels",
+              "order": 50
             },
             {
               "label": "Fold Level 6",
-              "command": "editor:fold-at-indent-level-6"
+              "command": "editor:fold-at-indent-level-6",
+              "group": "levels",
+              "order": 60
             },
             {
               "label": "Fold Level 7",
-              "command": "editor:fold-at-indent-level-7"
+              "command": "editor:fold-at-indent-level-7",
+              "group": "levels",
+              "order": 70
             },
             {
               "label": "Fold Level 8",
-              "command": "editor:fold-at-indent-level-8"
+              "command": "editor:fold-at-indent-level-8",
+              "group": "levels",
+              "order": 80
             },
             {
               "label": "Fold Level 9",
-              "command": "editor:fold-at-indent-level-9"
+              "command": "editor:fold-at-indent-level-9",
+              "group": "levels",
+              "order": 90
             }
-          ]
+          ],
+          "group": "editing",
+          "order": 50,
+          "groupOrder": ["manual", "levels", "extensions"]
+        },
+        {
+          "label": "Diagnostics",
+          "submenu": [],
+          "group": "diagnostics",
+          "order": 10,
+          "groupOrder": ["file", "project", "extensions"]
         }
+      ],
+      "groupOrder": [
+        "history",
+        "clipboard",
+        "editing",
+        "insert",
+        "format",
+        "refactor",
+        "diagnostics",
+        "annotations",
+        "mode",
+        "extensions"
       ]
     },
     {
@@ -331,119 +496,189 @@
       "submenu": [
         {
           "label": "Toggle &Full Screen",
-          "command": "window:toggle-full-screen"
+          "command": "window:toggle-full-screen",
+          "group": "window",
+          "order": 10
         },
         {
           "label": "Toggle View",
-          "submenu": []
+          "submenu": [],
+          "group": "panels",
+          "order": 10,
+          "groupOrder": ["panels", "docks", "chrome", "extensions"]
         },
         {
           "label": "Open View",
-          "submenu": []
+          "submenu": [],
+          "group": "panels",
+          "order": 20,
+          "sortBy": "label"
         },
         {
           "label": "Editor",
-          "submenu": []
+          "submenu": [],
+          "group": "appearance",
+          "order": 20,
+          "groupOrder": [
+            "grammar",
+            "appearance",
+            "structure",
+            "intelligence",
+            "editing",
+            "version-control",
+            "extensions"
+          ]
         },
         {
           "label": "Panes",
           "submenu": [
             {
               "label": "Split Up",
-              "command": "pane:split-up-and-copy-active-item"
+              "command": "pane:split-up-and-copy-active-item",
+              "group": "layout",
+              "order": 10
             },
             {
               "label": "Split Down",
-              "command": "pane:split-down-and-copy-active-item"
+              "command": "pane:split-down-and-copy-active-item",
+              "group": "layout",
+              "order": 20
             },
             {
               "label": "Split Left",
-              "command": "pane:split-left-and-copy-active-item"
+              "command": "pane:split-left-and-copy-active-item",
+              "group": "layout",
+              "order": 30
             },
             {
               "label": "Split Right",
-              "command": "pane:split-right-and-copy-active-item"
+              "command": "pane:split-right-and-copy-active-item",
+              "group": "layout",
+              "order": 40
             },
             {
               "type": "separator"
             },
             {
               "label": "Toggle Pending State",
-              "command": "pane:toggle-pending-item"
+              "command": "pane:toggle-pending-item",
+              "group": "items",
+              "order": 10
             },
             {
               "type": "separator"
             },
             {
               "label": "Focus Next Pane",
-              "command": "window:focus-next-pane"
+              "command": "window:focus-next-pane",
+              "group": "focus",
+              "order": 10
             },
             {
               "label": "Focus Previous Pane",
-              "command": "window:focus-previous-pane"
+              "command": "window:focus-previous-pane",
+              "group": "focus",
+              "order": 20
             },
             {
               "type": "separator"
             },
             {
               "label": "Focus Pane Above",
-              "command": "window:focus-pane-up"
+              "command": "window:focus-pane-up",
+              "group": "focus",
+              "order": 30
             },
             {
               "label": "Focus Pane Below",
-              "command": "window:focus-pane-down"
+              "command": "window:focus-pane-down",
+              "group": "focus",
+              "order": 40
             },
             {
               "label": "Focus Pane On Left",
-              "command": "window:focus-pane-left"
+              "command": "window:focus-pane-left",
+              "group": "focus",
+              "order": 50
             },
             {
               "label": "Focus Pane On Right",
-              "command": "window:focus-pane-right"
+              "command": "window:focus-pane-right",
+              "group": "focus",
+              "order": 60
             },
             {
               "type": "separator"
             },
             {
               "label": "Close Pane",
-              "command": "pane:close"
+              "command": "pane:close",
+              "group": "close",
+              "order": 10
             },
             {
               "type": "separator"
             },
             {
               "label": "Detach Pane",
-              "command": "pane:detach"
+              "command": "pane:detach",
+              "group": "transfer",
+              "order": 10
             },
             {
               "label": "Attach to Main Window",
-              "command": "window:attach-to-main-window"
+              "command": "window:attach-to-main-window",
+              "group": "transfer",
+              "order": 20
             }
-          ]
+          ],
+          "group": "panels",
+          "order": 30,
+          "groupOrder": ["layout", "items", "focus", "transfer", "extensions", "close"]
         },
         {
           "label": "Developer",
           "submenu": [
             {
               "label": "Open In &Dev Mode…",
-              "command": "application:open-dev"
+              "command": "application:open-dev",
+              "group": "windows",
+              "order": 10
             },
             {
               "label": "Reopen Window in Dev &Mode",
-              "command": "application:reopen-window-in-dev-mode"
+              "command": "application:reopen-window-in-dev-mode",
+              "group": "windows",
+              "order": 20
             },
             {
               "label": "&Reload Window",
-              "command": "window:reload"
+              "command": "window:reload",
+              "group": "windows",
+              "order": 30
             },
             {
               "label": "Run Package &Specs",
-              "command": "window:run-package-specs"
+              "command": "window:run-package-specs",
+              "group": "testing",
+              "order": 10
             },
             {
               "label": "Toggle Developer &Tools",
-              "command": "window:toggle-dev-tools"
+              "command": "window:toggle-dev-tools",
+              "group": "testing",
+              "order": 20
             }
+          ],
+          "group": "developer",
+          "order": 10,
+          "groupOrder": [
+            "windows",
+            "testing",
+            "services",
+            "diagnostics",
+            "inspection",
+            "extensions"
           ]
         },
         {
@@ -451,152 +686,227 @@
         },
         {
           "label": "&Increase Font Size",
-          "command": "window:increase-font-size"
+          "command": "window:increase-font-size",
+          "group": "font",
+          "order": 10
         },
         {
           "label": "&Decrease Font Size",
-          "command": "window:decrease-font-size"
+          "command": "window:decrease-font-size",
+          "group": "font",
+          "order": 20
         },
         {
           "label": "Re&set Font Size",
-          "command": "window:reset-font-size"
+          "command": "window:reset-font-size",
+          "group": "font",
+          "order": 30
         },
         {
           "type": "separator"
         },
         {
           "label": "Toggle Soft &Wrap",
-          "command": "editor:toggle-soft-wrap"
+          "command": "editor:toggle-soft-wrap",
+          "group": "appearance",
+          "order": 10
         }
-      ]
+      ],
+      "groupOrder": ["window", "panels", "font", "appearance", "extensions", "developer"]
     },
     {
       "label": "&Selection",
       "submenu": [
         {
           "label": "Add Selection &Above",
-          "command": "editor:add-selection-above"
+          "command": "editor:add-selection-above",
+          "group": "cursors",
+          "order": 10
         },
         {
           "label": "Add Selection &Below",
-          "command": "editor:add-selection-below"
+          "command": "editor:add-selection-below",
+          "group": "cursors",
+          "order": 20
         },
         {
           "label": "S&plit into Lines",
-          "command": "editor:split-selections-into-lines"
+          "command": "editor:split-selections-into-lines",
+          "group": "cursors",
+          "order": 30
         },
         {
           "label": "Single Selection",
-          "command": "editor:consolidate-selections"
+          "command": "editor:consolidate-selections",
+          "group": "cursors",
+          "order": 40
         },
         {
           "type": "separator"
         },
         {
           "label": "Select to &Top",
-          "command": "core:select-to-top"
+          "command": "core:select-to-top",
+          "group": "document",
+          "order": 10
         },
         {
           "label": "Select to Botto&m",
-          "command": "core:select-to-bottom"
+          "command": "core:select-to-bottom",
+          "group": "document",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "Select &Line",
-          "command": "editor:select-line"
+          "command": "editor:select-line",
+          "group": "units",
+          "order": 10
         },
         {
           "label": "Select &Word",
-          "command": "editor:select-word"
+          "command": "editor:select-word",
+          "group": "units",
+          "order": 20
         },
         {
           "label": "Select to Beginning of W&ord",
-          "command": "editor:select-to-beginning-of-word"
+          "command": "editor:select-to-beginning-of-word",
+          "group": "ranges",
+          "order": 10
         },
         {
           "label": "Select to Beginning of L&ine",
-          "command": "editor:select-to-beginning-of-line"
+          "command": "editor:select-to-beginning-of-line",
+          "group": "ranges",
+          "order": 20
         },
         {
           "label": "Select to First &Character of Line",
-          "command": "editor:select-to-first-character-of-line"
+          "command": "editor:select-to-first-character-of-line",
+          "group": "ranges",
+          "order": 30
         },
         {
           "label": "Select to End of Wor&d",
-          "command": "editor:select-to-end-of-word"
+          "command": "editor:select-to-end-of-word",
+          "group": "ranges",
+          "order": 40
         },
         {
           "label": "Select to End of Lin&e",
-          "command": "editor:select-to-end-of-line"
+          "command": "editor:select-to-end-of-line",
+          "group": "ranges",
+          "order": 50
         }
-      ]
+      ],
+      "groupOrder": ["cursors", "units", "ranges", "document", "structure", "leaders", "extensions"]
     },
     {
       "label": "Se&arch",
       "submenu": [
         {
           "label": "&Find in Buffer",
-          "command": "search-panel:show"
+          "command": "search-panel:show",
+          "group": "buffer",
+          "order": 10
         },
         {
           "label": "&Replace in Buffer",
-          "command": "search-panel:show-replace"
+          "command": "search-panel:show-replace",
+          "group": "buffer",
+          "order": 20
         },
         {
           "label": "Select &Next",
-          "command": "search-panel:select-next"
+          "command": "search-panel:select-next",
+          "group": "buffer",
+          "order": 30
         },
         {
           "label": "Select &All",
-          "command": "search-panel:select-all"
+          "command": "search-panel:select-all",
+          "group": "buffer",
+          "order": 40
         },
         {
           "label": "&Toggle Find in Buffer",
-          "command": "search-panel:toggle"
+          "command": "search-panel:toggle",
+          "group": "buffer",
+          "order": 50
         },
         {
           "type": "separator"
         },
         {
           "label": "Find in &Project",
-          "command": "search-panel:project-show"
+          "command": "search-panel:project-show",
+          "group": "project",
+          "order": 10
         },
         {
           "label": "To&ggle Find in Project",
-          "command": "search-panel:project-toggle"
+          "command": "search-panel:project-toggle",
+          "group": "project",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "Find A&ll",
-          "command": "search-panel:find-all"
+          "command": "search-panel:find-all",
+          "group": "results",
+          "order": 10
         },
         {
           "label": "Find Ne&xt",
-          "command": "search-panel:find-next"
+          "command": "search-panel:find-next",
+          "group": "results",
+          "order": 20
         },
         {
           "label": "Find Pre&vious",
-          "command": "search-panel:find-previous"
+          "command": "search-panel:find-previous",
+          "group": "results",
+          "order": 30
         },
         {
           "label": "R&eplace Next",
-          "command": "search-panel:replace-next"
+          "command": "search-panel:replace-next",
+          "group": "results",
+          "order": 40
         },
         {
           "label": "Repla&ce All",
-          "command": "search-panel:replace-all"
+          "command": "search-panel:replace-all",
+          "group": "results",
+          "order": 50
         },
         {
           "type": "separator"
         },
         {
           "label": "Clear &History",
-          "command": "search-panel:clear-history"
+          "command": "search-panel:clear-history",
+          "group": "history",
+          "order": 100
         }
+      ],
+      "groupOrder": [
+        "buffer",
+        "project",
+        "results",
+        "navigation",
+        "symbols",
+        "bookmarks",
+        "changes",
+        "matches",
+        "diagnostics",
+        "extensions",
+        "history"
       ]
     },
     {
@@ -616,89 +926,136 @@
       "submenu": [
         {
           "label": "View &License",
-          "command": "application:open-license"
+          "command": "application:open-license",
+          "group": "about",
+          "order": 10
         },
         {
           "label": "VERSION",
-          "enabled": false
+          "enabled": false,
+          "group": "about",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "&Documentation",
-          "command": "application:open-documentation"
+          "command": "application:open-documentation",
+          "group": "documentation",
+          "order": 10
         },
         {
           "label": "&API Reference",
-          "command": "application:open-api-reference"
+          "command": "application:open-api-reference",
+          "group": "documentation",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "Report Issue",
-          "command": "application:report-issue"
+          "command": "application:report-issue",
+          "group": "issues",
+          "order": 10
         },
         {
           "label": "Search Issues",
-          "command": "application:search-issues"
+          "command": "application:search-issues",
+          "group": "issues",
+          "order": 20
         },
         {
           "type": "separator"
         },
         {
           "label": "About Lumine",
-          "command": "application:about"
+          "command": "application:about",
+          "group": "about",
+          "order": 30
         }
-      ]
+      ],
+      "groupOrder": ["documentation", "examples", "updates", "issues", "extensions", "about"]
     }
   ],
   "context-menu": {
-    "lumine-text-editor": [
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Undo",
-        "command": "core:undo"
-      },
-      {
-        "label": "Redo",
-        "command": "core:redo"
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Cut",
-        "command": "core:cut",
-        "afterGroupContaining": ["core:redo"]
-      },
-      {
-        "label": "Copy",
-        "command": "core:copy"
-      },
-      {
-        "label": "Paste",
-        "command": "core:paste"
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Select All",
-        "command": "core:select-all",
-        "afterGroupContaining": ["core:paste"]
-      },
-      {
-        "label": "Delete",
-        "command": "core:delete"
-      },
-      {
-        "type": "separator"
-      }
-    ],
+    "lumine-text-editor": {
+      "groupOrder": [
+        "history",
+        "clipboard",
+        "selection",
+        "editing",
+        "insert",
+        "format",
+        "refactor",
+        "navigation",
+        "annotations",
+        "diagnostics",
+        "views",
+        "layout",
+        "extensions",
+        "close"
+      ],
+      "items": [
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Undo",
+          "command": "core:undo",
+          "group": "history",
+          "order": 10
+        },
+        {
+          "label": "Redo",
+          "command": "core:redo",
+          "group": "history",
+          "order": 20
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Cut",
+          "command": "core:cut",
+          "afterGroupContaining": ["core:redo"],
+          "group": "clipboard",
+          "order": 10
+        },
+        {
+          "label": "Copy",
+          "command": "core:copy",
+          "group": "clipboard",
+          "order": 20
+        },
+        {
+          "label": "Paste",
+          "command": "core:paste",
+          "group": "clipboard",
+          "order": 30
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Select All",
+          "command": "core:select-all",
+          "afterGroupContaining": ["core:paste"],
+          "group": "selection",
+          "order": 10
+        },
+        {
+          "label": "Delete",
+          "command": "core:delete",
+          "group": "selection",
+          "order": 20
+        },
+        {
+          "type": "separator"
+        }
+      ]
+    },
     "lumine-pane:not(lumine-dock lumine-pane) > .item-views:not(:empty)": [
       {
         "type": "separator"
@@ -721,19 +1078,27 @@
           "core:paste",
           "core:redo",
           "core:undo"
-        ]
+        ],
+        "group": "layout",
+        "order": 10
       },
       {
         "label": "Split Down",
-        "command": "pane:split-down-and-copy-active-item"
+        "command": "pane:split-down-and-copy-active-item",
+        "group": "layout",
+        "order": 20
       },
       {
         "label": "Split Left",
-        "command": "pane:split-left-and-copy-active-item"
+        "command": "pane:split-left-and-copy-active-item",
+        "group": "layout",
+        "order": 30
       },
       {
         "label": "Split Right",
-        "command": "pane:split-right-and-copy-active-item"
+        "command": "pane:split-right-and-copy-active-item",
+        "group": "layout",
+        "order": 40
       },
       {
         "type": "separator"
@@ -757,7 +1122,9 @@
           "core:paste",
           "core:redo",
           "core:undo"
-        ]
+        ],
+        "group": "close",
+        "order": 10
       },
       {
         "type": "separator"
@@ -769,27 +1136,39 @@
       },
       {
         "label": "Split Up",
-        "command": "pane:split-up-and-copy-active-item"
+        "command": "pane:split-up-and-copy-active-item",
+        "group": "layout",
+        "order": 10
       },
       {
         "label": "Split Down",
-        "command": "pane:split-down-and-copy-active-item"
+        "command": "pane:split-down-and-copy-active-item",
+        "group": "layout",
+        "order": 20
       },
       {
         "label": "Split Left",
-        "command": "pane:split-left-and-copy-active-item"
+        "command": "pane:split-left-and-copy-active-item",
+        "group": "layout",
+        "order": 30
       },
       {
         "label": "Split Right",
-        "command": "pane:split-right-and-copy-active-item"
+        "command": "pane:split-right-and-copy-active-item",
+        "group": "layout",
+        "order": 40
       },
       {
         "label": "Detach Pane",
-        "command": "pane:detach"
+        "command": "pane:detach",
+        "group": "layout",
+        "order": 50
       },
       {
         "label": "Close Pane",
-        "command": "pane:close"
+        "command": "pane:close",
+        "group": "close",
+        "order": 10
       },
       {
         "type": "separator"
@@ -813,7 +1192,9 @@
       },
       {
         "label": "Close Pane",
-        "command": "pane:close"
+        "command": "pane:close",
+        "group": "close",
+        "order": 10
       },
       {
         "label": "Hide Dock",

@@ -5,6 +5,7 @@ Detailed guides for extending the editor, with runtime contracts in the [API ref
 ## Packages and workspace
 
 - [Developing a package](developing-a-package.md): manifests, lifecycle, lazy work, views and live development.
+- [Application and context menu groups](application-and-context-menu-groups.md): named groups, command order, separators and surface-specific layouts.
 - [Services](services.md): provider and consumer registration, ownership and versioning.
 - [Pane items](pane-items.md): identity, moving, copying, presentation windows and resource lifetime.
 - [Handling URIs](handling-uris.md): external handlers, workspace openers and preview reuse.

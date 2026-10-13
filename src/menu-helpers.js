@@ -23,6 +23,12 @@ function merge(menu, item, itemSpecificity = Infinity) {
 
   const matchingItem = menu[matchingItemIndex];
   if (item.submenu != null) {
+    if (itemSpecificity !== false && itemSpecificity >= ItemSpecificities.get(matchingItem)) {
+      for (const key of ["group", "order", "groupOrder", "sortBy"]) {
+        if (Object.hasOwn(item, key)) matchingItem[key] = item[key];
+      }
+      ItemSpecificities.set(matchingItem, itemSpecificity);
+    }
     for (let submenuItem of item.submenu) {
       merge(matchingItem.submenu, submenuItem, itemSpecificity);
     }
@@ -105,6 +111,10 @@ function cloneMenuItem(item) {
     "commandDetail",
     "role",
     "accelerator",
+    "group",
+    "order",
+    "groupOrder",
+    "sortBy",
     "before",
     "after",
     "beforeGroupContaining",

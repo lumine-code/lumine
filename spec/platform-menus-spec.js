@@ -273,7 +273,9 @@ describe("platform menus", function () {
     // Only the running platform's file: the darwin-only commands are registered
     // behind a `process.platform` check and would read as missing elsewhere.
     collect(menus[process.platform].menu);
-    for (const items of Object.values(menus[process.platform]["context-menu"])) collect(items);
+    for (const definition of Object.values(menus[process.platform]["context-menu"])) {
+      collect(Array.isArray(definition) ? definition : definition.items);
+    }
 
     const unregistered = [...commands].filter(
       (command) =>

@@ -6,6 +6,7 @@ const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 const ContextViewManager = require("./context-view-manager");
+const menuLayout = require("./menu-layout");
 
 const buildMetadata = require("../package.json");
 var platformMenu;
@@ -92,6 +93,7 @@ module.exports = class MenuManager {
     // Paths of the submenus declared by core. Keep their positions when the
     // last contributing package deactivates. See {@link MenuHelpers.unmerge}.
     this.structuralIds = new Set();
+    this.coreLayouts = new Map();
     this.disposables.add(
       this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems()),
       this.packageManager.onDidActivateInitialPackages(() => this.sortPackageMenus()),
@@ -142,7 +144,23 @@ module.exports = class MenuManager {
   }
 
   getTemplate() {
-    return _.deepClone(this.template);
+    const template = _.deepClone(this.template);
+    const restoreCoreLayout = (items, parentPath = []) => {
+      for (const item of items) {
+        if (item.type === "separator") continue;
+        const itemPath = [...parentPath, item.id ?? MenuHelpers.normalizeLabel(item.label)];
+        const coreLayout = this.coreLayouts.get(JSON.stringify(itemPath));
+        if (coreLayout) {
+          for (const key of ["group", "order", "groupOrder", "sortBy"]) {
+            if (Object.hasOwn(coreLayout, key)) item[key] = _.deepClone(coreLayout[key]);
+            else delete item[key];
+          }
+        }
+        if (item.submenu) restoreCoreLayout(item.submenu, itemPath);
+      }
+    };
+    restoreCoreLayout(template);
+    return menuLayout(template);
   }
 
   ensureContextViewManager(document = globalThis.document) {
@@ -252,6 +270,10 @@ module.exports = class MenuManager {
    * @param {String} items.label - The `String` menu label.
    * @param {Array} items.submenu - An optional `Array` of sub menu items.
    * @param {String} items.command - An optional `String` command to trigger when the item is clicked.
+   * @param {String} items.group - An optional group declared by the containing core menu; defaults to its extensions group.
+   * @param {Number} items.order - An optional position within the group; items without a position follow ordered items.
+   * @param {Array<String>} items.groupOrder - The ordered group names for a submenu the caller owns.
+   * @param {String} items.sortBy - Set to `label` for an alphabetical list of surfaces; omit for an authored action sequence.
    * @param {String} items.id - (internal) A `String` containing the menu item's id.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added menu items.
    */
@@ -352,7 +374,7 @@ module.exports = class MenuManager {
       return;
     }
     // Only macOS presents the application template in the main process. The
-    // HTML menu bar on Windows and Linux reads `this.template` directly and
+    // HTML menu bar on Windows and Linux reads the same prepared snapshot and
     // resolves displayed bindings when it opens.
     if (this.platform !== "darwin") return;
     if (this.pendingUpdateOperation != null) {
@@ -398,7 +420,7 @@ module.exports = class MenuManager {
       } finally {
         this.testEditor = null;
       }
-      this.sendToBrowserProcess(this.template, keystrokesByCommand);
+      this.sendToBrowserProcess(this.getTemplate(), keystrokesByCommand);
     }, 1);
   }
 
@@ -411,13 +433,19 @@ module.exports = class MenuManager {
       const platformMenuPath = fs.resolve(menusDirPath, process.platform, ["json", "jsonc"]);
       ({ menu } = CSON.readFileSync(platformMenuPath));
     }
-    const rememberSubmenus = (items, parentPath = "") => {
+    const rememberSubmenus = (items, parentPath = []) => {
       for (const item of items) {
-        if (item.submenu == null) continue;
+        if (item.type === "separator") continue;
         const id = item.id ?? MenuHelpers.normalizeLabel(item.label);
-        const itemPath = parentPath ? `${parentPath}/${id}` : id;
-        this.structuralIds.add(itemPath);
-        rememberSubmenus(item.submenu, itemPath);
+        const itemPath = [...parentPath, id];
+        this.coreLayouts.set(
+          JSON.stringify(itemPath),
+          _.pick(item, "group", "order", "groupOrder", "sortBy"),
+        );
+        if (item.submenu) {
+          this.structuralIds.add(itemPath.join("/"));
+          rememberSubmenus(item.submenu, itemPath);
+        }
       }
     };
     rememberSubmenus(menu);

@@ -5,6 +5,7 @@ const { calculateSpecificity, validateSelector } = require("./css-selectors");
 const { Disposable } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");
+const menuLayout = require("./menu-layout");
 const _ = require("@lumine-code/underscore-plus");
 
 const buildMetadata = require("../package.json");
@@ -114,9 +115,30 @@ module.exports = class ContextMenuManager {
    * })
    * ```
    *
+   * A selector can also declare named groups. The nearest matching DOM element
+   * supplies the group order; when several policies match that element, the
+   * most specific selector wins, with the most recently added policy breaking
+   * a tie. A context-menu boundary stops both item and policy inheritance.
+   * Contributions from other selectors can join these groups without adding
+   * separators. Unclassified items retain their existing separator blocks in
+   * the `extensions` group.
+   *
+   * ```javascript
+   * lumine.contextMenu.add({
+   *   'lumine-text-editor:not([mini])': {
+   *     groupOrder: ['history', 'clipboard', 'extensions'],
+   *     items: [
+   *       {label: 'Undo', command: 'core:undo', group: 'history', order: 10},
+   *       {label: 'Redo', command: 'core:redo', group: 'history', order: 20},
+   *       {label: 'Copy', command: 'core:copy', group: 'clipboard', order: 10}
+   *     ]
+   *   }
+   * })
+   * ```
+   *
    * ## Arguments
    *
-   * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are `Arrays` of item `Objects` containing the following keys:
+   * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are item `Arrays` or `{items, groupOrder, sortBy}` descriptors. A descriptor's `groupOrder` lists named groups in display order; `sortBy: 'label'` sorts its items by label. Items contain the following keys:
    * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
    * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
    * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
@@ -124,6 +146,10 @@ module.exports = class ContextMenuManager {
    * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
    * @param {Boolean} [itemsBySelector.visible] - A `Boolean` indicating whether the menu item should appear in the menu. Defaults to `true`.
    * @param {String} [itemsBySelector.id] - A stable identifier for this item. Defaults to its normalized label. Give shared submenu contributions the same id so they merge into one item.
+   * @param {String} [itemsBySelector.group] - The named group this item joins in the selected layout policy. Unknown or omitted groups join `extensions`.
+   * @param {Number} [itemsBySelector.order] - The item's position within its named group. Lower numbers appear first; equal or omitted positions sort by label.
+   * @param {Array<String>} [itemsBySelector.groupOrder] - Named groups for this item's submenu, in display order. Empty groups are omitted and surviving groups receive one separator between them.
+   * @param {String} [itemsBySelector.sortBy] - Set to `'label'` to sort this item's submenu by label.
    * @param {Array} [itemsBySelector.before] - References to items that this item precedes. Strings name commands; objects such as `{ id: "terminal:tree-context" }` name item ids, including commandless submenu parents. These references merge the corresponding separator groups and order their items.
    * @param {Array} [itemsBySelector.after] - References to items that this item follows, using the same command-string or id-object format as `before`.
    * @param {Array} [itemsBySelector.beforeGroupContaining] - References to items whose whole separator group this item's group precedes. The first existing reference is used as a fallback anchor; only the first matching group rule applies within a group.
@@ -159,12 +185,25 @@ module.exports = class ContextMenuManager {
 
   templateForEvent(event) {
     const template = [];
+    let layoutPolicy = null;
     let currentTarget = event.target;
     while (currentTarget != null) {
       const currentTargetItems = [];
       const matchingItemSets = this.itemSets.filter((itemSet) =>
         currentTarget.webkitMatchesSelector(itemSet.selector),
       );
+      if (layoutPolicy === null) {
+        let policyItemSet = null;
+        for (const itemSet of matchingItemSets) {
+          if (
+            itemSet.layoutPolicy !== null &&
+            (policyItemSet === null || itemSet.specificity >= policyItemSet.specificity)
+          ) {
+            policyItemSet = itemSet;
+          }
+        }
+        if (policyItemSet !== null) layoutPolicy = policyItemSet.layoutPolicy;
+      }
       for (let itemSet of matchingItemSets) {
         for (let item of itemSet.items) {
           const itemForEvent = this.cloneItemForEvent(item, event);
@@ -188,13 +227,10 @@ module.exports = class ContextMenuManager {
       currentTarget = currentTarget.parentElement;
     }
     this.addAccelerators(template, event.target);
-    // `sortTemplate` normalizes the separators on its way through: it splits
-    // each menu on them, drops the empty groups and rejoins with exactly one
-    // between the survivors, recursively. Nothing has to prune first.
-    //
-    // Positioning keys are spent once sorting has read them; the HTML renderer
-    // receives only the final item order.
-    return MenuHelpers.stripPositioningKeys(this.sortTemplate(template));
+    // Build each layout from the filtered contributions. Named groups supply
+    // their own separators; arrays retain their legacy positioning rules.
+    // Rendering metadata is spent once sorting has read it.
+    return MenuHelpers.stripPositioningKeys(this.sortTemplate(template, layoutPolicy));
   }
 
   // Resolve displayed key bindings at the element the command will target.
@@ -211,15 +247,12 @@ module.exports = class ContextMenuManager {
     }
   }
 
-  sortTemplate(template) {
-    template = sortMenuItems(template);
-    for (let id in template) {
-      const item = template[id];
-      if (Array.isArray(item.submenu)) {
-        item.submenu = this.sortTemplate(item.submenu);
-      }
-    }
-    return template;
+  sortTemplate(template, layoutPolicy) {
+    return menuLayout(template, {
+      ...layoutPolicy,
+      sortItems: sortMenuItems,
+      preserveUngrouped: true,
+    });
   }
 
   // Returns an object compatible with `::add()` or `null`.
@@ -283,9 +316,18 @@ module.exports = class ContextMenuManager {
 };
 
 var ContextMenuItemSet = class ContextMenuItemSet {
-  constructor(selector1, items1) {
-    this.selector = selector1;
-    this.items = items1;
+  constructor(selector, definition) {
+    this.selector = selector;
+    if (Array.isArray(definition)) {
+      this.items = definition;
+      this.layoutPolicy = null;
+    } else {
+      this.items = definition.items;
+      this.layoutPolicy =
+        definition.groupOrder !== undefined || definition.sortBy !== undefined
+          ? { groupOrder: definition.groupOrder, sortBy: definition.sortBy }
+          : null;
+    }
     this.specificity = calculateSpecificity(this.selector);
   }
 };

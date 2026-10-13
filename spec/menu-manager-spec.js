@@ -237,6 +237,37 @@ describe("MenuManager", function () {
     });
   });
 
+  describe("core-owned menu layout", () => {
+    it("retains the core layout through extension insertion and disposal", () => {
+      menu.loadPlatformItems();
+      const fileMenu = () => menu.getTemplate().find((item) => item.id === "File").submenu;
+      const initial = fileMenu();
+      const quit = initial.find((item) => item.command === "application:quit");
+      const disposable = menu.add([
+        {
+          label: "File",
+          groupOrder: ["quit", "new", "close"],
+          submenu: [
+            { label: "New Fixture", command: "fixture:new", group: "new", order: 20 },
+            { label: "Browse Fixture", command: "fixture:open", group: "files", order: 20 },
+            { label: "Unclassified Fixture", command: "fixture:unknown" },
+          ],
+        },
+      ]);
+      const items = fileMenu();
+      expect(items.at(-1).command).toBe(quit ? "application:quit" : "window:close");
+      expect(items.findIndex((item) => item.command === "fixture:new")).toBeLessThan(
+        items.findIndex((item) => item.command === "application:new-window"),
+      );
+      expect(items.findIndex((item) => item.command === "fixture:unknown")).toBeLessThan(
+        items.findIndex((item) => item.command === "core:close"),
+      );
+      disposable.dispose();
+      expect(fileMenu()).toEqual(initial);
+      expect(JSON.stringify(menu.getTemplate())).not.toContain('"groupOrder"');
+    });
+  });
+
   describe("::includeSelector(selector)", function () {
     it("answers against the body's classes as they are now", function () {
       expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(false);
