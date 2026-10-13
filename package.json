@@ -56,7 +56,7 @@
     "dompurify": "^3.4.16",
     "encoding-selector": "github:lumine-code/encoding-selector#f996136896238eb0ddcbe7136d9dd0058deea8cb",
     "focus-trap": "8.2.3",
-    "git-diff": "github:lumine-code/git-diff#b6ee547ad7b06d2863fbb5172cd3abb12c2b1ff4",
+    "git-diff": "github:lumine-code/git-diff#377147f4492bb57d73436cae21e7dfbeaaf8e8f2",
     "go-to-line": "github:lumine-code/go-to-line#323565427c18b32b749b5db6d4ca7f5ced52d014",
     "grammar-selector": "github:lumine-code/grammar-selector#7d3653e9d2ebfd765c0c8be196844f34ff4468f4",
     "incompatible-packages": "github:lumine-code/incompatible-packages#a7c0aa13bab436de4d6160c9ae4719eaf43b1507",
