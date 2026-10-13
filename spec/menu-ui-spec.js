@@ -97,7 +97,7 @@ describe("HTML menu UI", () => {
     );
   });
 
-  it("reserves a shared check column and aligns plain, checkbox and radio labels", () => {
+  it("reserves a check column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(
       require("node:path").join(__dirname, "../static/lumine-ui/styles/menus.css"),
@@ -117,8 +117,9 @@ describe("HTML menu UI", () => {
       const positions = rows.map(
         (row) => row.querySelector(".menu-item-name").getBoundingClientRect().left,
       );
-      expect(positions[0]).toBe(positions[1]);
       expect(positions[1]).toBe(positions[2]);
+      expect(positions[1] - positions[0]).toBe(20);
+      expect(parseFloat(getComputedStyle(rows[0]).paddingLeft)).toBe(14);
       const marker = getComputedStyle(rows[1], "::before");
       expect(parseFloat(marker.left) + parseFloat(marker.width)).toBeLessThan(
         positions[1] - rows[1].getBoundingClientRect().left,

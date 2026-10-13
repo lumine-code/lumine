@@ -118,7 +118,7 @@ lumine-context-view .context-view-surface.menu-box {
     }
   }
 
-  &:has(> .menu-item[aria-checked]) > .menu-item {
+  > .menu-item[aria-checked] {
     padding-left: calc(var(--menu-item-padding) + 20px);
   }
 
