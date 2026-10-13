@@ -791,6 +791,17 @@ module.exports = class Workspace extends Model {
     if (!this.editorWindows.has(editorWindow) || editorWindow.isMain())
       throw new Error("Only an additional window of this workspace can be attached.");
     const main = this.getMainWindow();
+    // A newly shown window can receive its logo click before detach finishes
+    // focusing it. Keep that request, but let the current layout settle first.
+    for (;;) {
+      const pending = [editorWindow, main]
+        .map((window) => this.windowOperations.get(window))
+        .filter(Boolean);
+      if (pending.length === 0) break;
+      await Promise.allSettled([...new Set(pending)]);
+      // Another queued click may already have attached or closed this window.
+      if (!this.editorWindows.has(editorWindow)) return main;
+    }
     return this.runWindowOperation([editorWindow, main], async () => {
       const source = editorWindow.getEditorContainer();
       await transferPaneLayout(this, source, main.getEditorContainer(), source.getPanes());

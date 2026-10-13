@@ -141,6 +141,87 @@ describe("Auxiliary editor windows", () => {
     expect(element.ownerDocument).toBe(document);
   });
 
+  it("honors logo clicks while the visible detached pane is finishing its window operation", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    await lumine.packages.activatePackage("title-bar");
+    const editor = await workspace.open();
+    editor.setText("Attach from the first click");
+    const pane = workspace.paneForItem(editor);
+    const element = editor.getElement();
+    let releaseFocus, visible;
+    const focusGate = new Promise((resolve) => (releaseFocus = resolve));
+    const visibleWindow = new Promise((resolve) => (visible = resolve));
+    const open = workspace.openEditorWindow.bind(workspace);
+    spyOn(workspace, "openEditorWindow").and.callFake(async (...args) => {
+      const extra = await open(...args);
+      const focus = extra.focus.bind(extra);
+      spyOn(extra, "focus").and.callFake(async () => {
+        visible(extra);
+        await focusGate;
+        return focus();
+      });
+      return extra;
+    });
+    const detach = workspace.detachPane(pane);
+    try {
+      const extra = await visibleWindow;
+      expect(workspace.windowOperations.has(workspace.getMainWindow())).toBeTrue();
+      expect(pane.getContainer()).toBe(extra.getEditorContainer());
+      const attach = spyOn(workspace, "attachWindow").and.callThrough();
+      const release = spyOn(workspace, "releaseEditorWindow").and.callThrough();
+      const logo = extra.getElement().querySelector(".app-icon");
+      const bounds = logo.getBoundingClientRect();
+      const target = extra
+        .getDocument()
+        .elementFromPoint((bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2);
+      target.click();
+      target.click();
+      const requests = attach.calls
+        .all()
+        .map(({ returnValue }) => returnValue.catch((error) => error));
+      expect(requests.length).toBe(2);
+      expect(pane.getContainer()).toBe(extra.getEditorContainer());
+      releaseFocus();
+      await detach;
+      expect(await Promise.all(requests)).toEqual([
+        workspace.getMainWindow(),
+        workspace.getMainWindow(),
+      ]);
+      expect(release).toHaveBeenCalledOnceWith(extra);
+      expect(workspace.getMainWindow().getEditorContainer().getPanes()).toContain(pane);
+      expect(editor.getElement()).toBe(element);
+      expect(element.ownerDocument).toBe(document);
+      expect(editor.getText()).toBe("Attach from the first click");
+    } finally {
+      releaseFocus();
+      await detach;
+    }
+  });
+
+  it("keeps an attach request after an earlier main-window operation fails", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    const editor = await workspace.open();
+    editor.setText("Keep the queued document");
+    const extra = await workspace.detachItem(editor);
+    let finish;
+    const gate = new Promise((resolve) => (finish = resolve));
+    const error = new Error("Earlier operation failed");
+    const preceding = workspace
+      .runWindowOperation([workspace.getMainWindow()], async () => {
+        await gate;
+        throw error;
+      })
+      .catch((error) => error);
+    const attach = workspace.attachWindow(extra);
+    finish();
+    expect(await preceding).toBe(error);
+    expect(await attach).toBe(workspace.getMainWindow());
+    expect(workspace.getMainWindow().getEditorContainer().getPaneItems()).toContain(editor);
+    expect(editor.getText()).toBe("Keep the queued document");
+  });
+
   it("restores unsaved models and the split layout after an unexpected native close", async () => {
     const workspace = lumine.workspace;
     const editor = await workspace.open();
