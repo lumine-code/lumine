@@ -24,7 +24,8 @@
       "title": "Packages and settings",
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
-      "dark": "03-dark.png"
+      "dark": "03-dark.png",
+      "themeSourceRevision": "6564a9e21899b5541e9c8f8006f9be6d6d72e6ad"
     },
     {
       "file": "view-4.png",
