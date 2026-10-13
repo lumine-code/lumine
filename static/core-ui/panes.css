@@ -190,6 +190,10 @@ body.is-unloading {
   }
 }
 
+html.lumine-layout-dragging :is(iframe, webview, embed, object) {
+  pointer-events: none !important;
+}
+
 .workspace-drop-overlay {
   position: fixed;
   inset: 0 auto auto 0;

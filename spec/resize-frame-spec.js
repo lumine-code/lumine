@@ -228,6 +228,12 @@ describe("frame-bound layout resizing", () => {
 
       expect(setState).not.toHaveBeenCalled();
       expect(dockSize(dock)).toBe(200);
+      expect(dock.state.resizing).toBe(false);
+      expect(
+        dock.element
+          .querySelector(".lumine-dock-cursor-overlay")
+          .classList.contains("lumine-dock-cursor-overlay-visible"),
+      ).toBe(false);
       expect(isLayoutDragActive()).toBe(false);
     });
 
@@ -393,11 +399,13 @@ describe("frame-bound layout resizing", () => {
     });
   });
 
-  it("settles pending dock and divider positions when the window loses focus", () => {
+  it("settles pending dock and divider positions when the window loses focus", async () => {
+    spyOn(document, "hasFocus").and.returnValue(false);
     const dock = makeDock();
     dock.handleResizeHandleDragStart();
     moveDock(dock, 250);
     window.dispatchEvent(new FocusEvent("blur"));
+    await Promise.resolve();
     expect(dockSize(dock)).toBe(250);
     expect(isLayoutDragActive()).toBe(false);
 
@@ -405,10 +413,70 @@ describe("frame-bound layout resizing", () => {
     startDivider(divider);
     moveDivider(divider, 390);
     window.dispatchEvent(new FocusEvent("blur"));
+    await Promise.resolve();
     expect(previousSize(divider)).toBe(390);
     expect(isLayoutDragActive()).toBe(false);
     advanceFrame();
     expect(dockSize(dock)).toBe(250);
     expect(previousSize(divider)).toBe(390);
+  });
+
+  it("keeps dock and divider gestures alive during in-window frame focus transitions", async () => {
+    spyOn(document, "hasFocus").and.returnValue(true);
+    const dock = makeDock();
+    dock.handleResizeHandleDragStart();
+    moveDock(dock, 250);
+    window.dispatchEvent(new FocusEvent("blur"));
+    await Promise.resolve();
+    expect(isLayoutDragActive()).toBe(true);
+    advanceFrame();
+    expect(dockSize(dock)).toBe(250);
+    releaseDock();
+
+    const divider = makeDivider();
+    startDivider(divider);
+    moveDivider(divider, 390);
+    window.dispatchEvent(new FocusEvent("blur"));
+    await Promise.resolve();
+    expect(isLayoutDragActive()).toBe(true);
+    advanceFrame();
+    expect(previousSize(divider)).toBe(390);
+    releaseDivider();
+  });
+
+  it("waits for a transient focus handoff to settle and ignores a retired gesture's blur", async () => {
+    let focused = false;
+    spyOn(document, "hasFocus").and.callFake(() => focused);
+    const divider = makeDivider();
+    startDivider(divider);
+    window.dispatchEvent(new FocusEvent("blur"));
+    focused = true;
+    await Promise.resolve();
+    expect(isLayoutDragActive()).toBe(true);
+    focused = false;
+    window.dispatchEvent(new FocusEvent("blur"));
+    releaseDivider();
+    startDivider(divider);
+    await Promise.resolve();
+    expect(isLayoutDragActive()).toBe(true);
+    releaseDivider();
+  });
+
+  it("cancels resize-handle default focus changes and ignores non-primary presses", () => {
+    const divider = makeDivider();
+    const press = new MouseEvent("mousedown", { button: 0, buttons: 1, cancelable: true });
+    divider.handle.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    releaseDivider();
+    const dock = makeDock();
+    const grip = dock.getElement().querySelector(".lumine-dock-resize-handle");
+    const dockPress = new MouseEvent("mousedown", { button: 0, buttons: 1, cancelable: true });
+    grip.dispatchEvent(dockPress);
+    expect(dockPress.defaultPrevented).toBe(true);
+    releaseDock();
+    const otherPress = () => new MouseEvent("mousedown", { button: 2, buttons: 2 });
+    divider.handle.dispatchEvent(otherPress());
+    grip.dispatchEvent(otherPress());
+    expect(isLayoutDragActive()).toBe(false);
   });
 });

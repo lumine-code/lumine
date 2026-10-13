@@ -1,4 +1,4 @@
-const { beginLayoutDrag } = require("./layout-drag");
+const { beginLayoutDrag, onDidLoseLayoutFocus } = require("./layout-drag");
 
 class PaneResizeHandleElement extends HTMLElement {
   constructor() {
@@ -45,6 +45,8 @@ class PaneResizeHandleElement extends HTMLElement {
   }
 
   resizeStarted(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
     if (this.layoutDrag) return;
     if (!this.previousSibling?.model || !this.nextSibling?.model) return;
@@ -53,15 +55,15 @@ class PaneResizeHandleElement extends HTMLElement {
     this.resizeDocument = this.ownerDocument;
     this.resizeWindow = this.resizeDocument.defaultView;
     if (!this.overlay) {
-      this.overlay = document.createElement("div");
+      this.overlay = this.resizeDocument.createElement("div");
       this.overlay.classList.add("lumine-pane-cursor-overlay");
       this.overlay.classList.add(this.isHorizontal ? "horizontal" : "vertical");
       this.appendChild(this.overlay);
     }
     this.resizeDocument.addEventListener("mousemove", this.resizePane);
     this.resizeDocument.addEventListener("mouseup", this.resizeStopped);
-    this.resizeWindow.addEventListener("blur", this.resizeStopped);
-    this.layoutDrag = beginLayoutDrag();
+    this.layoutFocusSubscription = onDidLoseLayoutFocus(this.resizeDocument, this.resizeStopped);
+    this.layoutDrag = beginLayoutDrag(this.resizeDocument);
   }
 
   resizeStopped(flush = true) {
@@ -69,7 +71,8 @@ class PaneResizeHandleElement extends HTMLElement {
     this.cancelPendingResize();
     this.resizeDocument?.removeEventListener("mousemove", this.resizePane);
     this.resizeDocument?.removeEventListener("mouseup", this.resizeStopped);
-    this.resizeWindow?.removeEventListener("blur", this.resizeStopped);
+    this.layoutFocusSubscription?.dispose();
+    this.layoutFocusSubscription = null;
     const layoutDrag = this.layoutDrag;
     this.layoutDrag = null;
     if (this.overlay) {

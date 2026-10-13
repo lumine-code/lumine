@@ -3997,13 +3997,18 @@ module.exports = class Workspace extends Model {
    * an editor from a `mousemove` should declare it; a one-shot layout change
    * should not, since it is already the final width.
    *
+   * Embedded surfaces in the focused presentation temporarily stop taking mouse
+   * events until the drag ends. Resize handles should also prevent the primary
+   * mousedown's default focus change so the current editor or frame keeps focus.
+   *
    * @returns {Disposable} on which `.dispose()` ends the drag. It is safe to
    *   call more than once, which these gestures usually need: a mouseup, a
    *   mousemove that finds no button held any more, a teardown mid-drag.
    * @category Layout
    */
   beginLayoutDrag() {
-    return layoutDrag.beginLayoutDrag();
+    const document = this.getFocusedWindow()?.getDocument() ?? this.getMainWindow()?.getDocument();
+    return layoutDrag.beginLayoutDrag(document);
   }
 
   /**

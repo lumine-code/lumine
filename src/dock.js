@@ -2,7 +2,7 @@ const etch = require("@lumine-code/etch");
 const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneContainer = require("./pane-container");
-const { beginLayoutDrag } = require("./layout-drag");
+const { beginLayoutDrag, onDidLoseLayoutFocus } = require("./layout-drag");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
 
 const $ = etch.dom;
@@ -103,15 +103,13 @@ module.exports = class Dock {
 
   destroy() {
     this.destroyed = true;
-    this.cancelPendingResize();
-    const layoutDrag = this.layoutDrag;
-    this.layoutDrag = null;
+    this.handleMouseUp();
+    this.state.resizing = false;
+    this.element
+      ?.querySelector(".lumine-dock-cursor-overlay")
+      ?.classList.remove(CURSOR_OVERLAY_VISIBLE_CLASS);
     this.subscriptions.dispose();
     this.paneContainer.destroy();
-    layoutDrag?.dispose();
-    window.removeEventListener("mousemove", this.handleMouseMove);
-    window.removeEventListener("mouseup", this.handleMouseUp);
-    window.removeEventListener("blur", this.handleMouseUp);
     window.removeEventListener("drag", this.handleDrag);
     window.removeEventListener("dragend", this.handleDragEnd);
   }
@@ -334,10 +332,12 @@ module.exports = class Dock {
 
   handleResizeHandleDragStart() {
     if (this.destroyed || this.layoutDrag) return;
-    window.addEventListener("mousemove", this.handleMouseMove);
-    window.addEventListener("mouseup", this.handleMouseUp);
-    window.addEventListener("blur", this.handleMouseUp);
-    this.layoutDrag = beginLayoutDrag();
+    this.resizeDocument = this.getElement().ownerDocument;
+    this.resizeWindow = this.resizeDocument.defaultView;
+    this.resizeWindow.addEventListener("mousemove", this.handleMouseMove);
+    this.resizeWindow.addEventListener("mouseup", this.handleMouseUp);
+    this.layoutFocusSubscription = onDidLoseLayoutFocus(this.resizeDocument, this.handleMouseUp);
+    this.layoutDrag = beginLayoutDrag(this.resizeDocument);
     this.setState({ resizing: true });
   }
 
@@ -359,12 +359,12 @@ module.exports = class Dock {
     if (!this.layoutDrag) return;
     this.pendingResizePosition = { x: event.pageX, y: event.pageY };
     if (this.resizeFrame == null) {
-      this.resizeFrame = window.requestAnimationFrame(this.flushPendingResize);
+      this.resizeFrame = this.resizeWindow.requestAnimationFrame(this.flushPendingResize);
     }
   }
 
   cancelPendingResize() {
-    if (this.resizeFrame != null) window.cancelAnimationFrame(this.resizeFrame);
+    if (this.resizeFrame != null) this.resizeWindow.cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = null;
     this.pendingResizePosition = null;
   }
@@ -396,11 +396,13 @@ module.exports = class Dock {
     // Ending the layout drag flushes deferred editor measurements, so settle
     // the last queued pointer position before notifying those subscribers.
     this.flushPendingResize();
-    window.removeEventListener("mousemove", this.handleMouseMove);
-    window.removeEventListener("mouseup", this.handleMouseUp);
-    window.removeEventListener("blur", this.handleMouseUp);
+    this.resizeWindow?.removeEventListener("mousemove", this.handleMouseMove);
+    this.resizeWindow?.removeEventListener("mouseup", this.handleMouseUp);
+    this.layoutFocusSubscription?.dispose();
+    this.layoutFocusSubscription = null;
     const layoutDrag = this.layoutDrag;
     this.layoutDrag = null;
+    this.resizeDocument = this.resizeWindow = null;
     if (!this.destroyed) this.setState({ resizing: false });
     layoutDrag?.dispose();
   }
@@ -954,6 +956,8 @@ class DockResizeHandle {
   }
 
   handleMouseDown(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
     if (event.detail === 2) {
       this.props.onResizeToFit();
     } else if (this.props.dockIsVisible) {
