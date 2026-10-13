@@ -87,3 +87,5 @@ module.exports = function brandAssets(art, description) {
     { ...asset, file: `resources/brand/${name}.png`, kind: "opaque-png", background: "#ffffff" },
   ]);
 };
+
+module.exports.PALETTES = PALETTES;

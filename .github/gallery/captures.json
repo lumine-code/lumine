@@ -1,0 +1,30 @@
+{
+  "capturedOn": "2026-10-13",
+  "context": "Authentic captures of a Lumine development build on Windows, using the One light theme and an isolated example workspace.",
+  "scenes": [
+    {
+      "file": "view-1.jpg",
+      "label": "01 / CODE",
+      "title": "Code and project navigation",
+      "description": "Python editing with syntax highlighting and the project tree."
+    },
+    {
+      "file": "view-2.jpg",
+      "label": "02 / DOCUMENT",
+      "title": "Source and preview, side by side",
+      "description": "A live Markdown preview beside its source in a split pane."
+    },
+    {
+      "file": "view-3.jpg",
+      "label": "03 / EXTEND",
+      "title": "Packages and settings",
+      "description": "Manage installed and bundled packages from the editor."
+    },
+    {
+      "file": "view-4.jpg",
+      "label": "04 / ABOUT",
+      "title": "Know your installation",
+      "description": "Versions, documentation and updates in the redesigned About pane."
+    }
+  ]
+}

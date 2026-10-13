@@ -20,6 +20,7 @@
  *   --out <dir>    write under <dir> instead of the repo, for eyeballing a
  *                  design change without dirtying the tree
  *   --brand-only   only render the README banners and desktop wallpapers
+ *   --gallery-only only compose the README gallery from authentic captures
  *
  * Before this script the rasters were hand-exported from art that no longer
  * matched lumine.svg: every white element carried a drop shadow the vector
@@ -50,6 +51,7 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 const { app, BrowserWindow, Menu } = require("electron");
 const brandAssets = require("./brand-art");
+const galleryAssets = require("./gallery-art");
 
 // This utility uses a hidden frameless window. Suppress Electron's in-window
 // menu on Windows and Linux while leaving the macOS system menu intact.
@@ -124,7 +126,7 @@ function scriptArgs(argv) {
 }
 
 function parseArgs(argv) {
-  const options = { check: false, outDir: REPO_ROOT, brandOnly: false };
+  const options = { check: false, outDir: REPO_ROOT, brandOnly: false, galleryOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
@@ -134,6 +136,9 @@ function parseArgs(argv) {
       case "--brand-only":
         options.brandOnly = true;
         break;
+      case "--gallery-only":
+        options.galleryOnly = true;
+        break;
       case "--out":
         options.outDir = path.resolve(argv[++i] ?? fail("--out needs a value"));
         break;
@@ -141,6 +146,7 @@ function parseArgs(argv) {
         fail(`Unknown option: ${arg}`);
     }
   }
+  if (options.brandOnly && options.galleryOnly) fail("Choose --brand-only or --gallery-only");
   return options;
 }
 
@@ -863,6 +869,21 @@ async function renderPng(win, markup, size, label) {
 async function renderAsset(win, asset) {
   const label = path.basename(asset.file);
   switch (asset.kind) {
+    case "canvas-png": {
+      // A gallery can be taller than any display. Compose its real captures
+      // on a canvas without resizing or depending on the preview window.
+      const dataUrl = await win.webContents.executeJavaScript(`(async () => {
+        const image = new Image();
+        image.src = ${JSON.stringify(`data:image/svg+xml;base64,${Buffer.from(asset.markup).toString("base64")}`)};
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = ${asset.width};
+        canvas.height = ${asset.height};
+        canvas.getContext('2d').drawImage(image, 0, 0);
+        return canvas.toDataURL('image/png');
+      })()`);
+      return Buffer.from(dataUrl.split(",")[1], "base64");
+    }
     case "bmp": {
       const bgra = await capture(win, asset);
       assertOpaque(bgra, label);
@@ -923,8 +944,9 @@ async function main() {
   const options = parseArgs(scriptArgs(process.argv));
   const art = readMasterArt(MASTER_SVG);
   const description = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"))).description;
-  const assets = brandAssets(art, description);
-  if (!options.brandOnly) {
+  const assets = options.galleryOnly ? [] : brandAssets(art, description);
+  if (!options.brandOnly) assets.push(...galleryAssets(REPO_ROOT));
+  if (!options.brandOnly && !options.galleryOnly) {
     assets.push(...assetList(art));
     for (const variant of MODE_VARIANTS) {
       assets.push(...modeVariantAssets(readMasterArt(variant.svg), variant.name));
@@ -966,9 +988,10 @@ async function main() {
     fs.writeFileSync(target, asset.bytes);
     console.log(`  ${String(asset.bytes.length).padStart(8)}  ${asset.file}`);
   }
-  const sources = [MASTER_SVG, ...(options.brandOnly ? [] : MODE_VARIANTS.map((v) => v.svg))].map(
-    (p) => path.basename(p),
-  );
+  const sources = [
+    MASTER_SVG,
+    ...(options.brandOnly || options.galleryOnly ? [] : MODE_VARIANTS.map((v) => v.svg)),
+  ].map((p) => path.basename(p));
   console.log(`branding: ${rendered.length} assets written from ${sources.join(", ")}`);
   app.exit(0);
 }

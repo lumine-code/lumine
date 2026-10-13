@@ -11,13 +11,10 @@ Website: https://lumine-code.github.io
   <img src="resources/brand/banner.png" alt="Lumine — your editor, your way." width="1600">
 </picture>
 
-![view-1](https://github.com/lumine-code/lumine/blob/master/.github/gallery/view-1.png?raw=true)
-
-![view-2](https://github.com/lumine-code/lumine/blob/master/.github/gallery/view-2.png?raw=true)
-
-![view-3](https://github.com/lumine-code/lumine/blob/master/.github/gallery/view-3.png?raw=true)
-
-![view-4](https://github.com/lumine-code/lumine/blob/master/.github/gallery/view-4.png?raw=true)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/gallery/gallery-dark.png">
+  <img src=".github/gallery/gallery-light.png" alt="Lumine in use: Python editing, Markdown source and preview, package management, and installation details." width="1600">
+</picture>
 
 ## Features
 
