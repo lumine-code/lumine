@@ -34,11 +34,23 @@ const pushOntoMultiMap = (map, key, value) => {
   map.get(key).push(value);
 };
 
-function indexOfGroupContainingCommand(groups, command, ignoreGroup) {
+// Strings name commands; an explicit id reference also reaches commandless
+// items such as submenu parents without making their labels positioning keys.
+function targetForReference(reference) {
+  if (typeof reference === "string") return { key: "command", value: reference };
+  if (reference != null && typeof reference.id === "string") {
+    return { key: "id", value: reference.id };
+  }
+  return null;
+}
+
+function indexOfGroupContainingReference(groups, reference, ignoreGroup) {
+  const target = targetForReference(reference);
+  if (target == null) return -1;
   return groups.findIndex(
-    (candiateGroup) =>
-      candiateGroup !== ignoreGroup &&
-      candiateGroup.some((candidateItem) => candidateItem.command === command),
+    (candidateGroup) =>
+      candidateGroup !== ignoreGroup &&
+      candidateGroup.some((candidateItem) => candidateItem[target.key] === target.value),
   );
 }
 
@@ -70,15 +82,15 @@ function attemptToMergeAGroup(groups) {
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     for (const item of group) {
-      const toCommands = [...(item.before || []), ...(item.after || [])];
-      for (const command of toCommands) {
-        const index = indexOfGroupContainingCommand(groups, command, group);
+      const references = [...(item.before || []), ...(item.after || [])];
+      for (const reference of references) {
+        const index = indexOfGroupContainingReference(groups, reference, group);
         if (index === -1) {
-          // No valid edge for this command
+          // No valid edge for this reference
           continue;
         }
         const mergeTarget = groups[index];
-        // Merge with group containing `command`
+        // Merge with the group containing the referenced item.
         mergeTarget.push(...group);
         groups.splice(i, 1);
         return true;
@@ -101,20 +113,27 @@ function mergeGroups(groups) {
 function sortItemsInGroup(group) {
   const originalOrder = group.map((node, i) => i);
   const edges = new Map();
-  const commandToIndex = new Map(group.map((item, i) => [item.command, i]));
+  const indexes = {
+    command: new Map(group.map((item, i) => [item.command, i])),
+    id: new Map(group.map((item, i) => [item.id, i])),
+  };
+  const indexForReference = (reference) => {
+    const target = targetForReference(reference);
+    return target == null ? undefined : indexes[target.key].get(target.value);
+  };
 
   group.forEach((item, i) => {
     if (item.before) {
-      item.before.forEach((toCommand) => {
-        const to = commandToIndex.get(toCommand);
+      item.before.forEach((reference) => {
+        const to = indexForReference(reference);
         if (to != null) {
           pushOntoMultiMap(edges, to, i);
         }
       });
     }
     if (item.after) {
-      item.after.forEach((toCommand) => {
-        const to = commandToIndex.get(toCommand);
+      item.after.forEach((reference) => {
+        const to = indexForReference(reference);
         if (to != null) {
           pushOntoMultiMap(edges, i, to);
         }
@@ -131,8 +150,8 @@ function findEdgesInGroup(groups, i, edges) {
   const group = groups[i];
   for (const item of group) {
     if (item.beforeGroupContaining) {
-      for (const command of item.beforeGroupContaining) {
-        const to = indexOfGroupContainingCommand(groups, command, group);
+      for (const reference of item.beforeGroupContaining) {
+        const to = indexOfGroupContainingReference(groups, reference, group);
         if (to !== -1) {
           pushOntoMultiMap(edges, to, i);
           return;
@@ -140,8 +159,8 @@ function findEdgesInGroup(groups, i, edges) {
       }
     }
     if (item.afterGroupContaining) {
-      for (const command of item.afterGroupContaining) {
-        const to = indexOfGroupContainingCommand(groups, command, group);
+      for (const reference of item.afterGroupContaining) {
+        const to = indexOfGroupContainingReference(groups, reference, group);
         if (to !== -1) {
           pushOntoMultiMap(edges, i, to);
           return;

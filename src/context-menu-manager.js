@@ -123,6 +123,11 @@ module.exports = class ContextMenuManager {
    * @param {Array} [itemsBySelector.submenu] - An `Array` of additional items.
    * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
    * @param {Boolean} [itemsBySelector.visible] - A `Boolean` indicating whether the menu item should appear in the menu. Defaults to `true`.
+   * @param {String} [itemsBySelector.id] - A stable identifier for this item. Defaults to its normalized label. Give shared submenu contributions the same id so they merge into one item.
+   * @param {Array} [itemsBySelector.before] - References to items that this item precedes. Strings name commands; objects such as `{ id: "terminal:tree-context" }` name item ids, including commandless submenu parents. These references merge the corresponding separator groups and order their items.
+   * @param {Array} [itemsBySelector.after] - References to items that this item follows, using the same command-string or id-object format as `before`.
+   * @param {Array} [itemsBySelector.beforeGroupContaining] - References to items whose whole separator group this item's group precedes. The first existing reference is used as a fallback anchor; only the first matching group rule applies within a group.
+   * @param {Array} [itemsBySelector.afterGroupContaining] - References to items whose whole separator group this item's group follows, using the same reference format and fallback behavior as `beforeGroupContaining`. Group positioning preserves the separator between groups.
    * @param {Function} [itemsBySelector.created] - A `Function` that is called on the item each time a context menu is created via a right click. You can assign properties to `this` to dynamically compute the command, label, etc. This method is actually called on a clone of the original item template to prevent state from leaking across context menu deployments. Called with the following argument:
    * @param {MouseEvent} itemsBySelector.created.event - The click event that deployed the context menu.
    * @param {Function} [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:

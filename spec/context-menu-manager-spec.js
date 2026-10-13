@@ -635,11 +635,83 @@ describe("ContextMenuManager", function () {
       ]);
     });
 
+    for (const registrationOrder of [
+      ["terminal", "spawn"],
+      ["spawn", "terminal"],
+    ]) {
+      it(`merges shared Terminal contributions with ${registrationOrder[0]} registered first`, () => {
+        const providers = {
+          terminal: [
+            {
+              label: "Open New",
+              command: "terminal:open",
+              beforeGroupContaining: ["terminal-spawn:open"],
+            },
+          ],
+          spawn: [
+            { type: "separator" },
+            { label: "Spawn New", command: "terminal-spawn:open" },
+            { type: "separator" },
+          ],
+        };
+        contextMenu.add({
+          ".child": [
+            { type: "separator" },
+            {
+              label: "Git Publish",
+              id: "tree:publish",
+              afterGroupContaining: [{ id: "tree:terminal" }, "tree:files"],
+              submenu: [{ label: "as Major", command: "publish:major" }],
+            },
+            { type: "separator" },
+          ],
+          ".parent": [
+            { type: "separator" },
+            { label: "Files", command: "tree:files" },
+            { type: "separator" },
+          ],
+        });
+        for (const provider of registrationOrder) {
+          contextMenu.add({
+            ".child": [
+              { type: "separator" },
+              {
+                label: "Terminal",
+                id: "tree:terminal",
+                afterGroupContaining: ["tree:files"],
+                submenu: providers[provider],
+              },
+              { type: "separator" },
+            ],
+          });
+        }
+
+        const template = contextMenu.templateForElement(grandchild);
+        expect(template.map((item) => item.id)).toEqual([
+          "Files",
+          undefined,
+          "tree:terminal",
+          undefined,
+          "tree:publish",
+        ]);
+        const terminal = template[2];
+        expect(terminal.command).toBeUndefined();
+        expect(terminal.submenu.map((item) => item.command)).toEqual([
+          "terminal:open",
+          undefined,
+          "terminal-spawn:open",
+        ]);
+        expect(terminal.afterGroupContaining).toBeUndefined();
+        expect(template[4].afterGroupContaining).toBeUndefined();
+        expect(terminal.submenu[0].beforeGroupContaining).toBeUndefined();
+      });
+    }
+
     it("takes the positioning keys back out once it has read them", function () {
-      // They are Lumine's, keyed on `command`. The template goes on to
-      // `Menu.buildFromTemplate`, which reads the same four keys against `id` —
-      // so leaving them in gives the menu a second, differently keyed pass over
-      // items that are already in order.
+      // They are Lumine's: strings name commands and objects name ids. The
+      // template goes on to `Menu.buildFromTemplate`, which reads the same four
+      // keys against `id` — so leaving them in gives the menu a second,
+      // differently keyed pass over items that are already in order.
       contextMenu.add({
         ".parent": [
           // `before` and `afterGroupContaining` name commands that are not
