@@ -1,6 +1,6 @@
 {
   "capturedOn": "2026-10-13",
-  "context": "Authentic, rectangular content captures of a Lumine development build on Windows, using the One light theme and default editor font settings. System window borders and rounded OS corners are excluded.",
+  "context": "Authentic rectangular captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
       "file": "view-1.png",
@@ -34,5 +34,7 @@
       "light": "04-light.png",
       "dark": "04-dark.png"
     }
-  ]
+  ],
+  "mode": "normal",
+  "fontSettings": "default"
 }

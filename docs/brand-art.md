@@ -28,6 +28,8 @@ The original lossless PNG captures live in `.github/gallery/view-1.png` through 
 
 Before capture, move the pointer away from the dock edges and wait for their reveal buttons to hide. Do not capture a transient dock button, tooltip or resize state; clear it through the application's normal interaction before taking the screenshot.
 
+Use normal mode for captures so the application displays its gold logo. In an isolated capture process, set `LUMINE_DEV_MODE=0` and omit `--dev`; do not change the developer's permanent environment. Verify `lumine.window.isDevMode()` and `lumine.window.isSafeMode()` are both false before capturing.
+
 The gallery generator fits those unaltered captures onto four separate numbered panels with matching backgrounds and full-height rules. A rounded clipping frame gives the editor clean corners without bringing the desktop or system window border into the capture. Each panel has light and dark versions. The README uses separate `picture` blocks without a surrounding `div`, leaving a small natural gap between images. All eight panels are generated from the same four captures:
 
 ```sh
