@@ -50,10 +50,11 @@ module.exports = class Task {
    * @public
    * @status public
    *
-   * A helper method to easily launch and run a task once.
+   * Create and start a task that terminates after its completion event.
    *
-   * @param taskPath - The `String` path to the CoffeeScript/JavaScript file which exports a single `Function` to execute.
-   * @param args - The arguments to pass to the exported function.
+   * @param {String} taskPath - The JavaScript module path exporting the task function.
+   * @param {...*} args - Arguments passed to the task function; an optional final Function receives the completion result.
+   * @returns {Task} The started task.
    */
 
   // Returns the created {@link Task}.
@@ -76,9 +77,9 @@ module.exports = class Task {
    * @public
    * @status public
    *
-   * Creates a task. You should probably use {.once}
+   * Create a task process without starting its exported function. Use {@link .once} to create and run it in one call.
    *
-   * @param taskPath - The `String` path to the CoffeeScript/JavaScript file that exports a single `Function` to execute.
+   * @param {String} taskPath - The JavaScript module path exporting the task function.
    */
   constructor(taskPath) {
     this.emitter = new Emitter();
@@ -179,7 +180,7 @@ module.exports = class Task {
    * Throws an error if this task has already been terminated or if sending a
    * message to the child process fails.
    *
-   * @param message - The message to send to the task.
+   * @param {*} message - A value serializable by the child-process IPC channel.
    */
   send(message) {
     if (this.childProcess != null && !this.isChildRunning()) {
@@ -210,10 +211,10 @@ module.exports = class Task {
    * @public
    * @status public
    *
-   * Call a function when an event is emitted by the child process
+   * Subscribe to an event emitted by the task process.
    *
-   * @param eventName - The `String` name of the event to handle.
-   * @param callback - The `Function` to call when the event is emitted.
+   * @param {String} eventName - The `String` name of the event to handle.
+   * @param {Function} callback - The `Function` to call when the event is emitted.
    * @returns {Disposable} that can be used to stop listening for the event.
    */
   on(eventName, callback) {
@@ -235,7 +236,7 @@ module.exports = class Task {
    *
    * Forcefully stop the running task.
    *
-   * No more events are emitted once this method is called.
+   * Child-process events stop after termination. Calling {@link #cancel} can still emit the local task:cancelled event.
    *
    * @returns {Boolean} indicating whether the task was terminated.
    */

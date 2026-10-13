@@ -90,6 +90,7 @@ class MarkerLayer {
    *
    * Create a copy of this layer with markers in the same state and
    * locations.
+   * @returns {MarkerLayer} A new layer on the same buffer, including the custom range tracker.
    */
   copy() {
     let copy = this.delegate.addMarkerLayer({
@@ -111,6 +112,7 @@ class MarkerLayer {
    * @status public
    *
    * Destroy this layer.
+   * @returns {void}
    */
   destroy() {
     if (this.destroyed) {
@@ -135,6 +137,7 @@ class MarkerLayer {
    * @status public
    *
    * Remove all markers from this layer.
+   * @returns {void}
    */
   clear() {
     this.markersWithDestroyListeners.forEach(function (marker) {
@@ -156,6 +159,7 @@ class MarkerLayer {
    * @status public
    *
    * Determine whether this layer has been destroyed.
+   * @returns {Boolean} Whether this layer has been destroyed.
    */
   isDestroyed() {
     return this.destroyed;
@@ -173,6 +177,8 @@ class MarkerLayer {
    * @status public
    *
    * Get an existing marker by its id.
+   * @param {Number|String} id
+   * @returns {Marker|undefined} The marker, or `undefined` when no marker with that id exists.
    */
 
   // Returns a `Marker`.
@@ -185,6 +191,7 @@ class MarkerLayer {
    * @status public
    *
    * Get all existing markers on the marker layer.
+   * @returns {Array<Marker>} All markers in the layer.
    */
 
   // Returns an `Array` of `Markers`.
@@ -197,6 +204,7 @@ class MarkerLayer {
    * @status public
    *
    * Get the number of markers in the marker layer.
+   * @returns {Number} The number of markers in this layer.
    */
 
   // Returns a `Number`.
@@ -210,6 +218,25 @@ class MarkerLayer {
    *
    * Find markers in the layer conforming to the given parameters.
    * See {@link TextBuffer#findMarkers} for the supported search parameters.
+   * @param {Object} params
+   * @param {Point|Array<Number>|Object} [params.startPosition] - Start at this position.
+   * @param {Point|Array<Number>|Object} [params.endPosition] - End at this position.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.startsInRange] - Start within this range.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.endsInRange] - End within this range.
+   * @param {Point|Array<Number>|Object} [params.containsPoint] - Contain this position.
+   * @param {Point|Array<Number>|Object} [params.containsPosition] - Alias for containsPoint.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containsRange] - Contain this range.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containedInRange] - Be contained by this range.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.intersectsRange] - Intersect this range.
+   * @param {Number} [params.startRow] - Start on this row.
+   * @param {Number} [params.endRow] - End on this row.
+   * @param {Number} [params.intersectsRow] - Intersect this row.
+   * @param {Array<Number>} [params.intersectsRowRange] - Intersect the inclusive [startRow, endRow] interval.
+   * @param {Boolean} [params.valid] - Have this validity.
+   * @param {Boolean} [params.reversed] - Have this orientation.
+   * @param {Boolean} [params.tailed] - Have this tail state.
+   * @param {String} [params.invalidate] - Use this invalidation strategy.
+   * @returns {Array<Marker>} Matching markers ordered by start position, then descending end position and id.
    */
   findMarkers(params) {
     let markerIds = null;
@@ -297,7 +324,8 @@ class MarkerLayer {
    * @public
    * @status public
    *
-   * Get the role of the marker layer e.g. `lumine.selection`.
+   * Get the role assigned to this marker layer, such as `selections`.
+   * @returns {String|undefined} The role assigned when the layer was created, if any.
    * @category Marker Layer Details
    */
 
@@ -328,7 +356,7 @@ class MarkerLayer {
    * The callback is retained by {@link #copy}, but is not serialized: reattach
    * it after deserialization. Untouched markers continue to use the native index.
    *
-   * @param {Function} [callback] - A range tracker, or `null` to disable it.
+   * @param {Function|null} [callback] - A range tracker, or `null` to disable it.
    */
   setRangeTracker(callback) {
     if (this.destroyed) throw new Error("Cannot track ranges on a destroyed marker layer");
@@ -342,26 +370,29 @@ class MarkerLayer {
    * @public
    * @status experimental
    *
-   * @returns {Function} The layer's custom range tracker, or `null`.
+   * Get the custom tracker used for buffer-coordinate ranges.
+   *
+   * @returns {Function|null} The custom range tracker, or `null` when native tracking is used.
    */
   getRangeTracker() {
     return this.trackRanges;
   }
 
   /**
-   * @category Marker creation
+   * @category Marker Creation
    */
   /**
    * @public
    * @status public
    *
-   * Create a marker with the given range.
+   * Create a marker with the given buffer range.
    *
-   * @param range - A {@link Range} or range-compatible `Array`
-   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
-   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {Range|Array<Point|Array<Number>>|Object} range - The range to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {Boolean} [options.reversed=false] - Place the head at the earlier endpoint.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `false`, or `true` with the `inside` invalidation strategy.
+   * @returns {Marker} The new marker.
    */
 
   // Returns a `Marker`.
@@ -373,12 +404,13 @@ class MarkerLayer {
    * @public
    * @status public
    *
-   * Create a marker with its head at the given position and no tail.
+   * Create a marker with its head at the given buffer position and no tail.
    *
-   * @param {Point} position - or point-compatible `Array`
-   * @param [options] - An `Object` with the following keys:
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {Point|Array<Number>|Object} position - The position to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `true` for markers without a tail.
+   * @returns {Marker} The new marker.
    */
 
   // Returns a `Marker`.
@@ -390,7 +422,7 @@ class MarkerLayer {
   }
 
   /**
-   * @category Event subscription
+   * @category Event Subscription
    */
   /**
    * @public
@@ -409,7 +441,8 @@ class MarkerLayer {
    * than subscribing to events on individual markers, which are expensive to
    * deliver.
    *
-   * @param callback - A `Function` that will be called with no arguments when changes occur on this layer.
+   * @param {Function} callback - A `Function` that will be called with no arguments when changes occur on this layer.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
 
   // Returns a `Disposable`.
@@ -429,7 +462,9 @@ class MarkerLayer {
    * You should prefer {@link #onDidUpdate} when synchronous notifications aren't
    * absolutely necessary.
    *
-   * @param callback - A `Function` that will be called with a `Marker` whenever a new marker is created.
+   * @param {Function} callback - A `Function` that will be called with a `Marker` whenever a new marker is created.
+   * @param {Marker} callback.marker - The newly created marker.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
 
   // Returns a `Disposable`.
@@ -443,6 +478,8 @@ class MarkerLayer {
    * @status public
    *
    * Subscribe to be notified synchronously when this layer is destroyed.
+   * @param {Function} callback
+   * @returns {Disposable} Dispose to unsubscribe.
    */
 
   // Returns a `Disposable`.
@@ -451,7 +488,7 @@ class MarkerLayer {
   }
 
   /**
-   * @category Private - TextBuffer interface
+   * @category Private TextBuffer Interface
    */
   splice(start, oldExtent, newExtent, newText) {
     // Markers the splice touches (closed interval, so boundary contact counts)

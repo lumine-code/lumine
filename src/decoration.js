@@ -78,7 +78,7 @@ module.exports = class Decoration {
   }
 
   /**
-   * @category Construction and Destruction
+   * @category Lifecycle
    */
 
   constructor(marker, decorationManager, properties) {
@@ -99,6 +99,7 @@ module.exports = class Decoration {
    *
    * You can also destroy the marker if you own it, which will destroy this
    * decoration.
+   * @returns {void}
    */
   destroy() {
     if (this.destroyed) {
@@ -124,7 +125,7 @@ module.exports = class Decoration {
    * @public
    * @status essential
    *
-   * When the {@link Decoration} is updated via {@link Decoration#setProperties}.
+   * Invoke a callback when this decoration's properties are replaced.
    *
    * @param {Function} callback
    * @param {Object} callback.event
@@ -158,6 +159,7 @@ module.exports = class Decoration {
    * @status essential
    *
    * An id unique across all {@link Decoration} objects
+   * @returns {Number} The id unique among decorations.
    */
   getId() {
     return this.id;
@@ -166,6 +168,8 @@ module.exports = class Decoration {
   /**
    * @public
    * @status essential
+   *
+   * Get the display marker tracked by this decoration.
    *
    * @returns {DisplayMarker} marker associated with this {@link Decoration}
    */
@@ -194,6 +198,8 @@ module.exports = class Decoration {
    * @public
    * @status essential
    *
+   * Get the properties used to render this decoration.
+   *
    * @returns {Object} The decoration's properties.
    */
   getProperties() {
@@ -204,7 +210,7 @@ module.exports = class Decoration {
    * @public
    * @status essential
    *
-   * Update the marker with new Properties. Allows you to change the decoration's class.
+   * Replace this decoration's properties, including its CSS class.
    *
    * ## Examples
    *
@@ -213,6 +219,7 @@ module.exports = class Decoration {
    * ```
    *
    * @param {Object} newProperties - eg. `{type: 'line-number', class: 'my-new-class'}`
+   * @returns {void}
    */
   setProperties(newProperties) {
     if (this.destroyed) {
@@ -239,7 +246,7 @@ module.exports = class Decoration {
   }
 
   /**
-   * @category Private methods
+   * @category Private Methods
    */
 
   matchesPattern(decorationPattern) {

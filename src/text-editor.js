@@ -938,7 +938,7 @@ module.exports = class TextEditor {
    * Restore state produced by {@link #serializeViewState}. Invalid portions
    * of the state are ignored.
    *
-   * @param state - A portable editor view-state object.
+   * @param {Object} state - A portable editor view-state object.
    */
   restoreViewState(state) {
     if (!state || typeof state !== "object") return;
@@ -1034,6 +1034,15 @@ module.exports = class TextEditor {
     );
   }
 
+  /**
+   * @public
+   * @status essential
+   *
+   * Destroy this editor, dispose its views and selections, and release its buffer.
+   *
+   * @category Lifecycle
+   */
+
   destroy() {
     if (!this.alive) return;
     this.alive = false;
@@ -1057,6 +1066,16 @@ module.exports = class TextEditor {
   isAlive() {
     return this.alive;
   }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Determine whether this editor has been destroyed.
+   *
+   * @returns {Boolean} Whether the editor has been destroyed.
+   * @category Lifecycle
+   */
 
   isDestroyed() {
     return !this.alive;
@@ -1267,7 +1286,7 @@ module.exports = class TextEditor {
    * Calls your `callback` before text has been inserted.
    *
    * @param {Function} callback
-   * @param callback.event - event `Object`
+   * @param {Object} callback.event - event `Object`
    * @param {String} callback.event.text - text to be inserted
    * @param {Function} callback.event.cancel - Call to prevent the text from being inserted
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
@@ -1283,7 +1302,7 @@ module.exports = class TextEditor {
    * Calls your `callback` after text has been inserted.
    *
    * @param {Function} callback
-   * @param callback.event - event `Object`
+   * @param {Object} callback.event - event `Object`
    * @param {String} callback.event.text - text to be inserted
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -1299,7 +1318,7 @@ module.exports = class TextEditor {
    *
    * @param {Function} callback - to be called after the buffer is saved.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.path - The path to which the buffer was saved.
+   * @param {String} callback.event.path - The path to which the buffer was saved.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidSave(callback) {
@@ -1464,7 +1483,7 @@ module.exports = class TextEditor {
    * Calls your `callback` when the placeholder text is changed.
    *
    * @param {Function} callback
-   * @param {String} callback.placeholderText - new text
+   * @param {String|undefined} callback.placeholderText - new text
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangePlaceholderText(callback) {
@@ -1540,9 +1559,29 @@ module.exports = class TextEditor {
     return this.mini;
   }
 
+  /**
+   * @public
+   * @status essential
+   *
+   * Enable or disable read-only mode for this editor.
+   *
+   * @param {Boolean} readOnly - Whether text mutations require an explicit bypass.
+   * @category Editing Behavior
+   */
+
   setReadOnly(readOnly) {
     this.updateReadOnly(readOnly, true);
   }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Determine whether this editor rejects text changes without an explicit bypass.
+   *
+   * @returns {Boolean} Whether the editor is read-only.
+   * @category Editing Behavior
+   */
 
   isReadOnly() {
     return this.readOnly;
@@ -1612,7 +1651,7 @@ module.exports = class TextEditor {
    * Calls your `callback` when a {@link Gutter} is removed from the editor.
    *
    * @param {Function} callback
-   * @param callback.name - The name of the {@link Gutter} that was removed.
+   * @param {String} callback.name - The name of the {@link Gutter} that was removed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidRemoveGutter(callback) {
@@ -1646,6 +1685,7 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Retrieves the current {@link TextBuffer}.
+   * @returns {TextBuffer} The buffer shared by this editor.
    */
   getBuffer() {
     return this.buffer;
@@ -1780,7 +1820,9 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @returns {String} path of this editor's text buffer.
+   * Get the backing path of this editor's text buffer.
+   *
+   * @returns {String|undefined} The backing path, or undefined when the buffer has no backing file.
    */
   getPath() {
     return this.buffer.getPath();
@@ -1800,6 +1842,8 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Get the character encoding used by this editor's text buffer.
+   *
    * @returns {String} character set encoding of this editor's text buffer.
    */
   getEncoding() {
@@ -1813,7 +1857,7 @@ module.exports = class TextEditor {
    * Set the character set encoding to use in this editor's text
    * buffer.
    *
-   * @param encoding - The `String` character set encoding name such as 'utf8'
+   * @param {String} [encoding] - The `String` character set encoding name such as 'utf8'
    */
   setEncoding(encoding) {
     this.buffer.setEncoding(encoding);
@@ -1835,6 +1879,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
+   * Determine whether this editor contains no text.
+   *
    * @returns {Boolean} `true` if this editor has no content.
    * @category Reading Text
    */
@@ -1853,6 +1899,7 @@ module.exports = class TextEditor {
    * Saves the editor's text buffer.
    *
    * See {@link TextBuffer#save} for more details.
+   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer.
    */
   save() {
     return this.buffer.save();
@@ -1866,7 +1913,8 @@ module.exports = class TextEditor {
    *
    * See {@link TextBuffer#saveAs} for more details.
    *
-   * @param filePath - A `String` path.
+   * @param {String} filePath - A `String` path.
+   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer.
    */
   saveAs(filePath) {
     return this.buffer.saveAs(filePath);
@@ -1904,6 +1952,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
+   * Get the complete text of this editor.
+   *
    * @returns {String} representing the entire contents of the editor.
    */
   getText() {
@@ -1916,7 +1966,7 @@ module.exports = class TextEditor {
    *
    * Get the text in the given {@link Range} in buffer coordinates.
    *
-   * @param range - A {@link Range} or range-compatible `Array`.
+   * @param {Range|Array|Object} range - A {@link Range} or range-compatible `Array`.
    * @returns {String}
    */
   getTextInBufferRange(range) {
@@ -1927,6 +1977,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
+   * Get the number of buffer lines.
+   *
    * @returns {Number} representing the number of lines in the buffer.
    */
   getLineCount() {
@@ -1936,6 +1988,8 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status essential
+   *
+   * Get the number of screen lines, accounting for folds and soft wrapping.
    *
    * @returns {Number} representing the number of screen lines in the editor. This accounts for folds.
    */
@@ -1951,6 +2005,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
+   * Get the zero-indexed last buffer row.
+   *
    * @returns {Number} representing the last zero-indexed buffer row number of the editor.
    */
   getLastBufferRow() {
@@ -1960,6 +2016,8 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status essential
+   *
+   * Get the zero-indexed last screen row.
    *
    * @returns {Number} representing the last zero-indexed screen row number of the editor.
    */
@@ -1971,7 +2029,9 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @param bufferRow - A `Number` representing a zero-indexed buffer row.
+   * Get the text of a buffer row, excluding its line ending.
+   *
+   * @param {Number} bufferRow - A `Number` representing a zero-indexed buffer row.
    * @returns {String} representing the contents of the line at the given buffer row.
    */
   lineTextForBufferRow(bufferRow) {
@@ -1982,8 +2042,10 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @param screenRow - A `Number` representing a zero-indexed screen row.
-   * @returns {String} representing the contents of the line at the given screen row.
+   * Get the displayed text of a screen row.
+   *
+   * @param {Number} screenRow - A `Number` representing a zero-indexed screen row.
+   * @returns {String|undefined} The screen-line text, or undefined when the row is outside the rendered screen lines.
    */
   lineTextForScreenRow(screenRow) {
     const screenLine = this.screenLineForScreenRow(screenRow);
@@ -2104,7 +2166,7 @@ module.exports = class TextEditor {
    * Get the {@link Range} of the paragraph surrounding the most recently added
    * cursor.
    *
-   * @returns {Range}
+   * @returns {Range|undefined} The surrounding paragraph range, or undefined on a blank buffer row.
    */
   getCurrentParagraphBufferRange() {
     return this.getLastCursor().getCurrentParagraphBufferRange();
@@ -2123,6 +2185,7 @@ module.exports = class TextEditor {
    * @param {String} text - Text to replace the buffer contents with.
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @returns {Range|undefined} The range spanning the new contents, or undefined when a read-only editor refuses the edit.
    */
   setText(text, options = {}) {
     if (!this.ensureWritable("setText", options)) return;
@@ -2135,13 +2198,13 @@ module.exports = class TextEditor {
    *
    * Set the text in the given {@link Range} in buffer coordinates.
    *
-   * @param range - A {@link Range} or range-compatible `Array`.
-   * @param text - A `String`
+   * @param {Range|Array|Object} range - A {@link Range} or range-compatible `Array`.
+   * @param {String} text - A `String`
    * @param {Object} [options]
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
-   * @param [options.undo] - *Deprecated* `String` 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
+   * @param {String} [options.undo] - *Deprecated* The value `skip` groups this edit with the preceding change. Call {@link TextBuffer#groupLastChanges} afterward instead.
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @returns {Range} of the newly-inserted text.
+   * @returns {Range|undefined} The inserted range, or undefined when a read-only editor refuses the edit.
    */
   setTextInBufferRange(range, text, options = {}) {
     if (!this.ensureWritable("setTextInBufferRange", options)) return;
@@ -2154,9 +2217,10 @@ module.exports = class TextEditor {
    *
    * For each selection, replace the selected text with the given text.
    *
-   * @param text - A `String` representing the text to insert.
-   * @param [options] - See {@link Selection#insertText}.
-   * @returns {Range} when the text has been inserted. Returns a `Boolean` `false` when the text has not been inserted.
+   * @param {String} text - A `String` representing the text to insert.
+   * @param {Object} [options] - See {@link Selection#insertText}.
+   * @param {Boolean} [options.groupUndo=false] - Group this insertion with recent edits within the editor's undo grouping interval.
+   * @returns {Array<Range>|Boolean|undefined} The inserted range for each selection; false when an insertion observer cancels it, or undefined when a read-only editor refuses the edit.
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
@@ -2238,7 +2302,9 @@ module.exports = class TextEditor {
    * All the changes made inside the given `Function` can be reverted with a
    * single call to {@link #undo}.
    *
-   * @param fn - A `Function` that will be called once for each {@link Selection}. The first argument will be a {@link Selection} and the second argument will be the `Number` index of that selection.
+   * @param {Function} fn - A `Function` that will be called once for each {@link Selection}. The first argument will be a {@link Selection} and the second argument will be the `Number` index of that selection.
+   * @param {Number} groupingInterval - Milliseconds during which this transaction can group with adjacent edits. Defaults to 0.
+   * @returns {Array<*>|undefined} The callback result for each selection, or undefined when the transaction is aborted.
    */
   mutateSelectedText(fn, groupingInterval = 0) {
     return this.mergeIntersectingSelections(() => {
@@ -3054,8 +3120,13 @@ module.exports = class TextEditor {
    * abort the transaction, call {@link #abortTransaction} to terminate the function's
    * execution and revert any changes performed up to the abortion.
    *
-   * @param [groupingInterval] - The `Number` of milliseconds for which this transaction should be considered 'groupable' after it begins. If a transaction with a positive `groupingInterval` is committed while the previous transaction is still 'groupable', the two transactions are merged with respect to undo and redo.
-   * @param fn - A `Function` to call inside the transaction.
+   * Pass only a callback to use the default grouping interval.
+   *
+   * The callback runs synchronously; returned promises are not awaited before committing.
+   *
+   * @param {Number|Function} [groupingInterval] - The `Number` of milliseconds for which this transaction should be considered 'groupable' after it begins. If a transaction with a positive `groupingInterval` is committed while the previous transaction is still 'groupable', the two transactions are merged with respect to undo and redo.
+   * @param {Function} [fn] - A `Function` to call inside the transaction.
+   * @returns {*} The callback result, or undefined when the transaction is aborted.
    */
   transact(groupingInterval, fn) {
     const options = { selectionsMarkerLayer: this.selectionsMarkerLayer };
@@ -3102,9 +3173,9 @@ module.exports = class TextEditor {
    *
    * The redo stack will be empty following this operation, so changes since the
    * checkpoint will be lost. If the given checkpoint is no longer present in the
-   * undo history, no changes will be made to the buffer and this method will
+   * undo history, no changes will be made to the buffer and this method returns false.
    *
-   * @param checkpoint - The checkpoint to revert to.
+   * @param {Number} checkpoint - The checkpoint to revert to.
    * @returns {Boolean} Whether the operation succeeded.
    */
   revertToCheckpoint(checkpoint) {
@@ -3121,7 +3192,7 @@ module.exports = class TextEditor {
    * If the given checkpoint is no longer present in the undo history, no
    * grouping will be performed and this method will return `false`.
    *
-   * @param checkpoint - The checkpoint from which to group changes.
+   * @param {Number} checkpoint - The checkpoint from which to group changes.
    * @returns {Boolean} indicating whether the operation succeeded.
    */
   groupChangesSinceCheckpoint(checkpoint) {
@@ -3131,7 +3202,7 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @category TextEditor Coordinates
+   * @category Coordinates
    */
 
   /**
@@ -3144,8 +3215,8 @@ module.exports = class TextEditor {
    * The position is also clipped via {@link #clipScreenPosition} following the
    * conversion, which only makes a difference when `options` are supplied.
    *
-   * @param bufferPosition - A {@link Point} or `Array` of [row, column].
-   * @param [options] - An options object for {@link #clipScreenPosition}.
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of [row, column].
+   * @param {Object} [options] - An options object for {@link #clipScreenPosition}.
    * @returns {Point}
    */
   screenPositionForBufferPosition(bufferPosition, options) {
@@ -3160,7 +3231,7 @@ module.exports = class TextEditor {
    *
    * The position is clipped via {@link #clipScreenPosition} prior to the conversion.
    *
-   * @param {Point|Array<Number>} screenPosition - The screen position to convert.
+   * @param {Point|Array<Number>|Object} screenPosition - The screen position to convert.
    * @param {Object} [options] - Options for {@link #clipScreenPosition}.
    * @returns {Point}
    */
@@ -3174,7 +3245,8 @@ module.exports = class TextEditor {
    *
    * Convert a range in buffer-coordinates to screen-coordinates.
    *
-   * @param {Range} bufferRange - in buffer coordinates to translate into screen coordinates.
+   * @param {Range|Array|Object} bufferRange - in buffer coordinates to translate into screen coordinates.
+   * @param {Object} [options] - Options for this operation.
    * @returns {Range}
    */
   screenRangeForBufferRange(bufferRange, options) {
@@ -3190,7 +3262,7 @@ module.exports = class TextEditor {
    *
    * Convert a range in screen-coordinates to buffer-coordinates.
    *
-   * @param {Range} screenRange - in screen coordinates to translate into buffer coordinates.
+   * @param {Range|Array|Object} screenRange - in screen coordinates to translate into buffer coordinates.
    * @returns {Range}
    */
   bufferRangeForScreenRange(screenRange) {
@@ -3255,7 +3327,7 @@ module.exports = class TextEditor {
    * editor.clipBufferPosition([2, Infinity]) // -> `[2, 10]`
    * ```
    *
-   * @param bufferPosition - The {@link Point} representing the position to clip.
+   * @param {Point|Array<Number>|Object} bufferPosition - The {@link Point} representing the position to clip.
    * @returns {Point}
    */
   clipBufferPosition(bufferPosition) {
@@ -3269,7 +3341,7 @@ module.exports = class TextEditor {
    * Clip the start and end of the given range to valid positions in the
    * buffer. See {@link #clipBufferPosition} for more information.
    *
-   * @param range - The {@link Range} to clip.
+   * @param {Range|Array|Object} range - The {@link Range} to clip.
    * @returns {Range}
    */
   clipBufferRange(range) {
@@ -3296,9 +3368,9 @@ module.exports = class TextEditor {
    * editor.clipScreenPosition([2, Infinity]) // -> `[2, 10]`
    * ```
    *
-   * @param screenPosition - The {@link Point} representing the position to clip.
+   * @param {Point|Array<Number>|Object} screenPosition - The {@link Point} representing the position to clip.
    * @param {Object} [options]
-   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @param {String} [options.clipDirection] - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
    * @returns {Point} The clipped screen position.
    */
   clipScreenPosition(screenPosition, options) {
@@ -3312,8 +3384,8 @@ module.exports = class TextEditor {
    * Clip the start and end of the given range to valid positions on screen.
    * See {@link #clipScreenPosition} for more information.
    *
-   * @param screenRange - The {@link Range} to clip.
-   * @param [options] - See {@link #clipScreenPosition} `options`.
+   * @param {Range|Array|Object} screenRange - The {@link Range} to clip.
+   * @param {Object} [options] - See {@link #clipScreenPosition} `options`.
    * @returns {Range}
    */
   clipScreenRange(screenRange, options) {
@@ -3350,8 +3422,8 @@ module.exports = class TextEditor {
    *     of this highlight will be:
    *     ```html
    *     <div class="highlight <your-class>">
-   *       <!-- Will be one region for each row in the range. Spans 2 lines? There will be 2 regions. -->
-   *       <div class="region"></div>
+   *  <!-- Will be one region for each row in the range. Spans 2 lines? There will be 2 regions. -->
+   *  <div class="region"></div>
    *     </div>
    *     ```
    * * __overlay__: Positions the view associated with the given item at the head
@@ -3369,30 +3441,27 @@ module.exports = class TextEditor {
    *     by passing in their markers or to render artificial cursors that don't actually
    *     exist in the model by passing a marker that isn't associated with a real cursor.
    *
-   * ## Arguments
+   * An overlay that can have neither side — the one it asked for is taken,
+   * the other will not fit — is pushed clear of whatever is in its way
+   * rather than drawn over it, and the wrapper is marked
+   * `data-overlay-displaced` to say it is no longer touching its line.
    *
-   *
-   *      An overlay that can have neither side — the one it asked for is taken,
-   *      the other will not fit — is pushed clear of whatever is in its way
-   *      rather than drawn over it, and the wrapper is marked
-   *      `data-overlay-displaced` to say it is no longer touching its line.
-   *
-   * @param marker - A {@link DisplayMarker} you want this decoration to follow.
-   * @param decorationParams - An `Object` representing the decoration e.g. `{type: 'line-number', class: 'linter-error'}`
-   * @param decorationParams.type - Determines the behavior and appearance of this {@link Decoration}. Supported decoration types and their uses are listed above.
-   * @param decorationParams.class - This CSS class will be applied to the decorated line number, line, text spans, highlight regions, cursors, or overlay.
-   * @param decorationParams.style - An `Object` containing CSS style properties to apply to the relevant DOM node. Currently this only works with a `type` of `cursor` or `text`.
-   * @param [decorationParams.item] - An `HTMLElement` or a model `Object` with a corresponding view registered. Only applicable to the `gutter`, `overlay` and `block` decoration types.
-   * @param [decorationParams.onlyHead] - If `true`, the decoration will only be applied to the head of the `DisplayMarker`. Only applicable to the `line` and `line-number` decoration types.
-   * @param [decorationParams.onlyEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
-   * @param [decorationParams.onlyNonEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is non-empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
-   * @param [decorationParams.omitEmptyLastRow] - If `false`, the decoration will be applied to the last row of a non-empty range, even if it ends at column 0. Defaults to `true`. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
-   * @param [decorationParams.position] - Only applicable to decorations of type `overlay` and `block`. Controls where the view is positioned relative to the `TextEditorMarker`. Values can be `'head'` (the default) or `'tail'` for overlay decorations, and `'before'` (the default) or `'after'` for block decorations.
-   * @param [decorationParams.order] - Only applicable to decorations of type `block`. Controls where the view is positioned relative to other block decorations at the same screen row. If unspecified, block decorations render oldest to newest.
-   * @param [decorationParams.avoidOverflow] - Only applicable to decorations of type `overlay`. Determines whether the decoration adjusts its horizontal or vertical position to remain fully visible when it would otherwise overflow the editor. Defaults to `true`. An overlay that opts out is neither moved by nor an obstacle to the placement described below.
-   * @param [decorationParams.side] - Only applicable to decorations of type `overlay`. The side of the line the overlay asks for, `'above'` or `'below'` (the default). It is a request, not a guarantee: an overlay takes the other side when the one it asked for will not fit the window or is already taken, and the side it ended up on is reported back on the wrapper as `data-overlay-position`.
-   * @param [decorationParams.lockSide] - Only applicable to decorations of type `overlay` with overflow avoidance enabled. If `true`, retains the side selected when the mounted overlay first has a nonzero width and height. Scrolling and resizing keep following its marker without switching sides, even if the overlay later overflows the window. A new decoration or remounted overlay chooses again. Defaults to `false`.
-   * @param [decorationParams.priority] - Only applicable to decorations of type `overlay`. When several overlays want the same side of the same line, the higher priority chooses first and the others work around it; it also decides which one paints on top. Defaults to `0`. The convention across the bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
+   * @param {DisplayMarker|Marker} marker - A {@link DisplayMarker} you want this decoration to follow.
+   * @param {Object} decorationParams - An `Object` representing the decoration e.g. `{type: 'line-number', class: 'linter-error'}`
+   * @param {String|Array<String>} decorationParams.type - Determines the behavior and appearance of this {@link Decoration}. Supported decoration types and their uses are listed above.
+   * @param {String} [decorationParams.class] - This CSS class will be applied to the decorated line number, line, text spans, highlight regions, cursors, or overlay.
+   * @param {Object} [decorationParams.style] - An `Object` containing CSS style properties to apply to the relevant DOM node. Currently this only works with a `type` of `cursor` or `text`.
+   * @param {HTMLElement|Object} [decorationParams.item] - An `HTMLElement` or a model `Object` with a corresponding view registered. Only applicable to the `gutter`, `overlay` and `block` decoration types.
+   * @param {Boolean} [decorationParams.onlyHead] - If `true`, the decoration will only be applied to the head of the `DisplayMarker`. Only applicable to the `line` and `line-number` decoration types.
+   * @param {Boolean} [decorationParams.onlyEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param {Boolean} [decorationParams.onlyNonEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is non-empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param {Boolean} [decorationParams.omitEmptyLastRow] - If `false`, the decoration will be applied to the last row of a non-empty range, even if it ends at column 0. Defaults to `true`. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param {String} [decorationParams.position] - Only applicable to decorations of type `overlay` and `block`. Controls where the view is positioned relative to the `DisplayMarker`. Values can be `'head'` (the default) or `'tail'` for overlay decorations, and `'before'` (the default) or `'after'` for block decorations.
+   * @param {Number} [decorationParams.order] - Only applicable to decorations of type `block`. Controls where the view is positioned relative to other block decorations at the same screen row. If unspecified, block decorations render oldest to newest.
+   * @param {Boolean} [decorationParams.avoidOverflow] - Only applicable to decorations of type `overlay`. Determines whether the decoration adjusts its horizontal or vertical position to remain fully visible when it would otherwise overflow the editor. Defaults to `true`. An overlay that opts out is neither moved by nor an obstacle to the placement described below.
+   * @param {String} [decorationParams.side] - Only applicable to decorations of type `overlay`. The side of the line the overlay asks for, `'above'` or `'below'` (the default). It is a request, not a guarantee: an overlay takes the other side when the one it asked for will not fit the window or is already taken, and the side it ended up on is reported back on the wrapper as `data-overlay-position`.
+   * @param {Boolean} [decorationParams.lockSide] - Only applicable to decorations of type `overlay` with overflow avoidance enabled. If `true`, retains the side selected when the mounted overlay first has a nonzero width and height. Scrolling and resizing keep following its marker without switching sides, even if the overlay later overflows the window. A new decoration or remounted overlay chooses again. Defaults to `false`.
+   * @param {Number} [decorationParams.priority] - Only applicable to decorations of type `overlay`. When several overlays want the same side of the same line, the higher priority chooses first and the others work around it; it also decides which one paints on top. Defaults to `0`. The convention across the bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
    * @returns {Decoration} created {@link Decoration} object.
    */
   decorateMarker(marker, decorationParams) {
@@ -3407,8 +3476,8 @@ module.exports = class TextEditor {
    * be used to decorate a large number of markers without having to create and
    * manage many individual decorations.
    *
-   * @param markerLayer - A {@link DisplayMarkerLayer} or {@link MarkerLayer} to decorate.
-   * @param decorationParams - The same parameters that are passed to {@link TextEditor#decorateMarker}, except the `type` cannot be `overlay` or `gutter`.
+   * @param {DisplayMarkerLayer|MarkerLayer} markerLayer - A {@link DisplayMarkerLayer} or {@link MarkerLayer} to decorate.
+   * @param {Object} decorationParams - The same parameters that are passed to {@link TextEditor#decorateMarker}, except the `type` cannot be `overlay` or `gutter`.
    * @returns {LayerDecoration}
    */
   decorateMarkerLayer(markerLayer, decorationParams) {
@@ -3440,8 +3509,8 @@ module.exports = class TextEditor {
    *
    * Get all decorations.
    *
-   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
-   * @returns {Array} of {@link Decoration Decorations}.
+   * @param {Object} [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array<Decoration>} The decorations matching the property filter.
    */
   getDecorations(propertyFilter) {
     return this.decorationManager.getDecorations(propertyFilter);
@@ -3453,8 +3522,8 @@ module.exports = class TextEditor {
    *
    * Get all decorations of type 'line'.
    *
-   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
-   * @returns {Array} of {@link Decoration Decorations}.
+   * @param {Object} [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array<Decoration>} The decorations matching the property filter.
    */
   getLineDecorations(propertyFilter) {
     return this.decorationManager.getLineDecorations(propertyFilter);
@@ -3466,8 +3535,8 @@ module.exports = class TextEditor {
    *
    * Get all decorations of type 'line-number'.
    *
-   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
-   * @returns {Array} of {@link Decoration Decorations}.
+   * @param {Object} [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array<Decoration>} The decorations matching the property filter.
    */
   getLineNumberDecorations(propertyFilter) {
     return this.decorationManager.getLineNumberDecorations(propertyFilter);
@@ -3479,8 +3548,8 @@ module.exports = class TextEditor {
    *
    * Get all decorations of type 'highlight'.
    *
-   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
-   * @returns {Array} of {@link Decoration Decorations}.
+   * @param {Object} [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array<Decoration>} The decorations matching the property filter.
    */
   getHighlightDecorations(propertyFilter) {
     return this.decorationManager.getHighlightDecorations(propertyFilter);
@@ -3492,8 +3561,8 @@ module.exports = class TextEditor {
    *
    * Get all decorations of type 'overlay'.
    *
-   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
-   * @returns {Array} of {@link Decoration Decorations}.
+   * @param {Object} [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array<Decoration>} The decorations matching the property filter.
    */
   getOverlayDecorations(propertyFilter) {
     return this.decorationManager.getOverlayDecorations(propertyFilter);
@@ -3512,8 +3581,8 @@ module.exports = class TextEditor {
    * buffer is changed, so if you mark a particular word, the marker will remain
    * over that word even if the word's location in the buffer changes.
    *
-   * @param bufferRange - A {@link Range} or range-compatible `Array`
-   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Range|Array|Object} bufferRange - A {@link Range} or range-compatible `Array`
+   * @param {Object} [options] - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
    * @param {Boolean} [options.maintainHistory] - Whether to store this marker's range before and after each change in the undo history. This allows the marker's position to be restored more accurately for certain undo/redo operations, but uses more time and memory. (default: false)
    * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
@@ -3532,8 +3601,8 @@ module.exports = class TextEditor {
    * buffer is changed, so if you mark a particular word, the marker will remain
    * over that word even if the word's location in the buffer changes.
    *
-   * @param screenRange - A {@link Range} or range-compatible `Array`
-   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Range|Array|Object} screenRange - A {@link Range} or range-compatible `Array`
+   * @param {Object} [options] - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
    * @param {Boolean} [options.maintainHistory] - Whether to store this marker's range before and after each change in the undo history. This allows the marker's position to be restored more accurately for certain undo/redo operations, but uses more time and memory. (default: false)
    * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
@@ -3551,8 +3620,8 @@ module.exports = class TextEditor {
    * position and no tail. To group multiple markers together in their own
    * private layer, see {@link #addMarkerLayer}.
    *
-   * @param bufferPosition - A {@link Point} or point-compatible `Array`
-   * @param [options] - An `Object` with the following keys:
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or point-compatible `Array`
+   * @param {Object} [options] - An `Object` with the following keys:
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @returns {DisplayMarker}
    */
@@ -3568,10 +3637,10 @@ module.exports = class TextEditor {
    * position and no tail. To group multiple markers together in their own
    * private layer, see {@link #addMarkerLayer}.
    *
-   * @param screenPosition - A {@link Point} or point-compatible `Array`
-   * @param [options] - An `Object` with the following keys:
+   * @param {Point|Array<Number>|Object} screenPosition - A {@link Point} or point-compatible `Array`
+   * @param {Object} [options] - An `Object` with the following keys:
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @param {String} [options.clipDirection] - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
    * @returns {DisplayMarker} The new marker.
    */
   markScreenPosition(screenPosition, options) {
@@ -3590,12 +3659,12 @@ module.exports = class TextEditor {
    * In addition, there are several special properties that will be compared
    * with the range of the markers rather than their properties.
    *
-   * @param params - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with basic equality. In addition, several reserved properties can be used to filter markers based on their current range:
-   * @param params.startBufferRow - Only include markers starting at this row in buffer coordinates.
-   * @param params.endBufferRow - Only include markers ending at this row in buffer coordinates.
-   * @param params.containsBufferRange - Only include markers containing this {@link Range} or in range-compatible `Array` in buffer coordinates.
-   * @param params.containsBufferPosition - Only include markers containing this {@link Point} or `Array` of `[row, column]` in buffer coordinates.
-   * @returns {Array} of {@link DisplayMarker DisplayMarkers}
+   * @param {Object} [params] - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with basic equality. In addition, several reserved properties can be used to filter markers based on their current range:
+   * @param {Number} [params.startBufferRow] - Only include markers starting at this row in buffer coordinates.
+   * @param {Number} [params.endBufferRow] - Only include markers ending at this row in buffer coordinates.
+   * @param {Range} [params.containsBufferRange] - Only include markers containing this {@link Range} or in range-compatible `Array` in buffer coordinates.
+   * @param {Point} [params.containsBufferPosition] - Only include markers containing this {@link Point} or `Array` of `[row, column]` in buffer coordinates.
+   * @returns {Array<DisplayMarker>} The markers matching the query.
    */
   findMarkers(params) {
     return this.defaultMarkerLayer.findMarkers(params);
@@ -3609,6 +3678,7 @@ module.exports = class TextEditor {
    * marker id.
    *
    * @param {Number} id - id of the marker
+   * @returns {DisplayMarker|undefined} The marker on the default layer, or undefined when the id is unknown.
    */
   getMarker(id) {
     return this.defaultMarkerLayer.getMarker(id);
@@ -3620,6 +3690,7 @@ module.exports = class TextEditor {
    *
    * Get all {@link DisplayMarker DisplayMarkers} on the default marker layer. Consider
    * using {@link #findMarkers}
+   * @returns {Array<DisplayMarker>} The markers on the default layer.
    */
   getMarkers() {
     return this.defaultMarkerLayer.getMarkers();
@@ -3648,9 +3719,9 @@ module.exports = class TextEditor {
    *
    * Create a marker layer to group related markers.
    *
-   * @param options - An `Object` containing the following keys:
-   * @param options.maintainHistory - A `Boolean` indicating whether marker state should be restored on undo/redo. Defaults to `false`.
-   * @param options.persistent - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
+   * @param {Object} [options] - An `Object` containing the following keys:
+   * @param {Boolean} [options.maintainHistory] - A `Boolean` indicating whether marker state should be restored on undo/redo. Defaults to `false`.
+   * @param {Boolean} [options.persistent] - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
    * @param {Function} [options.trackRanges] - A synchronous callback applying custom edit tracking to touched markers. See {@link TextBuffer#addMarkerLayer} for its arguments and return value. The callback is not serialized and can be replaced through {@link DisplayMarkerLayer#setRangeTracker}.
    * @returns {DisplayMarkerLayer}
    */
@@ -3664,8 +3735,8 @@ module.exports = class TextEditor {
    *
    * Get a {@link DisplayMarkerLayer} by id.
    *
-   * @param id - The id of the marker layer to retrieve.
-   * @returns {DisplayMarkerLayer} or `undefined` if no layer exists with the given id.
+   * @param {String} id - The id of the marker layer to retrieve.
+   * @returns {DisplayMarkerLayer|undefined} The layer, or undefined when the id is unknown.
    */
   getMarkerLayer(id) {
     return this.displayLayer.getMarkerLayer(id);
@@ -3709,7 +3780,7 @@ module.exports = class TextEditor {
    *
    * Get the position of all the cursor positions in buffer coordinates.
    *
-   * @returns {Array} of {@link Point Points} in the order they were added
+   * @returns {Array<Point>} The cursor positions in creation order.
    */
   getCursorBufferPositions() {
     return this.getCursors().map((cursor) => cursor.getBufferPosition());
@@ -3723,10 +3794,10 @@ module.exports = class TextEditor {
    *
    * If there are multiple cursors, they will be consolidated to a single cursor.
    *
-   * @param position - A {@link Point} or `Array` of `[row, column]`
-   * @param [options] - An `Object` containing the following keys:
-   * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
-   * @param options.mode - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
+   * @param {Point|Array<Number>|Object} position - A {@link Point} or `Array` of `[row, column]`
+   * @param {Object} [options] - An `Object` containing the following keys:
+   * @param {Boolean} [options.autoscroll] - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @param {String|Number|Array<Number>} [options.mode] - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
    */
   setCursorBufferPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setBufferPosition(position, options));
@@ -3738,7 +3809,7 @@ module.exports = class TextEditor {
    *
    * Get a {@link Cursor} at given screen coordinates {@link Point}
    *
-   * @param position - A {@link Point} or `Array` of `[row, column]`
+   * @param {Point|Array<Number>|Object} position - A {@link Point} or `Array` of `[row, column]`
    * @returns {Cursor|undefined} first matched {@link Cursor} or undefined
    */
   getCursorAtScreenPosition(position) {
@@ -3767,7 +3838,7 @@ module.exports = class TextEditor {
    *
    * Get the position of all the cursor positions in screen coordinates.
    *
-   * @returns {Array} of {@link Point Points} in the order the cursors were added
+   * @returns {Array<Point>} The cursor positions in creation order.
    */
   getCursorScreenPositions() {
     return this.getCursors().map((cursor) => cursor.getScreenPosition());
@@ -3781,10 +3852,10 @@ module.exports = class TextEditor {
    *
    * If there are multiple cursors, they will be consolidated to a single cursor.
    *
-   * @param position - A {@link Point} or `Array` of `[row, column]`
-   * @param [options] - An `Object` combining options for {@link #clipScreenPosition} with:
-   * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
-   * @param options.mode - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
+   * @param {Point|Array<Number>|Object} position - A {@link Point} or `Array` of `[row, column]`
+   * @param {Object} [options] - An `Object` combining options for {@link #clipScreenPosition} with:
+   * @param {Boolean} [options.autoscroll] - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @param {String|Number|Array<Number>} [options.mode] - The scroll mode when autoscrolling. See {@link #scrollToScreenRange}.
    */
   setCursorScreenPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setScreenPosition(position, options));
@@ -3796,7 +3867,10 @@ module.exports = class TextEditor {
    *
    * Add a cursor at the given position in buffer coordinates.
    *
-   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.autoscroll=true] - Scroll to the new cursor or selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link #scrollToScreenRange}.
    * @returns {Cursor}
    */
   addCursorAtBufferPosition(bufferPosition, options) {
@@ -3814,7 +3888,10 @@ module.exports = class TextEditor {
    *
    * Add a cursor at the position in screen coordinates.
    *
-   * @param screenPosition - A {@link Point} or `Array` of `[row, column]`
+   * @param {Point|Array<Number>|Object} screenPosition - A {@link Point} or `Array` of `[row, column]`
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.autoscroll=true] - Scroll to the new cursor or selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link #scrollToScreenRange}.
    * @returns {Cursor}
    */
   addCursorAtScreenPosition(screenPosition, options) {
@@ -3829,6 +3906,8 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status essential
+   *
+   * Determine whether this editor has more than one cursor.
    *
    * @returns {Boolean} indicating whether or not there are multiple cursors.
    */
@@ -4060,6 +4139,8 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Get the most recently added cursor.
+   *
    * @returns {Cursor} most recently added {@link Cursor}
    */
   getLastCursor() {
@@ -4071,7 +4152,9 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
-   * @param [options] - See {@link Cursor#getBeginningOfCurrentWordBufferPosition}.
+   * Get the word under the most recently added cursor.
+   *
+   * @param {Object} [options] - See {@link Cursor#getCurrentWordBufferRange}.
    * @returns {String} word surrounding the most recently added cursor.
    */
   getWordUnderCursor(options) {
@@ -4083,6 +4166,7 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Get an Array of all {@link Cursor Cursors}.
+   * @returns {Array<Cursor>} The cursors in creation order.
    */
   getCursors() {
     this.createLastSelectionIfNeeded();
@@ -4189,7 +4273,7 @@ module.exports = class TextEditor {
    *
    * The ranges are sorted by when the selections were added. Most recent at the end.
    *
-   * @returns {Array} of {@link Range Ranges}.
+   * @returns {Array<Range>} The selection ranges in creation order.
    */
   getSelectedBufferRanges() {
     return this.getSelections().map((selection) => selection.getBufferRange());
@@ -4202,10 +4286,10 @@ module.exports = class TextEditor {
    * Set the selected range in buffer coordinates. If there are multiple
    * selections, they are reduced to a single selection with the given range.
    *
-   * @param bufferRange - A {@link Range} or range-compatible `Array`.
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Range|Array|Object} bufferRange - A {@link Range} or range-compatible `Array`.
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Boolean} [options.preserveFolds] - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
    */
   setSelectedBufferRange(bufferRange, options) {
     return this.setSelectedBufferRanges([bufferRange], options);
@@ -4218,10 +4302,10 @@ module.exports = class TextEditor {
    * Set the selected ranges in buffer coordinates. If there are multiple
    * selections, they are replaced by new selections with the given ranges.
    *
-   * @param bufferRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Array<Range|Array|Object>} bufferRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Boolean} [options.preserveFolds] - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
    */
   setSelectedBufferRanges(bufferRanges, options = {}) {
     if (!bufferRanges.length) throw new Error("Passed an empty array to setSelectedBufferRanges");
@@ -4263,7 +4347,7 @@ module.exports = class TextEditor {
    *
    * The ranges are sorted by when the selections were added. Most recent at the end.
    *
-   * @returns {Array} of {@link Range Ranges}.
+   * @returns {Array<Range>} The selection ranges in creation order.
    */
   getSelectedScreenRanges() {
     return this.getSelections().map((selection) => selection.getScreenRange());
@@ -4276,9 +4360,9 @@ module.exports = class TextEditor {
    * Set the selected range in screen coordinates. If there are multiple
    * selections, they are reduced to a single selection with the given range.
    *
-   * @param screenRange - A {@link Range} or range-compatible `Array`.
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Range|Array|Object} screenRange - A {@link Range} or range-compatible `Array`.
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
    */
   setSelectedScreenRange(screenRange, options) {
     return this.setSelectedBufferRange(
@@ -4294,9 +4378,9 @@ module.exports = class TextEditor {
    * Set the selected ranges in screen coordinates. If there are multiple
    * selections, they are replaced by new selections with the given ranges.
    *
-   * @param screenRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Array<Range|Array|Object>} screenRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
    */
   setSelectedScreenRanges(screenRanges, options = {}) {
     if (!screenRanges.length) throw new Error("Passed an empty array to setSelectedScreenRanges");
@@ -4323,10 +4407,12 @@ module.exports = class TextEditor {
    *
    * Add a selection for the given range in buffer coordinates.
    *
-   * @param bufferRange - A {@link Range}
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Range|Array|Object} bufferRange - A {@link Range}
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Boolean} [options.preserveFolds] - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Boolean} [options.autoscroll=true] - Scroll to the new cursor or selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link #scrollToScreenRange}.
    * @returns {Selection} added {@link Selection}.
    */
   addSelectionForBufferRange(bufferRange, options = {}) {
@@ -4351,10 +4437,12 @@ module.exports = class TextEditor {
    *
    * Add a selection for the given range in screen coordinates.
    *
-   * @param screenRange - A {@link Range}
-   * @param [options] - An `Object` of options:
-   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Range|Array|Object} screenRange - A {@link Range}
+   * @param {Object} [options] - An `Object` of options:
+   * @param {Boolean} [options.reversed] - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param {Boolean} [options.preserveFolds] - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @param {Boolean} [options.autoscroll=true] - Scroll to the new cursor or selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link #scrollToScreenRange}.
    * @returns {Selection} added {@link Selection}.
    */
   addSelectionForScreenRange(screenRange, options = {}) {
@@ -4370,7 +4458,7 @@ module.exports = class TextEditor {
    *
    * This method may merge selections that end up intersecting.
    *
-   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Point|Array<Number>|Object} position - An instance of {@link Point}, with a given `row` and `column`.
    */
   selectToBufferPosition(position) {
     const lastSelection = this.getLastSelection();
@@ -4389,7 +4477,9 @@ module.exports = class TextEditor {
    *
    * This method may merge selections that end up intersecting.
    *
-   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Point|Array<Number>|Object} position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.suppressSelectionMerge=false] - Retain intersecting selections after moving the selection head.
    */
   selectToScreenPosition(position, options) {
     const lastSelection = this.getLastSelection();
@@ -4604,7 +4694,7 @@ module.exports = class TextEditor {
    *
    * For each cursor, select the containing line.
    *
-   * This method merges selections on successive lines.
+   * Intersecting selections may be merged.
    */
   selectLinesContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectLine());
@@ -4690,9 +4780,9 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
-   * Expand selections to the beginning of the next paragraph.
+   * Expand selections to the beginning of the previous paragraph.
    *
-   * Operates on all selections. Moves the cursor to the beginning of the next
+   * Operates on all selections. Moves the cursor to the beginning of the previous
    * paragraph while preserving the selection's tail position.
    */
   selectToBeginningOfPreviousParagraph() {
@@ -4747,7 +4837,7 @@ module.exports = class TextEditor {
    *
    * Select the range of the given marker if it is valid.
    *
-   * @param marker - A {@link DisplayMarker}
+   * @param {DisplayMarker} marker - A {@link DisplayMarker}
    * @returns {Range|undefined} selected {@link Range} or `undefined` if the marker is invalid.
    */
   selectMarker(marker) {
@@ -4798,7 +4888,7 @@ module.exports = class TextEditor {
    * Get all {@link Selection Selections}, ordered by their position in the buffer
    * instead of the order in which they were added.
    *
-   * @returns {Array} of {@link Selection Selections}.
+   * @returns {Array<Selection>} Selections ordered by their buffer positions.
    */
   getSelectionsOrderedByBufferPosition() {
     return this.getSelections().sort((a, b) => a.compare(b));
@@ -4811,7 +4901,7 @@ module.exports = class TextEditor {
    * Determine if a given range in buffer coordinates intersects a
    * selection.
    *
-   * @param bufferRange - A {@link Range} or range-compatible `Array`.
+   * @param {Range|Array|Object} bufferRange - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean}
    */
   selectionIntersectsBufferRange(bufferRange) {
@@ -4833,7 +4923,7 @@ module.exports = class TextEditor {
    *
    * Selections that are already destroyed are ignored.
    *
-   * @param selections - An `Array` of {@link Selection Selections}.
+   * @param {Array<Selection>} selections - An `Array` of {@link Selection Selections}.
    */
   destroySelections(selections) {
     // One selection is the overwhelmingly common case and the prologue would be
@@ -5104,17 +5194,18 @@ module.exports = class TextEditor {
    * If you're programmatically modifying the results, you may want to try
    * {@link #backwardsScanInBufferRange} to avoid tripping over your own changes.
    *
-   * @param regex - A `RegExp` to search for.
+   * @param {RegExp} regex - A `RegExp` to search for.
    * @param {Object} [options]
-   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
-   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
-   * @param iterator - A `Function` that's called on each match
+   * @param {Number} [options.leadingContextLineCount] - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} [options.trailingContextLineCount] - default `0`; The number of lines after the matched line to include in the results object.
+   * @param {Function} iterator - A `Function` that's called on each match
+   * @param {Object} iterator.result - Match information supplied as the callback's only argument.
    * @param {Object} iterator.object
-   * @param iterator.object.match - The current regular expression match.
-   * @param iterator.object.matchText - A `String` with the text of the match.
-   * @param iterator.object.range - The {@link Range} of the match.
-   * @param iterator.object.stop - Call this `Function` to terminate the scan.
-   * @param iterator.object.replace - Call this `Function` with a `String` to replace the match.
+   * @param {Array} iterator.result.match - The current regular expression match.
+   * @param {String} iterator.result.matchText - A `String` with the text of the match.
+   * @param {Range} iterator.result.range - The {@link Range} of the match.
+   * @param {Function} iterator.result.stop - Call this `Function` to terminate the scan.
+   * @param {Function} iterator.result.replace - Call this `Function` with a `String` to replace the match.
    */
   scan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
@@ -5132,14 +5223,15 @@ module.exports = class TextEditor {
    * Scan regular expression matches in a given range, calling the given
    * iterator function on each match.
    *
-   * @param regex - A `RegExp` to search for.
-   * @param range - A {@link Range} in which to search.
-   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
-   * @param iterator.match - The current regular expression match.
-   * @param iterator.matchText - A `String` with the text of the match.
-   * @param iterator.range - The {@link Range} of the match.
-   * @param iterator.stop - Call this `Function` to terminate the scan.
-   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @param {RegExp} regex - A `RegExp` to search for.
+   * @param {Range|Array|Object} range - A {@link Range} in which to search.
+   * @param {Function} iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param {Object} iterator.result - Match information supplied as the callback's only argument.
+   * @param {Array} iterator.result.match - The current regular expression match.
+   * @param {String} iterator.result.matchText - A `String` with the text of the match.
+   * @param {Range} iterator.result.range - The {@link Range} of the match.
+   * @param {Function} iterator.result.stop - Call this `Function` to terminate the scan.
+   * @param {Function} iterator.result.replace - Call this `Function` with a `String` to replace the match.
    */
   scanInBufferRange(regex, range, iterator) {
     return this.buffer.scanInRange(regex, range, iterator);
@@ -5152,14 +5244,15 @@ module.exports = class TextEditor {
    * Scan regular expression matches in a given range in reverse order,
    * calling the given iterator function on each match.
    *
-   * @param regex - A `RegExp` to search for.
-   * @param range - A {@link Range} in which to search.
-   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
-   * @param iterator.match - The current regular expression match.
-   * @param iterator.matchText - A `String` with the text of the match.
-   * @param iterator.range - The {@link Range} of the match.
-   * @param iterator.stop - Call this `Function` to terminate the scan.
-   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @param {RegExp} regex - A `RegExp` to search for.
+   * @param {Range|Array|Object} range - A {@link Range} in which to search.
+   * @param {Function} iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param {Object} iterator.result - Match information supplied as the callback's only argument.
+   * @param {Array} iterator.result.match - The current regular expression match.
+   * @param {String} iterator.result.matchText - A `String` with the text of the match.
+   * @param {Range} iterator.result.range - The {@link Range} of the match.
+   * @param {Function} iterator.result.stop - Call this `Function` to terminate the scan.
+   * @param {Function} iterator.result.replace - Call this `Function` with a `String` to replace the match.
    */
   backwardsScanInBufferRange(regex, range, iterator) {
     return this.buffer.backwardsScanInRange(regex, range, iterator);
@@ -5173,6 +5266,8 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
+   * Determine whether this editor inserts spaces for tabs.
+   *
    * @returns {Boolean} indicating whether softTabs are enabled for this editor.
    */
   getSoftTabs() {
@@ -5185,7 +5280,7 @@ module.exports = class TextEditor {
    *
    * Enable or disable soft tabs for this editor.
    *
-   * @param softTabs - A `Boolean`
+   * @param {Boolean} softTabs - A `Boolean`
    */
   setSoftTabs(softTabs) {
     this.softTabs = softTabs;
@@ -5223,10 +5318,9 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * Set the on-screen length of tab characters. Setting this to a
-   * `Number` This will override the `editor.tabLength` setting.
+   * Set the displayed width of tab characters, overriding editor.tabLength for this editor.
    *
-   * @param {Number} tabLength - length of a single tab. Setting to `null` will fallback to using the `editor.tabLength` config setting
+   * @param {Number|null} tabLength - length of a single tab. Setting to `null` will fallback to using the `editor.tabLength` config setting
    */
   setTabLength(tabLength) {
     this.updateTabLength(tabLength, true);
@@ -5317,7 +5411,7 @@ module.exports = class TextEditor {
    *
    * Enable or disable soft wrapping for this editor.
    *
-   * @param softWrapped - A `Boolean`
+   * @param {Boolean} softWrapped - A `Boolean`
    * @returns {Boolean}
    */
   setSoftWrapped(softWrapped) {
@@ -5365,7 +5459,7 @@ module.exports = class TextEditor {
    *
    * Enable or disable overtype (overwrite) mode for this editor.
    *
-   * @param overtypeMode - A `Boolean`.
+   * @param {Boolean} overtypeMode - A `Boolean`.
    * @returns {Boolean}
    */
   setOvertypeMode(overtypeMode) {
@@ -5415,6 +5509,7 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Get the column at which screen lines soft wrap.
+   * @returns {Number} The wrapping column, or the large-line safety limit when ordinary wrapping is disabled.
    * @category Soft Wrap Behavior
    */
   getSoftWrapColumn() {
@@ -5448,7 +5543,7 @@ module.exports = class TextEditor {
    * the tab length is 2, a row with 4 leading spaces would have an indentation
    * level of 2.
    *
-   * @param bufferRow - A `Number` indicating the buffer row.
+   * @param {Number} bufferRow - A `Number` indicating the buffer row.
    * @returns {Number}
    */
   indentationForBufferRow(bufferRow) {
@@ -5466,8 +5561,8 @@ module.exports = class TextEditor {
    * Note that if soft tabs are enabled and the tab length is 2, a row with 4
    * leading spaces would have an indentation level of 2.
    *
-   * @param bufferRow - A `Number` indicating the buffer row.
-   * @param newLevel - A `Number` indicating the new indentation level.
+   * @param {Number} bufferRow - A `Number` indicating the buffer row.
+   * @param {Number} newLevel - A `Number` indicating the new indentation level.
    * @param {Object} [options] - Indentation options.
    * @param {Boolean} [options.preserveLeadingWhitespace=false] - Preserve
    *   whitespace already at the beginning of the line.
@@ -5528,7 +5623,7 @@ module.exports = class TextEditor {
    * the tab length is 2, a row with 4 leading spaces would have an indentation
    * level of 2.
    *
-   * @param line - A `String` representing a line of text.
+   * @param {String} line - A `String` representing a line of text.
    * @returns {Number}
    */
   indentLevelForLine(line) {
@@ -5596,6 +5691,7 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Get the current {@link TreeSitterGrammar}, or the null grammar sentinel.
+   * @returns {TreeSitterGrammar|Object} The current Tree-sitter grammar or the null grammar sentinel.
    */
   getGrammar() {
     const languageMode = this.buffer.getLanguageMode();
@@ -5618,6 +5714,8 @@ module.exports = class TextEditor {
    * @status experimental
    *
    * Get a notification when async tokenization is completed.
+   * @param {Function} callback - Called when tokenization completes.
+   * @returns {Disposable} Subscription to tokenization completion.
    */
   onDidTokenize(callback) {
     return this.emitter.on("did-tokenize", callback);
@@ -5636,7 +5734,7 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels this wait when aborted.
-   * @returns {Promise} A promise that resolves to whether the current grammar settled successfully.
+   * @returns {Promise<Boolean>} Resolves to whether the current grammar settled successfully.
    */
   whenGrammarSettled({ signal } = {}) {
     if (this.isDestroyed() || signal?.aborted) return Promise.resolve(false);
@@ -5719,7 +5817,9 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @returns {ScopeDescriptor} that includes this editor's language. e.g. `['.source.ruby']`, or `['.source.coffee']`. You can use this with {@link Config#get} to get language specific config values.
+   * Get the scope descriptor for this editor's root grammar.
+   *
+   * @returns {ScopeDescriptor} The root grammar scopes, suitable for language-specific {@link Config#get} settings.
    */
   getRootScopeDescriptor() {
     return this.buffer.getLanguageMode().rootScopeDescriptor;
@@ -5737,7 +5837,7 @@ module.exports = class TextEditor {
    * the following scopes array:
    * `["source.coffee", "meta.function.inline.coffee", "meta.parameters.coffee", "variable.parameter.function.coffee"]`
    *
-   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @returns {ScopeDescriptor}
    */
   scopeDescriptorForBufferPosition(bufferPosition) {
@@ -5758,7 +5858,7 @@ module.exports = class TextEditor {
    * JavaScript class function, this method returns a {@link ScopeDescriptor} with
    * the following syntax nodes array:
    * `["source.js", "program", "expression_statement", "assignment_expression", "class", "class_body", "method_definition", "formal_parameters", "identifier"]`
-   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @returns {ScopeDescriptor}
    */
   syntaxTreeScopeDescriptorForBufferPosition(bufferPosition) {
@@ -5784,7 +5884,7 @@ module.exports = class TextEditor {
    * The returned node belongs to the current parse snapshot. Do not retain it
    * after the buffer changes or the grammar reparses; request it again instead.
    *
-   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
    * @returns {Object|null} A Tree-sitter syntax node, or `null`.
    * @category Syntax Trees
@@ -5809,7 +5909,7 @@ module.exports = class TextEditor {
    * The returned node belongs to the current parse snapshot. Do not retain it
    * after the buffer changes or the grammar reparses; request it again instead.
    *
-   * @param bufferRange - A {@link Range} or `Array` of two `[row, column]` points.
+   * @param {Range|Array|Object} bufferRange - A {@link Range} or `Array` of two `[row, column]` points.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
    * @returns {Object|null} A Tree-sitter syntax node, or `null`.
    * @category Syntax Trees
@@ -5858,7 +5958,7 @@ module.exports = class TextEditor {
    * @param {String} queryType - The grammar query property to run, such as `tagsQuery`.
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels this query when aborted.
-   * @returns {Promise} A promise resolving to `{grammar, captures}` groups for current language layers.
+   * @returns {Promise<Array<Object>>} Resolves to grammar/captures groups from the current language layers.
    * @category Grammar Queries
    */
   async getGrammarQueryCaptureGroups(queryType, { signal } = {}) {
@@ -5890,7 +5990,7 @@ module.exports = class TextEditor {
    * could call `editor.bufferRangeForScopeAtCursor(".string.quoted")`.
    *
    * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
-   * @returns {Range}
+   * @returns {Range|null|undefined} The matching buffer range, or null/undefined when no matching scope is found.
    */
   bufferRangeForScopeAtCursor(scopeSelector) {
     return this.bufferRangeForScopeAtPosition(scopeSelector, this.getCursorBufferPosition());
@@ -5907,8 +6007,8 @@ module.exports = class TextEditor {
    * could call `editor.bufferRangeForScopeAtPosition(".string.quoted", this.getCursorBufferPosition())`.
    *
    * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
-   * @param bufferPosition - A {@link Point} or `Array` of [row, column]
-   * @returns {Range}
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of [row, column]
+   * @returns {Range|null|undefined} The matching buffer range, or null/undefined when no matching scope is found.
    */
   bufferRangeForScopeAtPosition(scopeSelector, bufferPosition) {
     return this.buffer
@@ -5920,7 +6020,9 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
-   * Determine if the given row is entirely a comment
+   * Determine whether the first non-whitespace character on the given row has a comment scope.
+   * @param {Number} bufferRow - The zero-indexed buffer row.
+   * @returns {Boolean|undefined} Whether the first non-whitespace character has a comment scope, or undefined for a blank row.
    */
   isBufferRowCommented(bufferRow) {
     const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
@@ -5956,7 +6058,8 @@ module.exports = class TextEditor {
    *
    * For each selection, copy the selected text.
    *
-   * @returns {Promise} that resolves after the system clipboard has been updated.
+   * @param {Clipboard|Object} [clipboard] - A clipboard or compatible adapter; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   copySelectedText(clipboard = this.constructor.clipboard) {
     if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
@@ -6000,7 +6103,8 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @returns {Promise} that resolves after the system clipboard has been updated.
+   * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to write; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
@@ -6030,8 +6134,9 @@ module.exports = class TextEditor {
    * editor, each selection will be replaced with the content of the
    * corresponding clipboard selection text.
    *
-   * @param [options] - See {@link Selection#insertText}.
-   * @returns {Promise} that resolves after the clipboard text has been inserted.
+   * @param {Object} [options] - See {@link Selection#insertText}.
+   * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to read; defaults to the editor's clipboard.
+   * @returns {Promise|Boolean|undefined} A promise when the clipboard adapter reads asynchronously, false when an observer cancels a synchronous paste, or undefined on synchronous completion or refusal.
    */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
@@ -6138,6 +6243,8 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to write; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
@@ -6162,6 +6269,8 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to write; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
@@ -6190,7 +6299,7 @@ module.exports = class TextEditor {
    * Unlike {@link #foldBufferRow}, this method does not search preceding rows
    * for a fold that contains the given row.
    *
-   * @param bufferRow - A `Number`.
+   * @param {Number} bufferRow - A `Number`.
    * @returns {Range|null} The exact foldable range, or `null` when the row does not start one.
    */
   getFoldableRangeAtBufferRow(bufferRow) {
@@ -6238,7 +6347,7 @@ module.exports = class TextEditor {
    * If the given row is foldable, the fold will begin there. Otherwise, it will
    * begin at the first foldable row preceding the given row.
    *
-   * @param bufferRow - A `Number`.
+   * @param {Number} bufferRow - A `Number`.
    */
   foldBufferRow(bufferRow) {
     let position = Point(bufferRow, Infinity);
@@ -6271,7 +6380,7 @@ module.exports = class TextEditor {
    *
    * Unfold all folds containing the given row in buffer coordinates.
    *
-   * @param bufferRow - A `Number`
+   * @param {Number} bufferRow - A `Number`
    */
   unfoldBufferRow(bufferRow) {
     const position = Point(bufferRow, Infinity);
@@ -6324,7 +6433,7 @@ module.exports = class TextEditor {
    *
    * Fold all foldable lines at the given indent level.
    *
-   * @param level - A `Number` starting at 0.
+   * @param {Number} level - A `Number` starting at 0.
    */
   foldAllAtIndentLevel(level) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6345,8 +6454,8 @@ module.exports = class TextEditor {
    *
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
-   * @param bufferRow - A `Number`
-   * @returns {Boolean}
+   * @param {Number} bufferRow - A `Number`
+   * @returns {Boolean|undefined} Whether the row is foldable; undefined when the language mode supplies no foldability check.
    */
   isFoldableAtBufferRow(bufferRow) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6371,8 +6480,8 @@ module.exports = class TextEditor {
    *
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
-   * @param screenRow - A `Number`
-   * @returns {Boolean}
+   * @param {Number} screenRow - A `Number`
+   * @returns {Boolean|undefined} Whether the row is foldable; undefined when the language mode supplies no foldability check.
    */
   isFoldableAtScreenRow(screenRow) {
     return this.isFoldableAtBufferRow(this.bufferRowForScreenRow(screenRow));
@@ -6384,6 +6493,7 @@ module.exports = class TextEditor {
    *
    * Fold the given buffer row if it isn't currently folded, and unfold
    * it otherwise.
+   * @param {Number} bufferRow - The zero-indexed buffer row.
    */
   toggleFoldAtBufferRow(bufferRow) {
     if (this.isFoldedAtBufferRow(bufferRow)) {
@@ -6411,7 +6521,7 @@ module.exports = class TextEditor {
    *
    * Determine whether the given row in buffer coordinates is folded.
    *
-   * @param bufferRow - A `Number`
+   * @param {Number} bufferRow - A `Number`
    * @returns {Boolean}
    */
   isFoldedAtBufferRow(bufferRow) {
@@ -6428,7 +6538,7 @@ module.exports = class TextEditor {
    *
    * Determine whether the given row in screen coordinates is folded.
    *
-   * @param screenRow - A `Number`
+   * @param {Number} screenRow - A `Number`
    * @returns {Boolean}
    */
   isFoldedAtScreenRow(screenRow) {
@@ -6472,25 +6582,25 @@ module.exports = class TextEditor {
    *
    * Add a custom {@link Gutter}.
    *
-   * @param options - An `Object` with the following fields:
-   * @param options.name - (required) A unique `String` to identify this gutter.
-   * @param [options.priority] - A `Number` that determines stacking order between gutters. Lower priority items are forced closer to the edges of the window. (default: -100)
+   * @param {Object} options - An `Object` with the following fields:
+   * @param {String} options.name - (required) A unique `String` to identify this gutter.
+   * @param {Number} [options.priority] - A `Number` that determines stacking order between gutters. Lower priority items are forced closer to the edges of the window. (default: -100)
    * @param {Boolean} [options.visible] - specifying whether the gutter is visible initially after being created. (default: true)
    * @param {String} [options.type] - specifying the type of gutter to create. `'decorated'` gutters are useful as a destination for decorations created with {@link Gutter#decorateMarker}. `'line-number'` gutters.
    * @param {String} [options.class] - added to the CSS classnames of the gutter's root DOM element.
    * @param {Function} [options.labelFn] - called by a `'line-number'` gutter to generate the label for each line number element. Should return a `String` that will be used to label the corresponding line.
-   * @param options.labelFn.lineData - an `Object` containing information about each line to label.
+   * @param {Object} options.labelFn.lineData - an `Object` containing information about each line to label.
    * @param {Number} options.labelFn.lineData.bufferRow - indicating the zero-indexed buffer index of this line.
    * @param {Number} options.labelFn.lineData.screenRow - indicating the zero-indexed screen index.
    * @param {Boolean} options.labelFn.lineData.foldable - that is `true` if a fold may be created here.
    * @param {Boolean} options.labelFn.lineData.softWrapped - if this screen row is the soft-wrapped continuation of the same buffer row.
    * @param {Number} options.labelFn.lineData.maxDigits - the maximum number of digits necessary to represent any known screen row.
    * @param {Function} [options.onMouseDown] - to be called when a mousedown event is received by a line-number element within this `type: 'line-number'` {@link Gutter}. If unspecified, the default behavior is to select the clicked buffer row.
-   * @param options.onMouseDown.lineData - an `Object` containing information about the line that's being clicked.
+   * @param {Object} options.onMouseDown.lineData - an `Object` containing information about the line that's being clicked.
    * @param {Number} options.onMouseDown.lineData.bufferRow - of the originating line element
    * @param {Number} options.onMouseDown.lineData.screenRow
    * @param {Function} [options.onMouseMove] - to be called when a mousemove event occurs on a line-number element within within this `type: 'line-number'` {@link Gutter}.
-   * @param options.onMouseMove.lineData - an `Object` containing information about the line that's being clicked.
+   * @param {Object} options.onMouseMove.lineData - an `Object` containing information about the line that's being clicked.
    * @param {Number} options.onMouseMove.lineData.bufferRow - of the originating line element
    * @param {Number} options.onMouseMove.lineData.screenRow
    * @returns {Gutter} newly-created {@link Gutter}.
@@ -6505,7 +6615,7 @@ module.exports = class TextEditor {
    *
    * Get this editor's gutters.
    *
-   * @returns {Array} of {@link Gutter Gutters}.
+   * @returns {Array<Gutter>} The gutters in display order.
    */
   getGutters() {
     return this.gutterContainer.getGutters();
@@ -6521,14 +6631,15 @@ module.exports = class TextEditor {
    *
    * Get the gutter with the given name.
    *
-   * @returns {Gutter}, or `null` if no gutter exists for the given name.
+   * @param {String} name - The gutter name to look up.
+   * @returns {Gutter|null} The named gutter, or null when no matching gutter exists.
    */
   gutterWithName(name) {
     return this.gutterContainer.gutterWithName(name);
   }
 
   /**
-   * @category Scrolling the TextEditor
+   * @category Scrolling
    */
 
   /**
@@ -6539,7 +6650,7 @@ module.exports = class TextEditor {
    * off-screen.
    *
    * @param {Object} [options]
-   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
+   * @param {String|Number|Array<Number>} [options.mode] - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
   scrollToCursorPosition(options = {}) {
     this.getLastCursor().autoscroll(options);
@@ -6561,9 +6672,9 @@ module.exports = class TextEditor {
    *
    * Scrolls the editor to the given buffer position.
    *
-   * @param bufferPosition - An object that represents a buffer position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
+   * @param {Object} bufferPosition - An object that represents a buffer position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
-   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
+   * @param {String|Number|Array<Number>} [options.mode] - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
   scrollToBufferPosition(bufferPosition, options) {
     return this.scrollToScreenPosition(
@@ -6578,9 +6689,9 @@ module.exports = class TextEditor {
    *
    * Scrolls the editor to the given screen position.
    *
-   * @param screenPosition - An object that represents a screen position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
+   * @param {Object} screenPosition - An object that represents a screen position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
-   * @param options.mode - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
+   * @param {String|Number|Array<Number>} [options.mode] - `nearest` (default), `zone`, `center`, a percentage, or a pair of percentages. See {@link #scrollToScreenRange}.
    */
   scrollToScreenPosition(screenPosition, options) {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
@@ -6592,11 +6703,11 @@ module.exports = class TextEditor {
    *
    * Scrolls the editor to the given screen range.
    *
-   * @param screenRange - A {@link Range} or range-compatible `Array`.
+   * @param {Range|Array|Object} screenRange - A {@link Range} or range-compatible `Array`.
    * @param {Object} [options]
-   * @param options.mode - `nearest` (default) scrolls only far enough to reveal the range with its margins. `zone` uses the current `editor.scrollZone` for this editor's root grammar scope. `center` fixes the range at the middle. A `Number` explicitly fixes its position as a percentage of the travel between the vertical scroll margins: `0` rests its start against the top margin and `100` rests its end against the bottom margin. A pair of percentages defines a band in which nothing scrolls. Ordered (`[0, 50]`), the range lands on the edge it crossed; inverted (`[50, 0]`), it lands on the opposite edge. `[0, 100]` is `nearest` and `50` is `center`. Explicit numeric modes ignore the configuration.
-   * @param options.reversed - Scroll to the start of the range before its end when both are off-screen. (default: true)
-   * @param options.clip - Clip the range to the editor's contents first. (default: true)
+   * @param {String|Number|Array<Number>} [options.mode] - `nearest` (default) scrolls only far enough to reveal the range with its margins. `zone` uses the current `editor.scrollZone` for this editor's root grammar scope. `center` fixes the range at the middle. A `Number` explicitly fixes its position as a percentage of the travel between the vertical scroll margins: `0` rests its start against the top margin and `100` rests its end against the bottom margin. A pair of percentages defines a band in which nothing scrolls. Ordered (`[0, 50]`), the range lands on the edge it crossed; inverted (`[50, 0]`), it lands on the opposite edge. `[0, 100]` is `nearest` and `50` is `center`. Explicit numeric modes ignore the configuration.
+   * @param {Boolean} [options.reversed] - Scroll to the start of the range before its end when both are off-screen. (default: true)
+   * @param {Boolean} [options.clip] - Clip the range to the editor's contents first. (default: true)
    */
   scrollToScreenRange(screenRange, options = {}) {
     if (Object.hasOwn(options, "center") || Object.hasOwn(options, "zone")) {
@@ -6649,7 +6760,7 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @category Config
+   * @category Configuration
    */
 
   /**
@@ -6833,6 +6944,7 @@ module.exports = class TextEditor {
    * Get the characters that are *not* considered part of words,
    * for the purpose of word-based cursor movements.
    *
+   * @param {Point|Array<Number>|Object} [position] - The buffer position whose language settings are used; defaults to [0, 0].
    * @returns {String} containing the non-word characters.
    */
   getNonWordCharacters(position) {
@@ -6873,10 +6985,19 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @category TextEditor Rendering
+   * @category Rendering
    */
 
-  // Get the Element for the editor.
+  /**
+   * @public
+   * @status essential
+   *
+   * Get the DOM element displaying this editor, creating it on first access.
+   *
+   * @returns {TextEditorElement} The editor's view element.
+   * @category Rendering
+   */
+
   getElement() {
     if (!this.component) {
       if (!TextEditorComponent) TextEditorComponent = require("./text-editor-component");
@@ -6902,7 +7023,7 @@ module.exports = class TextEditor {
    *
    * Retrieves the greyed out placeholder of a mini editor.
    *
-   * @returns {String}
+   * @returns {String|undefined} The placeholder text, or undefined when none is configured.
    */
   getPlaceholderText() {
     return this.placeholderText;
@@ -7414,7 +7535,7 @@ module.exports = class TextEditor {
    *   `undefined`, there are no known block comment delimiters for the given
    *   buffer position.)
    *
-   * @param point - A {@link Point} or point-compatible `Array`.
+   * @param {Point|Array<Number>|Object} point - A {@link Point} or point-compatible `Array`.
    * @returns {Object|null} The appropriate comment delimiters, or `null` when none are known.
    * @category Managing Syntax Scopes
    */

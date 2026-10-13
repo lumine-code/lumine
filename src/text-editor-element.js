@@ -1,6 +1,13 @@
 const { Emitter, Range } = require("lumine");
 const TextEditorComponent = require("./text-editor-component");
 
+/**
+ * @public
+ * @status essential
+ *
+ * The custom DOM element displaying a {@link TextEditor}.
+ * Retrieve it with {@link TextEditor#getElement} and access its model with {@link #getModel}.
+ */
 class TextEditorElement extends HTMLElement {
   initialize(component) {
     this.component = component;
@@ -79,6 +86,16 @@ class TextEditorElement extends HTMLElement {
   getNextUpdatePromise() {
     return this.getComponent().getNextUpdatePromise();
   }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Get the text editor model displayed by this element, creating it on first access.
+   *
+   * @returns {TextEditor} The displayed editor.
+   * @category Model
+   */
 
   getModel() {
     return this.getComponent().props.model;
@@ -278,7 +295,7 @@ class TextEditorElement extends HTMLElement {
    * measure the requested horizontal pixel position if it isn't already
    * cached.
    *
-   * @param bufferPosition - A {@link Point}-like object that represents a buffer position.
+   * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point}-like object that represents a buffer position.
    * @returns {Object} with two values: `top` and `left`, representing the pixel position.
    */
   pixelPositionForBufferPosition(bufferPosition) {
@@ -297,7 +314,7 @@ class TextEditorElement extends HTMLElement {
    * cause a synchronous DOM update in order to measure the requested
    * horizontal pixel position if it isn't already cached.
    *
-   * @param screenPosition - A {@link Point}-like object that represents a screen position.
+   * @param {Point|Array<Number>|Object} screenPosition - A {@link Point}-like object that represents a screen position.
    * @returns {Object} with two values: `top` and `left`, representing the pixel position.
    */
   pixelPositionForScreenPosition(screenPosition) {

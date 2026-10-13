@@ -63,7 +63,7 @@ module.exports = class ScopeDescriptor {
    *
    * Get the ordered syntax scope names.
    *
-   * @returns {Array} of `Strings`
+   * @returns {Array<String>} The ordered, non-empty syntax scope names.
    */
   getScopesArray() {
     return this.scopes;

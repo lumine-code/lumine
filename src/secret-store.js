@@ -81,7 +81,7 @@ class SecretStore {
    * telling the user that a token has been saved — the first call warns them
    * once on its own.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
    * @category Encryption
    */
   async isEncryptionAvailable() {
@@ -189,8 +189,8 @@ class SecretStore {
    *
    * Read a secret.
    *
-   * @param key - The `String` key it was stored under.
-   * @returns {Promise} that resolves to the `String` value, or to `null` when nothing is stored under the key or it can no longer be decrypted — which happens after the OS credential store is reset, or when this session has no encryption and an earlier one did.
+   * @param {String} key - The `String` key it was stored under.
+   * @returns {Promise<String|null>} that resolves to the `String` value, or to `null` when nothing is stored under the key or it can no longer be decrypted — which happens after the OS credential store is reset, or when this session has no encryption and an earlier one did.
    */
   async get(key) {
     if (!(await this.isEncryptionAvailable())) {
@@ -239,9 +239,9 @@ class SecretStore {
    *
    * Store a secret.
    *
-   * @param key - The `String` key to store it under.
-   * @param value - The `String` to store. `null` or `undefined` deletes the key, as {@link #delete} would.
-   * @returns {Promise} that resolves once the value is written.
+   * @param {String} key - The `String` key to store it under.
+   * @param {String|null|undefined} value - The `String` to store. `null` or `undefined` deletes the key, as {@link #delete} would.
+   * @returns {Promise<void>} that resolves once the value is written.
    */
   async set(key, value) {
     if (value == null) return this.delete(key);
@@ -276,8 +276,8 @@ class SecretStore {
    *
    * Deleting a key that was never stored is not an error and emits nothing.
    *
-   * @param key - The `String` key to remove.
-   * @returns {Promise} that resolves once the key is gone.
+   * @param {String} key - The `String` key to remove.
+   * @returns {Promise<void>} that resolves once the key is gone.
    */
   async delete(key) {
     let changed = this.memory.delete(key);
@@ -305,7 +305,7 @@ class SecretStore {
    * if you need it.
    *
    * @param {Function} callback - called with an `Object`.
-   * @param callback.key - The `String` key that changed.
+   * @param {String} callback.key - The `String` key that changed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChange(callback) {

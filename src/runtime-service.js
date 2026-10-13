@@ -18,6 +18,7 @@ class RuntimeService {
    * Subscribe before an unhandled renderer error is reported.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Receives error details and preventDefault(), which suppresses opening the developer tools.
    */
   onWillThrowError(callback) {
     return this.lumineEnvironment.emitter.on("will-throw-error", callback);
@@ -30,6 +31,7 @@ class RuntimeService {
    * Subscribe after an unhandled renderer error is reported.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Receives the reported renderer error details.
    */
   onDidThrowError(callback) {
     return this.lumineEnvironment.emitter.on("did-throw-error", callback);
@@ -43,7 +45,7 @@ class RuntimeService {
    *
    * Wait until the current renderer has loaded its shell environment.
    *
-   * @returns {Promise} that resolves once environment loading is complete.
+   * @returns {Promise<void>} that resolves once environment loading is complete.
    */
   whenShellEnvironmentLoaded() {
     if (this.lumineEnvironment.shellEnvironmentLoaded) return Promise.resolve();

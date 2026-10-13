@@ -40,8 +40,8 @@ class Range {
    *
    * Convert any range-compatible object to a {@link Range}.
    *
-   * @param object - A {@link Range}, an array containing two point-compatible endpoints, or an object with `start` and `end` properties. An existing range is returned unless copying is requested.
-   * @param copy - An optional boolean indicating whether to force the copying of objects that are already ranges.
+   * @param {Range|Array<Point|Array<Number>>|Object} object - A {@link Range}, an array containing two point-compatible endpoints, or an object with `start` and `end` properties. An existing range is returned unless copying is requested.
+   * @param {Boolean} [copy=false] - An optional boolean indicating whether to force the copying of objects that are already ranges.
    * @returns {Range} A range based on the given object.
    */
   static fromObject(object, copy) {
@@ -93,14 +93,22 @@ class Range {
     return new this(startPoint, endPoint);
   }
 
-  // Returns a {@link Range} that starts at the given point and ends at the
-  // start point plus the given row and column deltas.
-  //
-  // * `startPoint` A {@link Point} or point-compatible `Array`
-  // * `rowDelta` A `Number` indicating how many rows to add to the start point
-  //   to get the end point.
-  // * `columnDelta` A `Number` indicating how many rows to columns to the start
-  //   point to get the end point.
+  /**
+   * @public
+   * @status public
+   *
+   * Construct a range from a point and independent row and column offsets.
+   *
+   * Both offsets are added to the original coordinates. The resulting
+   * endpoints are ordered in buffer order, so a negative offset can place
+   * the supplied point at the end of the range.
+   *
+   * @param {Point|Array<Number>|Object} startPoint - A point, a `[row, column]` array, or an object with `row` and `column` properties.
+   * @param {Number} rowDelta - The number of rows to add to the supplied point.
+   * @param {Number} columnDelta - The number of columns to add to the supplied point.
+   * @returns {Range} The range spanning the supplied point and the offset point.
+   * @category Construction
+   */
   static fromPointWithDelta(startPoint, rowDelta, columnDelta) {
     startPoint = Point.fromObject(startPoint);
     const endPoint = new Point(startPoint.row + rowDelta, startPoint.column + columnDelta);
@@ -122,7 +130,8 @@ class Range {
    *
    * Call this with the result of {@link Range#serialize} to construct a new Range.
    *
-   * @param {Array} array - of params to pass to the {@link #constructor}
+   * @param {Array<Array<Number>>} [array] - of params to pass to the {@link #constructor}
+   * @returns {Range} The restored range, or an empty range when the input is not an array.
    */
   static deserialize(array) {
     if (Array.isArray(array)) {
@@ -140,10 +149,10 @@ class Range {
    * @public
    * @status public
    *
-   * Construct a {@link Range} object
+   * Construct a {@link Range} with its endpoints in buffer order.
    *
-   * @param {Point} pointA - or Point compatible `Array` (default: [0,0])
-   * @param {Point} pointB - or Point compatible `Array` (default: [0,0])
+   * @param {Point|Array<Number>|Object} [pointA] - or Point compatible `Array` (default: [0,0])
+   * @param {Point|Array<Number>|Object} [pointB] - or Point compatible `Array` (default: [0,0])
    */
   constructor(pointA, pointB) {
     if (pointA == null) {
@@ -172,6 +181,8 @@ class Range {
    * @public
    * @status public
    *
+   * Create a range with the same start and end positions.
+   *
    * @returns {Range} new range with the same start and end positions.
    */
   copy() {
@@ -181,6 +192,8 @@ class Range {
   /**
    * @public
    * @status public
+   *
+   * Create a range with its endpoints negated and reordered.
    *
    * @returns {Range} new range with the start and end positions negated.
    * @category Operations
@@ -197,7 +210,9 @@ class Range {
    * @public
    * @status public
    *
-   * @returns {Object} plain JavaScript object representation of the range.
+   * Serialize this range as two row-and-column arrays.
+   *
+   * @returns {Array<Array<Number>>} The start and end positions as row-and-column arrays.
    */
   serialize() {
     return [this.start.serialize(), this.end.serialize()];
@@ -223,6 +238,8 @@ class Range {
    * @public
    * @status public
    *
+   * Determine whether this range starts and ends on the same row.
+   *
    * @returns {Boolean} indicating whether this range starts and ends on the same row.
    */
   isSingleLine() {
@@ -245,7 +262,9 @@ class Range {
    * @public
    * @status public
    *
-   * @returns {Array} array of all rows in the range.
+   * Get all row numbers touched by this range.
+   *
+   * @returns {Array<Number>} Every row from the start row through the end row, inclusive.
    */
   getRows() {
     return __range__(this.start.row, this.end.row, true);
@@ -274,7 +293,9 @@ class Range {
    * @public
    * @status public
    *
-   * @param otherRange - A {@link Range} or range-compatible `Array`
+   * Create the smallest range containing this range and another.
+   *
+   * @param {Range|Array<Point|Array<Number>>|Object} otherRange - A {@link Range} or range-compatible `Array`
    * @returns {Range} new range that contains this range and the given range.
    */
   union(otherRange) {
@@ -291,8 +312,8 @@ class Range {
    * Build and return a new range by translating this range's start and
    * end points by the given delta(s).
    *
-   * @param startDelta - A {@link Point} by which to translate the start of this range.
-   * @param [endDelta] - A {@link Point} to by which to translate the end of this range. If omitted, the `startDelta` will be used instead.
+   * @param {Point|Array<Number>|Object} startDelta - A {@link Point} by which to translate the start of this range.
+   * @param {Point|Array<Number>|Object} [endDelta] - A {@link Point} to by which to translate the end of this range. If omitted, the `startDelta` will be used instead.
    * @returns {Range}
    */
   translate(startDelta, endDelta) {
@@ -311,7 +332,7 @@ class Range {
    *
    * See {@link Point#traverse} for details of how traversal differs from translation.
    *
-   * @param delta - A {@link Point} containing the rows and columns to traverse to derive the new range.
+   * @param {Point|Array<Number>|Object} delta - A {@link Point} containing the rows and columns to traverse to derive the new range.
    * @returns {Range}
    */
   traverse(delta) {
@@ -326,10 +347,10 @@ class Range {
    * @public
    * @status public
    *
-   * Compare two Ranges
+   * Compare ranges by start position, ordering longer ranges first on a tie.
    *
-   * @param other - A {@link Range} or range-compatible `Array`.
-   * @returns {Number} `-1` when this range starts first, `0` when the ranges are equal, or `1` when the argument starts first.
+   * @param {Range|Array<Point|Array<Number>>|Object} other - A {@link Range} or range-compatible `Array`.
+   * @returns {Number} `-1` when this range sorts first, `0` when equal, or `1` when the argument sorts first.
    */
   compare(other) {
     let value;
@@ -345,7 +366,9 @@ class Range {
    * @public
    * @status public
    *
-   * @param other - A {@link Range} or range-compatible `Array`.
+   * Determine whether this range has the same endpoints as another.
+   *
+   * @param {Range|Array<Point|Array<Number>>|Object} other - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean} indicating whether this range has the same start and end points as the given {@link Range} or range-compatible `Array`.
    */
   isEqual(other) {
@@ -360,7 +383,9 @@ class Range {
    * @public
    * @status public
    *
-   * @param other - A {@link Range} or range-compatible `Array`.
+   * Determine whether this range starts and ends on the same rows as another.
+   *
+   * @param {Range|Array<Point|Array<Number>>|Object} other - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean} indicating whether this range starts and ends on the same row as the argument.
    */
   coversSameRows(other) {
@@ -368,14 +393,16 @@ class Range {
     return this.start.row === other.start.row && this.end.row === other.end.row;
   }
 
+  /** @category Range Queries */
+
   /**
    * @public
    * @status public
    *
    * Determines whether this range intersects with the argument.
    *
-   * @param otherRange - A {@link Range} or range-compatible `Array`
-   * @param {Boolean} [exclusive] - indicating whether to exclude endpoints when testing for intersection. Defaults to `false`.
+   * @param {Range|Array<Point|Array<Number>>|Object} otherRange - A {@link Range} or range-compatible `Array`
+   * @param {Boolean} [exclusive=false] - indicating whether to exclude endpoints when testing for intersection. Defaults to `false`.
    * @returns {Boolean}
    */
   intersectsWith(otherRange, exclusive) {
@@ -394,8 +421,10 @@ class Range {
    * @public
    * @status public
    *
-   * @param otherRange - A {@link Range} or range-compatible `Array`
-   * @param {Boolean} [exclusive] - including that the containment should be exclusive of endpoints. Defaults to false.
+   * Determine whether this range contains another range.
+   *
+   * @param {Range|Array<Point|Array<Number>>|Object} otherRange - A {@link Range} or range-compatible `Array`
+   * @param {Boolean} [exclusive=false] - including that the containment should be exclusive of endpoints. Defaults to false.
    * @returns {Boolean} indicating whether this range contains the given range.
    */
   containsRange(otherRange, exclusive) {
@@ -407,8 +436,10 @@ class Range {
    * @public
    * @status public
    *
-   * @param point - A {@link Point} or point-compatible `Array`
-   * @param {Boolean} [exclusive] - including that the containment should be exclusive of endpoints. Defaults to false.
+   * Determine whether this range contains a buffer position.
+   *
+   * @param {Point|Array<Number>|Object} point - A {@link Point} or point-compatible `Array`
+   * @param {Boolean} [exclusive=false] - including that the containment should be exclusive of endpoints. Defaults to false.
    * @returns {Boolean} indicating whether this range contains the given point.
    */
   containsPoint(point, exclusive) {
@@ -424,7 +455,9 @@ class Range {
    * @public
    * @status public
    *
-   * @param row - Row `Number`
+   * Determine whether this range intersects a row.
+   *
+   * @param {Number} row - Row `Number`
    * @returns {Boolean} indicating whether this range intersects the given row `Number`.
    */
   intersectsRow(row) {
@@ -434,6 +467,8 @@ class Range {
   /**
    * @public
    * @status public
+   *
+   * Determine whether this range intersects an inclusive range of rows.
    *
    * @param {Number} startRow - start row
    * @param {Number} endRow - end row
@@ -468,6 +503,8 @@ class Range {
   /**
    * @public
    * @status public
+   *
+   * Get a string representation of this range.
    *
    * @returns {String} string representation of the range.
    */

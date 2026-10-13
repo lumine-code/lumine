@@ -22,7 +22,26 @@ class Point {
    * @category Construction
    */
 
+  /**
+   * @public
+   * @status public
+   *
+   * The shared frozen point at row zero and column zero.
+   *
+   * @type {Point}
+   * @category Constants
+   */
   static ZERO = Object.freeze(new Point(0, 0));
+
+  /**
+   * @public
+   * @status public
+   *
+   * The shared frozen point with an infinite row and column.
+   *
+   * @type {Point}
+   * @category Constants
+   */
   static INFINITY = Object.freeze(new Point(Infinity, Infinity));
 
   /**
@@ -31,8 +50,8 @@ class Point {
    *
    * Convert any point-compatible object to a {@link Point}.
    *
-   * @param object - A {@link Point}, an array containing the row and column, or an object with `row` and `column` properties. An existing point is returned unless copying is requested.
-   * @param copy - An optional boolean indicating whether to force the copying of objects that are already points.
+   * @param {Point|Array<Number>|Object} object - A {@link Point}, an array containing the row and column, or an object with `row` and `column` properties. An existing point is returned unless copying is requested.
+   * @param {Boolean} [copy=false] - An optional boolean indicating whether to force the copying of objects that are already points.
    * @returns {Point} A point based on the given object.
    */
   static fromObject(object, copy) {
@@ -58,8 +77,10 @@ class Point {
    * @public
    * @status public
    *
-   * @param {Point} point1
-   * @param {Point} point2
+   * Get the earlier of two buffer positions.
+   *
+   * @param {Point|Array<Number>|Object} point1
+   * @param {Point|Array<Number>|Object} point2
    * @returns {Point} given {@link Point} that occurs earlier in the buffer.
    */
   static min(point1, point2) {
@@ -76,8 +97,10 @@ class Point {
    * @public
    * @status public
    *
-   * @param {Point} point1
-   * @param {Point} point2
+   * Get the later of two buffer positions.
+   *
+   * @param {Point|Array<Number>|Object} point1
+   * @param {Point|Array<Number>|Object} point2
    * @returns {Point} given {@link Point} that occurs later in the buffer.
    */
   static max(point1, point2) {
@@ -96,6 +119,8 @@ class Point {
    *
    * Ensure the given {@link Point} is valid by throwing a `TypeError` if
    * either its `row` or its `column` is not a number, or is `NaN`.
+   * @param {Point|Object} point - A point or object with numeric row and column properties.
+   * @returns {void}
    * @category Validation
    */
   static assertValid(point) {
@@ -114,8 +139,8 @@ class Point {
    *
    * Construct a {@link Point} object.
    *
-   * @param {Number} row - row
-   * @param {Number} column - column
+   * @param {Number} [row=0] - row
+   * @param {Number} [column=0] - column
    */
   constructor(row = 0, column = 0) {
     this.row = row;
@@ -126,6 +151,8 @@ class Point {
    * @public
    * @status public
    *
+   * Create a point with the same row and column.
+   *
    * @returns {Point} new {@link Point} with the same row and column.
    */
   copy() {
@@ -135,6 +162,8 @@ class Point {
   /**
    * @public
    * @status public
+   *
+   * Create a point with the row and column negated.
    *
    * @returns {Point} new {@link Point} with the row and column negated.
    * @category Operations
@@ -166,7 +195,7 @@ class Point {
    * Build and return a new point by adding the rows and columns of
    * the given point.
    *
-   * @param other - A {@link Point} whose row and column will be added to this point's row and column to build the returned point.
+   * @param {Point|Array<Number>|Object} other - A {@link Point} whose row and column will be added to this point's row and column to build the returned point.
    * @returns {Point}
    */
   translate(other) {
@@ -196,7 +225,7 @@ class Point {
    * Traversing 2 rows, 2 columns. Note the columns reset from 0 before adding:
    * `new Point(10, 5).traverse(new Point(2, 2)) # => [12, 2]`
    *
-   * @param other - A {@link Point} providing the rows and columns to traverse by.
+   * @param {Point|Array<Number>|Object} other - A {@link Point} providing the rows and columns to traverse by.
    * @returns {Point}
    */
   traverse(other) {
@@ -244,7 +273,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Compare this point with another buffer position.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Number} `-1` when this point precedes the argument, `0` when they are equal, or `1` when it follows.
    */
   compare(other) {
@@ -268,7 +299,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Determine whether this point has the same row and column as another.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point has the same row and column as the given {@link Point} or point-compatible `Array`.
    */
   isEqual(other) {
@@ -283,7 +316,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Determine whether this point precedes another.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point precedes the given {@link Point} or point-compatible `Array`.
    */
   isLessThan(other) {
@@ -294,7 +329,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Determine whether this point precedes or equals another.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point precedes or is equal to the given {@link Point} or point-compatible `Array`.
    */
   isLessThanOrEqual(other) {
@@ -305,7 +342,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Determine whether this point follows another.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point follows the given {@link Point} or point-compatible `Array`.
    */
   isGreaterThan(other) {
@@ -316,7 +355,9 @@ class Point {
    * @public
    * @status public
    *
-   * @param other - A {@link Point} or point-compatible `Array`.
+   * Determine whether this point follows or equals another.
+   *
+   * @param {Point|Array<Number>|Object} other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point follows or is equal to the given {@link Point} or point-compatible `Array`.
    */
   isGreaterThanOrEqual(other) {
@@ -355,7 +396,9 @@ class Point {
    * @public
    * @status public
    *
-   * @returns {Array} array of this point's row and column.
+   * Convert this point to a row-and-column array.
+   *
+   * @returns {Array<Number>} The row and column, in that order.
    */
   toArray() {
     return [this.row, this.column];
@@ -365,7 +408,9 @@ class Point {
    * @public
    * @status public
    *
-   * @returns {Array} array of this point's row and column.
+   * Serialize this point as a row-and-column array.
+   *
+   * @returns {Array<Number>} The row and column, in that order.
    */
   serialize() {
     return this.toArray();
@@ -374,6 +419,8 @@ class Point {
   /**
    * @public
    * @status public
+   *
+   * Get a string representation of this point.
    *
    * @returns {String} string representation of the point.
    */

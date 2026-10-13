@@ -64,7 +64,7 @@ module.exports = class PasteProviderRegistry {
    * Throws a `TypeError` when the provider has no `handlePaste` method, or when
    * `priority` is not a finite number.
    *
-   * @param provider - An `Object` with a `handlePaste(context)` method. It receives exactly what {@link #handlePaste} was given, and returns or resolves to `true` to claim the paste or `false` to pass it on.
+   * @param {Object} provider - An `Object` with a `handlePaste(context)` method. It receives exactly what {@link #handlePaste} was given, and returns or resolves to `true` to claim the paste or `false` to pass it on.
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - The order in which providers are
    *   consulted, highest first. Ties preserve registration order.
@@ -108,12 +108,12 @@ module.exports = class PasteProviderRegistry {
    * Providers are captured when dispatch starts. Removed providers are skipped,
    * and newly registered providers participate in the next paste.
    *
-   * @param context - An `Object` describing the paste, with the following keys:
-   * @param context.target - An `Object` naming where the paste lands. Today that is `{type: 'text-editor', editor}`, `{type: 'directory', path}`, or `{type: 'terminal', model, path}` — where `path` is the directory the terminal was launched in. Always branch on `type` and return `false` for one you do not recognize — the set grows as more of the workspace offers its pastes here.
-   * @param [context.clipboard] - The {@link Clipboard} to read the paste from. Inside a native paste event this is a DataTransfer-backed clipboard, so `readWithMetadata()` sees the metadata of the window that did the copy; outside one it is `lumine.clipboard`. Absent when the caller is not a text editor.
-   * @param [context.clipboardData] - The event's `DataTransfer`, or `null` when the paste did not arrive as a native paste event. Custom formats and non-text items such as files and images are readable only from here.
-   * @param [context.options] - An `Object` of the paste options the editor would otherwise have used, such as `autoIndent` and `normalizeLineEndings`.
-   * @returns {Boolean|Promise} `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did, or a `Promise` resolving to either value when a provider decides asynchronously.
+   * @param {Object} context - An `Object` describing the paste, with the following keys:
+   * @param {Object} context.target - An `Object` naming where the paste lands. Today that is `{type: 'text-editor', editor}`, `{type: 'directory', path}`, or `{type: 'terminal', model, path}` — where `path` is the directory the terminal was launched in. Always branch on `type` and return `false` for one you do not recognize — the set grows as more of the workspace offers its pastes here.
+   * @param {Clipboard|Object} [context.clipboard] - The {@link Clipboard} to read the paste from. Inside a native paste event this is a DataTransfer-backed clipboard, so `readWithMetadata()` sees the metadata of the window that did the copy; outside one it is `lumine.clipboard`. Absent when the caller is not a text editor.
+   * @param {DataTransfer|null} [context.clipboardData] - The event's `DataTransfer`, or `null` when the paste did not arrive as a native paste event. Custom formats and non-text items such as files and images are readable only from here.
+   * @param {Object} [context.options] - An `Object` of the paste options the editor would otherwise have used, such as `autoIndent` and `normalizeLineEndings`.
+   * @returns {Boolean|Promise<Boolean>} `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did, or a `Promise` resolving to either value when a provider decides asynchronously.
    */
   handlePaste(context) {
     const providers = this.providers.slice();

@@ -160,6 +160,7 @@ const fuzzyMatcher = {
    *   first argument is a matcher; construction options when it is an array.
    *   Set `ignoreDiacritics: true` in those options for accent-insensitive matching.
    * @param {Object} [_options] - Retained for compatibility; ignored.
+   * @param {Boolean} [candidates.ignoreDiacritics=false] - Construction option when candidates is an options object; fixed for the lifetime of the Matcher.
    * @returns {Matcher} The created or updated matcher.
    */
   setCandidates: setCandidates,
@@ -176,6 +177,7 @@ const fuzzyMatcher = {
    * @param {String} query - The search query.
    * @param {Object} [opts] - The options accepted by {@link Matcher#match}, plus
    *   `ignoreDiacritics` for accent-insensitive matching.
+   * @param {Boolean} [opts.ignoreDiacritics=false] - Enable accent-insensitive matching; match indexes refer to the original candidate.
    * @returns {Number} The score from 0 to 1, or 0 when there is no match.
    */
   score(candidate, query, opts = {}) {
@@ -193,6 +195,7 @@ const fuzzyMatcher = {
    * @param {String} query - The search query.
    * @param {Object} [opts] - The options accepted by {@link Matcher#match}, plus
    *   `ignoreDiacritics` for accent-insensitive matching.
+   * @param {Boolean} [opts.ignoreDiacritics=false] - Enable accent-insensitive matching; match indexes refer to the original candidate.
    * @returns {Object|undefined} The match with `id`, `value`, `score` and optional
    *   character indexes, or `undefined` when there is no match.
    */

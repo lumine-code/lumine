@@ -27,7 +27,7 @@ module.exports = class Gutter {
   }
 
   /**
-   * @category Gutter Destruction
+   * @category Lifecycle
    */
 
   /**
@@ -35,6 +35,8 @@ module.exports = class Gutter {
    * @status essential
    *
    * Destroys the gutter.
+   * @returns {void}
+   * @throws {Error} When called on the built-in line-number gutter.
    */
   destroy() {
     if (this.name === "line-number") {
@@ -57,7 +59,7 @@ module.exports = class Gutter {
    * Calls your `callback` when the gutter's visibility changes.
    *
    * @param {Function} callback
-   * @param callback.gutter - The gutter whose visibility changed.
+   * @param {Gutter} callback.gutter - The gutter whose visibility changed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeVisible(callback) {
@@ -86,6 +88,7 @@ module.exports = class Gutter {
    * @status essential
    *
    * Hide the gutter.
+   * @returns {void}
    */
   hide() {
     if (this.visible) {
@@ -100,6 +103,7 @@ module.exports = class Gutter {
    * @status essential
    *
    * Show the gutter.
+   * @returns {void}
    */
   show() {
     if (!this.visible) {
@@ -135,9 +139,9 @@ module.exports = class Gutter {
    *
    * ## Arguments
    *
-   * @param marker - A {@link DisplayMarker} you want this decoration to follow.
-   * @param options - An `Object` representing the decoration. It is passed to {@link TextEditor#decorateMarker} as its options argument and so supports all options documented there.
-   * @param options.type - __Caveat__: set to `'line-number'` if this is the line-number gutter, `'gutter'` otherwise. This cannot be overridden.
+   * @param {DisplayMarker} marker - A {@link DisplayMarker} you want this decoration to follow.
+   * @param {Object} options - An `Object` representing the decoration. It is passed to {@link TextEditor#decorateMarker} as its options argument and so supports all options documented there.
+   * @param {String} [options.type] - __Caveat__: set to `'line-number'` if this is the line-number gutter, `'gutter'` otherwise. This cannot be overridden.
    * @returns {Decoration} object
    */
   decorateMarker(marker, options) {

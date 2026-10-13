@@ -37,6 +37,7 @@ class WindowService {
    * Subscribe before the current editor window is destroyed.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called before this window is destroyed.
    * @category Event Subscription
    */
   onWillDestroy(callback) {
@@ -51,7 +52,7 @@ class WindowService {
    *
    * Wait until the current editor window has finished loading.
    *
-   * @returns {Promise} resolving to the load time in milliseconds.
+   * @returns {Promise<Number>} resolving to the load time in milliseconds.
    */
   whenLoaded() {
     if (this.lumineEnvironment.loadTime != null) {
@@ -66,7 +67,7 @@ class WindowService {
    *
    * Set the filename represented by the native window.
    * @param {String} filename - The current path, or an empty string.
-   * @returns {Promise} Completes after the native property is set.
+   * @returns {Promise<void>} Completes after the native property is set.
    * @category Native Presentation
    */
   setRepresentedFilename(filename) {
@@ -80,6 +81,7 @@ class WindowService {
    * @status public
    *
    * Determine whether the current window is in development mode.
+   * @returns {Boolean}
    */
   isDevMode() {
     return Boolean(getWindowLoadSettings().devMode);
@@ -90,6 +92,7 @@ class WindowService {
    * @status public
    *
    * Determine whether the current window is in safe mode.
+   * @returns {Boolean}
    */
   isSafeMode() {
     return Boolean(getWindowLoadSettings().safeMode);
@@ -100,6 +103,7 @@ class WindowService {
    * @status public
    *
    * Determine whether the current window is running specs.
+   * @returns {Boolean}
    */
   isSpecMode() {
     return Boolean(getWindowLoadSettings().isSpec);
@@ -110,6 +114,7 @@ class WindowService {
    * @status extended
    *
    * Determine whether the current window is running headlessly.
+   * @returns {Boolean}
    */
   isHeadless() {
     return Boolean(getWindowLoadSettings().headless);
@@ -147,7 +152,7 @@ class WindowService {
    *
    * Get startup timing markers for the current window.
    *
-   * @returns {Object} startup timing markers for the current window.
+   * @returns {Array<Object>} Startup markers with label and elapsed time in milliseconds.
    */
   getStartupMarkers() {
     return StartupTime.exportData()?.markers || [];
@@ -173,9 +178,9 @@ class WindowService {
    * @public
    * @status public
    *
-   * Get the current content size.
+   * Get the current native window size.
    *
-   * @returns {Promise<Object>} The current content size as `{width, height}`.
+   * @returns {Promise<Object>} The current native window size as `{width, height}`.
    */
   getSize() {
     return this.applicationDelegate.invokeWindow("getSize");
@@ -185,11 +190,11 @@ class WindowService {
    * @public
    * @status public
    *
-   * Set the content size.
+   * Set the native window size.
    *
-   * @param width - A finite `Number` in pixels.
-   * @param height - A finite `Number` in pixels.
-   * @returns {Promise} that resolves when the request is applied.
+   * @param {Number} width - A positive integer size in pixels.
+   * @param {Number} height - A positive integer size in pixels.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   setSize(width, height) {
     return this.applicationDelegate.invokeWindow("setSize", width, height);
@@ -213,9 +218,9 @@ class WindowService {
    *
    * Set the current screen position.
    *
-   * @param x - A finite `Number` in pixels.
-   * @param y - A finite `Number` in pixels.
-   * @returns {Promise} that resolves when the request is applied.
+   * @param {Number} x - An integer screen coordinate in pixels.
+   * @param {Number} y - An integer screen coordinate in pixels.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   setPosition(x, y) {
     return this.applicationDelegate.invokeWindow("setPosition", x, y);
@@ -227,7 +232,7 @@ class WindowService {
    *
    * Center the current window on its display.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   center() {
     return this.applicationDelegate.invokeWindow("center");
@@ -241,7 +246,7 @@ class WindowService {
    *
    * Focus the current window.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   focus() {
     return this.applicationDelegate.invokeWindow("focus");
@@ -253,7 +258,7 @@ class WindowService {
    *
    * Show the current window and restore its focus policy.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   show() {
     return this.applicationDelegate.invokeWindow("show");
@@ -265,7 +270,7 @@ class WindowService {
    *
    * Hide the current window.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   hide() {
     return this.applicationDelegate.invokeWindow("hide");
@@ -277,7 +282,7 @@ class WindowService {
    *
    * Close the current window.
    *
-   * @returns {Promise} that resolves when the close request is accepted.
+   * @returns {Promise<void>} that resolves when the close request is accepted.
    */
   close() {
     return this.applicationDelegate.invokeWindow("close");
@@ -289,7 +294,7 @@ class WindowService {
    *
    * Reload the current window.
    *
-   * @returns {Promise} that resolves after the reloaded renderer reports ready.
+   * @returns {Promise<void>} that resolves after the reloaded renderer reports ready.
    */
   reload() {
     return this.applicationDelegate.invokeWindow("reload");
@@ -301,7 +306,7 @@ class WindowService {
    *
    * Minimize the current window.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   minimize() {
     return this.applicationDelegate.invokeWindow("minimize");
@@ -313,7 +318,7 @@ class WindowService {
    *
    * Maximize the current window.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   maximize() {
     return this.applicationDelegate.invokeWindow("maximize");
@@ -325,7 +330,7 @@ class WindowService {
    *
    * Restore a maximized window.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   unmaximize() {
     return this.applicationDelegate.invokeWindow("unmaximize");
@@ -339,7 +344,7 @@ class WindowService {
    *
    * Determine whether the current window is maximized.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
    */
   isMaximized() {
     return this.applicationDelegate.invokeWindow("isMaximized");
@@ -351,7 +356,7 @@ class WindowService {
    *
    * Determine whether the current window is full screen.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
    */
   isFullScreen() {
     return this.applicationDelegate.invokeWindow("isFullScreen");
@@ -363,7 +368,7 @@ class WindowService {
    *
    * Determine whether the current window is visible.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
    */
   isVisible() {
     return this.applicationDelegate.invokeWindow("isVisible");
@@ -377,8 +382,8 @@ class WindowService {
    *
    * Enter or leave full-screen mode.
    *
-   * @param fullScreen - A `Boolean` indicating the desired state.
-   * @returns {Promise} that resolves when the request is applied.
+   * @param {Boolean} [fullScreen=false] - A `Boolean` indicating the desired state.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   setFullScreen(fullScreen = false) {
     return this.applicationDelegate.invokeWindow("setFullScreen", fullScreen);
@@ -390,7 +395,7 @@ class WindowService {
    *
    * Toggle full-screen mode.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   async toggleFullScreen() {
     return this.setFullScreen(!(await this.isFullScreen()));
@@ -404,7 +409,7 @@ class WindowService {
    *
    * Ask the user to select one or more folders.
    *
-   * @returns {Promise} resolving to an `Array` of paths, or `null` on cancellation.
+   * @returns {Promise<Array<String>|null>} resolving to an `Array` of paths, or `null` on cancellation.
    */
   pickFolder() {
     return this.applicationDelegate.invokeWindow("pickFolder");
@@ -416,7 +421,7 @@ class WindowService {
    *
    * Show an open dialog owned by the current window.
    *
-   * @param options - Serializable Electron open-dialog options.
+   * @param {Object} [options={}] - Serializable Electron open-dialog options.
    * @returns {Promise<Object>} resolving to Electron's serializable open-dialog result.
    */
   showOpenDialog(options = {}) {
@@ -429,8 +434,8 @@ class WindowService {
    *
    * Show a save dialog owned by the current window.
    *
-   * @param options - Serializable Electron save-dialog options.
-   * @returns {Promise} resolving to Electron's serializable save-dialog result.
+   * @param {Object} [options={}] - Serializable Electron save-dialog options.
+   * @returns {Promise<Object>} resolving to Electron's serializable save-dialog result.
    */
   showSaveDialog(options = {}) {
     return this.applicationDelegate.invokeWindow("showSaveDialog", options);
@@ -443,7 +448,9 @@ class WindowService {
    * Show a non-blocking confirmation dialog owned by the current
    * window.
    *
-   * @returns {Promise} resolving to the selected button index.
+   * @returns {Promise<Number>} resolving to the selected button index.
+   * @param {Object} options - Serializable message-box options.
+   * @param {Array<String>} options.buttons - Button labels in result-index order.
    */
   confirm(options) {
     return this.applicationDelegate.confirm(options);
@@ -455,8 +462,8 @@ class WindowService {
    *
    * Start a download in the current window.
    *
-   * @param url - The `String` URL to download.
-   * @returns {Promise} that resolves when the download is started.
+   * @param {String} url - The `String` URL to download.
+   * @returns {Promise<void>} that resolves when the download is started.
    * @category Downloads
    */
   downloadURL(url) {
@@ -484,8 +491,8 @@ class WindowService {
    *
    * This is a no-op on other platforms.
    *
-   * @param offsetY - A non-negative integer number of pixels.
-   * @returns {Promise} that resolves when the request is applied.
+   * @param {Number} offsetY - A non-negative integer number of pixels.
+   * @returns {Promise<void>} that resolves when the request is applied.
    * @category Native Presentation
    */
   setSheetOffset(offsetY) {
@@ -500,7 +507,7 @@ class WindowService {
    *
    * Open the current window's developer tools.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   async openDevTools() {
     await new Promise(process.nextTick);
@@ -513,7 +520,7 @@ class WindowService {
    *
    * Close the current window's developer tools.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   async closeDevTools() {
     await new Promise(process.nextTick);
@@ -526,7 +533,7 @@ class WindowService {
    *
    * Toggle the current window's developer tools.
    *
-   * @returns {Promise} that resolves when the request is applied.
+   * @returns {Promise<void>} that resolves when the request is applied.
    */
   async toggleDevTools() {
     await new Promise(process.nextTick);
@@ -539,7 +546,8 @@ class WindowService {
    *
    * Evaluate JavaScript in the current window's developer tools.
    *
-   * @returns {Promise} that resolves after evaluation, or immediately when developer tools are closed.
+   * @returns {Promise<void>} Resolves after execution, or immediately if the developer tools are closed.
+   * @param {String} code - JavaScript source to run if the developer tools are open.
    */
   executeJavaScriptInDevTools(code) {
     return this.applicationDelegate.invokeWindow("executeJavaScriptInDevTools", code);
@@ -553,9 +561,9 @@ class WindowService {
    *
    * Send a serializable event to every other registered Lumine window.
    *
-   * @param eventName - A non-empty `String` event name.
-   * @param args - Structured-cloneable values delivered to subscribers.
-   * @returns {Promise} that resolves after the event is sent.
+   * @param {String} eventName - A non-empty `String` event name.
+   * @param {...*} args - Structured-cloneable values delivered to subscribers.
+   * @returns {Promise<void>} that resolves after the event is sent.
    */
   broadcast(eventName, ...args) {
     if (typeof eventName !== "string" || eventName.length === 0) {
@@ -573,6 +581,8 @@ class WindowService {
    * Subscribe to named events broadcast by other Lumine windows.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {String} eventName - The broadcast event name.
+   * @param {Function} callback - Receives the broadcast arguments from another window.
    */
   onDidReceive(eventName, callback) {
     if (typeof eventName !== "string" || eventName.length === 0) {
@@ -588,6 +598,7 @@ class WindowService {
    * Invoke `callback` after entering full-screen mode.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidEnterFullScreen(callback) {
     return this.applicationDelegate.onDidEnterFullScreen(callback);
@@ -600,6 +611,7 @@ class WindowService {
    * Invoke `callback` after leaving full-screen mode.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidLeaveFullScreen(callback) {
     return this.applicationDelegate.onDidLeaveFullScreen(callback);
@@ -612,6 +624,7 @@ class WindowService {
    * Invoke `callback` after the window is maximized.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidMaximize(callback) {
     return this.applicationDelegate.onDidMaximizeWindow(callback);
@@ -624,6 +637,7 @@ class WindowService {
    * Invoke `callback` after a maximized window is restored.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidUnmaximize(callback) {
     return this.applicationDelegate.onDidUnmaximizeWindow(callback);
@@ -636,6 +650,7 @@ class WindowService {
    * Invoke `callback` when the window gains focus.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidFocus(callback) {
     return this.applicationDelegate.onDidFocusWindow(callback);
@@ -648,6 +663,7 @@ class WindowService {
    * Invoke `callback` when the window loses focus.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @param {Function} callback - Called when the documented native window event occurs.
    */
   onDidBlur(callback) {
     return this.applicationDelegate.onDidBlurWindow(callback);

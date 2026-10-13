@@ -36,6 +36,9 @@ let nextSelectListId = 1;
  * grouping of exactly the same items. It applies only while the unfiltered
  * list actually overflows its viewport; shorter lists retain their natural
  * order without section separators. Pass `null` to remove this alternative.
+ *
+ * Destroy this model with the inherited {@link InputDialog#destroy}; calling
+ * the inherited {@link InputDialog#confirm} delegates to {@link #confirmSelection}.
  */
 class SelectList extends InputDialog {
   createComponent() {
@@ -477,12 +480,8 @@ class SelectList extends InputDialog {
   }
 
   /**
-   * @public
-   * @status experimental
-   *
-   * Destroys the select list and cleans up resources.
-   * @returns {Promise} Resolves when destruction is complete
-   * @category Lifecycle
+   * Release list-specific resources during {@link InputDialog#destroy}.
+   * @private
    */
   async destroyNow() {
     this.filterMatcher = null;
@@ -550,6 +549,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the parsed search text and package metadata.
+   * @returns {Object} A frozen {text, data} record; data is the arbitrary metadata returned by search.parseQuery.
    * @category Query
    */
   getParsedQuery() {
@@ -563,6 +563,8 @@ class SelectList extends InputDialog {
    * Replace the asynchronous source and keep local filtering aligned with its
    * mode. Query sources own filtering; snapshot sources and a null source use
    * the list's current parsed query.
+   * @param {Object|null} source - Source options accepted by InputDialog.setSource; query sources own filtering.
+   * @returns {Promise<void>}
    * @category Asynchronous Sources
    */
   setSource(source) {
@@ -831,6 +833,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return a snapshot of all source items.
+   * @returns {Array<*>}
    */
   getItems() {
     return this.model.getItems();
@@ -841,6 +844,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return all items in current filtered order.
+   * @returns {Array<*>}
    * @category Filtering
    */
   getFilteredItems() {
@@ -852,6 +856,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the currently displayed page without UI rows.
+   * @returns {Array<*>}
    * @category Pagination
    */
   getDisplayedItems() {
@@ -863,6 +868,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the number of source items.
+   * @returns {Number}
    */
   getItemCount() {
     return this.model.getItems().length;
@@ -873,6 +879,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the number of filtered matches.
+   * @returns {Number}
    * @category Filtering
    */
   getMatchCount() {
@@ -884,6 +891,11 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when source items change.
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {SelectList} callback.event.list
+   * @param {Array<*>} callback.event.items
+   * @returns {Disposable} Dispose to unsubscribe.
    * @category Event Subscription
    */
   onDidChangeItems(callback) {
@@ -895,6 +907,15 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when the logical selection changes.
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {SelectList} callback.event.list
+   * @param {*} callback.event.item - The selected source item, or null for a selection-change event.
+   * @param {*} callback.event.itemId - Its stable ID, or null.
+   * @param {Number|null} callback.event.index
+   * @param {*} callback.event.previousItem
+   * @param {String} callback.event.reason
+   * @returns {Disposable} Dispose to unsubscribe.
    * @category Event Subscription
    */
   onDidChangeSelection(callback) {
@@ -906,6 +927,10 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Replace a flat item source while preserving selection by default.
+   * @param {Array<*>} items - Replacement source.
+   * @param {Object} [options] - Selection behavior for this update.
+   * @param {Object} [options.selection] - Override selection with {mode: "first"}, {mode: "none"}, or {id}. Otherwise preserve selection by stable ID when possible.
+   * @returns {Promise<void>}
    */
   setItems(items, options = {}) {
     return this.update({ items, itemUpdateOptions: options });
@@ -916,6 +941,10 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Replace the source with explicitly grouped sections.
+   * @param {Array<Object>} sections - Section records with a required non-null primitive id and items array; additional section metadata is retained.
+   * @param {Object} [options] - Selection behavior for this update.
+   * @param {Object} [options.selection] - Override selection with {mode: "first"}, {mode: "none"}, or {id}. Otherwise preserve selection by stable ID when possible.
+   * @returns {Promise<void>}
    */
   setSections(sections, options = {}) {
     return this.update({ sections, itemUpdateOptions: options });
@@ -926,6 +955,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Re-render the current source after items changed in place.
+   * @param {Object} [options] - Selection options accepted by setItems/setSections.
+   * @returns {Promise<void>}
    */
   refresh(options = {}) {
     return "sections" in this.props
@@ -939,8 +970,8 @@ class SelectList extends InputDialog {
    *
    * Returns the stable identifier used by the model for an item. Object
    * items default to their `id` property; primitive items identify themselves.
-   * @param {*} item - The item to identify
-   * @returns {*} The item's identifier
+   * @param {*} item - A source item.
+   * @returns {*} A non-null primitive stable ID from getItemId, object.id, or a primitive item.
    */
   getItemId(item) {
     return this.model.getItemId(item);
@@ -1090,10 +1121,9 @@ class SelectList extends InputDialog {
    * navigation that lands on the row from afar — Ctrl-End crossing the whole
    * list — passes `followSelection: true` instead, and the viewport moves to
    * the newly selected item like any other selection change.
-   * @param {Object} [options]
-   * @param {boolean} [options.followSelection] - Let the selection's own
-   *   scroll-into-view stand instead of restoring the previous position
-   * @returns {Promise} Resolves when the expanded list has rendered
+   * @param {Object} [options] - Paging options.
+   * @param {Boolean} [options.followSelection=false] - Scroll to the first newly revealed item instead of preserving the viewport.
+   * @returns {Promise<Boolean>}
    * @category Pagination
    */
   async showMore({ followSelection = false } = {}) {
@@ -1158,8 +1188,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Returns the filter key for an item.
-   * @param {*} item - The item to get the filter key for
-   * @returns {string|null} The filter key string, or null
+   * @param {*} item - A source item.
+   * @returns {String|null}
    */
   getFilterKey(item) {
     // The sentinel never matches a query and has no consumer-facing key.
@@ -1174,10 +1204,9 @@ class SelectList extends InputDialog {
    *
    * Returns the match indices for an item, computing lazily if needed.
    * Match indices indicate which characters in the filter key matched the query.
-   * @param {*} item - The item to get match indices for
-   * @param {string} [filterKey] - Optional filter key override. If not provided,
-   *   uses the filter text cached by the list model.
-   * @returns {number[]|null} Array of character indices that matched, or null
+   * @param {*} item - A source item.
+   * @param {String} [filterKey] - Use this filter text instead of deriving it from the item.
+   * @returns {Array<Number>|null}
    */
   getMatchIndices(item, filterKey) {
     const itemId = this.getItemId(item);
@@ -1226,6 +1255,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the selected package item, or null.
+   * @returns {*} The selected source item, or null when no item is selected.
    */
   getSelectedItem() {
     return this.showMoreSelected ? null : this.model.getSelectedItem();
@@ -1236,6 +1266,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the stable ID of the selected item, or null.
+   * @returns {*} The selected non-null primitive stable ID, or null when none is selected.
    */
   getSelectedItemId() {
     return this.showMoreSelected ? null : this.model.getSelectedId();
@@ -1246,6 +1277,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the selected filtered index, or null.
+   * @returns {Number|null}
    */
   getSelectedIndex() {
     if (this.showMoreSelected) return null;
@@ -1335,6 +1367,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select the previous item, respecting the optional empty state.
+   * @returns {Promise<void|Boolean>}
    */
   selectPrevious() {
     if (this.selectionIndex === undefined) return this.selectLast();
@@ -1347,6 +1380,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select the next item, revealing another page when needed.
+   * @returns {Promise<void|Boolean>}
    */
   selectNext() {
     if (this.showMoreSelected) return this.showMore({ followSelection: true });
@@ -1376,6 +1410,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select the first matching item.
+   * @returns {Promise<void|Boolean>} Resolves after selection or after revealing another page.
    */
   selectFirst() {
     return this.selectIndexOrShowMore(0);
@@ -1386,6 +1421,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select the last item in the displayed page.
+   * @returns {Promise<void|Boolean>} Resolves after selection or after revealing another page.
    */
   selectLast() {
     return this.selectIndexOrShowMore(this.items.length - 1);
@@ -1414,6 +1450,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Clear the logical selection.
+   * @returns {Promise<void>}
    */
   selectNone() {
     return this.selectIndex(undefined);
@@ -1424,6 +1461,10 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select an item by its displayed index.
+   * @param {Number|undefined} index - Displayed index, or undefined to clear selection; out-of-bounds indices wrap.
+   * @param {Boolean} [updateComponent=true] - Schedule rendering when true.
+   * @param {String} [reason="programmatic"] - Included in the selection-change event.
+   * @returns {Promise<void>}
    */
   selectIndex(index, updateComponent = true, reason = "programmatic") {
     const previous = this.selectionSnapshot();
@@ -1465,6 +1506,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select an item by value or object identity.
+   * @param {*} item - A source item.
+   * @returns {Promise<void>}
    */
   selectItem(item) {
     const previous = this.selectionSnapshot();
@@ -1488,6 +1531,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select an item by stable ID.
+   * @param {*} id - A non-null primitive item ID; throws when absent from the source.
+   * @returns {Promise<void>}
    */
   selectItemById(id) {
     const item = this.model.getItemById(id);
@@ -1503,6 +1548,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the list viewport's vertical scroll offset.
+   * @returns {Number}
    */
   getScrollTop() {
     return this.component?.refs?.items?.scrollTop ?? 0;
@@ -1513,6 +1559,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Set the list viewport's vertical scroll offset.
+   * @param {Number} scrollTop - Vertical offset in pixels; has no effect before materialization.
+   * @returns {void}
    */
   setScrollTop(scrollTop) {
     if (this.component?.refs?.items) this.component.refs.items.scrollTop = scrollTop;
@@ -1523,6 +1571,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Select and reveal an item or stable ID.
+   * @param {*} itemOrId - A source item or its non-null primitive stable ID.
+   * @returns {Boolean}
    */
   scrollToItem(itemOrId) {
     try {
@@ -1539,6 +1589,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Reveal the currently selected row.
+   * @returns {Boolean}
    */
   scrollToSelectedItem() {
     if (this.selectionIndex == null || !this.listItems?.[this.selectionIndex]) return false;
@@ -1553,6 +1604,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return whether another result page remains.
+   * @returns {Boolean}
    */
   hasMoreItems() {
     return this.model.hasMore();
@@ -1563,6 +1615,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the number of matches beyond the displayed page.
+   * @returns {Number}
    */
   getRemainingItemCount() {
     return Math.max(0, this.getMatchCount() - this.getDisplayedItems().length);
@@ -1573,6 +1626,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Collapse displayed results to the first page.
+   * @returns {Promise<void>}
    */
   resetDisplayedItemLimit() {
     const previousSelection = this.selectionSnapshot();
@@ -1591,6 +1645,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return recent item IDs in most-recent-first order.
+   * @returns {Array<*>}
    */
   getRecentItemIds() {
     return this.model.getRecentIds();
@@ -1601,6 +1656,10 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Replace and optionally persist recent item IDs.
+   * @param {Array<*>} recentIds - Non-null primitive item IDs in most-recent-first order.
+   * @param {Object} [options] - Persistence options.
+   * @param {Boolean} [options.persist=true] - Save through the configured recents adapter.
+   * @returns {Promise<SelectList>}
    */
   async setRecentItemIds(recentIds, { persist = true } = {}) {
     if (!Array.isArray(recentIds)) throw new TypeError("Recent item IDs must be an array.");
@@ -1618,6 +1677,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return the configured maximum recent item count.
+   * @returns {Number}
    */
   getRecentLimit() {
     return this.recentConfiguration?.limit ?? Infinity;
@@ -1628,6 +1688,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Set the maximum recent item count and trim persisted state.
+   * @param {Number} limit - A non-negative integer or Infinity. Requires a configured recents adapter.
+   * @returns {Promise<SelectList>}
    */
   setRecentLimit(limit) {
     if (limit !== Infinity && (!Number.isInteger(limit) || limit < 0)) {
@@ -1645,6 +1707,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Return whether an item or stable ID is recent.
+   * @param {*} itemOrId - A source item or its non-null primitive stable ID.
+   * @returns {Boolean}
    */
   isRecentItem(itemOrId) {
     const id = this.model.getItems().includes(itemOrId) ? this.model.getItemId(itemOrId) : itemOrId;
@@ -1656,6 +1720,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Move an item to the front of the recent section.
+   * @param {*} item - A source item.
+   * @returns {Promise<SelectList>}
    */
   recordRecentItem(item) {
     const id = this.getItemId(item);
@@ -1669,6 +1735,8 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Remove an item from the recent section.
+   * @param {*} itemOrId - A source item or its non-null primitive stable ID.
+   * @returns {Promise<SelectList>}
    */
   removeRecentItem(itemOrId) {
     const id = this.model.getItems().includes(itemOrId) ? this.model.getItemId(itemOrId) : itemOrId;
@@ -1680,6 +1748,7 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Clear the recent section.
+   * @returns {Promise<SelectList>}
    */
   clearRecentItems() {
     return this.setRecentItemIds([]);
@@ -1690,6 +1759,11 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when recent item IDs change.
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {SelectList} callback.event.list
+   * @param {Array<*>} callback.event.recentItemIds
+   * @returns {Disposable} Dispose to unsubscribe.
    * @category Event Subscription
    */
   onDidChangeRecentItemIds(callback) {
@@ -1704,6 +1778,7 @@ class SelectList extends InputDialog {
    *
    * Confirms the current selection through the applicable primary action, or
    * emits the corresponding confirmation event when none is declared.
+   * @returns {Promise<Object|Boolean>|undefined} Primary action completion, a paging result for the Show more row, or undefined after a confirmation event.
    */
   confirmSelection() {
     if (this.selectedItemRaw() === SHOW_MORE_ITEM) {
@@ -1730,6 +1805,12 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when confirmation has no primary item action.
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {SelectList} callback.event.list
+   * @param {*} callback.event.item - The selected source item, or null for a selection-change event.
+   * @param {*} callback.event.itemId - Its stable ID, or null.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidConfirmSelection(callback) {
     return this.emitter.on("did-confirm-selection", callback);
@@ -1740,6 +1821,10 @@ class SelectList extends InputDialog {
    * @status experimental
    *
    * Invoke a callback when an empty selection is confirmed.
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {SelectList} callback.event.list
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidConfirmEmptySelection(callback) {
     return this.emitter.on("did-confirm-empty-selection", callback);

@@ -65,9 +65,9 @@ module.exports = class TextEditorRegistry {
    * emits no duplicate add event. A conflicting role throws a `TypeError`.
    * Destroying the editor releases the registration automatically.
    *
-   * @param editor - The {@link TextEditor} to register.
+   * @param {TextEditor} editor - The {@link TextEditor} to register.
    * @param {Object} options - Registration options.
-   * @param {"document"|"fragment"|"input"|"viewer"} options.role - How the editor participates in the window.
+   * @param {"document"|"fragment"|"input"|"viewer"} [options.role] - How the editor participates in the window.
    * @returns {Disposable} A lease to dispose when this owner stops exposing the editor.
    */
   add(editor, { role } = {}) {
@@ -141,8 +141,8 @@ module.exports = class TextEditorRegistry {
    *
    * Get the role under which a {@link TextEditor} is registered.
    *
-   * @param editor - The {@link TextEditor} to look up.
-   * @returns {String} Its role, or `null` when it is not registered.
+   * @param {TextEditor} editor - The {@link TextEditor} to look up.
+   * @returns {String|null} The registered role, or null when the editor is not registered.
    */
   roleFor(editor) {
     return this.editors.get(editor)?.role ?? null;
@@ -154,7 +154,7 @@ module.exports = class TextEditorRegistry {
    *
    * Get a snapshot of every registered editor in registration order.
    *
-   * @returns {Array} of {@link TextEditor TextEditors}.
+   * @returns {Array<TextEditor>} Registered editors in registration order.
    */
   getEditors() {
     return Array.from(this.editors.keys());

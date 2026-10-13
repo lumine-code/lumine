@@ -183,7 +183,7 @@ class InputDialog {
    * @status experimental
    *
    * Return whether this dialog has been destroyed.
-   * @returns {boolean}
+   * @returns {Boolean}
    * @category Lifecycle
    */
   isDestroyed() {
@@ -267,6 +267,12 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when the query changes.
+   * @param {Function} callback - The observer.
+   * @param {Object} callback.event
+   * @param {InputDialog} callback.event.dialog
+   * @param {String} callback.event.query
+   * @param {Object} callback.event.parsedQuery - Frozen {text, data} record.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidChangeQuery(callback) {
     return this.emitter.on("did-change-query", callback);
@@ -277,6 +283,11 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when confirmation has no primary action.
+   * @param {Function} callback - The observer.
+   * @param {Object} callback.event
+   * @param {InputDialog} callback.event.dialog
+   * @param {String} callback.event.query
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidConfirm(callback) {
     return this.emitter.on("did-confirm", callback);
@@ -286,7 +297,9 @@ class InputDialog {
    * @public
    * @status experimental
    *
-   * Invoke a callback immediately before the dialog is destroyed.
+   * Invoke a callback during dialog destruction.
+   * @param {Function} callback - The observer.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
@@ -297,6 +310,7 @@ class InputDialog {
    * @status experimental
    *
    * Clears the query editor text.
+   * @returns {void}
    * @category Query
    */
   reset() {
@@ -313,7 +327,7 @@ class InputDialog {
    * @status experimental
    *
    * Destroys the dialog and cleans up resources.
-   * @returns {Promise} Resolves when destruction is complete
+   * @returns {Promise<void>}
    * @category Lifecycle
    */
   destroy() {
@@ -374,6 +388,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the configured asynchronous source, or null.
+   * @returns {Object|null}
    */
   getSource() {
     return this.props.source ?? null;
@@ -384,6 +399,17 @@ class InputDialog {
    * @status experimental
    *
    * Replace the asynchronous source and reload it when open.
+   * @param {Object|null} source - Replacement source, or null to disable loading.
+   * @param {String} source.mode - `snapshot` loads on opening/reload; `query` also reloads after query changes.
+   * @param {Function} source.load - Receives a load context and may return a publication or a promise. InputDialog accepts option objects; SelectList also accepts item arrays. Undefined publishes no final result.
+   * @param {Object} source.load.context - The query, parsedQuery, AbortSignal signal, and publish(value) callback. publish returns Promise<Boolean> indicating whether the progressive value was applied.
+   * @param {Number} [source.debounceMs=100] - Delay for query-mode reloads in milliseconds.
+   * @param {String} source.load.context.query - Raw query text.
+   * @param {Object} source.load.context.parsedQuery - Frozen {text, data} query metadata.
+   * @param {AbortSignal} source.load.context.signal - Aborted when the load is superseded, cancelled or destroyed.
+   * @param {Function} source.load.context.publish - Publish progressive results; receives an option object or, for SelectList, an item array.
+   * @param {*} [source.loadingMessage] - Loading message content; defaults to Loading….
+   * @returns {Promise<void>}
    */
   setSource(source) {
     const previousSource = this.props.source;
@@ -401,6 +427,7 @@ class InputDialog {
    * @status experimental
    *
    * Reload the configured source immediately.
+   * @returns {Promise<void>} Resolves after loading settles, including for a detached model. Loader failures appear as status messages.
    */
   reload() {
     return this.dialogSource.reload();
@@ -411,6 +438,7 @@ class InputDialog {
    * @status experimental
    *
    * Return whether source work or its debounce is pending.
+   * @returns {Boolean}
    */
   isLoading() {
     return this.dialogSource.isLoading();
@@ -526,6 +554,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the complete declared action catalogue.
+   * @returns {Array<Object>}
    */
   getActions() {
     return this.dialogActions.getAll();
@@ -540,6 +569,8 @@ class InputDialog {
    * @status experimental
    *
    * Replace the action catalogue.
+   * @param {Array|Object|null} actions - Descriptors, [command, descriptor] pairs, or a command-keyed map; null clears the catalogue.
+   * @returns {InputDialog}
    */
   setActions(actions) {
     this.dialogActions.set(this.actionsForCatalog(actions));
@@ -553,6 +584,21 @@ class InputDialog {
    * @status experimental
    *
    * Add an action and return a Disposable that removes it.
+   * @param {Array|Object} action - One descriptor, an array of descriptors/pairs, or a command-keyed map.
+   * @param {String} action.command - Command name when passing one descriptor.
+   * @param {String} action.context - item or dialog; item actions require a current item.
+   * @param {String} action.disposition - close, stay or push after successful execution.
+   * @param {String} [action.dispatch="local"] - Dispatch on local, workspace or opener.
+   * @param {Boolean|Function} [action.when=true] - Synchronous predicate controlling applicability.
+   * @param {Boolean|Function} [action.enabled=true] - Synchronous predicate controlling execution.
+   * @param {String|Function} [action.disabledReason] - Reason shown for a disabled action.
+   * @param {Boolean|Function} [action.primary=false] - Make this the sole primary action for the current context.
+   * @param {Boolean|Function} [action.recordsRecent=false] - Record the current item after successful execution.
+   * @param {Boolean|Object|Function} [action.confirm] - Optional confirmation options, or a function receiving the context and AbortSignal.
+   * @param {String} [action.group] - Group actions in declaration order.
+   * @param {Number} [action.order=0] - Sort within the group.
+   * @param {String} [action.tone="normal"] - normal or danger.
+   * @returns {Disposable}
    */
   addAction(action) {
     const disposable = this.dialogActions.add(action);
@@ -568,6 +614,16 @@ class InputDialog {
    * @status experimental
    *
    * Return whether an action applies to the current context.
+   * @param {Object} [context] - An action context; defaults to the current dialog context.
+   * @param {InputDialog} [context.dialog] - The dialog model.
+   * @param {*} [context.item] - The selected item, or null for an input dialog.
+   * @param {*} [context.itemId] - The selected item identity, if any.
+   * @param {String} [context.query] - Raw query text.
+   * @param {Object} [context.parsedQuery] - Parsed {text, data} query.
+   * @param {Element|null} [context.opener] - The element that opened the modal host.
+   * @param {String} [context.source] - The action invocation source.
+   * @param {Array<*>} [context.items] - Source items supplied by SelectList.
+   * @returns {Boolean}
    */
   hasAvailableActions(context = this.getActionContext()) {
     return this.dialogActions.hasAvailable(context);
@@ -578,6 +634,16 @@ class InputDialog {
    * @status experimental
    *
    * Return evaluated actions for the current context.
+   * @param {Object} [context] - An action context; defaults to the current dialog context.
+   * @param {InputDialog} [context.dialog] - The dialog model.
+   * @param {*} [context.item] - The selected item, or null for an input dialog.
+   * @param {*} [context.itemId] - The selected item identity, if any.
+   * @param {String} [context.query] - Raw query text.
+   * @param {Object} [context.parsedQuery] - Parsed {text, data} query.
+   * @param {Element|null} [context.opener] - The element that opened the modal host.
+   * @param {String} [context.source] - The action invocation source.
+   * @param {Array<*>} [context.items] - Source items supplied by SelectList.
+   * @returns {Array<Object>}
    */
   getAvailableActions(context = this.getActionContext()) {
     return this.dialogActions
@@ -594,6 +660,8 @@ class InputDialog {
    * @status experimental
    *
    * Return whether any action, or one named action, is currently running.
+   * @param {String} [command] - Check one action command, or omit to check all actions.
+   * @returns {Boolean}
    */
   isActionPending(command) {
     return this.dialogActions.isPending(command);
@@ -679,6 +747,11 @@ class InputDialog {
    * @status experimental
    *
    * Run a declared action through the shared action runner.
+   * @param {String} command - A declared action command.
+   * @param {Object} [options] - Invocation options.
+   * @param {String} [options.source="api"] - How the action was requested.
+   * @param {Object|null} [options.context=null] - Override the current action context.
+   * @returns {Promise<Object>} An action completion record with command, action, context, signal and status; optional reason/value/error describe the outcome. Unknown commands throw synchronously; action failures reject.
    */
   runAction(command, { source = "api", context = null } = {}) {
     return this.dialogActions
@@ -719,6 +792,13 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when an action starts.
+   * @param {Function} callback - The observer.
+   * @param {Object} callback.event
+   * @param {String} callback.event.command
+   * @param {Object} callback.event.action
+   * @param {Object} callback.event.context
+   * @param {AbortSignal} callback.event.signal
+   * @returns {Disposable} Dispose to unsubscribe.
    * @category Event Subscription
    */
   onDidStartAction(callback) {
@@ -730,6 +810,17 @@ class InputDialog {
    * @status experimental
    *
    * Invoke a callback when an action finishes.
+   * @param {Function} callback - The observer.
+   * @param {Object} callback.event
+   * @param {String} callback.event.command
+   * @param {Object} callback.event.action
+   * @param {Object} callback.event.context
+   * @param {AbortSignal} callback.event.signal
+   * @param {String} callback.event.status - success, disabled, unavailable, cancelled, aborted, or error.
+   * @param {*} [callback.event.reason]
+   * @param {*} [callback.event.value] - The dispatched command result.
+   * @param {*} [callback.event.error]
+   * @returns {Disposable} Dispose to unsubscribe.
    * @category Event Subscription
    */
   onDidFinishAction(callback) {
@@ -792,6 +883,7 @@ class InputDialog {
    *
    * Confirms the dialog with the current query through its primary action, or
    * emits `onDidConfirm` when no primary action is declared.
+   * @returns {Promise<Object>|undefined} The primary action completion promise, or undefined after emitting onDidConfirm.
    */
   confirm() {
     const primary = this.dialogActions.getPrimary(this.getActionContext("primary"));
@@ -805,6 +897,20 @@ class InputDialog {
    * @status experimental
    *
    * Update one or more documented dialog options.
+   * @param {Object} [props] - Partial dialog options. SelectList also accepts the list options described by {@link Workspace#addSelectList}.
+   * @param {*} [props.query] - Replace the query text.
+   * @param {Boolean} [props.selectQuery] - Select or clear the query selection.
+   * @param {Object|null} [props.status] - Status as accepted by setStatus.
+   * @param {*} [props.infoMessage] - Resting message content.
+   * @param {*} [props.loadingMessage] - Loading message content.
+   * @param {*} [props.loadingBadge] - Loading badge content.
+   * @param {String} [props.placeholderText] - Query editor placeholder.
+   * @param {HTMLElement|null} [props.headerElement] - Caller-owned header content.
+   * @param {HTMLElement|null} [props.contentElement] - Caller-owned body content.
+   * @param {Array|Object|null} [props.actions] - Action catalogue as accepted by setActions.
+   * @param {Object|null} [props.commands] - Command-keyed functions or descriptors with a didDispatch function.
+   * @param {Object|null} [props.source] - Asynchronous source as accepted by setSource.
+   * @returns {Promise<void>} Resolves after the renderer update. Source loading triggered by this update settles independently.
    * @category Configuration
    */
   update(props = {}) {
@@ -836,6 +942,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the current episodic status.
+   * @returns {Object|null}
    */
   getStatus() {
     return this.props.status ?? null;
@@ -846,6 +953,12 @@ class InputDialog {
    * @status experimental
    *
    * Set the episodic status.
+   * @param {Object|null} status - Episodic status, or null to clear it.
+   * @param {String} [status.type="info"] - `info`, `warning`, or `error`.
+   * @param {*} status.message - Renderable message content.
+   * @param {Number} [status.duration] - Positive milliseconds after which to clear this status.
+   * @param {Boolean} [status.sticky=false] - Preserve the status when the query changes.
+   * @returns {Promise<void>}
    */
   setStatus(status) {
     return this.update({ status });
@@ -856,6 +969,7 @@ class InputDialog {
    * @status experimental
    *
    * Clear the episodic status.
+   * @returns {Promise<void>}
    */
   clearStatus() {
     return this.setStatus(null);
@@ -866,6 +980,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the resting information message.
+   * @returns {*}
    */
   getInfoMessage() {
     return this.props.infoMessage ?? null;
@@ -876,6 +991,8 @@ class InputDialog {
    * @status experimental
    *
    * Set the resting information message.
+   * @param {*} infoMessage - Resting message content; null clears it.
+   * @returns {Promise<void>}
    */
   setInfoMessage(infoMessage) {
     return this.update({ infoMessage });
@@ -886,6 +1003,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the current loading message and badge.
+   * @returns {Object|null}
    */
   getLoadingState() {
     if (!this.props.loadingMessage) return null;
@@ -897,6 +1015,10 @@ class InputDialog {
    * @status experimental
    *
    * Set the current loading message and badge.
+   * @param {Object|null} loading - Loading presentation; null clears it.
+   * @param {*} [loading.message] - Renderable loading message.
+   * @param {*} [loading.badge] - Optional badge content.
+   * @returns {Promise<void>}
    */
   setLoadingState(loading) {
     return this.update({
@@ -910,6 +1032,7 @@ class InputDialog {
    * @status experimental
    *
    * Clear the current loading state.
+   * @returns {Promise<void>}
    */
   clearLoadingState() {
     return this.setLoadingState(null);
@@ -922,6 +1045,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the query editor placeholder.
+   * @returns {String}
    */
   getPlaceholderText() {
     return this.props.placeholderText ?? "";
@@ -932,6 +1056,8 @@ class InputDialog {
    * @status experimental
    *
    * Set the query editor placeholder.
+   * @param {String} placeholderText - Placeholder shown in the mini query editor.
+   * @returns {Promise<void>}
    */
   setPlaceholderText(placeholderText) {
     return this.update({ placeholderText });
@@ -944,6 +1070,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the caller-owned header element.
+   * @returns {HTMLElement|null}
    */
   getHeaderElement() {
     return this.props.headerElement ?? null;
@@ -954,6 +1081,8 @@ class InputDialog {
    * @status experimental
    *
    * Replace the caller-owned header element.
+   * @param {HTMLElement|null} headerElement - Caller-owned DOM content, or null to remove it.
+   * @returns {Promise<void>}
    */
   setHeaderElement(headerElement) {
     return this.update({ headerElement });
@@ -964,6 +1093,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the caller-owned content element.
+   * @returns {HTMLElement|null}
    */
   getContentElement() {
     return this.props.contentElement ?? null;
@@ -974,6 +1104,8 @@ class InputDialog {
    * @status experimental
    *
    * Replace the caller-owned content element.
+   * @param {HTMLElement|null} contentElement - Caller-owned DOM content, or null to remove it.
+   * @returns {Promise<void>}
    */
   setContentElement(contentElement) {
     return this.update({ contentElement });
@@ -1242,6 +1374,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the raw query editor text.
+   * @returns {String}
    */
   getQuery() {
     return this.queryEditor.getText();
@@ -1252,6 +1385,10 @@ class InputDialog {
    * @status experimental
    *
    * Set the query text and optionally select it.
+   * @param {*} query - Query text, converted to a string; null clears it.
+   * @param {Object} [options] - Selection options.
+   * @param {Boolean} [options.select=false] - Select the complete query after setting it.
+   * @returns {Promise<void>}
    */
   setQuery(query, { select = false } = {}) {
     return this.update({ query, selectQuery: select });
@@ -1262,6 +1399,7 @@ class InputDialog {
    * @status experimental
    *
    * Clear the query text.
+   * @returns {Promise<void>}
    */
   clearQuery() {
     return this.setQuery("");
@@ -1272,6 +1410,7 @@ class InputDialog {
    * @status experimental
    *
    * Select the complete query.
+   * @returns {void}
    */
   selectQuery() {
     this.queryEditor.selectAll();
@@ -1282,6 +1421,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the full TextEditor model used for the query.
+   * @returns {TextEditor}
    */
   getQueryEditor() {
     return this.queryEditor;
@@ -1292,6 +1432,7 @@ class InputDialog {
    * @status experimental
    *
    * Return the parsed query text and metadata.
+   * @returns {Object} A frozen {text, data} record; InputDialog uses the raw query and null data.
    */
   getParsedQuery() {
     return Object.freeze({ text: this.getQuery(), data: null });
@@ -1302,6 +1443,7 @@ class InputDialog {
    * @status experimental
    *
    * Use the active editor's single-line selection as the query.
+   * @returns {Boolean}
    */
   setQueryFromSelection() {
     const editor =

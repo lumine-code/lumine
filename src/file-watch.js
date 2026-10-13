@@ -29,7 +29,7 @@ function watchFile(filePath) {
  *
  * @memberof require('lumine')
  * @param {String} directoryPath - The directory path to observe.
- * @param {Object} options - Observation options.
+ * @param {Object} [options] - Observation options; omit for direct children only.
  * @param {Boolean} [options.recursive=false] - Whether to include descendants.
  * @returns {FileWatchHandle} A synchronous handle with ready and closed promises.
  */

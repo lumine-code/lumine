@@ -53,6 +53,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get the native identity of this window.
+   * @returns {Number} The native window ID.
    */
   getId() {
     return this.windowService.getId();
@@ -63,6 +64,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Determine whether this is the workspace's main window.
+   * @returns {Boolean} Whether this is the main presentation.
    */
   isMain() {
     return this.main;
@@ -73,6 +75,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get the shared workspace owning this window.
+   * @returns {Workspace} The shared workspace.
    */
   getWorkspace() {
     return this.workspace;
@@ -83,6 +86,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get this window's local document pane container.
+   * @returns {PaneContainer} The window-local document container.
    */
   getEditorContainer() {
     return this.editorContainer;
@@ -95,6 +99,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get the DOM document used by this presentation.
+   * @returns {Document|null} The presentation document, or null before attachment and after destruction.
    */
   getDocument() {
     return this.domWindow?.document ?? null;
@@ -105,6 +110,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get the DOM window used by this presentation.
+   * @returns {Window|null} The physical DOM window, or null before attachment and after destruction.
    */
   getDOMWindow() {
     return this.domWindow;
@@ -116,9 +122,9 @@ module.exports = class EditorWindow {
    *
    * Send a message to an embedded frame from its physical parent window.
    * @param {HTMLIFrameElement} frame - A frame belonging to this window's document.
-   * @param {Object} message - Structured-cloneable message data.
-   * @param {String} origin - The expected target origin, or "*" for an opaque sandbox.
-   * @param {Array} ports - Transferable ports owned by the caller.
+   * @param {*} message - Structured-cloneable message data.
+   * @param {String} [origin="*"] - The expected target origin, or "*" for an opaque sandbox.
+   * @param {Array<MessagePort>} [ports=[]] - Transferable ports owned by the caller.
    * @category Frame Messaging
    */
   postMessageToFrame(frame, message, origin = "*", ports = []) {
@@ -133,6 +139,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Get this window's workspace command root.
+   * @returns {HTMLElement|null} The workspace command root, or null before attachment and after destruction.
    */
   getElement() {
     if (this.main && !this.destroyed && !this.element && this.domWindow)
@@ -208,6 +215,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Determine whether this presentation has been destroyed.
+   * @returns {Boolean}
    * @category Lifecycle
    */
   isDestroyed() {
@@ -221,6 +229,9 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Subscribe before the window's presentation is released.
+   * @param {Function} callback - Receives this EditorWindow before its presentation is released.
+   * @returns {Disposable} Dispose to remove the callback.
+   * @param {EditorWindow} callback.window - The window being destroyed.
    */
   onWillDestroy(callback) {
     this.willDestroyCallbacks.add(callback);
@@ -232,6 +243,9 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Subscribe after the window's presentation is released.
+   * @param {Function} callback - Receives this EditorWindow after its presentation is released.
+   * @returns {Disposable} Dispose to remove the callback.
+   * @param {EditorWindow} callback.window - The destroyed window.
    */
   onDidDestroy(callback) {
     this.didDestroyCallbacks.add(callback);
@@ -243,6 +257,8 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Subscribe when the native window gains focus.
+   * @param {Function} callback - Called when the documented window lifecycle event occurs.
+   * @returns {Disposable} Dispose to remove the callback.
    */
   onDidFocus(callback) {
     return this.windowService.onDidFocus(callback);
@@ -253,6 +269,8 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Subscribe when the native window loses focus.
+   * @param {Function} callback - Called when the documented window lifecycle event occurs.
+   * @returns {Disposable} Dispose to remove the callback.
    */
   onDidBlur(callback) {
     return this.windowService.onDidBlur(callback);
@@ -264,7 +282,7 @@ module.exports = class EditorWindow {
    *
    * Subscribe when this native window is maximized.
    * @param {Function} callback - The observer.
-   * @returns {Disposable} Removes the observation.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidMaximize(callback) {
     return this.windowService.onDidMaximize(callback);
@@ -276,7 +294,7 @@ module.exports = class EditorWindow {
    *
    * Subscribe when this native window leaves maximization.
    * @param {Function} callback - The observer.
-   * @returns {Disposable} Removes the observation.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidUnmaximize(callback) {
     return this.windowService.onDidUnmaximize(callback);
@@ -288,7 +306,7 @@ module.exports = class EditorWindow {
    *
    * Subscribe when this native window enters fullscreen.
    * @param {Function} callback - The observer.
-   * @returns {Disposable} Removes the observation.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidEnterFullScreen(callback) {
     return this.windowService.onDidEnterFullScreen(callback);
@@ -300,7 +318,7 @@ module.exports = class EditorWindow {
    *
    * Subscribe when this native window leaves fullscreen.
    * @param {Function} callback - The observer.
-   * @returns {Disposable} Removes the observation.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidLeaveFullScreen(callback) {
     return this.windowService.onDidLeaveFullScreen(callback);
@@ -315,6 +333,10 @@ module.exports = class EditorWindow {
    * Set the native bounds of this presentation.
    * @param {Object} bounds - x, y, width and height.
    * @returns {Promise} Completes when the bounds have been applied.
+   * @param {Number} bounds.x - The integer horizontal screen position.
+   * @param {Number} bounds.y - The integer vertical screen position.
+   * @param {Number} bounds.width - The positive integer window width.
+   * @param {Number} bounds.height - The positive integer window height.
    */
   setBounds(bounds) {
     if (this.windowService.setBounds) return this.windowService.setBounds(bounds);
@@ -357,7 +379,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Choose a save path in a native dialog attached to this window.
-   * @param {Object} options - Electron save dialog options.
+   * @param {Object} [options={}] - Electron save dialog options.
    * @returns {Promise<Object>} The selected filePath or a cancelled result.
    */
   showSaveDialog(options = {}) {
@@ -381,6 +403,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Read the native window's state.
+   * @returns {Promise<Object>} The native window state snapshot.
    * @category Window Information
    */
   getState() {
@@ -404,7 +427,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Show this native window without changing its document or pane layout.
-   * @returns {Promise} Resolves when the native window has been shown.
+   * @returns {Promise<void>} Resolves when the native window has been shown.
    */
   show() {
     return this.windowService.show();
@@ -415,6 +438,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Focus this window.
+   * @returns {Promise<void>}
    */
   focus() {
     return this.windowService.focus();
@@ -425,6 +449,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Minimize this window.
+   * @returns {Promise<void>}
    */
   minimize() {
     return this.windowService.minimize();
@@ -435,6 +460,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Maximize this window.
+   * @returns {Promise<void>}
    */
   maximize() {
     return this.windowService.maximize();
@@ -445,6 +471,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Restore this window from maximization.
+   * @returns {Promise<void>}
    */
   unmaximize() {
     return this.windowService.unmaximize();
@@ -455,6 +482,7 @@ module.exports = class EditorWindow {
    * @status public
    *
    * Request a coordinated close of this window.
+   * @returns {Promise<Boolean|void>} The workspace close decision, or completion of the native close request when no workspace coordinator is installed.
    */
   close() {
     return this.requestClose ? this.requestClose(this) : this.windowService.close();

@@ -15,8 +15,8 @@ module.exports = class Color {
    *
    * Parse a `String` or `Object` into a {@link Color}.
    *
-   * @param value - A `String` such as `'white'`, `#ff00ff`, or `'rgba(255, 15, 60, .75)'` or an `Object` with `red`, `green`, `blue`, and `alpha` properties.
-   * @returns {Color} or `null` if it cannot be parsed.
+   * @param {String|Object} value - A `String` such as `'white'`, `#ff00ff`, or `'rgba(255, 15, 60, .75)'` or an `Object` with `red`, `green`, `blue`, and `alpha` properties.
+   * @returns {Color|null} or `null` if it cannot be parsed.
    */
   static parse(value) {
     switch (typeof value) {
@@ -104,6 +104,8 @@ module.exports = class Color {
    * @public
    * @status essential
    *
+   * Return the color as a hexadecimal RGB string.
+   *
    * @returns {String} in the form `'#abcdef'`.
    */
   toHexString() {
@@ -115,6 +117,8 @@ module.exports = class Color {
   /**
    * @public
    * @status essential
+   *
+   * Return the color as an RGBA CSS string.
    *
    * @returns {String} in the form `'rgba(25, 50, 75, .9)'`.
    */

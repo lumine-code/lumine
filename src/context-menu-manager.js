@@ -116,17 +116,17 @@ module.exports = class ContextMenuManager {
    *
    * ## Arguments
    *
-   * @param itemsBySelector - An `Object` whose keys are CSS selectors and whose values are `Arrays` of item `Objects` containing the following keys:
-   * @param [itemsBySelector.label] - A `String` containing the menu item's label.
-   * @param [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
-   * @param [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
-   * @param [itemsBySelector.submenu] - An `Array` of additional items.
-   * @param [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
-   * @param [itemsBySelector.visible] - A `Boolean` indicating whether the menu item should appear in the menu. Defaults to `true`.
-   * @param [itemsBySelector.created] - A `Function` that is called on the item each time a context menu is created via a right click. You can assign properties to `this` to dynamically compute the command, label, etc. This method is actually called on a clone of the original item template to prevent state from leaking across context menu deployments. Called with the following argument:
-   * @param itemsBySelector.created.event - The click event that deployed the context menu.
-   * @param [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:
-   * @param itemsBySelector.shouldDisplay.event - The click event that deployed the context menu.
+   * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are `Arrays` of item `Objects` containing the following keys:
+   * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
+   * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
+   * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
+   * @param {Array} [itemsBySelector.submenu] - An `Array` of additional items.
+   * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
+   * @param {Boolean} [itemsBySelector.visible] - A `Boolean` indicating whether the menu item should appear in the menu. Defaults to `true`.
+   * @param {Function} [itemsBySelector.created] - A `Function` that is called on the item each time a context menu is created via a right click. You can assign properties to `this` to dynamically compute the command, label, etc. This method is actually called on a clone of the original item template to prevent state from leaking across context menu deployments. Called with the following argument:
+   * @param {MouseEvent} itemsBySelector.created.event - The click event that deployed the context menu.
+   * @param {Function} [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:
+   * @param {MouseEvent} itemsBySelector.shouldDisplay.event - The click event that deployed the context menu.
    * @param {Boolean} [throwOnInvalidSelector=true] - Throw for an invalid selector.
    * @returns {Disposable} Removes the added context-menu items.
    */
@@ -251,9 +251,13 @@ module.exports = class ContextMenuManager {
    *
    * Show a theme-aware HTML context menu for a DOM target.
    *
-   * @param target - The local DOM `Element` that receives selected commands.
-   * @param menuTemplate - A menu-template `Array`.
-   * @param options - Optional popup placement options, including `anchor`.
+   * @param {Element} target - The local DOM `Element` that receives selected commands.
+   * @param {Array} menuTemplate - A menu-template `Array`.
+   * @param {Object} [options] - Optional popup placement options, including `anchor`.
+   * @param {Element|MouseEvent|Object} [options.anchor=target] - The element, pointer event, or rectangle used for popup positioning.
+   * @param {String} [options.placement] - Popup placement relative to the anchor.
+   * @param {String} [options.alignment] - Popup alignment along the anchor.
+   * @param {Boolean} [options.autoSelectFirstItem=false] - Select the first enabled item when opening.
    * @returns {Object} the popup controller.
    */
   show(target, menuTemplate, options = {}) {

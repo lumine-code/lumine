@@ -301,7 +301,7 @@ module.exports = class CommandRegistry {
    *
    * @param {String} commandName - Command to describe.
    * @param {Object} options
-   * @param {Element} options.target - Element from which the command would be dispatched.
+   * @param {Element} [options.target] - Element from which the command would be dispatched.
    * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
    * @returns {Object|null} The command descriptor with `keystrokes`, or null when unavailable.
    */
@@ -336,7 +336,7 @@ module.exports = class CommandRegistry {
    * path for command pickers and other complete catalogues.
    *
    * @param {Object} options
-   * @param {Element} options.target - Element from which commands would be dispatched.
+   * @param {Element} [options.target] - Element from which commands would be dispatched.
    * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
    * @returns {Array<Object>} One frozen descriptor per command, each with frozen `keystrokes`.
    */
@@ -389,10 +389,10 @@ module.exports = class CommandRegistry {
    * be attached to the document so the event bubbles up to the root node to be
    * processed.
    *
-   * @param target - The DOM node at which to start bubbling the command event.
+   * @param {Node} target - The DOM node at which to start bubbling the command event.
    * @param {String} commandName - indicating the name of the command to dispatch.
-   * @param detail - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
-   * @returns {Promise<Array>|null} Resolves to the listener results after all matched handlers finish, or `null` when no handler matches. Rejected handler promises reject the returned promise; synchronous handler errors are thrown.
+   * @param {*} [detail] - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
+   * @returns {Promise<Array<*>>|null} Resolves to the listener results after all matched handlers finish, or `null` when no handler matches. Rejected handler promises reject the returned promise; synchronous handler errors are thrown.
    */
   dispatch(target, commandName, detail) {
     const event = new CustomEvent(commandName, { bubbles: true, detail });
@@ -411,7 +411,7 @@ module.exports = class CommandRegistry {
    * Invoke the given callback before dispatching a command event.
    *
    * @param {Function} callback - to be called before dispatching each command
-   * @param callback.event - The Event that will be dispatched
+   * @param {CustomEvent} callback.event - The Event that will be dispatched
    * @returns {Disposable} Removes the event subscription.
    */
   onWillDispatch(callback) {
@@ -425,7 +425,7 @@ module.exports = class CommandRegistry {
    * Invoke the given callback after dispatching a command event.
    *
    * @param {Function} callback - to be called after dispatching each command
-   * @param callback.event - The Event that was dispatched
+   * @param {CustomEvent} callback.event - The Event that was dispatched
    * @returns {Disposable} Removes the event subscription.
    */
   onDidDispatch(callback) {

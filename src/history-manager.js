@@ -63,7 +63,7 @@ class HistoryManager {
    *
    * Obtain a list of previously opened projects.
    *
-   * @returns {Array} of detached `HistoryProject` objects, most recent first. Their paths and dates can be changed without modifying history.
+   * @returns {Array<Object>} of detached `HistoryProject` objects, most recent first. Their paths and dates can be changed without modifying history.
    */
   getProjects() {
     return this.projects.map((p) => new HistoryProject(p.paths, p.lastOpened));

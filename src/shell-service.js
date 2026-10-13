@@ -19,7 +19,8 @@ class ShellService {
    *
    * Move an item to the operating system trash.
    *
-   * @returns {Promise} that resolves when the operation completes.
+   * @returns {Promise<void>} that resolves when the operation completes.
+   * @param {String} filePath - The filesystem path to move to the trash.
    */
   trashItem(filePath) {
     return this.applicationDelegate.trashItem(filePath);
@@ -31,7 +32,8 @@ class ShellService {
    *
    * Reveal a path in the operating system file browser.
    *
-   * @returns {Promise} that resolves when the request completes.
+   * @returns {Promise<void>} that resolves when the request completes.
+   * @param {String} filePath - The filesystem path to reveal.
    */
   showItemInFolder(filePath) {
     return this.applicationDelegate.showItemInFolder(filePath);
@@ -43,7 +45,8 @@ class ShellService {
    *
    * Open a path with its operating system default application.
    *
-   * @returns {Promise} resolving to Electron's result string.
+   * @returns {Promise<String>} An empty string on success, or an operating-system error message.
+   * @param {String} filePath - The filesystem path to open.
    */
   openPath(filePath) {
     return this.applicationDelegate.openPath(filePath);
@@ -80,7 +83,8 @@ class ShellService {
    * Relative, malformed, and other-scheme URLs are rejected before they reach
    * the operating system.
    *
-   * @returns {Promise} that resolves when the request completes.
+   * @returns {Promise<void>} that resolves when the request completes.
+   * @param {String} url - An absolute HTTP, HTTPS, or mailto URL.
    */
   openExternal(url) {
     try {

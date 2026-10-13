@@ -28,7 +28,7 @@ module.exports = class NotificationManager {
    * Invoke the given callback after a notification has been added.
    *
    * @param {Function} callback - to be called after the notification is added.
-   * @param callback.notification - The {@link Notification} that was added.
+   * @param {Notification} callback.notification - The {@link Notification} that was added.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidAddNotification(callback) {
@@ -54,6 +54,7 @@ module.exports = class NotificationManager {
    *
    * Invoke the given callback whenever {@link #beep} is called.
    *
+   * @param {Function} callback - Called when attention is requested.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidBeep(callback) {
@@ -70,16 +71,16 @@ module.exports = class NotificationManager {
    *
    * Add a success notification.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-success`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
    * @returns {Notification} that was added.
    */
   addSuccess(message, options) {
@@ -100,16 +101,16 @@ module.exports = class NotificationManager {
    *
    * Prefer a warning when something the user asked for did not happen.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
    * @returns {Notification} that was added.
    */
   addHint(message, options) {
@@ -122,16 +123,16 @@ module.exports = class NotificationManager {
    *
    * Add an informational notification.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-info`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
    * @returns {Notification} that was added.
    */
   addInfo(message, options) {
@@ -144,16 +145,16 @@ module.exports = class NotificationManager {
    *
    * Add a warning notification.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-warning`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
    * @returns {Notification} that was added.
    */
   addWarning(message, options) {
@@ -166,17 +167,17 @@ module.exports = class NotificationManager {
    *
    * Add an error notification.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
-   * @param [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
+   * @param {String} [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
    */
   addError(message, options) {
@@ -189,17 +190,17 @@ module.exports = class NotificationManager {
    *
    * Add a fatal error notification.
    *
-   * @param message - A `String` message
-   * @param [options] - An `Object` with the following keys:
-   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} message - A `String` message
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
-   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
-   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
-   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
-   * @param [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
+   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
+   * @param {String} [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
    */
   addFatalError(message, options) {
@@ -237,7 +238,7 @@ module.exports = class NotificationManager {
    *
    * Get all the notifications.
    *
-   * @returns {Array} of {@link Notification Notifications}.
+   * @returns {Array<Notification>} of {@link Notification Notifications}.
    */
   getNotifications() {
     return this.notifications.slice();

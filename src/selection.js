@@ -80,12 +80,14 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Managing the selection range
+   * @category Managing the Selection Range
    */
 
   /**
    * @public
    * @status public
+   *
+   * Get the selection range in screen coordinates.
    *
    * @returns {Range} screen {@link Range} for the selection.
    */
@@ -99,7 +101,7 @@ module.exports = class Selection {
    *
    * Modifies the screen range for the selection.
    *
-   * @param screenRange - The new {@link Range} to use.
+   * @param {Range|Array|Object} screenRange - The new {@link Range} to use.
    * @param {Object} [options] - options matching those found in {@link #setBufferRange}.
    */
   setScreenRange(screenRange, options) {
@@ -109,6 +111,8 @@ module.exports = class Selection {
   /**
    * @public
    * @status public
+   *
+   * Get the selection range in buffer coordinates.
    *
    * @returns {Range} buffer {@link Range} for the selection.
    */
@@ -122,12 +126,13 @@ module.exports = class Selection {
    *
    * Modifies the buffer {@link Range} for the selection.
    *
-   * @param bufferRange - The new {@link Range} to select.
+   * @param {Range|Array|Object} bufferRange - The new {@link Range} to select.
    * @param {Object} [options] - with the keys:
-   * @param {Boolean} options.reversed - indicating whether to set the selection in a reversed orientation.
-   * @param options.preserveFolds - if `true`, the fold settings are preserved after the selection moves.
-   * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
-   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
+   * @param {Boolean} [options.reversed] - indicating whether to set the selection in a reversed orientation.
+   * @param {Boolean} [options.preserveFolds] - if `true`, the fold settings are preserved after the selection moves.
+   * @param {Boolean} [options.autoscroll] - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
+   * @param {String|Number|Array<Number>} [options.mode] - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
+   * @param {Boolean} [options.flash=false] - Flash the selection decoration after moving it.
    */
   setBufferRange(bufferRange, options = {}) {
     bufferRange = Range.fromObject(bufferRange);
@@ -147,6 +152,8 @@ module.exports = class Selection {
   /**
    * @public
    * @status public
+   *
+   * Get the first and last buffer rows touched by the selection.
    *
    * @returns {Array<Number>} The starting and ending buffer rows highlighted by the selection.
    */
@@ -175,14 +182,15 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Info about the selection
+   * @category Selection Details
    */
 
   /**
    * @public
    * @status public
    *
-   * Determines if the selection contains anything.
+   * Determine whether the selection contains no text.
+   * @returns {Boolean} Whether the selection contains no text.
    */
   isEmpty() {
     return this.getBufferRange().isEmpty();
@@ -192,10 +200,8 @@ module.exports = class Selection {
    * @public
    * @status public
    *
-   * Determines if the ending position of a marker is greater than the
-   * starting position.
-   *
-   * This can happen when, for example, you highlight text "up" in a {@link TextBuffer}.
+   * Determine whether the selection's head precedes its tail in buffer coordinates.
+   * @returns {Boolean} Whether the selection head precedes its tail.
    */
   isReversed() {
     return this.marker.isReversed();
@@ -204,6 +210,8 @@ module.exports = class Selection {
   /**
    * @public
    * @status public
+   *
+   * Determine whether the selection fits on one screen line.
    *
    * @returns {Boolean} whether the selection is a single line or not.
    */
@@ -214,6 +222,8 @@ module.exports = class Selection {
   /**
    * @public
    * @status public
+   *
+   * Get the selected text.
    *
    * @returns {String} text in the selection.
    */
@@ -227,7 +237,7 @@ module.exports = class Selection {
    *
    * Identifies if a selection intersects with a given buffer range.
    *
-   * @param bufferRange - A {@link Range} to check against.
+   * @param {Range|Array|Object} bufferRange - A {@link Range} to check against.
    * @returns {Boolean}
    */
   intersectsBufferRange(bufferRange) {
@@ -248,7 +258,8 @@ module.exports = class Selection {
    *
    * Identifies if a selection intersects with another selection.
    *
-   * @param otherSelection - A {@link Selection} to check against.
+   * @param {Selection} otherSelection - A {@link Selection} to check against.
+   * @param {Boolean} [exclusive] - Exclude intersections that only touch at the endpoints. Defaults to false.
    * @returns {Boolean}
    */
   intersectsWith(otherSelection, exclusive) {
@@ -256,7 +267,7 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Modifying the selected range
+   * @category Modifying the Selection Range
    */
 
   /**
@@ -266,7 +277,8 @@ module.exports = class Selection {
    * Clears the selection, moving the marker to the head.
    *
    * @param {Object} [options] - with the following keys:
-   * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
+   * @param {Boolean} [options.autoscroll] - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
    */
   clear(options) {
     this.goalScreenRange = null;
@@ -284,7 +296,8 @@ module.exports = class Selection {
    * Selects the text from the current cursor position to a given screen
    * position.
    *
-   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Point|Array<Number>|Object} position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Object} [options] - Options for this operation.
    */
   selectToScreenPosition(position, options) {
     position = Point.fromObject(position);
@@ -319,7 +332,7 @@ module.exports = class Selection {
    * Selects the text from the current cursor position to a given buffer
    * position.
    *
-   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @param {Point|Array<Number>|Object} position - An instance of {@link Point}, with a given `row` and `column`.
    */
   selectToBufferPosition(position) {
     this.modifySelection(() => this.cursor.setBufferPosition(position));
@@ -549,6 +562,7 @@ module.exports = class Selection {
    * @status public
    *
    * Modifies the selection to encompass the current subword.
+   * @param {Object} [options] - Options for this operation.
    */
   selectSubword(options = {}) {
     options.wordRegex = this.cursor.subwordRegExp();
@@ -562,6 +576,9 @@ module.exports = class Selection {
    * @status public
    *
    * Modifies the selection to encompass the current word.
+   * @param {Object} [options] - Options for this operation.
+   * @param {RegExp} [options.wordRegex] - A custom word pattern, except where whitespace or punctuation selects the built-in pattern.
+   * @param {Boolean} [options.includeNonWordCharacters=true] - Include punctuation in the default word pattern.
    */
   selectWord(options = {}) {
     if (this.cursor.isSurroundedByWhitespace()) options.wordRegex = /[\t ]*/;
@@ -578,8 +595,10 @@ module.exports = class Selection {
    * @public
    * @status public
    *
-   * Expands the newest selection to include the entire word on which
-   * the cursors rests.
+   * Expand this selection to include the entire word under its cursor.
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.autoscroll] - Scroll by default only for the most recently added selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
    */
   expandOverWord(options) {
     this.setBufferRange(this.getBufferRange().union(this.cursor.getCurrentWordBufferRange()), {
@@ -594,9 +613,10 @@ module.exports = class Selection {
    * @public
    * @status public
    *
-   * Selects an entire line in the buffer.
+   * Expand this selection to complete buffer rows, or select a specified row.
    *
-   * @param row - The line `Number` to select (default: the row of the cursor).
+   * @param {Number} [row] - The zero-indexed buffer row to select; when omitted, expand the current selection to complete rows.
+   * @param {Object} [options] - Options for this operation.
    */
   selectLine(row, options) {
     if (row != null) {
@@ -623,10 +643,12 @@ module.exports = class Selection {
    * @public
    * @status public
    *
-   * Expands the newest selection to include the entire line on which
-   * the cursor currently rests.
+   * Expand this selection to include the entire line under its cursor.
    *
    * It also includes the newline character.
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.autoscroll] - Scroll by default only for the most recently added selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
    */
   expandOverLine(options) {
     const range = this.getBufferRange().union(
@@ -662,7 +684,7 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Modifying the selected text
+   * @category Modifying the Selected Text
    */
 
   /**
@@ -671,16 +693,20 @@ module.exports = class Selection {
    *
    * Replaces text at the current selection.
    *
-   * @param text - A `String` representing the text to add
+   * @param {String} text - A `String` representing the text to add
    * @param {Object} [options] - with keys:
-   * @param options.select - If `true`, selects the newly added text.
-   * @param options.autoIndent - If `true`, indents all inserted text appropriately.
-   * @param options.autoIndentNewline - If `true`, indent newline appropriately.
-   * @param options.autoDecreaseIndent - If `true`, decreases indent level appropriately (for example, when a closing bracket is inserted).
-   * @param options.preserveTrailingLineIndentation - By default, when pasting multiple lines, Lumine attempts to preserve the relative indent level between the first line and trailing lines, even if the indent level of the first line has changed from the copied text. If this option is `true`, this behavior is suppressed. level between the first lines and the trailing lines.
+   * @param {Boolean} [options.select] - If `true`, selects the newly added text.
+   * @param {Boolean} [options.autoIndent] - If `true`, indents all inserted text appropriately.
+   * @param {Boolean} [options.autoIndentNewline] - If `true`, indent newline appropriately.
+   * @param {Boolean} [options.autoDecreaseIndent] - If `true`, decreases indent level appropriately (for example, when a closing bracket is inserted).
+   * @param {Boolean} [options.preserveTrailingLineIndentation] - By default, when pasting multiple lines, Lumine attempts to preserve the relative indent level between the first line and trailing lines, even if the indent level of the first line has changed from the copied text. If this option is `true`, this behavior is suppressed.
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
-   * @param options.undo - *Deprecated* If `skip`, skips the undo stack for this operation. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
+   * @param {String} [options.undo] - *Deprecated* The value `skip` groups this edit with the preceding change. Call {@link TextBuffer#groupLastChanges} afterward instead.
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @param {Number} [options.indentBasis] - Indentation level of copied text used to preserve the relative indentation of subsequent lines.
+   * @param {Boolean} [options.autoscroll] - Scroll by default only for the most recently added selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
+   * @returns {Range|undefined} The inserted range, or undefined when a read-only editor refuses the edit.
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
@@ -1119,9 +1145,11 @@ module.exports = class Selection {
    *
    * Cuts the selection until the end of the screen line.
    *
-   * @param {Boolean} maintainClipboard
+   * @param {Boolean} [maintainClipboard=false]
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
+   * @param {Clipboard|Object} [options.clipboard] - A clipboard or compatible adapter; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter is asynchronous; otherwise completes synchronously.
    */
   cutToEndOfLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
@@ -1140,9 +1168,11 @@ module.exports = class Selection {
    *
    * Cuts the selection until the end of the buffer line.
    *
-   * @param {Boolean} maintainClipboard
+   * @param {Boolean} [maintainClipboard=false]
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
+   * @param {Clipboard|Object} [options.clipboard] - A clipboard or compatible adapter; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter is asynchronous; otherwise completes synchronously.
    */
   cutToEndOfBufferLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
@@ -1161,9 +1191,11 @@ module.exports = class Selection {
    *
    * Copies the selection to the clipboard and then deletes it.
    *
-   * @param {Boolean} maintainClipboard - (default: false) See {@link #copy}
-   * @param {Boolean} fullLine - (default: false) See {@link #copy}
-   * @param {Boolean} bypassReadOnly - (default: false) Must be `true` to modify text within a read-only editor.
+   * @param {Boolean} [maintainClipboard] - (default: false) See {@link #copy}
+   * @param {Boolean} [fullLine] - (default: false) See {@link #copy}
+   * @param {Boolean} [bypassReadOnly] - (default: false) Must be `true` to modify text within a read-only editor.
+   * @param {Clipboard|Object} [clipboard] - A clipboard or compatible adapter; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter is asynchronous; otherwise completes synchronously.
    */
   cut(
     maintainClipboard = false,
@@ -1183,8 +1215,10 @@ module.exports = class Selection {
    *
    * Copies the current selection to the clipboard.
    *
-   * @param {Boolean} maintainClipboard - if `true`, a specific metadata property is created to store each content copied to the clipboard. The clipboard `text` still contains the concatenation of the clipboard with the current selection. (default: false)
-   * @param {Boolean} fullLine - if `true`, the copied text will always be pasted at the beginning of the line containing the cursor, regardless of the cursor's horizontal position. (default: false)
+   * @param {Boolean} [maintainClipboard] - if `true`, a specific metadata property is created to store each content copied to the clipboard. The clipboard `text` still contains the concatenation of the clipboard with the current selection. (default: false)
+   * @param {Boolean} [fullLine] - if `true`, the copied text will always be pasted at the beginning of the line containing the cursor, regardless of the cursor's horizontal position. (default: false)
+   * @param {Clipboard|Object} [clipboard] - A clipboard or compatible adapter; defaults to the editor's clipboard.
+   * @returns {Promise|undefined} A promise when the clipboard adapter is asynchronous; otherwise completes synchronously.
    */
   copy(maintainClipboard = false, fullLine = false, clipboard = this.editor.constructor.clipboard) {
     if (this.isEmpty()) return;
@@ -1315,14 +1349,14 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Managing multiple selections
+   * @category Managing Multiple Selections
    */
 
   /**
    * @public
    * @status public
    *
-   * Moves the selection down one row.
+   * Add a similarly shaped selection on the next eligible screen row below.
    */
   addSelectionBelow() {
     const range = this.getGoalScreenRange().copy();
@@ -1357,7 +1391,7 @@ module.exports = class Selection {
    * @public
    * @status public
    *
-   * Moves the selection up one row.
+   * Add a similarly shaped selection on the next eligible screen row above.
    */
   addSelectionAbove() {
     const range = this.getGoalScreenRange().copy();
@@ -1395,7 +1429,7 @@ module.exports = class Selection {
    * Combines the given selection into this selection and then destroys
    * the given selection.
    *
-   * @param otherSelection - A {@link Selection} to merge with.
+   * @param {Selection} otherSelection - A {@link Selection} to merge with.
    * @param {Object} [options] - options matching those found in {@link #setBufferRange}.
    */
   merge(otherSelection, options = {}) {
@@ -1414,7 +1448,7 @@ module.exports = class Selection {
   }
 
   /**
-   * @category Comparing to other selections
+   * @category Comparison
    */
 
   /**
@@ -1426,7 +1460,8 @@ module.exports = class Selection {
    *
    * See {@link Range#compare} for more details.
    *
-   * @param otherSelection - A {@link Selection} to compare against
+   * @param {Selection} otherSelection - A {@link Selection} to compare against
+   * @returns {Number} -1, 0, or 1 according to the ordering of the selection ranges.
    */
   compare(otherSelection) {
     return this.marker.compare(otherSelection.marker);

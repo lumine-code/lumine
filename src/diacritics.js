@@ -8,8 +8,8 @@ const Diacritics = require("diacritic");
  * typing "cafe".
  *
  * @memberof lumine.tools
- * @param {string} text - The string to fold.
- * @returns {string} The same string with its diacritics removed.
+ * @param {String} text - The string to fold.
+ * @returns {String} The same string with its diacritics removed.
  */
 function removeDiacritics(text) {
   return Diacritics.clean(text);

@@ -45,9 +45,14 @@ module.exports = class WindowContributionRegistry {
    *
    * Register a factory for independent presentation instances.
    * @param {Object} options - windows, create and service-specific mount options.
-   * @param {String} options.windows - main (default) or all.
-   * @param {Function} options.create - Receives window, document, workspace and editorContainer.
+   * @param {String} [options.windows="main"] - main (default) or all.
+   * @param {Function} options.create - Returns an independent {element, dispose()} presentation instance.
    * @returns {Disposable} Removes all instances and future mounts.
+   * @param {Object} options.create.context - Window-local factory context.
+   * @param {EditorWindow} options.create.context.window - The presentation being mounted.
+   * @param {Document} options.create.context.document - Its physical DOM document.
+   * @param {Workspace} options.create.context.workspace - The shared workspace.
+   * @param {PaneContainer} options.create.context.editorContainer - The window-local document container.
    */
   add(options) {
     return this.addRegistration(options, true);
@@ -61,6 +66,8 @@ module.exports = class WindowContributionRegistry {
    * @param {Object} options - windows (main by default) and create(context).
    * @param {Function} options.create - Returns a Disposable owning that window's UI.
    * @returns {Disposable} Releases current clients and prevents future creation.
+   * @param {String} [options.windows="main"] - Use main for the main window only, or all for current and future presentations.
+   * @param {Object} options.create.context - The same window-local context passed to add factories.
    */
   observe(options) {
     return this.addRegistration(options, false);

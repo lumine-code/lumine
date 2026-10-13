@@ -201,6 +201,7 @@ module.exports = class ThemeManager {
    *
    * Invoke `callback` when a theme pack is registered or removed.
    *
+   * @param {Function} callback - Called with the current array of registered theme packs.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeThemePacks(callback) {
@@ -265,6 +266,8 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
+   * Get registered theme packs sorted by name.
+   *
    * @returns {Array<Object>} registered theme packs sorted by their user-facing names.
    */
   getThemePacks() {
@@ -275,6 +278,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
+   * Check whether both configured appearance modes match a theme pack.
+   *
+   * @param {Object|null} themePack - The theme pack to compare.
    * @returns {Boolean} whether both configured mode pairs match `themePack`.
    */
   isThemePackActive(themePack) {
@@ -295,7 +301,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
-   * @returns {Object|undefined} registered pack matching both configured mode pairs.
+   * Get the registered theme pack matching both configured appearance modes.
+   *
+   * @returns {Object|null} The matching theme pack, or `null` when none is registered.
    */
   getActiveThemePack() {
     return this.getThemePacks().find((themePack) => this.isThemePackActive(themePack)) ?? null;
@@ -306,6 +314,8 @@ module.exports = class ThemeManager {
    * @status public
    *
    * Configure both appearance modes from `themePack`.
+   * @param {Object} themePack - A pack containing light and dark theme-name arrays.
+   * @returns {Boolean} Whether the configured appearance modes changed.
    */
   setThemePack(themePack) {
     if (!themePack || !Array.isArray(themePack.light) || !Array.isArray(themePack.dark)) {
@@ -328,7 +338,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
-   * @returns {Array} of `Strings` of all the loaded theme names.
+   * Get the names of all loaded themes.
+   *
+   * @returns {Array<String>} of `Strings` of all the loaded theme names.
    */
   getLoadedThemeNames() {
     return this.getLoadedThemes().map((theme) => theme.name);
@@ -338,7 +350,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
-   * @returns {Array} of all the loaded themes.
+   * Get all loaded theme packages.
+   *
+   * @returns {Array<Package>} of all the loaded themes.
    */
   getLoadedThemes() {
     return this.packageManager.getLoadedPackages().filter((pack) => pack.isTheme());
@@ -352,7 +366,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
-   * @returns {Array} of `Strings` of all the active theme names.
+   * Get the names of all active themes.
+   *
+   * @returns {Array<String>} of `Strings` of all the active theme names.
    */
   getActiveThemeNames() {
     return this.getActiveThemes().map((theme) => theme.name);
@@ -362,7 +378,9 @@ module.exports = class ThemeManager {
    * @public
    * @status public
    *
-   * @returns {Array} of all the active themes.
+   * Get all active theme packages.
+   *
+   * @returns {Array<Package>} of all the active themes.
    */
   getActiveThemes() {
     return this.packageManager.getActivePackages().filter((pack) => pack.isTheme());
@@ -425,7 +443,7 @@ module.exports = class ThemeManager {
    *
    * Get the enabled theme names from the config.
    *
-   * @returns {Array} array of theme names in the order that they should be activated.
+   * @returns {Array<String>} array of theme names in the order that they should be activated.
    */
   getEnabledThemeNames() {
     let themeNames = this.config.get(this.getActiveThemesKeyPath()) || [];
@@ -942,7 +960,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
    * within it, so they repaint as part of the same transition.
    *
    * @param {Function} mutate - applying the change to the document.
-   * @returns {Promise} that resolves once the change has been applied.
+   * @returns {Promise<void>} that resolves once the change has been applied.
    * @category Appearance
    */
   updateAppearance(mutate) {

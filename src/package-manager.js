@@ -207,6 +207,8 @@ module.exports = class PackageManager {
    *
    * Invoke the given callback after all initial package facades have been
    * initialized, before workspace restore begins.
+   * @param {Function} callback - Called after every initial package facade is initialized.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidInitializeInitialPackages(callback) {
     return this.emitter.on("did-initialize-initial-packages", callback);
@@ -226,8 +228,8 @@ module.exports = class PackageManager {
    *
    * Invoke the given callback when a package is activated.
    *
-   * @param callback - A `Function` to be invoked when a package is activated.
-   * @param callback.package - The {@link Package} that was activated.
+   * @param {Function} callback - A `Function` to be invoked when a package is activated.
+   * @param {Package} callback.package - The {@link Package} that was activated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidActivatePackage(callback) {
@@ -240,8 +242,8 @@ module.exports = class PackageManager {
    *
    * Invoke the given callback when a package is deactivated.
    *
-   * @param callback - A `Function` to be invoked when a package is deactivated.
-   * @param callback.package - The {@link Package} that was deactivated.
+   * @param {Function} callback - A `Function` to be invoked when a package is deactivated.
+   * @param {Package} callback.package - The {@link Package} that was deactivated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidDeactivatePackage(callback) {
@@ -254,8 +256,8 @@ module.exports = class PackageManager {
    *
    * Invoke the given callback when a package is loaded.
    *
-   * @param callback - A `Function` to be invoked when a package is loaded.
-   * @param callback.package - The {@link Package} that was loaded.
+   * @param {Function} callback - A `Function` to be invoked when a package is loaded.
+   * @param {Package} callback.package - The {@link Package} that was loaded.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidLoadPackage(callback) {
@@ -268,8 +270,8 @@ module.exports = class PackageManager {
    *
    * Invoke the given callback when a package is unloaded.
    *
-   * @param callback - A `Function` to be invoked when a package is unloaded.
-   * @param callback.package - The {@link Package} that was unloaded.
+   * @param {Function} callback - A `Function` to be invoked when a package is unloaded.
+   * @param {Package} callback.package - The {@link Package} that was unloaded.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidUnloadPackage(callback) {
@@ -277,7 +279,7 @@ module.exports = class PackageManager {
   }
 
   /**
-   * @category Package system data
+   * @category Package System Data
    */
 
   /**
@@ -286,14 +288,14 @@ module.exports = class PackageManager {
    *
    * Get the paths being used to look for packages.
    *
-   * @returns {Array} of `String` directory paths.
+   * @returns {Array<String>} of `String` directory paths.
    */
   getPackageDirPaths() {
     return _.clone(this.packageDirPaths);
   }
 
   /**
-   * @category General package data
+   * @category General Package Data
    */
 
   /**
@@ -302,7 +304,7 @@ module.exports = class PackageManager {
    *
    * Resolve the given package name to a path on disk.
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {String|null} folder path or `null` if it could not be resolved.
    */
   resolvePackagePath(name) {
@@ -363,7 +365,7 @@ module.exports = class PackageManager {
    *
    * Is the package with the given name bundled with Lumine?
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Boolean}
    */
   isBundledPackage(name) {
@@ -371,7 +373,7 @@ module.exports = class PackageManager {
   }
 
   /**
-   * @category Enabling and disabling packages
+   * @category Enabling and Disabling Packages
    */
 
   /**
@@ -380,7 +382,7 @@ module.exports = class PackageManager {
    *
    * Enable the package with the given name.
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Promise<Package|null>} Resolves when the enabled package is initialized or active.
    */
   async enablePackage(name) {
@@ -401,7 +403,7 @@ module.exports = class PackageManager {
    *
    * Disable the package with the given name.
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Promise<Package|null>} Resolves after the package is fully deactivated.
    */
   async disablePackage(name) {
@@ -422,7 +424,7 @@ module.exports = class PackageManager {
    *
    * Is the package with the given name disabled?
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Boolean}
    */
   isPackageDisabled(name) {
@@ -430,7 +432,7 @@ module.exports = class PackageManager {
   }
 
   /**
-   * @category Accessing active packages
+   * @category Accessing Active Packages
    */
 
   /**
@@ -438,6 +440,7 @@ module.exports = class PackageManager {
    * @status public
    *
    * Get an `Array` of all the active {@link Package Packages}.
+   * @returns {Array<Package>}
    */
   getActivePackages() {
     return _.values(this.activePackages);
@@ -465,8 +468,8 @@ module.exports = class PackageManager {
    *
    * Get the active {@link Package} with the given name.
    *
-   * @param name - The `String` package name.
-   * @returns {Package} or undefined.
+   * @param {String} name - The `String` package name.
+   * @returns {Package|undefined} or undefined.
    */
   getActivePackage(name) {
     const record = this.packageLifecycles.get(name);
@@ -479,7 +482,7 @@ module.exports = class PackageManager {
    *
    * Is the {@link Package} with the given name active?
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Boolean}
    */
   isPackageActive(name) {
@@ -492,7 +495,7 @@ module.exports = class PackageManager {
    *
    * Return the package's explicit lifecycle state.
    *
-   * @param name - Package name.
+   * @param {String} name - Package name.
    * @returns {String|undefined} One of `loaded`, `activating`, `active`, or
    * `deactivating`. An unloaded or unknown package has no current lifecycle record.
    * @category Package Lifecycle
@@ -530,6 +533,8 @@ module.exports = class PackageManager {
    * @public
    * @status public
    *
+   * Check whether initial package activation has completed.
+   *
    * @returns {Boolean} indicating whether package activation has occurred.
    * @category Package Lifecycle
    */
@@ -538,7 +543,7 @@ module.exports = class PackageManager {
   }
 
   /**
-   * @category Accessing loaded packages
+   * @category Accessing Loaded Packages
    */
 
   /**
@@ -546,6 +551,7 @@ module.exports = class PackageManager {
    * @status public
    *
    * Get an `Array` of all the loaded {@link Package Packages}
+   * @returns {Array<Package>}
    */
   getLoadedPackages() {
     return _.values(this.loadedPackages);
@@ -564,8 +570,8 @@ module.exports = class PackageManager {
    *
    * Get the loaded {@link Package} with the given name.
    *
-   * @param name - The `String` package name.
-   * @returns {Package} or undefined.
+   * @param {String} name - The `String` package name.
+   * @returns {Package|undefined} or undefined.
    */
   getLoadedPackage(name) {
     return this.loadedPackages[name];
@@ -577,7 +583,7 @@ module.exports = class PackageManager {
    *
    * Is the package with the given name loaded?
    *
-   * @param name - The `String` package name.
+   * @param {String} name - The `String` package name.
    * @returns {Boolean}
    */
   isPackageLoaded(name) {
@@ -587,6 +593,8 @@ module.exports = class PackageManager {
   /**
    * @public
    * @status public
+   *
+   * Check whether initial package loading has completed.
    *
    * @returns {Boolean} indicating whether package loading has occurred.
    * @category Package Lifecycle
@@ -599,6 +607,8 @@ module.exports = class PackageManager {
    * @public
    * @status extended
    *
+   * Check whether the initial package bootstrap has completed.
+   *
    * @returns {Boolean} indicating whether the initial package bootstrap has
    * completed.
    * @category Package Lifecycle
@@ -608,14 +618,16 @@ module.exports = class PackageManager {
   }
 
   /**
-   * @category Accessing available packages
+   * @category Accessing Available Packages
    */
 
   /**
    * @public
    * @status public
    *
-   * @returns {Array} of `Strings` of all the available package paths.
+   * Get the directory paths of all available packages.
+   *
+   * @returns {Array<String>} of `Strings` of all the available package paths.
    */
   getAvailablePackagePaths() {
     return this.getAvailablePackages().map((a) => a.path);
@@ -625,7 +637,9 @@ module.exports = class PackageManager {
    * @public
    * @status public
    *
-   * @returns {Array} of `Strings` of all the available package names.
+   * Get the names of all available packages.
+   *
+   * @returns {Array<String>} of `Strings` of all the available package names.
    */
   getAvailablePackageNames() {
     return this.getAvailablePackages().map((a) => a.name);
@@ -635,7 +649,9 @@ module.exports = class PackageManager {
    * @public
    * @status public
    *
-   * @returns {Array} of manifest metadata objects for all available packages.
+   * Get manifest metadata for all available packages.
+   *
+   * @returns {Array<Object>} of manifest metadata objects for all available packages.
    */
   getAvailablePackageMetadata() {
     const packages = [];
@@ -652,9 +668,11 @@ module.exports = class PackageManager {
    * @public
    * @status public
    *
+   * Get available package descriptors sorted by name.
+   *
    * @param {Object} [options]
-   * @param options.includeShadowed - When `true`, also returns the copies whose name is owned by another directory. Those never load; they exist so the UI can list every directory on disk.
-   * @returns {Array} Available package descriptors that own their names, sorted by name.
+   * @param {Boolean} [options.includeShadowed=false] - When `true`, also returns the copies whose name is owned by another directory. Those never load; they exist so the UI can list every directory on disk.
+   * @returns {Array<Object>} Available package descriptors that own their names, sorted by name.
    */
   getAvailablePackages(options) {
     const packages = this.scanAvailablePackages();
@@ -669,6 +687,7 @@ module.exports = class PackageManager {
    *
    * Get the available package that owns the given name.
    *
+   * @param {String} name - The package name to look up.
    * @returns {Object|undefined} package descriptor or undefined.
    */
   getAvailablePackage(name) {
@@ -1351,9 +1370,10 @@ module.exports = class PackageManager {
    * Atomically deactivate and unload a package in any lifecycle state. The
    * current generation is stopped before the loaded instance is removed.
    *
-   * @param name - Package name.
-   * @param options
-   * @param options.serialize - Serialize an active package before teardown. Defaults to true.
+   * @param {String} name - Package name.
+   * @param {Object} [options] - Teardown options.
+   * @param {Boolean} [options.serialize=true] - Serialize an active package before teardown. Defaults to true.
+   * @param {Boolean} [options.preserveModuleCache=false] - Preserve module identities for restart-required package updates and rollback.
    * @returns {Promise<Package>} Resolves with the unloaded package after teardown.
    * @category Package Lifecycle
    */
@@ -1511,8 +1531,8 @@ module.exports = class PackageManager {
    * Check whether a compatible service has already been published. Service
    * lookup never activates a provider; providers are ordinary active packages.
    *
-   * @param keyPath - Exact service name.
-   * @param versionRange - Semantic version range required by the caller.
+   * @param {String} keyPath - Exact service name.
+   * @param {String} versionRange - Semantic version range required by the caller.
    * @returns {Promise<Boolean>} Whether a compatible non-null service is published.
    * @category Services
    */
@@ -1547,7 +1567,7 @@ module.exports = class PackageManager {
    * grammar/settings resources finish loading. Expensive feature work remains
    * package-owned and lazy.
    *
-   * @param name - Package name or path.
+   * @param {String} name - Package name or path.
    * @returns {Promise<Package>} The started package. This never waits for a future trigger.
    * @category Package Lifecycle
    */
@@ -1579,7 +1599,7 @@ module.exports = class PackageManager {
    * Concurrent requests share one activation. Deactivation while activating
    * rejects with an error whose code is `PACKAGE_ACTIVATION_CANCELLED`.
    *
-   * @param name - Package name or path.
+   * @param {String} name - Package name or path.
    * @returns {Promise<Package>} The active package.
    * @category Package Lifecycle
    */
@@ -1870,9 +1890,9 @@ module.exports = class PackageManager {
    * Deactivate a loaded package and await its teardown before it reaches the
    * loaded state again.
    *
-   * @param name - Package name.
-   * @param options
-   * @param options.serialize - Serialize an active package before teardown. Defaults to true.
+   * @param {String} name - Package name.
+   * @param {Object} [options] - Teardown options.
+   * @param {Boolean} [options.serialize=true] - Serialize an active package before teardown. Defaults to true.
    * @returns {Promise<void>} Resolves when the package reaches `loaded`.
    * @category Package Lifecycle
    */

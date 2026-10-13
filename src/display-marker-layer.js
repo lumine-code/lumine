@@ -38,6 +38,7 @@ class DisplayMarkerLayer {
    * @status essential
    *
    * Destroy this layer.
+   * @returns {void}
    */
   destroy() {
     if (this.destroyed) {
@@ -64,6 +65,7 @@ class DisplayMarkerLayer {
    * @status public
    *
    * Destroy all markers in this layer.
+   * @returns {void}
    */
   clear() {
     this.bufferMarkerLayer.clear();
@@ -99,7 +101,7 @@ class DisplayMarkerLayer {
    * Set this layer's custom range tracker in buffer coordinates. See
    * {@link MarkerLayer#setRangeTracker} for the callback contract.
    *
-   * @param {Function} [callback] - A range tracker, or `null` to disable it.
+   * @param {Function|null} [callback] - A range tracker, or `null` to disable it.
    */
   setRangeTracker(callback) {
     this.bufferMarkerLayer.setRangeTracker(callback);
@@ -109,7 +111,9 @@ class DisplayMarkerLayer {
    * @public
    * @status experimental
    *
-   * @returns {Function} The custom range tracker, or `null`.
+   * Get the custom tracker used for buffer-coordinate ranges.
+   *
+   * @returns {Function|null} The custom range tracker, or `null` when native tracking is used.
    */
   getRangeTracker() {
     return this.bufferMarkerLayer.getRangeTracker();
@@ -125,7 +129,8 @@ class DisplayMarkerLayer {
    *
    * Subscribe to be notified synchronously when this layer is destroyed.
    *
-   * @returns {Disposable}
+   * @param {Function} callback
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
@@ -148,8 +153,8 @@ class DisplayMarkerLayer {
    * be counter-intuitive, but this is much more efficient than subscribing to
    * events on individual markers, which are expensive to deliver.
    *
-   * @param callback - A `Function` that will be called with no arguments when changes occur on this layer.
-   * @returns {Disposable}
+   * @param {Function} callback - A `Function` that will be called with no arguments when changes occur on this layer.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidUpdate(callback) {
     return this.emitter.on("did-update", callback);
@@ -167,8 +172,9 @@ class DisplayMarkerLayer {
    * You should prefer {@link #onDidUpdate} when synchronous notifications aren't
    * absolutely necessary.
    *
-   * @param callback - A `Function` that will be called with a `TextEditorMarker` whenever a new marker is created.
-   * @returns {Disposable}
+   * @param {Function} callback - A `Function` that will be called with a {@link DisplayMarker} whenever a new marker is created.
+   * @param {DisplayMarker} callback.marker - The newly created marker.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidCreateMarker(callback) {
     const subscription = this.bufferMarkerLayer.onDidCreateMarker((bufferMarker) => {
@@ -184,7 +190,7 @@ class DisplayMarkerLayer {
   }
 
   /**
-   * @category Marker creation
+   * @category Marker Creation
    */
 
   /**
@@ -193,12 +199,12 @@ class DisplayMarkerLayer {
    *
    * Create a marker with the given screen range.
    *
-   * @param screenRange - A {@link Range} or range-compatible `Array`
-   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
-   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
-   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'` and applies to both ends of the range.
+   * @param {Range|Array<Point|Array<Number>>|Object} screenRange - The range to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {Boolean} [options.reversed=false] - Place the head at the earlier endpoint.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `false`, or `true` with the `inside` invalidation strategy.
+   * @param {String} [options.clipDirection='closest'] - Clip invalid screen positions `backward`, `forward`, or to the `closest` valid position.
    * @returns {DisplayMarker} The new marker.
    */
   markScreenRange(screenRange, options) {
@@ -211,14 +217,13 @@ class DisplayMarkerLayer {
    * @public
    * @status public
    *
-   * Create a marker on this layer with its head at the given screen
-   * position and no tail.
+   * Create a marker with its head at the given screen position and no tail.
    *
-   * @param screenPosition - A {@link Point} or point-compatible `Array`
-   * @param [options] - An `Object` with the following keys:
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
-   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @param {Point|Array<Number>|Object} screenPosition - The position to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `true` for markers without a tail.
+   * @param {String} [options.clipDirection='closest'] - Clip invalid screen positions `backward`, `forward`, or to the `closest` valid position.
    * @returns {DisplayMarker} The new marker.
    */
   markScreenPosition(screenPosition, options) {
@@ -233,12 +238,12 @@ class DisplayMarkerLayer {
    *
    * Create a marker with the given buffer range.
    *
-   * @param bufferRange - A {@link Range} or range-compatible `Array`
-   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
-   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
-   * @returns {DisplayMarker}
+   * @param {Range|Array<Point|Array<Number>>|Object} bufferRange - The range to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {Boolean} [options.reversed=false] - Place the head at the earlier endpoint.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `false`, or `true` with the `inside` invalidation strategy.
+   * @returns {DisplayMarker} The new marker.
    */
   markBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
@@ -249,14 +254,13 @@ class DisplayMarkerLayer {
    * @public
    * @status public
    *
-   * Create a marker on this layer with its head at the given buffer
-   * position and no tail.
+   * Create a marker with its head at the given buffer position and no tail.
    *
-   * @param bufferPosition - A {@link Point} or point-compatible `Array`
-   * @param [options] - An `Object` with the following keys:
-   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
-   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides the default.
-   * @returns {DisplayMarker}
+   * @param {Point|Array<Number>|Object} bufferPosition - The position to mark; compatible arrays and coordinate objects are accepted.
+   * @param {Object} [options] - Marker options and custom properties.
+   * @param {String} [options.invalidate='overlap'] - Invalidation strategy: `never`, `surround`, `overlap`, `inside`, or `touch`. See {@link DisplayMarker} for the strategy definitions.
+   * @param {Boolean} [options.exclusive] - Keep endpoint insertions outside the marker. Defaults to `true` for markers without a tail.
+   * @returns {DisplayMarker} The new marker.
    */
   markBufferPosition(bufferPosition, options) {
     return this.getMarker(
@@ -274,7 +278,8 @@ class DisplayMarkerLayer {
    *
    * Get an existing marker by its id.
    *
-   * @returns {DisplayMarker}
+   * @param {Number|String} id
+   * @returns {DisplayMarker|undefined} The marker, or `undefined` when no marker with that id exists.
    */
   getMarker(id) {
     id = parseInt(id);
@@ -296,7 +301,7 @@ class DisplayMarkerLayer {
    *
    * Get all markers in the layer.
    *
-   * @returns {Array} of {@link DisplayMarker DisplayMarkers}.
+   * @returns {Array<DisplayMarker>} All markers in the layer.
    */
   getMarkers() {
     return this.bufferMarkerLayer.getMarkers().map(({ id }) => this.getMarker(id));
@@ -308,7 +313,7 @@ class DisplayMarkerLayer {
    *
    * Get the number of markers in the marker layer.
    *
-   * @returns {Number}
+   * @returns {Number} The number of markers in this layer.
    */
   getMarkerCount() {
     return this.bufferMarkerLayer.getMarkerCount();
@@ -321,32 +326,34 @@ class DisplayMarkerLayer {
    * Find markers in the layer conforming to the given parameters.
    *
    * This method finds markers based on the given properties. Markers can be
-   * associated with custom properties that will be compared with basic equality.
+   * associated with custom properties that will be compared with deep equality.
    * In addition, there are several special properties that will be compared
    * with the range of the markers rather than their properties.
    *
-   * @param params - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with basic equality. In addition, several reserved properties can be used to filter markers based on their current range:
-   * @param params.startBufferPosition - Only include markers starting at this {@link Point} in buffer coordinates.
-   * @param params.endBufferPosition - Only include markers ending at this {@link Point} in buffer coordinates.
-   * @param params.startScreenPosition - Only include markers starting at this {@link Point} in screen coordinates.
-   * @param params.endScreenPosition - Only include markers ending at this {@link Point} in screen coordinates.
-   * @param params.startsInBufferRange - Only include markers starting inside this {@link Range} in buffer coordinates.
-   * @param params.endsInBufferRange - Only include markers ending inside this {@link Range} in buffer coordinates.
-   * @param params.startsInScreenRange - Only include markers starting inside this {@link Range} in screen coordinates.
-   * @param params.endsInScreenRange - Only include markers ending inside this {@link Range} in screen coordinates.
-   * @param params.startBufferRow - Only include markers starting at this row in buffer coordinates.
-   * @param params.endBufferRow - Only include markers ending at this row in buffer coordinates.
-   * @param params.startScreenRow - Only include markers starting at this row in screen coordinates.
-   * @param params.endScreenRow - Only include markers ending at this row in screen coordinates.
-   * @param params.intersectsBufferRowRange - Only include markers intersecting this `Array` of `[startRow, endRow]` in buffer coordinates.
-   * @param params.intersectsScreenRowRange - Only include markers intersecting this `Array` of `[startRow, endRow]` in screen coordinates.
-   * @param params.containsBufferRange - Only include markers containing this {@link Range} in buffer coordinates.
-   * @param params.containsBufferPosition - Only include markers containing this {@link Point} in buffer coordinates.
-   * @param params.containedInBufferRange - Only include markers contained in this {@link Range} in buffer coordinates.
-   * @param params.containedInScreenRange - Only include markers contained in this {@link Range} in screen coordinates.
-   * @param params.intersectsBufferRange - Only include markers intersecting this {@link Range} in buffer coordinates.
-   * @param params.intersectsScreenRange - Only include markers intersecting this {@link Range} in screen coordinates.
-   * @returns {Array} of {@link DisplayMarker DisplayMarkers}
+   * @param {Object} params - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with deep equality. In addition, several reserved properties can be used to filter markers based on their current range:
+   * @param {Point|Array<Number>|Object} [params.startBufferPosition] - Only include markers starting at this {@link Point} in buffer coordinates.
+   * @param {Point|Array<Number>|Object} [params.endBufferPosition] - Only include markers ending at this {@link Point} in buffer coordinates.
+   * @param {Point|Array<Number>|Object} [params.startScreenPosition] - Only include markers starting at this {@link Point} in screen coordinates.
+   * @param {Point|Array<Number>|Object} [params.endScreenPosition] - Only include markers ending at this {@link Point} in screen coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.startsInBufferRange] - Only include markers starting inside this {@link Range} in buffer coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.endsInBufferRange] - Only include markers ending inside this {@link Range} in buffer coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.startsInScreenRange] - Only include markers starting inside this {@link Range} in screen coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.endsInScreenRange] - Only include markers ending inside this {@link Range} in screen coordinates.
+   * @param {Number} [params.startBufferRow] - Only include markers starting at this row in buffer coordinates.
+   * @param {Number} [params.endBufferRow] - Only include markers ending at this row in buffer coordinates.
+   * @param {Number} [params.startScreenRow] - Only include markers starting at this row in screen coordinates.
+   * @param {Number} [params.endScreenRow] - Only include markers ending at this row in screen coordinates.
+   * @param {Array<Number>} [params.intersectsBufferRowRange] - Only include markers intersecting this `Array` of `[startRow, endRow]` in buffer coordinates.
+   * @param {Array<Number>} [params.intersectsScreenRowRange] - Only include markers intersecting this `Array` of `[startRow, endRow]` in screen coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containsBufferRange] - Only include markers containing this {@link Range} in buffer coordinates.
+   * @param {Point|Array<Number>|Object} [params.containsBufferPosition] - Only include markers containing this {@link Point} in buffer coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containedInBufferRange] - Only include markers contained in this {@link Range} in buffer coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containedInScreenRange] - Only include markers contained in this {@link Range} in screen coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.intersectsBufferRange] - Only include markers intersecting this {@link Range} in buffer coordinates.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.intersectsScreenRange] - Only include markers intersecting this {@link Range} in screen coordinates.
+   * @param {Point|Array<Number>|Object} [params.containsScreenPosition] - Include markers containing this screen position.
+   * @param {Range|Array<Point|Array<Number>>|Object} [params.containsScreenRange] - Include markers containing this screen range.
+   * @returns {Array<DisplayMarker>} Matching markers ordered by start position, then descending end position and id.
    */
   findMarkers(params) {
     params = this.translateToBufferMarkerLayerFindParams(params);

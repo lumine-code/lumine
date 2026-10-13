@@ -69,7 +69,7 @@ const Icon = {
    * classes; the editor applies them unchanged.
    *
    * @param {String|Array<String>} value - A whitespace-separated class string or
-   *   an array of class names. Empty input returns {@link .none}.
+   *   an array of class names. Empty input returns {@link .none}; non-string array entries are ignored.
    * @param {Object} [options] - Presentation options.
    * @param {String|null} [options.color=null] - The glyph color.
    * @param {String|null} [options.title=null] - The tooltip title.
@@ -210,7 +210,7 @@ const Icon = {
    * @param {Object} [options] - Provider metadata.
    * @param {String|null} [options.providerId=null] - The provider identity. A
    *   non-null value overrides the descriptor's existing identity.
-   * @returns {Object|null} A rebuilt frozen descriptor, or `null`.
+   * @returns {Object|null} A rebuilt frozen descriptor, or `null` for absent input.
    */
   coerce(value, { providerId = null } = {}) {
     if (value == null) return null;

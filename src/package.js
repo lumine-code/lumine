@@ -1351,7 +1351,7 @@ module.exports = class Package {
    * Rebuild native modules in this package's dependencies for the
    * current version of Lumine.
    *
-   * @returns {Promise} that resolves with an object containing `code`, `stdout`, and `stderr` properties based on the results of running `lumine -p rebuild` on the package.
+   * @returns {Promise<Object>} that resolves with an object containing `code`, `stdout`, and `stderr` properties based on the results of running `npm rebuild` on the package.
    */
   rebuild() {
     return new Promise((resolve) =>
@@ -1374,7 +1374,7 @@ module.exports = class Package {
    *
    * If a previous rebuild failed, get the contents of stderr.
    *
-   * @returns {String} or null if no previous build failure occurred.
+   * @returns {String|null} or null if no previous build failure occurred.
    */
   getBuildFailureOutput() {
     return global.localStorage.getItem(this.getBuildFailureOutputStorageKey());

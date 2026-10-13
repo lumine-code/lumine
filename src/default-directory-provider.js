@@ -43,7 +43,7 @@ module.exports = class DefaultDirectoryProvider {
    *
    * Create a Directory that corresponds to the specified URI.
    * @param {String} uri - The path to the directory to add. This is guaranteed not to be contained by a `Directory` in `lumine.project`.
-   * @returns {Directory|null} A directory when the URI is compatible, or `null` otherwise.
+   * @returns {Directory} A directory wrapper for the URI, or its existing parent when the URI is not an existing directory.
    */
   directoryForURISync(uri) {
     const remembered = this.directoriesByURI?.get(uri);
@@ -93,7 +93,7 @@ module.exports = class DefaultDirectoryProvider {
    *
    * Create a Directory that corresponds to the specified URI.
    * @param {String} uri - The path to the directory to add. This is guaranteed not to be contained by a `Directory` in `lumine.project`.
-   * @returns {Promise<Directory|null>} A promise resolving to a directory when the URI is compatible, or `null` otherwise.
+   * @returns {Promise<Directory>} The same directory wrapper as directoryForURISync.
    */
   directoryForURI(uri) {
     return Promise.resolve(this.directoryForURISync(uri));
@@ -103,7 +103,7 @@ module.exports = class DefaultDirectoryProvider {
    * @public
    * @status public
    *
-   * Normalizes path.
+   * Normalize platform separators and the drive letter of a local path.
    *
    * @param {String} uri - The path that should be normalized.
    * @returns {String} with normalized path.

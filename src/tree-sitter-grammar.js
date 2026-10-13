@@ -259,6 +259,7 @@ module.exports = class TreeSitterGrammar {
    * Language instances cannot be retrieved synchronously, so this will return
    * `undefined` if the instance has not yet been loaded. In that case, going
    * async will be unavoidable, and you’ll need to call {@link #getLanguage}.
+   * @returns {Language|undefined} The loaded Tree-sitter language, or `undefined` before loading completes.
    */
   getLanguageSync() {
     return this._language;
@@ -303,7 +304,7 @@ module.exports = class TreeSitterGrammar {
    * Retrieves the Tree-sitter language instance associated with this
    * grammar.
    *
-   * @returns {Promise} that will resolve with a Tree-sitter `Language` instance. Once it resolves, the grammar is ready to perform parsing and to execute query captures.
+   * @returns {Promise<Language>} Resolves to the loaded Tree-sitter language; rejects when loading fails or the grammar is deactivated.
    */
   async getLanguage() {
     const generation = this.queryLoadGeneration;
@@ -596,8 +597,8 @@ module.exports = class TreeSitterGrammar {
    * Given a kind of query, retrieves a Tree-sitter `Query` object
    * in async fashion.
    *
-   * @param queryType - A `String` describing the query type: typically one of `highlightsQuery`, `injectionsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
-   * @returns {Promise} that resolves to a Tree-sitter `Query` object.
+   * @param {String} queryType - A `String` describing the query type: typically one of `highlightsQuery`, `injectionsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
+   * @returns {Promise<Query>} Resolves to a shared grammar-owned query; rejects on loading, compilation, or deactivation errors.
    */
   getQuery(queryType) {
     this.requestedQueryTypes.add(queryType);
@@ -678,8 +679,8 @@ module.exports = class TreeSitterGrammar {
    * Creates an arbitrary query from this grammar. Package authors
    * and end users can use queries for whatever purposes they like.
    *
-   * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Promise} that will resolve to a Tree-sitter `Query` object.
+   * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
+   * @returns {Promise<Query>} A caller-owned query; call `delete()` on it when no longer needed.
    */
   async createQuery(queryContents) {
     let language = await this.getLanguage();
@@ -696,8 +697,9 @@ module.exports = class TreeSitterGrammar {
    * Synchronous; use only when you can be certain that the tree-sitter
    * language has already loaded.
    *
-   * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Object} Tree-sitter `Query` object.
+   * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
+   * @returns {Query} A caller-owned query; call `delete()` on it when no longer needed.
+   * @throws {Error} When the language has not been loaded, or the query cannot be compiled.
    */
   createQuerySync(queryContents) {
     if (!this._language) {
@@ -829,8 +831,9 @@ module.exports = class TreeSitterGrammar {
    *
    * @param {Function} callback
    * @param {Object} callback.data
-   * @param {String} callback.data.filePath - The path to the query file on disk.
+   * @param {String} callback.data.filePath - The query file's path, or an empty string for an in-memory query change.
    * @param {String} callback.data.queryType - The type of query file, as denoted by its configuration key in the grammar file. Usually one of `highlightsQuery`, `indentsQuery`, `foldsQuery`, or `tagsQuery`.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidChangeQuery(callback) {
     return this.emitter.on("did-change-query", callback);
@@ -843,6 +846,9 @@ module.exports = class TreeSitterGrammar {
    * Calls `callback` when any of this grammar's queries change.
    *
    * Alias of {@link #onDidChangeQuery}.
+   * @param {Function} callback
+   * @param {Object} callback.data - Query-change details, as in {@link #onDidChangeQuery}.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidChangeQueryFile(callback) {
     return this.onDidChangeQuery(callback);
@@ -858,8 +864,9 @@ module.exports = class TreeSitterGrammar {
    * easier to hook into the query life cycle in order to modify or augment a
    * grammar's default queries.
    *
-   * * callback A function with the following argument:
-   *   * grammar The {@link TreeSitterGrammar} whose queries have loaded.
+   * @param {Function} callback
+   * @param {TreeSitterGrammar} callback.grammar - The grammar whose query files finished loading.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidLoadQueryFiles(callback) {
     return this.emitter.on("did-load-query-files", callback);
@@ -872,9 +879,9 @@ module.exports = class TreeSitterGrammar {
    * Calls `callback` when an injection point is added to this
    * grammar.
    *
-   * * callback A function with the following argument:
-   *   * injectionPoint The injection point added to the grammar. See
-   *     {@link TreeSitterGrammar#addInjectionPoint}.
+   * @param {Function} callback
+   * @param {Object} callback.injectionPoint - The injection-point options.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidAddInjectionPoint(callback) {
     return this.emitter.on("did-add-injection-point", callback);
@@ -887,9 +894,9 @@ module.exports = class TreeSitterGrammar {
    * Calls `callback` when an injection point is removed from this
    * grammar.
    *
-   * * callback A function with the following argument:
-   *   * injectionPoint The injection point removed from this grammar. See
-   *     {@link TreeSitterGrammar#addInjectionPoint}.
+   * @param {Function} callback
+   * @param {Object} callback.injectionPoint - The injection-point options.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidRemoveInjectionPoint(callback) {
     return this.emitter.on("did-remove-injection-point", callback);
@@ -977,18 +984,21 @@ module.exports = class TreeSitterGrammar {
    * and that call will be delegated to any Tree-sitter grammar matching that
    * scope name.
    *
-   * @param injectionPoint - The options for the injection point:
-   * @param injectionPoint.type - A `String` describing the type of node to inject into.
-   * @param injectionPoint.language - A `Function` that should return a short, unambiguous language name declared by the target grammar in `injectionNames`. Matching ignores surrounding whitespace and letter case. Receives one parameter:
-   * @param injectionPoint.language.node - A Tree-sitter node.
-   * @param injectionPoint.content - A `Function` that should return the node (or nodes) that will actually be injected into. Usually this will be the same node that was given, but could also be a specific child or descendant of that node.
-   * @param {Boolean} [injectionPoint.includeChildren] - controlling whether the injection range should include the ranges of the content node’s children. Defaults to `false`, meaning that the range of each of this node's children will be "subtracted" from the injection range, and the remainder will be parsed as if those ranges of the buffer do not exist.
-   * @param {Boolean} [injectionPoint.includeAdjacentWhitespace] - controlling whether the injection range should include whitespace that occurs between content nodes. Defaults to `false`. When `true`, if two injection ranges are separated from one another by only whitespace, that whitespace will be added to the injection range, and the ranges will be consolidated.
-   * @param {Boolean} [injectionPoint.newlinesBetween] - controlling whether the injection range should include any newline characters that may exist in between injection ranges. Defaults to `false`. Grammars like ERB and EJS need this so that they do not interpret two different embedded code sections on different lines as occurring on the same line.
-   * @param {Boolean|Function} [injectionPoint.combined] - Share child language layers between matching owner nodes per injection point and resolved language name. Defaults to `false`. A function is called synchronously with the owner node after its language and content resolve; returning `false` keeps that owner in an independent layer. Owner and content ranges are tracked individually, so local edits rediscover only affected owners. By default the owners form one shared document. Independent contexts such as Markdown inline blocks should keep separate layers.
+   * @param {Object} injectionPoint - The options for the injection point:
+   * @param {String} injectionPoint.type - A `String` describing the type of node to inject into.
+   * @param {Function} injectionPoint.language - A `Function` that should return a short, unambiguous language name declared by the target grammar in `injectionNames`. Matching ignores surrounding whitespace and letter case. Receives one parameter:
+   * @param {SyntaxNode} injectionPoint.language.node - A Tree-sitter node.
+   * @param {Function} injectionPoint.content - A `Function` that should return the node (or nodes) that will actually be injected into. Usually this will be the same node that was given, but could also be a specific child or descendant of that node.
+   * @param {Boolean} [injectionPoint.includeChildren=false] - controlling whether the injection range should include the ranges of the content node’s children. Defaults to `false`, meaning that the range of each of this node's children will be "subtracted" from the injection range, and the remainder will be parsed as if those ranges of the buffer do not exist.
+   * @param {Boolean} [injectionPoint.includeAdjacentWhitespace=false] - controlling whether the injection range should include whitespace that occurs between content nodes. Defaults to `false`. When `true`, if two injection ranges are separated from one another by only whitespace, that whitespace will be added to the injection range, and the ranges will be consolidated.
+   * @param {Boolean} [injectionPoint.newlinesBetween=false] - controlling whether the injection range should include any newline characters that may exist in between injection ranges. Defaults to `false`. Grammars like ERB and EJS need this so that they do not interpret two different embedded code sections on different lines as occurring on the same line.
+   * @param {Boolean|Function} [injectionPoint.combined=false] - Share child language layers between matching owner nodes per injection point and resolved language name. Defaults to `false`. A function is called synchronously with the owner node after its language and content resolve; returning `false` keeps that owner in an independent layer. Owner and content ranges are tracked individually, so local edits rediscover only affected owners. By default the owners form one shared document. Independent contexts such as Markdown inline blocks should keep separate layers.
    * @param {Number} [injectionPoint.combinedMaxMembers] - An optional positive safe integer limiting the number of owner nodes in each combined child layer. Omit it to keep one unbounded combined document. Use a limit only when splitting the combined document preserves the meaning of its independent owners. An owner returning multiple content nodes counts as one member and is never split across layers.
-   * @param {Boolean} [injectionPoint.coverShallowerScopes] - controlling whether the injection should prevent the parent grammar (and any of its ancestors) from applying scope boundaries within its injection range(s). Defaults to `false`.
-   * @param [injectionPoint.languageScope] - A value that determines what scope, if any, is added to the injection as its “base” scope name. Can be a `String`, `null`, or a `Function` that returns either of these values. The base language scope that should be used by this injection. Defaults to the grammar's own `scopeName` property. Set this to a string to override the default scope name, or `null` to omit a base scope name altogether. Set this to a function if the scope name to be applied varies based on the grammar; the function will be called with a grammar instance as its only argument.
+   * @param {Boolean} [injectionPoint.coverShallowerScopes=false] - controlling whether the injection should prevent the parent grammar (and any of its ancestors) from applying scope boundaries within its injection range(s). Defaults to `false`.
+   * @param {String|null|Function} [injectionPoint.languageScope] - A value that determines what scope, if any, is added to the injection as its “base” scope name. Can be a `String`, `null`, or a `Function` that returns either of these values. The base language scope that should be used by this injection. Defaults to the grammar's own `scopeName` property. Set this to a string to override the default scope name, or `null` to omit a base scope name altogether. Set this to a function if the scope name to be applied varies based on the grammar; the function will be called with a grammar instance as its only argument.
+   * @param {Boolean} [injectionPoint.excludeChildrenLines=false] - When children are excluded, subtract their complete physical rows from the injection range.
+   * @param {SyntaxNode} injectionPoint.content.node - The matching syntax node whose content is requested.
+   * @returns {void}
    */
   addInjectionPoint(injectionPoint) {
     if (

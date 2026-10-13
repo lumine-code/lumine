@@ -76,10 +76,10 @@ module.exports = class Cursor extends Model {
    *
    * Moves a cursor to a given screen position.
    *
-   * @param {Array} screenPosition - of two numbers: the screen row, and the screen column.
+   * @param {Point|Array<Number>|Object} screenPosition - of two numbers: the screen row, and the screen column.
    * @param {Object} [options] - with the following keys:
-   * @param options.autoscroll - A Boolean which, if `true`, scrolls the {@link TextEditor} to wherever the cursor moves to.
-   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
+   * @param {Boolean} [options.autoscroll] - A Boolean which, if `true`, scrolls the {@link TextEditor} to wherever the cursor moves to.
+   * @param {String|Number|Array<Number>} [options.mode] - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
    */
   setScreenPosition(screenPosition, options = {}) {
     this.changePosition(options, () => {
@@ -90,6 +90,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Get the cursor position in screen coordinates.
    *
    * @returns {Point} screen position of the cursor as a {@link Point}.
    */
@@ -103,10 +105,10 @@ module.exports = class Cursor extends Model {
    *
    * Moves a cursor to a given buffer position.
    *
-   * @param {Array} bufferPosition - of two numbers: the buffer row, and the buffer column.
+   * @param {Point|Array<Number>|Object} bufferPosition - of two numbers: the buffer row, and the buffer column.
    * @param {Object} [options] - with the following keys:
-   * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new position. Defaults to `true` if this is the most recently added cursor, `false` otherwise.
-   * @param options.mode - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
+   * @param {Boolean} [options.autoscroll] - indicating whether to autoscroll to the new position. Defaults to `true` if this is the most recently added cursor, `false` otherwise.
+   * @param {String|Number|Array<Number>} [options.mode] - The scroll mode when autoscrolling. See {@link TextEditor#scrollToScreenRange}.
    */
   setBufferPosition(bufferPosition, options = {}) {
     this.changePosition(options, () => {
@@ -118,6 +120,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the cursor position in buffer coordinates.
+   *
    * @returns {Point} The current buffer position.
    */
   getBufferPosition() {
@@ -128,6 +132,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the cursor's zero-indexed screen row.
+   *
    * @returns {Number} cursor's current screen row.
    */
   getScreenRow() {
@@ -137,6 +143,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Get the cursor's zero-indexed screen column.
    *
    * @returns {Number} cursor's current screen column.
    */
@@ -149,6 +157,7 @@ module.exports = class Cursor extends Model {
    * @status public
    *
    * Retrieves the cursor's current buffer row.
+   * @returns {Number} The zero-indexed buffer row.
    */
   getBufferRow() {
     return this.getBufferPosition().row;
@@ -157,6 +166,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Get the cursor's zero-indexed buffer column.
    *
    * @returns {Number} cursor's current buffer column.
    */
@@ -168,6 +179,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the text of the cursor's buffer row, excluding its line ending.
+   *
    * @returns {String} The text of the cursor's current buffer row, excluding its line ending.
    */
   getCurrentBufferLine() {
@@ -178,6 +191,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Determine whether the cursor is at the beginning of its buffer row.
+   *
    * @returns {Boolean} whether the cursor is at the start of a line.
    */
   isAtBeginningOfLine() {
@@ -187,6 +202,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Determine whether the cursor is at the end of its buffer row.
    *
    * @returns {Boolean} whether the cursor is on the line return character.
    */
@@ -202,6 +219,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the display marker tracking this cursor.
+   *
    * @returns {DisplayMarker} underlying {@link DisplayMarker} for the cursor. Useful with overlay {@link Decoration Decorations}.
    */
   getMarker() {
@@ -214,8 +233,7 @@ module.exports = class Cursor extends Model {
    *
    * Identifies if the cursor is surrounded by whitespace.
    *
-   * "Surrounded" here means that the character directly before and after the
-   * cursor are both whitespace.
+   * Check the characters directly before and after the cursor, clipped to the current line. At line boundaries, only existing characters are checked.
    *
    * @returns {Boolean}
    */
@@ -232,6 +250,8 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   *
+   * Determine whether the cursor separates a word character from a non-word character.
    *
    * This method returns false if the character before or after the cursor is
    * whitespace.
@@ -257,8 +277,10 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Determine whether the configured word pattern matches at the cursor.
+   *
    * @param {Object} [options]
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Boolean} whether this cursor is between a word's start and end.
    */
   isInsideWord(options) {
@@ -275,7 +297,9 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
-   * @returns {Number} indentation level of the current line.
+   * Get the indentation level corresponding to the cursor's current column.
+   *
+   * @returns {Number} The cursor column divided by tab length for soft tabs, or its buffer column for hard tabs.
    */
   getIndentLevel() {
     if (this.editor.getSoftTabs()) {
@@ -312,6 +336,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Determine whether non-whitespace characters precede the cursor on its buffer row.
    *
    * @returns {Boolean} true if this cursor has non-whitespace characters before its current position.
    */
@@ -701,8 +727,10 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the preceding word boundary in buffer coordinates.
+   *
    * @param {Object} [options] - with the following keys:
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
    * @returns {Point} buffer position of previous word boundary. It might be on the current word, or the previous word.
    */
   getPreviousWordBoundaryBufferPosition(options = {}) {
@@ -733,9 +761,11 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the next word boundary in buffer coordinates.
+   *
    * @param {Object} [options] - with the following keys:
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
-   * @returns {Point} buffer position of the next word boundary. It might be on the current word, or the previous word.
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
+   * @returns {Point} buffer position of the next word boundary. It may belong to the current word or a following word.
    */
   getNextWordBoundaryBufferPosition(options = {}) {
     const currentBufferPosition = this.getBufferPosition();
@@ -765,10 +795,10 @@ module.exports = class Cursor extends Model {
    *
    * Retrieves the buffer position of where the current word starts.
    *
-   * @param [options] - An `Object` with the following keys:
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
-   * @param options.includeNonWordCharacters - A `Boolean` indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
-   * @param options.allowPrevious - A `Boolean` indicating whether the beginning of the previous word can be returned.
+   * @param {Object} [options] - An `Object` with the following keys:
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
+   * @param {Boolean} [options.includeNonWordCharacters] - A `Boolean` indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
+   * @param {Boolean} [options.allowPrevious] - A `Boolean` indicating whether the beginning of the previous word can be returned.
    * @returns {Point}
    */
   getBeginningOfCurrentWordBufferPosition(options = {}) {
@@ -801,8 +831,9 @@ module.exports = class Cursor extends Model {
    * Retrieves the buffer position of where the current word ends.
    *
    * @param {Object} [options] - with the following keys:
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
-   * @param options.includeNonWordCharacters - A Boolean indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
+   * @param {Boolean} [options.includeNonWordCharacters] - A Boolean indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
+   * @param {Boolean} [options.allowNext=true] - Allow searching following rows when the cursor is not inside a word.
    * @returns {Point}
    */
   getEndOfCurrentWordBufferPosition(options = {}) {
@@ -833,7 +864,7 @@ module.exports = class Cursor extends Model {
    * Retrieves the buffer position of where the next word starts.
    *
    * @param {Object} [options]
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Point}
    */
   getBeginningOfNextWordBufferPosition(options = {}) {
@@ -860,8 +891,10 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the buffer range occupied by the word under the cursor.
+   *
    * @param {Object} [options]
-   * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
+   * @param {RegExp} [options.wordRegex] - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Range} buffer Range occupied by the word located under the cursor.
    */
   getCurrentWordBufferRange(options = {}) {
@@ -880,8 +913,10 @@ module.exports = class Cursor extends Model {
    * @public
    * @status public
    *
+   * Get the buffer range occupied by the cursor's current line.
+   *
    * @param {Object} [options]
-   * @param options.includeNewline - A `Boolean` which controls whether the Range should include the newline.
+   * @param {Boolean} [options.includeNewline] - A `Boolean` which controls whether the Range should include the newline.
    * @returns {Range} buffer Range for the current line.
    */
   getCurrentLineBufferRange(options) {
@@ -896,7 +931,7 @@ module.exports = class Cursor extends Model {
    *
    * A paragraph is defined as a block of text surrounded by empty lines or comments.
    *
-   * @returns {Range}
+   * @returns {Range|undefined} The surrounding paragraph range, or undefined when the cursor is on a blank row.
    */
   getCurrentParagraphBufferRange() {
     return this.editor.rowRangeForParagraphAtBufferRow(this.getBufferRow());
@@ -905,6 +940,8 @@ module.exports = class Cursor extends Model {
   /**
    * @public
    * @status public
+   *
+   * Get the part of the current word preceding the cursor.
    *
    * @returns {String} characters preceding the cursor in the current word.
    */
@@ -916,11 +953,7 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * @category Visibility
-   */
-
-  /**
-   * @category Comparing to another cursor
+   * @category Comparison
    */
 
   /**
@@ -932,13 +965,14 @@ module.exports = class Cursor extends Model {
    * See {@link Point#compare} for more details.
    *
    * @param {Cursor} otherCursor - to compare against
+   * @returns {Number} -1, 0, or 1 according to the ordering of the buffer positions.
    */
   compare(otherCursor) {
     return this.getBufferPosition().compare(otherCursor.getBufferPosition());
   }
 
   /**
-   * @category Utilities
+   * @category Word Matching
    */
 
   /**
@@ -946,6 +980,9 @@ module.exports = class Cursor extends Model {
    * @status public
    *
    * Deselects the current selection.
+   * @param {Object} [options] - Options for this operation.
+   * @param {Boolean} [options.autoscroll] - Scroll by default only for the most recently added selection.
+   * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
    * @category Selections
    */
   clearSelection(options) {
@@ -959,7 +996,7 @@ module.exports = class Cursor extends Model {
    * Get the RegExp used by the cursor to determine what a "word" is.
    *
    * @param {Object} [options] - with the following keys:
-   * @param options.includeNonWordCharacters - A `Boolean` indicating whether to include non-word characters in the regex. (default: true)
+   * @param {Boolean} [options.includeNonWordCharacters] - A `Boolean` indicating whether to include non-word characters in the regex. (default: true)
    * @returns {RegExp}
    */
   wordRegExp(options) {
@@ -978,7 +1015,7 @@ module.exports = class Cursor extends Model {
    * Get the RegExp used by the cursor to determine what a "subword" is.
    *
    * @param {Object} [options] - with the following keys:
-   * @param options.backwards - A `Boolean` indicating whether to look forwards or backwards for the next subword. (default: false)
+   * @param {Boolean} [options.backwards] - A `Boolean` indicating whether to look forwards or backwards for the next subword. (default: false)
    * @returns {RegExp}
    */
   subwordRegExp(options = {}) {

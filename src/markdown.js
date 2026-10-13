@@ -50,41 +50,41 @@ function parseFrontMatter(content) {
  * @memberof lumine.tools.markdown
  * @alias render
  * @desc Takes a Markdown document and renders it as HTML.
- * @param {string} content - The Markdown source material.
- * @param {object} givenOpts - The optional arguments:
- * @param {string} givenOpts.renderMode - Determines how the page is rendered.
+ * @param {String} content - The Markdown source material.
+ * @param {Object} [givenOpts={}] - The optional arguments:
+ * @param {String} [givenOpts.renderMode="full"] - Determines how the page is rendered.
  * Valid values "full" or "fragment".
- * @param {boolean} givenOpts.html - Whether HTML tags should be allowed.
- * @param {boolean} givenOpts.sanitize - If the page content should be saniized via DOMPurify.
- * @param {boolean} givenOpts.sanitizeAllowUnknownProtocols - Controls DOMPurify's
+ * @param {Boolean} [givenOpts.html=true] - Whether HTML tags should be allowed.
+ * @param {Boolean} [givenOpts.sanitize=true] - If the page content should be sanitized via DOMPurify.
+ * @param {Boolean} [givenOpts.sanitizeAllowUnknownProtocols=true] - Controls DOMPurify's
  * own option of 'ALLOW_UNKNOWN_PROTOCOLS'.
- * @param {boolean} givenOpts.sanitizeAllowSelfClose - Controls DOMPurify's
+ * @param {Boolean} [givenOpts.sanitizeAllowSelfClose=true] - Controls DOMPurify's
  * own option of 'ALLOW_SELF_CLOSE'
- * @param {boolean} givenOpts.breaks - If newlines should always be converted
+ * @param {Boolean} [givenOpts.breaks=false] - If newlines should always be converted
  * into breaklines.
- * @param {boolean} givenOpts.handleFrontMatter - Whether YAML or JSON frontmatter
+ * @param {Boolean} [givenOpts.handleFrontMatter=true] - Whether YAML or JSON frontmatter
  * data should be processed and displayed. Other language headers remain Markdown.
- * @param {boolean} givenOpts.useDefaultEmoji - Whether `markdown-it-emoji` should be enabled.
- * @param {boolean} givenOpts.useGitHubHeadings - Whether `markdown-it-github-headings`
+ * @param {Boolean} [givenOpts.useDefaultEmoji=false] - Whether `markdown-it-emoji` should be enabled.
+ * @param {Boolean} [givenOpts.useGitHubHeadings=false] - Whether `markdown-it-github-headings`
  * should be enabled. False by default.
- * @param {boolean} givenOpts.useTaskCheckbox - Whether `markdown-it-task-checkbox`
+ * @param {Boolean} [givenOpts.useTaskCheckbox=true] - Whether `markdown-it-task-checkbox`
  * should be enabled. True by default.
- * @param {boolean} givenOpts.taskCheckboxDisabled - Controls `markdown-it-task-checkbox`
+ * @param {Boolean} [givenOpts.taskCheckboxDisabled=true] - Controls `markdown-it-task-checkbox`
  * `disabled` option. True by default.
- * @param {boolean} givenOpts.taskCheckboxDivWrap - Controls `markdown-it-task-checkbox`
+ * @param {Boolean} [givenOpts.taskCheckboxDivWrap=false] - Controls `markdown-it-task-checkbox`
  * `divWrap` option. False by default.
- * @param {boolean} givenOpts.transformImageLinks - Attempt to resolve image URLs.
+ * @param {Boolean} [givenOpts.transformImageLinks=true] - Attempt to resolve image URLs.
  * True by default.
- * @param {boolean} givenOpts.transformNonFqdnLinks - Attempt to resolve links
+ * @param {Boolean} [givenOpts.transformNonFqdnLinks=true] - Attempt to resolve links
  * that are not fully qualified domain names. True by default.
- * @param {string} givenOpts.rootDomain - The root URL of the online resource.
+ * @param {String} [givenOpts.rootDomain=""] - The root URL of the online resource.
  * Useful when attempting to resolve any links on the page. Only works for online
  * resources.
- * @param {string} givenOpts.filePath - The local alternative to `rootDomain`.
+ * @param {String} [givenOpts.filePath=""] - The local alternative to `rootDomain`.
  * Used to resolve incomplete paths, but locally on the file system.
- * @param {string} givenOpts.disableMode - The level of disabling of markdown features.
+ * @param {String} [givenOpts.disableMode="none"] - The level of disabling of markdown features.
  * `none` by default. But supports: "none", "strict"
- * @returns {string} Parsed HTML content.
+ * @returns {String} Parsed HTML content.
  */
 function renderMarkdown(content, givenOpts = {}) {
   // First we will setup our markdown renderer instance according to the opts provided
@@ -479,17 +479,17 @@ function renderMarkdown(content, givenOpts = {}) {
  * @async
  * @desc Uses Lumine's built-in Syntax Highlighting system to apply the same syntax
  * highlighting to code blocks within markdown. Modifies the existing object passed.
- * @param {HTMLFragment} content - The HTML Node/Fragment to apply syntax highlighting on.
+ * @param {Element|DocumentFragment} content - The HTML Node/Fragment to apply syntax highlighting on.
  * Will modify the original object.
- * @param {object} givenOpts - Optional Arguments:
- * @param {function} givenOpts.syntaxScopeNameFunc - A function that can be called with
+ * @param {Object} [givenOpts={}] - Optional Arguments:
+ * @param {Function|null} [givenOpts.syntaxScopeNameFunc=null] - A function that can be called with
  * any given language ID from a code block scope, and returns the grammar source id
  * that should be used to perform syntax highlighting.
- * @param {string} givenOpts.renderMode - Whether we are rendering a document fragment
+ * @param {String} [givenOpts.renderMode="full"] - Whether we are rendering a document fragment
  * or a full document. Valid values: "full", "fragment".
- * @param {object} givenOpts.grammar - The grammar of the source file. Carryover from
+ * @param {Object|null} [givenOpts.grammar=null] - The grammar of the source file. Carryover from
  * original `markdown-preview` functionality.
- * @param {boolean} givenOpts.autoWidth - Whether the editors standing in for code
+ * @param {Boolean} [givenOpts.autoWidth=false] - Whether the editors standing in for code
  * blocks size themselves to their longest line ("fragment" mode only). A code block
  * otherwise takes the width its container gives it, which is nothing at all when the
  * container is sized by its content — a tooltip, a popover. Pass true there.
@@ -568,10 +568,10 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
  *
  * @function convertToDOM
  * @memberof lumine.tools.markdown
- * @desc Takes a raw HTML string of data and returns a proper HTMLFragment.
+ * @desc Parse an HTML string into a detached DocumentFragment.
  * This should be done if you need access to APIs available on the DOM itself.
- * @param {string} content - The HTML String.
- * @returns {HTMLFragment}
+ * @param {String} content - The HTML String.
+ * @returns {DocumentFragment} The parsed fragment. This function does not sanitize HTML.
  */
 function convertToDOM(content) {
   const template = document.createElement("template");

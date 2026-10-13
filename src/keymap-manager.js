@@ -113,14 +113,15 @@ module.exports = KeymapManager = (function () {
      *
      * Create a keydown DOM event for testing purposes.
      *
-     * @param key - The key or keyIdentifier of the event. For example, `'a'`, `'1'`, `'escape'`, `'backspace'`, etc.
-     * @param [options] - An `Object` containing any of the following:
-     * @param options.ctrl - A `Boolean` indicating the ctrl modifier key
-     * @param options.alt - A `Boolean` indicating the alt modifier key
-     * @param options.shift - A `Boolean` indicating the shift modifier key
-     * @param options.cmd - A `Boolean` indicating the cmd modifier key
-     * @param options.which - A `Number` indicating `which` value of the event. See the docs for KeyboardEvent for more information.
-     * @param options.target - The target element of the event.
+     * @param {String} key - The key or keyIdentifier of the event. For example, `'a'`, `'1'`, `'escape'`, `'backspace'`, etc.
+     * @param {Object} [options] - An `Object` containing any of the following:
+     * @param {Boolean} [options.ctrl=false] - A `Boolean` indicating the ctrl modifier key
+     * @param {Boolean} [options.alt=false] - A `Boolean` indicating the alt modifier key
+     * @param {Boolean} [options.shift=false] - A `Boolean` indicating the shift modifier key
+     * @param {Boolean} [options.cmd=false] - A `Boolean` indicating the cmd modifier key
+     * @param {Number} [options.which] - A `Number` indicating `which` value of the event. See the docs for KeyboardEvent for more information.
+     * @param {Element} [options.target] - The target element of the event.
+     * @returns {KeyboardEvent} The constructed keydown event.
      */
     static buildKeydownEvent(key, options) {
       return keydownEvent(key, options);
@@ -140,8 +141,8 @@ module.exports = KeymapManager = (function () {
      *
      * Create a new KeymapManager.
      *
-     * @param options - An `Object` containing properties to assign to the keymap.  You can pass custom properties to be used by extension methods. The following properties are also supported:
-     * @param options.defaultTarget - This will be used as the target of events whose target is `document.body` to allow for a catch-all element when nothing is focused.
+     * @param {Object} [options] - An `Object` containing properties to assign to the keymap.  You can pass custom properties to be used by extension methods. The following properties are also supported:
+     * @param {Element} [options.defaultTarget] - This will be used as the target of events whose target is `document.body` to allow for a catch-all element when nothing is focused.
      */
     constructor(options) {
       if (options == null) {
@@ -211,7 +212,7 @@ module.exports = KeymapManager = (function () {
      * @param {Object} callback.event - with the following keys:
      * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
      * @param {KeyBinding} callback.event.binding - that the keystrokes matched.
-     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @param {Element} callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
      */
     onDidMatchBinding(callback) {
@@ -228,8 +229,8 @@ module.exports = KeymapManager = (function () {
      * @param {Function} callback - to be called when keystrokes partially match a binding.
      * @param {Object} callback.event - with the following keys:
      * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
-     * @param {KeyBinding} callback.event.partiallyMatchedBindings - s that the keystrokes partially matched.
-     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @param {Array<KeyBinding>} callback.event.partiallyMatchedBindings - The bindings partially matched by the keystrokes.
+     * @param {Element} callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
      */
     onDidPartiallyMatchBindings(callback) {
@@ -246,7 +247,7 @@ module.exports = KeymapManager = (function () {
      * @param {Function} callback - to be called when keystrokes fail to match any bindings.
      * @param {Object} callback.event - with the following keys:
      * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
-     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @param {Element} callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
      */
     onDidFailToMatchBinding(callback) {
@@ -279,12 +280,14 @@ module.exports = KeymapManager = (function () {
      * @public
      * @status public
      *
-     * Invoke the given callback when a keymap file not able to be loaded.
+     * Invoke the given callback when a keymap file cannot be read or watched.
      *
      * @param {Function} callback - to be called when a keymap file is unloaded.
-     * @param {Object} callback.error - with the following keys:
-     * @param {String} callback.error.message - the error message.
-     * @param {String} callback.error.stack - the error stack trace.
+     * @param {Error|Object} callback.event - A read error, or a `{path, error}` object for a watcher failure.
+     * @param {String} [callback.event.message] - The message of a direct read error.
+     * @param {String} [callback.event.stack] - The stack of a direct read error.
+     * @param {String} [callback.event.path] - The keymap path when the watcher fails.
+     * @param {Error} [callback.event.error] - The watcher failure.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
      */
     onDidFailToReadFile(callback) {
@@ -301,10 +304,10 @@ module.exports = KeymapManager = (function () {
      *
      * Construct `KeyBindings` from an object grouping them by CSS selector.
      *
-     * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
+     * @param {String} source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
      * @param {Object} keyBindingsBySelector - Bindings grouped by CSS selector,
      *   with each value mapping keystroke patterns to commands.
-     * @param priority - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
+     * @param {Number} [priority=0] - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
      * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
      *   should throw.
      * @returns {Array<KeyBinding>} The constructed bindings.
@@ -367,10 +370,10 @@ module.exports = KeymapManager = (function () {
      *
      * Add sets of key bindings grouped by CSS selector.
      *
-     * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
+     * @param {String} source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
      * @param {Object} keyBindingsBySelector - Bindings grouped by CSS selector,
      *   with each value mapping keystroke patterns to commands.
-     * @param priority - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
+     * @param {Number} [priority=0] - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
      * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
      *   should throw.
      * @returns {Disposable} A disposable that removes the bindings.
@@ -417,7 +420,7 @@ module.exports = KeymapManager = (function () {
      *
      * Get all current key bindings.
      *
-     * @returns {Array} of `KeyBindings`.
+     * @returns {Array<KeyBinding>} of `KeyBindings`.
      */
     getKeyBindings() {
       return this.keyBindings.slice();
@@ -429,11 +432,11 @@ module.exports = KeymapManager = (function () {
      *
      * Get the key bindings for a given command and optional target.
      *
-     * @param params - An `Object` whose keys constrain the binding search:
-     * @param params.keystrokes - A `String` representing one or more keystrokes, such as 'ctrl-x ctrl-s'
-     * @param params.command - A `String` representing the name of a command, such as 'editor:backspace'
-     * @param params.target - An optional DOM element constraining the search. If this parameter is supplied, the call will only return bindings that can be invoked by a KeyboardEvent originating from the target element.
-     * @returns {Array} of key bindings.
+     * @param {Object} [params] - An `Object` whose keys constrain the binding search:
+     * @param {String} [params.keystrokes] - A `String` representing one or more keystrokes, such as 'ctrl-x ctrl-s'
+     * @param {String} [params.command] - A `String` representing the name of a command, such as 'editor:backspace'
+     * @param {Element} [params.target] - An optional DOM element constraining the search. If this parameter is supplied, the call will only return bindings that can be invoked by a KeyboardEvent originating from the target element.
+     * @returns {Array<KeyBinding>} of key bindings.
      */
     findKeyBindings(params) {
       if (params == null) {
@@ -479,9 +482,9 @@ module.exports = KeymapManager = (function () {
      *
      * @param {String} bindingsPath - A keymap file or directory. Directories load
      *   every contained JSON or JSONC keymap.
-     * @param options - An `Object` containing the following optional keys:
-     * @param options.watch - If `true`, the keymap will also reload the file at the given path whenever it changes. This option cannot be used with directory paths.
-     * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
+     * @param {Object} [options] - An `Object` containing the following optional keys:
+     * @param {Boolean} [options.watch] - If `true`, the keymap will also reload the file at the given path whenever it changes. This option cannot be used with directory paths.
+     * @param {Number} [options.priority] - A `Number` used to sort keybindings which have the same specificity.
      */
     loadKeymap(bindingsPath, options) {
       const checkIfDirectory =
@@ -521,8 +524,8 @@ module.exports = KeymapManager = (function () {
      * that's what you're looking for, call {@link #loadKeymap} with `watch: true`.
      *
      * @param {String} filePath - The keymap file to watch.
-     * @param options - An `Object` containing the following optional keys:
-     * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
+     * @param {Object} [options] - An `Object` containing the following optional keys:
+     * @param {Number} [options.priority] - A `Number` used to sort keybindings which have the same specificity.
      */
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
@@ -633,7 +636,10 @@ module.exports = KeymapManager = (function () {
      * If the event's target is `document.body`, it will be treated as if its
      * target is `.defaultTarget` if that property is assigned on the keymap.
      *
-     * @param event - A `KeyboardEvent` of type 'keydown'
+     * @param {KeyboardEvent} event - A keydown or keyup `KeyboardEvent`.
+     * @param {Object} [param] - Internal event replay options; omit for ordinary keyboard events.
+     * @param {Boolean} [param.replay=false] - Process a replay without arming a new chord timeout.
+     * @param {Array<KeyBinding>} [param.disabledBindings] - Bindings excluded during replay.
      */
     handleKeyboardEvent(event, param) {
       const document = this.documentContext || event.target?.ownerDocument || globalThis.document;
@@ -918,7 +924,7 @@ module.exports = KeymapManager = (function () {
      *
      * Translate a keydown event to a keystroke string.
      *
-     * @param event - A `KeyboardEvent` of type 'keydown'
+     * @param {KeyboardEvent} event - A `KeyboardEvent` of type 'keydown'
      * @returns {String} describing the keystroke.
      */
     keystrokeForKeyboardEvent(event) {
@@ -934,7 +940,7 @@ module.exports = KeymapManager = (function () {
      * matching state. Relay wrong suffixes too so they can end a pending chord;
      * ordinary editable input stays native when this returns false. A retained
      * keyup rule only requests its next matching keyup, even after a timeout.
-     * @param event - A keydown or keyup KeyboardEvent from the embedded document.
+     * @param {KeyboardEvent} event - A keydown or keyup KeyboardEvent from the embedded document.
      * @param {Object} [options]
      * @param {HTMLElement} [options.target] - Stable host element used when relaying events. Defaults to event.target.
      * @returns {Boolean} Whether this event belongs to that target's pending keyboard sequence.
@@ -972,11 +978,11 @@ module.exports = KeymapManager = (function () {
      * the most recently-added resolver returning a string for a given keystroke
      * takes precedence.
      *
-     * @param resolver - A `Function` that returns a keystroke `String` and is called with an object containing the following keys:
+     * @param {String} resolver - A `Function` that returns a keystroke `String` and is called with an object containing the following keys:
      * @param {String} resolver.keystroke - The currently resolved keystroke string. A falsy resolver result keeps this value.
-     * @param resolver.event - The raw DOM 3 `KeyboardEvent` being resolved. See the DOM API documentation for more details.
-     * @param resolver.layoutName - The OS-specific name of the current keyboard layout.
-     * @param resolver.keymap - An object mapping DOM 3 `KeyboardEvent.code` values to objects with the typed character for that key in each modifier state, based on the current operating system layout.
+     * @param {KeyboardEvent} resolver.event - The raw DOM 3 `KeyboardEvent` being resolved. See the DOM API documentation for more details.
+     * @param {String} resolver.layoutName - The OS-specific name of the current keyboard layout.
+     * @param {Object} resolver.keymap - An object mapping DOM 3 `KeyboardEvent.code` values to objects with the typed character for that key in each modifier state, based on the current operating system layout.
      * @returns {Disposable} A disposable that removes the resolver.
      */
     addKeystrokeResolver(resolver) {

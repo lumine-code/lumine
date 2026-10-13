@@ -157,8 +157,8 @@ module.exports = class GitRepository {
    *
    * Creates a new GitRepository instance.
    *
-   * @param path - The `String` path to the Git repository to open.
-   * @param options - An optional `Object` with the following keys:
+   * @param {String} path - The `String` path to the Git repository to open.
+   * @param {Object} [options] - Optional repository construction settings.
    * @returns {Promise<GitRepository|null>} resolving to an instance or `null` if the repository could not be opened.
    */
   static async open(path, options = {}) {
@@ -277,6 +277,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Check whether this repository has been destroyed.
+   *
    * @returns {Boolean} indicating if this repository has been destroyed.
    */
   isDestroyed() {
@@ -287,7 +289,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @returns {Object} stable write facade assigned by lumine.repositories. Its methods are enabled by repositories.operations-provider services.
+   * Get the repository write facade supplied by operation providers.
+   *
+   * @returns {Object|null} stable write facade assigned by lumine.repositories. Its methods are enabled by repositories.operations-provider services.
    * @category Operations
    */
   getOperations() {
@@ -439,6 +443,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Get the absolute path of the repository Git directory.
+   *
    * @returns {String} path of the repository.
    */
   getPath() {
@@ -453,7 +459,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @returns {String} working directory path of the repository.
+   * Get the repository working directory.
+   *
+   * @returns {String|null} The working directory path, or `null` for a bare repository.
    */
   getWorkingDirectory() {
     return this.workingDirectoryPath;
@@ -462,6 +470,8 @@ module.exports = class GitRepository {
   /**
    * @public
    * @status public
+   *
+   * Get the Git directory shared by linked worktrees.
    *
    * @returns {String} directory shared by linked worktrees for refs and configuration.
    */
@@ -515,6 +525,8 @@ module.exports = class GitRepository {
    * @status public
    *
    * Makes a path relative to the repository's working directory.
+   * @param {String} path - An absolute or repository-relative path.
+   * @returns {String} A relative path inside the working directory, or the input path when it lies outside.
    */
   relativize(path) {
     return relativizePath(path, this.workingDirectoryAliases, this.caseInsensitiveFs);
@@ -582,6 +594,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Check whether a branch exists in the cached refs snapshot.
+   *
+   * @param {String} branch - The local branch name.
    * @returns {Boolean} true if the given branch exists.
    */
   hasBranch(branch) {
@@ -617,7 +632,7 @@ module.exports = class GitRepository {
    *
    * Is the given path a submodule in the repository?
    *
-   * @param filePath - The `String` path to check.
+   * @param {String} filePath - The `String` path to check.
    * @returns {Boolean}
    * @category Repository Details
    */
@@ -630,7 +645,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @param reference - The `String` branch reference name.
+   * Get cached ahead and behind counts for a branch reference.
+   *
+   * @param {String} [reference] - The branch reference name; omit it for the current HEAD branch.
    * @returns {Object} The `ahead` and `behind` commit counts.
    */
   getAheadBehindCount(reference) {
@@ -725,6 +742,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Get the fetch URL of the origin remote from the refs snapshot.
+   *
    * @returns {String|null} origin url of the repository, read from the refs snapshot's remotes. Returns `null` until the snapshot has loaded or when the repository has no `origin` remote.
    */
   getOriginURL() {
@@ -738,6 +757,8 @@ module.exports = class GitRepository {
   /**
    * @public
    * @status public
+   *
+   * Get the current branch upstream reference from the refs snapshot.
    *
    * @returns {String|null} The upstream branch, such as `refs/remotes/origin/master`, or `null` when HEAD has no upstream.
    */
@@ -774,7 +795,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @param reference - The `String` reference to get the target of.
+   * Get the object ID of a reference from the refs snapshot.
+   *
+   * @param {String} reference - The `String` reference to get the target of.
    * @returns {String|null} The current SHA for the reference, or `null` when it
    *   is unavailable.
    */
@@ -823,7 +846,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @param path - The `String` path to check.
+   * Check whether a cached status entry marks a path as modified.
+   *
+   * @param {String} path - The `String` path to check.
    * @returns {Boolean} Whether the path is modified in the detailed status snapshot. Returns `false` until the snapshot loads.
    */
   isPathModified(path) {
@@ -835,7 +860,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @param path - The `String` path to check.
+   * Check whether a cached status entry marks a path as newly added.
+   *
+   * @param {String} path - The `String` path to check.
    * @returns {Boolean} Whether the path is new in the detailed status snapshot. Returns `false` until the snapshot loads.
    */
   isPathNew(path) {
@@ -850,7 +877,7 @@ module.exports = class GitRepository {
    * Is the given path ignored? Resolved from the detailed status
    * snapshot's ignored entries; returns false until the snapshot has loaded.
    *
-   * @param path - The `String` path to check.
+   * @param {String} path - The `String` path to check.
    * @returns {Boolean} that's true if the `path` is ignored.
    */
   isPathIgnored(path) {
@@ -865,7 +892,7 @@ module.exports = class GitRepository {
    * Git status snapshot's ignored entries. Returns false until the first
    * snapshot loads.
    *
-   * @param filePath - The `String` path to check.
+   * @param {String} filePath - The `String` path to check.
    * @returns {Boolean} that's true if the `filePath` is ignored.
    */
   isPathIgnoredCached(filePath) {
@@ -882,6 +909,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Get the latest immutable repository status snapshot.
+   *
    * @returns {Object} latest immutable detailed status snapshot. It contains `head`, `upstream`, `submodulePaths`, per-file staged/unstaged/conflict state, aggregate `counts`, and a monotonic `generation`. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeStatusSnapshot} or call {@link #ensureStatusSnapshot} to load it.
    */
   getStatusSnapshot() {
@@ -895,7 +924,10 @@ module.exports = class GitRepository {
    * Resolve with an initialized status snapshot, loading it on first
    * call. Concurrent callers share one in-flight refresh.
    *
-   * @returns {Promise} that resolves to the snapshot.
+   * @param {Object} [options] - Snapshot read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @param {Boolean} [options.includeIgnored=true] - Include ignored paths in the status snapshot.
+   * @returns {Promise<Object>} that resolves to the snapshot.
    */
   async ensureStatusSnapshot(options = {}) {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
@@ -920,6 +952,9 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Get the detailed cached status entry for a repository path.
+   *
+   * @param {String} filePath - An absolute or repository-relative path.
    * @returns {Object|null} detailed cached status for a repository path, or `null`.
    */
   getStatusEntry(filePath) {
@@ -1375,6 +1410,10 @@ module.exports = class GitRepository {
    * Refresh the detailed branch and file status snapshot with Git.
    * Concurrent calls coalesce into at most one in-flight and one trailing
    * worker request.
+   * @param {Object} [options] - Snapshot read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @param {Boolean} [options.includeIgnored=true] - Include ignored paths in the status snapshot.
+   * @returns {Promise<Object>} The refreshed immutable status snapshot.
    */
   refreshStatusSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh("status", options);
@@ -1387,7 +1426,7 @@ module.exports = class GitRepository {
    * Classified status for one path, read from the detailed status
    * snapshot.
    *
-   * @param filePath - A `String` path, absolute or repository-relative.
+   * @param {String} filePath - A `String` path, absolute or repository-relative.
    * @returns {Object|null} frozen `{source, conflicted, modified, added, renamed}` object (`source` is always `"snapshot"`), or `null` for clean, ignored, unknown, and pre-snapshot paths.
    */
   getPathStatusSummary(filePath) {
@@ -1406,6 +1445,8 @@ module.exports = class GitRepository {
    * repository root. Same sourcing and shape as {@link #getPathStatusSummary}
    * (without `renamed`); returns `null` when nothing below the directory has
    * a reportable status.
+   * @param {String} directoryPath - An absolute or repository-relative directory path.
+   * @returns {Object|null} The aggregate classified status, or `null` when the directory has no reportable changes.
    */
   getDirectoryStatusSummary(directoryPath) {
     if (directoryPath == null || this.isDestroyed() || !this.statusSnapshot.initialized) {
@@ -1432,6 +1473,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Get the latest immutable repository refs snapshot.
+   *
    * @returns {Object} latest immutable refs snapshot. It contains `head`, local `branches` with upstream tracking, `remoteBranches`, `tags`, `remotes` with fetch and push URLs, `worktrees`, and a monotonic `generation`. Branch and tag entries include `lastCommit` metadata for their target commit. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeRefsSnapshot} or call {@link #ensureRefsSnapshot} to load it.
    */
   getRefsSnapshot() {
@@ -1445,7 +1488,9 @@ module.exports = class GitRepository {
    * Resolve with an initialized refs snapshot, loading it on first
    * call. Concurrent callers share one in-flight refresh.
    *
-   * @returns {Promise} that resolves to the snapshot.
+   * @param {Object} [options] - Snapshot read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @returns {Promise<Object>} that resolves to the snapshot.
    */
   async ensureRefsSnapshot(options = {}) {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
@@ -1471,6 +1516,9 @@ module.exports = class GitRepository {
    *
    * Refresh the refs snapshot with Git. Concurrent calls coalesce into
    * at most one in-flight and one trailing worker request.
+   * @param {Object} [options] - Snapshot read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @returns {Promise<Object>} The refreshed immutable refs snapshot.
    */
   refreshRefsSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh("refs", options);
@@ -1500,7 +1548,7 @@ module.exports = class GitRepository {
    * @param {Number} [options.maxBytes=10485760] - Output limit. Exceeding it
    *   rejects with `ERR_GIT_DIFF_TOO_LARGE`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to a frozen `{schemaVersion, files, rawPatch?}` object; `rawPatch` is present only for `patch` and `both`.
+   * @returns {Promise<Object>} resolving to a frozen `{schemaVersion, files, rawPatch?}` object; `rawPatch` is present only for `patch` and `both`.
    */
   async getDiff({
     from = { type: "index" },
@@ -1577,7 +1625,7 @@ module.exports = class GitRepository {
    * @param {Number} [options.limit=50] - Page size.
    * @param {Object} [options.cursor] - The `nextCursor` from a previous page.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to a frozen `{commits, hasMore, nextCursor}` object. Each commit has `sha`, `parents`, `author`, `committer`, `subject`, and `body`. An unborn repository resolves to an empty page.
+   * @returns {Promise<Object>} resolving to a frozen `{commits, hasMore, nextCursor}` object. Each commit has `sha`, `parents`, `author`, `committer`, `subject`, and `body`. An unborn repository resolves to an empty page.
    */
   async getCommits({
     revision = "HEAD",
@@ -1626,8 +1674,10 @@ module.exports = class GitRepository {
    *
    * Read one commit with its changed-file summary.
    *
-   * @param sha - The `String` commit id or any revision expression.
-   * @returns {Promise} resolving to the commit object extended with `changedFiles`: `[{path, originalPath, status, similarity}]`.
+   * @param {String} sha - The `String` commit id or any revision expression.
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @returns {Promise<Object|null>} resolving to the commit object extended with `changedFiles`: `[{path, originalPath, status, similarity}]`.
    */
   async getCommit(sha, { signal } = {}) {
     assertGitRevision(sha, { label: "commit" });
@@ -1654,13 +1704,13 @@ module.exports = class GitRepository {
    *
    * Read a file's contents at a revision.
    *
-   * @param filePath - A `String` path, absolute or repository-relative.
-   * @param revision - A `String` revision expression.
+   * @param {String} filePath - A `String` path, absolute or repository-relative.
+   * @param {String} revision - A `String` revision expression.
    * @param {Object} [options] - Read options.
    * @param {String} [options.encoding="utf8"] - Text encoding, or `"buffer"`
    *   for a `Buffer`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to the contents, or `null` when the path does not exist at that revision.
+   * @returns {Promise<String|Buffer|null>} resolving to the contents, or `null` when the path does not exist at that revision.
    */
   getFileAtRevision(filePath, revision, { encoding = "utf8", signal } = {}) {
     assertGitRevision(revision);
@@ -1680,12 +1730,12 @@ module.exports = class GitRepository {
    *
    * Read a file's staged contents directly from the repository index.
    *
-   * @param filePath - A `String` path, absolute or repository-relative.
+   * @param {String} filePath - A `String` path, absolute or repository-relative.
    * @param {Object} [options] - Read options.
    * @param {String} [options.encoding="utf8"] - Text encoding, or `"buffer"`
    *   for a `Buffer`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to the staged contents, or `null` when the
+   * @returns {Promise<String|Buffer|null>} resolving to the staged contents, or `null` when the
    *   path has no stage-0 index entry.
    */
   getIndexFile(filePath, { encoding = "utf8", signal } = {}) {
@@ -1705,12 +1755,12 @@ module.exports = class GitRepository {
    *
    * Read a blob's contents by object id (`git cat-file -p <oid>`).
    *
-   * @param oid - A `String` blob object id.
+   * @param {String} oid - A `String` blob object id.
    * @param {Object} [options] - Read options.
    * @param {String} [options.encoding="utf8"] - Text encoding, or `"buffer"`
    *   for a `Buffer`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to the contents, or `null` when the oid does not name an object.
+   * @returns {Promise<String|Buffer|null>} resolving to the contents, or `null` when the oid does not name an object.
    */
   getBlob(oid, { encoding = "utf8", signal } = {}) {
     return this.repositoryHostRequest(
@@ -1730,6 +1780,7 @@ module.exports = class GitRepository {
    * Describe HEAD as a ref name (`git describe --contains --all
    * --always`). Returns a `Promise` resolving to the `String` description, or
    * `""` when the branch is unborn.
+   * @returns {Promise<String>} The ref description of HEAD, or an empty string for an unborn branch.
    * @category References
    */
   getDescription() {
@@ -1745,12 +1796,12 @@ module.exports = class GitRepository {
    * The fully-qualified refnames of branches that contain a commit
    * (`git branch --contains`).
    *
-   * @param commit - A `String` commit id or revision.
+   * @param {String} commit - A `String` commit id or revision.
    * @param {Object} [options] - Branch filtering options.
    * @param {Boolean} [options.showLocal=false] - Include local branches.
    * @param {Boolean} [options.showRemote=false] - Include remote branches.
    * @param {String} [options.pattern] - Limit branch names by pattern.
-   * @returns {Promise} resolving to an `Array` of refname `Strings`.
+   * @returns {Promise<Array<String>>} resolving to an `Array` of refname `Strings`.
    * @category References
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
@@ -1771,8 +1822,8 @@ module.exports = class GitRepository {
    *
    * The index mode of a path (`git ls-files --stage`).
    *
-   * @param filePath - A `String` path, absolute or repository-relative.
-   * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
+   * @param {String} filePath - A `String` path, absolute or repository-relative.
+   * @returns {Promise<String|null>} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
    * @category Repository Details
    */
   getFileMode(filePath) {
@@ -1791,7 +1842,7 @@ module.exports = class GitRepository {
    *
    * @param {Object} [options] - Read options.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to an `Array` of path `Strings`.
+   * @returns {Promise<Array<String>>} resolving to an `Array` of path `Strings`.
    * @category Repository Details
    */
   async getSubmodulePaths(options = {}) {
@@ -1816,12 +1867,12 @@ module.exports = class GitRepository {
    *
    * Read line-by-line blame for a file.
    *
-   * @param filePath - A `String` path, absolute or repository-relative.
+   * @param {String} filePath - A `String` path, absolute or repository-relative.
    * @param {Object} [options] - Blame options.
    * @param {String} [options.revision] - Revision to blame.
    * @param {Boolean} [options.ignoreWhitespace] - Ignore whitespace-only changes when attributing a line, so a reindent does not reassign every line it touched.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
+   * @returns {Promise<Object>} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
    * @category Reading History
    */
   async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
@@ -1854,12 +1905,12 @@ module.exports = class GitRepository {
    * fetching and caching the selected baseline blob before comparing it with
    * the buffer. A path absent from that baseline is compared as empty text.
    *
-   * @param filePath - The `String` path relative to the repository.
-   * @param text - The `String` buffer contents to compare.
+   * @param {String} filePath - The `String` path relative to the repository.
+   * @param {String} text - The `String` buffer contents to compare.
    * @param {Object} [options] - Diff options.
    * @param {"head"|"index"} [options.base="head"] - The comparison baseline.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
-   * @returns {Promise} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
+   * @returns {Promise<Array<Object>>} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
    */
   getLineDiffsAsync(filePath, text, { base = "head", signal } = {}) {
     if (base !== "head" && base !== "index") {
@@ -1913,8 +1964,8 @@ module.exports = class GitRepository {
    * to the version at `HEAD`, via the repository operation provider
    * (`git checkout HEAD -- <path>`).
    *
-   * @param filePath - The `String` path to checkout.
-   * @returns {Promise} resolving to a `Boolean` that's true on success.
+   * @param {String} filePath - The `String` path to checkout.
+   * @returns {Promise<Boolean>} resolving to a `Boolean` that's true on success.
    */
   async checkoutHead(filePath) {
     if (this.isDestroyed()) return false;
@@ -1934,9 +1985,9 @@ module.exports = class GitRepository {
    * Checks out a branch in your repository via the repository operation
    * provider.
    *
-   * @param reference - The `String` reference to checkout.
-   * @param create - A `Boolean` value which, if true creates the new reference if it doesn't exist.
-   * @returns {Promise} resolving to a `Boolean` that's true on success.
+   * @param {String} reference - The `String` reference to checkout.
+   * @param {Boolean} [create=false] - A `Boolean` value which, if true creates the new reference if it doesn't exist.
+   * @returns {Promise<Boolean>} resolving to a `Boolean` that's true on success.
    */
   async checkoutReference(reference, create) {
     if (this.isDestroyed()) return false;

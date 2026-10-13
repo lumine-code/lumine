@@ -159,12 +159,14 @@ class Marker {
   }
 
   /**
-   * @category Managing the marker's range
+   * @category Marker Ranges
    */
 
   /**
    * @public
    * @status public
+   *
+   * Get the current immutable buffer range of this marker.
    *
    * @returns {Range} current {@link Range} of the marker. The range is immutable.
    */
@@ -178,10 +180,11 @@ class Marker {
    *
    * Sets the range of the marker.
    *
-   * @param range - A {@link Range} or range-compatible `Array`. The range will be clipped before it is assigned.
-   * @param [params] - An `Object` with the following keys:
-   * @param {Boolean} params.reversed - indicating the marker will to be in a reversed orientation.
-   * @param {Boolean} params.exclusive - indicating that changes occurring at either end of the marker will be considered *outside* the marker rather than inside. This defaults to `false` unless the marker's invalidation strategy is `inside` or the marker has no tail, in which case it defaults to `true`.
+   * @param {Range|Array<Point|Array<Number>>|Object} range - A {@link Range} or range-compatible `Array`. The range will be clipped before it is assigned.
+   * @param {Object} [params] - An `Object` with the following keys:
+   * @param {Boolean} [params.reversed] - indicating place the head at the earlier endpoint; omission preserves the current orientation.
+   * @param {Boolean} [params.exclusive] - Keep endpoint insertions outside the marked range. Omission preserves the current exclusivity setting.
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   setRange(range, params) {
     if (params == null) {
@@ -199,6 +202,8 @@ class Marker {
    * @public
    * @status public
    *
+   * Get the head position of this marker.
+   *
    * @returns {Point} representing the marker's current head position.
    */
   getHeadPosition() {
@@ -215,7 +220,8 @@ class Marker {
    *
    * Sets the head position of the marker.
    *
-   * @param position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
+   * @param {Point|Array<Number>|Object} position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   setHeadPosition(position) {
     position = Point.fromObject(position);
@@ -248,6 +254,8 @@ class Marker {
    * @public
    * @status public
    *
+   * Get the tail position, or the head position when there is no tail.
+   *
    * @returns {Point} representing the marker's current tail position. If the marker has no tail, the head position will be returned instead.
    */
   getTailPosition() {
@@ -265,7 +273,8 @@ class Marker {
    * Sets the tail position of the marker. If the marker doesn't have a
    * tail, it will after calling this method.
    *
-   * @param position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
+   * @param {Point|Array<Number>|Object} position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   setTailPosition(position) {
     position = Point.fromObject(position);
@@ -295,6 +304,8 @@ class Marker {
    * @public
    * @status public
    *
+   * Get the earlier endpoint of this marker.
+   *
    * @returns {Point} representing the start position of the marker, which could be the head or tail position, depending on its orientation.
    */
   getStartPosition() {
@@ -304,6 +315,8 @@ class Marker {
   /**
    * @public
    * @status public
+   *
+   * Get the later endpoint of this marker.
    *
    * @returns {Point} representing the end position of the marker, which could be the head or tail position, depending on its orientation.
    */
@@ -318,6 +331,7 @@ class Marker {
    * Removes the marker's tail. After calling the marker's head position
    * will be reported as its current tail position until the tail is planted
    * again.
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   clearTail() {
     const headPosition = this.getHeadPosition();
@@ -335,6 +349,7 @@ class Marker {
    * Plants the marker's tail at the current head position. After calling
    * the marker's tail position will be its head position at the time of the
    * call, regardless of where the marker's head is moved.
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   plantTail() {
     if (!this.hasTail()) {
@@ -354,6 +369,8 @@ class Marker {
    * @public
    * @status public
    *
+   * Determine whether the head precedes the tail.
+   *
    * @returns {Boolean} indicating whether the head precedes the tail.
    */
   isReversed() {
@@ -363,6 +380,8 @@ class Marker {
   /**
    * @public
    * @status public
+   *
+   * Determine whether this marker has a tail.
    *
    * @returns {Boolean} indicating whether the marker has a tail.
    */
@@ -398,7 +417,9 @@ class Marker {
    * @public
    * @status public
    *
-   * @returns {Boolean} indicating whether changes that occur exactly at the marker's head or tail cause it to move.
+   * Determine whether insertions at the endpoints stay outside this marker.
+   *
+   * @returns {Boolean} Whether insertions at either endpoint remain outside the marked range.
    */
   isExclusive() {
     if (this.exclusive != null) {
@@ -412,9 +433,11 @@ class Marker {
    * @public
    * @status public
    *
+   * Determine whether this marker has the same range and options as another.
+   *
    * @param {Marker} other - other marker
    * @returns {Boolean} indicating whether this marker is equivalent to another marker, meaning they have the same range and options.
-   * @category Comparing to other markers
+   * @category Comparison
    */
   isEqual(other) {
     return (
@@ -449,6 +472,8 @@ class Marker {
    * @public
    * @status public
    *
+   * Get the custom properties associated with this marker.
+   *
    * @returns {Object} containing any custom properties associated with the marker.
    */
   getProperties() {
@@ -463,6 +488,7 @@ class Marker {
    * existing properties.
    *
    * @param {Object} properties
+   * @returns {Boolean|undefined} Whether the marker changed, or `undefined` when no update is attempted.
    */
   setProperties(properties) {
     return this.update(this.getRange(), {
@@ -471,7 +497,7 @@ class Marker {
   }
 
   /**
-   * @category Construction and Destruction
+   * @category Lifecycle
    */
 
   /**
@@ -499,6 +525,8 @@ class Marker {
    * @status public
    *
    * Destroy the marker and notify its destruction observers.
+   * @param {Boolean} [suppressMarkerLayerUpdateEvents=false] - Suppress this destruction's marker-layer update notification.
+   * @returns {void}
    */
   destroy(suppressMarkerLayerUpdateEvents) {
     if (this.isDestroyed()) {
@@ -515,7 +543,7 @@ class Marker {
   }
 
   /**
-   * @category Comparing to other markers
+   * @category Comparison
    */
 
   /**
@@ -525,6 +553,7 @@ class Marker {
    * Compares this marker to another based on their ranges.
    *
    * @param {Marker} other
+   * @returns {Number} The range ordering: earlier starts sort first, then longer ranges.
    */
   compare(other) {
     return this.layer.compareMarkers(this.id, other.id);
@@ -538,7 +567,9 @@ class Marker {
    * @public
    * @status public
    *
-   * @param point - A {@link Point} or point-compatible `Array`
+   * Determine whether this marker contains a buffer position.
+   *
+   * @param {Point|Array<Number>|Object} point - A {@link Point} or point-compatible `Array`
    * @returns {Boolean} indicating whether the marker's range contains the given point.
    */
   containsPoint(point) {
@@ -549,7 +580,9 @@ class Marker {
    * @public
    * @status public
    *
-   * @param range - A {@link Range} or range-compatible `Array`
+   * Determine whether this marker contains a buffer range.
+   *
+   * @param {Range|Array<Point|Array<Number>>|Object} range - A {@link Range} or range-compatible `Array`
    * @returns {Boolean} indicating whether the marker's range contains the given range.
    */
   containsRange(range) {
@@ -560,7 +593,9 @@ class Marker {
    * @public
    * @status public
    *
-   * @param row - A row `Number`
+   * Determine whether this marker intersects a buffer row.
+   *
+   * @param {Number} row - A row `Number`
    * @returns {Boolean} indicating whether the marker's range intersects the given row.
    */
   intersectsRow(row) {

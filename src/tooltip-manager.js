@@ -120,22 +120,18 @@ module.exports = class TooltipManager {
    *
    * Add a tooltip to the given element.
    *
-   * @param target - An `HTMLElement`
-   * @param options - An object with one or more of the following options:
-   * @param options.title - A `String` or `Function` to use for the text in the tip. If a function is passed, `this` will be set to the `target` element. This option is mutually exclusive with the `item` option.
-   * @param options.html - A `Boolean` affecting the interpretation of the `title` option. If `true` (the default), the `title` string will be interpreted as HTML. Otherwise it will be interpreted as plain text.
-   * @param options.item - A view (object with an `.element` property) or a DOM element containing custom content for the tooltip. This option is mutually exclusive with the `title` option.
-   * @param options.class - A `String` with a class to apply to the tooltip element to enable custom styling.
-   * @param options.placement - A `String` or `Function` returning a string to indicate the position of the tooltip relative to `element`. Can be `'top'`, `'bottom'`, `'left'`, `'right'`, or `'auto'`. When `'auto'` is specified, it will dynamically reorient the tooltip. For example, if placement is `'auto left'`, the tooltip will display to the left when possible, otherwise it will display right. When a function is used to determine the placement, it is called with the tooltip DOM node as its first argument and the triggering element DOM node as its second. The `this` context is set to the tooltip instance.
-   * @param options.trigger - A `String` indicating how the tooltip should be displayed. Choose from one of the following options:
-   * @param options.trigger.'hover' - Show the tooltip when the mouse hovers over the element. This is the default.
-   * @param options.trigger.'click' - Show the tooltip when the element is clicked. The tooltip will be hidden after clicking the element again or anywhere else outside of the tooltip itself.
-   * @param options.trigger.'focus' - Show the tooltip when the element is focused.
-   * @param options.trigger.'manual' - Show the tooltip immediately. A click hides it; disposing the returned object removes it permanently.
-   * @param options.delay - An object specifying the show and hide delay in milliseconds. Defaults to `{show: 1000, hide: 100}` if the `trigger` is `hover` and otherwise defaults to `0` for both values.
-   * @param options.keyBindingCommand - A `String` containing a command name. If you specify this option and a key binding exists that matches the command, it will be appended to the title or rendered alone if no title is specified.
-   * @param options.keyBindingTarget - An `HTMLElement` on which to look up the key binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
-   * @param options.keyBindingExtra - A `String` rendered as an additional key binding before the command's resolved binding. Use this for interactions that are not represented in the keymap, such as `LMB` or `RMB`. The value accepts `+` separators and `cmdorctrl`, which is resolved for the current platform (for example, `cmdorctrl+RMB`).
+   * @param {HTMLElement} target - An `HTMLElement`
+   * @param {Object} [options] - An object with one or more of the following options:
+   * @param {String|Function} [options.title] - A `String` or `Function` to use for the text in the tip. If a function is passed, `this` will be set to the `target` element. This option is mutually exclusive with the `item` option.
+   * @param {Boolean} [options.html] - A `Boolean` affecting the interpretation of the `title` option. If `true` (the default), the `title` string will be interpreted as HTML. Otherwise it will be interpreted as plain text.
+   * @param {Object|Element} [options.item] - A view (object with an `.element` property) or a DOM element containing custom content for the tooltip. This option is mutually exclusive with the `title` option.
+   * @param {String} [options.class] - A `String` with a class to apply to the tooltip element to enable custom styling.
+   * @param {String|Function} [options.placement] - A `String` or `Function` returning a string to indicate the position of the tooltip relative to `element`. Can be `'top'`, `'bottom'`, `'left'`, `'right'`, or `'auto'`. When `'auto'` is specified, it will dynamically reorient the tooltip. For example, if placement is `'auto left'`, the tooltip will display to the left when possible, otherwise it will display right. When a function is used to determine the placement, it is called with the tooltip DOM node as its first argument and the triggering element DOM node as its second. The `this` context is set to the tooltip instance.
+   * @param {String} [options.trigger] - A `String` indicating how the tooltip should be displayed. Use `hover` (default), `click`, `focus`, or `manual`. A manual tooltip appears immediately; a click hides it and disposal removes it.
+   * @param {Object|Number} [options.delay] - An object specifying the show and hide delay in milliseconds. Defaults to `{show: 1000, hide: 100}` if the `trigger` is `hover` and otherwise defaults to `0` for both values.
+   * @param {String} [options.keyBindingCommand] - A `String` containing a command name. If you specify this option and a key binding exists that matches the command, it will be appended to the title or rendered alone if no title is specified.
+   * @param {HTMLElement} [options.keyBindingTarget] - An `HTMLElement` on which to look up the key binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
+   * @param {String} [options.keyBindingExtra] - A `String` rendered as an additional key binding before the command's resolved binding. Use this for interactions that are not represented in the keymap, such as `LMB` or `RMB`. The value accepts `+` separators and `cmdorctrl`, which is resolved for the current platform (for example, `cmdorctrl+RMB`).
    * @returns {Disposable} on which `.dispose()` can be called to remove the tooltip.
    */
   add(target, options) {
@@ -156,8 +152,8 @@ module.exports = class TooltipManager {
    *
    * Add several tooltip entries that are displayed together.
    *
-   * @param target - An `HTMLElement`
-   * @param entries - An `Array` of option objects accepted by {@link #add}. Entries are rendered on separate lines. Display options, such as `placement` and `delay`, are taken from the first entry.
+   * @param {HTMLElement} target - An `HTMLElement`
+   * @param {Array<Object>} entries - An `Array` of option objects accepted by {@link #add}. Entries are rendered on separate lines. Display options, such as `placement` and `delay`, are taken from the first entry.
    * @returns {Disposable} on which `.dispose()` can be called to remove the composite tooltip.
    */
   addComposite(target, entries) {
@@ -271,8 +267,8 @@ module.exports = class TooltipManager {
    *
    * Find the tooltips that have been applied to the given element.
    *
-   * @param target - The `HTMLElement` to find tooltips on.
-   * @returns {Array} of `Tooltip` objects that match the `target`.
+   * @param {HTMLElement} target - The `HTMLElement` to find tooltips on.
+   * @returns {Array<Object>} of `Tooltip` objects that match the `target`.
    */
   findTooltips(target) {
     if (this.tooltips.has(target)) {

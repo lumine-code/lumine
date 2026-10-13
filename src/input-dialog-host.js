@@ -149,7 +149,7 @@ class InputDialogHost {
    * @param {String} [options.query] - Opening query; omitted to reset it.
    * @param {Boolean} [options.selectQuery=true] - Whether to select the opening query.
    * @param {String|Boolean} [options.crumb] - Modal-flow breadcrumb for this opening.
-   * @returns {Promise} Resolves when the opening source load settles.
+   * @returns {Promise<void>}
    */
   show(options = {}) {
     this.assertAlive();
@@ -175,6 +175,7 @@ class InputDialogHost {
    * @status experimental
    *
    * Hide the modal without emitting cancellation.
+   * @returns {void}
    */
   hide() {
     const releasedActionPicker = this.services.actionService?.release(this) ?? false;
@@ -196,7 +197,7 @@ class InputDialogHost {
    *
    * Hide a visible host or show a hidden one.
    * @param {Object} [options] - Opening options passed to {@link #show}.
-   * @returns {Promise|undefined} The opening source promise when shown.
+   * @returns {Promise<void>|undefined}
    */
   toggle(options) {
     return this.isVisible() ? this.hide() : this.show(options);
@@ -208,6 +209,7 @@ class InputDialogHost {
    *
    * Dismiss the modal and emit a cancellation event.
    * @param {String} [reason="api"] - Machine-readable cancellation reason.
+   * @returns {void}
    */
   cancel(reason = "api") {
     if (this.canceling || this.destroyed) return;
@@ -251,6 +253,7 @@ class InputDialogHost {
    * @status experimental
    *
    * Focus the model's query editor.
+   * @returns {void}
    */
   focus() {
     this.assertAlive();
@@ -262,7 +265,7 @@ class InputDialogHost {
    * @status experimental
    *
    * Restore and select the query remembered from the previous session.
-   * @returns {Boolean} Whether a non-empty query was restored.
+   * @returns {Boolean}
    */
   restoreQuery() {
     this.assertAlive();
@@ -276,7 +279,7 @@ class InputDialogHost {
    * @status experimental
    *
    * Open the shared picker for actions available on the model.
-   * @returns {Promise} Resolves to whether the action picker opened.
+   * @returns {Promise<Boolean>}
    * @category Actions
    */
   async showActions() {
@@ -311,7 +314,11 @@ class InputDialogHost {
    *
    * Invoke a callback when the host's visibility changes.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @param {Boolean} callback.event.visible
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidChangeVisible(callback) {
     return this.emitter.on("did-change-visible", callback);
@@ -323,7 +330,10 @@ class InputDialogHost {
    *
    * Invoke a callback when a fresh modal session opens.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidOpen(callback) {
     return this.emitter.on("did-open", callback);
@@ -335,7 +345,10 @@ class InputDialogHost {
    *
    * Invoke a callback when a suspended modal-flow session resumes.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidResume(callback) {
     return this.emitter.on("did-resume", callback);
@@ -347,7 +360,10 @@ class InputDialogHost {
    *
    * Invoke a callback when a modal session fully hides.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidHide(callback) {
     return this.emitter.on("did-hide", callback);
@@ -359,7 +375,11 @@ class InputDialogHost {
    *
    * Invoke a callback when the host is cancelled.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @param {String} callback.event.reason
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidCancel(callback) {
     return this.emitter.on("did-cancel", callback);
@@ -371,7 +391,10 @@ class InputDialogHost {
    *
    * Invoke a callback when the host is destroyed.
    * @param {Function} callback
-   * @returns {Disposable}
+   * @param {Object} callback.event
+   * @param {InputDialogHost} callback.event.host
+   * @param {InputDialog} callback.event.model
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
@@ -415,7 +438,7 @@ class InputDialogHost {
    *
    * Destroy the host and its panel. A model created from options is destroyed
    * with it; a model passed to the factory remains alive.
-   * @returns {Promise} Resolves when owned resources have been destroyed.
+   * @returns {Promise<void>}
    * @category Lifecycle
    */
   destroy() {

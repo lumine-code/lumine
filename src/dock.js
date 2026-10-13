@@ -601,7 +601,7 @@ module.exports = class Dock {
    * in the dock.
    *
    * @param {Function} callback - to be called with current and future pane items.
-   * @param callback.item - An item that is present in {@link #getPaneItems} at the time of subscription or that is added at some later time.
+   * @param {*} callback.item - An item that is present in {@link #getPaneItems} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observePaneItems(callback) {
@@ -620,7 +620,7 @@ module.exports = class Dock {
    * stop occurring.
    *
    * @param {Function} callback - to be called when the active pane item changes.
-   * @param callback.item - The active pane item.
+   * @param {*} callback.item - The active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActivePaneItem(callback) {
@@ -641,7 +641,7 @@ module.exports = class Dock {
    * highlighted tab, gets priority over work that can be done asynchronously.
    *
    * @param {Function} callback - to be called when the active pane item stops changing.
-   * @param callback.item - The active pane item.
+   * @param {*} callback.item - The active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidStopChangingActivePaneItem(callback) {
@@ -656,7 +656,7 @@ module.exports = class Dock {
    * with all future active pane items in the dock.
    *
    * @param {Function} callback - to be called when the active pane item changes.
-   * @param callback.item - The current active pane item.
+   * @param {*} callback.item - The current active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeActivePaneItem(callback) {
@@ -671,7 +671,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called when panes are added.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.pane - The added pane.
+   * @param {Pane} callback.event.pane - The added pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidAddPane(callback) {
@@ -687,7 +687,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called before panes are destroyed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.pane - The pane to be destroyed.
+   * @param {Pane} callback.event.pane - The pane to be destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onWillDestroyPane(callback) {
@@ -702,7 +702,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called when panes are destroyed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.pane - The destroyed pane.
+   * @param {Pane} callback.event.pane - The destroyed pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidDestroyPane(callback) {
@@ -717,7 +717,7 @@ module.exports = class Dock {
    * dock.
    *
    * @param {Function} callback - to be called with current and future panes.
-   * @param callback.pane - A {@link Pane} that is present in {@link #getPanes} at the time of subscription or that is added at some later time.
+   * @param {Pane} callback.pane - A {@link Pane} that is present in {@link #getPanes} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observePanes(callback) {
@@ -731,7 +731,7 @@ module.exports = class Dock {
    * Invoke the given callback when the active pane changes.
    *
    * @param {Function} callback - to be called when the active pane changes.
-   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @param {Pane} callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActivePane(callback) {
@@ -746,7 +746,7 @@ module.exports = class Dock {
    * the active pane changes.
    *
    * @param {Function} callback - to be called with the current and future active panes.
-   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @param {Pane} callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeActivePane(callback) {
@@ -761,7 +761,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called when pane items are added.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The added pane item.
+   * @param {*} callback.event.item - The added pane item.
    * @param {Pane} callback.event.pane - containing the added item.
    * @param {Number} callback.event.index - indicating the index of the added item in its pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
@@ -779,7 +779,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called before pane items are destroyed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The item to be destroyed.
+   * @param {*} callback.event.item - The item to be destroyed.
    * @param {Pane} callback.event.pane - containing the item to be destroyed.
    * @param {Number} callback.event.index - indicating the index of the item to be destroyed in its pane.
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
@@ -796,7 +796,7 @@ module.exports = class Dock {
    *
    * @param {Function} callback - to be called when pane items are destroyed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The destroyed item.
+   * @param {*} callback.event.item - The destroyed item.
    * @param {Pane} callback.event.pane - containing the destroyed item.
    * @param {Number} callback.event.index - indicating the index of the destroyed item in its pane.
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
@@ -841,7 +841,7 @@ module.exports = class Dock {
    *
    * Get the active {@link Pane}'s active item.
    *
-   * @returns {Object} pane item `Object`.
+   * @returns {Object|undefined} pane item `Object`.
    */
   getActivePaneItem() {
     return this.paneContainer.getActivePaneItem();
@@ -866,7 +866,7 @@ module.exports = class Dock {
    *
    * Get all panes in the dock.
    *
-   * @returns {Array} of {@link Pane Panes}.
+   * @returns {Array<Pane>} of {@link Pane Panes}.
    */
   getPanes() {
     return this.paneContainer.getPanes();

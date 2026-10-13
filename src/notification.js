@@ -72,6 +72,8 @@ module.exports = class Notification {
    * @public
    * @status public
    *
+   * Get the notification severity.
+   *
    * @returns {String} type.
    */
   getType() {
@@ -81,6 +83,8 @@ module.exports = class Notification {
   /**
    * @public
    * @status public
+   *
+   * Get the notification message.
    *
    * @returns {String} message.
    */

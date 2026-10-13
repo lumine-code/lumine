@@ -435,7 +435,7 @@ module.exports = class RepositoryRegistry {
    * {@link #setActiveRepository}. An item whose path lies outside every repository
    * clears it; only path-less items keep the current selection.
    *
-   * @returns {GitRepository}, or `null` when the active item belongs to none.
+   * @returns {GitRepository|null}, or `null` when the active item belongs to none.
    */
   getActiveRepository() {
     return this.activeRepository;
@@ -521,7 +521,7 @@ module.exports = class RepositoryRegistry {
    *
    * Throws a `TypeError` if the repository is unregistered or destroyed.
    *
-   * @param repository - The {@link GitRepository} to activate, or `null` to clear any pin and recompute the active repository from the workspace.
+   * @param {GitRepository|null} repository - The {@link GitRepository} to activate, or `null` to clear any pin and recompute the active repository from the workspace.
    * @param {Object} [options] - Activation options.
    * @param {Boolean} [options.pin=false] - Keep the selection until it is
    *   cleared instead of following the next pane-item change.
@@ -554,11 +554,11 @@ module.exports = class RepositoryRegistry {
    * Unlike {@link #setActiveRepository} this discovers a repository that was not
    * registered yet, so it is asynchronous.
    *
-   * @param filePath - The `String` path to resolve.
+   * @param {String} filePath - The `String` path to resolve.
    * @param {Object} [options] - Activation options.
    * @param {Boolean} [options.pin=false] - Keep the selection as in
    *   {@link #setActiveRepository}.
-   * @returns {Promise} that resolves to the {@link GitRepository}, or to `null` when the path is not in one.
+   * @returns {Promise<GitRepository|null>} that resolves to the {@link GitRepository}, or to `null` when the path is not in one.
    */
   async setActiveRepositoryForPath(filePath, { pin = false } = {}) {
     const repository = await this.resolveForPath(filePath);
@@ -901,7 +901,7 @@ module.exports = class RepositoryRegistry {
    * This is a snapshot. Use {@link #observeRepositories} to keep up with the ones
    * registered later.
    *
-   * @returns {Array} of {@link GitRepository}.
+   * @returns {Array<GitRepository>} of {@link GitRepository}.
    */
   getRepositories() {
     return Array.from(this.entriesById.values(), (entry) => entry.repository);
@@ -913,8 +913,8 @@ module.exports = class RepositoryRegistry {
    *
    * Look a repository up by the id the registry gave it.
    *
-   * @param id - The `String` id.
-   * @returns {GitRepository}, or `null` if nothing is registered under it.
+   * @param {String} id - The `String` id.
+   * @returns {GitRepository|null}, or `null` if nothing is registered under it.
    */
   getById(id) {
     return this.entriesById.get(id)?.repository || null;
@@ -979,13 +979,13 @@ module.exports = class RepositoryRegistry {
    * since adding a project root registers many repositories at once.
    *
    * @param {Function} callback - called with a frozen `Object`.
-   * @param callback.version - The `Number` the registry is now at.
-   * @param callback.added - An `Array` of newly registered {@link GitRepository}.
-   * @param callback.removed - An `Array` of {@link GitRepository} no longer registered.
-   * @param callback.updated - An `Array` of {@link GitRepository} whose routing changed.
-   * @param callback.rootsAdded - An `Array` of `String` project roots added.
-   * @param callback.rootsRemoved - An `Array` of `String` project roots removed.
-   * @param callback.routingChangedPrefixes - An `Array` of `String` directories whose path-to-repository routing is no longer what it was.
+   * @param {Number} callback.version - The `Number` the registry is now at.
+   * @param {Array<GitRepository>} callback.added - An `Array` of newly registered {@link GitRepository}.
+   * @param {Array<GitRepository>} callback.removed - An `Array` of {@link GitRepository} no longer registered.
+   * @param {Array<GitRepository>} callback.updated - An `Array` of {@link GitRepository} whose routing changed.
+   * @param {Array<String>} callback.rootsAdded - An `Array` of `String` project roots added.
+   * @param {Array<String>} callback.rootsRemoved - An `Array` of `String` project roots removed.
+   * @param {Array<String>} callback.routingChangedPrefixes - An `Array` of `String` directories whose path-to-repository routing is no longer what it was.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChange(callback) {
@@ -999,7 +999,7 @@ module.exports = class RepositoryRegistry {
    * Invoke the callback when a rescan of the project roots begins.
    *
    * @param {Function} callback - called with a frozen `Object`.
-   * @param callback.id - A `Number` identifying this rescan.
+   * @param {Number} callback.id - A `Number` identifying this rescan.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidStartRescan(callback) {
@@ -1014,9 +1014,9 @@ module.exports = class RepositoryRegistry {
    * succeeded.
    *
    * @param {Function} callback - called with a frozen `Object`.
-   * @param callback.id - The `Number` of the rescan that started.
-   * @param callback.repositories - A frozen `Array` of the {@link GitRepository} it found.
-   * @param callback.error - The `Error` that ended the scan, or `null`.
+   * @param {Number} callback.id - The `Number` of the rescan that started.
+   * @param {Array<GitRepository>} callback.repositories - A frozen `Array` of the {@link GitRepository} it found.
+   * @param {Error|null} callback.error - The `Error` that ended the scan, or `null`.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidFinishRescan(callback) {
@@ -1081,8 +1081,8 @@ module.exports = class RepositoryRegistry {
    * or a nested checkout should do. Use {@link #resolveForPath} when the path may
    * belong to a repository nobody has discovered yet.
    *
-   * @param filePath - The `String` path to look up.
-   * @returns {GitRepository}, or `null`.
+   * @param {String} filePath - The `String` path to look up.
+   * @returns {GitRepository|null}, or `null`.
    */
   getForPath(filePath) {
     if (!filePath) return null;
@@ -1159,8 +1159,10 @@ module.exports = class RepositoryRegistry {
    * The repository a path belongs to, discovering and registering one
    * if it is not known yet.
    *
-   * @param filePath - The `String` path to resolve.
-   * @returns {Promise} that resolves to a {@link GitRepository}, or to `null` when the path is not in one.
+   * @param {String} filePath - The `String` path to resolve.
+   * @param {Object} [options] - Discovery options.
+   * @param {Boolean} [options.refresh=true] - Run discovery again instead of using its exact-path cache.
+   * @returns {Promise<GitRepository|null>} that resolves to a {@link GitRepository}, or to `null` when the path is not in one.
    */
   async resolveForPath(filePath, { refresh = true } = {}) {
     if (!filePath) return null;
@@ -1394,8 +1396,8 @@ module.exports = class RepositoryRegistry {
    * across those changes, and dispose the result when you are done, or it will
    * outlive its usefulness.
    *
-   * @param repository - The {@link GitRepository} to hold.
-   * @param [source] - A `String` label for the hold, for debugging.
+   * @param {GitRepository} repository - The {@link GitRepository} to hold.
+   * @param {String} [source="pin"] - A `String` label for the hold, for debugging.
    * @returns {Disposable} that releases the hold.
    */
   retain(repository, source = "pin") {
@@ -1419,12 +1421,11 @@ module.exports = class RepositoryRegistry {
    *
    * {@link #retain} for the length of one asynchronous call, without the bookkeeping.
    *
-   *
    * Throws an `Error` if the repository cannot be registered.
    *
-   * @param repository - The {@link GitRepository} to work with.
-   * @param operation - An async `Function` called with the repository.
-   * @returns {Promise} for whatever the operation returned.
+   * @param {GitRepository} repository - The {@link GitRepository} to work with.
+   * @param {Function} operation - An async `Function` called with the repository.
+   * @returns {Promise<*>} for whatever the operation returned.
    * @category Operations
    */
   async runOperation(repository, operation) {
@@ -1482,7 +1483,7 @@ module.exports = class RepositoryRegistry {
    * Throws a `TypeError` if the provider implements none of those methods, and
    * an `Error` if the registry has been destroyed.
    *
-   * @param provider - The `Object` implementing the operations.
+   * @param {Object} provider - The `Object` implementing the operations.
    * @param {Object} [options] - Provider options.
    * @param {Boolean} [options.fallback=false] - Put the provider last so later
    *   registrations take precedence.
@@ -1498,8 +1499,8 @@ module.exports = class RepositoryRegistry {
    *
    * The operations available on a repository.
    *
-   * @param repository - The {@link GitRepository}.
-   * @returns {Object} of operation functions, or `null` when no provider has claimed the repository.
+   * @param {GitRepository} repository - The {@link GitRepository}.
+   * @returns {Object|null} The stable operation facade, or `null` when the repository is not registered. Use {@link #canPerformOperation} to check which methods providers can run.
    */
   getOperations(repository) {
     return this.operationManager.getOperations(repository);
@@ -1515,8 +1516,8 @@ module.exports = class RepositoryRegistry {
    * answer nothing, and the honest response is to hide the command rather than
    * to fail when it is invoked.
    *
-   * @param repository - The {@link GitRepository}.
-   * @param operationName - The `String` name of the operation, such as `"commit"`.
+   * @param {GitRepository} repository - The {@link GitRepository}.
+   * @param {String} operationName - The `String` name of the operation, such as `"commit"`.
    * @returns {Boolean}
    */
   canPerformOperation(repository, operationName) {
@@ -1529,8 +1530,8 @@ module.exports = class RepositoryRegistry {
    *
    * Every operation any provider can perform on a repository.
    *
-   * @param repository - The {@link GitRepository}.
-   * @returns {Array} frozen `Array` of `String` operation names.
+   * @param {GitRepository} repository - The {@link GitRepository}.
+   * @returns {Array<String>} frozen `Array` of `String` operation names.
    */
   getOperationCapabilities(repository) {
     return this.operationManager.getOperationCapabilities(repository);
@@ -1545,7 +1546,6 @@ module.exports = class RepositoryRegistry {
    * Operations on one repository run one at a time, so a long fetch leaves the
    * next one queued. This is what a progress indicator reads.
    *
-   *
    * * `id` A `Number` identifying the operation.
    * * `name` The `String` operation name.
    * * `status` A `String`, `"queued"` or `"running"`.
@@ -1553,9 +1553,8 @@ module.exports = class RepositoryRegistry {
    * * `queuedAt` The `Number` timestamp it was queued at.
    * * `startedAt` The `Number` timestamp it started at, or `null`.
    *
-   * @param [repository] - The {@link GitRepository} to report on. Omit it for every repository, plus the workspace operations that belong to none.
-   * @param repository - The {@link GitRepository} it runs on, or `null`.
-   * @returns {Array} frozen `Array` of frozen `Objects`.
+   * @param {GitRepository} [repository] - The {@link GitRepository} to report on. Omit it for every repository, plus the workspace operations that belong to none.
+   * @returns {Array<Object>} frozen `Array` of frozen `Objects`.
    */
   getPendingOperations(repository) {
     return this.operationManager.getPendingOperations(repository);
@@ -1574,7 +1573,7 @@ module.exports = class RepositoryRegistry {
    * These belong to no repository — they are what creates one — so they are
    * asked for separately from {@link #getOperationCapabilities}.
    *
-   * @returns {Array} frozen `Array` of `String` operation names.
+   * @returns {Array<String>} frozen `Array` of `String` operation names.
    */
   getWorkspaceOperationCapabilities() {
     return this.operationManager.getWorkspaceOperationCapabilities();
@@ -1586,7 +1585,7 @@ module.exports = class RepositoryRegistry {
    *
    * Whether a repository-creating operation can be performed.
    *
-   * @param operationName - A `String`, `"initialize"` or `"clone"`.
+   * @param {String} operationName - A `String`, `"initialize"` or `"clone"`.
    * @returns {Boolean}
    */
   canPerformWorkspaceOperation(operationName) {
@@ -1619,10 +1618,10 @@ module.exports = class RepositoryRegistry {
    * operation where one exists — it is the part a provider can implement
    * without shelling out.
    *
-   * @param args - An `Array` of `String` arguments, without the leading `git`.
-   * @param workingDirectory - The `String` directory to run in.
+   * @param {Array<String>} args - An `Array` of `String` arguments, without the leading `git`.
+   * @param {String} workingDirectory - The `String` directory to run in.
    * @param {Object} [options] - passed through to the provider.
-   * @returns {Promise} for the provider's result. It rejects with a `TypeError` if `args` is not an array, and with an `Error` whose `code` is `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
+   * @returns {Promise<*>} for the provider's result. It rejects with a `TypeError` if `args` is not an array, and with an `Error` whose `code` is `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
    */
   async executeGit(args, workingDirectory, options) {
     return this.operationManager.executeGit(args, workingDirectory, options);
@@ -1638,9 +1637,9 @@ module.exports = class RepositoryRegistry {
    *
    * Create a repository in a directory and register it.
    *
-   * @param directoryPath - The `String` directory to initialize.
+   * @param {String} directoryPath - The `String` directory to initialize.
    * @param {Object} [options] - passed through to the provider.
-   * @returns {Promise} that resolves to the new {@link GitRepository}. It rejects when no provider implements `initialize`, and with an `Error` whose `code` is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing was found at the path afterwards.
+   * @returns {Promise<GitRepository>} that resolves to the new {@link GitRepository}. It rejects when no provider implements `initialize`, and with an `Error` whose `code` is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing was found at the path afterwards.
    */
   initialize(directoryPath, options) {
     return this.operationManager.initialize(directoryPath, options);
@@ -1652,10 +1651,10 @@ module.exports = class RepositoryRegistry {
    *
    * Clone a remote into a directory and register the result.
    *
-   * @param remoteUrl - The `String` URL to clone.
-   * @param destinationPath - The `String` directory to clone into.
+   * @param {String} remoteUrl - The `String` URL to clone.
+   * @param {String} destinationPath - The `String` directory to clone into.
    * @param {Object} [options] - passed through to the provider.
-   * @returns {Promise} that resolves to the new {@link GitRepository}, and rejects the same way {@link #initialize} does.
+   * @returns {Promise<GitRepository>} that resolves to the new {@link GitRepository}, and rejects the same way {@link #initialize} does.
    */
   clone(remoteUrl, destinationPath, options) {
     return this.operationManager.clone(remoteUrl, destinationPath, options);
@@ -1708,7 +1707,7 @@ module.exports = class RepositoryRegistry {
    * @param {String} name - Workflow name used in operation progress events.
    * @param {Function} callback - Receives direct operations.
    * @param {Object} [options] - signal, expectedHead, guards, refresh selection.
-   * @returns {Promise} callback result, with partial/unknown outcomes on failure.
+   * @returns {Promise<*>} callback result, with partial/unknown outcomes on failure.
    */
   performWorkflow(repository, name, callback, options = {}) {
     return this.operationManager.performWorkflow(repository, name, callback, options);
@@ -1724,7 +1723,7 @@ module.exports = class RepositoryRegistry {
    * @param {GitRepository} repository - Repository to act on.
    * @param {String} name - fetch, pull or push.
    * @param {Object} [options] - Named operation options.
-   * @returns {Promise} the named operation result.
+   * @returns {Promise<*>} the named operation result.
    */
   performRemoteOperation(repository, name, options = {}) {
     return this.operationManager.performRemoteOperation(repository, name, options);
@@ -1823,11 +1822,11 @@ module.exports = class RepositoryRegistry {
    * * `repository` The {@link GitRepository}.
    * * `dispose` A `Function` that releases it.
    *
-   * @param filePath - The `String` path inside the repository to add.
+   * @param {String} filePath - The `String` path inside the repository to add.
    * @param {Object} [options] - Registration options.
    * @param {Boolean} [options.persist=true] - Remember the repository across
    *   window reloads. Pass `false` to keep it for this session only.
-   * @returns {Promise} that resolves to an `Object`, or to `null` when no live
+   * @returns {Promise<Object|null>} that resolves to an `Object`, or to `null` when no live
    *   repository remains registered after discovery.
    */
   async add(filePath, { persist = true } = {}) {
@@ -1868,7 +1867,7 @@ module.exports = class RepositoryRegistry {
    * The repository stays registered while a project root or an open buffer
    * still owns it.
    *
-   * @param repository - The {@link GitRepository} to forget.
+   * @param {GitRepository} repository - The {@link GitRepository} to forget.
    * @returns {Boolean} : `true` if the repository was registered.
    */
   forget(repository) {
@@ -2039,7 +2038,7 @@ module.exports = class RepositoryRegistry {
    * initialized is not loaded merely because of an update. A refresh failure in
    * one repository does not prevent the others from updating.
    *
-   * @returns {Promise} that resolves to an `Array` of every registered {@link GitRepository}.
+   * @returns {Promise<Array<GitRepository>>} that resolves to an `Array` of every registered {@link GitRepository}.
    */
   async update() {
     await this.rescan();

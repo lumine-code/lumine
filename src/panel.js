@@ -123,6 +123,8 @@ module.exports = class Panel {
    * @public
    * @status public
    *
+   * Get the content item displayed by this panel.
+   *
    * @returns {*} panel's item.
    */
   getItem() {
@@ -132,6 +134,8 @@ module.exports = class Panel {
   /**
    * @public
    * @status public
+   *
+   * Get the stacking priority assigned to this panel.
    *
    * @returns {Number} indicating this panel's priority.
    */
@@ -146,6 +150,8 @@ module.exports = class Panel {
   /**
    * @public
    * @status public
+   *
+   * Determine whether this panel is shown.
    *
    * @returns {Boolean} true when the panel is visible.
    * @category Visibility
@@ -176,7 +182,7 @@ module.exports = class Panel {
    * Show this panel.
    *
    * @param {Object} [options]
-   * @param options.crumb - Modal panels only. A `String`, or `true` to use the label the panel declared when it was added. The panel announces "display me now and take me into the breadcrumb": the modal that is visible at this moment becomes the previous entry of the window's modal trail, the breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape) or a click on an earlier crumb returns to it. Without `crumb` the panel is shown standalone, exactly as before — and showing a modal standalone ends whatever trail another flow had built.
+   * @param {String|Boolean} [options.crumb] - Modal panels only. A `String`, or `true` to use the label the panel declared when it was added. The panel announces "display me now and take me into the breadcrumb": the modal that is visible at this moment becomes the previous entry of the window's modal trail, the breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape) or a click on an earlier crumb returns to it. Without `crumb` the panel is shown standalone, exactly as before — and showing a modal standalone ends whatever trail another flow had built.
    * @category Visibility
    */
   show(options) {

@@ -382,7 +382,7 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called when items are added.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The added pane item.
+   * @param {*} callback.event.item - The added pane item.
    * @param {Number} callback.event.index - indicating where the item is located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -398,7 +398,7 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called when items are removed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The removed pane item.
+   * @param {*} callback.event.item - The removed pane item.
    * @param {Number} callback.event.index - indicating where the item was located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -414,7 +414,7 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called before items are removed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The pane item to be removed.
+   * @param {*} callback.event.item - The pane item to be removed.
    * @param {Number} callback.event.index - indicating where the item is located.
    */
   onWillRemoveItem(callback) {
@@ -429,7 +429,7 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called when items are moved.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The removed pane item.
+   * @param {*} callback.event.item - The removed pane item.
    * @param {Number} callback.event.oldIndex - indicating where the item was located.
    * @param {Number} callback.event.newIndex - indicating where the item is now located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
@@ -445,7 +445,7 @@ module.exports = class Pane {
    * Invoke the given callback with all current and future items.
    *
    * @param {Function} callback - to be called with current and future items.
-   * @param callback.item - An item that is present in {@link #getItems} at the time of subscription or that is added at some later time.
+   * @param {*} callback.item - An item that is present in {@link #getItems} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeItems(callback) {
@@ -463,7 +463,7 @@ module.exports = class Pane {
    * changes.
    *
    * @param {Function} callback - to be called when the active item changes.
-   * @param callback.activeItem - The current active item.
+   * @param {*} callback.activeItem - The current active item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActiveItem(callback) {
@@ -478,7 +478,7 @@ module.exports = class Pane {
    * {@link #getActiveItem}.
    *
    * @param {Function} callback - to be called with the current and future active items.
-   * @param callback.activeItem - The current active item.
+   * @param {*} callback.activeItem - The current active item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeActiveItem(callback) {
@@ -494,8 +494,8 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called before items are destroyed.
    * @param {Object} callback.event - with the following keys:
-   * @param callback.event.item - The item that will be destroyed.
-   * @param callback.event.index - The location of the item.
+   * @param {*} callback.event.item - The item that will be destroyed.
+   * @param {Number} callback.event.index - The location of the item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onWillDestroyItem(callback) {
@@ -627,8 +627,10 @@ module.exports = class Pane {
    * @public
    * @status public
    *
+   * Get the item at a zero-based tab index.
+   *
    * @param {Number} index
-   * @returns {*} The item at the index, or `null` when no item exists there.
+   * @returns {*} The item at the index, or `undefined` when no item exists there.
    */
   itemAtIndex(index) {
     return this.items[index];
@@ -770,7 +772,7 @@ module.exports = class Pane {
    * Make the given item *active*, causing it to be displayed by
    * the pane's view.
    *
-   * @param item - The item to activate
+   * @param {*} item - The item to activate
    * @param {Object} [options]
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state if it does not yet exist in the pane. Existing pending items in a pane are replaced with new pending items when they are opened.
    * @param {Boolean} [options.activatePane] - `true` also activates and focuses this pane after selecting the item, notifying workspace observers of the final selection once.
@@ -798,7 +800,7 @@ module.exports = class Pane {
    * pane's height so their content can scroll. Explicit sizing and editors
    * embedded within another item are preserved.
    *
-   * @param item - The item to add. It can be a model with an associated view or a view.
+   * @param {*} item - The item to add. It can be a model with an associated view or a view.
    * @param {Object} [options]
    * @param {Number} [options.index] - indicating the index at which to add the item. If omitted, the item is added after the current active item.
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
@@ -969,9 +971,9 @@ module.exports = class Pane {
    *
    * Add the given items to the pane.
    *
-   * @param items - An `Array` of items to add. Items can be views or models with associated views. Any objects that are already present in the pane's current items will not be added again.
+   * @param {Array<*>} items - An `Array` of items to add. Items can be views or models with associated views. Any objects that are already present in the pane's current items will not be added again.
    * @param {Number} [index] - index at which to add the items. If omitted, the item is #   added after the current active item.
-   * @returns {Array} of added items.
+   * @returns {Array<*>} of added items.
    */
   addItems(items, index = this.getActiveItemIndex() + 1) {
     items = items.filter((item) => !this.items.includes(item));
@@ -1054,7 +1056,7 @@ module.exports = class Pane {
    *
    * Move the given item to the given index.
    *
-   * @param item - The item to move.
+   * @param {*} item - The item to move.
    * @param {Number} newIndex - indicating the index to which to move the item.
    */
   moveItem(item, newIndex) {
@@ -1071,9 +1073,11 @@ module.exports = class Pane {
    *
    * Move the given item to the given index on another pane.
    *
-   * @param item - The item to move.
+   * @param {*} item - The item to move.
    * @param {Pane} pane - to which to move the item.
-   * @param {Number} index - indicating the index to which to move the item in the given pane.
+   * @param {Number} [index] - indicating the index to which to move the item in the given pane.
+   * @param {Object} [options={}] - Source-pane lifetime options.
+   * @param {Boolean} [options.preserveSourcePane=false] - Keep an emptied source pane alive after the move.
    */
   moveItemToPane(item, pane, index, { preserveSourcePane = false } = {}) {
     this.container?.assertMutable?.();
@@ -1195,7 +1199,7 @@ module.exports = class Pane {
    *
    * Destroy the active item and activate the next item.
    *
-   * @returns {Promise} that resolves when the item is destroyed.
+   * @returns {Promise<Boolean>} that resolves when the item is destroyed.
    */
   destroyActiveItem() {
     return this.destroyItem(this.activeItem);
@@ -1215,11 +1219,11 @@ module.exports = class Pane {
    * This action can be prevented by onWillDestroyPaneItem callbacks in which
    * case nothing happens.
    *
-   * @param item - Item to destroy
+   * @param {*} item - Item to destroy
    * @param {Boolean} [force] - Destroy the item without prompting to save it, even if the item's `isPermanentDockItem` method returns true.
    * @param {Object} [options] - Final mutation guards for an asynchronous close.
    * @param {Function} [options.canDestroy] - Return false to cancel after listeners and save prompts have completed.
-   * @returns {Promise} that resolves with a `Boolean` indicating whether or not the item was destroyed.
+   * @returns {Promise<Boolean>} that resolves with a `Boolean` indicating whether or not the item was destroyed.
    */
   async destroyItem(item, force, { canDestroy } = {}) {
     const index = this.items.indexOf(item);
@@ -1408,6 +1412,8 @@ module.exports = class Pane {
    * @status public
    *
    * Save the active item.
+   * @param {Function} [nextAction] - Receives a save error on failure, or no argument after success.
+   * @returns {Promise<*>|undefined}
    * @category Saving Items
    */
   saveActiveItem(nextAction) {
@@ -1422,7 +1428,7 @@ module.exports = class Pane {
    * path they select.
    *
    * @param {Function} [nextAction] - which will be called after the item is successfully saved.
-   * @returns {Promise} that resolves when the save is complete
+   * @returns {Promise<*>} that resolves when the save is complete
    * @category Saving Items
    */
   saveActiveItemAs(nextAction) {
@@ -1435,9 +1441,9 @@ module.exports = class Pane {
    *
    * Save the given item.
    *
-   * @param item - The item to save.
-   * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
-   * @returns {Promise} that resolves when the save is complete, or rejects if the save could not be completed.
+   * @param {*} item - The item to save.
+   * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The callback return value is used only when saving through saveItemAs.
+   * @returns {Promise<*>|undefined} Settles after the save attempt; an unsaveable item can return undefined. Save-as results follow saveItemAs. Save cancellation may reject, while other write errors are reported to nextAction or notifications.
    * @category Saving Items
    */
   saveItem(item, nextAction) {
@@ -1499,11 +1505,12 @@ module.exports = class Pane {
    * @public
    * @status public
    *
-   * Prompt the user for a location and save the active item with the
+   * Prompt the user for a location and save the given item with the
    * path they select.
    *
-   * @param item - The item to save.
+   * @param {*} item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
+   * @returns {Promise<*>} Resolves with the optional callback result. Cancellation reports a SaveCancelledError to the callback, or resolves to undefined when no callback is supplied.
    * @category Saving Items
    */
   async saveItemAs(item, nextAction) {
@@ -1537,7 +1544,7 @@ module.exports = class Pane {
    *
    * Save all saveable items whose file state is not unmodified.
    *
-   * @returns {Promise} that resolves when all items have been saved.
+   * @returns {Promise<Array<*>>} that resolves when all items have been saved.
    * @category Saving Items
    */
   async saveItems() {
@@ -1557,6 +1564,8 @@ module.exports = class Pane {
   /**
    * @public
    * @status public
+   *
+   * Find the first pane item with the given URI.
    *
    * @param {String} uri - containing a URI.
    * @returns {*|undefined} first item that matches the given URI or undefined if none exists.

@@ -76,9 +76,9 @@ module.exports = class Clipboard {
    * The metadata associated with the text is available by calling
    * {@link #readWithMetadata}.
    *
-   * @param text - The `String` to store.
-   * @param [metadata] - The additional info to associate with the text.
-   * @returns {Promise} that resolves after the system clipboard has been updated.
+   * @param {String} text - The `String` to store.
+   * @param {*} [metadata] - The additional info to associate with the text.
+   * @returns {Promise<void>} that resolves after the system clipboard has been updated.
    */
   write(text, metadata) {
     text = this.normalizeText(text);
@@ -223,10 +223,10 @@ module.exports = class Clipboard {
    * `execCommand("paste")` never fires one, so this is the only way to
    * round-trip a custom format without a native paste keystroke.
    *
-   * @param text - The plain-text `String` to store alongside the payload.
-   * @param format - The MIME-style format `String`, without the `web ` prefix.
-   * @param data - The JSON-serializable payload.
-   * @returns {Promise} that resolves to `true` when the payload was written, or `false` when only the plain text could be written.
+   * @param {String} text - The plain-text `String` to store alongside the payload.
+   * @param {String} format - The MIME-style format `String`, without the `web ` prefix.
+   * @param {Object} data - The JSON-serializable payload.
+   * @returns {Promise<Boolean>} that resolves to `true` when the payload was written, or `false` when only the plain text could be written.
    */
   async writeNativeData(text, format, data) {
     text = this.normalizeText(text);
@@ -251,8 +251,8 @@ module.exports = class Clipboard {
    * Read a JSON payload written by {@link #writeNativeData} in this or any
    * other window.
    *
-   * @param format - The MIME-style format `String`, without the `web ` prefix.
-   * @returns {Promise} that resolves to the parsed payload `Object`, or `null` when the clipboard holds no valid payload for the format.
+   * @param {String} format - The MIME-style format `String`, without the `web ` prefix.
+   * @returns {Promise<Object|null>} that resolves to the parsed payload `Object`, or `null` when the clipboard holds no valid payload for the format.
    */
   async readNativeData(format) {
     try {
@@ -303,7 +303,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the clipboard.
    *
-   * @returns {Promise} that resolves to the clipboard text as a `String`.
+   * @returns {Promise<String>} that resolves to the clipboard text as a `String`.
    */
   read() {
     return clipboard.readText();
@@ -319,7 +319,8 @@ module.exports = class Clipboard {
    *
    * Write the given text to the macOS find pasteboard.
    *
-   * @returns {Promise} that resolves after the find pasteboard has been updated.
+   * @param {String} text - The text to store.
+   * @returns {Promise<void>} that resolves after the find pasteboard has been updated.
    */
   writeFindText(text) {
     return clipboard.writeFindText(text);
@@ -331,7 +332,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the macOS find pasteboard.
    *
-   * @returns {Promise} that resolves to the find pasteboard text as a `String`.
+   * @returns {Promise<String>} that resolves to the find pasteboard text as a `String`.
    */
   readFindText() {
     return clipboard.readFindText();
@@ -350,7 +351,7 @@ module.exports = class Clipboard {
    * The image crosses the process boundary as PNG bytes, so its scale factor
    * does not survive the trip.
    *
-   * @returns {Promise} that resolves to a `NativeImage`, empty when the clipboard holds no image.
+   * @returns {Promise<NativeImage>} that resolves to a `NativeImage`, empty when the clipboard holds no image.
    */
   readImage() {
     return clipboard.readImage();
@@ -362,8 +363,8 @@ module.exports = class Clipboard {
    *
    * Write an image to the clipboard, replacing whatever it held.
    *
-   * @param image - A `NativeImage`, or the PNG bytes of one as a `Buffer`.
-   * @returns {Promise} that resolves after the image has been written.
+   * @param {NativeImage|Buffer|Uint8Array} image - A `NativeImage`, or the PNG bytes of one as a `Buffer`.
+   * @returns {Promise<void>} that resolves after the image has been written.
    */
   writeImage(image) {
     return clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
@@ -379,7 +380,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the Linux primary selection.
    *
-   * @returns {Promise} that resolves to a `String`, always empty on platforms without a primary selection.
+   * @returns {Promise<String>} that resolves to a `String`, always empty on platforms without a primary selection.
    */
   readSelectionText() {
     return clipboard.readSelectionText();
@@ -391,8 +392,8 @@ module.exports = class Clipboard {
    *
    * Write the given text to the Linux primary selection.
    *
-   * @param text - The `String` to store.
-   * @returns {Promise} that resolves after the primary selection has been updated.
+   * @param {String} text - The `String` to store.
+   * @returns {Promise<void>} that resolves after the primary selection has been updated.
    */
   writeSelectionText(text) {
     return clipboard.writeSelectionText(text);
@@ -413,7 +414,7 @@ module.exports = class Clipboard {
    * * `text` The `String` clipboard text.
    * * `metadata` The metadata stored by an earlier call to {@link #write}.
    *
-   * @returns {Promise} that resolves to an `Object` with the following keys:
+   * @returns {Promise<Object>} that resolves to an `Object` with the following keys:
    * @category Reading and Writing Text
    */
   readWithMetadata() {

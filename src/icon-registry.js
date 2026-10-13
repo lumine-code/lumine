@@ -535,6 +535,21 @@ module.exports = class IconRegistry {
    * Providers are consulted highest `priority` first, and equal priorities keep
    * registration order. `iconFor(target)` returns an icon descriptor, or
    * `null` to defer to the next provider.
+   * @param {Object} provider - Icon provider; descriptors must come from the Icon factories.
+   * @param {Function} provider.iconFor - Synchronously return an icon descriptor, or null to defer to the next provider. Promise results are not accepted.
+   * @param {Object} provider.iconFor.target - Normalized target with type, path, name, kind, item, context and hints.
+   * @param {Number} [provider.priority] - Overrides options.priority; must be finite.
+   * @param {String} [provider.id] - Overrides options.id; identifies provider failures.
+   * @param {Array<String>} [provider.handles] - Restrict resolution to path, name, or kind targets.
+   * @param {Boolean} [provider.usesContext=false] - Declare when icon resolution depends on target.context.
+   * @param {Boolean} [provider.async=false] - Resolve later through onDidChange; iconFor remains synchronous.
+   * @param {Function} [provider.onDidChange] - Subscribe to provider invalidations; receives a callback and returns a disposable handle.
+   * @param {Function} provider.onDidChange.callback - Call with a scope accepted by invalidate, or omit it to invalidate all icons.
+   * @param {Object} [options] - Registration defaults used when the provider omits its own values.
+   * @param {Number} [options.priority=0] - Provider priority.
+   * @param {String|null} [options.id=null] - Provider identity; null generates one.
+   * @param {Boolean} [options.core=false] - Mark a built-in fallback provider for skipFallback resolution.
+   * @returns {Disposable} Unregisters this provider and invalidates its cached answers.
    */
   addProvider(provider, { priority = 0, id = null, core = false } = {}) {
     if (!provider || typeof provider.iconFor !== "function") {
@@ -598,6 +613,22 @@ module.exports = class IconRegistry {
    * item. It may also carry a `context` string naming the caller and a `hints`
    * object describing what the caller already knows about the path — see
    * `src/icon-target.js`.
+   * @param {Object} target - Specify a path, semantic name, kind, or pane item. A name takes precedence over kind, then path.
+   * @param {String} [target.path] - Filesystem path.
+   * @param {String} [target.name] - Semantic icon name.
+   * @param {String} [target.kind] - Symbol kind name.
+   * @param {Object} [target.item] - Pane item supplying getIconName(), getPath() or getURI().
+   * @param {String} [target.context] - Caller context, used by providers declaring usesContext.
+   * @param {Object} [target.hints] - Explicit path metadata; omitted hints may be derived.
+   * @param {Boolean} [target.hints.directory]
+   * @param {Boolean} [target.hints.symlink]
+   * @param {Boolean} [target.hints.submodule]
+   * @param {Boolean} [target.hints.repositoryRoot]
+   * @param {Boolean} [target.hints.expanded]
+   * @param {Boolean} [target.hints.virtual]
+   * @param {Object} [options]
+   * @param {Boolean} [options.skipFallback=false] - Return Icon.none() unless a provider above the built-in providers answers.
+   * @returns {Object} A frozen icon descriptor, including Icon.none() for no icon.
    */
   iconFor(target, options = {}) {
     return this.descriptorFor(normalizeTarget(target), options);
@@ -799,7 +830,19 @@ module.exports = class IconRegistry {
    *   addition to applying classes.
    * @param {Boolean} [options.skipFallback=false] - Render nothing unless a
    *   provider above the built-in answers.
-   * @returns {Disposable} that removes everything the call added.
+   * @param {String} [target.path] - Filesystem path.
+   * @param {String} [target.name] - Semantic icon name.
+   * @param {String} [target.kind] - Symbol kind name.
+   * @param {Object} [target.item] - Pane item supplying getIconName(), getPath() or getURI().
+   * @param {String} [target.context] - Caller context, used by providers declaring usesContext.
+   * @param {Object} [target.hints] - Explicit path metadata; omitted hints may be derived.
+   * @param {Boolean} [target.hints.directory]
+   * @param {Boolean} [target.hints.symlink]
+   * @param {Boolean} [target.hints.submodule]
+   * @param {Boolean} [target.hints.repositoryRoot]
+   * @param {Boolean} [target.hints.expanded]
+   * @param {Boolean} [target.hints.virtual]
+   * @returns {Object} A disposable handle with dispose(), which removes this application and restores the element's previous state.
    */
   applyTo(element, target, options = {}) {
     if (!element) throw new TypeError("applyTo needs an element to render into");
@@ -953,6 +996,13 @@ module.exports = class IconRegistry {
    * `{types}`, `{paths}`, `{pathPrefixes}`, `{names}`, or `{kinds}`. Narrowing
    * matters: a provider that resolves one file extension asynchronously should
    * repaint the rows showing that extension, not every row in the tree.
+   * @param {Object|null} [scope] - Omit, pass null, or pass an empty object to invalidate every icon.
+   * @param {Array<String>} [scope.types] - Target types: path, name, or kind.
+   * @param {Array<String>} [scope.paths] - Exact filesystem paths.
+   * @param {Array<String>} [scope.pathPrefixes] - Filesystem prefixes and their descendants.
+   * @param {Array<String>} [scope.names] - Semantic names.
+   * @param {Array<String>} [scope.kinds] - Symbol kind names.
+   * @returns {void}
    */
   invalidate(scope) {
     const affected = new Set();
@@ -1171,6 +1221,8 @@ module.exports = class IconRegistry {
    * Override the icon for one or more semantic names. Returns a
    * `Disposable` that restores the previous mapping. A `null` value means the
    * name renders no icon.
+   * @param {Object<String,String|Array<String>|null>} entries - Map names or kinds to glyph classes (a string or array), or null to suppress their icons.
+   * @returns {Disposable} Restores the previous mappings.
    */
   defineNames(entries) {
     return this.define("name", entries);
@@ -1181,6 +1233,8 @@ module.exports = class IconRegistry {
    * @status extended
    *
    * Override the icon for one or more kinds. Returns a `Disposable`.
+   * @param {Object<String,String|Array<String>|null>} entries - Map names or kinds to glyph classes (a string or array), or null to suppress their icons.
+   * @returns {Disposable} Restores the previous mappings.
    */
   defineKinds(entries) {
     return this.define("kind", entries);
@@ -1213,6 +1267,9 @@ module.exports = class IconRegistry {
    * @status extended
    *
    * Invoke `callback` when any icon may have changed.
+   * @param {Function} callback
+   * @param {Object|null} callback.scope - The scope passed to invalidate; null means all icons may have changed.
+   * @returns {Disposable} Dispose to unsubscribe.
    */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);

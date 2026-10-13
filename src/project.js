@@ -316,7 +316,7 @@ module.exports = class Project extends Model {
    * Invoke the given callback when the project paths change.
    *
    * @param {Function} callback - to be called after the project paths change.
-   * @param callback.projectPaths - An `Array` of `String` project paths.
+   * @param {Array<String>} callback.projectPaths - An `Array` of `String` project paths.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangePaths(callback) {
@@ -331,7 +331,7 @@ module.exports = class Project extends Model {
    * project.
    *
    * @param {Function} callback - to be called when a text buffer is added.
-   * @param callback.buffer - A {@link TextBuffer} item.
+   * @param {TextBuffer} callback.buffer - A {@link TextBuffer} item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidAddBuffer(callback) {
@@ -346,7 +346,7 @@ module.exports = class Project extends Model {
    * buffers in the project.
    *
    * @param {Function} callback - to be called with current and future text buffers.
-   * @param callback.buffer - A {@link TextBuffer} item.
+   * @param {TextBuffer} callback.buffer - A {@link TextBuffer} item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeBuffers(callback) {
@@ -394,7 +394,7 @@ module.exports = class Project extends Model {
    * the watcher is receiving events.
    *
    * @param {Function} callback - to be called with batches of filesystem events reported by the operating system.
-   * @param callback.events - An `Array` of objects that describe a batch of filesystem events.
+   * @param {Array<Object>} callback.events - An `Array` of objects that describe a batch of filesystem events.
    * @param {String} callback.events.action - describing the filesystem action that occurred. One of `"created"`, `"updated"`, or `"deleted"`.
    * @param {String} callback.events.path - containing the absolute path to the filesystem entry that was acted upon.
    * @returns {Disposable} to manage this event subscription.
@@ -418,7 +418,7 @@ module.exports = class Project extends Model {
   }
 
   /**
-   * @category Accessing the git repository
+   * @category Accessing Git Repositories
    */
 
   /**
@@ -427,11 +427,8 @@ module.exports = class Project extends Model {
    *
    * Get the repository for a given directory asynchronously.
    *
-   *
-   * * `null` if no repository can be created for the given directory.
-   *
    * @param {Directory} directory - for which to get a {@link GitRepository}.
-   * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given directory
+   * @returns {Promise<GitRepository|null>} The containing repository, or `null` when none is found.
    */
   repositoryForDirectory(directory) {
     return this.repositoryRegistry.resolveForPath(directory?.getPath?.());
@@ -448,13 +445,10 @@ module.exports = class Project extends Model {
    * a path `String` rather than a `Directory`. Providers receive the path
    * directly and perform discovery asynchronously.
    *
-   *
-   * * `null` if no repository can be created for the given path.
-   *
    * @param {String} filePath - path of a file or directory.
    * @param {Object} [options] - Resolution options.
    * @param {Boolean} [options.refresh=true] - Re-run providers instead of using an exact-path discovery cache entry.
-   * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given path
+   * @returns {Promise<GitRepository|null>} The containing repository, or `null` when none is found.
    */
   repositoryForPath(filePath, options = {}) {
     if (!filePath) return Promise.resolve(null);
@@ -495,6 +489,7 @@ module.exports = class Project extends Model {
    *
    * Get an `Array` of `Strings` containing the paths of the project's
    * directories.
+   * @returns {Array<String>|undefined} Root directory paths, or `undefined` if corrupt window state prevents reading them.
    */
   getPaths() {
     try {
@@ -513,9 +508,9 @@ module.exports = class Project extends Model {
    * Set the paths of the project's directories.
    *
    * @param {Array} projectPaths - of `String` paths.
-   * @param options - An optional `Object` that may contain the following keys:
-   * @param options.mustExist - If `true`, throw an Error if any `projectPaths` do not exist. Any remaining `projectPaths` that do exist will still be added to the project. Default: `false`.
-   * @param options.exact - If `true`, only add a `projectPath` if it names an existing directory. If `false` and any `projectPath` is a file or does not exist, its parent directory will be added instead. Default: `false`.
+   * @param {Object} [options] - An optional `Object` that may contain the following keys:
+   * @param {Boolean} [options.mustExist] - If `true`, throw an Error if any `projectPaths` do not exist. Any remaining `projectPaths` that do exist will still be added to the project. Default: `false`.
+   * @param {Boolean} [options.exact] - If `true`, only add a `projectPath` if it names an existing directory. If `false` and any `projectPath` is a file or does not exist, its parent directory will be added instead. Default: `false`.
    */
   setPaths(projectPaths, options = {}) {
     this.rootDirectories = [];
@@ -557,7 +552,6 @@ module.exports = class Project extends Model {
    *
    * Open a different project in this window.
    *
-   *
    * Where {@link #setPaths} changes the folders and leaves everything else alone —
    * so the editors open on the old project stay open on the new one — this
    * changes the whole state: the current folders and the editors open on them
@@ -586,7 +580,7 @@ module.exports = class Project extends Model {
    * Resetting or closing the window cancels pending changes with `ABORT_ERR`.
    *
    * @param {Array} projectPaths - of `String` paths to the directories the window should have open.
-   * @returns {Promise} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.
+   * @returns {Promise<Boolean>} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.
    * @category Managing Project State
    */
   async setState(projectPaths) {
@@ -599,12 +593,12 @@ module.exports = class Project extends Model {
    * @public
    * @status public
    *
-   * Add a path to the project's list of root paths
+   * Add a path to the project's list of root paths.
    *
    * @param {String} projectPath - The path to the directory to add.
-   * @param options - An optional `Object` that may contain the following keys:
-   * @param options.mustExist - If `true`, throw an Error if the `projectPath` does not exist. If `false`, a `projectPath` that does not exist is ignored. Default: `false`.
-   * @param options.exact - If `true`, only add `projectPath` if it names an existing directory. If `false`, if `projectPath` is a a file or does not exist, its parent directory will be added instead.
+   * @param {Object} [options] - An optional `Object` that may contain the following keys:
+   * @param {Boolean} [options.mustExist] - If `true`, throw an Error if the `projectPath` does not exist. If `false`, a `projectPath` that does not exist is ignored. Default: `false`.
+   * @param {Boolean} [options.exact] - If `true`, only add `projectPath` if it names an existing directory. If `false`, if `projectPath` is a file or does not exist, its parent directory will be added instead.
    */
   addPath(projectPath, options = {}) {
     const directory = this.getDirectoryForProjectPath(projectPath);
@@ -706,8 +700,8 @@ module.exports = class Project extends Model {
    * Add multiple paths to the project's list of root paths,
    * emitting a single `did-change-paths` event after all paths are added.
    *
-   * @param projectPaths - An `Array` of `String` paths to add.
-   * @param options - An optional `Object` passed to {@link #addPath} for each path.
+   * @param {Array<String>} projectPaths - An `Array` of `String` paths to add.
+   * @param {Object} [options] - An optional `Object` passed to {@link #addPath} for each path.
    */
   addPaths(projectPaths, options = {}) {
     const pathsBefore = this.getPaths().length;
@@ -755,7 +749,7 @@ module.exports = class Project extends Model {
    * ready before manipulating the filesystem to produce events.
    *
    * @param {String} projectPath - One of the project's root directories.
-   * @returns {Promise} that resolves with the {@link FileWatchHandle} associated with this project root once it has initialized and is ready to start sending events. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
+   * @returns {Promise<Object>} The root's initialized watcher handle. The default backend supplies a {@link FileWatchHandle}; directory providers may supply their own handle. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
    * @category Filesystem Watching
    */
   getWatcherPromise(projectPath) {
@@ -769,9 +763,10 @@ module.exports = class Project extends Model {
    * @public
    * @status public
    *
-   * remove a path from the project's list of root paths.
+   * Remove a path from the project's list of root paths.
    *
    * @param {String} projectPath - The path to remove.
+   * @returns {Boolean} Whether a project root was removed.
    */
   removePath(projectPath) {
     // The projectPath may be a URI, in which case it should not be normalized.
@@ -804,7 +799,8 @@ module.exports = class Project extends Model {
    * @public
    * @status public
    *
-   * Get an `Array` of `Directorys` associated with this project.
+   * Get the root directories associated with this project.
+   * @returns {Array<Directory>} The current project root directory objects.
    */
   getDirectories() {
     return this.rootDirectories;
@@ -843,7 +839,6 @@ module.exports = class Project extends Model {
    *
    * Get the path to the project directory that contains the given path,
    * and the relative path from that project directory to the given path.
-   *
    *
    * * `projectPath` The `String` path to the project directory that contains the
    *   given path, or `null` if none is found.
@@ -919,9 +914,9 @@ module.exports = class Project extends Model {
    * The result is a snapshot. Compile it again after the underlying config
    * changes.
    *
-   * @param additionalIgnoredNames - an `Array` of additional `String` globs.
+   * @param {Array<String>} [additionalIgnoredNames=[]] - an `Array` of additional `String` globs.
    * @param {Object} [options]
-   * @param {Boolean} options.useCoreIgnoredNames - whether to include `core.ignoredNames`; defaults to `true`.
+   * @param {Boolean} [options.useCoreIgnoredNames] - whether to include `core.ignoredNames`; defaults to `true`.
    * @returns {Object} an immutable `{patterns, matches(relativePath)}` matcher.
    */
   compileIgnoredNames(additionalIgnoredNames = [], options = {}) {
@@ -951,14 +946,14 @@ module.exports = class Project extends Model {
    * ```
    *
    * @param {Object} [options]
-   * @param {Function} options.didFindPaths - called with an `Array` of absolute paths as they are found. Called several times over the life of one crawl.
-   * @param options.directoryPaths - an `Array` of `String` paths to crawl. Defaults to the project's root directories.
-   * @param {String} options.inclusion - glob scoping the crawl. `**` means "everything".
-   * @param options.ignoredNames - an `Array` of additional `String` globs to exclude.
-   * @param {Boolean} options.useCoreIgnoredNames - whether to include `core.ignoredNames`; defaults to `true`.
-   * @param {Boolean} options.followSymlinks - whether to descend into symlinked directories. Defaults to `core.followSymlinks`.
-   * @param {Boolean} options.excludeVcsIgnoredPaths - whether to honor VCS ignore files. Defaults to `core.excludeVcsIgnoredPaths`. Only takes effect inside a repository — a directory with no `.git` above it lists everything.
-   * @param {Boolean} options.sort - whether to return paths in a stable order. Costs ripgrep its parallel walk, so only ask when the order is observable.
+   * @param {Function} [options.didFindPaths] - called with an `Array` of absolute paths as they are found. Called several times over the life of one crawl.
+   * @param {Array<String>} [options.directoryPaths] - an `Array` of `String` paths to crawl. Defaults to the project's root directories.
+   * @param {String} [options.inclusion] - glob scoping the crawl. `**` means "everything".
+   * @param {Array<String>} [options.ignoredNames] - an `Array` of additional `String` globs to exclude.
+   * @param {Boolean} [options.useCoreIgnoredNames] - whether to include `core.ignoredNames`; defaults to `true`.
+   * @param {Boolean} [options.followSymlinks] - whether to descend into symlinked directories. Defaults to `core.followSymlinks`.
+   * @param {Boolean} [options.excludeVcsIgnoredPaths] - whether to honor VCS ignore files. Defaults to `core.excludeVcsIgnoredPaths`. Only takes effect inside a repository — a directory with no `.git` above it lists everything.
+   * @param {Boolean} [options.sort] - whether to return paths in a stable order. Costs ripgrep its parallel walk, so only ask when the order is observable.
    * @returns {Promise} with a `cancel()` method that resolves the crawl early.
    */
   crawl(options = {}) {
@@ -1022,9 +1017,9 @@ module.exports = class Project extends Model {
    * callback costs nothing extra.
    *
    * @param {Function} callback - to be called with each batch of changes.
-   * @param callback.added - An `Array` of `String` absolute paths new to the index.
-   * @param callback.removed - An `Array` of `String` absolute paths no longer in it.
-   * @param callback.indexing - A `Boolean`, `true` while a crawl is still running.
+   * @param {Array<String>} callback.added - An `Array` of `String` absolute paths new to the index.
+   * @param {Array<String>} callback.removed - An `Array` of `String` absolute paths no longer in it.
+   * @param {Boolean} callback.indexing - A `Boolean`, `true` while a crawl is still running.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    * @category Event Subscription
    */
@@ -1059,7 +1054,7 @@ module.exports = class Project extends Model {
    * than during package activation, or the crawl happens in every window whether
    * anything wanted it or not.
    *
-   * @returns {Array} of `String` absolute paths.
+   * @returns {Array<String>} of `String` absolute paths.
    */
   getFilePaths() {
     return this.fileIndexOrBuild().getPaths();
@@ -1076,7 +1071,7 @@ module.exports = class Project extends Model {
    * {@link #getFilePaths}.
    *
    * @param {String|Directory} root - a project root path, or its `Directory`.
-   * @returns {Array} of `String` absolute paths, empty for a path that is not a project root.
+   * @returns {Array<String>} of `String` absolute paths, empty for a path that is not a project root.
    */
   getFilePathsForRoot(root) {
     return this.fileIndexOrBuild().getPathsForRoot(root);
@@ -1147,8 +1142,8 @@ module.exports = class Project extends Model {
    * so a refresh does not empty a list the user is looking at.
    *
    * @param {Object} [options]
-   * @param options.rootPaths - An `Array` of `String` roots to re-crawl. Defaults to all of them.
-   * @returns {Promise} that resolves when the crawl settles.
+   * @param {Array<String>} [options.rootPaths] - An `Array` of `String` roots to re-crawl. Defaults to all of them.
+   * @returns {Promise<void>} that resolves when the crawl settles.
    */
   refreshFilePaths(options = {}) {
     return this.fileIndexOrBuild().refresh(options);

@@ -144,7 +144,7 @@ class WorkspaceDropManager {
    *
    * Providers are consulted by descending `priority`; ties preserve registration order. A provider exposes a synchronous `propose(context)` for protected drag events, then optional `prepareDrop(context)` and `perform(context, prepared)` methods for the drop itself.
    *
-   * @param provider - An `Object` implementing `propose(context)` or `canHandle(context)`.
+   * @param {Object} provider - An `Object` implementing `propose(context)` or `canHandle(context)`.
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - Provider priority.
    * @returns {Disposable} A disposable that unregisters the provider.
@@ -174,8 +174,8 @@ class WorkspaceDropManager {
    *
    * The deepest registered element in the event path wins. The adapter can provide `getPane`, `getContext`, `getIndex`, `canDrop`, and drag lifecycle callbacks.
    *
-   * @param element - The target `Element`.
-   * @param adapter - An adapter describing the target surface.
+   * @param {Element} element - The target `Element`.
+   * @param {Object} [adapter={}] - An adapter describing the target surface.
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - Priority among targets at the same depth.
    * @returns {Disposable} A disposable that unregisters the target.
@@ -200,7 +200,7 @@ class WorkspaceDropManager {
    *
    * Create an exact, expiring source session for a move between windows.
    *
-   * @param value - The source value retained only in its owning window.
+   * @param {*} value - The source value retained only in its owning window.
    * @param {Object} [callbacks] - Settlement callbacks.
    * @param {Function} [callbacks.commit] - Called after a target accepts the move; return or resolve to `false` to reject it.
    * @param {Function} [callbacks.rollback] - Called when the move is abandoned or rejected.
@@ -224,7 +224,7 @@ class WorkspaceDropManager {
    *
    * Return the exact local value retained for a drag session token.
    *
-   * @param token - A session token.
+   * @param {String|Object} token - A session token.
    * @returns {*} the retained value, or `undefined` outside its source window.
    * @category Drag Sessions
    */
@@ -239,9 +239,9 @@ class WorkspaceDropManager {
    *
    * Commit a local or cross-window drag session.
    *
-   * @param token - A session token.
-   * @param result - Structured-cloneable result details. Cross-window callers include `sourceWindowId`.
-   * @returns {Promise} resolving to whether the source accepted the move.
+   * @param {String|Object} token - A session token.
+   * @param {Object} [result={}] - Structured-cloneable result details. Cross-window callers include `sourceWindowId`.
+   * @returns {Promise<Boolean>} resolving to whether the source accepted the move.
    * @category Drag Sessions
    */
   async commit(token, result = {}) {
@@ -254,11 +254,11 @@ class WorkspaceDropManager {
    *
    * Roll back a local or cross-window drag session.
    *
-   * @param token - A session token.
-   * @param reason - A serializable reason for abandoning the move.
+   * @param {String|Object} token - A session token.
+   * @param {*} reason - A serializable reason for abandoning the move.
    * @param {Object} [options] - Cross-window routing when no drag descriptor was read locally.
    * @param {Number} [options.sourceWindowId] - The source window of a programmatic transfer.
-   * @returns {Promise} resolving to whether the rollback was delivered.
+   * @returns {Promise<Boolean>} resolving to whether the rollback was delivered.
    * @category Drag Sessions
    */
   async rollback(token, reason, { sourceWindowId } = {}) {
@@ -377,8 +377,8 @@ class WorkspaceDropManager {
    *
    * Write one versioned Lumine descriptor to a `DataTransfer`.
    *
-   * @param dataTransfer - The drag's `DataTransfer`.
-   * @param descriptor - A descriptor containing `kind`, `items`, source metadata, effect, and allowed locations.
+   * @param {DataTransfer} dataTransfer - The drag's `DataTransfer`.
+   * @param {Object} descriptor - A descriptor containing `kind`, `items`, source metadata, effect, and allowed locations.
    * @returns {Object} the normalized descriptor written to the transfer.
    * @category Data Transfer
    */
@@ -392,7 +392,7 @@ class WorkspaceDropManager {
    *
    * Inspect a drag offer using only types visible in protected drag mode.
    *
-   * @param dataTransfer - The drag's `DataTransfer`.
+   * @param {DataTransfer} dataTransfer - The drag's `DataTransfer`.
    * @returns {Object|null} an offer object, or `null` when the drag is unsupported.
    * @category Data Transfer
    */
@@ -406,7 +406,7 @@ class WorkspaceDropManager {
    *
    * Read and validate a complete Lumine descriptor during `drop`.
    *
-   * @param dataTransfer - The drop's readable `DataTransfer`.
+   * @param {DataTransfer} dataTransfer - The drop's readable `DataTransfer`.
    * @returns {Object|null} a normalized descriptor, or `null` when it is malformed or unavailable.
    * @category Data Transfer
    */

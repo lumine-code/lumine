@@ -165,7 +165,10 @@ module.exports = class MenuManager {
    *
    * Create an HTML application-menu bar bound to this manager's live template.
    *
-   * @param {Object} options
+   * @param {Object} [options]
+   * @param {Boolean} [options.autoHide=false] - Show the menu bar only while it has focus.
+   * @param {Boolean} [options.altGivesFocus=true] - Give the menu bar focus when Alt is pressed alone.
+   * @param {Document} [options.document] - The document that owns the menu bar; defaults to the workspace document.
    * @returns {Object} a disposable menu-bar controller and its `element`.
    */
   createMenuBar(options = {}) {
@@ -180,7 +183,13 @@ module.exports = class MenuManager {
    *
    * Show a theme-aware HTML command menu at an element, pointer event, or rect.
    *
-   * @param {Object} options
+   * @param {Object} [options]
+   * @param {Array<Object>} options.template - The menu items to display.
+   * @param {Element} [options.target] - The element that receives selected commands.
+   * @param {Element|MouseEvent|Object} [options.anchor] - The element, pointer event, or rectangle used for popup positioning.
+   * @param {String} [options.placement] - Popup placement relative to the anchor.
+   * @param {String} [options.alignment] - Popup alignment along the anchor.
+   * @param {Boolean} [options.autoSelectFirstItem=false] - Select the first enabled menu item when the popup opens.
    * @returns {Object} a disposable popup controller.
    */
   showPopup(options = {}) {
@@ -199,7 +208,13 @@ module.exports = class MenuManager {
    *
    * Create a theme-aware single-choice control with an HTML listbox popup.
    *
-   * @param {Object} options
+   * @param {Object} [options]
+   * @param {Array<*>} [options.items=[]] - Values or objects with `value`, `label`, and optional `disabled` fields.
+   * @param {*} [options.value] - The selected value; defaults to the first enabled item when unmatched.
+   * @param {Boolean} [options.disabled=false] - Disable the control.
+   * @param {String} [options.className] - Additional CSS classes for the control.
+   * @param {String} [options.id] - The control element ID; generated when omitted.
+   * @param {String} [options.ariaLabel] - An accessible label for the control.
    * @returns {Object} a disposable select-box controller and its `element`.
    */
   createSelectBox(options = {}) {
@@ -228,11 +243,11 @@ module.exports = class MenuManager {
    *   ]);
    * ```
    *
-   * @param items - An `Array` of menu item `Objects` containing the keys:
-   * @param items.label - The `String` menu label.
-   * @param items.submenu - An optional `Array` of sub menu items.
-   * @param items.command - An optional `String` command to trigger when the item is clicked.
-   * @param items.id - (internal) A `String` containing the menu item's id.
+   * @param {Array<Object>} items - An `Array` of menu item `Objects` containing the keys:
+   * @param {String} items.label - The `String` menu label.
+   * @param {Array} items.submenu - An optional `Array` of sub menu items.
+   * @param {String} items.command - An optional `String` command to trigger when the item is clicked.
+   * @param {String} items.id - (internal) A `String` containing the menu item's id.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added menu items.
    */
   add(items) {

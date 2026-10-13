@@ -720,10 +720,10 @@ class Config {
    * Get all of the values for the given key-path, along with their
    * associated scope selector.
    *
-   * @param keyPath - The `String` name of the key to retrieve
+   * @param {String} keyPath - The `String` name of the key to retrieve
    * @param {Object} [options] - see the `options` argument to {@link #get}
-   * @param {ScopeDescriptor|Array} [options.scope] - The scope with which the values are associated.
-   * @returns {Array} of objects containing a `scopeSelector` string and its corresponding `value`, ordered from the most specific matching selector to the global `*` value.
+   * @param {ScopeDescriptor|Array<String>} [options.scope] - The scope with which the values are associated.
+   * @returns {Array<Object>} of objects containing a `scopeSelector` string and its corresponding `value`, ordered from the most specific matching selector to the global `*` value.
    */
   getAll(keyPath, options) {
     let globalValue, result, scope;
@@ -864,7 +864,7 @@ class Config {
    * Restore the setting at `keyPath` to its default value. With `local: true`,
    * remove only the selected local override and inherit the current user value.
    *
-   * @param keyPath - The `String` name of the key.
+   * @param {String} keyPath - The `String` name of the key.
    * @param {Object} [options]
    * @param {Boolean} [options.local=false] - Remove only this window's override,
    *   revealing the current user value. An absent override is a no-op.
@@ -935,6 +935,7 @@ class Config {
    *
    * Get an `Array` of all of the `source` `Strings` with which
    * settings have been added via {@link #set}.
+   * @returns {Array<String>}
    */
   getSources() {
     return _.uniq(_.pluck(this.getScopedSettingsStore().propertySets, "source")).sort();
@@ -1247,7 +1248,7 @@ class Config {
    * you what type the keyPath expects, and other metadata about the config
    * option.
    *
-   * @param keyPath - The `String` name of the key.
+   * @param {String} keyPath - The `String` name of the key.
    * @returns {Object|null} A schema such as `{type: 'integer', default: 23, minimum: 1}`, or `null` when the key path has no accessible schema.
    */
   getSchema(keyPath) {
@@ -1287,6 +1288,7 @@ class Config {
    * handlers will be called once if the value for their key-path has changed.
    *
    * @param {Function} callback - to execute while suppressing calls to handlers.
+   * @returns {*} The value returned by `callback`.
    */
   transact(callback) {
     this.beginTransaction();

@@ -185,24 +185,25 @@ module.exports = class ViewRegistry {
    * @public
    * @status essential
    *
-   * Add a provider that will be used to construct views in the
-   * workspace's view layer based on model objects in its model layer.
+   * Register a factory that creates DOM views for model objects.
    *
    * ## Examples
    *
-   * Text editors are divided into a model and a view layer, so when you interact
-   * with methods like `lumine.workspace.getActiveTextEditor()` you're only going
-   * to get the model object. We display text editors on screen by teaching the
-   * workspace what view constructor it should use to represent them:
-   *
    * ```js
-   * lumine.views.addViewProvider(TextEditor, (textEditor) => {
-   *   const textEditorElement = new TextEditorElement()
-   *   textEditorElement.initialize(textEditor)
+   * class Message {
+   *   constructor(text) { this.text = text; }
+   * }
+   * const subscription = lumine.views.addViewProvider(Message, (model) => {
+   *   const element = document.createElement('div');
+   *   element.textContent = model.text;
+   *   return element;
+   * });
+   * const view = lumine.views.getView(new Message('Hello'));
+   * ```
    *
-   * @param [modelConstructor] - Constructor `Function` for your model. If a constructor is given, the `createView` function will only be used for model objects inheriting from that constructor. Otherwise, it will will be called for any object.
-   * @param createView - Factory `Function` that is passed an instance of your model and must return a subclass of `HTMLElement` or `undefined`. If it returns `undefined`, then the registry will continue to search for other view providers.
-   * @returns {Disposable} textEditorElement }) ```; on which `.dispose()` can be called to remove the added provider.
+   * @param {Function} [modelConstructor] - Constructor `Function` for your model. If a constructor is given, the `createView` function will only be used for model objects inheriting from that constructor. Otherwise, it will be called for any object.
+   * @param {Function} createView - Factory `Function` that is passed an instance of your model and must return a DOM element or `undefined`. If it returns `undefined`, then the registry will continue to search for other view providers.
+   * @returns {Disposable} Dispose to remove the added provider.
    */
   addViewProvider(modelConstructor, createView) {
     let provider;
@@ -259,7 +260,8 @@ module.exports = class ViewRegistry {
    *
    * If no associated view is returned by the sequence an error is thrown.
    *
-   * @returns {HTMLElement} DOM element.
+   * @param {Object|Element|null|undefined} object - A model or DOM element whose view is requested.
+   * @returns {Element|undefined} The DOM element, or `undefined` for a null or undefined input.
    */
   getView(object) {
     if (object == null) {

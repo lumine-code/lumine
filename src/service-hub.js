@@ -168,9 +168,9 @@ module.exports = class ServiceHub {
    * Provide a service by invoking the callback of all current and future
    * consumers matching the given service name and version range.
    *
-   * @param keyPath - A `String` naming the service. Names are matched exactly. A `.` is a grouping convention for related services (`linter.provider`, `linter.registry`) and carries no lookup meaning: consuming `linter` does not match a provider of `linter.provider`.
-   * @param version - A `String` containing a [semantic version](http://semver.org/) for the service's API.
-   * @param service - An object exposing the service API.
+   * @param {String} keyPath - A `String` naming the service. Names are matched exactly. A `.` is a grouping convention for related services (`linter.provider`, `linter.registry`) and carries no lookup meaning: consuming `linter` does not match a provider of `linter.provider`.
+   * @param {String|Object} version - A semantic version, or an object mapping version strings to services when `service` is omitted.
+   * @param {*} [service] - The service API supplied at `version`; omit it when passing a version-to-service map.
    * @returns {Disposable} on which `.dispose()` can be called to remove the provided service.
    */
   provide(keyPath, version, service) {
@@ -234,9 +234,9 @@ module.exports = class ServiceHub {
    * and future provided services matching the given service name and version
    * range.
    *
-   * @param keyPath - A `String` naming the service. Names are matched exactly; see {@link #provide}.
-   * @param versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
-   * @param callback - A `Function` to be called with current and future matching service objects.
+   * @param {String} keyPath - A `String` naming the service. Names are matched exactly; see {@link #provide}.
+   * @param {String} versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
+   * @param {Function} callback - A `Function` to be called with current and future matching services.
    * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
    */
   consume(keyPath, versionRange, callback) {
@@ -327,7 +327,7 @@ module.exports = class ServiceHub {
    * a moment the caller chooses -- a diagnostic command, `timecop` -- rather
    * than a warning this class can time correctly.
    *
-   * @returns {Array} of `{keyPath, versionRange}`.
+   * @returns {Array<Object>} of `{keyPath, versionRange}`.
    */
   unmatchedConsumers() {
     return this.consumers

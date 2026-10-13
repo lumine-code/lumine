@@ -431,8 +431,8 @@ class PaneItemTransferScope {
    *
    * Capture a pane item and retain its exact source identity until settlement.
    *
-   * @param pane - The pane containing the item.
-   * @param item - The exact item to move.
+   * @param {Pane} pane - The pane containing the item.
+   * @param {*} item - The exact item to move.
    * @returns {Object} A serializable workspace drag descriptor.
    * @category Transfer Sessions
    */
@@ -516,6 +516,9 @@ class PaneItemTransferScope {
    * @status extended
    *
    * Abandon a retained source session without destroying its item.
+   * @param {String} token - The retained transfer token.
+   * @param {*} [reason="transfer abandoned"] - A serializable rollback reason.
+   * @returns {Boolean} Whether a retained transfer was released.
    * @category Transfer Sessions
    */
   release(token, reason = "transfer abandoned") {
@@ -533,6 +536,8 @@ class PaneItemTransferScope {
    * Validate a complete descriptor before resolving or creating a destination.
    *
    * @returns {Object|null} Prepared transfer state, or null for an unsupported payload.
+   * @param {Object} descriptor - The normalized pane-item drag descriptor.
+   * @param {Pane} [pane] - The potential destination pane, used to decide whether splitting is allowed.
    * @category Drop Operations
    */
   prepareDrop(descriptor, pane) {
@@ -586,6 +591,8 @@ class PaneItemTransferScope {
    * Complete a prepared drop, staging remote content before source commit.
    *
    * @returns {Promise<Object>} The destination pane and item.
+   * @param {Object} context - The drop target context and destination pane placement.
+   * @param {Object} prepared - A non-null result from prepareDrop.
    * @category Drop Operations
    */
   async performDrop(context, prepared) {
@@ -844,7 +851,9 @@ class PaneItemTransferScope {
    * Move an item into a freshly opened window using the same staged transfer.
    * The source remains intact until the destination acknowledges its content.
    *
-   * @returns {Promise<Object>} The destination window id after source commit.
+   * @returns {Promise<Object>} The destination window identity as {windowId}, after the source transfer commits.
+   * @param {Pane} pane - The source pane.
+   * @param {*} item - The exact source item.
    * @category Drop Operations
    */
   async openInNewWindow(pane, item) {

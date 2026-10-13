@@ -23,7 +23,7 @@ module.exports = class LayerDecoration {
   }
 
   /**
-   * @category Construction and Destruction
+   * @category Lifecycle
    */
 
   /**
@@ -31,6 +31,7 @@ module.exports = class LayerDecoration {
    * @status essential
    *
    * Destroys the decoration.
+   * @returns {void}
    */
   destroy() {
     if (this.destroyed) {
@@ -84,7 +85,8 @@ module.exports = class LayerDecoration {
    *
    * Set this decoration's properties.
    *
-   * @param newProperties - See {@link TextEditor#decorateMarker} for more information on the properties. The `type` of `gutter` and `overlay` are not supported on layer decorations.
+   * @param {Object} newProperties - See {@link TextEditor#decorateMarker} for more information on the properties. The `type` of `gutter` and `overlay` are not supported on layer decorations.
+   * @returns {void}
    */
   setProperties(newProperties) {
     if (this.destroyed) {
@@ -100,8 +102,9 @@ module.exports = class LayerDecoration {
    *
    * Override the decoration properties for a specific marker.
    *
-   * @param marker - The {@link DisplayMarker} or `Marker` for which to override properties.
-   * @param properties - An `Object` containing properties to apply to this marker. Pass `null` to clear the override.
+   * @param {DisplayMarker|Marker} marker - The {@link DisplayMarker} or `Marker` for which to override properties.
+   * @param {Object|null} properties - An `Object` containing properties to apply to this marker. Pass `null` to clear the override.
+   * @returns {void}
    */
   setPropertiesForMarker(marker, properties) {
     if (this.destroyed) {

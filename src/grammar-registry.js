@@ -84,7 +84,7 @@ module.exports = class GrammarRegistry {
    * the buffer's file path changes. Repeated calls share one maintenance setup;
    * each returned disposable releases one lease.
    *
-   * @param buffer - The {@link TextBuffer} whose language mode will be maintained.
+   * @param {TextBuffer} buffer - The {@link TextBuffer} whose language mode will be maintained.
    * @returns {Disposable} that can be used to stop updating the buffer's language mode.
    */
   maintainLanguageMode(buffer) {
@@ -169,8 +169,8 @@ module.exports = class GrammarRegistry {
    * Force a {@link TextBuffer} to use a different grammar than the
    * one that would otherwise be selected for it.
    *
-   * @param buffer - The {@link TextBuffer} whose grammar will be set.
-   * @param languageId - The `String` id of the desired language. Pass `null`
+   * @param {TextBuffer|TextEditor} buffer - The {@link TextBuffer} whose grammar will be set.
+   * @param {String|null} languageId - The `String` id of the desired language. Pass `null`
    * to remove an override and restore automatic selection.
    * @returns {Boolean} that indicates whether the language was successfully found.
    */
@@ -205,8 +205,9 @@ module.exports = class GrammarRegistry {
    * The provider runs before each parse; return `null` to parse the whole buffer,
    * or an empty array to parse no source. Ranges use buffer coordinates.
    *
-   * @param buffer - The {@link TextBuffer} whose root language is constrained.
-   * @param provider - A function receiving the buffer and returning an array of {@link Range}s or `null`.
+   * @param {TextBuffer|TextEditor} buffer - The {@link TextBuffer} whose root language is constrained.
+   * @param {Function} provider - A function receiving the buffer and returning an array of {@link Range}s or `null`.
+   * @param {TextBuffer} provider.buffer - The buffer whose ranges are requested.
    * @returns {Disposable} Removes this policy and restores full-buffer parsing, unless a newer policy replaced it.
    */
   setRootLanguageRanges(buffer, provider) {
@@ -240,8 +241,8 @@ module.exports = class GrammarRegistry {
    * Force a {@link TextBuffer} to use a different grammar than the
    * one that would otherwise be selected for it.
    *
-   * @param buffer - The {@link TextBuffer} whose grammar will be set.
-   * @param grammar - The desired {@link TreeSitterGrammar}, or the null grammar sentinel.
+   * @param {TextBuffer|TextEditor} buffer - The {@link TextBuffer} whose grammar will be set.
+   * @param {TreeSitterGrammar|Object} grammar - The desired {@link TreeSitterGrammar}, or the null grammar sentinel.
    * @returns {Boolean} that indicates whether the assignment was successful
    */
   assignGrammar(buffer, grammar) {
@@ -283,7 +284,8 @@ module.exports = class GrammarRegistry {
    * Get the `languageId` that has been explicitly assigned to
    * the given buffer, if any.
    *
-   * @returns {String} id of the language
+   * @param {TextBuffer} buffer
+   * @returns {String|null|undefined} The explicit language id, `null` for a null-grammar assignment, or `undefined` when none is assigned.
    */
   getAssignedLanguageId(buffer) {
     return this.languageOverridesByBufferId.get(buffer.id);
@@ -297,7 +299,7 @@ module.exports = class GrammarRegistry {
    * given {@link TextBuffer}. This will assign to the buffer the best language
    * mode available.
    *
-   * @param buffer - The {@link TextBuffer}.
+   * @param {TextBuffer} buffer - The {@link TextBuffer}.
    */
   autoAssignLanguageMode(buffer) {
     const result = this.selectGrammarWithScore(
@@ -351,8 +353,8 @@ module.exports = class GrammarRegistry {
    * This picks the best match by checking the file path and contents against
    * each grammar.
    *
-   * @param filePath - A `String` file path.
-   * @param fileContents - A `String` of text for the file path.
+   * @param {String|null} [filePath] - A `String` file path.
+   * @param {String} [fileContents] - A `String` of text for the file path.
    * @returns {TreeSitterGrammar|Object} a Tree-sitter grammar or the null grammar sentinel.
    */
   selectGrammar(filePath, fileContents) {
@@ -371,7 +373,7 @@ module.exports = class GrammarRegistry {
    * @param {String} filePath - The file path to read and match.
    * @param {Object} [options] - Selection options.
    * @param {AbortSignal} [options.signal] - Cancels reading and scoring.
-   * @returns {Promise} Resolves to a Tree-sitter grammar or the null grammar sentinel.
+   * @returns {Promise<TreeSitterGrammar|Object>} Resolves to the best grammar or the null grammar sentinel.
    */
   async selectGrammarAsync(filePath, { signal } = {}) {
     signal?.throwIfAborted();
@@ -486,9 +488,9 @@ module.exports = class GrammarRegistry {
    * Ultimately, whichever grammar scores highest for this file will be used
    * to highlight it.
    *
-   * @param grammar - A given {@link TreeSitterGrammar}, or the null grammar sentinel.
-   * @param filePath - A `String` path to the file.
-   * @param contents - The `String` contents of the file.
+   * @param {TreeSitterGrammar|Object} grammar - A given {@link TreeSitterGrammar}, or the null grammar sentinel.
+   * @param {String|null} [filePath] - A `String` path to the file.
+   * @param {String} [contents] - The `String` contents of the file.
    * @returns {Number}
    */
   getGrammarScore(grammar, filePath, contents) {
@@ -697,8 +699,8 @@ module.exports = class GrammarRegistry {
    * @public
    * @status extended
    *
-   * Invoke the given callback when a grammar is updated due to a grammar
-   * it depends on being added or removed from the registry.
+   * Invoke the given callback when a registered grammar is updated,
+   * such as when an injection point is added to it.
    *
    * @param {Function} callback - to call when a grammar is updated.
    * @param {TreeSitterGrammar} callback.grammar - that was updated.
@@ -738,14 +740,16 @@ module.exports = class GrammarRegistry {
    * @param {String} injectionPoint.type - The syntax-node type that may embed other languages.
    * @param {Function} injectionPoint.language - Called with a matching syntax node and returns a language name declared by the target Tree-sitter grammar in `injectionNames`. Matching ignores surrounding whitespace and letter case.
    * @param {Function} injectionPoint.content - Called with a matching syntax node and returns the node or nodes containing embedded source. The nodes become visible buffer ranges for the injected parser.
-   * @param {Boolean|Function} [injectionPoint.combined] - Share child language layers for matching owners and their resolved language name. Defaults to `false`. A function is called with the owner node and returns whether that node can share a layer; `false` keeps its context independent. Without a member limit the owners form one shared document. Individual ranges remain indexed so unrelated edits do not rescan every owner.
+   * @param {Boolean|Function} [injectionPoint.combined=false] - Share child language layers for matching owners and their resolved language name. Defaults to `false`. A function is called with the owner node and returns whether that node can share a layer; `false` keeps its context independent. Without a member limit the owners form one shared document. Individual ranges remain indexed so unrelated edits do not rescan every owner.
    * @param {Number} [injectionPoint.combinedMaxMembers] - An optional positive safe integer limiting the number of owners in a combined child layer. Omit it for an unbounded combined document. Set a limit only when each owner remains correct at a group boundary. An owner returning several content nodes counts as one member and stays in one layer.
-   * @param injectionPoint.includeChildren - A `Boolean` that indicates whether the children (and, in fact, all descendants) of the nodes returned by `content` should be included in the injection's buffer range(s). Defaults to `false`.
-   * @param {Boolean} [injectionPoint.excludeChildrenLines] - When `includeChildren` is false, subtract the complete physical rows occupied by each direct child, clipped to the content node and buffer. Overlapping row exclusions are merged. Defaults to false.
-   * @param injectionPoint.newlinesBetween - A `Boolean` that indicates whether each node returned from `content` should be separated by at least one newline character so that the parser understands them to be logically separated. Embedded languages like ERB and EJS need this. Defaults to `false`.
-   * @param injectionPoint.languageScope - A `String` or `Function` that returns the desired scope name to apply to each of the injection's buffer ranges. Defaults to the injected grammar's own language scope — e.g., `source.js` for the JavaScript grammar. Set to `null` if the language scope should be omitted. If a `Function`, will be called with the grammar instance as an argument, and should return either a `String` or `null`.
-   * @param injectionPoint.coverShallowerScopes - A `Boolean` that indicates whether this injection should prevent shallower layers (including the layer that created this injection) from adding scopes within any of this injection's buffer ranges. Useful for injecting languages into themselves — for instance, injecting Rust into Rust macro definitions.
-   * @param injectionPoint.includeAdjacentWhitespace - A `Boolean` that indicates whether the injection's buffer range(s) should include whitespace that occurs between two adjacent ranges. Defaults to `false`. When `true`, if two consecutive injection buffer ranges are separated _only_ by whitespace, those ranges will be consolidated into one range along with that whitespace.
+   * @param {Boolean} [injectionPoint.includeChildren=false] - A `Boolean` that indicates whether the children (and, in fact, all descendants) of the nodes returned by `content` should be included in the injection's buffer range(s). Defaults to `false`.
+   * @param {Boolean} [injectionPoint.excludeChildrenLines=false] - When `includeChildren` is false, subtract the complete physical rows occupied by each direct child, clipped to the content node and buffer. Overlapping row exclusions are merged. Defaults to false.
+   * @param {Boolean} [injectionPoint.newlinesBetween=false] - A `Boolean` that indicates whether each node returned from `content` should be separated by at least one newline character so that the parser understands them to be logically separated. Embedded languages like ERB and EJS need this. Defaults to `false`.
+   * @param {String|null|Function} [injectionPoint.languageScope] - A `String` or `Function` that returns the desired scope name to apply to each of the injection's buffer ranges. Defaults to the injected grammar's own language scope — e.g., `source.js` for the JavaScript grammar. Set to `null` if the language scope should be omitted. If a `Function`, will be called with the grammar instance as an argument, and should return either a `String` or `null`.
+   * @param {Boolean} [injectionPoint.coverShallowerScopes=false] - A `Boolean` that indicates whether this injection should prevent shallower layers (including the layer that created this injection) from adding scopes within any of this injection's buffer ranges. Useful for injecting languages into themselves — for instance, injecting Rust into Rust macro definitions.
+   * @param {Boolean} [injectionPoint.includeAdjacentWhitespace=false] - A `Boolean` that indicates whether the injection's buffer range(s) should include whitespace that occurs between two adjacent ranges. Defaults to `false`. When `true`, if two consecutive injection buffer ranges are separated _only_ by whitespace, those ranges will be consolidated into one range along with that whitespace.
+   * @param {SyntaxNode} injectionPoint.language.node - The syntax node matching the injection type.
+   * @param {SyntaxNode} injectionPoint.content.node - The matching syntax node whose content is requested.
    * @returns {Disposable} A disposable that removes the injection point.
    */
   addInjectionPoint(grammarId, injectionPoint) {
@@ -1017,10 +1021,11 @@ module.exports = class GrammarRegistry {
    *
    * Read a grammar asynchronously and add it to the registry.
    *
-   * @param grammarPath - A `String` absolute file path to a grammar file.
-   * @param callback - A `Function` to call when loaded with the following arguments:
-   * @param callback.error - An `Error`, may be null.
-   * @param callback.grammar - A {@link TreeSitterGrammar} or null if an error occurred.
+   * @param {String} grammarPath - A `String` absolute file path to a grammar file.
+   * @param {Function} callback - A `Function` to call when loaded with the following arguments:
+   * @param {Error|null} callback.error - An `Error`, may be null.
+   * @param {TreeSitterGrammar|undefined} [callback.grammar] - A {@link TreeSitterGrammar} or `undefined` if an error occurred.
+   * @returns {void}
    */
   loadGrammar(grammarPath, callback) {
     this.readGrammar(grammarPath, (error, grammar) => {
@@ -1036,7 +1041,7 @@ module.exports = class GrammarRegistry {
    *
    * Read a grammar synchronously and add it to this registry.
    *
-   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @param {String} grammarPath - A `String` absolute file path to a grammar file.
    * @returns {TreeSitterGrammar}
    */
   loadGrammarSync(grammarPath) {
@@ -1051,11 +1056,11 @@ module.exports = class GrammarRegistry {
    *
    * Read a grammar asynchronously but don't add it to the registry.
    *
-   * @param grammarPath - A `String` absolute file path to a grammar file.
-   * @param callback - A `Function` to call when read with the following arguments:
-   * @param callback.error - An `Error`, may be null.
-   * @param callback.grammar - A {@link TreeSitterGrammar} or null if an error occurred.
-   * @returns {undefined} undefined.
+   * @param {String} grammarPath - A `String` absolute file path to a grammar file.
+   * @param {Function} [callback] - A `Function` to call when read with the following arguments:
+   * @param {Error|null} callback.error - An `Error`, may be null.
+   * @param {TreeSitterGrammar|undefined} [callback.grammar] - A {@link TreeSitterGrammar} or `undefined` if an error occurred.
+   * @returns {void}
    */
   readGrammar(grammarPath, callback) {
     if (!callback) callback = () => {};
@@ -1077,7 +1082,7 @@ module.exports = class GrammarRegistry {
    *
    * Read a grammar synchronously but don't add it to the registry.
    *
-   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @param {String} grammarPath - A `String` absolute file path to a grammar file.
    * @returns {TreeSitterGrammar}
    */
   readGrammarSync(grammarPath) {
@@ -1101,7 +1106,7 @@ module.exports = class GrammarRegistry {
    *
    * Get all the grammars in this registry.
    *
-   * @returns {Array} registered {@link TreeSitterGrammar} instances.
+   * @returns {Array<TreeSitterGrammar>} Registered grammar instances; excludes the null sentinel and unloaded stubs.
    */
   getGrammars() {
     return Object.values(this.treeSitterGrammarsById).filter(

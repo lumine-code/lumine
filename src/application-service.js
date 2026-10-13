@@ -141,7 +141,9 @@ class ApplicationService {
    *
    * Read an operating-system user default.
    *
-   * @returns {Promise} resolving to a serializable preference value.
+   * @returns {Promise<*>} resolving to a serializable preference value.
+   * @param {String} key - The operating-system preference key.
+   * @param {String} type - One of string, boolean, integer, float, double, url, array, or dictionary.
    */
   getUserDefault(key, type) {
     return this.applicationDelegate.invokeApp("getUserDefault", key, type);
@@ -153,7 +155,7 @@ class ApplicationService {
    *
    * Read the operating system's accent color.
    *
-   * @returns {Promise} resolving to a `#rrggbb` string, or `null` where the
+   * @returns {Promise<String|null>} resolving to a `#rrggbb` string, or `null` where the
    *   platform has no accent color to report.
    */
   getAccentColor() {
@@ -175,7 +177,7 @@ class ApplicationService {
    * @param {String} outputPath - Where to write the PDF.
    * @param {Object} [options] - Electron `printToPDF` options. `printBackground`
    *   defaults to `true`.
-   * @returns {Promise} resolving to `{outcome: 'success', result: outputPath}`,
+   * @returns {Promise<Object>} resolving to `{outcome: 'success', result: outputPath}`,
    *   or `{outcome: 'failure', error}` when the document could not be printed.
    * @category Printing
    */
@@ -191,7 +193,10 @@ class ApplicationService {
    *
    * Determine whether Lumine is the default handler for a protocol.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
+   * @param {String} protocol - The protocol name without its trailing colon.
+   * @param {String} [path] - The executable path used for protocol registration.
+   * @param {Array<String>} [args] - Arguments supplied to the protocol executable.
    */
   isDefaultProtocolClient(protocol, path, args) {
     return this.applicationDelegate.invokeApp("isDefaultProtocolClient", protocol, path, args);
@@ -203,7 +208,10 @@ class ApplicationService {
    *
    * Register Lumine as the default handler for a protocol.
    *
-   * @returns {Promise} resolving to a `Boolean`.
+   * @returns {Promise<Boolean>} resolving to a `Boolean`.
+   * @param {String} protocol - The protocol name without its trailing colon.
+   * @param {String} [path] - The executable path used for protocol registration.
+   * @param {Array<String>} [args] - Arguments supplied to the protocol executable.
    */
   setAsDefaultProtocolClient(protocol, path, args) {
     return this.applicationDelegate.invokeApp("setAsDefaultProtocolClient", protocol, path, args);
@@ -215,7 +223,10 @@ class ApplicationService {
    *
    * Load an operating-system file icon as a data URL.
    *
-   * @returns {Promise} resolving to a data-URL `String`, or `null`.
+   * @returns {Promise<String|null>} resolving to a data-URL `String`, or `null`.
+   * @param {String} filePath - The filesystem path whose native icon is requested.
+   * @param {Object} [options={}] - Native icon options.
+   * @param {String} [options.size] - One of small, normal, or large.
    * @category System Integration
    */
   getFileIcon(filePath, options = {}) {
@@ -228,7 +239,7 @@ class ApplicationService {
    *
    * Restart Lumine with the current launch options.
    *
-   * @returns {Promise} that resolves when restart is scheduled.
+   * @returns {Promise<void>} that resolves when restart is scheduled.
    * @category Application Lifecycle
    */
   restart() {
