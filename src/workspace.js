@@ -332,6 +332,9 @@ module.exports = class Workspace extends Model {
   #resettingItemOpens = 0;
   #layoutGeneration = 0;
   #paneItemRegistry = new ItemRegistry();
+  #windowLifecycleChanging = false;
+  #windowCleanupDepth = 0;
+  #pendingWindowOpens = new Set();
 
   constructor(params) {
     super(...arguments);
@@ -513,9 +516,13 @@ module.exports = class Workspace extends Model {
    * @category Windows
    */
   openEditorWindow(options = {}) {
+    if (this.#windowCleanupDepth > 0)
+      return Promise.reject(new Error("The workspace windows are preparing to unload."));
     if (!this.editorWindowHost || !this.isAlive())
       return Promise.reject(new Error("This workspace cannot open an editor window."));
-    return this.editorWindowHost.open(options);
+    const opening = this.editorWindowHost.open(options);
+    this.#pendingWindowOpens.add(opening);
+    return opening.finally(() => this.#pendingWindowOpens.delete(opening));
   }
 
   /** @private Prevent close and transfer from mutating the same container concurrently. */
@@ -533,6 +540,21 @@ module.exports = class Workspace extends Model {
     });
   }
 
+  /** @private Keep reset/discard barriers independent of an orderly-unload gate. */
+  get windowLifecycleChanging() {
+    return this.#windowLifecycleChanging || this.#windowCleanupDepth > 0;
+  }
+
+  set windowLifecycleChanging(value) {
+    this.#windowLifecycleChanging = value;
+  }
+
+  /** @private Temporarily exclude new pane operations while existing work is drained. */
+  beginWindowCleanup() {
+    this.#windowCleanupDepth++;
+    return new Disposable(() => this.#windowCleanupDepth--);
+  }
+
   /** @private A synchronous mutation phase excludes external layout changes during transfer. */
   runWindowMutation(callback) {
     this.windowMutationDepth = (this.windowMutationDepth ?? 0) + 1;
@@ -546,7 +568,10 @@ module.exports = class Workspace extends Model {
   /** @private Finish transfers before serializing or releasing the shared runtime. */
   async whenWindowOperationsIdle({ prepareToUnload = true } = {}) {
     if (prepareToUnload) this.windowLifecycleChanging = true;
-    await Promise.allSettled([...new Set(this.windowOperations.values())]);
+    while (this.windowOperations.size > 0 || this.#pendingWindowOpens.size > 0)
+      await Promise.allSettled([
+        ...new Set([...this.windowOperations.values(), ...this.#pendingWindowOpens]),
+      ]);
   }
 
   /**
@@ -712,8 +737,16 @@ module.exports = class Workspace extends Model {
 
   /** @private Reset/restore owns document teardown and must not ask for another close approval. */
   async discardEditorWindows() {
-    for (const window of this.getWindows().filter((window) => !window.isMain()))
-      await this.releaseEditorWindow(window);
+    const cleanup = this.beginWindowCleanup();
+    try {
+      // Recovery can remove its source window before native show/focus settles.
+      // The surviving main container remains owned by that operation.
+      await this.whenWindowOperationsIdle({ prepareToUnload: false });
+      for (const window of this.getWindows().filter((window) => !window.isMain()))
+        await this.releaseEditorWindow(window);
+    } finally {
+      cleanup.dispose();
+    }
   }
 
   /**

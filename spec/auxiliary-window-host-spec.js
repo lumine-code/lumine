@@ -245,6 +245,54 @@ describe("Auxiliary editor windows", () => {
     expect(editor.getText()).toBe("recover unsaved content");
   });
 
+  for (const cleanup of ["discard", "reset", "discard after focus rejects"]) {
+    it(`drains recovery before ${cleanup} even after its lost source window has been released`, async () => {
+      const workspace = lumine.workspace;
+      const editor = await workspace.open();
+      const extra = await workspace.detachItem(editor);
+      const main = workspace.getMainWindow();
+      let enterFocus, releaseFocus;
+      const entered = new Promise((resolve) => (enterFocus = resolve));
+      const gate = new Promise((resolve, reject) => {
+        releaseFocus =
+          cleanup === "discard after focus rejects"
+            ? () => reject(new Error("The native focus request failed"))
+            : resolve;
+      });
+      spyOn(main, "focus").and.callFake(() => {
+        enterFocus();
+        return gate;
+      });
+      await extra.windowService.close();
+      await entered;
+      const recovery = workspace.windowOperations.get(main);
+      let settled = false;
+      const discard = (
+        cleanup === "reset" ? lumine.reset() : workspace.discardEditorWindows()
+      ).then(() => (settled = true));
+      try {
+        await flushMicrotasks();
+        expect(extra.isDestroyed()).toBe(true);
+        expect(workspace.getWindows()).toEqual([main]);
+        expect(workspace.windowOperations.has(main)).toBe(true);
+        expect(settled).toBe(false);
+        await expectAsync(workspace.runWindowOperation([main], () => {})).toBeRejectedWithError(
+          "The workspace windows are preparing to unload.",
+        );
+        await expectAsync(workspace.openEditorWindow()).toBeRejectedWithError(
+          "The workspace windows are preparing to unload.",
+        );
+      } finally {
+        releaseFocus();
+        await recovery.catch(() => {});
+        await discard;
+      }
+      expect(workspace.windowOperations.size).toBe(0);
+      expect(workspace.windowLifecycleChanging).toBe(false);
+      expect(workspace.getMainWindow().getDocument()).toBe(document);
+    });
+  }
+
   it("keeps documents accessible when a lost host prevents a presentation checkpoint", async () => {
     const workspace = lumine.workspace;
     const editor = await workspace.open();

@@ -840,9 +840,14 @@ class Environment {
     const cleanup = async (callback) => {
       if (!this.#destroyed) return awaitLifecycleCleanup(failures, callback);
     };
+    const workspace = this.workspace;
+    const windowCleanup = workspace.beginWindowCleanup();
     this.#resetting++;
     try {
       capture(() => this.paneItemTransfers.cancelAll());
+      // Window recovery may still own the main container after its lost native
+      // source has disappeared. Finish it before destroying package/view state.
+      await cleanup(() => workspace.whenWindowOperationsIdle({ prepareToUnload: false }));
       capture(() => this.#projectStateController.reset());
       // Config::clear replaces its emitter, so observers held by ThemeManager
       // must be disposed before the reset and recreated on the next activation.
@@ -911,6 +916,7 @@ class Environment {
         );
       }
     } finally {
+      windowCleanup.dispose();
       this.#resetting--;
     }
     throwLifecycleErrors(failures, "Unable to reset the environment cleanly");

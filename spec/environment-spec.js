@@ -2046,6 +2046,56 @@ describe("Environment", () => {
 
     afterEach(() => environment.destroy());
 
+    it("waits for a surviving window operation before resetting packages or main panes", async () => {
+      const workspace = environment.workspace;
+      const main = workspace.getMainWindow();
+      const pane = workspace.getActivePane();
+      const editor = await workspace.open();
+      let release, entered;
+      const gate = new Promise((resolve) => (release = resolve));
+      const started = new Promise((resolve) => (entered = resolve));
+      const operation = workspace.runWindowOperation([main], async () => {
+        entered();
+        await gate;
+        // The cleanup gate excludes new external operations, while the existing
+        // owner is still allowed to finish its synchronous mutation phase.
+        workspace.runWindowMutation(() => pane.moveItem(editor, 0));
+      });
+      await started;
+      const packages = spyOn(environment.packages, "reset").and.callThrough();
+      const resetWorkspace = spyOn(workspace, "reset").and.callThrough();
+      const resetting = environment.reset();
+      try {
+        await flushMicrotasks();
+        expect(packages).not.toHaveBeenCalled();
+        expect(resetWorkspace).not.toHaveBeenCalled();
+        expect(pane.isDestroyed()).toBe(false);
+        await expectAsync(workspace.runWindowOperation([main], () => {})).toBeRejectedWithError(
+          "The workspace windows are preparing to unload.",
+        );
+      } finally {
+        release();
+        await operation;
+        await resetting;
+      }
+      expect(packages).toHaveBeenCalled();
+      expect(resetWorkspace).toHaveBeenCalled();
+      expect(pane.isDestroyed()).toBe(true);
+      expect(workspace.windowOperations.size).toBe(0);
+      expect(workspace.windowLifecycleChanging).toBe(false);
+    });
+
+    it("releases the reset window barrier when package cleanup rejects and permits another operation", async () => {
+      const workspace = environment.workspace;
+      const failure = new Error("Held reset failure");
+      spyOn(environment.packages, "reset").and.rejectWith(failure);
+      await expectAsync(environment.reset()).toBeRejectedWith(failure);
+      expect(workspace.windowLifecycleChanging).toBe(false);
+      await expectAsync(
+        workspace.runWindowOperation([workspace.getMainWindow()], () => "ready"),
+      ).toBeResolvedTo("ready");
+    });
+
     it("disconnects presentation observers and pending frames when the environment is destroyed", () => {
       const root = document.createElement("div");
       jasmine.attachToDOM(root);
