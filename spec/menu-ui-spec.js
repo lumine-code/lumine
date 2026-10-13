@@ -147,6 +147,60 @@ describe("HTML menu UI", () => {
     }
   });
 
+  it("shows an equivalent contextual shortcut while dispatching to the original tile", async () => {
+    const editor = document.createElement("div");
+    editor.classList.add("menu-ui-editor-scope");
+    document.body.appendChild(editor);
+    target.classList.add("menu-ui-tile-scope");
+    const bindings = lumine.keymaps.add("menu-ui-contextual-shortcuts", {
+      ".menu-ui-editor-scope": { "ctrl-r": "menu-ui-spec:public-action" },
+      ".menu-ui-tile-scope": { "ctrl-k": "menu-ui-spec:contextual-wrapper" },
+    });
+    const dispatched = [];
+    const commands = lumine.commands.add(target, {
+      "menu-ui-spec:contextual-wrapper": (event) =>
+        dispatched.push({ target: event.target, detail: event.detail }),
+    });
+    const detail = { editorId: "captured-editor" };
+    try {
+      const popup = showMenuPopup(contextViews, {
+        target,
+        anchor: target,
+        template: [
+          {
+            label: "Captured Action",
+            command: "menu-ui-spec:contextual-wrapper",
+            commandDetail: detail,
+            keyBindingCommand: "menu-ui-spec:public-action",
+            keyBindingTarget: () => editor,
+          },
+          {
+            label: "No Editor",
+            command: "menu-ui-spec:contextual-wrapper",
+            keyBindingTarget: () => null,
+          },
+          {
+            label: "Prepared without a Shortcut",
+            command: "menu-ui-spec:contextual-wrapper",
+            keyBindingLabel: "",
+          },
+        ],
+      });
+      expect(popup.rootList.items.map((item) => item.keystrokeElement.textContent)).toEqual([
+        process.platform === "darwin" ? "⌃R" : "Ctrl+R",
+        "",
+        "",
+      ]);
+      popup.rootList.items[0].element.click();
+      await Promise.resolve();
+      expect(dispatched).toEqual([{ target, detail }]);
+    } finally {
+      commands.dispose();
+      bindings.dispose();
+      editor.remove();
+    }
+  });
+
   it("reserves a check column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(

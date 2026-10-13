@@ -846,6 +846,55 @@ describe("ContextMenuManager", function () {
       expect(nested[1].commandDetail).toEqual({ sequentize: true });
     });
 
+    it("resolves contextual shortcuts in an explicitly selected scope without changing dispatch", () => {
+      contextMenu.clear();
+      const otherEditor = document.createElement("div");
+      otherEditor.classList.add("context-menu-other-editor");
+      parent.appendChild(otherEditor);
+      const otherBindings = lumine.keymaps.add("context-menu-other-editor", {
+        ".context-menu-other-editor": { "ctrl-b": "test:my-command" },
+      });
+      let editor = child;
+      const detail = { windowId: "owning-window" };
+      const scope = jasmine.createSpy("binding scope").and.callFake(() => editor);
+      contextMenu.add({
+        ".parent": [
+          { label: "Editor Action", command: "test:my-command", keyBindingTarget: scope },
+          {
+            label: "Captured Action",
+            command: "test:contextual-wrapper",
+            commandDetail: detail,
+            keyBindingCommand: "test:my-command",
+            keyBindingTarget: scope,
+          },
+        ],
+      });
+      try {
+        let template = contextMenu.templateForElement(parent);
+        expect(template.map((item) => item.keyBindingLabel)).toEqual([
+          controlALabel,
+          controlALabel,
+        ]);
+        expect(scope).toHaveBeenCalledWith(parent);
+        expect(template[1].command).toBe("test:contextual-wrapper");
+        expect(template[1].commandDetail).toEqual(detail);
+        expect(template[1].keyBindingCommand).toBeUndefined();
+        expect(template[1].keyBindingTarget).toBeUndefined();
+        editor = otherEditor;
+        template = contextMenu.templateForElement(parent);
+        const otherLabel = process.platform === "darwin" ? "⌃B" : "Ctrl+B";
+        expect(template.map((item) => item.keyBindingLabel)).toEqual([otherLabel, otherLabel]);
+        editor = null;
+        expect(contextMenu.templateForElement(parent).map((item) => item.keyBindingLabel)).toEqual([
+          "",
+          "",
+        ]);
+      } finally {
+        otherBindings.dispose();
+        otherEditor.remove();
+      }
+    });
+
     it("does not add accelerators when only a descendant of the right-clicked element is bound", function () {
       const dispatchedEvent = { target: parent };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([

@@ -6,7 +6,6 @@ const { Disposable } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");
 const menuLayout = require("./menu-layout");
-const _ = require("@lumine-code/underscore-plus");
 
 const buildMetadata = require("../package.json");
 var platformContextMenu;
@@ -141,6 +140,8 @@ module.exports = class ContextMenuManager {
    * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are item `Arrays` or `{items, groupOrder, sortBy}` descriptors. A descriptor's `groupOrder` lists named groups in display order; `sortBy: 'label'` sorts its items by label. Items contain the following keys:
    * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
    * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
+   * @param {String} [itemsBySelector.keyBindingCommand] - An equivalent public command whose keyboard shortcut should be displayed. Use this for a contextual wrapper that preserves the same operation; behavior-changing command variants must not borrow a different action's shortcut.
+   * @param {Element|Function} [itemsBySelector.keyBindingTarget] - The element used only to resolve the shortcut. A function receives the invoking element and returns its editor or another binding scope; returning `null` suppresses the shortcut. The selected command still dispatches to the original menu target.
    * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
    * @param {Array} [itemsBySelector.submenu] - An `Array` of additional items.
    * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
@@ -238,13 +239,12 @@ module.exports = class ContextMenuManager {
   // underscore-plus for both single strokes and chords.
   addAccelerators(template, target) {
     for (const item of template) {
-      // Key bindings dispatch the command without a detail payload, so they
-      // cannot advertise a parameterized variant of that command.
-      if (item.command && item.commandDetail == null) {
-        const bindings = this.keymapManager.findKeyBindings({ command: item.command, target });
-        const keystrokes = bindings?.[0]?.keystrokes;
-        if (keystrokes) item.keyBindingLabel = _.humanizeKeystroke(keystrokes);
-      }
+      const label = MenuHelpers.keyBindingLabelForMenuItem(item, target, this.keymapManager);
+      if (label !== undefined) item.keyBindingLabel = label;
+      // Resolve DOM references and callbacks in the invoking renderer. The
+      // prepared template carries only the label, not those lookup resources.
+      delete item.keyBindingCommand;
+      delete item.keyBindingTarget;
       if (Array.isArray(item.submenu)) this.addAccelerators(item.submenu, target);
     }
   }

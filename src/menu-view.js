@@ -1,5 +1,5 @@
 const { Emitter } = require("@lumine-code/event-kit");
-const _ = require("@lumine-code/underscore-plus");
+const { keyBindingLabelForMenuItem } = require("./menu-helpers");
 
 const itemViewsByElement = new WeakMap();
 const POINTER_SELECTION_DELAY = 250;
@@ -57,14 +57,6 @@ function commandTarget(explicitTarget, document) {
     document.querySelector("lumine-workspace") ||
     document.body
   );
-}
-
-function bindingLabel(command, target) {
-  if (!command || !globalThis.lumine?.keymaps) return "";
-  const bindings = globalThis.lumine.keymaps.findKeyBindings({ command, target });
-  if (!bindings?.length) return "";
-  const binding = target ? bindings[0] : bindings[bindings.length - 1];
-  return binding?.keystrokes ? _.humanizeKeystroke(binding.keystrokes) : "";
 }
 
 class MenuItemView {
@@ -130,10 +122,13 @@ class MenuItemView {
       this.element.setAttribute("aria-expanded", "false");
     } else {
       this.keystrokeElement.textContent =
-        template.keyBindingLabel ||
-        (template.commandDetail == null
-          ? bindingLabel(template.command, this.popup.options.target)
-          : "");
+        template.keyBindingLabel ??
+        keyBindingLabelForMenuItem(
+          template,
+          this.popup.options.target,
+          globalThis.lumine?.keymaps,
+        ) ??
+        "";
     }
     this.element.appendChild(this.keystrokeElement);
 

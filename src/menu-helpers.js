@@ -109,6 +109,9 @@ function cloneMenuItem(item) {
     "command",
     "submenu",
     "commandDetail",
+    "keyBindingCommand",
+    "keyBindingTarget",
+    "keyBindingLabel",
     "role",
     "accelerator",
     "group",
@@ -185,6 +188,30 @@ const MODIFIER_KEYS = new Set([
   "meta",
 ]);
 
+// Contextual wrappers can name the equivalent keyboard command without changing
+// their dispatch target or details. A behavior-changing variant has no inferred
+// binding unless its owner explicitly identifies such a command.
+function keyBindingLabelForMenuItem(item, target, keymapManager) {
+  const explicitCommand = item.keyBindingCommand !== undefined;
+  const explicitTarget = item.keyBindingTarget !== undefined;
+  const command = explicitCommand
+    ? item.keyBindingCommand
+    : item.commandDetail == null
+      ? item.command
+      : null;
+  const emptyLabel = explicitCommand || explicitTarget ? "" : undefined;
+  if (!command || !keymapManager) return emptyLabel;
+  const bindingTarget = explicitTarget
+    ? typeof item.keyBindingTarget === "function"
+      ? item.keyBindingTarget(target)
+      : item.keyBindingTarget
+    : target;
+  if (explicitTarget && bindingTarget == null) return "";
+  const bindings = keymapManager.findKeyBindings({ command, target: bindingTarget });
+  const binding = bindingTarget ? bindings?.[0] : bindings?.at(-1);
+  return binding?.keystrokes ? _.humanizeKeystroke(binding.keystrokes) : emptyLabel;
+}
+
 function acceleratorForKeystroke(keystroke) {
   if (!keystroke) {
     return null;
@@ -221,4 +248,5 @@ module.exports = {
   cloneMenuItem,
   stripPositioningKeys,
   acceleratorForKeystroke,
+  keyBindingLabelForMenuItem,
 };

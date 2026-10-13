@@ -107,6 +107,21 @@ Grouped definitions and classified contributions need no separator fences. Exist
 
 Declare nested groups on the submenu item that owns them. A submenu does not inherit its parent's `groupOrder`. Its children retain their authored sequence unless that submenu declares its own layout.
 
+## Contextual keyboard shortcuts
+
+Shortcut labels resolve from the menu's invoked element by default. A status or title control whose action applies to an editor can provide `keyBindingTarget` on a runtime row. It accepts an element or a function receiving the invoking element; return the owning editor element, or `null` when its scoped shortcut does not apply. This affects the displayed shortcut only: command dispatch still uses the original menu target and its `commandDetail`.
+
+Rows with `commandDetail` do not automatically borrow the command's shortcut, because keyboard dispatch supplies no such parameters. If a contextual wrapper performs exactly the same operation as a public keyboard command, name that command in `keyBindingCommand`. A combined or behavior-changing variant needs its own command and binding; it must not advertise a standalone action's shortcut. Labels are resolved from current user keymaps each time the menu opens, and lookup-only targets and callbacks are removed from the prepared context-menu template.
+
+```javascript
+{
+  label: "Sticky Mode",
+  command: "column-selection:sticky",
+  keyBindingTarget: (target) =>
+    lumine.workspace.resolveCommandContext(target).embeddedEditor?.getElement() ?? null
+}
+```
+
 ## Visibility and lifecycle
 
 Register runtime contributions during synchronous package activation and dispose their registrations during deactivation. `lumine.menu.add()` and `lumine.contextMenu.add()` return disposables; menu files are managed by the package lifecycle. Runtime context items can retain `shouldDisplay` and `created` callbacks, so event-specific visibility, labels and command details are resolved for each deployment before layout.
