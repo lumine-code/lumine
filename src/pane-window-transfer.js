@@ -94,8 +94,6 @@ module.exports = async function transferPaneLayout(
   const selected = new Set(panes);
   if (!selected.size || [...selected].some((pane) => !source.getPanes().includes(pane)))
     throw new Error("The source pane is no longer available.");
-  const sourceLayout = snapshot(sourceRoot);
-  const targetLayout = snapshot(targetRoot);
   const sourceWindow = source.getWindow();
   const targetWindow = target.getWindow();
   const context = { sourceWindow, targetWindow, sourceUnavailable, onRecoveryError };
@@ -140,6 +138,8 @@ module.exports = async function transferPaneLayout(
       "Unable to prepare a window transfer and release its preparations.",
     );
   }
+  const sourceLayout = snapshot(sourceRoot);
+  const targetLayout = snapshot(targetRoot);
   const movedLayout = without(
     sourceLayout,
     new Set(source.getPanes().filter((pane) => !selected.has(pane))),

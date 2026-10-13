@@ -148,6 +148,31 @@ describe("Pane window transfer", () => {
     expect(source.itemRegistry.hasItem(returnedItem)).toBeFalse();
   });
 
+  it("retains pane resizing performed while a return is being prepared", async () => {
+    const editor = await workspace.open();
+    const first = workspace.paneForItem(editor);
+    const second = first.splitRight();
+    const returnedItem = editor.copy();
+    const returned = second.splitRight({ items: [returnedItem] });
+    await transferPaneLayout(workspace, source, target, [returned]);
+    let complete;
+    returnedItem.prepareWindowChange = () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      });
+
+    const operation = transferPaneLayout(workspace, target, source, [returned]);
+    source.getRoot().setFlexScale(2);
+    first.setFlexScale(3);
+    second.setFlexScale(1);
+    returned.setFlexScale(4);
+    complete();
+    await operation;
+
+    expect(source.getRoot().getChildren()).toEqual([first, second, returned]);
+    expect(source.getPanes().map((pane) => pane.getFlexScale())).toEqual([1.5, 0.5, 4]);
+  });
+
   it("restores source ownership and document state after a presentation failure", async () => {
     const editor = await workspace.open();
     editor.setText("unsaved contents");
