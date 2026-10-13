@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  # A manually selected snapshot must finish even while master receives pushes.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  # Selected revisions validate independently of pushes and other manual revisions.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
   cancel-in-progress: true
 
 env:
