@@ -130,7 +130,7 @@ module.exports = class TooltipManager {
    * @param {String} [options.trigger] - A `String` indicating how the tooltip should be displayed. Use `hover` (default), `click`, `focus`, or `manual`. A manual tooltip appears immediately; a click hides it and disposal removes it.
    * @param {Object|Number} [options.delay] - An object specifying the show and hide delay in milliseconds. Defaults to `{show: 1000, hide: 100}` if the `trigger` is `hover` and otherwise defaults to `0` for both values.
    * @param {String} [options.keyBindingCommand] - A `String` containing a command name. If you specify this option and a key binding exists that matches the command, it will be appended to the title or rendered alone if no title is specified.
-   * @param {HTMLElement} [options.keyBindingTarget] - An `HTMLElement` on which to look up the key binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
+   * @param {HTMLElement|Function} [options.keyBindingTarget] - An `HTMLElement` on which to look up the key binding, or a function evaluated when the tooltip opens. Returning `null` suppresses a scoped binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
    * @param {String} [options.keyBindingExtra] - A `String` rendered as an additional key binding before the command's resolved binding. Use this for interactions that are not represented in the keymap, such as `LMB` or `RMB`. The value accepts `+` separators and `cmdorctrl`, which is resolved for the current platform (for example, `cmdorctrl+RMB`).
    * @returns {Disposable} on which `.dispose()` can be called to remove the tooltip.
    */
@@ -206,18 +206,25 @@ module.exports = class TooltipManager {
     if (keyBindingCommand != null || keyBindingExtra != null) {
       const keymapManager = this.keymapManager;
       const baseTitle = options.title;
+      const plainTitle = options.html === false;
       options.title = function () {
         const base = typeof baseTitle === "function" ? baseTitle.call(this) : baseTitle;
+        const target =
+          typeof keyBindingTarget === "function" ? keyBindingTarget.call(this) : keyBindingTarget;
         const keyBindings = [
           keyBindingExtra != null && getKeyBindingExtraLabel(keyBindingExtra),
           keyBindingCommand != null &&
-            getKeyBinding(keymapManager, keyBindingCommand, keyBindingTarget),
+            (typeof keyBindingTarget !== "function" || target != null) &&
+            getKeyBinding(keymapManager, keyBindingCommand, target),
         ].filter(Boolean);
         const keyBindingGroup = keyBindings.length
           ? `<span class="key-bindings">${keyBindings.join(" ")}</span>`
           : null;
-        return [base, keyBindingGroup].filter(Boolean).join(" ");
+        return [plainTitle ? _.escape(base ?? "") : base, keyBindingGroup]
+          .filter(Boolean)
+          .join(" ");
       };
+      if (plainTitle) options.html = true;
     }
 
     delete options.selector;

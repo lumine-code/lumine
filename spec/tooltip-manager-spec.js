@@ -30,6 +30,51 @@ describe("TooltipManager", () => {
   });
 
   describe("::add(target, options)", () => {
+    it("escapes plain titles while rendering the primary keyboard shortcut", () => {
+      const binding = lumine.keymaps.add("plain-tooltip-spec", {
+        ".foo": { "ctrl-x": "tooltip-spec:primary" },
+      });
+      try {
+        const options = manager.getTooltipOptions({
+          html: false,
+          title: "<File>",
+          keyBindingCommand: "tooltip-spec:primary",
+          keyBindingTarget: element,
+        });
+        expect(options.html).toBe(true);
+        expect(options.title()).toContain("&lt;File&gt;");
+        expect(options.title()).toContain('class="key-bindings"');
+        expect(options.title()).toContain(ctrlX);
+      } finally {
+        binding.dispose();
+      }
+    });
+
+    it("resolves changing keyboard targets at hover time and suppresses absent targets", () => {
+      const binding = lumine.keymaps.add("dynamic-tooltip-spec", {
+        ".foo": { "ctrl-x": "tooltip-spec:primary" },
+        ".bar": { "ctrl-y": "tooltip-spec:primary" },
+      });
+      const other = createElement("bar");
+      let target = element;
+      try {
+        const options = manager.getTooltipOptions({
+          title: "Primary",
+          keyBindingCommand: "tooltip-spec:primary",
+          keyBindingTarget: () => target,
+        });
+        expect(options.title()).toContain(ctrlX);
+        target = other;
+        expect(options.title()).toContain(ctrlY);
+        expect(options.title()).not.toContain(ctrlX);
+        target = null;
+        expect(options.title()).toBe("Primary");
+      } finally {
+        binding.dispose();
+        other.remove();
+      }
+    });
+
     describe("when the trigger is 'hover' (the default)", () => {
       it("creates a tooltip when hovering over the target element", () => {
         manager.add(element, { title: "Title" });
