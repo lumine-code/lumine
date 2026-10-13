@@ -108,6 +108,19 @@ describe("platform menus", function () {
     for (const platform of PLATFORMS) menus[platform] = readMenu(platform);
   });
 
+  it("declares the shared View sections in the same position on every platform", function () {
+    for (const platform of PLATFORMS) {
+      const items = menus[platform].menu.find((item) => strip(item.label) === "View").submenu;
+      const index = items.findIndex((item) => item.command === "window:toggle-full-screen");
+      expect(items.slice(index + 1, index + 4).map((item) => strip(item.label))).toEqual([
+        "Toggle View",
+        "Open View",
+        "Editor",
+      ]);
+      for (const section of items.slice(index + 1, index + 4)) expect(section.submenu).toEqual([]);
+    }
+  });
+
   it("places the shared-session window action beside New Window", function () {
     for (const platform of PLATFORMS) {
       const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;

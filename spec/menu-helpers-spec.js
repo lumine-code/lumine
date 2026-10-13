@@ -187,6 +187,34 @@ describe("MenuHelpers", function () {
       expect(menu.map(({ label }) => label)).toEqual(["Packages"]);
       expect(menu[0].submenu).toEqual([]);
     });
+
+    it("keeps a declared nested submenu in place through package reactivation", function () {
+      const menu = [];
+      MenuHelpers.merge(menu, {
+        label: "View",
+        submenu: [
+          { label: "Toggle View", submenu: [] },
+          { label: "Open View", submenu: [] },
+        ],
+      });
+      const contribution = {
+        label: "View",
+        submenu: [
+          { label: "Toggle View", submenu: [{ label: "Tree View", command: "tree-view:toggle" }] },
+        ],
+      };
+      MenuHelpers.merge(menu, contribution);
+      MenuHelpers.unmerge(
+        menu,
+        contribution,
+        new Set(["View", "View/Toggle View", "View/Open View"]),
+      );
+      expect(menu[0].submenu.map(({ label }) => label)).toEqual(["Toggle View", "Open View"]);
+      expect(menu[0].submenu[0].submenu).toEqual([]);
+      MenuHelpers.merge(menu, contribution);
+      expect(menu[0].submenu.map(({ label }) => label)).toEqual(["Toggle View", "Open View"]);
+      expect(menu[0].submenu[0].submenu[0].command).toBe("tree-view:toggle");
+    });
   });
 
   describe("::normalizeLabel", function () {
@@ -253,5 +281,47 @@ describe("MenuManager::sortPackagesMenu", function () {
     menu.add([{ label: "Packages", submenu: [{ label: "Alpha", command: "a" }] }]);
     lumine.packages.emitter.emit("did-activate-package", {});
     expect(labels()).toEqual(["Open Package Manager", "separator", "Alpha", "Zulu"]);
+  });
+
+  it("sorts shared View lists while preserving the action order inside packages", function () {
+    menu.add([
+      {
+        label: "View",
+        submenu: [
+          { label: "Toggle View", submenu: [{ label: "Zulu", command: "z" }] },
+          { label: "Editor", submenu: [{ label: "Zoom", command: "zoom" }] },
+          { label: "Open View", submenu: [{ label: "Zulu", command: "open-z" }] },
+          { label: "Panes", submenu: [{ label: "Split Up" }, { label: "Split Down" }] },
+        ],
+      },
+      {
+        label: "Packages",
+        submenu: [{ label: "Sample", submenu: [{ label: "Run" }, { label: "Configure" }] }],
+      },
+    ]);
+    menu.add([
+      {
+        label: "View",
+        submenu: [
+          { label: "Toggle View", submenu: [{ label: "Alpha", command: "a" }] },
+          { label: "Editor", submenu: [{ label: "Guides", command: "guides" }] },
+          { label: "Open View", submenu: [{ label: "Alpha", command: "open-a" }] },
+        ],
+      },
+    ]);
+    lumine.packages.emitter.emit("did-activate-package", {});
+    const view = menu.template.find(({ id }) => id === "View");
+    expect(view.submenu.map(({ label }) => label)).toEqual([
+      "Toggle View",
+      "Editor",
+      "Open View",
+      "Panes",
+    ]);
+    expect(view.submenu[0].submenu.map(({ label }) => label)).toEqual(["Alpha", "Zulu"]);
+    expect(view.submenu[1].submenu.map(({ label }) => label)).toEqual(["Guides", "Zoom"]);
+    expect(view.submenu[2].submenu.map(({ label }) => label)).toEqual(["Alpha", "Zulu"]);
+    expect(view.submenu[3].submenu.map(({ label }) => label)).toEqual(["Split Up", "Split Down"]);
+    const sample = menu.template[0].submenu.find(({ label }) => label === "Sample");
+    expect(sample.submenu.map(({ label }) => label)).toEqual(["Run", "Configure"]);
   });
 });

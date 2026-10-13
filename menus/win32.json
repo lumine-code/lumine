@@ -334,6 +334,18 @@
           "command": "window:toggle-full-screen"
         },
         {
+          "label": "Toggle View",
+          "submenu": []
+        },
+        {
+          "label": "Open View",
+          "submenu": []
+        },
+        {
+          "label": "Editor",
+          "submenu": []
+        },
+        {
           "label": "Panes",
           "submenu": [
             {

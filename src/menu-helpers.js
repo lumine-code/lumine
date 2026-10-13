@@ -40,12 +40,11 @@ function merge(menu, item, itemSpecificity = Infinity) {
 // Remove an item previously added by `merge`.
 //
 // * `structuralIds` (optional) A `Set` of ids the caller declared itself and
-//   which must survive even when nothing is left inside them. Only the
-//   top-level call passes it: a menu the platform files declare stays in the
-//   menu bar, in its position, once the package that filled it deactivates.
-//   Without this an emptied menu is spliced out and reappears at the *end* of
-//   the bar when the package activates again, because `merge` only appends.
-function unmerge(menu, item, structuralIds) {
+//   which must survive even when nothing is left inside them. Nested ids are
+//   qualified by their parent path, so View/Toggle View survives without
+//   protecting a package's own submenu with the same label. Otherwise an empty
+//   submenu reappears at the end when its package activates again.
+function unmerge(menu, item, structuralIds, parentPath = "") {
   item = cloneMenuItem(item);
   const matchingItemIndex = findMatchingItemIndex(menu, item);
   if (matchingItemIndex === -1) {
@@ -53,13 +52,14 @@ function unmerge(menu, item, structuralIds) {
   }
 
   const matchingItem = menu[matchingItemIndex];
+  const itemPath = parentPath ? `${parentPath}/${matchingItem.id}` : matchingItem.id;
   if (item.submenu != null) {
     for (let submenuItem of item.submenu) {
-      unmerge(matchingItem.submenu, submenuItem);
+      unmerge(matchingItem.submenu, submenuItem, structuralIds, itemPath);
     }
   }
 
-  if (structuralIds != null && structuralIds.has(matchingItem.id)) {
+  if (structuralIds != null && structuralIds.has(itemPath)) {
     return;
   }
 

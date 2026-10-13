@@ -32,7 +32,10 @@ if (buildMetadata) {
  *   {
  *     "label": "View",
  *     "submenu": [
- *       { "label": "Toggle Tree View", "command": "tree-view:toggle" }
+ *       {
+ *         "label": "Toggle View",
+ *         "submenu": [{ "label": "Tree View", "command": "tree-view:toggle" }]
+ *       }
  *     ]
  *   },
  *   {
@@ -61,7 +64,10 @@ if (buildMetadata) {
  *     {
  *       "label": "View",
  *       "submenu": [
- *         { "label": "Toggle Tree View", "command": "tree-view:toggle" }
+ *         {
+ *           "label": "Toggle View",
+ *           "submenu": [{ "label": "Tree View", "command": "tree-view:toggle" }]
+ *         }
  *       ]
  *     }
  *   ]
@@ -83,18 +89,17 @@ module.exports = class MenuManager {
     this.contextViewManager = null;
     this.contextViewManagers = new Map();
     this.template = [];
-    // Top-level menus the platform file declares. They belong to the menu bar
-    // rather than to whichever package fills them, so `unmerge` must not splice
-    // one out when it empties. See {@link MenuHelpers.unmerge}.
+    // Paths of the submenus declared by core. Keep their positions when the
+    // last contributing package deactivates. See {@link MenuHelpers.unmerge}.
     this.structuralIds = new Set();
     this.disposables.add(
       this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems()),
-      this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu()),
+      this.packageManager.onDidActivateInitialPackages(() => this.sortPackageMenus()),
     );
     // A package activated after startup — for example after being installed or
     // re-enabled — has already contributed its menus by the time this fires,
-    // so the Packages menu can be put back in order.
-    this.disposables.add(this.packageManager.onDidActivatePackage(() => this.sortPackagesMenu()));
+    // so the shared package contribution lists can be put back in order.
+    this.disposables.add(this.packageManager.onDidActivatePackage(() => this.sortPackageMenus()));
   }
 
   initialize({ resourcePath }) {
@@ -406,11 +411,16 @@ module.exports = class MenuManager {
       const platformMenuPath = fs.resolve(menusDirPath, process.platform, ["json", "jsonc"]);
       ({ menu } = CSON.readFileSync(platformMenuPath));
     }
-    for (const item of menu) {
-      if (item.label != null) {
-        this.structuralIds.add(item.id != null ? item.id : MenuHelpers.normalizeLabel(item.label));
+    const rememberSubmenus = (items, parentPath = "") => {
+      for (const item of items) {
+        if (item.submenu == null) continue;
+        const id = item.id ?? MenuHelpers.normalizeLabel(item.label);
+        const itemPath = parentPath ? `${parentPath}/${id}` : id;
+        this.structuralIds.add(itemPath);
+        rememberSubmenus(item.submenu, itemPath);
       }
-    }
+    };
+    rememberSubmenus(menu);
     return this.add(menu);
   }
 
@@ -472,6 +482,20 @@ module.exports = class MenuManager {
         ),
       );
     packagesMenu.submenu.splice(start, sorted.length, ...sorted);
+    return this.update();
+  }
+
+  sortPackageMenus() {
+    this.sortPackagesMenu();
+    const viewMenu = this.template.find(({ id }) => id === "View");
+    for (const id of ["Toggle View", "Open View", "Editor"]) {
+      const section = viewMenu?.submenu?.find((item) => item.id === id);
+      section?.submenu?.sort((left, right) =>
+        (MenuHelpers.normalizeLabel(left.label) || "").localeCompare(
+          MenuHelpers.normalizeLabel(right.label) || "",
+        ),
+      );
+    }
     return this.update();
   }
 };
