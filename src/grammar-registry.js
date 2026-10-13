@@ -1061,11 +1061,13 @@ module.exports = class GrammarRegistry {
     if (!callback) callback = () => {};
     CSON.readFile(grammarPath, (error, params = {}) => {
       if (error) return callback(error);
+      let grammar;
       try {
-        callback(null, this.createGrammar(grammarPath, params));
+        grammar = this.createGrammar(grammarPath, params);
       } catch (error) {
-        callback(error);
+        return callback(error);
       }
+      callback(null, grammar);
     });
   }
 

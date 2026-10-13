@@ -24,6 +24,49 @@ describe("GrammarRegistry", () => {
     expect(subscriptionCount(grammarRegistry)).toBe(0);
   });
 
+  describe(".readGrammar(grammarPath, callback)", () => {
+    let finishRead;
+
+    beforeEach(() => {
+      spyOn(CSON, "readFile").and.callFake((_grammarPath, callback) => {
+        finishRead = callback;
+      });
+    });
+
+    it("does not invoke a throwing consumer callback a second time", () => {
+      const grammarPath = require.resolve("./fixtures/grammars/plain-text.json");
+      const params = CSON.readFileSync(grammarPath);
+      const consumerError = new Error("Consumer callback failed");
+      const callback = jasmine.createSpy("callback").and.callFake(() => {
+        throw consumerError;
+      });
+
+      grammarRegistry.readGrammar(grammarPath, callback);
+      expect(callback).not.toHaveBeenCalled();
+
+      expect(() => finishRead(null, params)).toThrow(consumerError);
+      expect(callback.calls.count()).toBe(1);
+      const args = callback.calls.mostRecent().args;
+      expect(args.length).toBe(2);
+      expect(args[0]).toBeNull();
+      expect(args[1] instanceof TreeSitterGrammar).toBe(true);
+    });
+
+    it("delivers grammar creation errors once through the callback", () => {
+      const callback = jasmine.createSpy("callback");
+
+      grammarRegistry.readGrammar("legacy.json", callback);
+      expect(callback).not.toHaveBeenCalled();
+
+      expect(() => finishRead(null, {})).not.toThrow();
+      expect(callback.calls.count()).toBe(1);
+      expect(callback.calls.mostRecent().args.length).toBe(1);
+      expect(callback.calls.mostRecent().args[0].message).toMatch(
+        /must declare type 'tree-sitter'/,
+      );
+    });
+  });
+
   describe(".assignLanguageMode(buffer, languageId)", () => {
     it("assigns to the buffer a language mode with the given language id", async () => {
       grammarRegistry.loadGrammarSync(
