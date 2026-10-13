@@ -2406,6 +2406,24 @@ describe("Environment", () => {
           expect(lumine.project.getPaths()).toEqual([]);
         });
 
+        it("preserves an explicit startup opener over the automatic viewer", async () => {
+          const pathToOpen = __filename;
+          const openViewer = jasmine.createSpy("automatic viewer");
+          const registration = lumine.workspace.addPathOpener({
+            id: "startup-viewer",
+            label: "Startup Viewer",
+            canOpen: (uri) => uri === pathToOpen,
+            open: openViewer,
+          });
+          try {
+            await lumine.openLocations([{ pathToOpen, opener: "text-editor" }]);
+            expect(openViewer).not.toHaveBeenCalled();
+            expect(lumine.workspace.getActiveTextEditor().getPath()).toBe(pathToOpen);
+          } finally {
+            registration.dispose();
+          }
+        });
+
         it("opens a directory as a project folder", async () => {
           const pathToOpen = __dirname;
           await lumine.openLocations([{ pathToOpen, exists: true, isDirectory: true }]);

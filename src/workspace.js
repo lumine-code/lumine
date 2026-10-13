@@ -30,6 +30,9 @@ const ItemRegistry = require("./item-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 
+const PATH_KINDS = ["file", "directory"];
+const OPEN_DESTINATIONS = ["current", "new-window", "detached-window"];
+
 function protocolForURI(uri) {
   try {
     return new URL(uri).protocol;
@@ -38,22 +41,22 @@ function protocolForURI(uri) {
   }
 }
 
-function isFileURI(uri) {
+function isPathURI(uri) {
   if (typeof uri !== "string" || !uri) return false;
   if (path.isAbsolute(uri)) return true;
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(uri)?.[1].toLowerCase();
   return !scheme || scheme === "file";
 }
 
-function fileOpenerPredicate(callback, uri, options) {
+function pathOpenerPredicate(callback, uri, options) {
   const result = callback(uri, options);
   if (typeof result !== "boolean") {
-    throw new TypeError("File opener predicates must return a boolean synchronously");
+    throw new TypeError("Path opener predicates must return a boolean synchronously");
   }
   return result;
 }
 
-function normalizeFileOpening(uri, options = {}) {
+function normalizePathOpening(uri, options = {}) {
   if (typeof uri === "string" && /^file:/i.test(uri)) {
     const url = new URL(uri);
     if (url.hash && options.uriFragment == null) options = { ...options, uriFragment: url.hash };
@@ -406,12 +409,24 @@ module.exports = class Workspace extends Model {
     this.emitter = new Emitter();
     this.openers = [];
     this.openerReuseCapabilities = new Map();
-    this.fileOpeners = [];
-    this.fileOpenerItems = new WeakMap();
-    this.textFileOpener = {
+    this.pathOpeners = [];
+    this.pathOpenerItems = new WeakMap();
+    this.textPathOpener = {
       id: "text-editor",
       label: "Text Editor",
+      pathKinds: ["file"],
+      destinations: [...OPEN_DESTINATIONS],
       handlesItem: (item) => item instanceof TextEditor,
+    };
+    this.projectPathOpener = {
+      id: "project-folder",
+      label: "Project Folder",
+      pathKinds: ["directory"],
+      destinations: ["current", "new-window"],
+      opener: async (uri) => {
+        await this.project.setState([uri]);
+        return "";
+      },
     };
     this.#itemOpenRequests = new ItemOpenRequestManager({
       isAvailable: () => this.isAlive() && this.#resettingItemOpens === 0,
@@ -1110,8 +1125,8 @@ module.exports = class Workspace extends Model {
 
       this.openers = [];
       this.openerReuseCapabilities.clear();
-      this.fileOpeners = [];
-      this.fileOpenerItems = new WeakMap();
+      this.pathOpeners = [];
+      this.pathOpenerItems = new WeakMap();
       this.destroyedItemURIs = [];
       this.invalidateLongTitles();
       if (this.element) {
@@ -2345,8 +2360,9 @@ module.exports = class Workspace extends Model {
    *
    * @param {String|Object} [itemOrURI] - An item to open or a `String` containing a URI.
    * @param {Object} [options]
-   * @param {String} [options.opener] - The registered file opener ID to use, or 'text-editor'. An explicit choice bypasses automatic opener preferences and only reuses an item of that opener's type.
-   * @param {String} [options.uriFragment] - The fragment of a local file URL, forwarded to the selected file opener after its path is normalized.
+   * @param {String} [options.opener] - The registered path opener ID to use, 'text-editor' for files, or 'project-folder' for directories. An explicit choice bypasses automatic opener preferences and only reuses an item of that opener's type.
+   * @param {String} [options.destination='current'] - The requested destination; a detached opening uses 'detached-window' and supplies its pane.
+   * @param {String} [options.uriFragment] - The fragment of a local file URL, forwarded to the selected path opener after its path is normalized.
    * @param {AbortSignal} [options.signal] - Cancels an unfinished opening and disposes an unpresented opener-owned result.
    * @param {Number} [options.initialLine=0] - A `Number` indicating which row to move the cursor to initially. Defaults to `0`.
    * @param {Number} [options.initialColumn=0] - A `Number` indicating which column to move the cursor to initially. Defaults to `0`.
@@ -2367,7 +2383,7 @@ module.exports = class Workspace extends Model {
     if (signal?.aborted) abortOpening();
     else signal?.addEventListener("abort", abortOpening, { once: true });
     const providedItem = typeof itemOrURI === "string" ? undefined : itemOrURI;
-    let uri, item, reuseRequest, incomingPromise, fileOpener;
+    let uri, item, reuseRequest, incomingPromise, pathOpener;
     let resolveItem = () => {};
     let openFailure;
     let failed = false;
@@ -2407,14 +2423,14 @@ module.exports = class Workspace extends Model {
     const performOpen = async () => {
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
       if (typeof itemOrURI === "string") {
-        ({ uri, options } = normalizeFileOpening(this.project.resolvePath(itemOrURI), options));
+        ({ uri, options } = normalizePathOpening(this.project.resolvePath(itemOrURI), options));
       } else if (itemOrURI) {
         item = itemOrURI;
         if (typeof item.getURI === "function") uri = item.getURI();
       }
       openRequest.uri = uri;
-      if (!item && uri) fileOpener = this.resolveFileOpener(uri, options);
-      openRequest.fileOpener = fileOpener;
+      if (!item && uri) pathOpener = this.resolvePathOpener(uri, options);
+      openRequest.pathOpener = pathOpener;
 
       // Prepare a possible destination without cancelling work there: an opener
       // can still choose a different default location. The request is registered
@@ -2422,21 +2438,21 @@ module.exports = class Workspace extends Model {
       let preferredLocation = options.location;
       if (!options.split) {
         const searchPane =
-          (fileOpener &&
+          (pathOpener &&
             options.searchAllPanes &&
-            this.paneForFileOpener(uri, fileOpener, options)) ||
+            this.paneForPathOpener(uri, pathOpener, options)) ||
           options.pane ||
           (options.searchAllPanes
             ? item
               ? this.paneForItem(item)
-              : this.paneForFileOpener(uri, fileOpener, options)
+              : this.paneForPathOpener(uri, pathOpener, options)
             : (
-                this.paneContainerForFileOpener(uri, fileOpener, options) ||
+                this.paneContainerForPathOpener(uri, pathOpener, options) ||
                 this.getActivePaneContainer()
               ).getActivePane());
         const existingItem = item
           ? searchPane?.getItems().includes(item)
-          : uri && this.itemForFileOpener(searchPane, uri, fileOpener, options);
+          : uri && this.itemForPathOpener(searchPane, uri, pathOpener, options);
         if (
           !existingItem &&
           !item &&
@@ -2496,20 +2512,20 @@ module.exports = class Workspace extends Model {
       // Try to find an existing item in the workspace.
       if (item || uri) {
         const existingFilePane =
-          fileOpener && options.searchAllPanes && !options.split
-            ? this.paneForFileOpener(uri, fileOpener, options)
+          pathOpener && options.searchAllPanes && !options.split
+            ? this.paneForPathOpener(uri, pathOpener, options)
             : null;
         if (existingFilePane) {
           pane = existingFilePane;
         } else if (options.pane) {
           pane = options.pane;
         } else if (options.searchAllPanes) {
-          pane = item ? this.paneForItem(item) : this.paneForFileOpener(uri, fileOpener, options);
+          pane = item ? this.paneForItem(item) : this.paneForPathOpener(uri, pathOpener, options);
         } else {
           // If an item with the given URI is already in the workspace, assume
           // that item's pane container is the preferred location for that URI.
           let container;
-          if (uri) container = this.paneContainerForFileOpener(uri, fileOpener, options);
+          if (uri) container = this.paneContainerForPathOpener(uri, pathOpener, options);
           if (!container) container = this.getActivePaneContainer();
 
           // The `split` option affects where we search for the item.
@@ -2537,7 +2553,7 @@ module.exports = class Workspace extends Model {
           if (item) {
             itemExistsInWorkspace = pane.getItems().includes(item);
           } else {
-            item = this.itemForFileOpener(pane, uri, fileOpener, options);
+            item = this.itemForPathOpener(pane, uri, pathOpener, options);
             itemExistsInWorkspace = item != null;
           }
         }
@@ -2921,23 +2937,23 @@ module.exports = class Workspace extends Model {
     const activatePane = options.activatePane != null ? options.activatePane : true;
     const activateItem = options.activateItem != null ? options.activateItem : true;
 
-    const normalized = normalizeFileOpening(this.project.resolvePath(uri_), options);
+    const normalized = normalizePathOpening(this.project.resolvePath(uri_), options);
     const uri = normalized.uri;
     options = normalized.options;
-    const fileOpener = this.resolveFileOpener(uri, options);
-    let item = this.itemForFileOpener(this.getActivePane(), uri, fileOpener, options);
+    const pathOpener = this.resolvePathOpener(uri, options);
+    let item = this.itemForPathOpener(this.getActivePane(), uri, pathOpener, options);
     if (uri && item == null) {
-      const openers = fileOpener
-        ? fileOpener === this.textFileOpener
+      const openers = pathOpener
+        ? pathOpener === this.textPathOpener
           ? []
-          : [fileOpener.opener]
+          : [pathOpener.opener]
         : this.getOpeners();
       for (const opener of openers) {
         item = opener(uri, options);
         if (item) break;
       }
     }
-    if (fileOpener && fileOpener !== this.textFileOpener && item == null) return;
+    if (pathOpener && pathOpener !== this.textPathOpener && item == null) return;
     if (item == null) {
       item = this.project.openSync(uri, { initialLine, initialColumn });
     }
@@ -3019,16 +3035,16 @@ module.exports = class Workspace extends Model {
    * @param {Object} [openRequest=reuseRequest] - The current workspace open request used to reject obsolete results.
    */
   async createItemForURI(uri, options, reuseRequest, openRequest = reuseRequest) {
-    ({ uri, options } = normalizeFileOpening(uri, options));
-    const fileOpener =
-      openRequest && Object.hasOwn(openRequest, "fileOpener")
-        ? openRequest.fileOpener
-        : this.resolveFileOpener(uri, options);
+    ({ uri, options } = normalizePathOpening(uri, options));
+    const pathOpener =
+      openRequest && Object.hasOwn(openRequest, "pathOpener")
+        ? openRequest.pathOpener
+        : this.resolvePathOpener(uri, options);
     if (uri != null) {
-      const openers = fileOpener
-        ? fileOpener === this.textFileOpener
+      const openers = pathOpener
+        ? pathOpener === this.textPathOpener
           ? []
-          : [fileOpener.opener]
+          : [pathOpener.opener]
         : this.getOpeners();
       for (const opener of openers) {
         if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
@@ -3074,7 +3090,7 @@ module.exports = class Workspace extends Model {
 
     // An explicit or default file handler owns this attempt. A refusal or
     // cancellation must not silently open the same file through another type.
-    if (fileOpener && fileOpener !== this.textFileOpener) return;
+    if (pathOpener && pathOpener !== this.textPathOpener) return;
 
     // The fallback is a center text editor, so its destination no longer
     // depends on an opener's default location.
@@ -3130,7 +3146,7 @@ module.exports = class Workspace extends Model {
       this.#layoutGeneration === generation &&
       (!openRequest || this.#itemOpenRequests.isCurrent(openRequest));
     if (!isCurrent()) return;
-    const filePath = normalizeFileOpening(this.project.resolvePath(uri)).uri;
+    const filePath = normalizePathOpening(this.project.resolvePath(uri)).uri;
 
     if (filePath != null) {
       try {
@@ -3466,10 +3482,10 @@ module.exports = class Workspace extends Model {
    *
    * The opener is called only when its URI is not already open in the searched
    * pane. The searchAllPanes flag expands that search. File viewers use
-   * {@link Workspace#addFileOpener}, which distinguishes existing item types
+   * {@link Workspace#addPathOpener}, which distinguishes existing item types
    * for the same path and makes alternative views available through Open With.
    *
-   * @param {Function} opener - A `Function` to be called when an internal URI is being opened. Register named file viewers with {@link Workspace#addFileOpener}.
+   * @param {Function} opener - A `Function` to be called when an internal URI is being opened. Register named file viewers with {@link Workspace#addPathOpener}.
    * @param {Object} [options] - Optional preview reuse capabilities.
    * @param {Function} [options.canReusePendingItem] - Synchronously checks `(item, uri, openOptions)` without changing the item. It is checked at this opener's position in the opener order, before constructing a new item.
    * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Throw `AbortError` to cancel an open superseded by item-owned navigation or reload. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
@@ -3496,14 +3512,16 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
-   * Register a named file opener for automatic opening and Open With.
-   * Availability is checked without constructing a view or opening a file.
+   * Register a named path opener for automatic opening and Open With.
+   * Availability is checked without constructing a view or opening a path.
    *
-   * @param {Object} descriptor - The file opener descriptor.
+   * @param {Object} descriptor - The path opener descriptor.
    * @param {String} descriptor.id - A unique stable opener ID.
    * @param {String} descriptor.label - The name shown in Open With.
    * @param {Function} descriptor.canOpen - Synchronously return a boolean for `(uri, options)` without side effects.
    * @param {Function} descriptor.open - Create an item for `(uri, options)`, or perform an action and return an empty string. May return a Promise.
+   * @param {Array<String>} [descriptor.pathKinds=['file']] - Supported local path kinds: 'file' and/or 'directory'.
+   * @param {Array<String>} [descriptor.destinations=['current','new-window','detached-window']] - Supported opening destinations. Side-effect actions declare only 'current'.
    * @param {Function} [descriptor.isDefaultEligible] - Synchronously return whether this opener participates in automatic opening; defaults to true. Explicit selection bypasses this preference.
    * @param {Function} [descriptor.handlesItem] - Recognize an existing or restored item for `(item, uri, options)`, including this opener's type and any fragment-specific identity.
    * @param {Function} [descriptor.canReusePendingItem] - Check whether an unmodified pending item can be reused.
@@ -3511,7 +3529,7 @@ module.exports = class Workspace extends Model {
    * @returns {Disposable} Removes this opener and its preview capabilities.
    * @category Opening
    */
-  addFileOpener(descriptor) {
+  addPathOpener(descriptor) {
     if (
       !descriptor ||
       typeof descriptor.id !== "string" ||
@@ -3521,13 +3539,14 @@ module.exports = class Workspace extends Model {
       typeof descriptor.canOpen !== "function" ||
       typeof descriptor.open !== "function"
     ) {
-      throw new TypeError("A file opener requires id, label, canOpen and open");
+      throw new TypeError("A path opener requires id, label, canOpen and open");
     }
     if (
-      descriptor.id === this.textFileOpener.id ||
-      this.fileOpeners.some((entry) => entry.id === descriptor.id)
+      descriptor.id === this.textPathOpener.id ||
+      descriptor.id === this.projectPathOpener.id ||
+      this.pathOpeners.some((entry) => entry.id === descriptor.id)
     ) {
-      throw new Error(`A file opener with ID '${descriptor.id}' is already registered`);
+      throw new Error(`A path opener with ID '${descriptor.id}' is already registered`);
     }
     for (const key of [
       "isDefaultEligible",
@@ -3536,40 +3555,58 @@ module.exports = class Workspace extends Model {
       "reusePendingItem",
     ]) {
       if (descriptor[key] != null && typeof descriptor[key] !== "function") {
-        throw new TypeError(`File opener ${key} must be a function`);
+        throw new TypeError(`Path opener ${key} must be a function`);
       }
     }
-    const record = { ...descriptor };
+    const pathKinds = descriptor.pathKinds ?? ["file"];
+    const destinations = descriptor.destinations ?? OPEN_DESTINATIONS;
+    for (const [key, values, allowed] of [
+      ["pathKinds", pathKinds, PATH_KINDS],
+      ["destinations", destinations, OPEN_DESTINATIONS],
+    ]) {
+      if (
+        !Array.isArray(values) ||
+        values.length === 0 ||
+        values.some((value) => !allowed.includes(value)) ||
+        new Set(values).size !== values.length
+      ) {
+        throw new TypeError(`Path opener ${key} must list supported values without duplicates`);
+      }
+    }
+    if (!destinations.includes("current")) {
+      throw new TypeError("Path openers must support the current destination");
+    }
+    const record = { ...descriptor, pathKinds: [...pathKinds], destinations: [...destinations] };
     const remember = (item) => {
-      if (!this.fileOpeners.includes(record)) {
+      if (!this.pathOpeners.includes(record)) {
         if (item && typeof item === "object" && !this.paneForItem(item)) item.destroy?.();
         return;
       }
-      if (item && typeof item === "object") this.fileOpenerItems.set(item, record);
+      if (item && typeof item === "object") this.pathOpenerItems.set(item, record);
       return item;
     };
     record.opener = (uri, options = {}) => {
       if (
-        !this.fileOpeners.includes(record) ||
-        !isFileURI(uri) ||
-        !fileOpenerPredicate(record.canOpen, uri, options)
+        !this.pathOpeners.includes(record) ||
+        !isPathURI(uri) ||
+        !this.pathOpenerAvailable(record, uri, options)
       )
         return;
       if (
         options.opener !== record.id &&
         record.isDefaultEligible &&
-        !fileOpenerPredicate(record.isDefaultEligible, uri, options)
+        !pathOpenerPredicate(record.isDefaultEligible, uri, this.pathOpenerOptions(uri, options))
       )
         return;
       const item = record.open(uri, options);
       return item?.then ? item.then(remember) : remember(item);
     };
     const registration = this.addOpener(record.opener, record);
-    this.fileOpeners.push(record);
+    this.pathOpeners.push(record);
     return new Disposable(() => {
       registration.dispose();
-      const index = this.fileOpeners.indexOf(record);
-      if (index !== -1) this.fileOpeners.splice(index, 1);
+      const index = this.pathOpeners.indexOf(record);
+      if (index !== -1) this.pathOpeners.splice(index, 1);
     });
   }
 
@@ -3577,59 +3614,136 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
-   * List file openers without invoking their opening callbacks.
+   * List path openers without invoking their opening callbacks.
    * The automatic default is first, followed by the other available openers.
    * Text Editor is always included for file paths.
+   * Project Folder is included for directory paths.
    *
-   * @param {String} uri - The file path or URI.
+   * @param {String} uri - The local file or directory path, or file URI.
    * @param {Object} [options] - Opening context supplied to the predicates.
-   * @returns {Array<Object>} Descriptors containing `id`, `label` and `isDefault`.
+   * @param {String} [options.pathKind] - An already known 'file' or 'directory' kind; otherwise detected from the filesystem.
+   * @returns {Array<Object>} Descriptors containing `id`, `label`, `isDefault` and `destinations`.
    * @category Opening
    */
-  getAvailableFileOpeners(uri, options = {}) {
-    ({ uri, options } = normalizeFileOpening(this.project.resolvePath(uri), options));
-    if (!uri || !isFileURI(uri)) return [];
-    const available = this.fileOpeners.filter((entry) =>
-      fileOpenerPredicate(entry.canOpen, uri, options),
+  getAvailablePathOpeners(uri, options = {}) {
+    ({ uri, options } = normalizePathOpening(this.project.resolvePath(uri), options));
+    if (!uri || !isPathURI(uri)) return [];
+    options = this.pathOpenerOptions(uri, options);
+    const available = this.pathOpeners.filter((entry) =>
+      this.pathOpenerAvailable(entry, uri, options),
     );
-    const defaultOpener = this.defaultFileOpener(available, uri, options);
-    return [defaultOpener, ...available, this.textFileOpener]
+    const defaultOpener = this.defaultPathOpener(available, uri, options);
+    const fallback = this.builtinPathOpener(uri, options);
+    return [defaultOpener, ...available, fallback]
       .filter((entry, index, entries) => entries.indexOf(entry) === index)
-      .map(({ id, label }) => ({ id, label, isDefault: id === defaultOpener.id }));
+      .map(({ id, label, destinations }) => ({
+        id,
+        label,
+        isDefault: id === defaultOpener.id,
+        destinations: [...destinations],
+      }));
   }
 
-  defaultFileOpener(available, uri, options) {
+  pathKind(uri, options = {}) {
+    if (options.pathKind != null) {
+      if (!PATH_KINDS.includes(options.pathKind)) {
+        throw new TypeError("A path kind must be 'file' or 'directory'");
+      }
+      return options.pathKind;
+    }
+    return fs.isDirectorySync(uri) ? "directory" : "file";
+  }
+
+  builtinPathOpener(uri, options) {
+    return this.pathKind(uri, options) === "directory"
+      ? this.projectPathOpener
+      : this.textPathOpener;
+  }
+
+  pathOpenerOptions(uri, options) {
+    return options.pathKind == null
+      ? { ...options, pathKind: this.pathKind(uri, options) }
+      : options;
+  }
+
+  pathOpenerAvailable(entry, uri, options) {
+    return (
+      entry.pathKinds.includes(this.pathKind(uri, options)) &&
+      (!entry.canOpen ||
+        pathOpenerPredicate(entry.canOpen, uri, this.pathOpenerOptions(uri, options)))
+    );
+  }
+
+  defaultPathOpener(available, uri, options) {
     return (
       available.find(
         (entry) =>
-          !entry.isDefaultEligible || fileOpenerPredicate(entry.isDefaultEligible, uri, options),
-      ) ?? this.textFileOpener
+          !entry.isDefaultEligible ||
+          pathOpenerPredicate(entry.isDefaultEligible, uri, this.pathOpenerOptions(uri, options)),
+      ) ?? this.builtinPathOpener(uri, options)
     );
   }
 
-  resolveFileOpener(uri, options = {}) {
+  resolvePathOpener(uri, options = {}) {
+    if (uri && isPathURI(uri)) options = this.pathOpenerOptions(uri, options);
+    let entry;
     if (options.opener != null) {
-      const entry =
-        options.opener === this.textFileOpener.id
-          ? this.textFileOpener
-          : this.fileOpeners.find((candidate) => candidate.id === options.opener);
-      if (
-        !entry ||
-        !isFileURI(uri) ||
-        (entry.canOpen && !fileOpenerPredicate(entry.canOpen, uri, options))
-      ) {
-        throw new Error(`The '${options.opener}' opener is not available for this file`);
+      entry = [this.textPathOpener, this.projectPathOpener, ...this.pathOpeners].find(
+        (candidate) => candidate.id === options.opener,
+      );
+      if (!entry || !isPathURI(uri) || !this.pathOpenerAvailable(entry, uri, options)) {
+        throw new Error(`The '${options.opener}' opener is not available for this path`);
       }
-      return entry;
+    } else {
+      if (!uri || !isPathURI(uri)) return null;
+      const available = this.pathOpeners.filter((candidate) =>
+        this.pathOpenerAvailable(candidate, uri, options),
+      );
+      entry = this.defaultPathOpener(available, uri, options);
     }
-    if (!uri || !isFileURI(uri)) return null;
-    const available = this.fileOpeners.filter((entry) =>
-      fileOpenerPredicate(entry.canOpen, uri, options),
-    );
-    return this.defaultFileOpener(available, uri, options);
+    const destination = options.destination ?? "current";
+    if (!entry.destinations.includes(destination)) {
+      throw new Error(`The '${entry.id}' opener does not support the '${destination}' destination`);
+    }
+    return entry;
   }
 
-  itemForFileOpener(pane, uri, opener, options = {}) {
+  /**
+   * @public
+   * @status extended
+   *
+   * Open a local path in a new independent project window with the selected opener.
+   * The opener is resolved and validated before requesting any window.
+   * File openings retain the current project roots; directory openings use that directory.
+   *
+   * @param {String} uri - The local file or directory path, or file URI.
+   * @param {Object} [options] - Opening context.
+   * @param {String} [options.opener] - A registered path opener ID; defaults to the automatic opener.
+   * @param {String} [options.pathKind] - An already known 'file' or 'directory' kind.
+   * @param {AbortSignal} [options.signal] - An aborted signal prevents the window request.
+   * @returns {Promise<void>} Resolves after requesting the new window.
+   * @category Opening
+   */
+  async openPathInNewWindow(uri, options = {}) {
+    if (options.signal?.aborted) return;
+    ({ uri, options } = normalizePathOpening(this.project.resolvePath(uri), options));
+    const opener = this.resolvePathOpener(uri, { ...options, destination: "new-window" });
+    if (!opener) throw new Error("Only local paths can be opened in a new project window");
+    const { devMode, safeMode } = this.applicationDelegate.getWindowLoadSettings();
+    if (options.signal?.aborted) return;
+    this.applicationDelegate.open({
+      pathsToOpen:
+        this.pathKind(uri, options) === "directory" ? [uri] : [...this.project.getPaths(), uri],
+      opener: opener.id,
+      openerPath: uri,
+      newWindow: true,
+      reuseEmptyWindow: false,
+      devMode,
+      safeMode,
+    });
+  }
+
+  itemForPathOpener(pane, uri, opener, options = {}) {
     if (!pane) return;
     if (!opener) return pane.itemForURI(uri);
     return pane
@@ -3639,18 +3753,18 @@ module.exports = class Workspace extends Model {
           (this.getItemURI(item) === uri || item.getPath?.() === uri) &&
           (opener.handlesItem
             ? opener.handlesItem(item, uri, options)
-            : this.fileOpenerItems.get(item) === opener),
+            : this.pathOpenerItems.get(item) === opener),
       );
   }
 
-  paneForFileOpener(uri, opener, options) {
+  paneForPathOpener(uri, opener, options) {
     if (!opener) return this.paneForURI(uri);
-    return this.getPanes().find((pane) => this.itemForFileOpener(pane, uri, opener, options));
+    return this.getPanes().find((pane) => this.itemForPathOpener(pane, uri, opener, options));
   }
 
-  paneContainerForFileOpener(uri, opener, options) {
+  paneContainerForPathOpener(uri, opener, options) {
     if (!opener) return this.paneContainerForURI(uri);
-    return this.paneForFileOpener(uri, opener, options)?.getContainer();
+    return this.paneForPathOpener(uri, opener, options)?.getContainer();
   }
 
   /**

@@ -1420,6 +1420,31 @@ describe("LumineApplication", function () {
       assert.isTrue(scenario.getWindow(4).devMode);
     });
 
+    it('"open" carries an explicit viewer to an independent window without claiming an empty one', async function () {
+      electron.ipcMain.emit(
+        "open",
+        {},
+        {
+          pathsToOpen: [
+            scenario.convertRootPath("a"),
+            scenario.convertRootPath("b"),
+            scenario.convertEditorPath("a/1.md"),
+          ],
+          opener: "text-editor",
+          openerPath: scenario.convertEditorPath("a/1.md"),
+          newWindow: true,
+          reuseEmptyWindow: false,
+        },
+      );
+      const destination = await app.openPaths.lastCall.returnValue;
+      await scenario.assert("[a _] [_ _] [b _] [a,b 1.md]");
+      const [firstRoot, secondRoot, file] = destination.loadSettings.locationsToOpen;
+      assert.isFalse(Object.hasOwn(firstRoot, "opener"));
+      assert.isFalse(Object.hasOwn(secondRoot, "opener"));
+      assert.strictEqual(file.opener, "text-editor");
+      assert.strictEqual(destination, scenario.getWindow(3));
+    });
+
     it('"open" without any option open the prompt for selecting a path', async function () {
       sinon.stub(app, "lumineWindowForEvent").callsFake(() => w1);
 

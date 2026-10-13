@@ -44,10 +44,10 @@ The `lumine` command accepts `--uri-handler` so desktop integration can forward 
 
 ## Workspace openers and preview reuse
 
-`lumine.workspace.addOpener()` handles internal workspace URIs, such as a package's own panel. Register file viewers with `lumine.workspace.addFileOpener()` so the editor can discover their availability and names without opening anything:
+`lumine.workspace.addOpener()` handles internal workspace URIs, such as a package's own panel. Register file and directory viewers or actions with `lumine.workspace.addPathOpener()` so the editor can discover their availability and names without opening anything:
 
 ```js
-const registration = lumine.workspace.addFileOpener({
+const registration = lumine.workspace.addPathOpener({
   id: "my-viewer",
   label: "My Viewer",
   canOpen: (uri) => supportsURI(uri),
@@ -58,9 +58,11 @@ const registration = lumine.workspace.addFileOpener({
 });
 ```
 
-Every descriptor has a unique `id`, a display `label`, a synchronous `canOpen(uri, options)` predicate and an `open(uri, options)` callback. Predicates return booleans without constructing views, loading runtimes or changing files. An optional synchronous `isDefaultEligible(uri, options)` predicate separates automatic-opening preferences from availability: a viewer disabled as the default remains available in Open With. The first applicable automatic opener in registration order is the default; Text Editor is the fallback.
+Every descriptor has a unique `id`, a display `label`, a synchronous `canOpen(uri, options)` predicate and an `open(uri, options)` callback. Predicates return booleans without constructing views, loading runtimes or changing files. `pathKinds` defaults to `["file"]`; a directory opener declares `["directory"]`, and an action that handles both declares `["file", "directory"]`. Predicate options always include the detected `pathKind`, which callers may supply when already known. An optional synchronous `isDefaultEligible(uri, options)` predicate separates automatic-opening preferences from availability: a viewer disabled as the default remains available in Open With. The first applicable automatic opener in registration order is the default; the fallback is Text Editor for files and Project Folder for directories. Project Folder opens the folder's saved project state in the current window through `lumine.project.setState()`.
 
-`lumine.workspace.getAvailableFileOpeners(path, options)` returns `{id, label, isDefault}` entries with the default first and Text Editor always included. `lumine.workspace.open(path, {opener: "my-viewer"})` selects exactly that opener regardless of its automatic preference; `{opener: "text-editor"}` opens the file as text. An unavailable or retired explicit opener rejects the opening. A selected opener's refusal or cancellation does not fall through to another viewer. An opener that performs an action instead of returning a pane item returns an empty string, including asynchronously.
+`lumine.workspace.getAvailablePathOpeners(path, options)` returns `{id, label, isDefault, destinations}` entries with the default first. Text Editor is included only for files, and Project Folder only for directories. `lumine.workspace.open(path, {opener: "my-viewer"})` selects exactly that opener regardless of its automatic preference; `{opener: "text-editor"}` opens the file as text. An unavailable or retired explicit opener rejects the opening. A selected opener's refusal or cancellation does not fall through to another viewer. An opener that performs an action instead of returning a pane item returns an empty string, including asynchronously.
+
+`destinations` defaults to `["current", "new-window", "detached-window"]` for viewers. Side-effect actions such as opening an external application or revealing a path declare `["current"]`, so they have no window variants. Project Folder supports only `current` and `new-window`. `lumine.workspace.openPathInNewWindow(path, {opener, signal})` validates the selected opener before requesting a new independent window and carries its ID to that path's startup opening. File openings retain the source window's project roots without applying the file opener to them; directory openings use the selected directory as the project. An aborted signal prevents the request. The automatic default is resolved in the source window if no opener is given. A detached viewer opening supplies its destination pane and `destination: "detached-window"` to `workspace.open()`. Unsupported destinations reject before the opener runs.
 
 File openings resolve their opener before searching existing items. Matching requires the same file URI or path and the same opener type. `handlesItem(item, uri, options)` recognizes restored viewers too and can distinguish fragment-specific views; when omitted, only items created by the current registration can be recognized. Local file URLs are normalized to disk paths before discovery and opening, with their fragment forwarded in `options.uriFragment`. A text editor and a specialized view of the same file can therefore coexist, and ordinary Open activates the default type even after an alternative was opened. Disposing the registration removes it from both automatic opening and Open With; an unpresented asynchronous result arriving after disposal is destroyed.
 

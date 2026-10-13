@@ -1982,11 +1982,14 @@ module.exports = class LumineApplication extends EventEmitter {
    */
   async openPaths({
     pathsToOpen,
+    opener,
+    openerPath,
     foldersToOpen,
     windowStateId,
     executedFrom,
     pidToKillWhenClosed,
     newWindow,
+    reuseEmptyWindow = true,
     devMode,
     safeMode,
     windowDimensions,
@@ -2014,6 +2017,14 @@ module.exports = class LumineApplication extends EventEmitter {
       ),
     );
 
+    if (opener != null) {
+      for (const location of locationsToOpen) {
+        if (openerPath != null ? location.pathToOpen === openerPath : !location.isDirectory) {
+          location.opener = opener;
+        }
+      }
+    }
+
     for (const folderToOpen of foldersToOpen) {
       locationsToOpen.push({
         pathToOpen: folderToOpen,
@@ -2034,7 +2045,7 @@ module.exports = class LumineApplication extends EventEmitter {
     let existingWindow;
 
     if (hasNonEmptyPath && newWindow) {
-      if (!windowStateId) {
+      if (!windowStateId && reuseEmptyWindow) {
         // `newWindow` keeps the request out of windows that already own a
         // project, but a compatible project-less window is equivalent to a new
         // one and can be claimed without paying for another renderer.

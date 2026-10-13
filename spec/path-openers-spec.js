@@ -3,8 +3,9 @@ const { pathToFileURL } = require("url");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const TextEditor = require("../src/text-editor");
 
-describe("File openers", () => {
+describe("Path openers", () => {
   const filePath = path.join(__dirname, "fixtures", "sample.js");
+  const destinations = ["current", "new-window", "detached-window"];
   let workspace, pane, registrations, persistence;
 
   function makeItem(uri, type = "viewer", protocolURI = false) {
@@ -48,7 +49,7 @@ describe("File openers", () => {
       handlesItem: (item) => item.type === "viewer",
       ...overrides,
     };
-    const lease = workspace.addFileOpener(descriptor);
+    const lease = workspace.addPathOpener(descriptor);
     registrations.add(lease);
     return { descriptor, lease };
   }
@@ -69,9 +70,9 @@ describe("File openers", () => {
 
   it("discovers the default and Text Editor without opening either", () => {
     const { descriptor } = register();
-    expect(workspace.getAvailableFileOpeners(filePath)).toEqual([
-      { id: "test-viewer", label: "Test Viewer", isDefault: true },
-      { id: "text-editor", label: "Text Editor", isDefault: false },
+    expect(workspace.getAvailablePathOpeners(filePath)).toEqual([
+      { id: "test-viewer", label: "Test Viewer", isDefault: true, destinations },
+      { id: "text-editor", label: "Text Editor", isDefault: false, destinations },
     ]);
     expect(descriptor.open).not.toHaveBeenCalled();
     expect(pane.getItems()).toEqual([]);
@@ -80,12 +81,12 @@ describe("File openers", () => {
   it("keeps manual choices available and computes the default from current preferences", async () => {
     let automatic = false;
     register({ isDefaultEligible: () => automatic });
-    expect(workspace.getAvailableFileOpeners(filePath)[0].id).toBe("text-editor");
-    expect(workspace.getAvailableFileOpeners(filePath)[1].id).toBe("test-viewer");
+    expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("text-editor");
+    expect(workspace.getAvailablePathOpeners(filePath)[1].id).toBe("test-viewer");
     const text = await workspace.open(filePath);
     expect(text instanceof TextEditor).toBe(true);
     automatic = true;
-    expect(workspace.getAvailableFileOpeners(filePath)[0].id).toBe("test-viewer");
+    expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("test-viewer");
     const viewer = await workspace.open(filePath);
     expect(viewer.type).toBe("viewer");
     expect(viewer).not.toBe(text);
@@ -99,7 +100,7 @@ describe("File openers", () => {
       open: jasmine.createSpy("second viewer").and.callFake((uri) => makeItem(uri, "second")),
       handlesItem: (item) => item.type === "second",
     });
-    expect(workspace.getAvailableFileOpeners(filePath)[0].id).toBe("second-viewer");
+    expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("second-viewer");
     const item = await workspace.open(filePath);
     expect(item.type).toBe("second");
     expect(first.descriptor.open).not.toHaveBeenCalled();
@@ -124,7 +125,7 @@ describe("File openers", () => {
     expect(pane.getItems()).toEqual([viewer, text]);
     expect(await workspace.open(filePath)).toBe(viewer);
     expect(descriptor.open).toHaveBeenCalledTimes(1);
-    expect(workspace.getAvailableFileOpeners(filePath)[0].id).toBe("test-viewer");
+    expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("test-viewer");
   });
 
   it("finds a restored matching viewer by its file path despite a different URI", async () => {
@@ -181,8 +182,8 @@ describe("File openers", () => {
     await expectAsync(workspace.open(filePath, { opener: "test-viewer" })).toBeRejected();
     expect(descriptor.open).not.toHaveBeenCalled();
     expect(pane.getItems()).toEqual([]);
-    expect(workspace.getAvailableFileOpeners(filePath)).toEqual([
-      { id: "text-editor", label: "Text Editor", isDefault: true },
+    expect(workspace.getAvailablePathOpeners(filePath)).toEqual([
+      { id: "text-editor", label: "Text Editor", isDefault: true, destinations },
     ]);
   });
 
@@ -191,7 +192,7 @@ describe("File openers", () => {
     register({ canOpen: (uri) => supported && uri === filePath });
     const viewer = await workspace.open(filePath);
     supported = false;
-    expect(workspace.getAvailableFileOpeners(filePath)[0].id).toBe("text-editor");
+    expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("text-editor");
     const text = await workspace.open(filePath);
     expect(text instanceof TextEditor).toBe(true);
     expect(pane.getItems()).toEqual([viewer, text]);
@@ -200,8 +201,8 @@ describe("File openers", () => {
   it("normalizes local file URLs for discovery, opening and reuse", async () => {
     const { descriptor } = register();
     const url = `${pathToFileURL(filePath).href}#page=3`;
-    expect(workspace.getAvailableFileOpeners(url)).toEqual(
-      workspace.getAvailableFileOpeners(filePath),
+    expect(workspace.getAvailablePathOpeners(url)).toEqual(
+      workspace.getAvailablePathOpeners(filePath),
     );
     const viewer = await workspace.open(url);
     expect(descriptor.open.calls.mostRecent().args[0]).toBe(filePath);
@@ -220,10 +221,135 @@ describe("File openers", () => {
   });
 
   it("allows side-effect openers to handle a file without creating a pane item", async () => {
-    const { descriptor } = register({ open: jasmine.createSpy("external").and.resolveTo("") });
+    const { descriptor } = register({
+      destinations: ["current"],
+      open: jasmine.createSpy("external").and.resolveTo(""),
+    });
     expect(await workspace.open(filePath)).toBeUndefined();
     expect(descriptor.open).toHaveBeenCalledTimes(1);
     expect(pane.getItems()).toEqual([]);
+  });
+
+  it("lists directory openers with Project Folder and never offers Text Editor", async () => {
+    const directory = path.dirname(filePath);
+    const filePredicate = jasmine.createSpy("file applicability").and.returnValue(true);
+    register({ canOpen: filePredicate });
+    const external = register({
+      id: "external",
+      label: "Open Externally",
+      pathKinds: ["file", "directory"],
+      destinations: ["current"],
+      canOpen: () => true,
+      isDefaultEligible: (_uri, options) => options.pathKind !== "directory",
+      open: jasmine.createSpy("external").and.returnValue(""),
+    });
+    expect(workspace.getAvailablePathOpeners(directory)).toEqual([
+      {
+        id: "project-folder",
+        label: "Project Folder",
+        isDefault: true,
+        destinations: ["current", "new-window"],
+      },
+      { id: "external", label: "Open Externally", isDefault: false, destinations: ["current"] },
+    ]);
+    expect(filePredicate).not.toHaveBeenCalled();
+    const setState = spyOn(lumine.project, "setState").and.resolveTo(true);
+    expect(await workspace.open(directory)).toBeUndefined();
+    expect(setState).toHaveBeenCalledOnceWith([directory]);
+    expect(external.descriptor.open).not.toHaveBeenCalled();
+    expect(pane.getItems()).toEqual([]);
+    await expectAsync(workspace.open(directory, { opener: "text-editor" })).toBeRejected();
+    await expectAsync(
+      workspace.open(directory, { opener: "project-folder", destination: "detached-window" }),
+    ).toBeRejected();
+  });
+
+  it("resolves the selected viewer before requesting a new independent window", async () => {
+    register({ isDefaultEligible: () => false });
+    const projectRoots = [__dirname, path.dirname(filePath)];
+    spyOn(lumine.project, "getPaths").and.returnValue(projectRoots);
+    const openWindow = spyOn(lumine.applicationDelegate, "open");
+    const { devMode, safeMode } = lumine.applicationDelegate.getWindowLoadSettings();
+    await workspace.openPathInNewWindow(filePath, { opener: "test-viewer" });
+    expect(openWindow).toHaveBeenCalledOnceWith({
+      pathsToOpen: [...projectRoots, filePath],
+      opener: "test-viewer",
+      openerPath: filePath,
+      newWindow: true,
+      reuseEmptyWindow: false,
+      devMode,
+      safeMode,
+    });
+    expect(pane.getItems()).toEqual([]);
+  });
+
+  it("requests the default project opener for a folder in an independent window", async () => {
+    const directory = path.dirname(filePath);
+    const openWindow = spyOn(lumine.applicationDelegate, "open");
+    const setState = spyOn(lumine.project, "setState");
+    const { devMode, safeMode } = lumine.applicationDelegate.getWindowLoadSettings();
+    await workspace.openPathInNewWindow(directory);
+    expect(openWindow).toHaveBeenCalledOnceWith({
+      pathsToOpen: [directory],
+      opener: "project-folder",
+      openerPath: directory,
+      newWindow: true,
+      reuseEmptyWindow: false,
+      devMode,
+      safeMode,
+    });
+    expect(setState).not.toHaveBeenCalled();
+    expect(pane.getItems()).toEqual([]);
+  });
+
+  it("does not request a window for an already cancelled opening", async () => {
+    const { descriptor } = register();
+    const openWindow = spyOn(lumine.applicationDelegate, "open");
+    const controller = new AbortController();
+    controller.abort();
+    expect(
+      await workspace.openPathInNewWindow(filePath, {
+        opener: "test-viewer",
+        signal: controller.signal,
+      }),
+    ).toBeUndefined();
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(descriptor.open).not.toHaveBeenCalled();
+  });
+
+  it("keeps side-effect actions as defaults while refusing window destinations", async () => {
+    const { descriptor } = register({
+      destinations: ["current"],
+      open: jasmine.createSpy("external").and.returnValue(""),
+    });
+    const openWindow = spyOn(lumine.applicationDelegate, "open");
+    expect(workspace.getAvailablePathOpeners(filePath)[0]).toEqual({
+      id: "test-viewer",
+      label: "Test Viewer",
+      isDefault: true,
+      destinations: ["current"],
+    });
+    await expectAsync(workspace.openPathInNewWindow(filePath)).toBeRejectedWithError(
+      /does not support.*new-window/,
+    );
+    await expectAsync(
+      workspace.open(filePath, { opener: "test-viewer", destination: "detached-window" }),
+    ).toBeRejectedWithError(/does not support.*detached-window/);
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(descriptor.open).not.toHaveBeenCalled();
+    expect(pane.getItems()).toEqual([]);
+    expect(await workspace.open(filePath)).toBeUndefined();
+    expect(descriptor.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed kinds and destination declarations", () => {
+    expect(() => register({ pathKinds: ["folder"] })).toThrowError(/pathKinds/);
+    expect(() => register({ destinations: [] })).toThrowError(/destinations/);
+    expect(() => register({ destinations: ["new-window"] })).toThrowError(/current/);
+    expect(() => register({ id: "project-folder" })).toThrowError(/already registered/);
+    expect(() => workspace.getAvailablePathOpeners(filePath, { pathKind: "unknown" })).toThrowError(
+      /path kind/,
+    );
   });
 
   it("retains the core pending-item reuse lifecycle for a chosen opener", async () => {
@@ -295,12 +421,12 @@ describe("File openers", () => {
     register();
     expect(() => register()).toThrowError(/already registered/);
     register({ id: "async-viewer", canOpen: () => Promise.resolve(true) });
-    expect(() => workspace.getAvailableFileOpeners(filePath)).toThrowError(/synchronously/);
+    expect(() => workspace.getAvailablePathOpeners(filePath)).toThrowError(/synchronously/);
   });
 
-  it("does not advertise file openers for internal workspace URIs", () => {
+  it("does not advertise path openers for internal workspace URIs", () => {
     register();
-    expect(workspace.getAvailableFileOpeners("lumine://settings")).toEqual([]);
-    expect(workspace.getAvailableFileOpeners(`markdown-preview://${filePath}`)).toEqual([]);
+    expect(workspace.getAvailablePathOpeners("lumine://settings")).toEqual([]);
+    expect(workspace.getAvailablePathOpeners(`markdown-preview://${filePath}`)).toEqual([]);
   });
 });

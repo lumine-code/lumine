@@ -1921,13 +1921,14 @@ class Environment {
   openFileLocations(fileLocations, { bypassLimit = false } = {}) {
     const lastIndex = fileLocations.length - 1;
     return Promise.all(
-      fileLocations.map(({ pathToOpen, initialLine, initialColumn }, index) => {
+      fileLocations.map(({ pathToOpen, initialLine, initialColumn, opener }, index) => {
         const activate = index === lastIndex;
         return (
           this.workspace &&
           this.workspace.open(pathToOpen, {
             initialLine,
             initialColumn,
+            ...(opener == null ? {} : { opener }),
             activateItem: activate,
             activatePane: activate,
             bypassTextEditorLimit: bypassLimit,
@@ -1964,8 +1965,15 @@ class Environment {
       if (stats !== null) {
         // Path exists
         if (stats.isDirectory()) {
-          // Directory: add as a project folder
-          foldersToAddToProject.add(this.project.getDirectoryForProjectPath(pathToOpen).getPath());
+          if (location.opener != null && location.opener !== "project-folder") {
+            // An explicitly selected directory viewer owns the path.
+            fileLocationsToOpen.push(location);
+          } else {
+            // Directory: add as a project folder
+            foldersToAddToProject.add(
+              this.project.getDirectoryForProjectPath(pathToOpen).getPath(),
+            );
+          }
         } else if (stats.isFile()) {
           if (location.isDirectory) {
             // File: no longer a directory
