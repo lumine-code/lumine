@@ -3422,8 +3422,8 @@ module.exports = class TextEditor {
    *     of this highlight will be:
    *     ```html
    *     <div class="highlight <your-class>">
-   *  <!-- Will be one region for each row in the range. Spans 2 lines? There will be 2 regions. -->
-   *  <div class="region"></div>
+   *       <!-- One region per row in the marked range. -->
+   *       <div class="region"></div>
    *     </div>
    *     ```
    * * __overlay__: Positions the view associated with the given item at the head

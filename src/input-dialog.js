@@ -402,7 +402,7 @@ class InputDialog {
    * @param {Object|null} source - Replacement source, or null to disable loading.
    * @param {String} source.mode - `snapshot` loads on opening/reload; `query` also reloads after query changes.
    * @param {Function} source.load - Receives a load context and may return a publication or a promise. InputDialog accepts option objects; SelectList also accepts item arrays. Undefined publishes no final result.
-   * @param {Object} source.load.context - The query, parsedQuery, AbortSignal signal, and publish(value) callback. publish returns Promise<Boolean> indicating whether the progressive value was applied.
+   * @param {Object} source.load.context - The query, parsedQuery, AbortSignal signal, and publish(value) callback. publish returns `Promise<Boolean>` indicating whether the progressive value was applied.
    * @param {Number} [source.debounceMs=100] - Delay for query-mode reloads in milliseconds.
    * @param {String} source.load.context.query - Raw query text.
    * @param {Object} source.load.context.parsedQuery - Frozen {text, data} query metadata.
