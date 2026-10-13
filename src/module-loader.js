@@ -560,8 +560,15 @@ function retireModules(entry) {
       (ownerOf(exports.getSourcePath(modulePath)) === entry ||
         (!entry.kind && !packages.has([...roots][0])))
     ) {
-      if (GENERATION_PREFIX.test(path.basename(modulePath)) || entry.kind === "dependency")
-        retiredModules.set(modulePath, require.cache[modulePath]);
+      const cached = require.cache[modulePath];
+      // A positive generation also has a public source-path cache alias.
+      // Retiring that alias must not replace the canonical generation zero
+      // object needed by callbacks from before the first library update.
+      if (
+        GENERATION_PREFIX.test(path.basename(modulePath)) ||
+        (entry.kind === "dependency" && (moduleGenerations.get(cached)?.generation ?? 0) === 0)
+      )
+        retiredModules.set(modulePath, cached);
       delete require.cache[modulePath];
     }
   }

@@ -358,7 +358,7 @@ describe("native package module loading", () => {
     expect(second.state).not.toBe(first.state);
   });
 
-  it("preserves an old installed CommonJS object for its first late native import after an update", async () => {
+  it("preserves old installed CommonJS objects for their first late native imports after successive updates", async () => {
     write(
       "node_modules/cjs-late-import/package.json",
       '{"name":"cjs-late-import","version":"1.0.0","type":"commonjs","main":"index.cjs"}',
@@ -369,7 +369,7 @@ describe("native package module loading", () => {
     );
     const main = write(
       "main.cjs",
-      'module.exports = { library: require("cjs-late-import"), load: () => import("cjs-late-import") };',
+      'module.exports = { library: require("cjs-late-import"), load: () => import("cjs-late-import"), loadSync: () => require("cjs-late-import") };',
     );
     const first = require(main);
     first.library.state.updatedAtRuntime = true;
@@ -383,13 +383,24 @@ describe("native package module loading", () => {
     const second = require(main);
 
     expect(second.library.SharedModel.version).toBe(2);
+    write(
+      "node_modules/cjs-late-import/index.cjs",
+      "exports.SharedModel = class SharedModel { static version = 3; }; exports.state = {};",
+    );
+    ModuleLoader.invalidatePackage(directory);
+    const third = require(main);
+    expect(third.library.SharedModel.version).toBe(3);
+    expect(first.loadSync()).toBe(first.library);
+    expect(second.loadSync()).toBe(second.library);
+    expect(third.loadSync()).toBe(third.library);
     const oldImport = await first.load();
     expect(oldImport.default).toBe(first.library);
     expect(oldImport.SharedModel).toBe(first.library.SharedModel);
     expect(oldImport.default.state.updatedAtRuntime).toBeTrue();
     expect((await second.load()).default).toBe(second.library);
-    expect(require(implementation)).toBe(second.library);
-    expect(require.cache[implementation].exports).toBe(second.library);
+    expect((await third.load()).default).toBe(third.library);
+    expect(require(implementation)).toBe(third.library);
+    expect(require.cache[implementation].exports).toBe(third.library);
   });
 
   it("retains an unchanged nested library's CommonJS cache when its parent library changes", async () => {
