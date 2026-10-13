@@ -241,6 +241,9 @@ const requireSpecs = (testPath) => {
   if (fs.isDirectorySync(testPath)) {
     for (let testFilePath of fs.listTreeSync(testPath)) {
       if (/-spec\.jsx?$/.test(testFilePath)) {
+        // The harness lives across package unloads. Its later require()/import()
+        // calls must discover the active generation, just like core's loader.
+        require("../../src/module-loader").registerTestModule(testFilePath);
         unrequire(testFilePath);
         require(testFilePath);
         // Set spec directory on spec for setting up the project in spec-helper
@@ -248,6 +251,7 @@ const requireSpecs = (testPath) => {
       }
     }
   } else {
+    require("../../src/module-loader").registerTestModule(testPath);
     unrequire(testPath);
     require(testPath);
     setSpecDirectory(path.dirname(testPath));

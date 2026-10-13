@@ -12,6 +12,9 @@ const GENERATION_PREFIX = /^\.lumine-generation-(\d+)-(.+)$/;
 const JAVASCRIPT_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"]);
 const MODULE_EXTENSIONS = new Set([...JAVASCRIPT_EXTENSIONS, ".json"]);
 const packages = new Map();
+const dependencies = new Map();
+const dependencyEdges = new Map();
+const testModules = new Set();
 const sourceMaps = new Map();
 const moduleGenerations = new WeakMap();
 const retiredModules = new Map();
@@ -38,6 +41,7 @@ function prependAfterDirectives(source, prefix) {
 }
 
 function parseSource(source) {
+  if (typeof source !== "string") source = Buffer.from(source).toString("utf8");
   return parser.parse(source, {
     sourceType: "unambiguous",
     allowReturnOutsideFunction: true,
@@ -89,7 +93,7 @@ function originalURL(url) {
   return { url: original.href, generation: Number(match[1]) };
 }
 
-function ownerOf(filePath) {
+function packageOwnerOf(filePath) {
   let owner = null;
   let length = -1;
   for (const entry of packages.values()) {
@@ -103,7 +107,71 @@ function ownerOf(filePath) {
   return owner;
 }
 
+function contentDigest(contents) {
+  return require("node:crypto").createHash("sha256").update(contents).digest("hex");
+}
+
+function dependencySignature(root) {
+  try {
+    const stat = fs.statSync(root);
+    const manifest = fs.readFileSync(path.join(root, "package.json"));
+    return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}:${stat.mtimeMs}:${contentDigest(manifest)}`;
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+    return null;
+  }
+}
+
+function ownerOf(filePath) {
+  if (testModules.has(filePath)) return null;
+  const parent = packageOwnerOf(filePath);
+  if (!parent) return null;
+  const root = [...parent.roots]
+    .filter((candidate) => filePath === candidate || filePath.startsWith(candidate + path.sep))
+    .sort((left, right) => right.length - left.length)[0];
+  const parts = path.relative(root, filePath).split(path.sep);
+  const modules = parts.lastIndexOf("node_modules");
+  if (modules < 0 || !parts[modules + 1]) return parent;
+  const end = modules + (parts[modules + 1].startsWith("@") ? 3 : 2);
+  const dependencyRoot = path.join(root, ...parts.slice(0, end));
+  let entry = dependencies.get(dependencyRoot);
+  if (!entry) {
+    entry = {
+      kind: "dependency",
+      parent,
+      roots: new Set([dependencyRoot]),
+      generation: 0,
+      signature: dependencySignature(dependencyRoot),
+      files: new Map(),
+    };
+    dependencies.set(dependencyRoot, entry);
+  }
+  return entry;
+}
+
+function resolveGeneration(owner, parentOwner, parentGeneration, requestedGeneration) {
+  if (requestedGeneration != null) return requestedGeneration;
+  if (parentOwner === owner && parentGeneration != null) return parentGeneration;
+  if (owner.kind === "dependency" && parentGeneration != null) {
+    let generations = dependencyEdges.get(parentOwner);
+    if (!generations) dependencyEdges.set(parentOwner, (generations = new Map()));
+    let edges = generations.get(parentGeneration);
+    if (!edges) generations.set(parentGeneration, (edges = new Map()));
+    if (!edges.has(owner)) edges.set(owner, owner.generation);
+    return edges.get(owner);
+  }
+  return owner.generation;
+}
+
+function recordDependencySource(filePath, contents) {
+  const owner = ownerOf(filePath);
+  if (owner?.kind === "dependency" && !owner.files.has(filePath)) {
+    owner.files.set(filePath, contentDigest(contents));
+  }
+}
+
 function generationFilename(filename, generation) {
+  if (generation === 0) return filename;
   return path.join(
     path.dirname(filename),
     `.lumine-generation-${generation}-${path.basename(filename)}`,
@@ -173,8 +241,8 @@ function resolve(specifier, context, nextResolve) {
   const owner = ownerOf(filePath);
   if (!owner) return result;
   const parentOwner = parent.url?.startsWith("file:") ? ownerOf(fileURLToPath(parent.url)) : null;
-  const generation =
-    requestedGeneration ?? (parentOwner === owner ? parent.generation : null) ?? owner.generation;
+  const parentGeneration = parent.generation ?? (parentOwner?.kind === "dependency" ? 0 : null);
+  const generation = resolveGeneration(owner, parentOwner, parentGeneration, requestedGeneration);
   const virtual = pathToFileURL(generationFilename(filePath, generation));
   const parsed = new URL(result.url);
   virtual.search = parsed.search;
@@ -208,7 +276,12 @@ function load(url, context, nextLoad) {
   if (!original.url.startsWith("file:")) return nextLoad(url, context);
   const filePath = fileURLToPath(original.url);
   const extension = path.extname(filePath);
-  const saved = original.generation == null ? null : moduleSources.get(url);
+  const sourceOwner = ownerOf(filePath);
+  const saved =
+    original.generation == null &&
+    !(sourceOwner?.kind === "dependency" && sourceOwner.generation > 0)
+      ? null
+      : moduleSources.get(url);
   if (saved) {
     // Still let Node validate JSON import attributes for this request.
     if (extension === ".json") {
@@ -222,6 +295,7 @@ function load(url, context, nextLoad) {
   }
   if (extension === ".json") {
     const result = { ...nextLoad(original.url, context), shortCircuit: true };
+    recordDependencySource(filePath, result.source);
     moduleSources.set(url, result);
     const retired = retiredModules.get(fileURLToPath(url));
     if (retired) require.cache[fileURLToPath(url)] = retired;
@@ -229,7 +303,22 @@ function load(url, context, nextLoad) {
   }
   if (!JAVASCRIPT_EXTENSIONS.has(extension)) return nextLoad(url, context);
   const source = fs.readFileSync(filePath, "utf8");
+  recordDependencySource(filePath, source);
   const compiled = compiler(source, filePath);
+  // Unchanged installed JavaScript uses Node's native format detector and
+  // source loader. Do not parse a 10 MB Plotly/Three bundle through Babel
+  // merely to wrap a library whose canonical identity is already stable.
+  if (
+    original.generation == null &&
+    compiled === source &&
+    [".js", ".mjs", ".cjs"].includes(extension) &&
+    (sourceOwner?.kind === "dependency" ||
+      (!sourceOwner && filePath.includes(`${path.sep}node_modules${path.sep}`)))
+  ) {
+    const result = nextLoad(original.url, context);
+    moduleSources.set(url, result);
+    return result;
+  }
   // Node has no built-in JSX loader. Babel removes JSX and types but leaves
   // module syntax; detect the resulting format only for these extensions.
   let result;
@@ -319,10 +408,12 @@ exports.install = function (compileSource, nodeRequire = require) {
       moduleGenerations.get(parent) ??
       (parent?.filename ? originalURL(pathToFileURL(parent.filename).href) : null);
     const parentOwner = caller?.url ? ownerOf(fileURLToPath(caller.url)) : null;
-    const generation =
-      original.generation ??
-      (parentOwner === owner ? caller?.generation : null) ??
-      owner.generation;
+    const generation = resolveGeneration(
+      owner,
+      parentOwner,
+      caller?.generation,
+      original.generation,
+    );
     // Route before Node's private relativeResolveCache shortcut. Retaining an
     // old generation in require.cache must not redirect a new package load
     // to the old filename before the public resolve hook can run.
@@ -334,6 +425,7 @@ exports.install = function (compileSource, nodeRequire = require) {
       // Keep the usual require.cache[require.resolve(...)] relation for the
       // active CommonJS bridge, without giving retired generations that alias.
       require.cache[filename] = require.cache[virtualFilename];
+      moduleGenerations.set(require.cache[virtualFilename], { url: original.url, generation });
     }
     return loaded;
   };
@@ -352,6 +444,19 @@ exports.install = function (compileSource, nodeRequire = require) {
 exports.setResourcePath = function (directory) {
   resourcePath = directory;
   apiSource = null;
+};
+
+exports.registerTestModule = function (filename) {
+  const actual = exports.getSourcePath(path.resolve(filename));
+  testModules.add(actual);
+  try {
+    testModules.add(fs.realpathSync(actual));
+  } catch {
+    /* A removed test may still have a cached module. */
+  }
+  for (const cached of Object.values(require.cache)) {
+    if (cached.filename === actual) moduleGenerations.delete(cached);
+  }
 };
 
 exports.registerPackage = function (directory) {
@@ -375,7 +480,12 @@ exports.registerPackage = function (directory) {
     // Adopt an ordinary CommonJS copy loaded before package discovery, rather
     // than duplicating a bootstrap already used by a spec or service consumer.
     for (const filename of Object.keys(require.cache)) {
-      if (GENERATION_PREFIX.test(path.basename(filename)) || ownerOf(filename) !== entry) continue;
+      const owner = ownerOf(filename);
+      if (
+        GENERATION_PREFIX.test(path.basename(filename)) ||
+        (owner !== entry && !(owner?.kind === "dependency" && owner.parent === entry))
+      )
+        continue;
       if (!MODULE_EXTENSIONS.has(path.extname(filename))) continue;
       const cached = require.cache[filename];
       // A namespace already evaluated at an ordinary ESM URL cannot be
@@ -389,15 +499,15 @@ exports.registerPackage = function (directory) {
         types.isModuleNamespaceObject(cached.exports)
       )
         continue;
-      require.cache[generationFilename(filename, entry.generation)] = cached;
+      require.cache[generationFilename(filename, owner.generation)] = cached;
       if (source)
         moduleSources.set(
-          pathToFileURL(generationFilename(filename, entry.generation)).href,
+          pathToFileURL(generationFilename(filename, owner.generation)).href,
           source,
         );
       moduleGenerations.set(cached, {
         url: pathToFileURL(filename).href,
-        generation: entry.generation,
+        generation: owner.generation,
       });
     }
   }
@@ -405,18 +515,55 @@ exports.registerPackage = function (directory) {
 
 exports.invalidatePackage = function (directory) {
   const entry = packages.get(path.resolve(directory));
+  // Library modules belong to their installed payload, not to each consumer
+  // activation. Keep one Three.js/MathJax/etc. identity across package reloads;
+  // a replaced manifest, installation directory or loaded source advances
+  // only that dependency's generation.
+  if (entry)
+    for (const dependency of dependencies.values()) {
+      if (dependency.parent !== entry) continue;
+      const root = [...dependency.roots][0];
+      const signature = dependencySignature(root);
+      let changed = signature !== dependency.signature;
+      if (!changed)
+        for (const [filename, digest] of dependency.files) {
+          try {
+            if (contentDigest(fs.readFileSync(filename)) !== digest) {
+              changed = true;
+              break;
+            }
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+            changed = true;
+            break;
+          }
+        }
+      if (changed) {
+        retireModules(dependency);
+        dependency.generation = nextGeneration++;
+        dependency.signature = signature;
+        dependency.files.clear();
+      }
+    }
   if (entry) entry.generation = nextGeneration++;
-  const roots = entry?.roots ?? new Set([path.resolve(directory)]);
+  retireModules(entry ?? { roots: new Set([path.resolve(directory)]) });
+};
+
+function retireModules(entry) {
+  const roots = entry.roots;
   for (const modulePath of Object.keys(require.cache)) {
     // Retired exports keep old callbacks coherent while require.cache stops
     // exposing modules belonging to an unloaded package.
-    if ([...roots].some((root) => modulePath === root || modulePath.startsWith(root + path.sep))) {
-      if (GENERATION_PREFIX.test(path.basename(modulePath)))
+    if (
+      [...roots].some((root) => modulePath === root || modulePath.startsWith(root + path.sep)) &&
+      (ownerOf(exports.getSourcePath(modulePath)) === entry || !packages.has([...roots][0]))
+    ) {
+      if (GENERATION_PREFIX.test(path.basename(modulePath)) || entry.kind === "dependency")
         retiredModules.set(modulePath, require.cache[modulePath]);
       delete require.cache[modulePath];
     }
   }
-};
+}
 
 exports.getSourcePath = function (filePath) {
   if (!filePath.startsWith("file:") && !path.isAbsolute(filePath)) return filePath;

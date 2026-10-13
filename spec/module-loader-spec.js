@@ -93,6 +93,27 @@ describe("native package module loading", () => {
     expect((await import(pathToFileURL(main).href)).default).toBe(first);
   });
 
+  it("adopts installed CommonJS constructors alongside a package loaded before discovery", () => {
+    const discovered = fs.realpathSync(temp.mkdirSync("early-commonjs-dependency"));
+    discoveredDirectories.push(discovered);
+    const dependency = path.join(discovered, "node_modules", "legacy");
+    fs.mkdirSync(dependency, { recursive: true });
+    fs.writeFileSync(path.join(dependency, "package.json"), '{"name":"legacy","main":"index.cjs"}');
+    const implementation = path.join(dependency, "index.cjs");
+    fs.writeFileSync(implementation, "exports.SharedModel = class SharedModel {};");
+    const main = path.join(discovered, "main.cjs");
+    fs.writeFileSync(main, 'module.exports = { SharedModel: require("legacy").SharedModel };');
+    const first = require(main);
+    ModuleLoader.registerPackage(discovered);
+
+    expect(require(main)).toBe(first);
+    expect(require(implementation).SharedModel).toBe(first.SharedModel);
+    ModuleLoader.invalidatePackage(discovered);
+    const second = require(main);
+    expect(second).not.toBe(first);
+    expect(second.SharedModel).toBe(first.SharedModel);
+  });
+
   it("unifies managed require and import after a native ESM preload", async () => {
     const discovered = fs.realpathSync(temp.mkdirSync("early-esm-package"));
     discoveredDirectories.push(discovered);
@@ -188,7 +209,7 @@ describe("native package module loading", () => {
     );
     write(
       "node_modules/conditional/import.js",
-      'await Promise.resolve(); export const mode = "import";',
+      'await Promise.resolve(); export const mode = "import"; export class SharedModel {};',
     );
     write("node_modules/conditional/require.cjs", 'module.exports = { mode: "require" };');
     const main = write(
@@ -199,6 +220,142 @@ describe("native package module loading", () => {
 
     expect(loaded.synchronous.mode).toBe("require");
     expect((await loaded.load()).mode).toBe("import");
+    const imported = await loaded.load();
+    for (let reload = 0; reload < 3; reload++) {
+      ModuleLoader.invalidatePackage(directory);
+      const current = require(main);
+      expect(current).not.toBe(loaded);
+      expect(current.synchronous).toBe(loaded.synchronous);
+      const currentImport = await current.load();
+      expect(currentImport.mode).toBe("import");
+      expect(currentImport.SharedModel).toBe(imported.SharedModel);
+    }
+  });
+
+  it("refreshes package state without cloning its installed ESM and CommonJS constructors", () => {
+    write(
+      "node_modules/esm-shared/package.json",
+      '{"name":"esm-shared","type":"module","exports":"./index.js"}',
+    );
+    write("node_modules/esm-shared/index.js", "export class SharedModel {};");
+    write(
+      "node_modules/cjs-shared/package.json",
+      '{"name":"cjs-shared","type":"commonjs","main":"index.cjs"}',
+    );
+    write("node_modules/cjs-shared/index.cjs", "exports.SharedModel = class SharedModel {};");
+    const main = write(
+      "main.js",
+      'import { SharedModel } from "esm-shared"; import legacy from "cjs-shared"; export default { state: {}, SharedModel, LegacyModel: legacy.SharedModel };',
+    );
+    const commonMain = write(
+      "main.cjs",
+      'module.exports = { state: {}, SharedModel: require("esm-shared").SharedModel, LegacyModel: require("cjs-shared").SharedModel };',
+    );
+    const first = requireModule(main);
+    let previous = first;
+    for (let reload = 0; reload < 6; reload++) {
+      ModuleLoader.invalidatePackage(directory);
+      const current = requireModule(main);
+      const common = require(commonMain);
+
+      expect(current).not.toBe(previous);
+      expect(current.state).not.toBe(previous.state);
+      expect(common.state).not.toBe(current.state);
+      expect(current.SharedModel).toBe(first.SharedModel);
+      expect(current.LegacyModel).toBe(first.LegacyModel);
+      expect(common.SharedModel).toBe(first.SharedModel);
+      expect(common.LegacyModel).toBe(first.LegacyModel);
+      expect(new current.SharedModel() instanceof first.SharedModel).toBe(true);
+      expect(new current.LegacyModel() instanceof first.LegacyModel).toBe(true);
+      previous = current;
+    }
+  });
+
+  it("refreshes an installed ESM dependency after its source changes at the same manifest version", async () => {
+    const manifest = write(
+      "node_modules/esm-updated/package.json",
+      '{"name":"esm-updated","version":"1.0.0","type":"module","exports":"./index.js"}',
+    );
+    const implementation = write(
+      "node_modules/esm-updated/index.js",
+      "export class SharedModel { static version = 1; }",
+    );
+    const originalTime = fs.statSync(implementation).mtimeMs;
+    const originalManifest = fs.readFileSync(manifest, "utf8");
+    const main = write(
+      "main.js",
+      'import { SharedModel } from "esm-updated"; export default { SharedModel, load: () => import("esm-updated") };',
+    );
+    const first = requireModule(main);
+    write("node_modules/esm-updated/index.js", "export class SharedModel { static version = 2; }");
+    fs.utimesSync(implementation, new Date(), new Date(originalTime + 2000));
+    ModuleLoader.invalidatePackage(directory);
+    const second = requireModule(main);
+
+    expect(fs.readFileSync(manifest, "utf8")).toBe(originalManifest);
+    expect(second.SharedModel).not.toBe(first.SharedModel);
+    expect(second.SharedModel.version).toBe(2);
+    expect(first.SharedModel.version).toBe(1);
+    expect((await first.load()).SharedModel).toBe(first.SharedModel);
+    expect((await second.load()).SharedModel).toBe(second.SharedModel);
+  });
+
+  it("refreshes an installed CommonJS dependency after a same-size source edit", () => {
+    write(
+      "node_modules/cjs-updated/package.json",
+      '{"name":"cjs-updated","version":"1.0.0","type":"commonjs","main":"index.cjs"}',
+    );
+    const implementation = write(
+      "node_modules/cjs-updated/index.cjs",
+      "exports.SharedModel = class SharedModel { static version = 1; };",
+    );
+    const before = fs.statSync(implementation);
+    const main = write("main.cjs", 'module.exports = { load: () => require("cjs-updated") };');
+    const first = require(main);
+    const original = first.load();
+    write(
+      "node_modules/cjs-updated/index.cjs",
+      "exports.SharedModel = class SharedModel { static version = 2; };",
+    );
+    fs.utimesSync(implementation, new Date(), new Date(before.mtimeMs + 2000));
+    ModuleLoader.invalidatePackage(directory);
+    const second = require(main);
+    const updated = second.load();
+
+    expect(fs.statSync(implementation).size).toBe(before.size);
+    expect(updated.SharedModel).not.toBe(original.SharedModel);
+    expect(updated.SharedModel.version).toBe(2);
+    expect(first.load()).toBe(original);
+    expect(original.SharedModel.version).toBe(1);
+  });
+
+  it("refreshes an installed dependency when only its manifest payload changes", () => {
+    const manifest = write(
+      "node_modules/manifest-updated/package.json",
+      '{"name":"manifest-updated","version":"1.0.0","type":"module","exports":"./index.js"}',
+    );
+    const implementation = write(
+      "node_modules/manifest-updated/index.js",
+      "export class SharedModel {}; export const state = {};",
+    );
+    const originalTime = fs.statSync(implementation).mtimeMs;
+    const main = write(
+      "main.js",
+      'import { SharedModel, state } from "manifest-updated"; export default { SharedModel, state };',
+    );
+    const first = requireModule(main);
+    fs.writeFileSync(
+      manifest,
+      '{"name":"manifest-updated","version":"1.0.1","type":"module","exports":"./index.js"}',
+    );
+    const manifestTime = fs.statSync(manifest).mtimeMs;
+    fs.utimesSync(manifest, new Date(), new Date(manifestTime + 2000));
+    ModuleLoader.invalidatePackage(directory);
+    const second = requireModule(main);
+
+    expect(fs.statSync(implementation).mtimeMs).toBe(originalTime);
+    expect(second.SharedModel).not.toBe(first.SharedModel);
+    expect(second.state).not.toBe(first.state);
   });
 
   it("requires native ESM relative extensions instead of applying CommonJS inference", () => {
@@ -296,6 +453,28 @@ describe("native package module loading", () => {
 
     expect(second.load().version).toBe(2);
     expect(first.load().version).toBe(1);
+  });
+
+  it("lets a registered spec reacquire the package while runtime closures keep their original generation", () => {
+    write("state.cjs", "module.exports = { version: 1 };");
+    write("main.cjs", 'module.exports = { load: () => require("./state.cjs") };');
+    const specification = write(
+      "spec/control.cjs",
+      'module.exports = { first: require("../main.cjs"), load: () => require("../main.cjs") };',
+    );
+    ModuleLoader.registerTestModule(specification);
+    const control = require(specification);
+    const first = control.first;
+    expect(first.load().version).toBe(1);
+    ModuleLoader.invalidatePackage(directory);
+    write("state.cjs", "module.exports = { version: 2 };");
+    const second = control.load();
+
+    expect(second).not.toBe(first);
+    expect(second.load().version).toBe(2);
+    expect(first.load().version).toBe(1);
+    expect(control.first).toBe(first);
+    expect(require(specification)).toBe(control);
   });
 
   it("keeps import.meta.require in the generation of the native ESM caller", () => {
