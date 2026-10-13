@@ -4,7 +4,7 @@ A modern, extensible text editor built on the Pulsar and Atom legacy.
 
 Website: https://lumine-code.github.io
 
-Fork of [pulsar-edit/pulsar](https://github.com/pulsar-edit/pulsar).
+Fork of [pulsar-edit/pulsar](https://github.com/pulsar-edit/pulsar) and [atom/atom](https://github.com/atom/atom).
 
 ## Features
 
