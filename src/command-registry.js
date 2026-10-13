@@ -193,7 +193,10 @@ module.exports = class CommandRegistry {
 
     return new Disposable(() => {
       listenersForCommand.splice(listenersForCommand.indexOf(selectorListener), 1);
-      if (listenersForCommand.length === 0) {
+      if (
+        listenersForCommand.length === 0 &&
+        this.selectorBasedListenersByCommandName[commandName] === listenersForCommand
+      ) {
         delete this.selectorBasedListenersByCommandName[commandName];
       }
     });

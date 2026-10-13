@@ -1082,15 +1082,15 @@ module.exports = class Package {
   }
 
   serialize() {
-    if (this.mainActivated) {
-      if (typeof this.mainModule.serialize === "function") {
-        try {
-          return this.mainModule.serialize();
-        } catch (error) {
-          console.error(`Error serializing package '${this.name}'`, error.stack);
-        }
-      }
+    if (!this.mainActivated || typeof this.mainModule.serialize !== "function") return;
+    const state = this.mainModule.serialize();
+    if (state?.then) {
+      Promise.resolve(state).catch(() => {});
+      throw new TypeError(
+        `Package '${this.name}' serialize() must be synchronous; use prepareToSerialize() for asynchronous work.`,
+      );
     }
+    return state;
   }
 
   async deactivate() {

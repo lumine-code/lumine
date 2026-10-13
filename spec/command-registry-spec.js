@@ -564,3 +564,26 @@ describe("CommandRegistry", () => {
       expect(commandSpy).toHaveBeenCalled();
     }));
 });
+
+describe("command registry reset generations", () => {
+  it("keeps a replacement command when a lease from the cleared generation is disposed", () => {
+    const CommandRegistry = require("../src/command-registry");
+    const commands = new CommandRegistry();
+    const old = commands.add("lumine-workspace", { "test:reset-command": () => {} });
+    commands.clear();
+    const current = commands.add("lumine-workspace", {
+      "test:reset-command": { description: "Current generation.", didDispatch() {} },
+    });
+    old.dispose();
+    expect(
+      commands
+        .findCommands({ target: lumine.workspace.getElement() })
+        .some(
+          (command) =>
+            command.name === "test:reset-command" && command.description === "Current generation.",
+        ),
+    ).toBe(true);
+    current.dispose();
+    commands.clear();
+  });
+});

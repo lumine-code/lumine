@@ -142,7 +142,7 @@ module.exports = class ProjectStateController {
     this.resolveFolders(folders);
     await this.saveState({ isUnloading: true });
     this.assertCurrent(generation);
-    const outgoingState = this.serialize({ isUnloading: true });
+    const outgoingState = await this.serialize({ isUnloading: true });
     const outgoingProjectFile = this.config.projectFile;
     const outgoingProjectSettings = {
       "*": this.config.projectSettings,

@@ -490,7 +490,7 @@ class Environment {
       config: this.config,
       packages: this.packages,
       saveState: (options) => this.saveState(options),
-      serialize: (options) => this.serialize(options),
+      serialize: (options) => this.captureState(options),
       loadProjectState: (projectPaths) => this.loadProjectState(projectPaths),
       restoreState: (state, options, assertCurrent) =>
         this.restoreStateIntoThisEnvironment(state, options, assertCurrent),
@@ -837,6 +837,7 @@ class Environment {
       capture(() => this.contextMenu.loadPlatformItems());
 
       capture(() => this.commands.clear());
+      capture(() => this.history.registerCommands());
       capture(() => this.registerDefaultCommands());
 
       capture(() => this.styles.restoreSnapshot(this.initialStyleElements));
@@ -1238,6 +1239,33 @@ class Environment {
     };
   }
 
+  /** @private Prepare asynchronous document payloads before the synchronous layout snapshot. */
+  async captureState(options) {
+    await this.workspace.fileMoveReadiness;
+    await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
+    await Promise.all(
+      this.packages.getLoadedPackages().map((pack) => {
+        const state = this.packages.getPackageLifecycleState(pack.name);
+        if (state === "deactivating") return this.packages.deactivatePackage(pack.name);
+        if (state === "activating") return this.packages.activatePackage(pack.name);
+      }),
+    );
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const packages = this.packages.getActivePackages();
+      await Promise.all(packages.map((pack) => pack.mainModule?.prepareToSerialize?.(options)));
+      await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
+      const current = this.packages.getActivePackages();
+      if (packages.length !== current.length || packages.some((pack) => !current.includes(pack)))
+        continue;
+      try {
+        return this.serialize(options);
+      } catch (error) {
+        if (error.code !== "STATE_SNAPSHOT_CHANGED" || attempt === 2) throw error;
+      }
+    }
+    throw new Error("Packages changed while the workspace snapshot was being prepared.");
+  }
+
   async prepareToUnloadEditorWindow() {
     try {
       await this.workspace?.whenWindowOperationsIdle();
@@ -1245,6 +1273,11 @@ class Environment {
         await this.saveState({ isUnloading: true });
       } catch (error) {
         console.error(error);
+        this.notifications.addError("Unable to save the workspace before closing", {
+          detail: error.message,
+          dismissable: true,
+        });
+        return false;
       }
 
       const closing =
@@ -1570,7 +1603,7 @@ class Environment {
 
   async saveState(options) {
     if (this.enablePersistence && this.project) {
-      const state = this.serialize(options);
+      const state = await this.captureState(options);
       const projectPaths = this.project.getPaths();
       const projectKey = getProjectStateKey(projectPaths);
       const windowProjectKey = getWindowProjectStateKey(this.windowStateId, projectPaths);

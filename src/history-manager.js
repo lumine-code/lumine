@@ -19,19 +19,8 @@ class HistoryManager {
     this.pendingMutations = [];
     this.operationPromise = Promise.resolve();
     this.disposables = new CompositeDisposable();
-    this.disposables.add(
-      commands.add(
-        "lumine-workspace",
-        {
-          "application:clear-project-history": {
-            description: "Forget the projects offered by the Reopen Project menu.",
-            actionScope: "list",
-            didDispatch: this.clearProjects.bind(this),
-          },
-        },
-        false,
-      ),
-    );
+    this.commands = commands;
+    this.registerCommands();
     this.disposables.add(
       project.onDidChangePaths((projectPaths) => {
         // This event has no caller to await the write. Observe its failure while
@@ -43,7 +32,24 @@ class HistoryManager {
     );
   }
 
+  /** @private Reattach the session command after the command registry is reset. */
+  registerCommands() {
+    this.commandSubscription?.dispose();
+    this.commandSubscription = this.commands.add(
+      "lumine-workspace",
+      {
+        "application:clear-project-history": {
+          description: "Forget the projects offered by the Reopen Project menu.",
+          actionScope: "list",
+          didDispatch: this.clearProjects.bind(this),
+        },
+      },
+      false,
+    );
+  }
+
   destroy() {
+    this.commandSubscription?.dispose();
     this.disposables.dispose();
   }
 

@@ -1586,17 +1586,16 @@ describe("PackageManager", () => {
       expect(badPack.mainModule.serialize).not.toHaveBeenCalled();
     });
 
-    it("absorbs exceptions that are thrown by the package module's serialize method", async () => {
-      spyOn(console, "error");
-
-      await lumine.packages.activatePackage("package-with-serialize-error");
+    it("rejects an incomplete snapshot when a package cannot serialize", async () => {
+      const broken = await lumine.packages.activatePackage("package-with-serialize-error");
       await lumine.packages.activatePackage("package-with-serialization");
-      lumine.packages.serialize();
+      expect(() => lumine.packages.serialize()).toThrow();
       expect(lumine.packages.packageStates["package-with-serialize-error"]).toBeUndefined();
+      spyOn(broken.mainModule, "serialize").and.returnValue({ recovered: true });
+      lumine.packages.serialize();
       expect(lumine.packages.packageStates["package-with-serialization"]).toEqual({
         someNumber: 1,
       });
-      expect(console.error).toHaveBeenCalled();
     });
   });
 

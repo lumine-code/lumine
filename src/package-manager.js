@@ -1902,7 +1902,9 @@ module.exports = class PackageManager {
     record.deactivationPromise = deactivationPromise;
     this.setPackageLifecycleState(record, "deactivating");
     record.generation++;
-    if (serialize && wasActive) {
+    const prepareState =
+      serialize && wasActive && typeof pack.mainModule?.prepareToSerialize === "function";
+    if (serialize && wasActive && !prepareState) {
       captureLifecycleError(failures, () => this.serializePackage(pack));
     }
     // Remove URI registrations immediately; arbitrary package code is then
@@ -1922,6 +1924,12 @@ module.exports = class PackageManager {
           // Activation/resource failures are reported on their own path;
           // teardown still has to reach a stable loaded state.
         }
+      }
+      if (prepareState) {
+        await awaitLifecycleCleanup(failures, () =>
+          pack.mainModule.prepareToSerialize({ isUnloading: true }),
+        );
+        captureLifecycleError(failures, () => this.serializePackage(pack));
       }
       captureLifecycleError(failures, () => this.unregisterThemePacksForPackage(pack.name));
       await awaitLifecycleCleanup(failures, () => pack.deactivate());

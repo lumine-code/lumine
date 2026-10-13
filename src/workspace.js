@@ -544,8 +544,8 @@ module.exports = class Workspace extends Model {
   }
 
   /** @private Finish transfers before serializing or releasing the shared runtime. */
-  async whenWindowOperationsIdle() {
-    this.windowLifecycleChanging = true;
+  async whenWindowOperationsIdle({ prepareToUnload = true } = {}) {
+    if (prepareToUnload) this.windowLifecycleChanging = true;
     await Promise.allSettled([...new Set(this.windowOperations.values())]);
   }
 
@@ -1386,6 +1386,12 @@ module.exports = class Workspace extends Model {
    */
   destroyPanes(locations) {
     for (const pane of this.getPanesIn(locations)) {
+      // Restoration has already captured or confirmed the outgoing documents.
+      // Empty the final pane directly rather than starting another save dialog.
+      for (const item of pane.getItems()) {
+        pane.removeItem(item, false, { preservePane: true });
+        item.destroy?.();
+      }
       pane.destroy();
     }
   }
