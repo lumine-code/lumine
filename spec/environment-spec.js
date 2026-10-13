@@ -2046,6 +2046,20 @@ describe("Environment", () => {
 
     afterEach(() => environment.destroy());
 
+    it("disconnects presentation observers and pending frames when the environment is destroyed", () => {
+      const root = document.createElement("div");
+      jasmine.attachToDOM(root);
+      environment.views.addWindowParticipant(root, {});
+      const views = environment.views;
+      const observer = views.participantObservers.get(document);
+      const disconnect = spyOn(observer, "disconnect").and.callThrough();
+      environment.destroy();
+      expect(disconnect).toHaveBeenCalled();
+      expect(views.participantObservers.size).toBe(0);
+      expect(views.animationFrameRequest).toBeNull();
+      root.remove();
+    });
+
     it("resets the workspace, project, editor factory and registries after package reset rejects, then permits retry", async () => {
       const editor = await environment.workspace.open();
       const buffer = editor.getBuffer();

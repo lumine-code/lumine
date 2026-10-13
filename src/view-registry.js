@@ -92,9 +92,9 @@ module.exports = class ViewRegistry {
   attachPresentationDocument(document) {
     if (this.participantObservers.has(document)) return new Disposable();
     const refresh = () => {
-      const window = this.lumineEnvironment.workspace
-        .getWindows()
-        .find((window) => window.getDocument() === document);
+      const workspace = this.lumineEnvironment?.workspace;
+      if (!workspace || workspace.isAlive?.() === false) return;
+      const window = workspace.getWindows().find((window) => window.getDocument() === document);
       if (!window) return;
       for (const [root, participant] of this.windowParticipants)
         if (root.isConnected && root.ownerDocument === document)
@@ -132,8 +132,15 @@ module.exports = class ViewRegistry {
       throwLifecycleErrors,
     } = require("./package-lifecycle-errors");
     try {
-      for (const participant of entries)
-        states.push({ participant, state: await participant.prepareWindowChange?.(context) });
+      for (const participant of entries) {
+        try {
+          states.push({ participant, state: await participant.prepareWindowChange?.(context) });
+        } catch (error) {
+          if (!context.sourceUnavailable) throw error;
+          context.onRecoveryError?.(error);
+          states.push({ participant, skip: true });
+        }
+      }
     } catch (error) {
       const errors = [error];
       for (const { participant, state } of states) {
@@ -149,7 +156,8 @@ module.exports = class ViewRegistry {
     return {
       async didChange(context) {
         const errors = [];
-        for (const { participant, state } of states) {
+        for (const { participant, state, skip } of states) {
+          if (skip) continue;
           if (context.rollback)
             await awaitLifecycleCleanup(errors, () =>
               participant.didChangeWindow?.({ ...context, state }),

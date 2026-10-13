@@ -800,6 +800,37 @@ module.exports = class Workspace extends Model {
     });
   }
 
+  /** @private Restore models from an unexpectedly lost native presentation. */
+  async recoverClosedEditorWindow(window) {
+    if (
+      !this.isAlive() ||
+      this.windowLifecycleChanging ||
+      !this.editorWindows.has(window) ||
+      window.isMain()
+    )
+      return;
+    await this.whenWindowOperationsIdle({ prepareToUnload: false });
+    if (!this.isAlive() || this.windowLifecycleChanging || window.isDestroyed()) return;
+    const main = this.getMainWindow();
+    await this.runWindowOperation([window, main], async () => {
+      const source = window.getEditorContainer();
+      const errors = [];
+      await transferPaneLayout(this, source, main.getEditorContainer(), source.getPanes(), {
+        sourceUnavailable: true,
+        onRecoveryError: (error) => errors.push(error),
+      });
+      await this.releaseEditorWindow(window);
+      await main.show();
+      await main.focus();
+      this.notificationManager.addWarning("The editor window closed unexpectedly.", {
+        detail: errors.length
+          ? `Its editors have been restored in the main window. Some display state could not be restored: ${errors.map((error) => error.message).join("; ")}`
+          : "Its editors have been restored in the main window.",
+        dismissable: true,
+      });
+    });
+  }
+
   observeFileDocuments() {
     this.fileDocumentObservation?.dispose();
     this.fileDocumentObservation = this.project.observeBuffers((buffer) => {

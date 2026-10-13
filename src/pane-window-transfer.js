@@ -66,7 +66,13 @@ function bindItemViews(workspace, panes, window) {
 // Geometry is rebuilt; Pane and item identities, document leases and package
 // generations survive. Providers explicitly restore state of embedded views
 // whose browsing contexts are recreated by cross-document DOM adoption.
-module.exports = async function transferPaneLayout(workspace, source, target, panes) {
+module.exports = async function transferPaneLayout(
+  workspace,
+  source,
+  target,
+  panes,
+  { sourceUnavailable = false, onRecoveryError } = {},
+) {
   if (source === target || source.getLocation() !== "center" || target.getLocation() !== "center")
     throw new Error("Window transfers require distinct document containers.");
   const sourceRoot = source.getRoot();
@@ -78,7 +84,7 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
   const targetLayout = snapshot(targetRoot);
   const sourceWindow = source.getWindow();
   const targetWindow = target.getWindow();
-  const context = { sourceWindow, targetWindow };
+  const context = { sourceWindow, targetWindow, sourceUnavailable, onRecoveryError };
   const paneItems = new Map([...selected].map((pane) => [pane, pane.getItems()]));
   const items = [...selected].flatMap((pane) => pane.getItems());
   const preparations = [];
@@ -93,7 +99,7 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
     if (
       source.isDestroyed() ||
       target.isDestroyed() ||
-      sourceWindow?.windowService.closed ||
+      (!sourceUnavailable && sourceWindow?.windowService.closed) ||
       targetWindow?.windowService.closed ||
       source.getRoot() !== sourceRoot ||
       target.getRoot() !== targetRoot ||
@@ -152,7 +158,14 @@ module.exports = async function transferPaneLayout(workspace, source, target, pa
       }),
     );
     bindItemViews(workspace, selected, targetWindow);
-    for (const { state } of preparations) await state.didChange(context);
+    for (const { state } of preparations) {
+      try {
+        await state.didChange(context);
+      } catch (error) {
+        if (!sourceUnavailable) throw error;
+        onRecoveryError?.(error);
+      }
+    }
     if (target.isDestroyed() || targetWindow?.windowService.closed)
       throw new Error("The destination window closed before its presentation was committed.");
     committed = true;

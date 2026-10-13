@@ -944,6 +944,7 @@ class Environment {
     destroyField("paneItemTransfers");
     destroyField("workspaceDrops");
     destroyField("workspace");
+    capture(() => this.views.clear());
     destroyField("textEditorFactory");
     destroyField("textEditors");
     destroyField("project");

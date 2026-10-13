@@ -206,8 +206,17 @@ async function connect({ port, window = 0, timeout = 20000 }) {
     }
   });
 
+  socket.addEventListener("close", () => {
+    for (const request of pending.values()) request.reject(new Error("The CDP connection closed."));
+    pending.clear();
+  });
+
   const send = (method, params) =>
     new Promise((resolve, reject) => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        reject(new Error("The CDP connection is closed."));
+        return;
+      }
       const id = ++lastId;
       pending.set(id, { resolve, reject });
       socket.send(JSON.stringify({ id, method, params }));
@@ -252,10 +261,10 @@ async function clientFor(options, extra = {}) {
   return client;
 }
 
-async function waitForReady(client, timeout = 60000) {
+async function waitForReady(client, timeout = 60000, ready = READY) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (await client.evaluate(READY).catch(() => false)) return;
+    if (await client.evaluate(ready).catch(() => false)) return;
     await sleep(400);
   }
   fail("the window came up but its packages never activated");
@@ -595,15 +604,22 @@ async function dispatch({ positional, options }) {
 
 async function reload({ options }) {
   const client = await clientFor(options);
+  const marker = JSON.stringify(`driveReload-${require("node:crypto").randomUUID()}`);
   // Reloading tears the socket down, so the call cannot be awaited — fire it
   // from a timer and reconnect to the new target.
   await client
-    .evaluate("setTimeout(() => lumine.window.reload(), 50), 'reloading'")
+    .evaluate(
+      `window[${marker}] = true; setTimeout(() => lumine.commands.dispatch(window, "window:reload"), 50); "reloading"`,
+    )
     .catch(() => {});
   client.close();
   await sleep(2000);
   const next = await clientFor(options, { timeout: 60000 });
-  await waitForReady(next);
+  await waitForReady(
+    next,
+    60000,
+    `${READY} && !Object.hasOwn(window, ${marker}) && lumine.window.getLoadTime() != null`,
+  );
   next.close();
   console.log("reloaded");
 }

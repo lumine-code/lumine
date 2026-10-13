@@ -32,6 +32,60 @@ describe("Auxiliary editor windows", () => {
     expect(element.ownerDocument).toBe(document);
   });
 
+  it("restores unsaved models and the split layout after an unexpected native close", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("recover unsaved content");
+    const pane = workspace.paneForItem(editor);
+    const root = editor.getElement();
+    const extra = await workspace.detachPane(pane);
+    const sibling = pane.splitRight({ items: [editor.copy()] });
+    const copy = sibling.getActiveItem();
+    copy.setCursorBufferPosition([0, 0]);
+    copy.insertText("still shared ");
+    await extra.windowService.close();
+    await conditionPromise(() => extra.isDestroyed());
+    expect(workspace.getWindows()).toEqual([workspace.getMainWindow()]);
+    expect(workspace.getMainWindow().getEditorContainer().getPanes()).toEqual([pane, sibling]);
+    expect(editor.getElement()).toBe(root);
+    expect(root.ownerDocument).toBe(document);
+    expect(copy.getBuffer()).toBe(editor.getBuffer());
+    expect(editor.getText()).toBe("still shared recover unsaved content");
+    copy.undo();
+    expect(editor.getText()).toBe("recover unsaved content");
+  });
+
+  it("keeps documents accessible when a lost host prevents a presentation checkpoint", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("authoritative unsaved content");
+    const extra = await workspace.detachItem(editor);
+    const warning = spyOn(lumine.notifications, "addWarning").and.callThrough();
+    editor.prepareWindowChange = () => {
+      throw new Error("the old frame is unavailable");
+    };
+    await extra.windowService.close();
+    await conditionPromise(() => extra.isDestroyed());
+    expect(workspace.getMainWindow().getEditorContainer().getPaneItems()).toContain(editor);
+    expect(editor.getText()).toBe("authoritative unsaved content");
+    expect(editor.getElement().ownerDocument).toBe(document);
+    expect(warning.calls.mostRecent().args[1].detail).toContain("the old frame is unavailable");
+    delete editor.prepareWindowChange;
+  });
+
+  it("retires late native presentation updates while refusing a dialog on a closed host", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    const extra = await workspace.detachItem(editor);
+    const service = extra.windowService;
+    await service.close();
+    await conditionPromise(() => extra.isDestroyed());
+    await expectAsync(service.invoke("setTitle", "late title")).toBeResolved();
+    await expectAsync(service.invoke("setRepresentedFilename", "late path")).toBeResolved();
+    await expectAsync(service.invoke("showSaveDialog", {})).toBeRejectedWithError(/has closed/);
+    expect((await service.getState()).visible).toBe(false);
+  });
+
   it("captures local save and close targets even when another window is globally active", async () => {
     const workspace = lumine.workspace;
     const main = await workspace.open();

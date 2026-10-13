@@ -172,6 +172,15 @@ module.exports = class AuxiliaryWindowHost {
             service.setFullScreen(!(await service.isFullScreen())),
           "window:toggle-dev-tools": () => service.toggleDevTools(),
         }),
+        service.onDidClose(() => {
+          if (!editorWindow.isDestroyed())
+            void workspace.recoverClosedEditorWindow(editorWindow).catch((error) =>
+              environment.notifications.addError("Unable to restore the closed editor window.", {
+                detail: error.message,
+                dismissable: true,
+              }),
+            );
+        }),
         service.onDidRequestClose(() => {
           void editorWindow.close().catch((error) =>
             environment.notifications.addError("Unable to close the editor window.", {

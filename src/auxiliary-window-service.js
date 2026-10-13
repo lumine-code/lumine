@@ -22,6 +22,32 @@ module.exports = class AuxiliaryWindowService {
     return this.id;
   }
   invoke(action, ...args) {
+    if (this.closed) {
+      if (
+        [
+          "setTitle",
+          "setRepresentedFilename",
+          "setSheetOffset",
+          "close",
+          "focus",
+          "show",
+          "hide",
+          "minimize",
+          "maximize",
+          "unmaximize",
+          "setFullScreen",
+          "setBounds",
+          "openDevTools",
+          "closeDevTools",
+          "toggleDevTools",
+        ].includes(action)
+      )
+        return Promise.resolve();
+      if (action === "getState") return Promise.resolve({ ...this.state, visible: false });
+      return Promise.reject(
+        Object.assign(new Error("The editor window has closed."), { code: "CLOSED_WINDOW" }),
+      );
+    }
     return this.applicationDelegate.invokeAuxiliaryWindow("invoke", this.id, action, ...args);
   }
   getState() {
