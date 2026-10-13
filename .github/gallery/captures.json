@@ -16,7 +16,12 @@
       "title": "Source and preview, side by side",
       "description": "A live Markdown preview beside its source in a split pane.",
       "light": "02-light.png",
-      "dark": "02-dark.png"
+      "dark": "02-dark.png",
+      "capturedOn": "2026-10-14",
+      "packageSourceRevisions": {
+        "markdown-preview": "abd3f45bcafe8604afade04da08a0b07b9874194"
+      },
+      "themeSourceRevision": "14a69683b0e3238e2bc128fbfae3866c1e4ee9c6"
     },
     {
       "file": "view-3.png",

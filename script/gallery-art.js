@@ -48,7 +48,7 @@ module.exports = function galleryAssets(root) {
         <path d="M64 0V${ROW_HEIGHT}" stroke="${palette.gold}" stroke-opacity="0.5"/>
         <g font-family="Segoe UI, sans-serif" fill="${palette.ink}">${panel}</g>
         <text x="96" y="1072" font-family="Consolas, monospace" font-size="16" fill="${palette.muted}">LUMINE / EDITOR</text>
-        <text x="1504" y="1072" text-anchor="end" font-family="Consolas, monospace" font-size="16" fill="${palette.muted}">CAPTURED ${escapeXml(manifest.capturedOn)}</text>
+        <text x="1504" y="1072" text-anchor="end" font-family="Consolas, monospace" font-size="16" fill="${palette.muted}">CAPTURED ${escapeXml(scene.capturedOn || manifest.capturedOn)}</text>
       </svg>`,
       };
     }),
