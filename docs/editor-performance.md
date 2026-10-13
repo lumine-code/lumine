@@ -19,13 +19,13 @@ Measure the complete operation rather than the native lookup alone: packed mappi
 
 The September 30, 2026 comparison used Windows x64, Electron 44.5.0 and Node 24.21.0. A full 278-case release comparison covered six fresh processes per variant and 180 measured samples per case. A subsequent cached-decoration allocation cleanup received a separate 22-case comparison with the same process and sample counts; the original full results and intermediate control confirmations were retained. All comparisons matched their output checksums.
 
-| Operation | Legacy median | Candidate median | Improvement |
-| --- | ---: | ---: | ---: |
-| Uncached decoration query, 256 endpoints with wrap | 1.3 ms | 0.7 ms | 46% |
-| Uncached decoration query, 5000 endpoints with wrap | 33.0 ms | 14.5 ms | 56% |
-| Uncached decoration query, 5000 endpoints with folds | 42.6 ms | 15.5 ms | 64% |
-| Replacement to component update, 250k-character plain-text line | 3.5 ms | 1.0 ms | 71% |
-| Replacement to component update, 1M-character plain-text line | 8.2 ms | 1.9 ms | 77% |
+| Operation                                                       | Legacy median | Candidate median | Improvement |
+| --------------------------------------------------------------- | ------------: | ---------------: | ----------: |
+| Uncached decoration query, 256 endpoints with wrap              |        1.3 ms |           0.7 ms |         46% |
+| Uncached decoration query, 5000 endpoints with wrap             |       33.0 ms |          14.5 ms |         56% |
+| Uncached decoration query, 5000 endpoints with folds            |       42.6 ms |          15.5 ms |         64% |
+| Replacement to component update, 250k-character plain-text line |        3.5 ms |           1.0 ms |         71% |
+| Replacement to component update, 1M-character plain-text line   |        8.2 ms |           1.9 ms |         77% |
 
 The decoration rows come from the final focused comparison; the replacement rows come from the full comparison, whose geometry implementation and native addon remained unchanged by the later collector cleanup. The final 22 cases had no median or p95 regression exceeding both 5% and 0.5 ms. The broad comparison initially had uncertain control regressions, which prompted isolated confirmations and a cleanup that avoids allocating unused batch structures for cached-only decorations.
 
@@ -48,11 +48,11 @@ An equal-extent edit strictly before an injection can skip its tree edit only wh
 
 The September 30, 2026 final comparison used Electron 44.5.1 on Windows x64, with six fresh processes per variant and 180 measured edits per case. The baseline was editor commit `99d1dee32dffb251adf969cbea4fe77c362408d0`; the candidate was `335e8d733b2c69054c4c1d3682b65ac8178eca26`, including the fold-cache compatibility correction. Both sources were frozen separately from concurrent workspace edits. All eight cases matched their complete-tree/range/highlight checksums. Another Electron validation process was active on the machine, so these are paired results under that recorded background load, not a quiet-machine absolute latency gate.
 
-| Case | Routing before | Routing after | Complete edit before | Complete edit after |
-| --- | ---: | ---: | ---: | ---: |
-| 500 injections, equal-extent replacement before them | 1.96 ms | 0.77 ms | 6.07 ms | 4.87 ms |
-| 5000 injections, equal-extent replacement before them | 30.12 ms | 11.23 ms | 89.27 ms | 66.04 ms |
-| 5000 injections, replacement inside the first one | 30.00 ms | 11.60 ms | 93.03 ms | 71.06 ms |
+| Case                                                  | Routing before | Routing after | Complete edit before | Complete edit after |
+| ----------------------------------------------------- | -------------: | ------------: | -------------------: | ------------------: |
+| 500 injections, equal-extent replacement before them  |        1.96 ms |       0.77 ms |              6.07 ms |             4.87 ms |
+| 5000 injections, equal-extent replacement before them |       30.12 ms |      11.23 ms |             89.27 ms |            66.04 ms |
+| 5000 injections, replacement inside the first one     |       30.00 ms |      11.60 ms |             93.03 ms |            71.06 ms |
 
 Leading replacements reduced child `handleTextChange`/`tree.edit` calls from 500 or 5000 to zero. An internal replacement routed to one child instead of all following children; both backends still parsed that one child. Neither backend parsed unchanged children for the leading edit, so this is routing/tree-edit savings, not newly introduced parser reuse. Fold predicates can inspect text outside a child's included ranges, so the shortcut still resets its fold cache; a same-row prefix regression is tested with both WASM and native runtimes. The 5000-layer leading routing ratio's bootstrap 95% interval was approximately 0.33–0.43; the complete edit improved by about 26%, not 63%. Ordinary insertion and deletion shift later coordinates and do not qualify for this shortcut.
 
@@ -84,14 +84,14 @@ The next legacy optimization adds two small Superstring methods, not another eng
 
 The September 30, 2026 release comparison froze editor `bb6cc2e7e40b8e725bdeb04f2c6ca44fe4b72faf` with Superstring `c622eaa57af0cd31a7689cb504390f1507fa99c9` as baseline. The candidate facade is editor `ebed843446032d47a0726e0d8d1ec673ae18d7bb`, using Superstring `fc960bed66d93d483e00113d6e83b5817a3cb0f3`; editor `67615d05a8e5f53d68a38a4097b61083758b23a8` pins that dependency and its build permission. Both benchmark addons were compiled in Release with Node 24.18.0 and the same Windows toolchain, then frozen independently of the live installation. The measurement used Electron 44.5.1, Ultimate Performance on AC, three A–B–B–A blocks, six fresh processes per variant, five warmups and 180 samples per case. No local build or test suite ran alongside the timed processes; a pre-existing validation window remained open. All 38 cases matched their semantic checksums.
 
-| Case | Complete edit before | Complete edit after | Median reduction |
-| --- | ---: | ---: | ---: |
-| 500 injections, leading equal-extent edit | 5.07 ms | 3.01 ms | 41% |
-| 5000 injections, leading equal-extent edit | 72.67 ms | 44.10 ms | 39% |
-| 5000 injections, edit inside the first injection | 78.80 ms | 45.67 ms | 42% |
-| HTML, 50 blocks, leading equal-extent edit | 2.14 ms | 1.83 ms | 15% |
-| Vue, 50 blocks, leading equal-extent edit | 3.76 ms | 3.10 ms | 18% |
-| IPython, 50 blocks, leading equal-extent edit | 1.67 ms | 0.92 ms | 45% |
+| Case                                             | Complete edit before | Complete edit after | Median reduction |
+| ------------------------------------------------ | -------------------: | ------------------: | ---------------: |
+| 500 injections, leading equal-extent edit        |              5.07 ms |             3.01 ms |              41% |
+| 5000 injections, leading equal-extent edit       |             72.67 ms |            44.10 ms |              39% |
+| 5000 injections, edit inside the first injection |             78.80 ms |            45.67 ms |              42% |
+| HTML, 50 blocks, leading equal-extent edit       |              2.14 ms |             1.83 ms |              15% |
+| Vue, 50 blocks, leading equal-extent edit        |              3.76 ms |             3.10 ms |              18% |
+| IPython, 50 blocks, leading equal-extent edit    |              1.67 ms |             0.92 ms |              45% |
 
 For the 5000-injection leading edit, synchronous edit time fell from 49.35 to 18.62 ms and routing from 15.13 to 2.44 ms. Complete-edit p95 fell from 90.72 to 59.57 ms. Its complete-edit candidate/baseline bootstrap 95% interval was approximately 0.49–0.70, and its synchronous-edit interval 0.31–0.44. Leading, trailing, length-changing and internal edits all reduced complete-edit medians by 39–42% at 5000 injections. Several smaller HTML/Vue cases have intervals crossing one, so their median changes are observations, not proof of a universal speedup. These are edit/settlement timings, not physical frame-presentation latency.
 

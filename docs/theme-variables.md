@@ -6,11 +6,11 @@ Use `var(--text-color)` in package stylesheets and define theme values on `:root
 
 ## Roles and ownership
 
-| Role | Purpose | Who supplies the value |
-| --- | --- | --- |
-| `semantic` | Shared meanings such as foreground, diagnostic severity, accent or interface spacing. | Core supplies a default; the active UI or syntax theme may override it. |
+| Role        | Purpose                                                                                                       | Who supplies the value                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `semantic`  | Shared meanings such as foreground, diagnostic severity, accent or interface spacing.                         | Core supplies a default; the active UI or syntax theme may override it.                           |
 | `component` | A specific surface or state such as a tooltip background, selected button foreground or data-grid row height. | Core supplies a default, often derived from semantic variables; a theme may override it directly. |
-| `runtime` | The configured editor font family, font size and measured line height. | The editor supplies the value on `lumine-workspace`. |
+| `runtime`   | The configured editor font family, font size and measured line height.                                        | The editor supplies the value on `lumine-workspace`.                                              |
 
 Each definition identifies its owner as `ui`, `syntax` or `editor`. UI variables describe the interface, syntax variables describe the editing surface and language entities, and editor variables reflect runtime configuration. An owner identifies the meaning of a token; some UI values intentionally derive from syntax colors, such as editor-adjacent tabs and scrollbars.
 
@@ -18,14 +18,14 @@ Theme variables have scope `:root`; runtime typography has scope `lumine-workspa
 
 ## Types
 
-| Type | Value |
-| --- | --- |
-| `color` | A CSS color, including an alias or a valid relative-color expression. |
-| `length` | A CSS length such as `13px`, `1em` or `calc(1em * 2)`. |
-| `number` | A unitless value, such as prose line height or backdrop opacity. |
-| `font-family` | A CSS font-family list. |
+| Type          | Value                                                                          |
+| ------------- | ------------------------------------------------------------------------------ |
+| `color`       | A CSS color, including an alias or a valid relative-color expression.          |
+| `length`      | A CSS length such as `13px`, `1em` or `calc(1em * 2)`.                         |
+| `number`      | A unitless value, such as prose line height or backdrop opacity.               |
+| `font-family` | A CSS font-family list.                                                        |
 | `line-height` | A CSS line-height value: `normal`, a unitless ratio, a percentage or a length. |
-| `boolean` | The exact token `true` or `false`, used by custom-control style queries. |
+| `boolean`     | The exact token `true` or `false`, used by custom-control style queries.       |
 
 Color consumers may feed values into `color-mix()` and relative-color functions. Supply colors that resolve to valid CSS colors rather than arbitrary property values. `--use-custom-controls` is a behavior switch: `true` enables the shared custom-control rules and `false` leaves native controls available.
 

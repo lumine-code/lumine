@@ -17,10 +17,7 @@ A Tree-sitter grammar config and all of its runtime assets live directly in a pa
     "parserSource": "github:tree-sitter/tree-sitter-json#v0.24.8",
     "wasmBuildTool": "tree-sitter-cli#v0.27.0",
     "grammar": "json.wasm",
-    "highlightsQuery": [
-      "json-no-comments-highlights.scm",
-      "json-highlights.scm"
-    ],
+    "highlightsQuery": ["json-no-comments-highlights.scm", "json-highlights.scm"],
     "indentsQuery": "json-indents.scm",
     "foldsQuery": "json-folds.scm"
   }
@@ -88,16 +85,16 @@ For example, a parser whose documentation comments use `///` can inject them int
 
 The child grammar must accept the captured source, including its delimiters. To select the language from source, capture one node as `@injection.language` instead of setting `injection.language`; that node's text is resolved through the target grammar's `injectionNames` aliases. Use JavaScript when selection needs normalization, configuration, semantic checks or source ranges that the syntax tree does not represent.
 
-| Property | Meaning |
-| --- | --- |
-| `injection.language` | A fixed injection alias, used instead of `@injection.language`. |
-| `injection.include-children` | Include each content node's child nodes in the parsed source. By default, direct children are excluded. |
-| `injection.include-adjacent-whitespace` | Include whitespace between captured content ranges. |
-| `injection.newlines-between` | Include newline joins between captured content ranges. |
-| `injection.combined` | Share one child document across owners from the same pattern and language. |
-| `injection.combined-max-members` | Bound a combined layer to this positive safe integer number of owners. |
-| `injection.language-scope` | Override the child grammar's base scope; `"none"` suppresses it. |
-| `injection.cover-shallower-scopes` | Cover scopes supplied by shallower language layers. |
+| Property                                | Meaning                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `injection.language`                    | A fixed injection alias, used instead of `@injection.language`.                                         |
+| `injection.include-children`            | Include each content node's child nodes in the parsed source. By default, direct children are excluded. |
+| `injection.include-adjacent-whitespace` | Include whitespace between captured content ranges.                                                     |
+| `injection.newlines-between`            | Include newline joins between captured content ranges.                                                  |
+| `injection.combined`                    | Share one child document across owners from the same pattern and language.                              |
+| `injection.combined-max-members`        | Bound a combined layer to this positive safe integer number of owners.                                  |
+| `injection.language-scope`              | Override the child grammar's base scope; `"none"` suppresses it.                                        |
+| `injection.cover-shallower-scopes`      | Cover scopes supplied by shallower language layers.                                                     |
 
 Boolean properties accept `"true"`, `"false"`, or a directive without a value, which means true. Unknown properties and captures beginning with `injection.`, custom predicates and directives, and `#is?` or `#is-not?` assertions fail validation. The implemented text predicates are `#eq?`, `#not-eq?`, `#any-eq?`, `#any-not-eq?`, `#match?`, `#not-match?`, `#any-match?`, `#any-not-match?`, `#any-of?` and `#not-any-of?`. A pattern cannot combine a fixed language property with a language capture.
 

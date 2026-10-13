@@ -104,10 +104,7 @@ or an ordered list:
 {
   "name": "my-day-ui",
   "theme": "ui",
-  "extends": [
-    "one-theme::styles/ui/*",
-    "my-theme-foundation::styles/accessibility/**/*.css"
-  ],
+  "extends": ["one-theme::styles/ui/*", "my-theme-foundation::styles/accessibility/**/*.css"],
   "styles": ["styles/ui-overrides", "styles/day-ui"]
 }
 ```
