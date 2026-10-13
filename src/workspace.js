@@ -1,5 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
+const { fileURLToPath } = require("url");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const ProjectDirectory = require("./project-directory");
@@ -35,6 +36,30 @@ function protocolForURI(uri) {
   } catch {
     return null;
   }
+}
+
+function isFileURI(uri) {
+  if (typeof uri !== "string" || !uri) return false;
+  if (path.isAbsolute(uri)) return true;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(uri)?.[1].toLowerCase();
+  return !scheme || scheme === "file";
+}
+
+function fileOpenerPredicate(callback, uri, options) {
+  const result = callback(uri, options);
+  if (typeof result !== "boolean") {
+    throw new TypeError("File opener predicates must return a boolean synchronously");
+  }
+  return result;
+}
+
+function normalizeFileOpening(uri, options = {}) {
+  if (typeof uri === "string" && /^file:/i.test(uri)) {
+    const url = new URL(uri);
+    if (url.hash && options.uriFragment == null) options = { ...options, uriFragment: url.hash };
+    uri = fileURLToPath(url);
+  }
+  return { uri, options };
 }
 
 // Given a path pattern like `foo/bar/baz` and a list of the current root path
@@ -381,6 +406,13 @@ module.exports = class Workspace extends Model {
     this.emitter = new Emitter();
     this.openers = [];
     this.openerReuseCapabilities = new Map();
+    this.fileOpeners = [];
+    this.fileOpenerItems = new WeakMap();
+    this.textFileOpener = {
+      id: "text-editor",
+      label: "Text Editor",
+      handlesItem: (item) => item instanceof TextEditor,
+    };
     this.#itemOpenRequests = new ItemOpenRequestManager({
       isAvailable: () => this.isAlive() && this.#resettingItemOpens === 0,
     });
@@ -1078,6 +1110,8 @@ module.exports = class Workspace extends Model {
 
       this.openers = [];
       this.openerReuseCapabilities.clear();
+      this.fileOpeners = [];
+      this.fileOpenerItems = new WeakMap();
       this.destroyedItemURIs = [];
       this.invalidateLongTitles();
       if (this.element) {
@@ -2311,6 +2345,9 @@ module.exports = class Workspace extends Model {
    *
    * @param {String|Object} [itemOrURI] - An item to open or a `String` containing a URI.
    * @param {Object} [options]
+   * @param {String} [options.opener] - The registered file opener ID to use, or 'text-editor'. An explicit choice bypasses automatic opener preferences and only reuses an item of that opener's type.
+   * @param {String} [options.uriFragment] - The fragment of a local file URL, forwarded to the selected file opener after its path is normalized.
+   * @param {AbortSignal} [options.signal] - Cancels an unfinished opening and disposes an unpresented opener-owned result.
    * @param {Number} [options.initialLine=0] - A `Number` indicating which row to move the cursor to initially. Defaults to `0`.
    * @param {Number} [options.initialColumn=0] - A `Number` indicating which column to move the cursor to initially. Defaults to `0`.
    * @param {String} [options.split] - Either 'left', 'right', 'up' or 'down'. If 'left', the item will be opened in leftmost pane of the current active pane's row. If 'right', the item will be opened in the rightmost pane of the current active pane's row. If only one pane exists in the row, a new pane will be created. If 'up', the item will be opened in topmost pane of the current active pane's column. If 'down', the item will be opened in the bottommost pane of the current active pane's column. If only one pane exists in the column, a new pane will be created.
@@ -2318,15 +2355,19 @@ module.exports = class Workspace extends Model {
    * @param {Boolean} [options.activateItem=true] - A `Boolean` indicating whether to call {@link Pane#activateItem} on containing pane. Defaults to `true`.
    * @param {Boolean} [options.pending] - A `Boolean` indicating whether or not the item should be opened in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
    * @param {Boolean} [options.transferred=false] - A `Boolean` marking a staged cross-window item whose requested placement should be preserved by tab surfaces.
-   * @param {Pane} [options.pane] - A {@link Pane} in which to open the item. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
+   * @param {Pane} [options.pane] - A {@link Pane} in which to open the item. File openings with searchAllPanes reuse a matching item before using this pane as their destination. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
    * @param {Boolean} [options.searchAllPanes=false] - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
    * @param {String} [options.location] - A `String` containing the name of the location in which this item should be opened (one of "left", "right", "bottom", or "center"). If omitted, Lumine will fall back to the last location in which a user has placed an item with the same URI or, if this is a new URI, the default location specified by the item. NOTE: This option should almost always be omitted to honor user preference.
    * @returns {Promise<Object|undefined>} that resolves to the opened item, or `undefined` when cancelled or refused.
    */
   async open(itemOrURI, options = {}) {
     const openRequest = this.#itemOpenRequests.begin({ pane: options.pane });
+    const signal = options.signal;
+    const abortOpening = () => openRequest.controller.abort();
+    if (signal?.aborted) abortOpening();
+    else signal?.addEventListener("abort", abortOpening, { once: true });
     const providedItem = typeof itemOrURI === "string" ? undefined : itemOrURI;
-    let uri, item, reuseRequest, incomingPromise;
+    let uri, item, reuseRequest, incomingPromise, fileOpener;
     let resolveItem = () => {};
     let openFailure;
     let failed = false;
@@ -2366,12 +2407,14 @@ module.exports = class Workspace extends Model {
     const performOpen = async () => {
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
       if (typeof itemOrURI === "string") {
-        uri = this.project.resolvePath(itemOrURI);
+        ({ uri, options } = normalizeFileOpening(this.project.resolvePath(itemOrURI), options));
       } else if (itemOrURI) {
         item = itemOrURI;
         if (typeof item.getURI === "function") uri = item.getURI();
       }
       openRequest.uri = uri;
+      if (!item && uri) fileOpener = this.resolveFileOpener(uri, options);
+      openRequest.fileOpener = fileOpener;
 
       // Prepare a possible destination without cancelling work there: an opener
       // can still choose a different default location. The request is registered
@@ -2379,15 +2422,21 @@ module.exports = class Workspace extends Model {
       let preferredLocation = options.location;
       if (!options.split) {
         const searchPane =
+          (fileOpener &&
+            options.searchAllPanes &&
+            this.paneForFileOpener(uri, fileOpener, options)) ||
           options.pane ||
           (options.searchAllPanes
             ? item
               ? this.paneForItem(item)
-              : this.paneForURI(uri)
-            : (this.paneContainerForURI(uri) || this.getActivePaneContainer()).getActivePane());
+              : this.paneForFileOpener(uri, fileOpener, options)
+            : (
+                this.paneContainerForFileOpener(uri, fileOpener, options) ||
+                this.getActivePaneContainer()
+              ).getActivePane());
         const existingItem = item
           ? searchPane?.getItems().includes(item)
-          : uri && searchPane?.itemForURI(uri);
+          : uri && this.itemForFileOpener(searchPane, uri, fileOpener, options);
         if (
           !existingItem &&
           !item &&
@@ -2446,15 +2495,21 @@ module.exports = class Workspace extends Model {
 
       // Try to find an existing item in the workspace.
       if (item || uri) {
-        if (options.pane) {
+        const existingFilePane =
+          fileOpener && options.searchAllPanes && !options.split
+            ? this.paneForFileOpener(uri, fileOpener, options)
+            : null;
+        if (existingFilePane) {
+          pane = existingFilePane;
+        } else if (options.pane) {
           pane = options.pane;
         } else if (options.searchAllPanes) {
-          pane = item ? this.paneForItem(item) : this.paneForURI(uri);
+          pane = item ? this.paneForItem(item) : this.paneForFileOpener(uri, fileOpener, options);
         } else {
           // If an item with the given URI is already in the workspace, assume
           // that item's pane container is the preferred location for that URI.
           let container;
-          if (uri) container = this.paneContainerForURI(uri);
+          if (uri) container = this.paneContainerForFileOpener(uri, fileOpener, options);
           if (!container) container = this.getActivePaneContainer();
 
           // The `split` option affects where we search for the item.
@@ -2482,7 +2537,7 @@ module.exports = class Workspace extends Model {
           if (item) {
             itemExistsInWorkspace = pane.getItems().includes(item);
           } else {
-            item = pane.itemForURI(uri);
+            item = this.itemForFileOpener(pane, uri, fileOpener, options);
             itemExistsInWorkspace = item != null;
           }
         }
@@ -2717,6 +2772,7 @@ module.exports = class Workspace extends Model {
       failed = true;
       openFailure = error;
     } finally {
+      signal?.removeEventListener("abort", abortOpening);
       cleanupFailure = itemDisposalFailure;
       try {
         if (failed || !this.#itemOpenRequests.isCurrent(openRequest)) {
@@ -2865,14 +2921,23 @@ module.exports = class Workspace extends Model {
     const activatePane = options.activatePane != null ? options.activatePane : true;
     const activateItem = options.activateItem != null ? options.activateItem : true;
 
-    const uri = this.project.resolvePath(uri_);
-    let item = this.getActivePane().itemForURI(uri);
+    const normalized = normalizeFileOpening(this.project.resolvePath(uri_), options);
+    const uri = normalized.uri;
+    options = normalized.options;
+    const fileOpener = this.resolveFileOpener(uri, options);
+    let item = this.itemForFileOpener(this.getActivePane(), uri, fileOpener, options);
     if (uri && item == null) {
-      for (const opener of this.getOpeners()) {
+      const openers = fileOpener
+        ? fileOpener === this.textFileOpener
+          ? []
+          : [fileOpener.opener]
+        : this.getOpeners();
+      for (const opener of openers) {
         item = opener(uri, options);
         if (item) break;
       }
     }
+    if (fileOpener && fileOpener !== this.textFileOpener && item == null) return;
     if (item == null) {
       item = this.project.openSync(uri, { initialLine, initialColumn });
     }
@@ -2954,8 +3019,18 @@ module.exports = class Workspace extends Model {
    * @param {Object} [openRequest=reuseRequest] - The current workspace open request used to reject obsolete results.
    */
   async createItemForURI(uri, options, reuseRequest, openRequest = reuseRequest) {
+    ({ uri, options } = normalizeFileOpening(uri, options));
+    const fileOpener =
+      openRequest && Object.hasOwn(openRequest, "fileOpener")
+        ? openRequest.fileOpener
+        : this.resolveFileOpener(uri, options);
     if (uri != null) {
-      for (const opener of this.getOpeners()) {
+      const openers = fileOpener
+        ? fileOpener === this.textFileOpener
+          ? []
+          : [fileOpener.opener]
+        : this.getOpeners();
+      for (const opener of openers) {
         if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (reuseRequest?.controller.signal.aborted) return;
         const reuse = this.openerReuseCapabilities.get(opener);
@@ -2996,6 +3071,10 @@ module.exports = class Workspace extends Model {
         if (item != null) return item;
       }
     }
+
+    // An explicit or default file handler owns this attempt. A refusal or
+    // cancellation must not silently open the same file through another type.
+    if (fileOpener && fileOpener !== this.textFileOpener) return;
 
     // The fallback is a center text editor, so its destination no longer
     // depends on an opener's default location.
@@ -3051,7 +3130,7 @@ module.exports = class Workspace extends Model {
       this.#layoutGeneration === generation &&
       (!openRequest || this.#itemOpenRequests.isCurrent(openRequest));
     if (!isCurrent()) return;
-    const filePath = this.project.resolvePath(uri);
+    const filePath = normalizeFileOpening(this.project.resolvePath(uri)).uri;
 
     if (filePath != null) {
       try {
@@ -3367,7 +3446,7 @@ module.exports = class Workspace extends Model {
    * @public
    * @status public
    *
-   * Register an opener for a uri.
+   * Register an opener for an internal workspace URI.
    *
    * When a URI is opened via {@link Workspace#open}, Lumine loops through its registered
    * opener functions until one returns a value for the given uri.
@@ -3379,22 +3458,18 @@ module.exports = class Workspace extends Model {
    *
    * ```js
    * lumine.workspace.addOpener((uri) => {
-   *   if (path.extname(uri) === '.toml') return new TomlEditor(uri)
+   *   if (uri === 'lumine://my-package/panel') return new PackagePanel()
    * })
    * ```
    *
    *
    *
-   * Note that the opener will be called if and only if the URI is not already open
-   * in the current pane. The searchAllPanes flag expands the search from the
-   * current pane to all panes. If you wish to open a view of a different type for
-   * a file that is already open, consider changing the protocol of the URI. For
-   * example, perhaps you wish to preview a rendered version of the file `/foo/bar/baz.quux`
-   * that is already open in a text editor view. You could signal this by calling
-   * {@link Workspace#open} on the URI `quux-preview://foo/bar/baz.quux`. Then your opener
-   * can check the protocol for quux-preview and only handle those URIs that match.
+   * The opener is called only when its URI is not already open in the searched
+   * pane. The searchAllPanes flag expands that search. File viewers use
+   * {@link Workspace#addFileOpener}, which distinguishes existing item types
+   * for the same path and makes alternative views available through Open With.
    *
-   * @param {Function} opener - A `Function` to be called when a path is being opened.
+   * @param {Function} opener - A `Function` to be called when an internal URI is being opened. Register named file viewers with {@link Workspace#addFileOpener}.
    * @param {Object} [options] - Optional preview reuse capabilities.
    * @param {Function} [options.canReusePendingItem] - Synchronously checks `(item, uri, openOptions)` without changing the item. It is checked at this opener's position in the opener order, before constructing a new item.
    * @param {Function} [options.reusePendingItem] - Asynchronously replaces the document with `(item, uri, openOptions, {signal})`. Return `false` to decline and construct normally. Any other resolved value accepts the reuse. Throw `AbortError` to cancel an open superseded by item-owned navigation or reload. Keep the previous document intact on failure, honor the abort signal before committing, and emit the item's `onDidChangeURI` event after committing. Reuse applies only to unmodified pending items in the same destination, without splitting or background opening.
@@ -3415,6 +3490,167 @@ module.exports = class Workspace extends Model {
 
   getOpeners() {
     return this.openers;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Register a named file opener for automatic opening and Open With.
+   * Availability is checked without constructing a view or opening a file.
+   *
+   * @param {Object} descriptor - The file opener descriptor.
+   * @param {String} descriptor.id - A unique stable opener ID.
+   * @param {String} descriptor.label - The name shown in Open With.
+   * @param {Function} descriptor.canOpen - Synchronously return a boolean for `(uri, options)` without side effects.
+   * @param {Function} descriptor.open - Create an item for `(uri, options)`, or perform an action and return an empty string. May return a Promise.
+   * @param {Function} [descriptor.isDefaultEligible] - Synchronously return whether this opener participates in automatic opening; defaults to true. Explicit selection bypasses this preference.
+   * @param {Function} [descriptor.handlesItem] - Recognize an existing or restored item for `(item, uri, options)`, including this opener's type and any fragment-specific identity.
+   * @param {Function} [descriptor.canReusePendingItem] - Check whether an unmodified pending item can be reused.
+   * @param {Function} [descriptor.reusePendingItem] - Replace a pending document with `(item, uri, options, {signal})`.
+   * @returns {Disposable} Removes this opener and its preview capabilities.
+   * @category Opening
+   */
+  addFileOpener(descriptor) {
+    if (
+      !descriptor ||
+      typeof descriptor.id !== "string" ||
+      !descriptor.id ||
+      typeof descriptor.label !== "string" ||
+      !descriptor.label ||
+      typeof descriptor.canOpen !== "function" ||
+      typeof descriptor.open !== "function"
+    ) {
+      throw new TypeError("A file opener requires id, label, canOpen and open");
+    }
+    if (
+      descriptor.id === this.textFileOpener.id ||
+      this.fileOpeners.some((entry) => entry.id === descriptor.id)
+    ) {
+      throw new Error(`A file opener with ID '${descriptor.id}' is already registered`);
+    }
+    for (const key of [
+      "isDefaultEligible",
+      "handlesItem",
+      "canReusePendingItem",
+      "reusePendingItem",
+    ]) {
+      if (descriptor[key] != null && typeof descriptor[key] !== "function") {
+        throw new TypeError(`File opener ${key} must be a function`);
+      }
+    }
+    const record = { ...descriptor };
+    const remember = (item) => {
+      if (!this.fileOpeners.includes(record)) {
+        if (item && typeof item === "object" && !this.paneForItem(item)) item.destroy?.();
+        return;
+      }
+      if (item && typeof item === "object") this.fileOpenerItems.set(item, record);
+      return item;
+    };
+    record.opener = (uri, options = {}) => {
+      if (
+        !this.fileOpeners.includes(record) ||
+        !isFileURI(uri) ||
+        !fileOpenerPredicate(record.canOpen, uri, options)
+      )
+        return;
+      if (
+        options.opener !== record.id &&
+        record.isDefaultEligible &&
+        !fileOpenerPredicate(record.isDefaultEligible, uri, options)
+      )
+        return;
+      const item = record.open(uri, options);
+      return item?.then ? item.then(remember) : remember(item);
+    };
+    const registration = this.addOpener(record.opener, record);
+    this.fileOpeners.push(record);
+    return new Disposable(() => {
+      registration.dispose();
+      const index = this.fileOpeners.indexOf(record);
+      if (index !== -1) this.fileOpeners.splice(index, 1);
+    });
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * List file openers without invoking their opening callbacks.
+   * The automatic default is first, followed by the other available openers.
+   * Text Editor is always included for file paths.
+   *
+   * @param {String} uri - The file path or URI.
+   * @param {Object} [options] - Opening context supplied to the predicates.
+   * @returns {Array<Object>} Descriptors containing `id`, `label` and `isDefault`.
+   * @category Opening
+   */
+  getAvailableFileOpeners(uri, options = {}) {
+    ({ uri, options } = normalizeFileOpening(this.project.resolvePath(uri), options));
+    if (!uri || !isFileURI(uri)) return [];
+    const available = this.fileOpeners.filter((entry) =>
+      fileOpenerPredicate(entry.canOpen, uri, options),
+    );
+    const defaultOpener = this.defaultFileOpener(available, uri, options);
+    return [defaultOpener, ...available, this.textFileOpener]
+      .filter((entry, index, entries) => entries.indexOf(entry) === index)
+      .map(({ id, label }) => ({ id, label, isDefault: id === defaultOpener.id }));
+  }
+
+  defaultFileOpener(available, uri, options) {
+    return (
+      available.find(
+        (entry) =>
+          !entry.isDefaultEligible || fileOpenerPredicate(entry.isDefaultEligible, uri, options),
+      ) ?? this.textFileOpener
+    );
+  }
+
+  resolveFileOpener(uri, options = {}) {
+    if (options.opener != null) {
+      const entry =
+        options.opener === this.textFileOpener.id
+          ? this.textFileOpener
+          : this.fileOpeners.find((candidate) => candidate.id === options.opener);
+      if (
+        !entry ||
+        !isFileURI(uri) ||
+        (entry.canOpen && !fileOpenerPredicate(entry.canOpen, uri, options))
+      ) {
+        throw new Error(`The '${options.opener}' opener is not available for this file`);
+      }
+      return entry;
+    }
+    if (!uri || !isFileURI(uri)) return null;
+    const available = this.fileOpeners.filter((entry) =>
+      fileOpenerPredicate(entry.canOpen, uri, options),
+    );
+    return this.defaultFileOpener(available, uri, options);
+  }
+
+  itemForFileOpener(pane, uri, opener, options = {}) {
+    if (!pane) return;
+    if (!opener) return pane.itemForURI(uri);
+    return pane
+      .getItems()
+      .find(
+        (item) =>
+          (this.getItemURI(item) === uri || item.getPath?.() === uri) &&
+          (opener.handlesItem
+            ? opener.handlesItem(item, uri, options)
+            : this.fileOpenerItems.get(item) === opener),
+      );
+  }
+
+  paneForFileOpener(uri, opener, options) {
+    if (!opener) return this.paneForURI(uri);
+    return this.getPanes().find((pane) => this.itemForFileOpener(pane, uri, opener, options));
+  }
+
+  paneContainerForFileOpener(uri, opener, options) {
+    if (!opener) return this.paneContainerForURI(uri);
+    return this.paneForFileOpener(uri, opener, options)?.getContainer();
   }
 
   /**

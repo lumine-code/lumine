@@ -372,7 +372,12 @@ describe("Workspace", () => {
             const opener = jasmine.createSpy().and.returnValue(item);
             const dock = lumine.workspace.getRightDock();
             spyOn(lumine.workspace.itemLocationStore, "load").and.returnValue(Promise.resolve());
-            spyOn(lumine.workspace, "getOpeners").and.returnValue([opener]);
+            lumine.workspace.addFileOpener({
+              id: "implicit-right-view",
+              label: "Right View",
+              canOpen: (uri) => uri === lumine.project.resolvePath("a"),
+              open: opener,
+            });
             expect(dock.getPaneItems()).toHaveLength(0);
 
             await lumine.workspace.open("a");
@@ -1047,7 +1052,12 @@ describe("Workspace", () => {
             return { canCopy: () => false, bar: pathToOpen };
           }
         };
-        workspace.addOpener(fooOpener);
+        workspace.addFileOpener({
+          id: "foo-view",
+          label: "Foo View",
+          canOpen: (uri) => /\.foo/.test(uri),
+          open: fooOpener,
+        });
         workspace.addOpener(barOpener);
 
         const pathToOpen = lumine.project.getDirectories()[0].resolve("a.foo");

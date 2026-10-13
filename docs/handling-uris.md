@@ -44,19 +44,27 @@ The `lumine` command accepts `--uri-handler` so desktop integration can forward 
 
 ## Workspace openers and preview reuse
 
-`lumine.workspace.addOpener()` handles internal workspace URIs and file paths. Its optional second argument lets a viewer replace the document in an existing pending item:
+`lumine.workspace.addOpener()` handles internal workspace URIs, such as a package's own panel. Register file viewers with `lumine.workspace.addFileOpener()` so the editor can discover their availability and names without opening anything:
 
 ```js
-const registration = lumine.workspace.addOpener(
-  (uri) => (supportsURI(uri) ? new Viewer(uri) : undefined),
-  {
-    canReusePendingItem: (item, uri) => item instanceof Viewer && supportsURI(uri),
-    reusePendingItem: (item, uri, options, { signal }) => item.openDocument(uri, { signal }),
-  },
-);
+const registration = lumine.workspace.addFileOpener({
+  id: "my-viewer",
+  label: "My Viewer",
+  canOpen: (uri) => supportsURI(uri),
+  open: (uri) => new Viewer(uri),
+  handlesItem: (item) => item instanceof Viewer,
+  canReusePendingItem: (item, uri) => item instanceof Viewer && supportsURI(uri),
+  reusePendingItem: (item, uri, options, { signal }) => item.openDocument(uri, { signal }),
+});
 ```
 
-The workspace checks reuse at that opener's usual position in the registration order, after looking for an already open URI. It offers only an unmodified pending item in the same destination pane, for an opening with `pending: true` that does not request a split or `activateItem: false`. Permanent tabs and incompatible items follow ordinary opening behavior.
+Every descriptor has a unique `id`, a display `label`, a synchronous `canOpen(uri, options)` predicate and an `open(uri, options)` callback. Predicates return booleans without constructing views, loading runtimes or changing files. An optional synchronous `isDefaultEligible(uri, options)` predicate separates automatic-opening preferences from availability: a viewer disabled as the default remains available in Open With. The first applicable automatic opener in registration order is the default; Text Editor is the fallback.
+
+`lumine.workspace.getAvailableFileOpeners(path, options)` returns `{id, label, isDefault}` entries with the default first and Text Editor always included. `lumine.workspace.open(path, {opener: "my-viewer"})` selects exactly that opener regardless of its automatic preference; `{opener: "text-editor"}` opens the file as text. An unavailable or retired explicit opener rejects the opening. A selected opener's refusal or cancellation does not fall through to another viewer. An opener that performs an action instead of returning a pane item returns an empty string, including asynchronously.
+
+File openings resolve their opener before searching existing items. Matching requires the same file URI or path and the same opener type. `handlesItem(item, uri, options)` recognizes restored viewers too and can distinguish fragment-specific views; when omitted, only items created by the current registration can be recognized. Local file URLs are normalized to disk paths before discovery and opening, with their fragment forwarded in `options.uriFragment`. A text editor and a specialized view of the same file can therefore coexist, and ordinary Open activates the default type even after an alternative was opened. Disposing the registration removes it from both automatic opening and Open With; an unpresented asynchronous result arriving after disposal is destroyed.
+
+The workspace checks pending reuse after looking for an already open item of the selected type. It offers only an unmodified pending item in the same destination pane, for an opening with `pending: true` that does not request a split or `activateItem: false`. Permanent tabs and incompatible items follow ordinary opening behavior. Internal URI openers can still declare the same pending reuse capabilities in the optional second argument to `addOpener()`.
 
 `canReusePendingItem(item, uri, options)` is synchronous and has no side effects. `reusePendingItem(item, uri, options, { signal })` returns a Promise; resolving `false` declines reuse without changing the item, while any other resolved value accepts it. Prepare the new document before committing, preserve the previous document on failure, and check `signal.aborted` before changing the item. A newer opening, keeping the pending tab, closing it or moving it cancels an unfinished reuse. Throwing an `AbortError` also cancels the opening when the viewer's own navigation or reload supersedes it; other errors reject the opening. The normal successful-open events and hooks still run for a reused item.
 

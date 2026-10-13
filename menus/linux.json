@@ -1067,7 +1067,6 @@
           {
             "id": "diff-view:editor-context"
           },
-          "image-editor:open-in-new-tab",
           "link:open",
           {
             "id": "color-inline:editor-context"
@@ -1111,7 +1110,6 @@
           {
             "id": "diff-view:editor-context"
           },
-          "image-editor:open-in-new-tab",
           "link:open",
           {
             "id": "color-inline:editor-context"
