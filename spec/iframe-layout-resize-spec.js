@@ -83,6 +83,7 @@ describe("layout resizing with focused embedded content", () => {
     expect(sourcePane.getFlexScale()).not.toBe(before);
     expect(document.activeElement).toBe(input);
     await mouse("mouseUp", x + 50, y);
+    await settle();
     expect(isLayoutDragActive()).toBe(false);
   });
 
