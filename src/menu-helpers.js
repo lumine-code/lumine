@@ -1,4 +1,5 @@
 const _ = require("@lumine-code/underscore-plus");
+const { keyBindingLabelForCommand } = require("./key-binding-helpers");
 
 const ItemSpecificities = new WeakMap();
 
@@ -203,13 +204,11 @@ function keyBindingLabelForMenuItem(item, target, keymapManager) {
   if (!command || !keymapManager) return emptyLabel;
   const bindingTarget = explicitTarget
     ? typeof item.keyBindingTarget === "function"
-      ? item.keyBindingTarget(target)
+      ? item.keyBindingTarget.call(target, target)
       : item.keyBindingTarget
     : target;
   if (explicitTarget && bindingTarget == null) return "";
-  const bindings = keymapManager.findKeyBindings({ command, target: bindingTarget });
-  const binding = bindingTarget ? bindings?.[0] : bindings?.at(-1);
-  return binding?.keystrokes ? _.humanizeKeystroke(binding.keystrokes) : emptyLabel;
+  return keyBindingLabelForCommand(keymapManager, command, bindingTarget) ?? emptyLabel;
 }
 
 function acceleratorForKeystroke(keystroke) {

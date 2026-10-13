@@ -109,7 +109,7 @@ Declare nested groups on the submenu item that owns them. A submenu does not inh
 
 ## Contextual keyboard shortcuts
 
-Shortcut labels resolve from the menu's invoked element by default. A status or title control whose action applies to an editor can provide `keyBindingTarget` on a runtime row. It accepts an element or a function receiving the invoking element; return the owning editor element, or `null` when its scoped shortcut does not apply. This affects the displayed shortcut only: command dispatch still uses the original menu target and its `commandDetail`.
+Shortcut labels resolve from the menu's invoked element by default. A status or title control whose action applies to an editor can provide `keyBindingTarget` on a runtime row. It accepts an element or a function called with the invoking element as `this` and its first argument; return the owning editor element, or `null` when its scoped shortcut does not apply. Menu and tooltip labels share the same resolver and select the highest-precedence matching binding, including user overrides. This affects the displayed shortcut only: command dispatch still uses the original menu target and its `commandDetail`.
 
 Rows with `commandDetail` do not automatically borrow the command's shortcut, because keyboard dispatch supplies no such parameters. If a contextual wrapper performs exactly the same operation as a public keyboard command, name that command in `keyBindingCommand`. A combined or behavior-changing variant needs its own command and binding; it must not advertise a standalone action's shortcut. Labels are resolved from current user keymaps each time the menu opens, and lookup-only targets and callbacks are removed from the prepared context-menu template.
 

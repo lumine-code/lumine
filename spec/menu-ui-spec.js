@@ -201,6 +201,63 @@ describe("HTML menu UI", () => {
     }
   });
 
+  it("uses tooltip binding options and the same winning user shortcut", () => {
+    const editor = document.createElement("div");
+    editor.id = "menu-tooltip-shared-editor";
+    editor.classList.add("menu-tooltip-shared-scope");
+    document.body.appendChild(editor);
+    const original = lumine.keymaps.add("menu-tooltip-original", {
+      ".menu-tooltip-shared-scope": { "ctrl-j": "menu-ui-spec:shared-action" },
+    });
+    const user = lumine.keymaps.add("menu-tooltip-user", {
+      ".menu-tooltip-shared-scope": { "ctrl-u": "menu-ui-spec:shared-action" },
+    });
+    const options = {
+      keyBindingCommand: "menu-ui-spec:shared-action",
+      keyBindingTarget() {
+        return this.ownerDocument.getElementById("menu-tooltip-shared-editor");
+      },
+    };
+    const tooltip = lumine.tooltips.add(target, { title: "Action", html: false, ...options });
+    try {
+      const [tip] = lumine.tooltips.findTooltips(target);
+      const title = document.createElement("div");
+      title.innerHTML = tip.getTitle();
+      const label = title.querySelector(".keystroke").textContent;
+      expect(label).toBe(process.platform === "darwin" ? "⌃U" : "Ctrl+U");
+      const popup = showMenuPopup(contextViews, {
+        target,
+        anchor: target,
+        template: [{ label: "Action", command: "menu-ui-spec:shared-action", ...options }],
+      });
+      expect(popup.rootList.items[0].keystrokeElement.textContent).toBe(label);
+      popup.close();
+      const unscoped = lumine.tooltips.add(target, {
+        title: "Action",
+        html: false,
+        keyBindingCommand: options.keyBindingCommand,
+      });
+      try {
+        const tipWithoutTarget = lumine.tooltips.findTooltips(target).at(-1);
+        title.innerHTML = tipWithoutTarget.getTitle();
+        const withoutTarget = showMenuPopup(contextViews, {
+          anchor: target,
+          template: [{ label: "Action", command: options.keyBindingCommand }],
+        });
+        expect(withoutTarget.rootList.items[0].keystrokeElement.textContent).toBe(
+          title.querySelector(".keystroke").textContent,
+        );
+      } finally {
+        unscoped.dispose();
+      }
+    } finally {
+      tooltip.dispose();
+      user.dispose();
+      original.dispose();
+      editor.remove();
+    }
+  });
+
   it("reserves a check column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(

@@ -141,7 +141,7 @@ module.exports = class ContextMenuManager {
    * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
    * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
    * @param {String} [itemsBySelector.keyBindingCommand] - An equivalent public command whose keyboard shortcut should be displayed. Use this for a contextual wrapper that preserves the same operation; behavior-changing command variants must not borrow a different action's shortcut.
-   * @param {Element|Function} [itemsBySelector.keyBindingTarget] - The element used only to resolve the shortcut. A function receives the invoking element and returns its editor or another binding scope; returning `null` suppresses the shortcut. The selected command still dispatches to the original menu target.
+   * @param {Element|Function} [itemsBySelector.keyBindingTarget] - The element used only to resolve the shortcut. A function is called with the invoking element as `this` and its first argument, matching tooltip target callbacks; return its editor or another binding scope, or `null` to suppress the shortcut. The selected command still dispatches to the original menu target.
    * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
    * @param {Array} [itemsBySelector.submenu] - An `Array` of additional items.
    * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.

@@ -315,10 +315,8 @@ module.exports = class TooltipManager {
 };
 
 function getKeyBinding(keymapManager, command, target) {
-  const bindings = keymapManager.findKeyBindings({ command, target });
-  if (bindings && bindings.length) {
-    return getKeyBindingLabel(_.humanizeKeystroke(bindings[0].keystrokes));
-  }
+  const label = keyBindingLabelForCommand(keymapManager, command, target);
+  if (label) return getKeyBindingLabel(label);
 }
 
 function getKeyBindingLabel(label) {
@@ -331,3 +329,4 @@ function getKeyBindingExtraLabel(label) {
     .replace(/\b(cmdorctrl|cmd|ctrl|alt|option|shift)\b/gi, (modifier) => modifier.toLowerCase());
   return getKeyBindingLabel(_.humanizeKeystroke(keystroke));
 }
+const { keyBindingLabelForCommand } = require("./key-binding-helpers");
