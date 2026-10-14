@@ -369,7 +369,9 @@ module.exports = class MenuManager {
    * Refreshes the currently visible menu.
    */
   update() {
-    this.emitter.emit("did-change", this.getTemplate());
+    if (this.emitter.listenerCountForEventName("did-change") > 0) {
+      this.emitter.emit("did-change", this.getTemplate());
+    }
     if (!this.initialized) {
       return;
     }

@@ -37,6 +37,21 @@ describe("Package", function () {
     return pack;
   };
 
+  it("refreshes menu bindings only when package keymaps change", () => {
+    const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-main");
+    const pack = buildPackage(packagePath);
+    spyOn(lumine.menu, "update");
+    pack.activateKeymaps();
+    pack.deactivateKeymaps();
+    expect(lumine.menu.update).not.toHaveBeenCalled();
+
+    pack.keymaps = [["startup-keymap-spec", { "lumine-workspace": { "ctrl-alt-q": "spec:noop" } }]];
+    pack.activateKeymaps();
+    expect(lumine.menu.update).toHaveBeenCalledTimes(1);
+    pack.deactivateKeymaps();
+    expect(lumine.menu.update).toHaveBeenCalledTimes(2);
+  });
+
   describe("::getCachedResourcePaths()", function () {
     it("resolves baked resource paths for bundled packages", function () {
       const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-index");

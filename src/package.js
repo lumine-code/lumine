@@ -610,7 +610,7 @@ module.exports = class Package {
     for (let [keymapPath, map] of this.keymaps) {
       this.keymapDisposables.add(this.keymapManager.add(keymapPath, map, 0, validateSelectors));
     }
-    this.menuManager.update();
+    if (this.keymaps.length > 0) this.menuManager.update();
 
     this.keymapActivated = true;
   }
@@ -622,7 +622,8 @@ module.exports = class Package {
     this.keymapActivated = false;
     const failures = [];
     captureLifecycleError(failures, () => keymaps?.dispose());
-    if (wasActivated) captureLifecycleError(failures, () => this.menuManager.update());
+    if (wasActivated && this.keymaps.length > 0)
+      captureLifecycleError(failures, () => this.menuManager.update());
     throwLifecycleErrors(failures, `Package '${this.name}' keymaps failed to deactivate`);
   }
 

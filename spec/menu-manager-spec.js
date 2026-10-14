@@ -127,6 +127,24 @@ describe("MenuManager", function () {
   describe("::update()", function () {
     beforeEach(() => (menu.platform = "darwin"));
 
+    it("prepares no unused change snapshot before a native menu flush", () => {
+      spyOn(menu, "getTemplate").and.callThrough();
+      menu.update();
+      menu.update();
+      expect(menu.getTemplate).not.toHaveBeenCalled();
+      advanceClock(1);
+      expect(menu.getTemplate).toHaveBeenCalledTimes(1);
+    });
+
+    it("delivers prepared change snapshots synchronously to observers", () => {
+      const changed = jasmine.createSpy("changed");
+      const subscription = menu.onDidChange(changed);
+      menu.add([{ label: "Startup", submenu: [{ label: "Action", command: "spec:action" }] }]);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(changed.calls.mostRecent().args[0]).toEqual(menu.getTemplate());
+      subscription.dispose();
+    });
+
     it("sends the current menu template and associated key bindings to the browser process", function () {
       menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
       lumine.keymaps.add("test", { "lumine-workspace": { "ctrl-b": "b" } });
