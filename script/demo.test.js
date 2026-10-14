@@ -12,6 +12,7 @@ const {
   check,
   readmeWithImages,
   accept,
+  seedSecrets,
 } = require("./demo");
 
 function temporary(t) {
@@ -25,6 +26,37 @@ const recipe = () => ({
   scenes: [{ id: "first", file: "demo.png", caption: "A real view.", run() {}, ready() {} }],
 });
 const image = { file: "demo.png", label: "A real view." };
+
+test("authenticated demos copy only requested ciphertext and OS crypto metadata", (t) => {
+  const source = temporary(t),
+    target = temporary(t);
+  const store = path.join(source, "secret-store.json");
+  fs.writeFileSync(
+    store,
+    JSON.stringify({ "github:example": "encrypted-example", unrelated: "encrypted-other" }),
+  );
+  fs.mkdirSync(path.join(source, "electronUserData"));
+  fs.writeFileSync(
+    path.join(source, "electronUserData", "Local State"),
+    JSON.stringify({
+      os_crypt: { encrypted_key: "os-protected-key" },
+      unrelatedPreference: "private",
+    }),
+  );
+  seedSecrets(["github:example"], store, target);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target, "secret-store.json"))), {
+    "github:example": "encrypted-example",
+  });
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(target, "electronUserData", "Local State"))),
+    { os_crypt: { encrypted_key: "os-protected-key" } },
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(store)), {
+    "github:example": "encrypted-example",
+    unrelated: "encrypted-other",
+  });
+  assert.throws(() => seedSecrets(["missing"], store, target), /Missing requested credential/);
+});
 
 test("recipes reject traversal, duplicate scenes and missing readiness checks", () => {
   assert.equal(validate(recipe()).scenes.length, 1);

@@ -228,6 +228,34 @@ async function freePort() {
   return port;
 }
 
+function seedSecrets(keys, secretsFile, profile) {
+  const sourceFile = path.resolve(secretsFile);
+  const source = readJSON(sourceFile);
+  const selected = {};
+  for (const key of keys) {
+    if (typeof source[key] !== "string") throw new Error(`Missing requested credential: ${key}`);
+    selected[key] = source[key];
+  }
+  fs.writeFileSync(path.join(profile, "secret-store.json"), JSON.stringify(selected), {
+    mode: 0o600,
+  });
+  // Chromium on Windows encrypts store entries with a per-profile key. Copy
+  // only its OS-protected crypto metadata, never the rest of the old profile.
+  const stateFile = path.join(path.dirname(sourceFile), "electronUserData", "Local State");
+  if (fs.existsSync(stateFile)) {
+    const state = readJSON(stateFile);
+    if (state.os_crypt) {
+      const directory = path.join(profile, "electronUserData");
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(
+        path.join(directory, "Local State"),
+        JSON.stringify({ os_crypt: state.os_crypt }),
+        { mode: 0o600 },
+      );
+    }
+  }
+}
+
 async function capture(repository, options = {}) {
   const repo = fs.realpathSync(path.resolve(repository));
   const recipePath = path.join(repo, "demo.js");
@@ -283,15 +311,7 @@ async function capture(repository, options = {}) {
       throw new Error(
         "This demo requires an authenticated profile; pass --secrets-file with its encrypted secret-store.json",
       );
-    const source = readJSON(path.resolve(options["secrets-file"]));
-    const selected = {};
-    for (const key of recipe.secrets) {
-      if (typeof source[key] !== "string") throw new Error(`Missing requested credential: ${key}`);
-      selected[key] = source[key];
-    }
-    fs.writeFileSync(path.join(profile, "secret-store.json"), JSON.stringify(selected), {
-      mode: 0o600,
-    });
+    seedSecrets(recipe.secrets, options["secrets-file"], profile);
   }
   fs.writeFileSync(
     path.join(profile, "config.json"),
@@ -469,6 +489,7 @@ async function main(args) {
 }
 
 module.exports = {
+  seedSecrets,
   inside,
   validate,
   fixtureFiles,
