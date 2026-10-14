@@ -8,7 +8,85 @@
       "title": "Code and project navigation",
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
-      "dark": "01-dark.png"
+      "dark": "01-dark.png",
+      "capturedOn": "2026-10-14",
+      "sourceRevision": "ca7198ebc05410bb29a14259434e77c94a714b24",
+      "packageSourceRevisions": {
+        "language-gfm": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
+        "language-python": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
+        "markdown-preview": "82a0722f36caa44c088971b7b443af53fb43a525",
+        "tree-view": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4"
+      },
+      "themeSourceRevision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "bb681b4e5ba5f2b2b12657d698e6899ea981c7b79114a5f72982c7da49406621",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.7.0",
+          "chrome": "152.0.7977.130",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "sources": {
+          "editor": {
+            "revision": "ca7198ebc05410bb29a14259434e77c94a714b24",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "markdown-preview": {
+            "revision": "82a0722f36caa44c088971b7b443af53fb43a525",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "one-theme": {
+            "revision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "552c589be83868b397bbe624e5e194cc43dfe15e4bb3b37ac34196cab60fdb6c"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "daaf10ddedcb758795e5ff5dff9c624552195c1d41551fb5862ae04542755f3f"
+          }
+        ],
+        "sha256": "917905a216d412905f27a3e9852957bc312c1e97a247b8e8acdc65b56bb791a6"
+      }
     },
     {
       "file": "view-2.png",
@@ -19,9 +97,82 @@
       "dark": "02-dark.png",
       "capturedOn": "2026-10-14",
       "packageSourceRevisions": {
-        "markdown-preview": "abd3f45bcafe8604afade04da08a0b07b9874194"
+        "language-gfm": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
+        "language-python": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
+        "markdown-preview": "82a0722f36caa44c088971b7b443af53fb43a525",
+        "tree-view": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4"
       },
-      "themeSourceRevision": "14a69683b0e3238e2bc128fbfae3866c1e4ee9c6"
+      "themeSourceRevision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
+      "sourceRevision": "ca7198ebc05410bb29a14259434e77c94a714b24",
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "bb681b4e5ba5f2b2b12657d698e6899ea981c7b79114a5f72982c7da49406621",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.7.0",
+          "chrome": "152.0.7977.130",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "sources": {
+          "editor": {
+            "revision": "ca7198ebc05410bb29a14259434e77c94a714b24",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "markdown-preview": {
+            "revision": "82a0722f36caa44c088971b7b443af53fb43a525",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "one-theme": {
+            "revision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "552c589be83868b397bbe624e5e194cc43dfe15e4bb3b37ac34196cab60fdb6c"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "daaf10ddedcb758795e5ff5dff9c624552195c1d41551fb5862ae04542755f3f"
+          }
+        ],
+        "sha256": "9889e3e77def788d8c264d46d09aeaf11d48c62c4280016239c581e2d270e83e"
+      }
     },
     {
       "file": "view-3.png",
