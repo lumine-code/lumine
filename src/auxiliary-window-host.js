@@ -7,6 +7,11 @@ const PaneContainer = require("./pane-container");
 const { createWorkspaceElement } = require("./workspace-element");
 const EmbeddedPaneKeyboardBridge = require("./embedded-pane-keyboard-bridge");
 const AuxiliaryKeyboardTransport = require("./auxiliary-keyboard-transport");
+const {
+  captureLifecycleError,
+  awaitLifecycleCleanup,
+  throwLifecycleErrors,
+} = require("./package-lifecycle-errors");
 
 // Owns one additional Document and its UI bindings. It shares all models,
 // providers and package generations with the opening Environment.
@@ -23,13 +28,11 @@ module.exports = class AuxiliaryWindowHost {
     let service;
     let editorWindow;
     let container;
+    let descriptor;
     try {
       domWindow = environment.domWindow.open("about:blank", token);
       if (!domWindow) throw new Error("The auxiliary editor window could not be opened.");
-      const descriptor = await environment.applicationDelegate.invokeAuxiliaryWindow(
-        "resolve",
-        token,
-      );
+      descriptor = await environment.applicationDelegate.invokeAuxiliaryWindow("resolve", token);
       if (!workspace.isAlive() || environment.unloading)
         throw new Error("The workspace is closing.");
       service = new AuxiliaryWindowService(environment.applicationDelegate, descriptor);
@@ -127,9 +130,10 @@ module.exports = class AuxiliaryWindowHost {
       editorWindow.subscriptions.add(environment.views.attachPresentationDocument(document));
       editorWindow.subscriptions.add(environment.tooltips.attachWindow(domWindow));
       editorWindow.subscriptions.add(environment.keymaps.addDocumentTarget(document, root));
-      const dropSurface = environment.workspaceDrops.attachPresentation(root);
+      const workspaceDrops = environment.workspaceDrops;
+      const dropSurface = workspaceDrops.attachPresentation(root);
       editorWindow.subscriptions.add(
-        new Disposable(() => environment.workspaceDrops.releaseSurface(dropSurface)),
+        new Disposable(() => workspaceDrops.releaseSurface(dropSurface)),
       );
       const keyboardTransport = new AuxiliaryKeyboardTransport(service);
       const frameKeyboardBridge = new EmbeddedPaneKeyboardBridge({
@@ -202,14 +206,28 @@ module.exports = class AuxiliaryWindowHost {
       if (options.show !== false) await service.show();
       return editorWindow;
     } catch (error) {
+      const failures = [error];
       if (editorWindow) {
-        workspace.getCenter().removePaneContainer(container);
-        editorWindow.destroy();
+        captureLifecycleError(failures, () => workspace.getCenter().removePaneContainer(container));
+        captureLifecycleError(failures, () => editorWindow.destroy());
       }
-      container?.destroy();
-      if (service) await service.close().catch(() => {});
-      else await environment.applicationDelegate.invokeAuxiliaryWindow("cancel", token);
-      throw error;
+      captureLifecycleError(failures, () => container?.destroy());
+      if (!domWindow?.closed) {
+        await awaitLifecycleCleanup(failures, () => {
+          if (service) return service.close();
+          if (descriptor)
+            return environment.applicationDelegate.invokeAuxiliaryWindow(
+              "invoke",
+              descriptor.id,
+              "close",
+            );
+          return environment.applicationDelegate.invokeAuxiliaryWindow("cancel", token);
+        });
+      }
+      throwLifecycleErrors(
+        failures,
+        "Unable to open the editor window and release its presentation.",
+      );
     }
   }
 };
