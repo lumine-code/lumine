@@ -15,17 +15,24 @@ describe("MacApplicationMenu", () => {
   let originalLumineApplication;
   let sentCommands;
 
-  const buildFakeMenu = (template) => ({
-    items: template.map(({ metadata: _metadata, ...item }) => ({
+  const buildFakeMenu = (template) => {
+    const menu = new EventEmitter();
+    menu.items = template.map(({ metadata: _metadata, ...item }) => ({
       ...item,
       enabled: item.enabled !== false,
       submenu: Array.isArray(item.submenu) ? buildFakeMenu(item.submenu) : undefined,
-    })),
-  });
+    }));
+    return menu;
+  };
 
   const createWindow = (focused = false) => {
     const window = new EventEmitter();
     window.isFocused = () => focused;
+    window.messages = [];
+    window.webContents = {
+      isDestroyed: () => false,
+      send: (...args) => window.messages.push(args),
+    };
     return window;
   };
 
@@ -219,5 +226,113 @@ describe("MacApplicationMenu", () => {
   it("has no native popup backend", () => {
     assert.isUndefined(applicationMenu.showPopup);
     assert.isUndefined(applicationMenu.closePopup);
+  });
+
+  describe("native menu visibility", () => {
+    const visibilityMessage = (visible, windowId) => [
+      "message",
+      "did-change-application-menu-visibility",
+      { visible, windowId },
+    ];
+
+    it("suppresses the menu's window until the whole menu closes, including submenus", () => {
+      const first = createWindow();
+      const second = createWindow();
+      applicationMenu.addWindow(first);
+      applicationMenu.addWindow(second);
+      const menu = applicationMenu.menu;
+
+      menu.emit("menu-will-show");
+      menu.emit("menu-will-show");
+      assert.deepStrictEqual(first.messages, [visibilityMessage(true)]);
+      assert.deepStrictEqual(second.messages, []);
+
+      menu.emit("menu-will-close");
+      assert.deepStrictEqual(first.messages, [visibilityMessage(true), visibilityMessage(false)]);
+      assert.isFalse(applicationMenu.menuOpen);
+    });
+
+    it("keeps the open menu observed and applies only the newest replacement after close", () => {
+      const first = createWindow();
+      const second = createWindow();
+      applicationMenu.addWindow(first);
+      applicationMenu.addWindow(second);
+      applicationMenu.update(first, [{ label: "First" }], {});
+      applicationMenu.update(second, [{ label: "Second" }], {});
+      const menu = applicationMenu.menu;
+      menu.emit("menu-will-show");
+
+      second.emit("focus");
+      applicationMenu.update(second, [{ label: "Latest" }], {});
+      assert.strictEqual(applicationMenu.menu, menu);
+      assert.strictEqual(applicationMenu.activeTemplate[0].label, "First");
+
+      menu.emit("menu-will-close");
+      assert.deepStrictEqual(first.messages, [visibilityMessage(true), visibilityMessage(false)]);
+      assert.deepStrictEqual(second.messages, []);
+      assert.strictEqual(applicationMenu.activeTemplate[0].label, "Latest");
+      assert.strictEqual(menu.listenerCount("menu-will-show"), 0);
+      assert.strictEqual(menu.listenerCount("menu-will-close"), 0);
+
+      applicationMenu.menu.emit("menu-will-show");
+      applicationMenu.menu.emit("menu-will-close");
+      assert.deepStrictEqual(second.messages, [visibilityMessage(true), visibilityMessage(false)]);
+    });
+
+    it("lets a replacement return to the currently installed template while open", () => {
+      const window = createWindow();
+      applicationMenu.addWindow(window);
+      applicationMenu.update(window, [{ label: "Original" }], {});
+      const menu = applicationMenu.menu;
+      menu.emit("menu-will-show");
+      applicationMenu.update(window, [{ label: "Temporary" }], {});
+      applicationMenu.update(window, [{ label: "Original" }], {});
+      menu.emit("menu-will-close");
+
+      assert.strictEqual(applicationMenu.menu, menu);
+      assert.isNull(applicationMenu.pendingTemplate);
+      assert.deepStrictEqual(window.messages, [visibilityMessage(true), visibilityMessage(false)]);
+    });
+
+    it("addresses an auxiliary presentation through its owning renderer", () => {
+      const window = createWindow();
+      applicationMenu.addWindow(window);
+      global.lumineApplication.lumineWindowForBrowserWindow = (browserWindow) => {
+        assert.strictEqual(browserWindow, window);
+        return {
+          id: 7,
+          auxiliaryWindowBroker: { getFocusedRecord: () => ({ id: -23 }) },
+        };
+      };
+      applicationMenu.menu.emit("menu-will-show");
+      global.lumineApplication.lumineWindowForBrowserWindow = () => ({ id: 7 });
+      applicationMenu.menu.emit("menu-will-close");
+
+      assert.deepStrictEqual(window.messages, [
+        visibilityMessage(true, -23),
+        visibilityMessage(false, -23),
+      ]);
+    });
+
+    it("clears the session when its window closes and never sends to destroyed contents", () => {
+      const first = createWindow();
+      const second = createWindow();
+      applicationMenu.addWindow(first);
+      applicationMenu.addWindow(second);
+      applicationMenu.update(first, [{ label: "First" }], {});
+      applicationMenu.update(second, [{ label: "Second" }], {});
+      const oldMenu = applicationMenu.menu;
+      oldMenu.emit("menu-will-show");
+      first.webContents.isDestroyed = () => true;
+      first.emit("closed");
+
+      assert.isFalse(applicationMenu.menuOpen);
+      assert.isNull(applicationMenu.menuWindow);
+      assert.strictEqual(applicationMenu.activeTemplate[0].label, "Second");
+      assert.deepStrictEqual(first.messages, [visibilityMessage(true)]);
+      oldMenu.emit("menu-will-close");
+      applicationMenu.menu.emit("menu-will-show");
+      assert.deepStrictEqual(second.messages, [visibilityMessage(true)]);
+    });
   });
 });

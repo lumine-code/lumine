@@ -426,39 +426,45 @@ class MenuPopup {
     this.mouseSelecting = false;
     this.ignoreNextClick = false;
     this.boundMouseUp = (event) => this.endMouseSelection(event);
+    this.tooltipSuspension = globalThis.lumine?.tooltips?.suspend(this.document);
     let popup = this;
-    this.handle = contextViewManager.show({
-      anchor: options.anchor ?? options.target,
-      placement: options.placement,
-      fixedPlacement: options.fixedPlacement,
-      alignment: options.alignment,
-      edgePadding: options.edgePadding,
-      dismissBoundary: options.dismissBoundary,
-      className: ["menu-context-view", options.className].filter(Boolean).join(" "),
-      onLayout: () => this.positionOpenSubmenus(),
-      render(surface) {
-        const rootList = new MenuListView(popup, options.template);
-        popup.rootList = rootList;
-        popup.lists.push(rootList);
-        surface.classList.add("menu-box", "menu-popup-panel");
-        surface.replaceChildren(...rootList.items.map((item) => item.element));
-        rootList.element = surface;
-        surface.setAttribute("role", "menu");
-        surface.tabIndex = -1;
-        surface.addEventListener("keydown", (event) => rootList.onKeyDown(event));
-        surface.addEventListener("mouseleave", () => {
-          if (!popup.mouseSelecting) rootList.selectItem(null);
-        });
-        return () => popup.disposeLists();
-      },
-      focus() {
-        if (options.autoSelectFirstItem) popup.rootList.selectFirst();
-        else popup.rootList.element.focus({ preventScroll: true });
-      },
-      onHide(closeEvent) {
-        popup.finishClose(closeEvent);
-      },
-    });
+    try {
+      this.handle = contextViewManager.show({
+        anchor: options.anchor ?? options.target,
+        placement: options.placement,
+        fixedPlacement: options.fixedPlacement,
+        alignment: options.alignment,
+        edgePadding: options.edgePadding,
+        dismissBoundary: options.dismissBoundary,
+        className: ["menu-context-view", options.className].filter(Boolean).join(" "),
+        onLayout: () => this.positionOpenSubmenus(),
+        render(surface) {
+          const rootList = new MenuListView(popup, options.template);
+          popup.rootList = rootList;
+          popup.lists.push(rootList);
+          surface.classList.add("menu-box", "menu-popup-panel");
+          surface.replaceChildren(...rootList.items.map((item) => item.element));
+          rootList.element = surface;
+          surface.setAttribute("role", "menu");
+          surface.tabIndex = -1;
+          surface.addEventListener("keydown", (event) => rootList.onKeyDown(event));
+          surface.addEventListener("mouseleave", () => {
+            if (!popup.mouseSelecting) rootList.selectItem(null);
+          });
+          return () => popup.disposeLists();
+        },
+        focus() {
+          if (options.autoSelectFirstItem) popup.rootList.selectFirst();
+          else popup.rootList.element.focus({ preventScroll: true });
+        },
+        onHide(closeEvent) {
+          popup.finishClose(closeEvent);
+        },
+      });
+    } catch (error) {
+      this.tooltipSuspension?.dispose();
+      throw error;
+    }
     this.element = this.handle.element;
   }
 
@@ -596,6 +602,7 @@ class MenuPopup {
     if (this.closed) return;
     this.closed = true;
     this.window.removeEventListener("mouseup", this.boundMouseUp, true);
+    this.tooltipSuspension?.dispose();
     this.emitter.emit("did-close", { cancelled, restoreFocus });
     this.emitter.dispose();
   }

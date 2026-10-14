@@ -85,6 +85,7 @@ module.exports = class TooltipManager {
     this.keymapManager = keymapManager;
     this.viewRegistry = viewRegistry;
     this.tooltips = new Map();
+    this.suspensions = new Map();
     this.tooltipCancellationEvents = ["click", "contextmenu", "auxclick"];
     this.boundPointerAction = (event) => this.cancelTooltipsForPointerAction(event);
     this.windows = new Map();
@@ -109,10 +110,32 @@ module.exports = class TooltipManager {
         window.removeEventListener(event, this.boundPointerAction, true);
       window.removeEventListener("resize", hide);
       window.removeEventListener("blur", hide);
+      this.suspensions.delete(window.document);
       this.windows.delete(window);
     });
     this.windows.set(window, disposable);
     return disposable;
+  }
+
+  /** @private Suppress tooltips in a document until the menu closes. */
+  suspend(document = globalThis.document) {
+    let suspensions = this.suspensions.get(document);
+    if (!suspensions) {
+      suspensions = new Set();
+      this.suspensions.set(document, suspensions);
+    }
+    const token = {};
+    suspensions.add(token);
+    for (const [target, tooltips] of this.tooltips) {
+      if (target.ownerDocument !== document) continue;
+      for (const tooltip of tooltips) tooltip.cancel();
+    }
+    return new Disposable(() => {
+      suspensions.delete(token);
+      if (suspensions.size === 0 && this.suspensions.get(document) === suspensions) {
+        this.suspensions.delete(document);
+      }
+    });
   }
 
   /**
@@ -237,7 +260,11 @@ module.exports = class TooltipManager {
   }
 
   addTooltip(target, options) {
-    const tooltip = new Tooltip(target, options, this.viewRegistry);
+    const tooltip = new Tooltip(
+      target,
+      { ...options, isSuppressed: () => this.suspensions.has(target.ownerDocument) },
+      this.viewRegistry,
+    );
 
     if (!this.tooltips.has(target)) {
       this.tooltips.set(target, []);
@@ -311,6 +338,7 @@ module.exports = class TooltipManager {
       }
     }
     this.tooltips.clear();
+    this.suspensions.clear();
   }
 };
 

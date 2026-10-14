@@ -29,6 +29,88 @@ describe("TooltipManager", () => {
     manager.destroy();
   });
 
+  describe("while a menu suspends tooltips", () => {
+    it("cancels visible and pending tooltips without a follow-through after closing", () => {
+      manager.add(element, { title: "Title" });
+      mouseEnter(element);
+      advanceClock(manager.hoverDefaults.delay.show);
+      expect(document.body.querySelector(".tooltip")).toHaveText("Title");
+
+      const suspension = manager.suspend(document);
+      expect(document.body.querySelector(".tooltip")).toBeNull();
+      mouseEnter(element);
+      mouseLeave(element);
+      advanceClock(manager.hoverDefaults.delay.hide);
+      suspension.dispose();
+      expect(document.body.querySelector(".tooltip")).toBeNull();
+
+      mouseEnter(element);
+      expect(document.body.querySelector(".tooltip")).toBeNull();
+      advanceClock(manager.hoverDefaults.delay.show);
+      expect(document.body.querySelector(".tooltip")).toHaveText("Title");
+      mouseLeave(element);
+      advanceClock(manager.hoverDefaults.delay.hide);
+      advanceClock(Tooltip.FOLLOW_THROUGH_DURATION);
+
+      mouseEnter(element);
+      const pendingSuspension = manager.suspend(document);
+      pendingSuspension.dispose();
+      advanceClock(manager.hoverDefaults.delay.show);
+      expect(document.body.querySelector(".tooltip")).toBeNull();
+    });
+
+    it("suppresses newly registered manual, click and focus tooltips", () => {
+      const suspension = manager.suspend(document);
+      for (const trigger of ["manual", "click", "focus"]) {
+        const disposable = manager.add(element, { title: trigger, trigger });
+        element.click();
+        element.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        disposable.dispose();
+      }
+      suspension.dispose();
+      manager.add(element, { title: "Hover" });
+      mouseEnter(element);
+      expect(document.body.querySelector(".tooltip")).toBeNull();
+      advanceClock(manager.hoverDefaults.delay.show);
+      expect(document.body.querySelector(".tooltip")).toHaveText("Hover");
+      mouseLeave(element);
+      advanceClock(manager.hoverDefaults.delay.hide);
+      manager.add(element, { title: "Click", trigger: "click" });
+      element.click();
+      expect(document.body.querySelector(".tooltip")).toHaveText("Click");
+    });
+
+    it("stays suspended when one of two overlapping menus closes", () => {
+      manager.add(element, { title: "Title" });
+      const first = manager.suspend(document);
+      const second = manager.suspend(document);
+      first.dispose();
+      hover(element, () => expect(document.body.querySelector(".tooltip")).toBeNull());
+      second.dispose();
+      hover(element, () => expect(document.body.querySelector(".tooltip")).toHaveText("Title"));
+    });
+
+    it("only suppresses the document that owns the menu", () => {
+      const frame = document.createElement("iframe");
+      jasmine.attachToDOM(frame);
+      const otherDocument = frame.contentDocument;
+      const otherElement = otherDocument.createElement("button");
+      otherDocument.body.appendChild(otherElement);
+      const attachedWindow = manager.attachWindow(frame.contentWindow);
+      const suspension = manager.suspend(document);
+      try {
+        manager.add(element, { title: "Main", trigger: "manual" });
+        manager.add(otherElement, { title: "Other", trigger: "manual" });
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        expect(otherDocument.body.querySelector(".tooltip").textContent).toBe("Other");
+      } finally {
+        suspension.dispose();
+        attachedWindow.dispose();
+      }
+    });
+  });
+
   describe("::add(target, options)", () => {
     it("escapes plain titles while rendering the primary keyboard shortcut", () => {
       const binding = lumine.keymaps.add("plain-tooltip-spec", {

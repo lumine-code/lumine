@@ -16,6 +16,12 @@ module.exports = class MacApplicationMenu {
     this.version = version;
     this.windows = new Set();
     this.windowTemplates = new WeakMap();
+    this.menuOpen = false;
+    this.menuWindow = null;
+    this.menuPresentationId = null;
+    this.pendingTemplate = null;
+    this.handleMenuWillShow = () => this.setMenuOpen(true);
+    this.handleMenuWillClose = () => this.setMenuOpen(false);
     this.setActiveTemplate(this.getDefaultTemplate());
   }
 
@@ -30,11 +36,48 @@ module.exports = class MacApplicationMenu {
   }
 
   setActiveTemplate(template) {
+    // Cocoa keeps the installed menu until its tracking session ends. Keep
+    // observing that same menu and apply the newest template once it closes.
+    if (this.menuOpen) {
+      this.pendingTemplate = template;
+      return;
+    }
     if (_.isEqual(template, this.activeTemplate)) return;
 
+    this.menu?.removeListener("menu-will-show", this.handleMenuWillShow);
+    this.menu?.removeListener("menu-will-close", this.handleMenuWillClose);
     this.activeTemplate = template;
     this.menu = Menu.buildFromTemplate(_.deepClone(template));
+    this.menu.on("menu-will-show", this.handleMenuWillShow);
+    this.menu.on("menu-will-close", this.handleMenuWillClose);
     Menu.setApplicationMenu(this.menu);
+  }
+
+  setMenuOpen(open) {
+    // The root Cocoa controller also reports submenu openings, while closing
+    // a nested submenu leaves the application menu's tracking session alive.
+    if (open === this.menuOpen) return;
+    this.menuOpen = open;
+    const window = open ? this.lastFocusedWindow : this.menuWindow;
+    if (open) {
+      const owner = global.lumineApplication?.lumineWindowForBrowserWindow?.(window);
+      this.menuPresentationId = owner?.auxiliaryWindowBroker?.getFocusedRecord()?.id ?? owner?.id;
+    }
+    const windowId = this.menuPresentationId;
+    this.menuWindow = open ? window : null;
+    const contents = window?.webContents;
+    if (contents && !window.isDestroyed?.() && !contents.isDestroyed?.()) {
+      contents.send("message", "did-change-application-menu-visibility", {
+        visible: open,
+        windowId,
+      });
+    }
+    if (!open) this.menuPresentationId = null;
+    if (!open && this.pendingTemplate) {
+      const template = this.pendingTemplate;
+      this.pendingTemplate = null;
+      this.setActiveTemplate(template);
+    }
   }
 
   addWindow(window) {
@@ -47,6 +90,7 @@ module.exports = class MacApplicationMenu {
 
     window.on("focus", focusHandler);
     window.once("closed", () => {
+      if (window === this.menuWindow) this.setMenuOpen(false);
       this.windows.delete(window);
       this.windowTemplates.delete(window);
       window.removeListener("focus", focusHandler);

@@ -98,6 +98,7 @@ class Environment {
   #gitAuthBroker;
   #windowEventHandler;
   #projectStateController;
+  #applicationMenuTooltipSuspension = null;
   #resetting = 0;
   #destroyed = false;
 
@@ -669,6 +670,25 @@ class Environment {
 
     this.disposables.add(
       this.applicationDelegate.onDidChangeHistoryManager(() => this.history.loadState()),
+      this.applicationDelegate.onDidChangeApplicationMenuVisibility(({ visible, windowId }) => {
+        if (visible) {
+          const presentation = this.workspace
+            .getWindows()
+            .find((window) => window.getId() === windowId);
+          this.#applicationMenuTooltipSuspension ??= this.tooltips.suspend(
+            presentation?.getDocument() ??
+              this.workspace.getFocusedWindow()?.getDocument() ??
+              this.document,
+          );
+        } else {
+          this.#applicationMenuTooltipSuspension?.dispose();
+          this.#applicationMenuTooltipSuspension = null;
+        }
+      }),
+      new Disposable(() => {
+        this.#applicationMenuTooltipSuspension?.dispose();
+        this.#applicationMenuTooltipSuspension = null;
+      }),
     );
   }
 

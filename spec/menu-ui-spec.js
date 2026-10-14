@@ -281,6 +281,96 @@ describe("HTML menu UI", () => {
     }
   });
 
+  for (const visible of [false, true]) {
+    it(`cancels a ${visible ? "visible" : "pending"} tooltip while a context menu is open`, () => {
+      const tooltip = lumine.tooltips.add(target, { title: "Toolbar action" });
+      const delay = lumine.tooltips.hoverDefaults.delay.show;
+      let popup;
+      try {
+        // A fresh pointer action also clears follow-through from earlier tooltips.
+        target.click();
+        target.dispatchEvent(new MouseEvent("mouseenter"));
+        advanceClock(visible ? delay : delay - 1);
+        if (visible) expect(document.querySelector(".tooltip")).toHaveText("Toolbar action");
+        else expect(document.querySelector(".tooltip")).toBeNull();
+
+        popup = showMenuPopup(contextViews, {
+          target,
+          anchor: target,
+          template: [{ label: "Action", command: "spec:action" }],
+        });
+        expect(document.querySelector(".tooltip")).toBeNull();
+
+        target.dispatchEvent(new MouseEvent("mouseleave"));
+        target.dispatchEvent(new MouseEvent("mouseenter"));
+        advanceClock(delay);
+        expect(document.querySelector(".tooltip")).toBeNull();
+
+        popup.close();
+        advanceClock(delay);
+        expect(document.querySelector(".tooltip")).toBeNull();
+        target.dispatchEvent(new MouseEvent("mouseleave"));
+        target.dispatchEvent(new MouseEvent("mouseenter"));
+        advanceClock(delay - 1);
+        expect(document.querySelector(".tooltip")).toBeNull();
+        advanceClock(1);
+        expect(document.querySelector(".tooltip")).toHaveText("Toolbar action");
+      } finally {
+        popup?.close();
+        tooltip.dispose();
+      }
+    });
+  }
+
+  it("suppresses tooltips while opening and switching application menus", () => {
+    const emitter = new Emitter();
+    const menuBar = new MenuBarView({
+      getTemplate: () => [
+        { label: "&File", submenu: [{ label: "Open", command: "core:open" }] },
+        { label: "&Edit", submenu: [{ label: "Undo", command: "core:undo" }] },
+      ],
+      onDidChange: (callback) => emitter.on("change", callback),
+      showPopup: (options) => showMenuPopup(contextViews, options),
+    });
+    document.body.appendChild(menuBar.element);
+    const tooltip = lumine.tooltips.add(target, { title: "Toolbar action" });
+    const delay = lumine.tooltips.hoverDefaults.delay.show;
+    try {
+      target.click();
+      target.dispatchEvent(new MouseEvent("mouseenter"));
+      advanceClock(delay);
+      expect(document.querySelector(".tooltip")).toHaveText("Toolbar action");
+
+      const [fileButton, editButton] = menuBar.visibleButtons();
+      menuBar.openButton(fileButton);
+      expect(document.querySelector(".tooltip")).toBeNull();
+      target.dispatchEvent(new MouseEvent("mouseleave"));
+      target.dispatchEvent(new MouseEvent("mouseenter"));
+      advanceClock(delay);
+      expect(document.querySelector(".tooltip")).toBeNull();
+
+      editButton.element.dispatchEvent(new MouseEvent("mouseenter"));
+      expect(menuBar.activeButton).toBe(editButton);
+      expect(menuBar.popup).not.toBeNull();
+      target.dispatchEvent(new MouseEvent("mouseleave"));
+      target.dispatchEvent(new MouseEvent("mouseenter"));
+      advanceClock(delay);
+      expect(document.querySelector(".tooltip")).toBeNull();
+
+      menuBar.blur();
+      target.dispatchEvent(new MouseEvent("mouseleave"));
+      target.dispatchEvent(new MouseEvent("mouseenter"));
+      advanceClock(delay - 1);
+      expect(document.querySelector(".tooltip")).toBeNull();
+      advanceClock(1);
+      expect(document.querySelector(".tooltip")).toHaveText("Toolbar action");
+    } finally {
+      menuBar.destroy();
+      tooltip.dispose();
+      emitter.dispose();
+    }
+  });
+
   it("reserves a check column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(

@@ -138,6 +138,10 @@ module.exports = class ApplicationDelegate {
     return new Disposable(() => ipcRenderer.removeListener("command", outerCallback));
   }
 
+  onDidChangeApplicationMenuVisibility(callback) {
+    return this.ipcMessageEmitter().on("did-change-application-menu-visibility", callback);
+  }
+
   onURIMessage(handler) {
     const outerCallback = (event, ...args) => handler(...args);
 

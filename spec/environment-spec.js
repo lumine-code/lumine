@@ -18,6 +18,57 @@ describe("Environment", () => {
     expect(lumine.FileState).toBeUndefined();
   });
 
+  describe("native application menu tooltip suppression", () => {
+    let suspension;
+    const emitVisibility = (visible, windowId) =>
+      lumine.applicationDelegate
+        .ipcMessageEmitter()
+        .emit("did-change-application-menu-visibility", { visible, windowId });
+
+    beforeEach(() => {
+      emitVisibility(false);
+      suspension = { dispose: jasmine.createSpy("dispose") };
+      spyOn(lumine.tooltips, "suspend").and.returnValue(suspension);
+    });
+
+    afterEach(() => emitVisibility(false));
+
+    it("suspends the focused presentation once and releases that same suspension", () => {
+      const focusedDocument = document.implementation.createHTMLDocument();
+      spyOn(lumine.workspace, "getFocusedWindow").and.returnValue({
+        getDocument: () => focusedDocument,
+      });
+      emitVisibility(true);
+      emitVisibility(true);
+      expect(lumine.tooltips.suspend).toHaveBeenCalledOnceWith(focusedDocument);
+
+      lumine.workspace.getFocusedWindow.and.returnValue(null);
+      emitVisibility(false);
+      emitVisibility(false);
+      expect(suspension.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the main document when the native menu has taken document focus", () => {
+      spyOn(lumine.workspace, "getFocusedWindow").and.returnValue(null);
+      emitVisibility(true);
+      expect(lumine.tooltips.suspend).toHaveBeenCalledOnceWith(lumine.document);
+    });
+
+    it("uses the addressed auxiliary document even when no document has focus", () => {
+      const focusedDocument = document.implementation.createHTMLDocument();
+      spyOn(lumine.workspace, "getFocusedWindow").and.returnValue(null);
+      const presentations = spyOn(lumine.workspace, "getWindows").and.returnValue([
+        { getId: () => -23, getDocument: () => focusedDocument },
+      ]);
+      try {
+        emitVisibility(true, -23);
+        expect(lumine.tooltips.suspend).toHaveBeenCalledOnceWith(focusedDocument);
+      } finally {
+        presentations.and.callThrough();
+      }
+    });
+  });
+
   describe("namespaced process APIs", () => {
     it("does not expose the removed top-level API", () => {
       for (const method of [

@@ -218,6 +218,7 @@ Tooltip.prototype.getDelegateOptions = function () {
 };
 
 Tooltip.prototype.enter = function (event) {
+  if (this.options.isSuppressed?.()) return this.cancel();
   const document =
     (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
     globalThis.document;
@@ -261,6 +262,7 @@ Tooltip.prototype.isInStateTrue = function () {
 };
 
 Tooltip.prototype.leave = function (event) {
+  if (this.options.isSuppressed?.()) return this.cancel();
   const document = this.element?.ownerDocument ?? globalThis.document;
   const follow = followState(document);
   if (event) {
@@ -297,6 +299,7 @@ Tooltip.prototype.leave = function (event) {
 };
 
 Tooltip.prototype.show = function () {
+  if (this.options.isSuppressed?.()) return this.cancel();
   const document =
     (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
     globalThis.document;
@@ -528,7 +531,7 @@ Tooltip.prototype.hide = function (callback, { followThrough = true } = {}) {
 
   this.hoverState = null;
 
-  if (followThrough) {
+  if (followThrough && !this.options.isSuppressed?.()) {
     startFollowThroughTimer(document);
   } else {
     clearTimeout(follow.timer);
