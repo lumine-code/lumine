@@ -1899,10 +1899,11 @@ module.exports = class TextEditor {
    * Saves the editor's text buffer.
    *
    * See {@link TextBuffer#save} for more details.
-   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer.
+   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer, or rejects with SaveCancelledError when save confirmation is cancelled.
    */
   save() {
-    return this.buffer.save();
+    const window = globalThis.lumine?.workspace?.paneForItem(this)?.getContainer()?.getWindow();
+    return this.buffer.save({ window });
   }
 
   /**
@@ -1914,10 +1915,41 @@ module.exports = class TextEditor {
    * See {@link TextBuffer#saveAs} for more details.
    *
    * @param {String} filePath - A `String` path.
-   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer.
+   * @returns {Promise<TextBuffer>} Resolves to the saved text buffer, or rejects with SaveCancelledError when save confirmation is cancelled.
    */
   saveAs(filePath) {
-    return this.buffer.saveAs(filePath);
+    const window = globalThis.lumine?.workspace?.paneForItem(this)?.getContainer()?.getWindow();
+    return this.buffer.saveAs(filePath, { window });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Require an explicit decision before saving to this editor's current path.
+   * The policy belongs to the shared buffer, survives session restoration, and
+   * is cleared after a successful Save As to another path.
+   *
+   * @param {Object|null} confirmation - The warning text, or null to clear it.
+   * @param {String} confirmation.message - The question shown before saving.
+   * @param {String} [confirmation.detail] - Additional plain-text context.
+   * @category File Operations
+   */
+  setSaveConfirmation(confirmation) {
+    this.buffer.setSaveConfirmation(confirmation);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Return a copy of this editor's shared save-confirmation policy.
+   *
+   * @returns {Object|null} The message and optional detail, or null.
+   * @category File Operations
+   */
+  getSaveConfirmation() {
+    return this.buffer.getSaveConfirmation();
   }
 
   // Determine whether the user should be prompted to save before closing

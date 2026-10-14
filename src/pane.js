@@ -4,26 +4,17 @@ const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
 const { isItemAllowedInLocation } = require("./pane-item-locations");
 const {
+  SaveCancelledError,
+  SaveConflictedError,
+  isSaveCancellationError,
+} = require("./save-errors");
+const {
   PaneItemOperationError,
   assertCenterItemContract,
   assertItemLocation,
 } = require("./pane-item-contract");
 
 let nextInstanceId = 1;
-
-// Thrown when a user cancels a save operation.
-class SaveCancelledError extends Error {
-  name = "SaveCancelledError";
-}
-
-// Thrown when a user cancels a save operation because of a buffer conflict.
-class SaveConflictedError extends Error {
-  name = "SaveConflictedError";
-}
-
-function isSaveCancellationError(error) {
-  return error instanceof SaveCancelledError || error instanceof SaveConflictedError;
-}
 
 /**
  * @public
@@ -1534,6 +1525,7 @@ module.exports = class Pane {
       return nextAction ? nextAction() : undefined;
     } catch (error) {
       if (nextAction) return nextAction(error);
+      if (isSaveCancellationError(error)) return;
       this.handleSaveError(error, item);
     }
   }

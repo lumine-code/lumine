@@ -81,6 +81,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @returns {Notification} that was added.
    */
   addSuccess(message, options) {
@@ -111,6 +112,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @returns {Notification} that was added.
    */
   addHint(message, options) {
@@ -133,6 +135,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @returns {Notification} that was added.
    */
   addInfo(message, options) {
@@ -155,6 +158,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @returns {Notification} that was added.
    */
   addWarning(message, options) {
@@ -177,6 +181,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @param {String} [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
    */
@@ -200,6 +205,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
+   * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @param {String} [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
    */

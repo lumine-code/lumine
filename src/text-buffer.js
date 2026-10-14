@@ -25,6 +25,8 @@ const {
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
 const getSubstitution = require("./text-substitution");
+const { SaveCancelledError } = require("./save-errors");
+const { confirmSave, sameSavePath } = require("./save-confirmation");
 
 function textChangesOnlyPatch(patch) {
   if (!patch || patch.getChangeCount() === 0) return patch;
@@ -197,6 +199,8 @@ class TextBuffer {
     this.selectionsMarkerLayerIds = new Set();
     this.nextMarkerId = 1;
     this.outstandingSaveCount = 0;
+    this.saveConfirmation = null;
+    this.pendingConfirmedSave = null;
     this.loadCount = 0;
     this.cachedHasAstral = null;
     this._emittedWillChangeEvent = false;
@@ -229,6 +233,7 @@ class TextBuffer {
     if (params.filePath) {
       this.setPath(params.filePath);
     }
+    if (params.saveConfirmation != null) this.setSaveConfirmation(params.saveConfirmation);
   }
 
   toString() {
@@ -453,6 +458,8 @@ class TextBuffer {
       preferredLineEnding: this.preferredLineEnding,
       nextMarkerId: this.nextMarkerId,
     };
+    const saveConfirmation = this.getSaveConfirmation();
+    if (saveConfirmation) result.saveConfirmation = saveConfirmation;
 
     const filePath = this.getPath();
     if (filePath) {
@@ -855,6 +862,11 @@ class TextBuffer {
   setFile(file) {
     if (!this.file && !file) return;
     if (file === this.file) return;
+
+    if (!sameSavePath(this.getPath(), file?.getPath())) {
+      this.pendingConfirmedSave?.cancel();
+      this.saveConfirmation = null;
+    }
 
     const hadFile = Boolean(this.file);
     this.fileOperationGeneration++;
@@ -2687,10 +2699,12 @@ class TextBuffer {
    *
    * Save the buffer.
    *
-   * @returns {Promise<TextBuffer>} Resolves to the buffer when the operation completes.
+   * @param {Object} [options]
+   * @param {EditorWindow} [options.window] - Window that owns a save-confirmation notification; defaults to the focused window.
+   * @returns {Promise<TextBuffer>} Resolves to the saved buffer, or rejects with SaveCancelledError when confirmation is cancelled.
    */
-  save() {
-    return this.saveTo(this.file);
+  save(options = {}) {
+    return this.saveTo(this.file, options);
   }
 
   /**
@@ -2700,9 +2714,11 @@ class TextBuffer {
    * Save the buffer at a specific path.
    *
    * @param {String} filePath - The path to save at.
-   * @returns {Promise<TextBuffer>} Resolves to the buffer when the operation completes.
+   * @param {Object} [options]
+   * @param {EditorWindow} [options.window] - Window that owns a save-confirmation notification; defaults to the focused window.
+   * @returns {Promise<TextBuffer>} Resolves to the saved buffer, or rejects with SaveCancelledError when confirmation is cancelled. A successful save to another path clears the confirmation policy.
    */
-  saveAs(filePath) {
+  saveAs(filePath, options = {}) {
     if (!filePath) {
       throw new Error("Can't save buffer with no file path");
     }
@@ -2712,15 +2728,122 @@ class TextBuffer {
     } else {
       file = new File(filePath);
     }
-    return this.saveTo(file);
+    return this.saveTo(file, options);
   }
 
-  async saveTo(file) {
+  /**
+   * @public
+   * @status public
+   *
+   * Require confirmation before saving to the current backing path. The
+   * serializable policy is shared by all editors of this buffer. Cancelling
+   * the warning leaves the buffer and backing file unchanged.
+   *
+   * @param {Object|null} confirmation - Warning text, or null to clear it.
+   * @param {String} confirmation.message - The question shown before saving.
+   * @param {String} [confirmation.detail] - Additional plain-text context.
+   */
+  setSaveConfirmation(confirmation) {
+    if (confirmation != null) {
+      if (
+        typeof confirmation !== "object" ||
+        Array.isArray(confirmation) ||
+        typeof confirmation.message !== "string" ||
+        !confirmation.message.trim() ||
+        (confirmation.detail != null && typeof confirmation.detail !== "string")
+      ) {
+        throw new TypeError("Save confirmation requires a message and optional detail strings");
+      }
+      if (!this.getPath()) throw new Error("Save confirmation requires a backing path");
+    }
+    this.pendingConfirmedSave?.cancel();
+    this.saveConfirmation =
+      confirmation == null
+        ? null
+        : {
+            path: this.getPath(),
+            message: confirmation.message,
+            ...(confirmation.detail == null ? {} : { detail: confirmation.detail }),
+          };
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Return a copy of the current backing path's save-confirmation policy.
+   *
+   * @returns {Object|null} The message and optional detail, or null.
+   */
+  getSaveConfirmation() {
+    if (!this.saveConfirmation || !sameSavePath(this.saveConfirmation.path, this.getPath())) {
+      return null;
+    }
+    const { message, detail } = this.saveConfirmation;
+    return { message, ...(detail == null ? {} : { detail }) };
+  }
+
+  /** @private */
+  saveTo(file, options = {}) {
+    if (this.destroyed) return Promise.reject(new Error("Can't save destroyed buffer"));
+    if (!file) return Promise.reject(new Error("Can't save a buffer with no file"));
+    const filePath = file.getPath();
+    const confirmation = this.saveConfirmation;
+    if (!confirmation || !sameSavePath(confirmation.path, filePath)) {
+      return this.performSave(file);
+    }
+    const pending = this.pendingConfirmedSave;
+    if (pending && sameSavePath(pending.path, filePath) && !pending.cancelled) {
+      return pending.promise;
+    }
+    const operation = {
+      path: filePath,
+      confirmation,
+      fileOperationGeneration: this.fileOperationGeneration,
+      started: false,
+      cancelled: false,
+      cancel: () => {
+        operation.cancelled = true;
+        operation.cancelPrompt?.();
+      },
+    };
+    this.pendingConfirmedSave = operation;
+    operation.promise = Promise.resolve()
+      .then(() => {
+        this.assertConfirmedSaveCurrent(operation);
+        return confirmSave(this, confirmation, operation, options.window);
+      })
+      .then(() => {
+        this.assertConfirmedSaveCurrent(operation);
+        return this.performSave(file, operation);
+      })
+      .finally(() => {
+        if (this.pendingConfirmedSave === operation) this.pendingConfirmedSave = null;
+      });
+    return operation.promise;
+  }
+
+  /** @private */
+  assertConfirmedSaveCurrent(operation) {
+    if (
+      this.destroyed ||
+      operation.cancelled ||
+      this.saveConfirmation !== operation.confirmation ||
+      (!operation.started && operation.fileOperationGeneration !== this.fileOperationGeneration) ||
+      !sameSavePath(operation.path, this.getPath())
+    ) {
+      throw new SaveCancelledError("Save cancelled because the buffer or its backing file changed");
+    }
+  }
+
+  /** @private */
+  async performSave(file, operation) {
     if (this.destroyed) throw new Error("Can't save destroyed buffer");
     if (!file) throw new Error("Can't save a buffer with no file");
 
     const filePath = file.getPath();
 
+    if (operation) operation.started = true;
     this.fileOperationGeneration++;
     this.outstandingSaveCount++;
 
@@ -2734,6 +2857,7 @@ class TextBuffer {
       }
 
       await this.emitter.emitAsync("will-save", { path: filePath });
+      if (operation) this.assertConfirmedSaveCurrent(operation);
 
       try {
         await this.buffer.save(destination, this.getEncoding());
@@ -3218,6 +3342,7 @@ class TextBuffer {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.pendingConfirmedSave?.cancel();
     this.emitter.emit("did-destroy");
     this.emitter.clear();
 

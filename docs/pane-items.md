@@ -50,6 +50,8 @@ Embedded components register the same hooks through `lumine.views.addWindowParti
 
 Persist each shared document once in package state and serialize its stable identity from every pane item. View state holds independent cursors, selections, scrolling and layout. Restore the document registry before pane deserializers run so views in separate windows resolve to the same retained document. Preserve unsaved content independently of the backing file; reopening a file cannot reconstruct dirty or untitled pixels or table data.
 
+Call `editor.setSaveConfirmation({ message, detail })` when editing a file whose original contents should only be overwritten deliberately, such as a packaged example. Core asks through a warning notification before writing that path, including Save All and saving while closing. The policy belongs to the shared text buffer and survives workspace restoration. Save As to a different path creates an ordinary editable copy and clears the policy after a successful save. Call `editor.setSaveConfirmation(null)` to remove it explicitly.
+
 A package with asynchronous snapshot work implements `prepareToSerialize(options)`. Core awaits this hook before synchronous `serialize()` when saving the workspace, switching projects or serializing a package for unload. Prepare pending edits, file writes and encodings there; `serialize()` returns JSON-compatible state immediately and propagates failures. If content changes after preparation, throw an error with `code: "STATE_SNAPSHOT_CHANGED"` to request a fresh capture. A failed durable capture keeps the closing window open.
 
 ## Implementing copy
