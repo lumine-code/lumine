@@ -3687,6 +3687,10 @@ class TextBuffer {
         }
 
         if (!baseTextMatchesFile) {
+          // A confirmation can open while this read is pending and capture the
+          // generation above. Invalidate it when the changed backing contents
+          // are observed, before publishing conflict to save-capable observers.
+          this.pendingConfirmedSave?.cancel();
           if (this.buffer.isModified() || this.fileState === "conflicted") {
             // Keep the current buffer contents so the user's changes are not
             // lost. Conflict remains sticky across undo until disk and base

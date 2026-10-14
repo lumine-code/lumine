@@ -443,6 +443,30 @@ describe("Save confirmation", () => {
     await expectAsync(retry.operation).toBeRejectedWithError(SaveCancelledError);
   });
 
+  it("cancels confirmation opened while an external file reconciliation is reading", async () => {
+    const externalText = "print('changed while the file read was pending')\n";
+    let saving, notification;
+    const matchesFile = spyOn(buffer.buffer, "baseTextMatchesFile");
+    matchesFile.and.callFake(async () => {
+      matchesFile.and.callThrough();
+      saving = startSave(() => editor.save());
+      notification = await saving.notification;
+      fs.writeFileSync(filePath, externalText);
+      return false;
+    });
+
+    await buffer.reconcileWatchedFile();
+    expect(editor.getFileState()).toBe("conflicted");
+    expect(notification.isDismissed()).toBeTrue();
+    click(notification, "Yes, always");
+
+    await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
+    expect(fs.readFileSync(filePath, "utf8")).toBe(externalText);
+    expect(editor.getText()).toBe(changedText);
+    expect(editor.getFileState()).toBe("conflicted");
+    expect(editor.canSaveAutomatically()).toBeFalse();
+  });
+
   it("cancels a pending save when its buffer is destroyed", async () => {
     const saving = startSave(() => buffer.save());
     const notification = await saving.notification;
