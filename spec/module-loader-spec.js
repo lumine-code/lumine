@@ -711,6 +711,47 @@ process.stdout.write(JSON.stringify(require(${JSON.stringify(main)})));
     expect(JSON.parse(result.stdout)).toEqual(["button", { title: "cold" }]);
   });
 
+  it("reads each managed JavaScript source and unchanged installed library only once", () => {
+    const sources = [
+      write("single-read.js", "export default 42;"),
+      write("single-read.mjs", "export default 42;"),
+      write("single-read.cjs", "module.exports = 42;"),
+      write("node_modules/single-read/index.cjs", "module.exports = 42;"),
+    ];
+    write("node_modules/single-read/package.json", '{"main":"index.cjs"}');
+    const read = spyOn(fs, "readFileSync").and.callThrough();
+    for (const source of sources) {
+      expect(requireModule(source)).withContext(source).toBe(42);
+      expect(read.calls.allArgs().filter(([filename]) => filename === source).length)
+        .withContext(source)
+        .toBe(1);
+    }
+  });
+
+  it("still compiles pragma-marked installed libraries after reading them natively", () => {
+    const main = write(
+      "node_modules/pragma/index.js",
+      '/** @babel */\nconst etch = { dom: (...args) => args }; module.exports = <button title="native read" />;',
+    );
+    write("node_modules/pragma/package.json", '{"type":"commonjs","main":"index.js"}');
+
+    expect(require(main)).toEqual(["button", { title: "native read" }]);
+  });
+
+  it("preserves native import-attribute validation for managed JavaScript", async () => {
+    for (const filename of ["attributes.js", "attributes.mjs", "attributes.cjs"]) {
+      const main = write(
+        filename,
+        filename.endsWith(".cjs") ? "module.exports = 42;" : "export default 42;",
+      );
+      await expectAsync(
+        import(pathToFileURL(main).href, { with: { type: "json" } }),
+      ).toBeRejectedWith(
+        jasmine.objectContaining({ code: "ERR_IMPORT_ATTRIBUTE_TYPE_INCOMPATIBLE" }),
+      );
+    }
+  });
+
   it("reuses syntax analysis across fresh processes and invalidates it when source changes", () => {
     const main = write(
       "cached-analysis.cjs",

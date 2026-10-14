@@ -353,7 +353,22 @@ function load(url, context, nextLoad) {
     return result;
   }
   if (!JAVASCRIPT_EXTENSIONS.has(extension)) return nextLoad(url, context);
-  const source = fs.readFileSync(filePath, "utf8");
+  const nativeExtension = [".js", ".mjs", ".cjs"].includes(extension);
+  // Ordinary library identities use the native loader. Reuse the source it
+  // returns rather than reading it once ourselves and then making Node read it
+  // again. Managed generations select their format below without another load.
+  // Nonempty attributes still pass through Node's validation, even for JS.
+  const nativeResult =
+    nativeExtension &&
+    (original.generation == null || Object.keys(context.importAttributes ?? {}).length > 0)
+      ? nextLoad(original.url, context)
+      : null;
+  const source =
+    nativeResult?.source == null
+      ? fs.readFileSync(filePath, "utf8")
+      : typeof nativeResult.source === "string"
+        ? nativeResult.source
+        : Buffer.from(nativeResult.source).toString("utf8");
   recordDependencySource(filePath, source);
   const compiled = compiler(source, filePath);
   // Unchanged installed JavaScript uses Node's native format detector and
@@ -362,13 +377,12 @@ function load(url, context, nextLoad) {
   if (
     original.generation == null &&
     compiled === source &&
-    [".js", ".mjs", ".cjs"].includes(extension) &&
+    nativeExtension &&
     (sourceOwner?.kind === "dependency" ||
       (!sourceOwner && filePath.includes(`${path.sep}node_modules${path.sep}`)))
   ) {
-    const result = nextLoad(original.url, context);
-    moduleSources.set(url, result);
-    return result;
+    moduleSources.set(url, nativeResult);
+    return nativeResult;
   }
   // Node has no built-in JSX loader. Babel removes JSX and types but leaves
   // module syntax; detect the resulting format only for these extensions.
@@ -376,7 +390,9 @@ function load(url, context, nextLoad) {
   if ([".jsx", ".ts", ".tsx"].includes(extension)) {
     result = { format: hasModuleSyntax(compiled) ? "module" : "commonjs" };
   } else {
-    result = nextLoad(original.url, context);
+    result = nativeResult ?? {
+      format: extension === ".mjs" ? "module" : extension === ".cjs" ? "commonjs" : undefined,
+    };
   }
   if (extension === ".js") {
     // Node caches package.json types independently of module generations.
@@ -442,9 +458,9 @@ exports.install = function (compileSource, nodeRequire = require) {
     // Node's synchronous ESM translator can hand a pre-resolved CommonJS
     // filename back to _load with hooks disabled. It must retain the virtual
     // identity instead of looking for a physical generation file.
-    if (path.isAbsolute(specifier) && GENERATION_PREFIX.test(path.basename(specifier))) {
-      const actual = exports.getSourcePath(specifier);
-      if (ownerOf(actual)) return specifier;
+    if (path.isAbsolute(specifier)) {
+      const match = GENERATION_PREFIX.exec(path.basename(specifier));
+      if (match && ownerOf(path.join(path.dirname(specifier), match[2]))) return specifier;
     }
     return resolveFilename.call(this, specifier, ...args);
   };
@@ -455,8 +471,11 @@ exports.install = function (compileSource, nodeRequire = require) {
     const resolved = Module._resolveFilename(specifier, parent, isMain);
     if (!path.isAbsolute(resolved))
       return loadModule.call(this, specifier, parent, isMain, ...args);
-    const original = originalURL(pathToFileURL(resolved).href);
-    const filename = fileURLToPath(original.url);
+    // CommonJS resolution already returned a native path. Most requests use a
+    // real filename, so do not round-trip it through two URL conversions just
+    // to check whether its basename carries a generation.
+    const match = GENERATION_PREFIX.exec(path.basename(resolved));
+    const filename = match ? path.join(path.dirname(resolved), match[2]) : resolved;
     const owner = ownerOf(filename);
     if (!owner || !MODULE_EXTENSIONS.has(path.extname(filename))) {
       return loadModule.call(this, specifier, parent, isMain, ...args);
@@ -464,12 +483,12 @@ exports.install = function (compileSource, nodeRequire = require) {
     const caller =
       moduleGenerations.get(parent) ??
       (parent?.filename ? originalURL(pathToFileURL(parent.filename).href) : null);
-    const parentOwner = caller?.url ? ownerOf(fileURLToPath(caller.url)) : null;
+    const parentOwner = caller?.owner ?? (caller?.url ? ownerOf(fileURLToPath(caller.url)) : null);
     const generation = resolveGeneration(
       owner,
       parentOwner,
       caller?.generation,
-      original.generation,
+      match ? Number(match[1]) : null,
     );
     // Route before Node's private relativeResolveCache shortcut. Retaining an
     // old generation in require.cache must not redirect a new package load
@@ -482,7 +501,10 @@ exports.install = function (compileSource, nodeRequire = require) {
       // Keep the usual require.cache[require.resolve(...)] relation for the
       // active CommonJS bridge, without giving retired generations that alias.
       require.cache[filename] = require.cache[virtualFilename];
-      moduleGenerations.set(require.cache[virtualFilename], { url: original.url, generation });
+      const cached = require.cache[virtualFilename];
+      if (moduleGenerations.get(cached)?.generation !== generation) {
+        moduleGenerations.set(cached, { url: pathToFileURL(filename).href, generation, owner });
+      }
     }
     return loaded;
   };
@@ -580,6 +602,7 @@ exports.registerPackage = function (directory) {
       moduleGenerations.set(cached, {
         url: pathToFileURL(filename).href,
         generation: owner.generation,
+        owner,
       });
     }
   }
@@ -670,7 +693,10 @@ exports.restoreCommonJSPaths = function (module, nodeRequire, filename) {
   // Capture Node's internal parent URL before restoring the public filename.
   // Subsequent lazy require() calls then stay in this module's generation.
   nodeRequire.resolve("node:module");
-  moduleGenerations.set(module, originalURL(pathToFileURL(module.filename).href));
+  moduleGenerations.set(module, {
+    ...originalURL(pathToFileURL(module.filename).href),
+    owner: ownerOf(filename),
+  });
   module.filename = filename;
   const resolve = nodeRequire.resolve;
   nodeRequire.resolve = (...args) => exports.getSourcePath(resolve(...args));
