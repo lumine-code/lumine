@@ -705,4 +705,36 @@ describe("Auxiliary editor windows", () => {
     await workspace.attachWindow(extra);
     expect(component.blockDecorationWindow).toBe(window);
   });
+
+  it("opens a tree file in main after its empty pane takes focus following tab-menu detachment", async () => {
+    const workspace = lumine.workspace;
+    jasmine.attachToDOM(workspace.getElement());
+    await lumine.packages.activatePackage("tabs");
+    const treePackage = await lumine.packages.activatePackage("tree-view");
+    lumine.project.setPaths([__dirname]);
+    const editor = await workspace.open(__filename);
+    const pane = workspace.paneForItem(editor);
+    const tab = pane.getElement().querySelector(".tab.active");
+    const popup = lumine.contextMenu.show(tab, lumine.contextMenu.templateForElement(tab));
+    const menuItem = popup.rootList.items.find((item) => item.template.command === "pane:detach");
+    expect(menuItem).toBeDefined();
+    const detach = spyOn(workspace, "detachPane").and.callThrough();
+    menuItem.activate();
+    await conditionPromise(() => detach.calls.count() === 1);
+    const extra = await detach.calls.mostRecent().returnValue;
+    const main = workspace.getMainWindow().getEditorContainer();
+    expect(main.getPaneItems()).toEqual([]);
+    expect(workspace.getCenter().getActivePane().getContainer()).toBe(extra.getEditorContainer());
+    const emptyPane = main.getActivePane();
+    emptyPane.getElement().focus();
+    expect(workspace.getCenter().getActivePane()).toBe(emptyPane);
+    const target = require("node:path").join(__dirname, "scroll-mode-spec.js");
+    const tree = treePackage.mainModule.getTreeViewInstance();
+    await tree.revealPath(target, { show: true, focus: false });
+    const entry = tree.entryForPath(target);
+    expect(tree.treeEntryForElement(entry).kind).toBe("file");
+    await tree.fileViewEntryClicked({ target: entry, detail: 1 });
+    expect(main.getPaneItems().map((item) => item.getPath())).toContain(target);
+    expect(extra.getEditorContainer().getPaneItems()).toEqual([editor]);
+  });
 });

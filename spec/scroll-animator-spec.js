@@ -73,6 +73,34 @@ describe("ScrollAnimator", () => {
       });
     });
 
+    it("uses its editor's window clock and frames and cancels in the original window after adoption", () => {
+      const windows = [100, 10000].map((time) => ({
+        callbacks: [],
+        performance: { now: () => time },
+        requestAnimationFrame(callback) {
+          return this.callbacks.push(callback);
+        },
+        cancelAnimationFrame: jasmine.createSpy("cancelAnimationFrame"),
+      }));
+      component.element.ownerDocument = { defaultView: windows[0] };
+      animator = new ScrollAnimator(component);
+      animator.scrollBy({ y: 100, duration: 120 });
+      expect(windows[0].callbacks.length).toBe(1);
+      windows[0].callbacks[0](100 + FRAME);
+      expect(component.scrollTop).toBeGreaterThan(0);
+      expect(component.scrollTop).toBeLessThan(100);
+      component.element.ownerDocument = { defaultView: windows[1] };
+      animator.cancel();
+      expect(windows[0].cancelAnimationFrame).toHaveBeenCalledOnceWith(2);
+      expect(windows[1].cancelAnimationFrame).not.toHaveBeenCalled();
+      const initial = component.scrollTop;
+      animator.scrollBy({ y: 100, duration: 120 });
+      windows[1].callbacks[0](10000 + FRAME);
+      expect(component.scrollTop).toBeGreaterThan(initial);
+      expect(component.scrollTop).toBeLessThan(initial + 100);
+      animator.cancel();
+    });
+
     it("glides to the requested position and lands exactly on target", () => {
       expect(animator.scrollBy({ y: 100, duration: 120 })).toBe(true);
       expect(animator.isAnimating()).toBe(true);

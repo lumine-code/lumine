@@ -103,9 +103,24 @@ function advanceCurve(curve, elapsed, position, target) {
 class ScrollAnimator {
   constructor(component, { requestAnimationFrame, cancelAnimationFrame, now } = {}) {
     this.component = component;
-    this.raf = requestAnimationFrame || ((callback) => window.requestAnimationFrame(callback));
-    this.caf = cancelAnimationFrame || ((handle) => window.cancelAnimationFrame(handle));
-    this.now = now || (() => performance.now());
+    this.raf =
+      requestAnimationFrame ||
+      ((callback) => {
+        const window = this.component.element.ownerDocument?.defaultView ?? globalThis.window;
+        // Adoption can change ownerDocument before the old frame is cancelled.
+        this.cancelFrame = window.cancelAnimationFrame.bind(window);
+        return window.requestAnimationFrame(callback);
+      });
+    this.caf =
+      cancelAnimationFrame ||
+      ((handle) => {
+        if (this.cancelFrame) this.cancelFrame(handle);
+        else globalThis.window.cancelAnimationFrame(handle);
+      });
+    this.now =
+      now ||
+      (() =>
+        (this.component.element.ownerDocument?.defaultView ?? globalThis.window).performance.now());
     this.animating = false;
     this.frameHandle = null;
     this.lastUpdateTime = null;
@@ -165,6 +180,7 @@ class ScrollAnimator {
       this.caf(this.frameHandle);
       this.frameHandle = null;
     }
+    this.cancelFrame = null;
     this.lastUpdateTime = null;
     const wasAnimating = this.animating;
     this.animating = false;
@@ -178,6 +194,7 @@ class ScrollAnimator {
   finish() {
     if (!this.animating) return;
     if (this.frameHandle != null) this.caf(this.frameHandle);
+    this.cancelFrame = null;
     this.targetScrollTop = this.virtualScrollTop = clamp(
       this.targetScrollTop,
       0,
@@ -365,6 +382,7 @@ class ScrollAnimator {
   }
 
   step(timestamp) {
+    this.cancelFrame = null;
     this.advance(Math.max(0, timestamp - this.lastUpdateTime));
   }
 
