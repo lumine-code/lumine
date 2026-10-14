@@ -43,7 +43,12 @@ function confirmSave(buffer, confirmation, operation, requestedWindow) {
         window,
         dismissable: true,
         buttons: [
-          { text: "Yes, always", className: "btn-primary", onDidClick: () => finish("always") },
+          {
+            text: "Yes, remember",
+            title: "Allow saving this buffer for this session.",
+            className: "btn-primary",
+            onDidClick: () => finish("always"),
+          },
           { text: "Yes", onDidClick: () => finish("once") },
           { text: "No", onDidClick: operation.cancel },
         ],

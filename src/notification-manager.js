@@ -77,6 +77,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-success`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
@@ -108,6 +109,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
@@ -131,6 +133,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-info`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
@@ -154,6 +157,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-warning`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
@@ -177,6 +181,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
@@ -201,6 +206,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
+   * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.

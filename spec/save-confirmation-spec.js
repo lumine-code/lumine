@@ -112,10 +112,13 @@ describe("Save confirmation", () => {
     expect(notification.getDetail()).toBe(confirmation.detail);
     expect(notification.isDismissable()).toBeTrue();
     expect(notification.getOptions().buttons.map((button) => button.text)).toEqual([
-      "Yes, always",
+      "Yes, remember",
       "Yes",
       "No",
     ]);
+    expect(notification.getOptions().buttons[0].title).toBe(
+      "Allow saving this buffer for this session.",
+    );
     expectOriginalFile();
 
     click(notification, "Yes");
@@ -136,12 +139,12 @@ describe("Save confirmation", () => {
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
   });
 
-  it("remembers Yes, always for this buffer and its copies until the warning changes", async () => {
+  it("remembers Yes, remember for this buffer and its copies until the warning changes", async () => {
     const copy = editor.copy();
     editors.push(copy);
     const saving = startSave(() => editor.save());
     const notification = await saving.notification;
-    click(notification, "Yes, always");
+    click(notification, "Yes, remember");
     await saving.operation;
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
     expect(editor.canSaveAutomatically()).toBeTrue();
@@ -335,10 +338,10 @@ describe("Save confirmation", () => {
     expectOriginalFile();
   });
 
-  it("restores the warning without a remembered Yes, always decision", async () => {
+  it("restores the warning without a remembered Yes, remember decision", async () => {
     const saving = startSave(() => editor.save());
     const notification = await saving.notification;
-    click(notification, "Yes, always");
+    click(notification, "Yes, remember");
     await saving.operation;
     editor.setText("print('unsaved session changes')\n");
     // TextBuffer's native outstandingChanges payload is a Buffer, not JSON.
@@ -430,7 +433,7 @@ describe("Save confirmation", () => {
     fs.writeFileSync(filePath, externalText);
     await whenConflicted;
 
-    click(notification, "Yes, always");
+    click(notification, "Yes, remember");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(fs.readFileSync(filePath, "utf8")).toBe(externalText);
     expect(editor.getText()).toBe(changedText);
@@ -458,7 +461,7 @@ describe("Save confirmation", () => {
     await buffer.reconcileWatchedFile();
     expect(editor.getFileState()).toBe("conflicted");
     expect(notification.isDismissed()).toBeTrue();
-    click(notification, "Yes, always");
+    click(notification, "Yes, remember");
 
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(fs.readFileSync(filePath, "utf8")).toBe(externalText);
