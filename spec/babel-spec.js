@@ -5,6 +5,7 @@ process.env.DEBUG = "*";
 
 const fs = require("fs");
 const path = require("path");
+const vm = require("node:vm");
 const temp = require("@lumine-code/fs-temp").track();
 const Babel = require("../src/babel");
 const CompileCache = require("../src/compile-cache");
@@ -77,6 +78,71 @@ describe("Babel transpiler support", function () {
     } finally {
       require.cache[babelModulePath] = originalBabelModule;
     }
+  });
+
+  it("fingerprints private manifests and the nested scoped transformer selected by each owner", () => {
+    const directory = temp.mkdirSync("babel-fingerprint-graph");
+    const babelPath = require.resolve("../src/babel");
+    fs.writeFileSync(path.join(directory, "babel.config.js"), "module.exports = {};");
+    const writePackage = (relative, name, version, dependencies = {}) => {
+      const root = path.join(directory, "node_modules", relative);
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          name,
+          version,
+          main: "index.js",
+          exports: { ".": "./index.js" },
+          dependencies,
+        }),
+      );
+      fs.writeFileSync(path.join(root, "index.js"), "module.exports = {};");
+      return root;
+    };
+    writePackage("@babel/core", "@babel/core", "8.0.0", { "@fixture/transformer": "*" });
+    const preset = writePackage("@lumine-code/babel-preset", "@lumine-code/babel-preset", "1.0.0", {
+      "@fixture/transformer": "*",
+    });
+    const hoisted = writePackage("@fixture/transformer", "@fixture/transformer", "1.0.0");
+    const fixtureRequire = require("node:module").createRequire(
+      path.join(directory, "package.json"),
+    );
+    const cachePath = () => {
+      const isolated = { exports: {} };
+      vm.runInNewContext(fs.readFileSync(babelPath, "utf8"), {
+        module: isolated,
+        exports: isolated.exports,
+        require: fixtureRequire,
+        __dirname: directory,
+        __filename: babelPath,
+        process,
+      });
+      return isolated.exports.getCachePath("/** @babel */ module.exports = 42;", "fixture.js");
+    };
+    const legacyResolve = spyOn(require("resolve"), "sync").and.callThrough();
+    const first = cachePath();
+    const nested = writePackage(
+      "@lumine-code/babel-preset/node_modules/@fixture/transformer",
+      "@fixture/transformer",
+      "2.0.0",
+    );
+    const second = cachePath();
+    expect(second).not.toBe(first);
+    const manifest = path.join(nested, "package.json");
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, "utf8").replace("2.0.0", "2.0.1"));
+    const third = cachePath();
+    expect(third).not.toBe(second);
+    const hoistedManifest = path.join(hoisted, "package.json");
+    fs.writeFileSync(
+      hoistedManifest,
+      fs.readFileSync(hoistedManifest, "utf8").replace("1.0.0", "1.0.1"),
+    );
+    const fourth = cachePath();
+    expect(fourth).not.toBe(third);
+    fs.appendFileSync(path.join(preset, "index.js"), "// New preset implementation.\n");
+    expect(cachePath()).not.toBe(fourth);
+    expect(legacyResolve).not.toHaveBeenCalled();
   });
 
   it("preserves static and asynchronous native imports while removing types", () => {

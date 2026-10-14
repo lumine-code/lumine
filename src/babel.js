@@ -3,7 +3,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const resolve = require("resolve");
+const { createRequire } = require("node:module");
 const defaultOptions = require("./babel.config.js");
 const configFile = path.join(__dirname, "./babel.config.js");
 
@@ -115,11 +115,65 @@ function createCompilerDigest() {
   // from each owner. The build omits lockfiles, so use the shipped manifests.
   const visited = new Set();
   const manifests = [];
+  const ownerRequires = new Map();
+  const directoryEntries = new Map();
+  const realManifests = new Map();
+  const entryKey = process.platform === "win32" ? (name) => name.toLowerCase() : (name) => name;
+  function entryAt(directory, name) {
+    let entries = directoryEntries.get(directory);
+    if (!entries) {
+      let names;
+      try {
+        names = fs.readdirSync(directory);
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        names = [];
+      }
+      entries = new Map(names.map((name) => [entryKey(name), name]));
+      directoryEntries.set(directory, entries);
+    }
+    return entries.get(entryKey(name));
+  }
+  function manifestFor(name, basedir) {
+    let ownerRequire = ownerRequires.get(basedir);
+    if (!ownerRequire) {
+      ownerRequire = createRequire(path.join(basedir, "package.json"));
+      ownerRequires.set(basedir, ownerRequire);
+    }
+    // Use Node's actual lookup roots, including each owner's nested copies.
+    // Index their entries once instead of probing every ancestor and resolving
+    // every symlink again for all dependency edges aimed at the same package.
+    // Physical manifests also include packages that hide package.json in exports.
+    for (const root of ownerRequire.resolve.paths(name) ?? []) {
+      let directory = root;
+      for (const part of name.split("/")) {
+        const entry = entryAt(directory, part);
+        if (!entry) {
+          directory = null;
+          break;
+        }
+        directory = path.join(directory, entry);
+      }
+      if (!directory) continue;
+      const candidate = path.join(directory, "package.json");
+      if (realManifests.has(candidate)) {
+        const manifest = realManifests.get(candidate);
+        if (manifest) return manifest;
+        continue;
+      }
+      try {
+        const manifest = fs.realpathSync.native(candidate);
+        realManifests.set(candidate, manifest);
+        return manifest;
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        realManifests.set(candidate, null);
+      }
+    }
+    return require("resolve").sync(`${name}/package.json`, { basedir, preserveSymlinks: false });
+  }
   function visit(name, basedir) {
-    const manifestPath = resolve.sync(`${name}/package.json`, {
-      basedir,
-      preserveSymlinks: false,
-    });
+    const manifestPath = manifestFor(name, basedir);
     if (visited.has(manifestPath)) return;
     visited.add(manifestPath);
     const contents = fs.readFileSync(manifestPath, "utf8");
