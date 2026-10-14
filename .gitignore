@@ -28,3 +28,25 @@ binaries/
 TODO
 CLAUDE.md
 **/CLAUDE.md
+
+# Local credentials and profiles
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.npmrc
+.pypirc
+.netrc
+id_rsa
+id_ed25519
+secret-store.json
+/.aws/
+/.ssh/
+/.ipython/
+/.jupyter/
+/.dev/
+/capture-profile/
+/state-store/
+.idea/workspace.xml
+*.creator.user
