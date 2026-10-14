@@ -70,7 +70,9 @@ Tooltip.prototype.init = function (element, options) {
   this.element = element;
   this.options = this.getOptions(options);
   this.disposables = new EventKit.CompositeDisposable();
-  this.mutationObserver = new MutationObserver(this.handleMutations.bind(this));
+  this.mutationObserver = new document.defaultView.MutationObserver(
+    this.handleMutations.bind(this),
+  );
 
   if (this.options.viewport) {
     if (typeof this.options.viewport === "function") {
@@ -173,17 +175,15 @@ Tooltip.prototype.stopObservingMutations = function () {
 };
 
 Tooltip.prototype.handleMutations = function () {
-  const document =
-    (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
-    globalThis.document;
-  const window = document.defaultView;
-  window.requestAnimationFrame(
-    function () {
-      this.stopObservingMutations();
-      this.recalculatePosition();
-      this.startObservingMutations();
-    }.bind(this),
-  );
+  if (this.destroyed) return;
+  this.mutationUpdate?.dispose();
+  this.mutationUpdate = this.viewRegistry.updateDocument(() => {
+    this.mutationUpdate = null;
+    if (this.destroyed) return;
+    this.stopObservingMutations();
+    this.recalculatePosition();
+    this.startObservingMutations();
+  });
 };
 
 Tooltip.prototype.getDefaults = function () {
@@ -682,6 +682,10 @@ Tooltip.prototype.toggle = function (event) {
 };
 
 Tooltip.prototype.destroy = function () {
+  if (this.destroyed) return;
+  this.destroyed = true;
+  this.mutationUpdate?.dispose();
+  this.stopObservingMutations();
   const document =
     (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
     globalThis.document;

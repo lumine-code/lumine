@@ -63,6 +63,56 @@ test("only prepared workspace presentations can open a native child", () => {
   broker.destroy();
 });
 
+test("keeps the shared runtime unthrottled until the last auxiliary window closes", () => {
+  const { broker, owner, window: first } = fixture();
+  const second = fixture().window;
+  second.webContents.id = 18;
+  const changes = [];
+  owner.browserWindow = {
+    webContents: {
+      isDestroyed: () => false,
+      getBackgroundThrottling: () => true,
+      setBackgroundThrottling: (value) => changes.push(value),
+    },
+  };
+  broker.didCreateWindow(first, { frameName: broker.prepare() });
+  broker.didCreateWindow(second, { frameName: broker.prepare() });
+  assert.deepEqual(changes, [false]);
+  first.destroy();
+  assert.deepEqual(changes, [false]);
+  second.destroy();
+  assert.deepEqual(changes, [false, true]);
+  broker.destroy();
+});
+
+test("preserves an already unthrottled runtime when cancelling a native child", () => {
+  const { broker, owner, window } = fixture();
+  const changes = [];
+  owner.browserWindow = {
+    webContents: {
+      isDestroyed: () => false,
+      getBackgroundThrottling: () => false,
+      setBackgroundThrottling: (value) => changes.push(value),
+    },
+  };
+  const token = broker.prepare();
+  broker.didCreateWindow(window, { frameName: token });
+  broker.cancel(token);
+  assert.deepEqual(changes, [false, false]);
+  broker.destroy();
+});
+
+test("does not read a destroyed owner's native webContents during shutdown", () => {
+  const { broker, owner } = fixture();
+  owner.browserWindow = {
+    isDestroyed: () => true,
+    get webContents() {
+      throw new Error("Destroyed BrowserWindow");
+    },
+  };
+  broker.destroy();
+});
+
 test("a native close waits for the owning workspace to close or reattach its panes", async () => {
   const { broker, events, window } = fixture();
   const token = broker.prepare();

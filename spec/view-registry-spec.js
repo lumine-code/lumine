@@ -212,6 +212,28 @@ describe("ViewRegistry", () => {
       });
     }
 
+    it("moves an already queued frame off a presentation that becomes hidden", async () => {
+      const presentationDocument = document.implementation.createHTMLDocument();
+      let visibility = "visible";
+      Object.defineProperty(presentationDocument, "visibilityState", { get: () => visibility });
+      const presentation = {
+        closed: false,
+        document: presentationDocument,
+        requestAnimationFrame: jasmine.createSpy("queued frame").and.returnValue(51),
+        cancelAnimationFrame: jasmine.createSpy("cancel hidden frame"),
+      };
+      registry = withWindows([presentation]);
+      const update = jasmine.createSpy("update after occlusion");
+      registry.updateDocument(update);
+      const done = registry.getNextUpdatePromise();
+      visibility = "hidden";
+      presentationDocument.dispatchEvent(new Event("visibilitychange"));
+      await done;
+      expect(presentation.cancelAnimationFrame).toHaveBeenCalledWith(51);
+      expect(presentation.requestAnimationFrame).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
     it("uses a visible presentation when the focused or preferred document is hidden", async () => {
       const hidden = hiddenWindow();
       let fire;

@@ -19,6 +19,10 @@ const { matcherForSelector } = require("./selectors");
 const { commentStringsFromDelimiters, getDelimitersForScope } = require("./comment-utils.js");
 
 const createTree = require("./rb-tree");
+const {
+  setTimeout: scheduleBackgroundTask,
+  clearTimeout: cancelBackgroundTask,
+} = require("node:timers");
 
 const ONE_CHAR_FORWARD_TRAVERSAL = Object.freeze(Point(0, 1));
 
@@ -516,37 +520,46 @@ class TreeSitterLanguageMode {
   }
 
   scheduleAfterHighlightPaint(callback) {
-    const domWindow = globalThis.window;
+    const workspace = globalThis.lumine?.workspace;
+    const domWindow = [
+      workspace?.getFocusedWindow()?.getDOMWindow(),
+      ...(workspace?.getWindows().map((window) => window.getDOMWindow()) ?? []),
+      globalThis.window,
+    ].find((window) => window && !window.closed && window.document.visibilityState !== "hidden");
+    const cancelFrame = domWindow?.cancelAnimationFrame.bind(domWindow);
+    const cancelIdle = domWindow?.cancelIdleCallback?.bind(domWindow);
     let cancelled = false;
     let frame = null;
     let idle = null;
     let timer = null;
     const run = () => {
-      idle = timer = null;
-      if (!cancelled && !this.destroyed) callback();
+      if (cancelled) return;
+      cancel();
+      if (!this.destroyed) callback();
     };
     const afterFrame = () => {
-      frame = timer = null;
+      frame = null;
       if (cancelled || this.destroyed) return;
       if (domWindow?.requestIdleCallback) {
         idle = domWindow.requestIdleCallback(run, { timeout: 1000 });
       } else {
-        timer = setTimeout(run, 0);
+        run();
       }
     };
     // Idle work queued from a frame runs after its rendering opportunity. A
     // microtask here would compile before the new highlighting could paint.
-    if (domWindow?.requestAnimationFrame) {
-      frame = domWindow.requestAnimationFrame(afterFrame);
-    } else {
-      timer = setTimeout(afterFrame, 0);
-    }
-    return () => {
+    const cancel = () => {
       cancelled = true;
-      if (frame != null) domWindow.cancelAnimationFrame(frame);
-      if (idle != null) domWindow.cancelIdleCallback(idle);
-      if (timer != null) clearTimeout(timer);
+      if (frame != null) cancelFrame(frame);
+      if (idle != null) cancelIdle(idle);
+      if (timer != null) cancelBackgroundTask(timer);
+      frame = idle = timer = null;
     };
+    // The fallback also covers a window being occluded after its frame was
+    // queued. Hidden presentations have no paint opportunity to wait for.
+    timer = scheduleBackgroundTask(run, domWindow ? 1000 : 0);
+    if (domWindow) frame = domWindow.requestAnimationFrame(afterFrame);
+    return cancel;
   }
 
   scheduleInitialInjectionUpdate(callback) {

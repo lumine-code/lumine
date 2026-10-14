@@ -108,6 +108,7 @@ module.exports = class AuxiliaryWindowBroker {
     const id = -window.webContents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
     this.windows.set(id, record);
+    this.updateRuntimeThrottling();
     request.record = record;
     record.keyboard = this.attachKeyboard(window.webContents, {
       testing: !!this.owner.isSpec,
@@ -135,6 +136,7 @@ module.exports = class AuxiliaryWindowBroker {
     window.on("closed", () => {
       record.keyboard.dispose();
       this.windows.delete(id);
+      this.updateRuntimeThrottling();
       this.send(id, "closed");
     });
     for (const eventName of [
@@ -153,6 +155,23 @@ module.exports = class AuxiliaryWindowBroker {
     // another runtime or replace the shared model's presentation document.
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  }
+
+  updateRuntimeThrottling() {
+    const browserWindow = this.owner.browserWindow;
+    if (!browserWindow || browserWindow.isDestroyed?.()) return;
+    const contents = browserWindow.webContents;
+    if (!contents || contents.isDestroyed()) return;
+    if (this.windows.size) {
+      if (this.runtimeBackgroundThrottling !== undefined) return;
+      this.runtimeBackgroundThrottling = contents.getBackgroundThrottling();
+      // The opener also owns every package's shared runtime. Its timers must
+      // keep serving auxiliary windows while the main presentation is hidden.
+      contents.setBackgroundThrottling(false);
+    } else if (this.runtimeBackgroundThrottling !== undefined) {
+      contents.setBackgroundThrottling(this.runtimeBackgroundThrottling);
+      this.runtimeBackgroundThrottling = undefined;
+    }
   }
 
   send(id, type) {
@@ -323,5 +342,6 @@ module.exports = class AuxiliaryWindowBroker {
       if (!record.window.isDestroyed()) record.window.destroy();
     }
     this.windows.clear();
+    this.updateRuntimeThrottling();
   }
 };

@@ -10,6 +10,10 @@ const Selection = require("./selection");
 const NullGrammar = require("./null-grammar");
 const ScopeDescriptor = require("./scope-descriptor");
 const { selectorMatchesAnyScope } = require("./selectors");
+const {
+  setTimeout: scheduleBackgroundWork,
+  clearTimeout: cancelBackgroundWork,
+} = require("node:timers");
 
 const GutterContainer = require("./gutter-container");
 let TextEditorComponent = null;
@@ -31,6 +35,15 @@ const ZERO_WIDTH_NBSP = "\ufeff";
 let nextId = 0;
 
 const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
+
+// Display-layer indexing belongs to the shared model. A presentation's idle
+// queue can stop when its window is hidden, even while another window edits it.
+function requestBackgroundWork(callback) {
+  return scheduleBackgroundWork(() => {
+    const end = performance.now() + 5;
+    callback({ didTimeout: false, timeRemaining: () => Math.max(0, end - performance.now()) });
+  }, 0);
+}
 
 function runCancellableGrammarOperation(editor, languageMode, signal, cancelledValue, operation) {
   if (editor.isDestroyed() || signal?.aborted || editor.buffer.getLanguageMode() !== languageMode) {
@@ -372,10 +385,11 @@ module.exports = class TextEditor {
       }
     }
 
-    this.backgroundWorkHandle = requestIdleCallback(this.doBackgroundWork);
+    this.backgroundWorkHandle = requestBackgroundWork(this.doBackgroundWork);
     this.disposables.add(
       new Disposable(() => {
-        if (this.backgroundWorkHandle != null) return cancelIdleCallback(this.backgroundWorkHandle);
+        if (this.backgroundWorkHandle != null)
+          return cancelBackgroundWork(this.backgroundWorkHandle);
       }),
     );
 
@@ -446,9 +460,12 @@ module.exports = class TextEditor {
   }
 
   doBackgroundWork(deadline) {
+    if (this.isDestroyed()) return;
+    cancelBackgroundWork(this.backgroundWorkHandle);
+    this.backgroundWorkHandle = null;
     const previousLongestRow = this.getApproximateLongestScreenRow();
     if (this.displayLayer.doBackgroundWork(deadline)) {
-      this.backgroundWorkHandle = requestIdleCallback(this.doBackgroundWork);
+      this.backgroundWorkHandle = requestBackgroundWork(this.doBackgroundWork);
     } else {
       this.backgroundWorkHandle = null;
     }

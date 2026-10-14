@@ -35,6 +35,7 @@ module.exports = class ViewRegistry {
     this.animationFrameRequest = null;
     this.documentReadInProgress = false;
     this.performDocumentUpdate = this.performDocumentUpdate.bind(this);
+    this.handlePresentationVisibilityChange = this.handlePresentationVisibilityChange.bind(this);
     this.lumineEnvironment = lumineEnvironment;
     this.clear();
   }
@@ -46,6 +47,7 @@ module.exports = class ViewRegistry {
     this.windowParticipants = new Map();
     this.participantDocuments = new WeakMap();
     this.participantObservers = new Map();
+    this.retiredPresentationWindows = new WeakSet();
     this.providers = [];
     this.clearDocumentRequests();
   }
@@ -403,8 +405,26 @@ module.exports = class ViewRegistry {
       if (!presentations.length) candidates.push(globalThis.window);
       this.animationFrameWindow =
         candidates.find(
-          (window) => window && !window.closed && window.document.visibilityState !== "hidden",
+          (window) =>
+            window &&
+            !window.closed &&
+            !this.retiredPresentationWindows.has(window) &&
+            window.document.visibilityState !== "hidden",
         ) ?? null;
+      this.animationFrameDocument = this.animationFrameWindow?.document;
+      this.animationFrameCancel = this.animationFrameWindow?.cancelAnimationFrame.bind(
+        this.animationFrameWindow,
+      );
+      this.removeAnimationFrameWindowListener =
+        this.animationFrameWindow?.removeEventListener?.bind(this.animationFrameWindow);
+      this.animationFrameDocument?.addEventListener?.(
+        "visibilitychange",
+        this.handlePresentationVisibilityChange,
+      );
+      this.animationFrameWindow?.addEventListener?.(
+        "pagehide",
+        this.handlePresentationVisibilityChange,
+      );
       this.animationFrameRequest = this.animationFrameWindow
         ? this.animationFrameWindow.requestAnimationFrame(this.performDocumentUpdate)
         : scheduleBackgroundUpdate(this.performDocumentUpdate, 16);
@@ -413,9 +433,30 @@ module.exports = class ViewRegistry {
 
   /** @private Release either a visible presentation's frame or the shared runtime's background timer. */
   cancelDocumentUpdate() {
-    if (this.animationFrameWindow)
-      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
+    this.removeDocumentUpdateListeners();
+    if (this.animationFrameCancel) this.animationFrameCancel(this.animationFrameRequest);
     else cancelBackgroundUpdate(this.animationFrameRequest);
+  }
+
+  /** @private Move a pending frame if its presentation disappears before paint. */
+  handlePresentationVisibilityChange(event) {
+    if (this.animationFrameRequest == null) return;
+    if (event.type !== "pagehide" && this.animationFrameDocument?.visibilityState !== "hidden")
+      return;
+    if (event.type === "pagehide") this.retiredPresentationWindows.add(this.animationFrameWindow);
+    this.cancelDocumentUpdate();
+    this.animationFrameRequest = null;
+    this.requestDocumentUpdate();
+  }
+
+  /** @private Release listeners owned by the current scheduled frame. */
+  removeDocumentUpdateListeners() {
+    this.animationFrameDocument?.removeEventListener?.(
+      "visibilitychange",
+      this.handlePresentationVisibilityChange,
+    );
+    this.removeAnimationFrameWindowListener?.("pagehide", this.handlePresentationVisibilityChange);
+    this.animationFrameDocument = this.removeAnimationFrameWindowListener = null;
   }
 
   /** @private Keep active auxiliary presentation independent of an occluded opener. */
@@ -429,6 +470,9 @@ module.exports = class ViewRegistry {
   }
 
   performDocumentUpdate() {
+    this.removeDocumentUpdateListeners();
+    this.animationFrameWindow = null;
+    this.animationFrameCancel = null;
     const { resolveNextUpdatePromise } = this;
     this.animationFrameRequest = null;
     this.nextUpdatePromise = null;
