@@ -152,6 +152,21 @@ describe("Save confirmation", () => {
     });
   }
 
+  it("cancels when a notification observer dismisses the warning during registration", async () => {
+    subscriptions.push(
+      lumine.notifications.onDidAddNotification((notification) => {
+        if (notification.getMessage() === confirmation.message) notification.dismiss();
+      }),
+    );
+    const saving = startSave(() => editor.save());
+    const notification = await saving.notification;
+    await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
+    expect(notification.isDismissed()).toBeTrue();
+    expectOriginalFile();
+    expect(editor.getFileState()).toBe("modified");
+    expect(editor.getText()).toBe(changedText);
+  });
+
   it("allows ordinary saving after the confirmation is cleared", async () => {
     editor.setSaveConfirmation(null);
     const added = jasmine.createSpy("added");

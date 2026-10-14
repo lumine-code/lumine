@@ -48,6 +48,7 @@ function confirmSave(buffer, confirmation, operation, requestedWindow) {
         ],
       });
       if (settled) notification.dismiss();
+      else if (notification.isDismissed()) operation.cancel();
       else subscriptions.add(notification.onDidDismiss(operation.cancel));
     } catch (error) {
       subscriptions.dispose();
