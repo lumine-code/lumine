@@ -1033,7 +1033,7 @@ class SelectList extends InputDialog {
           key: this.domIdForIndex(index),
           element: this.prepareItemElement(this.resolveElement(item, opts), index, selected),
           selected: selected,
-          onclick: () => this.didClickItem(index),
+          onclick: (event) => this.didClickItem(index, event),
           onmiddleclick: () => this.selectIndex(index),
           oncontextmenu: () => this.didContextMenuItem(index),
         });
@@ -1094,9 +1094,24 @@ class SelectList extends InputDialog {
     if (this.model) void this.updateComponent();
   }
 
-  didClickItem(itemIndex) {
-    this.selectIndex(itemIndex);
-    this.consumeUiAction(this.confirmSelection());
+  didClickItem(itemIndex, event) {
+    const target = this.queryEditor.getElement();
+    event ??= new target.ownerDocument.defaultView.MouseEvent("click");
+    if (event.button !== 0) return;
+
+    // Select synchronously before dispatch so every action sees the clicked
+    // item. Selection observers can distinguish this from keyboard preview.
+    void this.selectIndex(itemIndex, true, "click");
+    const keystroke = [
+      event.ctrlKey && "ctrl",
+      event.altKey && "alt",
+      event.shiftKey && "shift",
+      event.metaKey && "cmd",
+      "enter",
+    ]
+      .filter(Boolean)
+      .join("-");
+    this.services.keymapManager.dispatchKeystroke(keystroke, target, event);
   }
 
   didContextMenuItem(itemIndex) {
@@ -1350,7 +1365,7 @@ class SelectList extends InputDialog {
     component.update({
       element: this.prepareItemElement(this.resolveElement(item, opts), index, selected),
       selected: selected,
-      onclick: () => this.didClickItem(index),
+      onclick: (event) => this.didClickItem(index, event),
       onmiddleclick: () => this.selectIndex(index),
       oncontextmenu: () => this.didContextMenuItem(index),
     });
@@ -1872,7 +1887,7 @@ class ListItemView {
 
   didClick(event) {
     event.preventDefault();
-    this.onclick();
+    this.onclick(event);
   }
 
   didContextMenu(event) {

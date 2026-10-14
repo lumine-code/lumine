@@ -1210,6 +1210,35 @@ module.exports = KeymapManager = (function () {
       }
     }
 
+    // Dispatch one keydown binding without entering or advancing a keyboard
+    // sequence. Pointer activation can share keymap resolution with Enter while
+    // retaining its original mouse event and leaving pending chords untouched.
+    dispatchKeystroke(keystroke, target, originalEvent) {
+      keystroke = normalizeKeystrokes(keystroke);
+      if (!target || !keystroke || keystroke.includes(" ") || isKeyup(keystroke)) {
+        return false;
+      }
+
+      const document = target.ownerDocument ?? globalThis.document;
+      if (target === document.body) target = this.defaultTargetForDocument(document) ?? target;
+      const candidates = this.keyBindings.filter((binding) => binding.keystrokes === keystroke);
+
+      let currentTarget = target;
+      while (currentTarget != null && currentTarget !== document) {
+        for (const binding of this.findExactMatches(candidates, currentTarget)) {
+          if (binding.command === "native!") return false;
+          if (binding.command === "abort!") {
+            originalEvent.preventDefault();
+            return true;
+          }
+          if (binding.command === "unset!") break;
+          if (this.dispatchCommandEvent(binding.command, target, originalEvent)) return true;
+        }
+        currentTarget = currentTarget.parentElement;
+      }
+      return false;
+    }
+
     // After we match a binding, we call this method to dispatch a custom event
     // based on the binding's command.
     dispatchCommandEvent(command, target, keyboardEvent) {
