@@ -271,12 +271,41 @@ describe("MacApplicationMenu", () => {
       assert.deepStrictEqual(first.messages, [visibilityMessage(true), visibilityMessage(false)]);
       assert.deepStrictEqual(second.messages, []);
       assert.strictEqual(applicationMenu.activeTemplate[0].label, "Latest");
-      assert.strictEqual(menu.listenerCount("menu-will-show"), 0);
-      assert.strictEqual(menu.listenerCount("menu-will-close"), 0);
-
       applicationMenu.menu.emit("menu-will-show");
       applicationMenu.menu.emit("menu-will-close");
       assert.deepStrictEqual(second.messages, [visibilityMessage(true), visibilityMessage(false)]);
+    });
+
+    it("still observes the previous menu while Cocoa defers installing its replacement", () => {
+      const window = createWindow();
+      applicationMenu.addWindow(window);
+      const previousMenu = applicationMenu.menu;
+      previousMenu.emit("menu-will-show");
+      applicationMenu.update(window, [{ label: "Replacement" }], {});
+      previousMenu.emit("menu-will-close");
+      const replacementMenu = applicationMenu.menu;
+      assert.notStrictEqual(replacementMenu, previousMenu);
+
+      // Crossing from one top-level menu to the next can still use the old
+      // native menu before Cocoa returns to the default run loop mode.
+      previousMenu.emit("menu-will-show");
+      assert.isTrue(applicationMenu.menuOpen);
+      previousMenu.emit("menu-will-close");
+      replacementMenu.emit("menu-will-show");
+      previousMenu.emit("menu-will-close");
+      assert.isTrue(applicationMenu.menuOpen);
+      assert.strictEqual(applicationMenu.menuSource, replacementMenu);
+      replacementMenu.emit("menu-will-close");
+
+      assert.deepStrictEqual(window.messages, [
+        visibilityMessage(true),
+        visibilityMessage(false),
+        visibilityMessage(true),
+        visibilityMessage(false),
+        visibilityMessage(true),
+        visibilityMessage(false),
+      ]);
+      assert.isFalse(applicationMenu.menuOpen);
     });
 
     it("lets a replacement return to the currently installed template while open", () => {

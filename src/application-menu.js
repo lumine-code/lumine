@@ -17,11 +17,10 @@ module.exports = class MacApplicationMenu {
     this.windows = new Set();
     this.windowTemplates = new WeakMap();
     this.menuOpen = false;
+    this.menuSource = null;
     this.menuWindow = null;
     this.menuPresentationId = null;
     this.pendingTemplate = null;
-    this.handleMenuWillShow = () => this.setMenuOpen(true);
-    this.handleMenuWillClose = () => this.setMenuOpen(false);
     this.setActiveTemplate(this.getDefaultTemplate());
   }
 
@@ -44,20 +43,25 @@ module.exports = class MacApplicationMenu {
     }
     if (_.isEqual(template, this.activeTemplate)) return;
 
-    this.menu?.removeListener("menu-will-show", this.handleMenuWillShow);
-    this.menu?.removeListener("menu-will-close", this.handleMenuWillClose);
+    // Electron installs the replacement in the default Cocoa run loop mode.
+    // Until then the previous menu can reopen while moving across the menu
+    // bar, so leave its visibility hooks alive with its native lifetime.
     this.activeTemplate = template;
-    this.menu = Menu.buildFromTemplate(_.deepClone(template));
-    this.menu.on("menu-will-show", this.handleMenuWillShow);
-    this.menu.on("menu-will-close", this.handleMenuWillClose);
-    Menu.setApplicationMenu(this.menu);
+    const menu = Menu.buildFromTemplate(_.deepClone(template));
+    this.menu = menu;
+    menu.on("menu-will-show", () => this.setMenuOpen(true, menu));
+    menu.on("menu-will-close", () => this.setMenuOpen(false, menu));
+    Menu.setApplicationMenu(menu);
   }
 
-  setMenuOpen(open) {
+  setMenuOpen(open, source) {
     // The root Cocoa controller also reports submenu openings, while closing
     // a nested submenu leaves the application menu's tracking session alive.
+    if (open) this.menuSource = source;
+    else if (source && source !== this.menuSource) return;
     if (open === this.menuOpen) return;
     this.menuOpen = open;
+    if (!open) this.menuSource = null;
     const window = open ? this.lastFocusedWindow : this.menuWindow;
     if (open) {
       const owner = global.lumineApplication?.lumineWindowForBrowserWindow?.(window);
