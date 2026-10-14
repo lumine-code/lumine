@@ -38,6 +38,8 @@ module.exports = {
 
 The `settings-view` package is a working example: `lumine://settings-view/show-package?package=tree-view` reaches its handler, which opens the internal workspace URI `lumine://config/packages/tree-view`.
 
+The website's Install links use `lumine://settings-view/install?source=lumine-code%2Fjupyter-view`. Settings validates the public repository source, opens its Install panel and searches for that exact source. Encode the complete source, including any ref selector, as a single query argument. The user confirms installation in the editor; opening the URI never installs a package automatically.
+
 ## From the command line
 
 The `lumine` command accepts `--uri-handler` so desktop integration can forward one `lumine://` link to a running window.
