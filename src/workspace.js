@@ -2370,7 +2370,6 @@ module.exports = class Workspace extends Model {
    * @param {Boolean} [options.activatePane=true] - A `Boolean` indicating whether to call {@link Pane#activate} on containing pane. Defaults to `true`.
    * @param {Boolean} [options.activateItem=true] - A `Boolean` indicating whether to call {@link Pane#activateItem} on containing pane. Defaults to `true`.
    * @param {Boolean} [options.pending] - A `Boolean` indicating whether or not the item should be opened in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
-   * @param {Boolean} [options.forcePending=false] - Honor an explicit pending opening even when core.allowPendingPaneItems is disabled.
    * @param {Boolean} [options.transferred=false] - A `Boolean` marking a staged cross-window item whose requested placement should be preserved by tab surfaces.
    * @param {Pane} [options.pane] - A {@link Pane} in which to open the item. File openings with searchAllPanes reuse a matching item before using this pane as their destination. When combined with `split`, the new pane is created directly beside this pane after the item is ready.
    * @param {Boolean} [options.searchAllPanes=false] - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
@@ -2475,7 +2474,7 @@ module.exports = class Workspace extends Model {
           destinationPane,
           options.pending &&
             options.activateItem !== false &&
-            (options.forcePending || this.config.get("core.allowPendingPaneItems")),
+            this.config.get("core.allowPendingPaneItems"),
         );
         const incomingReuse = this.#itemOpenRequests.getForPane(destinationPane);
         if (existingItem || incomingReuse?.uri === uri)
@@ -2496,7 +2495,7 @@ module.exports = class Workspace extends Model {
       }
 
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
-      if (!options.forcePending && !lumine.config.get("core.allowPendingPaneItems")) {
+      if (!lumine.config.get("core.allowPendingPaneItems")) {
         options.pending = false;
       }
 
