@@ -94,7 +94,7 @@
     "markdown-it-task-checkbox": "^1.0.6",
     "normalize-package-data": "9.0.0",
     "notifications": "github:lumine-code/notifications#df8f6aa0d50da94cbdd14080dcce9e52afe8da50",
-    "one-theme": "github:lumine-code/one-theme#14a69683b0e3238e2bc128fbfae3866c1e4ee9c6",
+    "one-theme": "github:lumine-code/one-theme#1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
     "open-with": "github:lumine-code/open-with#59cf7e444ed926cc3a29f122a4de0c8460081507",
     "picomatch": "^4.0.7",
     "postcss-selector-parser": "7.1.6",
