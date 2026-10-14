@@ -3,7 +3,6 @@ const asyncEach = require("async/each");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
 const { Disposable, Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
-const dedent = require("dedent");
 
 const CompileCache = require("./compile-cache");
 const ModuleCache = require("./module-cache");
@@ -113,9 +112,11 @@ module.exports = class Package {
 
   measure(key, fn) {
     const startTime = window.performance.now();
-    const value = fn();
-    this[key] = Math.round(window.performance.now() - startTime);
-    return value;
+    try {
+      return fn();
+    } finally {
+      this[key] = Math.round(window.performance.now() - startTime);
+    }
   }
 
   measureAsync(key, fn) {
@@ -1170,14 +1171,6 @@ module.exports = class Package {
       }
     } else if (this.mainModuleRequired) {
       return this.mainModule;
-    } else if (!this.isCompatible()) {
-      const nativeModuleNames = this.incompatibleModules.map((m) => m.name).join(", ");
-      console.warn(dedent`
-        Failed to require the main module of '${
-          this.name
-        }' because it requires one or more incompatible native modules (${nativeModuleNames}).
-        Run \`lumine -p rebuild\` in the package directory and restart Lumine to resolve.\
-      `);
     } else {
       const mainModulePath = this.getMainModulePath();
       if (fs.isFileSync(mainModulePath)) {
@@ -1316,7 +1309,9 @@ module.exports = class Package {
    * Are all native modules depended on by this package correctly
    * compiled against the current version of Lumine?
    *
-   * Incompatible packages cannot be activated.
+   * This explicit diagnostic loads every discovered native binding. Startup
+   * loads only bindings actually required by the package; unused optional
+   * bindings do not prevent its JavaScript bootstrap from activating.
    *
    * @returns {Boolean}, true if compatible, false if incompatible.
    */

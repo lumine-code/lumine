@@ -44,6 +44,114 @@ describe("PackageManager", () => {
     expect(now).toBe(32);
   });
 
+  describe("initial package failure isolation", () => {
+    let directory, packs, originalFlags;
+    beforeEach(() => {
+      directory = temp.mkdirSync("native-bootstrap-isolation");
+      packs = [];
+      originalFlags = {
+        initialPackagesLoaded: lumine.packages.initialPackagesLoaded,
+        initialPackagesInitialized: lumine.packages.initialPackagesInitialized,
+      };
+      lumine.packages.initialPackagesLoaded = true;
+      lumine.packages.initialPackagesInitialized = false;
+      spyOn(lumine.packages, "getLoadedPackagesForTypes").and.returnValue(packs);
+      spyOn(lumine.window, "isSpecMode").and.returnValue(false);
+    });
+    afterEach(async () => {
+      for (const pack of packs) await lumine.packages.unloadPackage(pack.name);
+      Object.assign(lumine.packages, originalFlags);
+      const temporaryRoot = fs.realpathSync(require("node:os").tmpdir());
+      if (
+        fs.realpathSync(path.dirname(directory)) !== temporaryRoot ||
+        !path.basename(directory).startsWith("native-bootstrap-isolation")
+      )
+        throw new Error("Unexpected native bootstrap fixture directory");
+      fs.removeSync(directory);
+    });
+    function createPackage(name, source) {
+      const root = path.join(directory, name);
+      fs.makeTreeSync(root);
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          main: "main.js",
+          engines: { lumine: "^1.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(root, "main.js"), source);
+      const pack = lumine.packages.loadPackage(root);
+      packs.push(pack);
+      return pack;
+    }
+    for (const phase of ["entrypoint", "initialize", "activate"]) {
+      it(`isolates an actual native binding failure during ${phase} and starts the remaining packages`, async () => {
+        const nativeRequire = 'require("./node_modules/unused-native/build/Release/binding.node");';
+        const partialCommand = "spec:native-partial-" + phase;
+        const bad = createPackage(
+          "startup-bad-native-" + phase,
+          phase === "entrypoint"
+            ? nativeRequire
+            : `module.exports = {
+            ${phase}(_state, {subscriptions}) {
+              subscriptions.add(lumine.commands.add("lumine-workspace", {${JSON.stringify(partialCommand)}() {}}));
+              ${nativeRequire}
+            },
+            deactivate() { this.deactivated = true; }
+          };`,
+        );
+        const nativeRoot = path.join(bad.path, "node_modules", "unused-native");
+        fs.makeTreeSync(path.join(nativeRoot, "build", "Release"));
+        fs.writeFileSync(
+          path.join(nativeRoot, "package.json"),
+          '{"name":"unused-native","version":"1.0.0"}',
+        );
+        fs.writeFileSync(
+          path.join(nativeRoot, "build", "Release", "binding.node"),
+          "Invalid native fixture.",
+        );
+        const healthy = createPackage(
+          "startup-healthy-" + phase,
+          `module.exports = {
+          initialize() { this.initialized = true; }, activate() { this.activated = true; }
+        };`,
+        );
+        const notified = jasmine.createSpy("native startup notification");
+        const subscription = lumine.notifications.onDidAddNotification(notified);
+        try {
+          expect(() => lumine.packages.initializePackages()).not.toThrow();
+          expect(Number.isFinite(bad.mainModuleLoadTime)).toBeTrue();
+          await expectAsync(Promise.all(lumine.packages.activatePackages(packs))).toBeResolved();
+          const failure = phase === "activate" ? bad.activationError : bad.loadError;
+          expect(failure.code).toBe("ERR_DLOPEN_FAILED");
+          expect(lumine.packages.isPackageActive(bad.name)).toBeFalse();
+          expect(lumine.packages.getPackageLifecycleState(bad.name)).toBe("loaded");
+          expect(lumine.packages.isPackageActive(healthy.name)).toBeTrue();
+          expect(healthy.mainModule.initialized).toBeTrue();
+          expect(healthy.mainModule.activated).toBeTrue();
+          expect(
+            lumine.commands
+              .findCommands({ target: lumine.workspace.getElement() })
+              .some(({ name }) => name === partialCommand),
+          ).toBeFalse();
+          expect(notified.calls.count()).toBe(1);
+          expect(notified.calls.first().args[0].options.packageName).toBe(bad.name);
+          await expectAsync(lumine.packages.activatePackage(bad.name)).toBeRejectedWith(
+            phase === "activate"
+              ? jasmine.objectContaining({ code: "ERR_DLOPEN_FAILED" })
+              : failure,
+          );
+          expect(lumine.packages.isPackageActive(healthy.name)).toBeTrue();
+          expect(notified.calls.count()).toBe(phase === "activate" ? 2 : 1);
+        } finally {
+          subscription.dispose();
+        }
+      });
+    }
+  });
+
   it("completes reset after a service cleanup error and unloads every package", async () => {
     const primary = new Error("Service cleanup failed during reset");
     const provider = await lumine.packages.activatePackage("package-with-provided-services");

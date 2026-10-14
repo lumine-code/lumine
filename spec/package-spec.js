@@ -37,6 +37,28 @@ describe("Package", function () {
     return pack;
   };
 
+  it("records synchronous timing when a callback returns or throws", () => {
+    let now = 0;
+    spyOn(window.performance, "now").and.callFake(() => now);
+    const measured = { measure: Package.prototype.measure };
+    const value = {};
+    expect(
+      measured.measure("successTime", () => {
+        now += 3;
+        return value;
+      }),
+    ).toBe(value);
+    const failure = new Error("Measured failure");
+    expect(() =>
+      measured.measure("failureTime", () => {
+        now += 7;
+        throw failure;
+      }),
+    ).toThrow(failure);
+    expect(measured.successTime).toBe(3);
+    expect(measured.failureTime).toBe(7);
+  });
+
   it("refreshes menu bindings only when package keymaps change", () => {
     const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-main");
     const pack = buildPackage(packagePath);
@@ -100,7 +122,7 @@ describe("Package", function () {
 
     afterEach(() => (lumine.packages.devMode = true));
 
-    it("does not activate it", function () {
+    it("reports incompatible bindings when explicitly inspected", function () {
       const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module");
@@ -140,7 +162,20 @@ describe("Package", function () {
       expect(pack.isCompatible()).toBe(false);
     });
 
-    it("logs an error to the console describing the problem", async function () {
+    it("does not scan unused native bindings during JavaScript activation", async function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-incompatible-native-module-loaded-conditionally");
+      const pack = buildPackage(packagePath);
+      const scan = spyOn(pack, "getNativeModuleDependencyPathsMap").and.callThrough();
+      await activatePackageObject(pack);
+      expect(pack.mainActivated).toBeTrue();
+      expect(scan).not.toHaveBeenCalled();
+      expect(pack.isCompatible()).toBeFalse();
+      expect(scan).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows JavaScript activation after an explicit diagnostic found an unused bad binding", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module");
@@ -148,13 +183,13 @@ describe("Package", function () {
       spyOn(console, "warn");
       spyOn(lumine.notifications, "addFatalError");
 
-      await activatePackageObject(buildPackage(packagePath));
+      const pack = buildPackage(packagePath);
+      expect(pack.isCompatible()).toBeFalse();
+      await activatePackageObject(pack);
 
+      expect(pack.mainActivated).toBeTrue();
       expect(lumine.notifications.addFatalError).not.toHaveBeenCalled();
-      expect(console.warn.calls.count()).toBe(1);
-      expect(console.warn.calls.mostRecent().args[0]).toContain(
-        "it requires one or more incompatible native modules (native-module)",
-      );
+      expect(console.warn).not.toHaveBeenCalled();
     });
   });
 

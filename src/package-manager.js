@@ -14,6 +14,7 @@ const {
   captureLifecycleError,
   combineLifecycleErrors,
   isLifecycleErrorReported,
+  markLifecycleErrorReported,
   throwLifecycleErrors,
 } = require("./package-lifecycle-errors");
 const ThemePackage = require("./theme-package");
@@ -1029,11 +1030,20 @@ module.exports = class PackageManager {
       // bootstrap never depends on directory/activation order. Initializers
       // themselves remain the only phase allowed to publish package state.
       for (const pack of packages) {
-        pack.measure("mainModuleLoadTime", () => pack.requireMainModule());
+        try {
+          pack.measure("mainModuleLoadTime", () => pack.requireMainModule());
+        } catch (error) {
+          pack.loadError = this.recordPackageStartupError(pack, error);
+        }
       }
       this.config.transact(() => {
         for (const pack of packages) {
-          pack.initializeForExternalUse("initial package bootstrap");
+          if (pack.loadError) continue;
+          try {
+            pack.initializeForExternalUse("initial package bootstrap");
+          } catch (error) {
+            pack.loadError = this.recordPackageStartupError(pack, error);
+          }
         }
       });
       this.initialPackagesInitialized = true;
@@ -1550,7 +1560,23 @@ module.exports = class PackageManager {
 
   activatePackages(packages) {
     const transaction = this.config.transactAsync(() =>
-      Promise.all(packages.map((pack) => this.startPackage(pack.name))),
+      Promise.allSettled(
+        packages
+          .filter((pack) => !pack.loadError && !this.isPackageDisabled(pack.name))
+          .map((pack) => {
+            let readiness;
+            try {
+              readiness = this.startPackage(pack.name);
+            } catch (error) {
+              readiness = Promise.reject(error);
+            }
+            return Promise.resolve(readiness).catch((error) => {
+              const failure = this.recordPackageStartupError(pack, error);
+              if (!pack.mainActivated) pack.activationError = failure;
+              throw failure;
+            });
+          }),
+      ),
     );
     this.observeDisabledPackages();
     this.observePackagesWithKeymapsDisabled();
@@ -1710,6 +1736,7 @@ module.exports = class PackageManager {
     }
 
     this.setPackageLifecycleState(record, "active");
+    pack.activationError = null;
     this.activePackages[pack.name] = pack;
 
     // The package hook itself is synchronous, but grammar/settings discovery
@@ -1788,6 +1815,7 @@ module.exports = class PackageManager {
         failures,
         `Package '${pack.name}' activation and rollback failed`,
       );
+      if (!pack.mainActivated) pack.activationError = failure;
       const reportingFailures = [];
       captureLifecycleError(reportingFailures, () =>
         this.reportPackageActivationError(pack, failure),
@@ -1824,6 +1852,18 @@ module.exports = class PackageManager {
     throwLifecycleErrors(failures, `Package '${pack.name}' deactivation completion failed`);
   }
 
+  recordPackageStartupError(pack, error) {
+    const failures = [error];
+    captureLifecycleError(failures, () => this.reportPackageActivationError(pack, error));
+    const failure = combineLifecycleErrors(
+      failures,
+      `Package '${pack.name}' startup reporting failed`,
+    );
+    markLifecycleErrorReported(failure);
+    if (failure !== error) console.error(failure);
+    return failure;
+  }
+
   reportPackageActivationError(pack, error) {
     if (error?.code === "PACKAGE_ACTIVATION_CANCELLED" || isLifecycleErrorReported(error)) {
       return;
@@ -1836,6 +1876,7 @@ module.exports = class PackageManager {
       // rejects with the original failure after lifecycle rollback.
       if (!Object.is(reportError, error)) throw reportError;
     }
+    markLifecycleErrorReported(error);
   }
 
   serialize() {
