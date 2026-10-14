@@ -38,6 +38,7 @@ exports.setLumineHomeDirectory = function (lumineHome) {
 
 exports.setCacheDirectory = function (directory) {
   cacheDirectory = directory;
+  ModuleLoader.setCacheDirectory(directory);
 };
 
 exports.getCacheDirectory = function () {

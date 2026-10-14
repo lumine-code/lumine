@@ -711,6 +711,53 @@ process.stdout.write(JSON.stringify(require(${JSON.stringify(main)})));
     expect(JSON.parse(result.stdout)).toEqual(["button", { title: "cold" }]);
   });
 
+  it("reuses syntax analysis across fresh processes and invalidates it when source changes", () => {
+    const main = write(
+      "cached-analysis.cjs",
+      '"use strict"; module.exports = { value: 42, strict: (function () { return this; })() === undefined };',
+    );
+    const cacheDirectory = temp.mkdirSync("native-module-analysis-cache");
+    const script = `
+const Module = require("node:module");
+const loader = require(${JSON.stringify(require.resolve("../src/module-loader"))});
+const originalLoad = Module._load;
+let parses = 0;
+Module._load = function (specifier, ...args) {
+  const loaded = originalLoad.call(this, specifier, ...args);
+  return specifier === "@babel/parser" ? {
+    parse(...args) { parses++; return loaded.parse(...args); }
+  } : loaded;
+};
+loader.setCacheDirectory(${JSON.stringify(cacheDirectory)});
+loader.install(source => source);
+loader.registerPackage(${JSON.stringify(directory)});
+const value = require(${JSON.stringify(main)});
+process.stdout.write(JSON.stringify({ parses, value }));
+`;
+    const run = () => {
+      const result = spawnSync(process.execPath, ["-e", script], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        encoding: "utf8",
+        timeout: 15000,
+        windowsHide: true,
+      });
+      expect(result.status)
+        .withContext(result.stderr || result.error?.message)
+        .toBe(0);
+      return JSON.parse(result.stdout);
+    };
+    const first = run();
+    const second = run();
+
+    expect(first.parses).toBeGreaterThan(0);
+    expect(second.parses).toBe(0);
+    expect(second.value).toEqual({ value: 42, strict: true });
+    write("cached-analysis.cjs", "module.exports = { value: 43, strict: false };");
+    const updated = run();
+    expect(updated.parses).toBeGreaterThan(0);
+    expect(updated.value).toEqual({ value: 43, strict: false });
+  });
+
   it("uses one generation through both a symlinked package path and its real path", () => {
     const linked = path.join(temp.mkdirSync("native-package-link"), "package");
     fs.symlinkSync(directory, linked, process.platform === "win32" ? "junction" : "dir");
@@ -903,6 +950,27 @@ export default {
         .toBe(true);
       expect(failure.stack).not.toContain(".lumine-generation-");
     }
+  });
+
+  it("builds diagnostic source maps only when requested", () => {
+    const { SourceMapGenerator } = require("node:module").createRequire(
+      require.resolve("source-map-support"),
+    )("source-map");
+    const addMapping = spyOn(SourceMapGenerator.prototype, "addMapping").and.callThrough();
+    const main = write("lazy-map.cjs", "module.exports = { value: 42 }; // lazy diagnostics");
+    const loaded = require(main);
+    const virtual = Object.keys(require.cache).find(
+      (filename) =>
+        filename.includes(".lumine-generation-") && require.cache[filename].exports === loaded,
+    );
+
+    expect(addMapping).not.toHaveBeenCalled();
+    const map = ModuleLoader.getSourceMap(virtual);
+    expect(addMapping).toHaveBeenCalled();
+    expect(map.map.sourcesContent.join("\n")).toContain("lazy diagnostics");
+    const calls = addMapping.calls.count();
+    expect(ModuleLoader.getSourceMap(virtual)).toBe(map);
+    expect(addMapping.calls.count()).toBe(calls);
   });
 
   it("keeps changed source contents and their retired stack mappings separate", () => {

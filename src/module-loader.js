@@ -12,15 +12,20 @@ const GENERATION_PREFIX = /^\.lumine-generation-(\d+)-(.+)$/;
 const JAVASCRIPT_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"]);
 const MODULE_EXTENSIONS = new Set([...JAVASCRIPT_EXTENSIONS, ".json"]);
 const packages = new Map();
+const packageRoots = new Map();
+const moduleOwners = new Map();
 const dependencies = new Map();
 const dependencyEdges = new Map();
 const testModules = new Set();
 const sourceMaps = new Map();
+const pendingSourceMaps = new Map();
 const sourceMapMetadata = new Map();
 const moduleGenerations = new WeakMap();
 const retiredModules = new Map();
 const moduleSources = new Map();
 const packageTypes = new Map();
+const sourceAnalyses = new Map();
+let analysisCacheDirectory = null;
 let nextGeneration = 1;
 let compiler = null;
 let hooks = null;
@@ -31,9 +36,7 @@ let parser = null;
 function prependAfterDirectives(source, prefix) {
   // A quoted first line can continue as an expression on the next line, so
   // a textual directive scan would accidentally make valid scripts strict.
-  const ast = parseSource(source);
-  let offset = ast.program.directives.at(-1)?.end ?? 0;
-  if (offset === 0 && ast.program.interpreter) offset = source.indexOf("\n") + 1;
+  const offset = analyzeSource(source).directiveOffset;
   return {
     output: source.slice(0, offset) + ";" + prefix + source.slice(offset),
     offset,
@@ -50,7 +53,10 @@ function parseSource(source) {
 }
 
 function hasModuleSyntax(source) {
-  const ast = parseSource(source);
+  return analyzeSource(source).moduleSyntax;
+}
+
+function moduleSyntaxIn(ast) {
   if (ast.program.sourceType === "module") return true;
   // Node also detects ESM when a lexical declaration shadows one of the
   // CommonJS wrapper parameters, which cannot be redeclared in that wrapper.
@@ -69,6 +75,43 @@ function hasModuleSyntax(source) {
   });
 }
 
+function analyzeSource(source) {
+  const digest = contentDigest(source);
+  let analysis = sourceAnalyses.get(digest);
+  if (analysis) return analysis;
+  const cachePath = analysisCacheDirectory && path.join(analysisCacheDirectory, digest + ".json");
+  if (cachePath) {
+    try {
+      analysis = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+      if (
+        typeof analysis.moduleSyntax === "boolean" &&
+        Number.isInteger(analysis.directiveOffset) &&
+        analysis.directiveOffset >= 0 &&
+        analysis.directiveOffset <= source.length
+      ) {
+        sourceAnalyses.set(digest, analysis);
+        return analysis;
+      }
+    } catch {
+      // A stale or incomplete analysis cache must not prevent loading.
+    }
+  }
+  const ast = parseSource(source);
+  let directiveOffset = ast.program.directives.at(-1)?.end ?? 0;
+  if (directiveOffset === 0 && ast.program.interpreter) directiveOffset = source.indexOf("\n") + 1;
+  analysis = { moduleSyntax: moduleSyntaxIn(ast), directiveOffset };
+  sourceAnalyses.set(digest, analysis);
+  if (cachePath) {
+    try {
+      fs.mkdirSync(analysisCacheDirectory, { recursive: true });
+      fs.writeFileSync(cachePath, JSON.stringify(analysis));
+    } catch {
+      // Read-only profiles still load modules; they simply re-analyze them.
+    }
+  }
+  return analysis;
+}
+
 function bindingNames(pattern) {
   if (!pattern) return [];
   if (pattern.type === "Identifier") return [pattern.name];
@@ -84,6 +127,7 @@ function bindingNames(pattern) {
 
 function originalURL(url) {
   if (!url?.startsWith("file:")) return { url, generation: null };
+  if (!url.includes("/.lumine-generation-")) return { url, generation: null };
   const parsed = new URL(url);
   const filePath = fileURLToPath(parsed);
   const match = GENERATION_PREFIX.exec(path.basename(filePath));
@@ -95,17 +139,14 @@ function originalURL(url) {
 }
 
 function packageOwnerOf(filePath) {
-  let owner = null;
-  let length = -1;
-  for (const entry of packages.values()) {
-    for (const root of entry.roots) {
-      if ((filePath === root || filePath.startsWith(root + path.sep)) && root.length > length) {
-        owner = entry;
-        length = root.length;
-      }
-    }
+  let directory = filePath;
+  while (true) {
+    const entry = packageRoots.get(directory);
+    if (entry) return entry;
+    const parent = path.dirname(directory);
+    if (parent === directory) return null;
+    directory = parent;
   }
-  return owner;
 }
 
 function contentDigest(contents) {
@@ -124,15 +165,22 @@ function dependencySignature(root) {
 }
 
 function ownerOf(filePath) {
+  if (moduleOwners.has(filePath)) return moduleOwners.get(filePath);
   if (testModules.has(filePath)) return null;
   const parent = packageOwnerOf(filePath);
-  if (!parent) return null;
+  if (!parent) {
+    moduleOwners.set(filePath, null);
+    return null;
+  }
   const root = [...parent.roots]
     .filter((candidate) => filePath === candidate || filePath.startsWith(candidate + path.sep))
     .sort((left, right) => right.length - left.length)[0];
   const parts = path.relative(root, filePath).split(path.sep);
   const modules = parts.lastIndexOf("node_modules");
-  if (modules < 0 || !parts[modules + 1]) return parent;
+  if (modules < 0 || !parts[modules + 1]) {
+    moduleOwners.set(filePath, parent);
+    return parent;
+  }
   const end = modules + (parts[modules + 1].startsWith("@") ? 3 : 2);
   const dependencyRoot = path.join(root, ...parts.slice(0, end));
   let entry = dependencies.get(dependencyRoot);
@@ -147,6 +195,7 @@ function ownerOf(filePath) {
     };
     dependencies.set(dependencyRoot, entry);
   }
+  moduleOwners.set(filePath, entry);
   return entry;
 }
 
@@ -325,8 +374,7 @@ function load(url, context, nextLoad) {
   // module syntax; detect the resulting format only for these extensions.
   let result;
   if ([".jsx", ".ts", ".tsx"].includes(extension)) {
-    const ast = parseSource(compiled);
-    result = { format: ast.program.sourceType === "module" ? "module" : "commonjs" };
+    result = { format: hasModuleSyntax(compiled) ? "module" : "commonjs" };
   } else {
     result = nextLoad(original.url, context);
   }
@@ -363,7 +411,14 @@ function load(url, context, nextLoad) {
       insertion = prependAfterDirectives(output, prefix);
     }
     output = insertion.output;
-    recordSourceMap(url, original.url, compiled, insertion);
+    // Stack mapping is diagnostic work. Keep the exact source for this
+    // generation, but build its token mappings only when a stack needs them.
+    pendingSourceMaps.set(fileURLToPath(url), {
+      url,
+      sourceURL: original.url,
+      source: compiled,
+      insertion: { offset: insertion.offset, length: insertion.length },
+    });
     output += `\n//# sourceURL=${original.url}`;
   }
   const resultSource = {
@@ -448,6 +503,10 @@ exports.setResourcePath = function (directory) {
   apiSource = null;
 };
 
+exports.setCacheDirectory = function (directory) {
+  analysisCacheDirectory = directory && path.join(directory, "module-analysis-v1");
+};
+
 exports.registerTestModule = function (filename) {
   const actual = exports.getSourcePath(path.resolve(filename));
   testModules.add(actual);
@@ -456,6 +515,7 @@ exports.registerTestModule = function (filename) {
   } catch {
     /* A removed test may still have a cached module. */
   }
+  moduleOwners.clear();
   for (const cached of Object.values(require.cache)) {
     if (cached.filename === actual) moduleGenerations.delete(cached);
   }
@@ -474,14 +534,24 @@ exports.registerPackage = function (directory) {
     [...roots].some((candidate) => entry.roots.has(candidate)),
   );
   if (existing) {
-    for (const candidate of roots) existing.roots.add(candidate);
+    for (const candidate of roots) {
+      existing.roots.add(candidate);
+      packageRoots.set(candidate, existing);
+    }
     packages.set(root, existing);
+    moduleOwners.clear();
   } else {
     const entry = { roots, generation: nextGeneration++ };
     packages.set(root, entry);
+    for (const candidate of roots) packageRoots.set(candidate, entry);
+    moduleOwners.clear();
     // Adopt an ordinary CommonJS copy loaded before package discovery, rather
     // than duplicating a bootstrap already used by a spec or service consumer.
+    const rootPrefixes = [...roots].map((candidate) => candidate + path.sep);
     for (const filename of Object.keys(require.cache)) {
+      // Only newly discovered roots can own a preload being adopted here.
+      // Avoid resolving every core and previously discovered module again.
+      if (!rootPrefixes.some((prefix) => filename.startsWith(prefix))) continue;
       const owner = ownerOf(filename);
       if (
         GENERATION_PREFIX.test(path.basename(filename)) ||
@@ -700,5 +770,10 @@ function freezeSourceMapMetadata(value) {
 
 exports.getSourceMap = function (filePath) {
   if (filePath.startsWith("file:")) filePath = fileURLToPath(filePath);
+  const pending = pendingSourceMaps.get(filePath);
+  if (pending) {
+    recordSourceMap(pending.url, pending.sourceURL, pending.source, pending.insertion);
+    pendingSourceMaps.delete(filePath);
+  }
   return sourceMaps.get(filePath) ?? null;
 };
