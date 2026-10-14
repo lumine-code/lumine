@@ -23,6 +23,11 @@ const sourceMapMetadata = new Map();
 const moduleGenerations = new WeakMap();
 const retiredModules = new Map();
 const moduleSources = new Map();
+// Canonical filenames are the first managed epoch. Unlike a virtual filename,
+// their parent URL cannot encode that epoch after an update. Retain the epoch
+// that evaluated each URL so late native imports keep their original graph.
+const canonicalGenerations = new Map();
+const unmanagedESMSources = new Map();
 const packageTypes = new Map();
 const sourceAnalyses = new Map();
 let analysisCacheDirectory = null;
@@ -49,6 +54,7 @@ function parseSource(source) {
   return parser.parse(source, {
     sourceType: "unambiguous",
     allowReturnOutsideFunction: true,
+    allowNewTargetOutsideFunction: true,
   });
 }
 
@@ -228,6 +234,25 @@ function generationFilename(filename, generation) {
   );
 }
 
+function recordCanonicalGeneration(url, filePath, owner, generation, format) {
+  if (generation === 0 && owner && !canonicalGenerations.has(url)) {
+    canonicalGenerations.set(url, { owner, generation });
+  } else if (!owner && format === "module") {
+    let urls = unmanagedESMSources.get(filePath);
+    if (!urls) unmanagedESMSources.set(filePath, (urls = new Set()));
+    urls.add(url);
+  }
+}
+
+function retainDiagnosticSource(url, sourceURL, source, insertion = { offset: 0, length: 0 }) {
+  pendingSourceMaps.set(fileURLToPath(url), {
+    url,
+    sourceURL,
+    source,
+    insertion: { offset: insertion.offset, length: insertion.length },
+  });
+}
+
 function packageTypeAt(filePath, generation) {
   let cache = packageTypes.get(generation);
   if (!cache) packageTypes.set(generation, (cache = new Map()));
@@ -290,8 +315,14 @@ function resolve(specifier, context, nextResolve) {
   if (!MODULE_EXTENSIONS.has(path.extname(filePath))) return result;
   const owner = ownerOf(filePath);
   if (!owner) return result;
-  const parentOwner = parent.url?.startsWith("file:") ? ownerOf(fileURLToPath(parent.url)) : null;
-  const parentGeneration = parent.generation ?? (parentOwner?.kind === "dependency" ? 0 : null);
+  const canonicalParent = canonicalGenerations.get(context.parentURL);
+  const parentOwner =
+    canonicalParent?.owner ??
+    (parent.url?.startsWith("file:") ? ownerOf(fileURLToPath(parent.url)) : null);
+  const parentGeneration =
+    parent.generation ??
+    canonicalParent?.generation ??
+    (parentOwner?.kind === "dependency" ? 0 : null);
   const generation = resolveGeneration(owner, parentOwner, parentGeneration, requestedGeneration);
   const virtual = pathToFileURL(generationFilename(filePath, generation));
   const parsed = new URL(result.url);
@@ -327,26 +358,47 @@ function load(url, context, nextLoad) {
   const filePath = fileURLToPath(original.url);
   const extension = path.extname(filePath);
   const sourceOwner = ownerOf(filePath);
+  const canonical = canonicalGenerations.get(url);
   const saved =
     original.generation == null &&
+    !canonical &&
     !(sourceOwner?.kind === "dependency" && sourceOwner.generation > 0)
       ? null
       : moduleSources.get(url);
   if (saved) {
+    // The CommonJS nextLoad deliberately leaves ambiguous .js format unset:
+    // Node detects it later in _compile. Native ESM cannot translate that
+    // cached result until its format is concrete. Detect against this epoch's
+    // retained source, rather than a file that may already have been updated.
+    let retained = saved;
+    if (retained.format == null) {
+      retained = {
+        ...retained,
+        format: hasModuleSyntax(retained.source) ? "module" : "commonjs",
+      };
+      moduleSources.set(url, retained);
+    }
     // Still let Node validate JSON import attributes for this request.
-    if (extension === ".json") {
-      nextLoad(original.url, context);
+    if (extension === ".json" || Object.keys(context.importAttributes ?? {}).length > 0) {
+      nextLoad(original.url, { ...context, format: retained.format, source: retained.source });
     }
     // Native CommonJS and JSON translators share default exports with
     // require.cache. A first late import must use the retired runtime object,
     // including mutations, rather than evaluating its saved source again.
     const retired = retiredModules.get(fileURLToPath(url));
     if (retired) require.cache[fileURLToPath(url)] = retired;
-    return { ...saved, shortCircuit: true };
+    return { ...retained, shortCircuit: true };
   }
   if (extension === ".json") {
     const result = { ...nextLoad(original.url, context), shortCircuit: true };
     recordDependencySource(filePath, result.source);
+    recordCanonicalGeneration(
+      url,
+      filePath,
+      sourceOwner,
+      original.generation ?? sourceOwner?.generation,
+      result.format,
+    );
     moduleSources.set(url, result);
     const retired = retiredModules.get(fileURLToPath(url));
     if (retired) require.cache[fileURLToPath(url)] = retired;
@@ -381,9 +433,20 @@ function load(url, context, nextLoad) {
     (sourceOwner?.kind === "dependency" ||
       (!sourceOwner && filePath.includes(`${path.sep}node_modules${path.sep}`)))
   ) {
+    recordCanonicalGeneration(url, filePath, sourceOwner, 0, nativeResult.format);
     moduleSources.set(url, nativeResult);
     return nativeResult;
   }
+  // Node already selected the format of unchanged first-epoch JavaScript.
+  // Later epochs still read the manifest independently of Node's package type
+  // cache, and transformed sources still need their compiled syntax checked.
+  const initialNativeFormat =
+    original.generation == null &&
+    sourceOwner &&
+    !sourceOwner.kind &&
+    sourceOwner.generation === 0 &&
+    compiled === source &&
+    nativeResult?.format;
   // Node has no built-in JSX loader. Babel removes JSX and types but leaves
   // module syntax; detect the resulting format only for these extensions.
   let result;
@@ -394,7 +457,7 @@ function load(url, context, nextLoad) {
       format: extension === ".mjs" ? "module" : extension === ".cjs" ? "commonjs" : undefined,
     };
   }
-  if (extension === ".js") {
+  if (extension === ".js" && !initialNativeFormat) {
     // Node caches package.json types independently of module generations.
     // Read the nearest manifest once per generation, so a package update can
     // switch its .js files between CommonJS and ESM without stale formats.
@@ -404,13 +467,14 @@ function load(url, context, nextLoad) {
       format: type === "module" ? "module" : type === "commonjs" ? "commonjs" : undefined,
     };
   }
+  if (initialNativeFormat) result = { ...result, format: initialNativeFormat };
   // For ambiguous .js sources let Node detect ESM, including transformed
   // pragma files. Explicit CommonJS remains CommonJS.
   const isModule =
     result.format === "module" || (result.format == null && hasModuleSyntax(compiled));
   let output = compiled;
   let insertion;
-  if (original.generation != null) {
+  if (original.generation != null || (sourceOwner && !sourceOwner.kind && isModule)) {
     // Assets, source maps and libraries such as MathJax use these public
     // paths. The loader retains its virtual identity independently of them.
     if (isModule) {
@@ -429,13 +493,12 @@ function load(url, context, nextLoad) {
     output = insertion.output;
     // Stack mapping is diagnostic work. Keep the exact source for this
     // generation, but build its token mappings only when a stack needs them.
-    pendingSourceMaps.set(fileURLToPath(url), {
-      url,
-      sourceURL: original.url,
-      source: compiled,
-      insertion: { offset: insertion.offset, length: insertion.length },
-    });
+    retainDiagnosticSource(url, original.url, compiled, insertion);
     output += `\n//# sourceURL=${original.url}`;
+  } else if (sourceOwner && !sourceOwner.kind) {
+    // Initial CommonJS needs no path-restoring code. Its unmodified source
+    // still belongs to this epoch when an old callback later reports an error.
+    retainDiagnosticSource(url, original.url, compiled);
   }
   const resultSource = {
     ...result,
@@ -443,6 +506,13 @@ function load(url, context, nextLoad) {
     source: output,
     shortCircuit: true,
   };
+  recordCanonicalGeneration(
+    url,
+    filePath,
+    sourceOwner,
+    original.generation ?? sourceOwner?.generation,
+    resultSource.format,
+  );
   moduleSources.set(url, resultSource);
   return resultSource;
 }
@@ -480,9 +550,18 @@ exports.install = function (compileSource, nodeRequire = require) {
     if (!owner || !MODULE_EXTENSIONS.has(path.extname(filename))) {
       return loadModule.call(this, specifier, parent, isMain, ...args);
     }
-    const caller =
-      moduleGenerations.get(parent) ??
-      (parent?.filename ? originalURL(pathToFileURL(parent.filename).href) : null);
+    let caller = moduleGenerations.get(parent);
+    if (!caller && parent?.filename) {
+      const parentURL = pathToFileURL(parent.filename).href;
+      caller = originalURL(parentURL);
+      // Before a first CommonJS body finishes evaluating, _load has not yet
+      // recorded its Module object. Its synchronous child loads must already
+      // pin dependency edges to that epoch. A public createRequire() parent
+      // is not the actual cached Module and still selects the current epoch.
+      if (caller.generation == null && require.cache[parent.filename] === parent) {
+        caller = { ...caller, ...canonicalGenerations.get(parentURL) };
+      }
+    }
     const parentOwner = caller?.owner ?? (caller?.url ? ownerOf(fileURLToPath(caller.url)) : null);
     const generation = resolveGeneration(
       owner,
@@ -563,13 +642,36 @@ exports.registerPackage = function (directory) {
     packages.set(root, existing);
     moduleOwners.clear();
   } else {
-    const entry = { roots, generation: nextGeneration++ };
+    const rootPrefixes = [...roots].map((candidate) => candidate + path.sep);
+    // An already evaluated ESM namespace cannot be adopted by require.cache.
+    // Keep its ordinary URL as the prior epoch and use a virtual managed one.
+    const preloadedESM = [...unmanagedESMSources].filter(
+      ([filename]) =>
+        rootPrefixes.some((prefix) => filename.startsWith(prefix)) &&
+        !path
+          .relative([...roots][0], filename)
+          .split(path.sep)
+          .includes("node_modules"),
+    );
+    const entry = { roots, generation: preloadedESM.length ? nextGeneration++ : 0 };
     packages.set(root, entry);
     for (const candidate of roots) packageRoots.set(candidate, entry);
     moduleOwners.clear();
     // Adopt an ordinary CommonJS copy loaded before package discovery, rather
     // than duplicating a bootstrap already used by a spec or service consumer.
-    const rootPrefixes = [...roots].map((candidate) => candidate + path.sep);
+    for (const [filename, urls] of preloadedESM) {
+      for (const url of urls) {
+        canonicalGenerations.set(url, { owner: entry, generation: 0 });
+        const source = moduleSources.get(url)?.source;
+        if (source != null)
+          retainDiagnosticSource(
+            url,
+            url,
+            typeof source === "string" ? source : Buffer.from(source).toString("utf8"),
+          );
+      }
+      unmanagedESMSources.delete(filename);
+    }
     for (const filename of Object.keys(require.cache)) {
       // Only newly discovered roots can own a preload being adopted here.
       // Avoid resolving every core and previously discovered module again.
@@ -598,6 +700,16 @@ exports.registerPackage = function (directory) {
         moduleSources.set(
           pathToFileURL(generationFilename(filename, owner.generation)).href,
           source,
+        );
+      const canonicalURL = pathToFileURL(filename).href;
+      canonicalGenerations.set(canonicalURL, { owner, generation: owner.generation });
+      if (source?.source != null && owner === entry)
+        retainDiagnosticSource(
+          canonicalURL,
+          canonicalURL,
+          typeof source.source === "string"
+            ? source.source
+            : Buffer.from(source.source).toString("utf8"),
         );
       moduleGenerations.set(cached, {
         url: pathToFileURL(filename).href,
@@ -660,7 +772,10 @@ function retireModules(entry) {
       // object needed by callbacks from before the first library update.
       if (
         GENERATION_PREFIX.test(path.basename(modulePath)) ||
-        (entry.kind === "dependency" && (moduleGenerations.get(cached)?.generation ?? 0) === 0)
+        (moduleGenerations.get(cached)?.generation ?? 0) === 0 ||
+        (canonicalGenerations.get(pathToFileURL(modulePath).href)?.generation ===
+          moduleGenerations.get(cached)?.generation &&
+          !retiredModules.has(modulePath))
       )
         retiredModules.set(modulePath, cached);
       delete require.cache[modulePath];
@@ -681,7 +796,18 @@ exports.restoreImportMeta = function (meta, publicPaths, url) {
   // A standard createRequire(import.meta.url) uses the public source URL,
   // which cannot identify an old generation. Offer its generation-bound
   // equivalent for packages that lazily cross back into CommonJS.
-  meta.require = Module.createRequire(url);
+  let requireURL = url;
+  if (canonicalGenerations.get(url)?.generation === 0) {
+    const parsed = new URL(url);
+    const filename = fileURLToPath(parsed);
+    const bound = pathToFileURL(
+      path.join(path.dirname(filename), `.lumine-generation-0-${path.basename(filename)}`),
+    );
+    bound.search = parsed.search;
+    bound.hash = parsed.hash;
+    requireURL = bound.href;
+  }
+  meta.require = Module.createRequire(requireURL);
   meta.require.resolve("node:module");
   const requireResolve = meta.require.resolve;
   meta.require.resolve = (...args) => exports.getSourcePath(requireResolve(...args));

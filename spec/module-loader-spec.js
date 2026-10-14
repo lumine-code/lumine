@@ -18,6 +18,13 @@ describe("native package module loading", () => {
     return filePath;
   }
 
+  function runtimePathFor(value) {
+    const paths = Object.keys(require.cache).filter(
+      (filename) => require.cache[filename].exports === value,
+    );
+    return paths.find((filename) => filename.includes(".lumine-generation-")) ?? paths[0];
+  }
+
   function buildPackage() {
     return new Package({
       path: directory,
@@ -576,6 +583,162 @@ describe("native package module loading", () => {
     expect(second.resolve()).toBe(dependency);
   });
 
+  it("keeps canonical native imports old while public createRequire selects the current epoch", async () => {
+    const dependency = write(
+      "dependency.cjs",
+      "exports.Model = class First {}; exports.version = 1;",
+    );
+    const main = write(
+      "canonical.mjs",
+      'export default { bound: () => import.meta.require("./dependency.cjs"), load: () => import("./dependency.cjs") };',
+    );
+    const publicRequire = require("node:module").createRequire(pathToFileURL(main));
+    const first = requireModule(main);
+    const original = first.bound();
+    expect(publicRequire("./dependency.cjs")).toBe(original);
+    original.runtimeValue = 7;
+    for (const version of [2, 3]) {
+      write("dependency.cjs", `exports.Model = class Current {}; exports.version = ${version};`);
+      ModuleLoader.invalidatePackage(directory);
+      const current = requireModule(main).bound();
+      const newlyCreated = require("node:module").createRequire(pathToFileURL(main));
+      expect(current.version).toBe(version);
+      expect(current.Model).not.toBe(original.Model);
+      expect(publicRequire("./dependency.cjs")).toBe(current);
+      expect(newlyCreated("./dependency.cjs")).toBe(current);
+      expect(first.bound()).toBe(original);
+      const namespace = await first.load();
+      expect(namespace.default).toBe(original);
+      expect(namespace.Model).toBe(original.Model);
+      expect(namespace.default.runtimeValue).toBe(7);
+      expect(first.bound()).toBe(original);
+      expect(newlyCreated.resolve("./dependency.cjs")).toBe(dependency);
+    }
+  });
+
+  it("retains canonical CommonJS callbacks and late native namespaces across successive epochs", async () => {
+    write("package.json", '{"name":"canonical-cjs"}');
+    write("helper.cjs", "exports.Model = class First {}; exports.foo = 1;");
+    const main = write(
+      "main.cjs",
+      'const prior = require("./helper.cjs"); module.exports = { prior, read: () => require("./helper.cjs"), load: () => import("./helper.cjs") };',
+    );
+    const first = require(main);
+    expect(runtimePathFor(first)).toBe(main);
+    first.prior.runtimeValue = 7;
+    let firstNamespace;
+    for (const version of [2, 3]) {
+      write("helper.cjs", `exports.Model = class Current {}; exports.bar = ${version};`);
+      ModuleLoader.invalidatePackage(directory);
+      const current = require(main);
+      const namespace = await first.load();
+      firstNamespace ??= namespace;
+      expect(namespace === firstNamespace)
+        .withContext("same old namespace")
+        .toBeTrue();
+      expect(namespace.default).toBe(first.prior);
+      expect(namespace.Model).toBe(first.prior.Model);
+      expect(namespace.foo).toBe(1);
+      expect(namespace.bar).toBeUndefined();
+      expect(namespace.default.runtimeValue).toBe(7);
+      expect(first.read() === first.prior)
+        .withContext("old require callback")
+        .toBeTrue();
+      expect(current.read() === current.prior)
+        .withContext("current require callback")
+        .toBeTrue();
+      expect((await current.load()).default).toBe(current.prior);
+      expect(current.prior.Model).not.toBe(first.prior.Model);
+    }
+  });
+
+  it("normalizes a cached ambiguous dependency before a native static import", async () => {
+    write("package.json", '{"name":"cached-format"}');
+    write(
+      "node_modules/legacy/package.json",
+      '{"name":"legacy","version":"1.0.0","main":"index.js"}',
+    );
+    const legacy = write(
+      "node_modules/legacy/index.js",
+      "exports.Model = class Shared {}; exports.foo = 1; exports.target = new.target;",
+    );
+    const original = require(legacy);
+    const main = write(
+      "importer.mjs",
+      'import legacy, { Model } from "legacy"; export default { legacy, Model };',
+    );
+    const imported = requireModule(main);
+    expect(imported.legacy).toBe(original);
+    expect(imported.Model).toBe(original.Model);
+    expect(imported.legacy.target).toBeUndefined();
+    expect((await import(pathToFileURL(main).href)).default).toBe(imported);
+    await expectAsync(
+      import(pathToFileURL(legacy).href, { with: { type: "json" } }),
+    ).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_IMPORT_ATTRIBUTE_TYPE_INCOMPATIBLE" }),
+    );
+  });
+
+  it("detects ambiguous native ESM and wrapper-shadowing JavaScript in the initial epoch", () => {
+    write("package.json", '{"name":"native-format"}');
+    const native = write("native.js", "export const value = 42;");
+    const shadow = write("shadow.js", "const require = 42; export { require as value };");
+    expect(require(native).value).toBe(42);
+    expect(require(shadow).value).toBe(42);
+  });
+
+  it("keeps the cached untyped CommonJS format after its dependency becomes a module", async () => {
+    write("package.json", '{"name":"old-untyped"}');
+    write(
+      "node_modules/legacy/package.json",
+      '{"name":"legacy","version":"1.0.0","main":"index.js"}',
+    );
+    const legacy = write(
+      "node_modules/legacy/index.js",
+      "exports.Model = class First {}; exports.version = 1;",
+    );
+    const main = write(
+      "main.mjs",
+      'export default { prior: import.meta.require("legacy"), load: () => import("legacy") };',
+    );
+    const first = requireModule(main);
+    first.prior.runtimeValue = 7;
+    write(
+      "node_modules/legacy/package.json",
+      '{"name":"legacy","version":"2.0.0","type":"module","main":"index.js"}',
+    );
+    write(
+      "node_modules/legacy/index.js",
+      "export class Model {}; export const version = 2; export default { Model, version };",
+    );
+    ModuleLoader.invalidatePackage(directory);
+    const current = requireModule(main);
+    expect(current.prior.version).toBe(2);
+    const legacyURL = pathToFileURL(legacy).href;
+    // Native resolution can observe the updated manifest while the canonical
+    // URL still names the old epoch. Supply that current hint deterministically
+    // instead of relying on Node's platform-dependent package.json cache.
+    // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Supported by Lumine's Node 24 runtime, as in the loader under test.
+    const hook = require("node:module").registerHooks({
+      load(url, context, nextLoad) {
+        return nextLoad(url, url === legacyURL ? { ...context, format: "module" } : context);
+      },
+    });
+    try {
+      const oldNamespace = await first.load();
+      expect(oldNamespace.default).toBe(first.prior);
+      expect(oldNamespace.Model).toBe(first.prior.Model);
+      expect(oldNamespace.version).toBe(1);
+      expect(oldNamespace.default.runtimeValue).toBe(7);
+      const currentNamespace = await current.load();
+      expect(currentNamespace.default).toBe(current.prior.default);
+      expect(currentNamespace.default.version).toBe(2);
+      expect(currentNamespace.Model).toBe(current.prior.Model);
+    } finally {
+      hook.deregister();
+    }
+  });
+
   it("keeps original CommonJS named exports when an old ESM caller imports their namespace later", async () => {
     write("helper.cjs", "exports.foo = 1;");
     const main = write(
@@ -754,7 +917,7 @@ process.stdout.write(JSON.stringify(require(${JSON.stringify(main)})));
 
   it("reuses syntax analysis across fresh processes and invalidates it when source changes", () => {
     const main = write(
-      "cached-analysis.cjs",
+      "cached-analysis.jsx",
       '"use strict"; module.exports = { value: 42, strict: (function () { return this; })() === undefined };',
     );
     const cacheDirectory = temp.mkdirSync("native-module-analysis-cache");
@@ -793,7 +956,7 @@ process.stdout.write(JSON.stringify({ parses, value }));
     expect(first.parses).toBeGreaterThan(0);
     expect(second.parses).toBe(0);
     expect(second.value).toEqual({ value: 42, strict: true });
-    write("cached-analysis.cjs", "module.exports = { value: 43, strict: false };");
+    write("cached-analysis.jsx", "module.exports = { value: 43, strict: false };");
     const updated = run();
     expect(updated.parses).toBeGreaterThan(0);
     expect(updated.value).toEqual({ value: 43, strict: false });
@@ -955,10 +1118,7 @@ export default {
     for (let reload = 0; reload < 3; reload++) {
       if (reload) ModuleLoader.invalidatePackage(directory);
       const loaded = require(main);
-      const virtual = Object.keys(require.cache).find(
-        (filename) =>
-          filename.includes(".lumine-generation-") && require.cache[filename].exports === loaded,
-      );
+      const virtual = runtimePathFor(loaded);
       generations.push(loaded);
       maps.push(ModuleLoader.getSourceMap(virtual));
     }
@@ -967,11 +1127,12 @@ export default {
     expect(generations[2]).not.toBe(generations[1]);
     expect(maps[1].map.file).not.toBe(maps[0].map.file);
     expect(maps[2].map.file).not.toBe(maps[1].map.file);
-    for (const map of maps.slice(1)) {
-      expect(map.map.sources).toBe(maps[0].map.sources);
-      expect(map.map.names).toBe(maps[0].map.names);
-      expect(map.map.sourcesContent).toBe(maps[0].map.sourcesContent);
-      expect(map.map.mappings).toBe(maps[0].map.mappings);
+    expect(maps[0].map.sourcesContent).toEqual(maps[1].map.sourcesContent);
+    for (const map of maps.slice(2)) {
+      expect(map.map.sources).toBe(maps[1].map.sources);
+      expect(map.map.names).toBe(maps[1].map.names);
+      expect(map.map.sourcesContent).toBe(maps[1].map.sourcesContent);
+      expect(map.map.mappings).toBe(maps[1].map.mappings);
     }
     expect(Object.isFrozen(maps[0])).toBe(true);
     expect(Object.isFrozen(maps[0].map)).toBe(true);
@@ -1000,10 +1161,7 @@ export default {
     const addMapping = spyOn(SourceMapGenerator.prototype, "addMapping").and.callThrough();
     const main = write("lazy-map.cjs", "module.exports = { value: 42 }; // lazy diagnostics");
     const loaded = require(main);
-    const virtual = Object.keys(require.cache).find(
-      (filename) =>
-        filename.includes(".lumine-generation-") && require.cache[filename].exports === loaded,
-    );
+    const virtual = runtimePathFor(loaded);
 
     expect(addMapping).not.toHaveBeenCalled();
     const map = ModuleLoader.getSourceMap(virtual);
@@ -1020,10 +1178,7 @@ export default {
       'module.exports = { fail() {\n  throw new Error("old revision");\n} };',
     );
     const original = require(main);
-    const originalPath = Object.keys(require.cache).find(
-      (filename) =>
-        filename.includes(".lumine-generation-") && require.cache[filename].exports === original,
-    );
+    const originalPath = runtimePathFor(original);
     const originalMap = ModuleLoader.getSourceMap(originalPath);
     write(
       "changed-map.cjs",
@@ -1039,7 +1194,7 @@ export default {
 
     expect(updatedMap).not.toBe(originalMap);
     expect(updatedMap.map.sourcesContent).not.toBe(originalMap.map.sourcesContent);
-    expect(updatedMap.map.mappings).toBe(originalMap.map.mappings);
+    expect(updatedMap.map.mappings).not.toBe(originalMap.map.mappings);
     expect(ModuleLoader.getSourceMap(originalPath)).toBe(originalMap);
     expect(originalMap.map.sourcesContent.join("\n")).toContain("old revision");
     expect(updatedMap.map.sourcesContent.join("\n")).toContain("new revision");
