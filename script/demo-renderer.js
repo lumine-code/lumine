@@ -1,6 +1,7 @@
 // Loaded only in the isolated, normal-mode Lumine renderer by script/demo.js.
 const fs = require("node:fs");
 const path = require("node:path");
+const { assertPublicText } = require("./demo-privacy");
 
 async function setup(options) {
   if (path.resolve(lumine.getConfigDirPath()) !== path.resolve(options.profile))
@@ -93,6 +94,17 @@ async function setup(options) {
       const toolbar = lumine.packages.getActivePackage("toolbar")?.mainModule.view;
       if (toolbar?.panel && !toolbar.hasContent?.()) throw new Error("Empty toolbar in the demo");
       if (lumine.window.isDevMode()) throw new Error("Normal mode was lost");
+      const visible = (element) =>
+        element.getClientRects().length && getComputedStyle(element).visibility !== "hidden";
+      const inputs = [...document.querySelectorAll("input,textarea,lumine-text-editor")]
+        .filter(visible)
+        .map((element) => element.getModel?.()?.getText?.() || element.value || "");
+      assertPublicText(
+        [document.body.innerText, ...inputs, (await recipe.privacyText?.(context)) || ""].join(
+          "\n",
+        ),
+        options.privateRoots,
+      );
     },
     async round(input, output) {
       // Only mask the outside corners of an authentic capture, preserving every interior pixel.

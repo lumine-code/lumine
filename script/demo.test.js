@@ -5,6 +5,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const vm = require("node:vm");
+const { assertNeutralDirectory, assertPublicText } = require("./demo-privacy");
 const {
   inside,
   validate,
@@ -27,6 +28,44 @@ const recipe = () => ({
   scenes: [{ id: "first", file: "demo.png", caption: "A real view.", run() {}, ready() {} }],
 });
 const image = { file: "demo.png", label: "A real view." };
+
+test("capture paths stay outside private roots, including junction aliases", (t) => {
+  const root = temporary(t);
+  const workspace = path.join(root, "workspace");
+  const profile = path.join(root, "user");
+  fs.mkdirSync(workspace);
+  fs.mkdirSync(profile);
+  assert.throws(
+    () => assertNeutralDirectory(path.join(workspace, ".dev/run"), [workspace, profile]),
+    /neutral/,
+  );
+  assert.throws(
+    () => assertNeutralDirectory(path.join(profile, "Temp/run"), [workspace, profile]),
+    /neutral/,
+  );
+  const alias = path.join(root, "alias");
+  fs.symlinkSync(workspace, alias, process.platform === "win32" ? "junction" : "dir");
+  assert.throws(() => assertNeutralDirectory(path.join(alias, "run"), [workspace]), /neutral/);
+  assert.equal(
+    assertNeutralDirectory(path.join(root, "public/run"), [workspace, profile]),
+    path.join(root, "public/run"),
+  );
+});
+
+test("privacy checks recognize native, slash and escaped paths in rendered text", () => {
+  const roots = ["C:\\Users\\Example", "C:\\Work\\Source", "/home/example"];
+  for (const text of [
+    "PS C:\\Users\\Example> ",
+    '"C:\\\\Work\\\\Source\\\\project"',
+    "file:///c:/work/source/main.rs",
+    "/home/example/private",
+  ]) {
+    assert.throws(() => assertPublicText(text, roots), /local workspace/);
+  }
+  assert.doesNotThrow(() =>
+    assertPublicText("PS C:\\Lumine-Demos\\terminal\\project> node signal.js", roots),
+  );
+});
 
 test("normal-mode demo processes skip every protocol-registration action without changing preferences", async () => {
   for (const flag of ["1", "0", undefined]) {

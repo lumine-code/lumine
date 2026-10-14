@@ -14,15 +14,15 @@ node script/demo.js capture ../markdown-preview
 node script/demo.js capture ../open-with
 ```
 
-Each command creates a new ignored `.dev/demos/` directory, copies the fixtures into a disposable project with a clean local Git baseline, launches a fresh isolated profile in normal mode, checks each scene, and saves raw and rounded PNGs. It uses default fonts, the One theme, a fixed window size and a 10-pixel corner mask. It closes its window afterward. Your normal editor profile and dev-mode setup remain untouched. `--out <new-directory>` chooses another output location; an existing directory is rejected.
+Each command creates a new directory below `<drive>:\Lumine-Demos` on Windows or `/tmp/Lumine-Demos` on macOS and Linux, copies the fixtures into a disposable project with a clean local Git baseline, launches a fresh isolated profile in normal mode, checks each scene, and saves raw and rounded PNGs. It uses default fonts, the One theme, a fixed window size and a 10-pixel corner mask. It closes its window afterward. Your normal editor profile and dev-mode setup remain untouched. `--out <new-directory>` chooses another neutral output location; existing directories and locations inside the source workspace or user profile are rejected, including junction aliases. If the default root is not writable, pass a writable neutral directory outside those private roots.
 
 Demo processes set `LUMINE_DISABLE_URI_HANDLER_REGISTRATION=1`, so startup never checks, registers or removes the system's `lumine://` association. This is process-local and does not change the normal profile's preferences. Automatic update checks are also disabled in the disposable profile; the updater's own demo invokes its check explicitly.
 
-Inspect every PNG in `images/`. Check the logo, rounded edges, readable content, expected feature, and absence of unwanted selections, notifications or dock buttons. The raw captures remain in `raw/` for comparison. A failed capture has `status: "failed"`, an error and, when possible, `failure.png`; it cannot be accepted.
+Inspect every PNG in `images/`. Check the logo, rounded edges, readable content, expected feature, and absence of unwanted selections, notifications or dock buttons. Also inspect paths in prompts, pickers, input fields, notifications and diagnostics: only public fixture paths in the neutral capture tree may appear, never personal directories, account names, source checkout paths, machine-specific tool locations or private data. Fix the real scene and capture again; do not paint over the image. The raw captures remain in `raw/` for comparison. A failed capture has `status: "failed"`, an error and, when possible, `failure.png`; it cannot be accepted.
 
 ```sh
-node script/demo.js check .dev/demos/<run>
-node script/demo.js accept .dev/demos/<run> ../bookmarks
+node script/demo.js check <capture-directory>
+node script/demo.js accept <capture-directory> ../bookmarks
 ```
 
 `check` verifies completeness, dimensions, hashes and exact duplicate images. `accept` verifies the target package and recipe, copies images to `.github/`, writes `.github/demo.json`, and replaces the standalone demo image paragraphs beneath `## Features` in the existing README. It preserves the other prose and never deletes other assets. Remove obsolete image files explicitly when retiring a scene. It never stages, commits or pushes files. Review the diff before publishing, especially when someone else is editing the same README.
@@ -64,6 +64,8 @@ module.exports = {
 The context provides `lumine`, a shared `state` object, `open(relativeFixturePath)`, `fixture(relativePath)`, `command(name, optionalTargetElement)` and `waitFor(predicate, label, timeoutMs = 15000)`. It also provides the disposable `project` and `profile` directories, the host's `nodePath`, and `packagePath(name, relativePath)` for declared dependencies. Fixture paths stay inside the copied project. Use real package APIs for features that do not have a command, and assert their visible output. Recipes with external tools must check that those tools and suitable public data are available; never replace a missing response with simulated content.
 
 `before(context)` runs before the requested packages activate, for configuration that must precede activation. A scene can provide `drag(context)`, returning `[fromX, fromY, toX, toY]` in viewport coordinates; the driver performs an actual pointer gesture. `afterPointerMove(context)` opens hover details after the pointer leaves dock edges. In either case the readiness check waits until that action finishes. `timeout` may increase readiness polling up to 90000 ms. Use `allowNotifications: true` only when a real notification is the feature being demonstrated.
+
+Before every screenshot, the runner rejects known workspace, user-profile and Node installation paths in visible DOM text and editor/input values. A recipe rendering text on a canvas supplies `privacyText(context)`, returning its actual visible buffer text; the terminal recipe demonstrates this with xterm's buffer. This guard supplements visual review and does not detect arbitrary secrets or every external tool's paths. Use executable names from PATH in visible commands, and keep actual fixture paths under the neutral project. Accepted metadata records the privacy-check version without publishing the private path list.
 
 ## Local tools and authenticated examples
 

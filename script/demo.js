@@ -1,6 +1,8 @@
 // Real application screenshots. No dependency on the local ecosystem manager.
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
+const { assertNeutralDirectory } = require("./demo-privacy");
 const net = require("node:net");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
@@ -34,7 +36,7 @@ function validate(recipe) {
   if (recipe.version !== 1) throw new Error("demo.js must declare version: 1");
   if (!Array.isArray(recipe.scenes) || !recipe.scenes.length)
     throw new Error("A demo needs scenes");
-  for (const hook of ["before", "prepare", "cleanup"]) {
+  for (const hook of ["before", "prepare", "cleanup", "privacyText"]) {
     if (recipe[hook] !== undefined && typeof recipe[hook] !== "function")
       throw new Error(`${hook} must be a function`);
   }
@@ -204,6 +206,7 @@ async function accept(directory, target) {
     environment: run.environment,
     viewport: run.viewport,
     cornerRadius: 10,
+    privacy: run.privacy,
     sources: run.sources,
     fixtures: run.fixtures,
     images: run.images,
@@ -292,14 +295,14 @@ async function capture(repository, options = {}) {
   }
   const fixtures = inside(repo, recipe.fixtures || "demo");
   const inputs = fixtureFiles(fixtures);
-  const directory = path.resolve(
+  const directory = assertNeutralDirectory(
     options.out ||
       path.join(
-        ROOT,
-        ".dev",
-        "demos",
-        `${manifest.name}-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+        process.platform === "win32" ? path.parse(ROOT).root : "/tmp",
+        "Lumine-Demos",
+        `${manifest.name}-${crypto.randomBytes(3).toString("hex")}`,
       ),
+    [workspace, ROOT, repo, os.homedir()],
   );
   if (directory === fixtures || directory.startsWith(fixtures + path.sep))
     throw new Error("Output cannot be inside the fixtures");
@@ -377,6 +380,7 @@ async function capture(repository, options = {}) {
     sources,
     viewport: recipe.viewport,
     expectedFiles: recipe.scenes.map((s) => s.file),
+    privacy: { version: 1, location: "neutral", textChecked: true },
     images: [],
   };
   writeJSON(path.join(directory, "run.json"), run);
@@ -420,7 +424,7 @@ async function capture(repository, options = {}) {
     ]);
     launched = true;
     run.environment = await evaluate(
-      `return await require(${JSON.stringify(path.join(__dirname, "demo-renderer.js"))}).setup(${JSON.stringify({ profile, project, recipePath, packages: wanted, packagePaths: Object.fromEntries(packages), nodePath: process.execPath, viewport: recipe.viewport })});`,
+      `return await require(${JSON.stringify(path.join(__dirname, "demo-renderer.js"))}).setup(${JSON.stringify({ profile, project, recipePath, packages: wanted, packagePaths: Object.fromEntries(packages), nodePath: process.execPath, viewport: recipe.viewport, privateRoots: [workspace, ROOT, os.homedir(), path.dirname(process.execPath), ...packages.values()] })});`,
     );
     for (const scene of recipe.scenes) {
       console.log(`  ${scene.id}`);
