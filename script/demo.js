@@ -179,6 +179,12 @@ async function accept(directory, target) {
   if (manifest.name !== run.package) throw new Error("Capture belongs to another package");
   if (hash(fs.readFileSync(path.join(target, "demo.js"))) !== run.recipeHash)
     throw new Error("Recipe changed; capture again");
+  if (
+    run.fixtures &&
+    JSON.stringify(fixtureFiles(inside(target, run.fixturesDirectory || "demo"))) !==
+      JSON.stringify(run.fixtures)
+  )
+    throw new Error("Fixtures changed; capture again");
   const readme = path.join(target, "README.md");
   const next = readmeWithImages(fs.readFileSync(readme, "utf8"), run.images);
   const media = inside(target, ".github");
@@ -367,6 +373,7 @@ async function capture(repository, options = {}) {
     recordedOn: new Date().toISOString().slice(0, 10),
     recipeHash: hash(fs.readFileSync(recipePath)),
     fixtures: inputs,
+    fixturesDirectory: recipe.fixtures || "demo",
     sources,
     viewport: recipe.viewport,
     expectedFiles: recipe.scenes.map((s) => s.file),

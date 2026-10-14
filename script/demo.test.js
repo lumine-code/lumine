@@ -239,6 +239,9 @@ test("accept checks the package and recipe before writing, then preserves unrela
   await assert.rejects(accept(dir, target), /Recipe changed/);
   run.recipeHash = crypto.createHash("sha256").update("module.exports = {};").digest("hex");
   run.sources = { package: { revision: "test" }, "one-theme": { revision: "theme" } };
+  fs.mkdirSync(path.join(target, "demo"));
+  fs.writeFileSync(path.join(target, "demo", "example.txt"), "original fixture");
+  run.fixtures = fixtureFiles(path.join(target, "demo"));
   save();
   fs.writeFileSync(path.join(target, "README.md"), "# example\n\n## Features\n\n- Preserved.\n");
   fs.mkdirSync(path.join(target, ".github"));
@@ -250,4 +253,6 @@ test("accept checks the package and recipe before writing, then preserves unrela
     JSON.parse(fs.readFileSync(path.join(target, ".github", "demo.json"))).images.length,
     1,
   );
+  fs.writeFileSync(path.join(target, "demo", "example.txt"), "changed fixture");
+  await assert.rejects(accept(dir, target), /Fixtures changed/);
 });
