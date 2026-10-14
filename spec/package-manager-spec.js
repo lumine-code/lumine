@@ -2390,6 +2390,41 @@ describe("PackageManager", () => {
       return packagePath;
     }
 
+    it("resolves an explicit cwd-relative package directory to an absolute loadable path", async () => {
+      const cwd = fs.realpathSync(process.cwd());
+      const directory = fs.mkdtempSync(path.join(cwd, "cwd-relative-package-"));
+      const relative = path.basename(directory);
+      fs.writeFileSync(
+        path.join(directory, "package.json"),
+        JSON.stringify({
+          name: relative,
+          version: "1.0.0",
+          main: "main.js",
+          engines: { lumine: "^1.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(directory, "main.js"), "module.exports = { value: 42 };");
+      const removeFixture = () => {
+        if (
+          path.dirname(directory) !== cwd ||
+          !path.basename(directory).startsWith("cwd-relative-package-")
+        )
+          throw new Error("Unexpected cwd-relative package fixture path");
+        fs.removeSync(directory);
+      };
+      try {
+        expect(lumine.packages.resolvePackagePath(relative)).toBe(directory);
+        expect(lumine.packages.describePackagePath(relative).path).toBe(directory);
+        const pack = await lumine.packages.activatePackage(relative);
+        expect(pack.path).toBe(directory);
+        expect(pack.mainModule.value).toBe(42);
+      } finally {
+        if (lumine.packages.getLoadedPackage(relative))
+          await lumine.packages.unloadPackage(relative);
+        removeFixture();
+      }
+    });
+
     it("identifies a package by its manifest name, not by its directory", async () => {
       const packagePath = writePackage("some-checkout", { name: "renamed-package" });
 

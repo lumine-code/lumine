@@ -340,6 +340,7 @@ module.exports = class PackageManager {
   // Build the descriptor for a single package directory: what it is called,
   // where it lives, and which tier it belongs to.
   describePackagePath(packagePath, options = {}) {
+    packagePath = path.resolve(packagePath);
     const dirname = path.basename(packagePath);
     const isBundled =
       options.isBundled != null ? options.isBundled : this.isBundledPackagePath(packagePath);
