@@ -483,21 +483,52 @@ describe("Auxiliary editor windows", () => {
     expect(editor.isDestroyed()).toBeFalse();
   });
 
-  it("restores unavailable native windows' unsaved tabs into main before deserializing views", async () => {
-    const workspace = lumine.workspace;
-    const editor = await workspace.open();
-    editor.setText("preserve a failed host's document");
-    const extra = await workspace.detachPane(workspace.paneForItem(editor));
-    const state = lumine.serialize({ isUnloading: true });
-    spyOn(workspace, "openEditorWindow").and.rejectWith(new Error("native host unavailable"));
-    const warning = spyOn(lumine.notifications, "addWarning");
-    await lumine.deserialize(state);
-    expect(extra.isDestroyed()).toBeTrue();
-    expect(workspace.getWindows()).toEqual([workspace.getMainWindow()]);
-    expect(workspace.getTextEditors()).toHaveSize(1);
-    expect(workspace.getActiveTextEditor().getText()).toBe("preserve a failed host's document");
-    expect(warning).toHaveBeenCalledTimes(1);
-  });
+  for (const backgroundWarning of [false, true]) {
+    it(`restores unavailable native windows' unsaved tabs into main before deserializing views${backgroundWarning ? " while another service notifies" : ""}`, async () => {
+      const workspace = lumine.workspace;
+      const editor = await workspace.open();
+      editor.setText("preserve a failed host's document");
+      const extra = await workspace.detachPane(workspace.paneForItem(editor));
+      const state = lumine.serialize({ isUnloading: true });
+      const notifications = workspace.notificationManager;
+      const windowNotifications = jasmine.createSpyObj("window notifications", ["addWarning"]);
+      const globalWarning = spyOn(lumine.notifications, "addWarning");
+      const publishBackgroundWarning = jasmine.createSpy("background service").and.callFake(() =>
+        lumine.notifications.addWarning("Background service changed", {
+          detail: "independent of window restoration",
+        }),
+      );
+      spyOn(workspace, "openEditorWindow").and.callFake(async () => {
+        if (backgroundWarning) publishBackgroundWarning();
+        throw new Error("native host unavailable");
+      });
+      // Observe the window owner's dependency, so a project watcher or another
+      // service cannot alter the recovery-warning count while deserialize awaits I/O.
+      workspace.notificationManager = windowNotifications;
+      try {
+        await lumine.deserialize(state);
+        expect(extra.isDestroyed()).toBeTrue();
+        expect(workspace.getWindows()).toEqual([workspace.getMainWindow()]);
+        expect(workspace.getTextEditors()).toHaveSize(1);
+        expect(workspace.getActiveTextEditor().getText()).toBe("preserve a failed host's document");
+        expect(windowNotifications.addWarning).toHaveBeenCalledTimes(1);
+        expect(windowNotifications.addWarning).toHaveBeenCalledWith(
+          "An editor window could not be restored. Its tabs were restored in the main window.",
+          { detail: "native host unavailable" },
+        );
+        if (backgroundWarning) {
+          expect(publishBackgroundWarning).toHaveBeenCalledTimes(1);
+          expect(globalWarning).toHaveBeenCalledWith("Background service changed", {
+            detail: "independent of window restoration",
+          });
+        } else {
+          expect(publishBackgroundWarning).not.toHaveBeenCalled();
+        }
+      } finally {
+        workspace.notificationManager = notifications;
+      }
+    });
+  }
 
   it("holds the source layout while an asynchronous presentation is prepared", async () => {
     const workspace = lumine.workspace;
