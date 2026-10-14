@@ -63,6 +63,8 @@ The context provides `lumine`, a shared `state` object, `open(relativeFixturePat
 
 Scene ids are unique lowercase slugs. Output filenames are unique `demo*.png` basenames, such as `demo.png`, `demo-2.png` or `demo-hover.png`. Captions are plain, single-line text. Fixtures must be regular files beneath their directory; symlinks are rejected. Do not include credentials, user paths or private data.
 
+Treat `demo/` as fixture data in package lint and formatting configuration, just like `spec/fixtures/`; examples may deliberately contain diagnostics or preserve particular spacing. Keep the root `demo.js` recipe covered by normal source checks. Acceptance formats generated metadata with the editor's installed Prettier and the target repository's configuration.
+
 ## What can be reproduced
 
 `run.json` records the recipe and fixture hashes, editor/package/theme revisions, working-tree hashes and dirty flags, Electron/Chromium versions, OS, architecture, locale, display scale, fonts and window size. Source changes during a capture fail the run. `.github/demo.json` retains this provenance without local absolute paths. The fresh profile and copied project remain local for diagnosis.

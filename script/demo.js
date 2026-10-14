@@ -181,10 +181,15 @@ async function accept(directory, target) {
     fixtures: run.fixtures,
     images: run.images,
   };
+  const prettier = require("prettier");
+  const metadataText = await prettier.format(JSON.stringify(metadata), {
+    ...(await prettier.resolveConfig(path.join(media, "demo.json"))),
+    parser: "json",
+  });
   // All input is checked before any tracked file is changed. Never delete other assets.
   for (const item of run.images)
     fs.copyFileSync(path.join(directory, "images", item.file), path.join(media, item.file));
-  writeJSON(path.join(media, "demo.json"), metadata);
+  fs.writeFileSync(path.join(media, "demo.json"), metadataText);
   fs.writeFileSync(readme, next);
   console.log(
     `Accepted ${run.images.length} images in ${target}. Review the diff before committing.`,
