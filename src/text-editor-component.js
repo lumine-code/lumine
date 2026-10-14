@@ -2512,6 +2512,7 @@ module.exports = class TextEditorComponent {
   didDetach() {
     if (this.attached) {
       this.scrollAnimator.cancel();
+      this.highlightsComponent?.cancelFlashes();
       this.stopDragging?.call(this);
       this.focused = false;
       this.stopCursorBlinking();

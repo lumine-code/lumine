@@ -205,15 +205,19 @@ module.exports = class ModalFlow {
   // panel that has since left the flow — a fresh reopen keeps its easing.
   settleAnimations(panel) {
     const element = panel.getElement();
+    const window = element.ownerDocument.defaultView;
     if (typeof element.getAnimations !== "function") return;
     this.finishAnimations(element, (animation) => animation.effect?.target === element);
     const sweep = (framesLeft) => {
       const top = this.stack[this.stack.length - 1];
       if (!top || top.panel !== panel || !panel.isVisible()) return;
-      this.finishAnimations(element, (animation) => animation instanceof CSSTransition);
-      if (framesLeft > 0) requestAnimationFrame(() => sweep(framesLeft - 1));
+      this.finishAnimations(
+        element,
+        (animation) => Object.prototype.toString.call(animation) === "[object CSSTransition]",
+      );
+      if (framesLeft > 0) window.requestAnimationFrame(() => sweep(framesLeft - 1));
     };
-    requestAnimationFrame(() => sweep(2));
+    window.requestAnimationFrame(() => sweep(2));
   }
 
   finishAnimations(element, shouldFinish) {

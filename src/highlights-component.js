@@ -18,6 +18,10 @@ module.exports = class HighlightsComponent {
     this.highlightComponentsByKey.clear();
   }
 
+  cancelFlashes() {
+    for (const component of this.highlightComponentsByKey.values()) component.cancelFlashes();
+  }
+
   update(newProps) {
     if (this.shouldUpdate(newProps)) {
       this.props = newProps;
@@ -115,13 +119,17 @@ class HighlightComponent {
     const restart = this.element.classList.contains(flashClass);
     this.cancelFlash(flashClass);
 
-    const state = { animationFrame: null, timeout: null };
+    const state = {
+      window: this.element.ownerDocument.defaultView,
+      animationFrame: null,
+      timeout: null,
+    };
     this.flashStatesByClassName.set(flashClass, state);
     const start = () => {
       if (this.flashStatesByClassName.get(flashClass) !== state) return;
       state.animationFrame = null;
       this.element.classList.add(flashClass);
-      state.timeout = window.setTimeout(() => {
+      state.timeout = state.window.setTimeout(() => {
         if (this.flashStatesByClassName.get(flashClass) !== state) return;
         this.flashStatesByClassName.delete(flashClass);
         this.element.classList.remove(flashClass);
@@ -132,7 +140,7 @@ class HighlightComponent {
     // CSS animation starts again. Keep the request so a range change can cancel
     // it before that frame arrives.
     if (restart) {
-      state.animationFrame = window.requestAnimationFrame(start);
+      state.animationFrame = state.window.requestAnimationFrame(start);
     } else {
       start();
     }
@@ -141,8 +149,8 @@ class HighlightComponent {
   cancelFlash(className) {
     const state = this.flashStatesByClassName?.get(className);
     if (state) {
-      if (state.animationFrame != null) window.cancelAnimationFrame(state.animationFrame);
-      if (state.timeout != null) window.clearTimeout(state.timeout);
+      if (state.animationFrame != null) state.window.cancelAnimationFrame(state.animationFrame);
+      if (state.timeout != null) state.window.clearTimeout(state.timeout);
       this.flashStatesByClassName.delete(className);
     }
     this.element.classList.remove(className);

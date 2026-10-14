@@ -362,8 +362,9 @@ module.exports = class MenuBarView {
 
   onFocusOut(event) {
     if (this.popup || this.element.contains(event.relatedTarget)) return;
-    requestAnimationFrame(() => {
-      if (!this.popup && !this.element.contains(this.document.activeElement)) this.blur();
+    this.window.requestAnimationFrame(() => {
+      if (!this.destroyed && !this.popup && !this.element.contains(this.document.activeElement))
+        this.blur();
     });
   }
 

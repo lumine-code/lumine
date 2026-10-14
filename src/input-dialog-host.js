@@ -658,7 +658,7 @@ class InputDialogHost {
       return;
     }
     const generation = this.panelLifecycleGeneration;
-    requestAnimationFrame(() => {
+    this.document.defaultView.requestAnimationFrame(() => {
       if (!this.document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
       if (this.model.isActionPending()) return;
       this.cancel("focus-lost");
@@ -682,7 +682,7 @@ class InputDialogHost {
     // Let the click reach the surface behind the backdrop before dismissing
     // the dialog. A modal-flow transition caused by that click changes the
     // generation and makes this callback a no-op.
-    requestAnimationFrame(() => {
+    this.document.defaultView.requestAnimationFrame(() => {
       if (!this.isCurrentPanelLifecycle(generation, true)) return;
       this.cancel("click-outside");
     });

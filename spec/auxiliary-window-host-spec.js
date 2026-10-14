@@ -706,6 +706,24 @@ describe("Auxiliary editor windows", () => {
     expect(component.blockDecorationWindow).toBe(window);
   });
 
+  it("defers outside-dialog clicks on the dialog's own window frame", async () => {
+    const extra = await lumine.workspace.openEditorWindow({ show: false });
+    const host = lumine.workspace.addInputDialog({ prompt: "Local frame" }, { window: extra });
+    await host.show();
+    const frames = [];
+    spyOn(extra.getDOMWindow(), "requestAnimationFrame").and.callFake((callback) =>
+      frames.push(callback),
+    );
+    const mainFrame = spyOn(window, "requestAnimationFrame").and.callThrough();
+    const cancel = spyOn(host, "cancel").and.callThrough();
+    host.didPointerDown({ target: extra.getDocument().body });
+    expect(frames.length).toBe(1);
+    expect(mainFrame).not.toHaveBeenCalled();
+    frames[0]();
+    expect(cancel).toHaveBeenCalledOnceWith("click-outside");
+    await host.destroy();
+  });
+
   it("opens a tree file in main after its empty pane takes focus following tab-menu detachment", async () => {
     const workspace = lumine.workspace;
     jasmine.attachToDOM(workspace.getElement());
