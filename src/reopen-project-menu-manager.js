@@ -68,6 +68,8 @@ module.exports = class ReopenProjectMenuManager {
             label: this.createLabel(project),
             command: "application:reopen-project",
             commandDetail: { index: index, paths: project.paths },
+            group: "recent",
+            order: (index + 1) * 10,
           })),
         },
       ],

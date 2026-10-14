@@ -1,6 +1,8 @@
 const { Disposable } = require("@lumine-code/event-kit");
 
 const ReopenProjectMenuManager = require("../src/reopen-project-menu-manager");
+const MenuHelpers = require("../src/menu-helpers");
+const menuLayout = require("../src/menu-layout");
 
 function numberRange(low, high) {
   const size = high - low;
@@ -217,6 +219,31 @@ describe("ReopenProjectMenuManager", () => {
   });
 
   describe("updateProjects", () => {
+    it("keeps recent projects in history order above the history action on every platform", () => {
+      for (const platform of ["win32", "linux", "darwin"]) {
+        const template = [];
+        const core = require(`../menus/${platform}.json`);
+        for (const item of core.menu) MenuHelpers.merge(template, item);
+        MenuHelpers.merge(
+          template,
+          ReopenProjectMenuManager.createProjectsMenu([
+            { paths: ["/z-latest"] },
+            { paths: ["/a-earlier"] },
+          ]),
+        );
+        const fileMenu = menuLayout(template).find((item) => item.id === "File");
+        const recent = fileMenu.submenu.find((item) => item.id === "Reopen Project").submenu;
+        expect(recent.map((item) => item.label ?? item.type)).toEqual([
+          "/z-latest",
+          "/a-earlier",
+          "separator",
+          "Clear Project History",
+        ]);
+        expect(recent[0].commandDetail.paths).toEqual(["/z-latest"]);
+        expect(recent[1].commandDetail.paths).toEqual(["/a-earlier"]);
+      }
+    });
+
     it("creates correct menu items commands for recent projects", () => {
       const projects = [{ paths: ["/users/neila"] }, { paths: ["/users/buzza", "users/michaelc"] }];
 

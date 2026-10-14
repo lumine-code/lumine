@@ -47,14 +47,14 @@
           "submenu": [
             {
               "label": "Clear Project History",
-              "command": "application:clear-project-history"
-            },
-            {
-              "type": "separator"
+              "command": "application:clear-project-history",
+              "group": "history",
+              "order": 10
             }
           ],
           "group": "projects",
-          "order": 50
+          "order": 50,
+          "groupOrder": ["recent", "history"]
         },
         {
           "label": "Reopen Last &Item",
@@ -75,34 +75,31 @@
           "type": "separator"
         },
         {
-          "label": "Config…",
-          "command": "application:open-your-config",
-          "group": "preferences",
-          "order": 10
-        },
-        {
-          "label": "Init Script…",
-          "command": "application:open-your-init-script",
-          "group": "preferences",
+          "label": "Configuration Files",
+          "submenu": [
+            {
+              "label": "&Config",
+              "command": "application:open-your-config"
+            },
+            {
+              "label": "&Init Script",
+              "command": "application:open-your-init-script"
+            },
+            {
+              "label": "&Keymap",
+              "command": "application:open-your-keymap"
+            },
+            {
+              "label": "S&nippets",
+              "command": "application:open-your-snippets"
+            },
+            {
+              "label": "&Stylesheet",
+              "command": "application:open-your-stylesheet"
+            }
+          ],
+          "group": "settings",
           "order": 20
-        },
-        {
-          "label": "Keymap…",
-          "command": "application:open-your-keymap",
-          "group": "preferences",
-          "order": 30
-        },
-        {
-          "label": "Snippets…",
-          "command": "application:open-your-snippets",
-          "group": "preferences",
-          "order": 40
-        },
-        {
-          "label": "Stylesheet…",
-          "command": "application:open-your-stylesheet",
-          "group": "preferences",
-          "order": 50
         },
         {
           "type": "separator"
@@ -164,7 +161,6 @@
         "properties",
         "external",
         "settings",
-        "preferences",
         "extensions",
         "close",
         "quit"
@@ -362,12 +358,6 @@
               "order": 40
             },
             {
-              "label": "&Delete Line",
-              "command": "editor:delete-line",
-              "group": "delete",
-              "order": 50
-            },
-            {
               "type": "separator"
             },
             {
@@ -412,58 +402,47 @@
               "type": "separator"
             },
             {
-              "label": "Fold Level 1",
-              "command": "editor:fold-at-indent-level-1",
+              "label": "Fold to Level",
+              "submenu": [
+                {
+                  "label": "1",
+                  "command": "editor:fold-at-indent-level-1"
+                },
+                {
+                  "label": "2",
+                  "command": "editor:fold-at-indent-level-2"
+                },
+                {
+                  "label": "3",
+                  "command": "editor:fold-at-indent-level-3"
+                },
+                {
+                  "label": "4",
+                  "command": "editor:fold-at-indent-level-4"
+                },
+                {
+                  "label": "5",
+                  "command": "editor:fold-at-indent-level-5"
+                },
+                {
+                  "label": "6",
+                  "command": "editor:fold-at-indent-level-6"
+                },
+                {
+                  "label": "7",
+                  "command": "editor:fold-at-indent-level-7"
+                },
+                {
+                  "label": "8",
+                  "command": "editor:fold-at-indent-level-8"
+                },
+                {
+                  "label": "9",
+                  "command": "editor:fold-at-indent-level-9"
+                }
+              ],
               "group": "levels",
               "order": 10
-            },
-            {
-              "label": "Fold Level 2",
-              "command": "editor:fold-at-indent-level-2",
-              "group": "levels",
-              "order": 20
-            },
-            {
-              "label": "Fold Level 3",
-              "command": "editor:fold-at-indent-level-3",
-              "group": "levels",
-              "order": 30
-            },
-            {
-              "label": "Fold Level 4",
-              "command": "editor:fold-at-indent-level-4",
-              "group": "levels",
-              "order": 40
-            },
-            {
-              "label": "Fold Level 5",
-              "command": "editor:fold-at-indent-level-5",
-              "group": "levels",
-              "order": 50
-            },
-            {
-              "label": "Fold Level 6",
-              "command": "editor:fold-at-indent-level-6",
-              "group": "levels",
-              "order": 60
-            },
-            {
-              "label": "Fold Level 7",
-              "command": "editor:fold-at-indent-level-7",
-              "group": "levels",
-              "order": 70
-            },
-            {
-              "label": "Fold Level 8",
-              "command": "editor:fold-at-indent-level-8",
-              "group": "levels",
-              "order": 80
-            },
-            {
-              "label": "Fold Level 9",
-              "command": "editor:fold-at-indent-level-9",
-              "group": "levels",
-              "order": 90
             }
           ],
           "group": "editing",
@@ -488,6 +467,137 @@
         "diagnostics",
         "annotations",
         "mode",
+        "extensions"
+      ]
+    },
+    {
+      "label": "&Selection",
+      "submenu": [
+        {
+          "label": "Add Selection &Above",
+          "command": "editor:add-selection-above",
+          "group": "cursors",
+          "order": 10
+        },
+        {
+          "label": "Add Selection &Below",
+          "command": "editor:add-selection-below",
+          "group": "cursors",
+          "order": 20
+        },
+        {
+          "label": "S&plit into Lines",
+          "command": "editor:split-selections-into-lines",
+          "group": "cursors",
+          "order": 30
+        },
+        {
+          "label": "Single Selection",
+          "command": "editor:consolidate-selections",
+          "group": "cursors",
+          "order": 40
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Select to &Top",
+          "command": "core:select-to-top",
+          "group": "document",
+          "order": 10
+        },
+        {
+          "label": "Select to Botto&m",
+          "command": "core:select-to-bottom",
+          "group": "document",
+          "order": 20
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Select &Line",
+          "command": "editor:select-line",
+          "group": "units",
+          "order": 10
+        },
+        {
+          "label": "Select &Word",
+          "command": "editor:select-word",
+          "group": "units",
+          "order": 20
+        },
+        {
+          "label": "Add Next Occurrence",
+          "command": "search-panel:select-next",
+          "group": "occurrences",
+          "order": 10
+        },
+        {
+          "label": "Select All Occurrences",
+          "command": "search-panel:select-all",
+          "group": "occurrences",
+          "order": 20
+        },
+        {
+          "label": "Undo Last Occurrence",
+          "command": "search-panel:select-undo",
+          "group": "occurrences",
+          "order": 30
+        },
+        {
+          "label": "Skip Occurrence",
+          "command": "search-panel:select-skip",
+          "group": "occurrences",
+          "order": 40
+        },
+        {
+          "label": "Extend Selection",
+          "submenu": [
+            {
+              "label": "Select to Beginning of W&ord",
+              "command": "editor:select-to-beginning-of-word",
+              "group": "word",
+              "order": 10
+            },
+            {
+              "label": "Select to Beginning of L&ine",
+              "command": "editor:select-to-beginning-of-line",
+              "group": "line",
+              "order": 20
+            },
+            {
+              "label": "Select to First &Character of Line",
+              "command": "editor:select-to-first-character-of-line",
+              "group": "line",
+              "order": 30
+            },
+            {
+              "label": "Select to End of Wor&d",
+              "command": "editor:select-to-end-of-word",
+              "group": "word",
+              "order": 40
+            },
+            {
+              "label": "Select to End of Lin&e",
+              "command": "editor:select-to-end-of-line",
+              "group": "line",
+              "order": 50
+            }
+          ],
+          "group": "ranges",
+          "order": 10,
+          "groupOrder": ["word", "line"]
+        }
+      ],
+      "groupOrder": [
+        "cursors",
+        "occurrences",
+        "units",
+        "ranges",
+        "document",
+        "structure",
+        "leaders",
         "extensions"
       ]
     },
@@ -518,7 +628,7 @@
           "label": "Editor",
           "submenu": [],
           "group": "appearance",
-          "order": 20,
+          "order": 30,
           "groupOrder": [
             "grammar",
             "appearance",
@@ -560,7 +670,7 @@
               "type": "separator"
             },
             {
-              "label": "Toggle Pending State",
+              "label": "Toggle Preview Tab",
               "command": "pane:toggle-pending-item",
               "group": "items",
               "order": 10
@@ -637,51 +747,6 @@
           "groupOrder": ["layout", "items", "focus", "transfer", "extensions", "close"]
         },
         {
-          "label": "Developer",
-          "submenu": [
-            {
-              "label": "Open In &Dev Mode…",
-              "command": "application:open-dev",
-              "group": "windows",
-              "order": 10
-            },
-            {
-              "label": "Reopen Window in Dev &Mode",
-              "command": "application:reopen-window-in-dev-mode",
-              "group": "windows",
-              "order": 20
-            },
-            {
-              "label": "&Reload Window",
-              "command": "window:reload",
-              "group": "windows",
-              "order": 30
-            },
-            {
-              "label": "Run Package &Specs",
-              "command": "window:run-package-specs",
-              "group": "testing",
-              "order": 10
-            },
-            {
-              "label": "Toggle Developer &Tools",
-              "command": "window:toggle-dev-tools",
-              "group": "testing",
-              "order": 20
-            }
-          ],
-          "group": "developer",
-          "order": 10,
-          "groupOrder": [
-            "windows",
-            "testing",
-            "services",
-            "diagnostics",
-            "inspection",
-            "extensions"
-          ]
-        },
-        {
           "type": "separator"
         },
         {
@@ -710,99 +775,30 @@
           "command": "editor:toggle-soft-wrap",
           "group": "appearance",
           "order": 10
+        },
+        {
+          "label": "Appearance",
+          "submenu": [],
+          "group": "appearance",
+          "order": 20,
+          "groupOrder": ["theme", "mode", "extensions"]
         }
       ],
-      "groupOrder": ["window", "panels", "font", "appearance", "extensions", "developer"]
+      "groupOrder": ["commands", "window", "panels", "font", "appearance", "extensions"]
     },
     {
-      "label": "&Selection",
-      "submenu": [
-        {
-          "label": "Add Selection &Above",
-          "command": "editor:add-selection-above",
-          "group": "cursors",
-          "order": 10
-        },
-        {
-          "label": "Add Selection &Below",
-          "command": "editor:add-selection-below",
-          "group": "cursors",
-          "order": 20
-        },
-        {
-          "label": "S&plit into Lines",
-          "command": "editor:split-selections-into-lines",
-          "group": "cursors",
-          "order": 30
-        },
-        {
-          "label": "Single Selection",
-          "command": "editor:consolidate-selections",
-          "group": "cursors",
-          "order": 40
-        },
-        {
-          "type": "separator"
-        },
-        {
-          "label": "Select to &Top",
-          "command": "core:select-to-top",
-          "group": "document",
-          "order": 10
-        },
-        {
-          "label": "Select to Botto&m",
-          "command": "core:select-to-bottom",
-          "group": "document",
-          "order": 20
-        },
-        {
-          "type": "separator"
-        },
-        {
-          "label": "Select &Line",
-          "command": "editor:select-line",
-          "group": "units",
-          "order": 10
-        },
-        {
-          "label": "Select &Word",
-          "command": "editor:select-word",
-          "group": "units",
-          "order": 20
-        },
-        {
-          "label": "Select to Beginning of W&ord",
-          "command": "editor:select-to-beginning-of-word",
-          "group": "ranges",
-          "order": 10
-        },
-        {
-          "label": "Select to Beginning of L&ine",
-          "command": "editor:select-to-beginning-of-line",
-          "group": "ranges",
-          "order": 20
-        },
-        {
-          "label": "Select to First &Character of Line",
-          "command": "editor:select-to-first-character-of-line",
-          "group": "ranges",
-          "order": 30
-        },
-        {
-          "label": "Select to End of Wor&d",
-          "command": "editor:select-to-end-of-word",
-          "group": "ranges",
-          "order": 40
-        },
-        {
-          "label": "Select to End of Lin&e",
-          "command": "editor:select-to-end-of-line",
-          "group": "ranges",
-          "order": 50
-        }
-      ],
-      "groupOrder": ["cursors", "units", "ranges", "document", "structure", "leaders", "extensions"]
+      "label": "&Go",
+      "submenu": [],
+      "groupOrder": [
+        "files",
+        "navigation",
+        "symbols",
+        "bookmarks",
+        "changes",
+        "matches",
+        "diagnostics",
+        "extensions"
+      ]
     },
     {
       "label": "Se&arch",
@@ -820,24 +816,6 @@
           "order": 20
         },
         {
-          "label": "Select &Next",
-          "command": "search-panel:select-next",
-          "group": "buffer",
-          "order": 30
-        },
-        {
-          "label": "Select &All",
-          "command": "search-panel:select-all",
-          "group": "buffer",
-          "order": 40
-        },
-        {
-          "label": "&Toggle Find in Buffer",
-          "command": "search-panel:toggle",
-          "group": "buffer",
-          "order": 50
-        },
-        {
           "type": "separator"
         },
         {
@@ -845,12 +823,6 @@
           "command": "search-panel:project-show",
           "group": "project",
           "order": 10
-        },
-        {
-          "label": "To&ggle Find in Project",
-          "command": "search-panel:project-toggle",
-          "group": "project",
-          "order": 20
         },
         {
           "type": "separator"
@@ -895,19 +867,12 @@
           "order": 100
         }
       ],
-      "groupOrder": [
-        "buffer",
-        "project",
-        "results",
-        "navigation",
-        "symbols",
-        "bookmarks",
-        "changes",
-        "matches",
-        "diagnostics",
-        "extensions",
-        "history"
-      ]
+      "groupOrder": ["buffer", "project", "results", "extensions", "history"]
+    },
+    {
+      "label": "G&it",
+      "submenu": [],
+      "groupOrder": ["repository", "changes", "history", "branches", "remote", "extensions"]
     },
     {
       "label": "&Packages",
@@ -919,6 +884,50 @@
         {
           "type": "separator"
         }
+      ]
+    },
+    {
+      "label": "&Developer",
+      "submenu": [
+        {
+          "label": "Open In &Dev Mode…",
+          "command": "application:open-dev",
+          "group": "windows",
+          "order": 10
+        },
+        {
+          "label": "Reopen Window in Dev &Mode",
+          "command": "application:reopen-window-in-dev-mode",
+          "group": "windows",
+          "order": 20
+        },
+        {
+          "label": "&Reload Window",
+          "command": "window:reload",
+          "group": "windows",
+          "order": 30
+        },
+        {
+          "label": "Run Package &Specs",
+          "command": "window:run-package-specs",
+          "group": "testing",
+          "order": 10
+        },
+        {
+          "label": "Toggle Developer &Tools",
+          "command": "window:toggle-dev-tools",
+          "group": "testing",
+          "order": 20
+        }
+      ],
+      "groupOrder": [
+        "windows",
+        "authoring",
+        "testing",
+        "services",
+        "diagnostics",
+        "inspection",
+        "extensions"
       ]
     },
     {

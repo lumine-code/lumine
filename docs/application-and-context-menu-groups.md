@@ -25,19 +25,19 @@ A submenu without `groupOrder` or `sortBy` preserves its authored action sequenc
 
 Declare contributions under `menu` in `menus/main.json`, or pass the same array to `lumine.menu.add()`. Shared parent items merge by `id`, which defaults to their normalized label. Keep the core parent names and classify only the rows your package contributes. Core retains the layout and position of its own paths, including its Settings and preference-file entries; a package cannot replace that policy by redeclaring the parent.
 
-This is the `fuzzy-files` menu: the headline action joins the real `File` group `files`, while the package keeps both commands under `Packages`.
+This is the `fuzzy-files` menu: the headline action joins the `Go` group `files`, while the package keeps both commands under `Packages`.
 
 ```json
 {
   "menu": [
     {
-      "label": "File",
+      "label": "Go",
       "submenu": [
         {
           "label": "Find Project File…",
           "command": "fuzzy-files:toggle",
           "group": "files",
-          "order": 30
+          "order": 10
         }
       ]
     },
@@ -59,20 +59,28 @@ This is the `fuzzy-files` menu: the headline action joins the real `File` group 
 
 Contributions to core menus use `group` and `order` instead of written separators. Choose a group in the immediate parent, rather than a group from another menu with a similar purpose. The platform definitions in `menus/win32.json`, `menus/linux.json` and `menus/darwin.json` contain the current policies.
 
-| Core parent          | Groups in display order                                                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `File`               | `new`, `files`, `projects`, `save`, `properties`, `external`, `settings`, `preferences`, `extensions`, `close`, `quit`             |
-| `Edit`               | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions`              |
-| `View`               | `window`, `panels`, `font`, `appearance`, `extensions`, `developer`                                                                |
-| `View > Toggle View` | `panels`, `docks`, `chrome`, `extensions`                                                                                          |
-| `View > Editor`      | `grammar`, `appearance`, `structure`, `intelligence`, `editing`, `version-control`, `extensions`                                   |
-| `View > Panes`       | `layout`, `items`, `focus`, `transfer`, `extensions`, `close`                                                                      |
-| `View > Developer`   | `windows`, `testing`, `services`, `diagnostics`, `inspection`, `extensions`                                                        |
-| `Selection`          | `cursors`, `units`, `ranges`, `document`, `structure`, `leaders`, `extensions`                                                     |
-| `Search`             | `buffer`, `project`, `results`, `navigation`, `symbols`, `bookmarks`, `changes`, `matches`, `diagnostics`, `extensions`, `history` |
-| `Help`               | `documentation`, `examples`, `updates`, `issues`, `extensions`, `about`                                                            |
+| Core parent             | Groups in display order                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `File`                  | `new`, `files`, `projects`, `save`, `properties`, `external`, `settings`, `extensions`, `close`, `quit`               |
+| `File > Reopen Project` | `recent`, `history`                                                                                                   |
+| `Edit`                  | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions` |
+| `View`                  | `commands`, `window`, `panels`, `font`, `appearance`, `extensions`                                                    |
+| `View > Appearance`     | `theme`, `mode`, `extensions`                                                                                         |
+| `View > Toggle View`    | `panels`, `docks`, `chrome`, `extensions`                                                                             |
+| `View > Editor`         | `grammar`, `appearance`, `structure`, `intelligence`, `editing`, `version-control`, `extensions`                      |
+| `View > Panes`          | `layout`, `items`, `focus`, `transfer`, `extensions`, `close`                                                         |
+| `Selection`             | `cursors`, `occurrences`, `units`, `ranges`, `document`, `structure`, `leaders`, `extensions`                         |
+| `Go`                    | `files`, `navigation`, `symbols`, `bookmarks`, `changes`, `matches`, `diagnostics`, `extensions`                      |
+| `Search`                | `buffer`, `project`, `results`, `extensions`, `history`                                                               |
+| `Git`                   | `repository`, `changes`, `history`, `branches`, `remote`, `extensions`                                                |
+| `Developer`             | `windows`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `extensions`                              |
+| `Help`                  | `documentation`, `examples`, `updates`, `issues`, `extensions`, `about`                                               |
 
-The `settings` and `preferences` slots keep Settings and the Config, Init Script, Keymap, Snippets and Stylesheet actions together before closing actions on Windows and Linux. macOS keeps those core entries under `Lumine`. Register a package's own configuration commands in its `Packages` submenu.
+The `settings` group keeps Settings and the Configuration Files submenu together before closing actions on Windows and Linux. Configuration Files contains Config, Init Script, Keymap, Snippets and Stylesheet; macOS keeps Settings and that submenu under `Lumine`. Register a package's own configuration commands in its `Packages` submenu.
+
+`Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with staging and stash operations nested under their subject. `Developer` owns development windows, package authoring, tests, services and inspection. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
+
+The Reopen Project menu preserves recent-project history order with explicit item orders in the `recent` group and puts Clear Project History last in `history`. Empty history contributes no separator.
 
 A package command exposed in the application menu registers once on `lumine-workspace` and resolves the editor or pane item from the dispatch target, falling back to the active item. A menu alias uses the same command as the package submenu. Group metadata changes placement without changing dispatch or keymap scope.
 

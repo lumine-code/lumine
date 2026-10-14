@@ -19,11 +19,7 @@ const ALLOWED_DIVERGENCES = [
   "/Help/VERSION",
   "/Help/About Lumine",
   "/File/Settings",
-  "/File/Config…",
-  "/File/Init Script…",
-  "/File/Keymap…",
-  "/File/Snippets…",
-  "/File/Stylesheet…",
+  "/File/Configuration Files",
   // macOS ships a Window menu with the standard role.
   "/Window",
   // The macOS open panel selects a file or a folder in one dialog.
@@ -65,10 +61,10 @@ function sourceText() {
   return read(srcDir).join("\n");
 }
 
-// A trailing separator is an anchor for items appended later, and `merge` only
-// ever appends. These two have a live stream of items after them; anywhere else
+// A trailing separator anchors the package contributions appended later.
+// Recent projects use named groups instead; anywhere else
 // a trailing separator renders as a rule with nothing under it.
-const TRAILING_SEPARATOR_ANCHORS = ["/File/Reopen Project", "/Packages"];
+const TRAILING_SEPARATOR_ANCHORS = ["/Packages"];
 
 const readMenu = (platform) =>
   JSON.parse(fs.readFileSync(path.join(__dirname, "..", "menus", `${platform}.json`), "utf8"));
