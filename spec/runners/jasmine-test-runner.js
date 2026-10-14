@@ -68,8 +68,6 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
 
   if (process.env.CI) {
     disableFocusMethods();
-  }
-  if (require("../../src/get-window-load-settings")().enforceDocumentFocus) {
     // Xvfb and Windows CI hosts may take focus away from the renderer between
     // specs. Restore the declared precondition before each spec instead of
     // allowing focus-sensitive groups to inherit ambient host state.
@@ -171,7 +169,7 @@ function reportDocumentFocusSkips() {
   console.log(
     `\nSkipped ${skipped.length} focus-dependent spec group(s): the spec window is not focused.\n` +
       skipped.map((description) => `  - ${description}`).join("\n") +
-      "\nFocus-dependent specs run with native focus on GitHub Actions.\n",
+      "\nRe-run with CI=1 in the environment to take focus and include them.\n",
   );
 }
 

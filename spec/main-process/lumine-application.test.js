@@ -1971,60 +1971,34 @@ describe("LumineApplication", function () {
       assert.isFalse(app.createWindow.called);
     });
 
-    for (const { name, environment, enforceDocumentFocus } of [
-      { name: "local tests", environment: {}, enforceDocumentFocus: false },
-      { name: "local CI flags", environment: { CI: "true" }, enforceDocumentFocus: false },
-      {
-        name: "a disabled GitHub Actions flag",
-        environment: { CI: "true", GITHUB_ACTIONS: "false" },
-        enforceDocumentFocus: false,
-      },
-      {
-        name: "GitHub Actions",
-        environment: { CI: "true", GITHUB_ACTIONS: "true" },
-        enforceDocumentFocus: true,
-      },
-      {
-        name: "the offscreen GitHub Actions check",
-        environment: { CI: "", GITHUB_ACTIONS: "true" },
-        enforceDocumentFocus: false,
-      },
-    ]) {
-      it(`selects native focus and rendering for ${name}`, function () {
-        const originalEnvironment = {
-          CI: process.env.CI,
-          GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
-        };
-        try {
+    it("renders only local Windows command-line test windows offscreen", function () {
+      const originalCI = process.env.CI;
+      const options = {
+        headless: true,
+        resourcePath: app.resourcePath,
+        executedFrom: process.cwd(),
+        pathsToOpen: [path.resolve(__dirname, "../../spec")],
+      };
+
+      try {
+        delete process.env.CI;
+        app.runTests(options);
+        assert.strictEqual(
+          app.createWindow.lastCall.args[0].offscreen,
+          process.platform === "win32",
+        );
+
+        process.env.CI = "true";
+        app.runTests(options);
+        assert.isFalse(app.createWindow.lastCall.args[0].offscreen);
+      } finally {
+        if (originalCI == null) {
           delete process.env.CI;
-          delete process.env.GITHUB_ACTIONS;
-          Object.assign(process.env, environment);
-          const options = {
-            resourcePath: app.resourcePath,
-            executedFrom: process.cwd(),
-            pathsToOpen: [path.resolve(__dirname, "../../spec")],
-          };
-
-          app.runTests({ ...options, headless: true });
-          assert.strictEqual(
-            app.createWindow.lastCall.args[0].enforceDocumentFocus,
-            enforceDocumentFocus,
-          );
-          assert.strictEqual(
-            app.createWindow.lastCall.args[0].offscreen,
-            process.platform === "win32" && !enforceDocumentFocus,
-          );
-
-          app.runTests({ ...options, headless: false });
-          assert.isFalse(app.createWindow.lastCall.args[0].offscreen);
-        } finally {
-          for (const [key, value] of Object.entries(originalEnvironment)) {
-            if (value == null) delete process.env[key];
-            else process.env[key] = value;
-          }
+        } else {
+          process.env.CI = originalCI;
         }
-      });
-    }
+      }
+    });
 
     it("resolves the default runner for a package that declares none", function () {
       const runnerPath = app.resolveTestRunnerPath(path.resolve(__dirname, "../../spec"));

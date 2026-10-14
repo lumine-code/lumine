@@ -47,16 +47,8 @@ module.exports = async function ({ blobStore }) {
 
     ipcRenderer.on("environment", (event, env) => updateProcessEnv(env));
 
-    const {
-      testRunnerPath,
-      legacyTestRunnerPath,
-      headless,
-      offscreen,
-      enforceDocumentFocus,
-      logFile,
-      testPaths,
-      env,
-    } = getWindowLoadSettings();
+    const { testRunnerPath, legacyTestRunnerPath, headless, offscreen, logFile, testPaths, env } =
+      getWindowLoadSettings();
     if (headless) {
       // Install console functions that output to stdout and stderr.
       const util = require("util");
@@ -98,13 +90,13 @@ module.exports = async function ({ blobStore }) {
       console.error = (...args) => process.stderr.write(`${util.format(...args)}\n`);
 
       // Electron's offscreen compositor keeps local Windows command-line specs
-      // rendering without displaying a native window, even with CI set locally.
-      // GitHub Actions takes native focus so focus-dependent specs retain their
-      // coverage: since Electron 43.2 an inactive native window's document no
-      // longer reports itself focused on Linux and Windows runners. Other local
-      // platforms retain showInactive().
+      // rendering without displaying a native window. CI deliberately stays on
+      // the normal compositor and takes focus: since Electron 43.2 an inactive
+      // window's document no longer reports itself focused, and without it
+      // every focus-dependent spec fails on the Linux and Windows runners. The
+      // interactive runner and other local platforms retain showInactive().
       if (!offscreen) {
-        if (enforceDocumentFocus) {
+        if (process.env.CI) {
           await ipcRenderer.invoke("lumine:window", "show");
           await focusTestWindow();
         } else {
