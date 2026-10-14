@@ -30,6 +30,9 @@ module.exports = class ProtocolHandlerInstaller {
   }
 
   async initialize(config, notifications, devMode) {
+    // Isolated automation uses normal branding, but must not inspect or change
+    // the host's protocol registration (including the destructive "never" path).
+    if (process.env.LUMINE_DISABLE_URI_HANDLER_REGISTRATION === "1") return;
     // Running from source, `process.execPath` is node_modules/electron's binary,
     // which is never what an installed Lumine registers. Every branch below would
     // then act on the wrong executable: `prompt` and `always` would point

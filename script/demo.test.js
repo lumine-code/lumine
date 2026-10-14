@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
+const vm = require("node:vm");
 const {
   inside,
   validate,
@@ -26,6 +27,57 @@ const recipe = () => ({
   scenes: [{ id: "first", file: "demo.png", caption: "A real view.", run() {}, ready() {} }],
 });
 const image = { file: "demo.png", label: "A real view." };
+
+test("normal-mode demo processes skip every protocol-registration action without changing preferences", async () => {
+  for (const flag of ["1", "0", undefined]) {
+    const calls = [];
+    const sandbox = {
+      module: { exports: {} },
+      process: {
+        env: { LUMINE_DISABLE_URI_HANDLER_REGISTRATION: flag },
+        platform: "win32",
+        execPath: "lumine.exe",
+      },
+      require(name) {
+        assert.equal(name, "electron", "must not load the Windows registry helper");
+        return {
+          ipcRenderer: {
+            async invoke(...args) {
+              calls.push(args);
+              return false;
+            },
+          },
+        };
+      },
+    };
+    vm.runInNewContext(
+      fs.readFileSync(path.join(__dirname, "../src/protocol-handler-installer.js"), "utf8"),
+      sandbox,
+    );
+    const installer = new sandbox.module.exports();
+    let reads = 0,
+      notices = 0;
+    const config = {
+      get() {
+        reads++;
+        return "prompt";
+      },
+      set() {
+        assert.fail("must not change preferences");
+      },
+    };
+    const notifications = {
+      addInfo() {
+        notices++;
+        return {};
+      },
+    };
+    await installer.initialize(config, notifications, false);
+    assert.equal(reads, flag === "1" ? 0 : 1);
+    assert.equal(calls.length, flag === "1" ? 0 : 1);
+    assert.equal(notices, flag === "1" ? 0 : 1);
+  }
+});
 
 test("authenticated demos copy only requested ciphertext and OS crypto metadata", (t) => {
   const source = temporary(t),

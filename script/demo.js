@@ -383,7 +383,12 @@ async function capture(repository, options = {}) {
         windowsHide: true,
         timeout: 120000,
         maxBuffer: 8 * 1024 * 1024,
-        env: { ...process.env, LUMINE_DEV_MODE: "0", LUMINE_RESOURCE_PATH: ROOT },
+        env: {
+          ...process.env,
+          LUMINE_DEV_MODE: "0",
+          LUMINE_RESOURCE_PATH: ROOT,
+          LUMINE_DISABLE_URI_HANDLER_REGISTRATION: "1",
+        },
       },
     );
     return result.stdout.trim();

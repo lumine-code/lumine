@@ -64,12 +64,7 @@ async function setup(options) {
     ),
   );
   for (const name of options.packages) await lumine.packages.activatePackage(name);
-  // A fresh normal-mode profile may ask about OS protocol registration. Dismiss
-  // this one prompt; choosing "never" would change the Windows registry.
-  for (const notice of lumine.notifications.getNotifications()) {
-    if (notice.message === "Register as default lumine:// URI handler?") notice.dismiss();
-  }
-  await waitFor(() => !document.querySelector("lumine-notification"), "startup prompt to close");
+  await waitFor(() => !document.querySelector("lumine-notification"), "startup notices to close");
   let current;
   globalThis.lumineDemo = {
     async scene(id) {

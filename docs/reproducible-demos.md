@@ -16,6 +16,8 @@ node script/demo.js capture ../open-with
 
 Each command creates a new ignored `.dev/demos/` directory, copies the fixtures into a disposable project with a clean local Git baseline, launches a fresh isolated profile in normal mode, checks each scene, and saves raw and rounded PNGs. It uses default fonts, the One theme, a fixed window size and a 10-pixel corner mask. It closes its window afterward. Your normal editor profile and dev-mode setup remain untouched. `--out <new-directory>` chooses another output location; an existing directory is rejected.
 
+Demo processes set `LUMINE_DISABLE_URI_HANDLER_REGISTRATION=1`, so startup never checks, registers or removes the system's `lumine://` association. This is process-local and does not change the normal profile's preferences. Automatic update checks are also disabled in the disposable profile; the updater's own demo invokes its check explicitly.
+
 Inspect every PNG in `images/`. Check the logo, rounded edges, readable content, expected feature, and absence of unwanted selections, notifications or dock buttons. The raw captures remain in `raw/` for comparison. A failed capture has `status: "failed"`, an error and, when possible, `failure.png`; it cannot be accepted.
 
 ```sh
