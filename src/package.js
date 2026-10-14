@@ -887,6 +887,7 @@ module.exports = class Package {
     const currentPackage = this.packageManager.getLoadedPackage(this.name);
     return (
       this.loadScopeActive &&
+      !this.loadError &&
       (currentPackage == null || currentPackage === this) &&
       !this.packageManager.isPackageDisabled(this.name) &&
       lifecycleState !== "deactivating" &&

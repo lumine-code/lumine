@@ -69,7 +69,7 @@ describe("PackageManager", () => {
         throw new Error("Unexpected native bootstrap fixture directory");
       fs.removeSync(directory);
     });
-    function createPackage(name, source) {
+    function createPackage(name, source, metadata = {}) {
       const root = path.join(directory, name);
       fs.makeTreeSync(root);
       fs.writeFileSync(
@@ -79,6 +79,7 @@ describe("PackageManager", () => {
           version: "1.0.0",
           main: "main.js",
           engines: { lumine: "^1.0.0" },
+          ...metadata,
         }),
       );
       fs.writeFileSync(path.join(root, "main.js"), source);
@@ -90,6 +91,8 @@ describe("PackageManager", () => {
       it(`isolates an actual native binding failure during ${phase} and starts the remaining packages`, async () => {
         const nativeRequire = 'require("./node_modules/unused-native/build/Release/binding.node");';
         const partialCommand = "spec:native-partial-" + phase;
+        const deserializerName = "StartupBadNative-" + phase;
+        const addViewProvider = spyOn(lumine.views, "addViewProvider").and.callThrough();
         const bad = createPackage(
           "startup-bad-native-" + phase,
           phase === "entrypoint"
@@ -99,9 +102,16 @@ describe("PackageManager", () => {
               subscriptions.add(lumine.commands.add("lumine-workspace", {${JSON.stringify(partialCommand)}() {}}));
               ${nativeRequire}
             },
+            deserialize() { return { restored: true }; },
+            provideView() { return document.createElement("div"); },
             deactivate() { this.deactivated = true; }
           };`,
+          {
+            deserializers: { [deserializerName]: "deserialize" },
+            viewProviders: ["provideView"],
+          },
         );
+        const provideView = addViewProvider.calls.mostRecent().args[0];
         const nativeRoot = path.join(bad.path, "node_modules", "unused-native");
         fs.makeTreeSync(path.join(nativeRoot, "build", "Release"));
         fs.writeFileSync(
@@ -126,6 +136,13 @@ describe("PackageManager", () => {
           await expectAsync(Promise.all(lumine.packages.activatePackages(packs))).toBeResolved();
           const failure = phase === "activate" ? bad.activationError : bad.loadError;
           expect(failure.code).toBe("ERR_DLOPEN_FAILED");
+          if (phase !== "activate") {
+            expect(
+              lumine.deserializers.deserialize({ deserializer: deserializerName }),
+            ).toBeUndefined();
+            expect(provideView({})).toBeUndefined();
+            expect(bad.loadError).toBe(failure);
+          }
           expect(lumine.packages.isPackageActive(bad.name)).toBeFalse();
           expect(lumine.packages.getPackageLifecycleState(bad.name)).toBe("loaded");
           expect(lumine.packages.isPackageActive(healthy.name)).toBeTrue();
