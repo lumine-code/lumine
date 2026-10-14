@@ -8,6 +8,15 @@ class SaveConflictedError extends Error {
   name = "SaveConflictedError";
 }
 
+/**
+ * @public
+ * @status public
+ *
+ * Determine whether a save stopped because the user cancelled it.
+ *
+ * @param {*} error - The error returned by a save operation.
+ * @returns {Boolean} Whether the error represents save cancellation.
+ */
 function isSaveCancellationError(error) {
   return error instanceof SaveCancelledError || error instanceof SaveConflictedError;
 }

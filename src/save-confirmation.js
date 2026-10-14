@@ -18,15 +18,15 @@ function confirmSave(buffer, confirmation, operation, requestedWindow) {
     const subscriptions = new CompositeDisposable();
     let notification;
     let settled = false;
-    const finish = (accepted) => {
+    const finish = (decision) => {
       if (settled) return;
       settled = true;
       subscriptions.dispose();
       notification?.dismiss();
-      if (accepted) resolve();
+      if (decision) resolve(decision);
       else reject(new SaveCancelledError("Save cancelled"));
     };
-    operation.cancelPrompt = () => finish(false);
+    operation.cancelPrompt = () => finish(null);
     subscriptions.add(
       buffer.onDidDestroy(operation.cancel),
       buffer.onDidChangePath(operation.cancel),
@@ -35,7 +35,7 @@ function confirmSave(buffer, confirmation, operation, requestedWindow) {
     );
     try {
       if (operation.cancelled || buffer.isDestroyed() || window.isDestroyed()) {
-        finish(false);
+        finish(null);
         return;
       }
       notification = notifications.addWarning(confirmation.message, {
@@ -43,8 +43,9 @@ function confirmSave(buffer, confirmation, operation, requestedWindow) {
         window,
         dismissable: true,
         buttons: [
-          { text: "Save", className: "btn-primary", onDidClick: () => finish(true) },
-          { text: "Cancel", onDidClick: operation.cancel },
+          { text: "Yes, always", className: "btn-primary", onDidClick: () => finish("always") },
+          { text: "Yes", onDidClick: () => finish("once") },
+          { text: "No", onDidClick: operation.cancel },
         ],
       });
       if (settled) notification.dismiss();

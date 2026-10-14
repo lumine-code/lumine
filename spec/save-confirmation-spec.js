@@ -85,6 +85,8 @@ describe("Save confirmation", () => {
   }
 
   it("shares a copied confirmation configuration between the editor and its buffer", () => {
+    expect(editor.canSaveAutomatically()).toBeFalse();
+    expect(buffer.canSaveAutomatically()).toBeFalse();
     const configuration = { ...confirmation };
     editor.setSaveConfirmation(configuration);
     configuration.message = "Changed externally";
@@ -99,45 +101,105 @@ describe("Save confirmation", () => {
     expect(editor.getSaveConfirmation()).toEqual({ message: "Confirm this save" });
     editor.setSaveConfirmation(null);
     expect(buffer.getSaveConfirmation()).toBeNull();
+    expect(editor.canSaveAutomatically()).toBeTrue();
+    expect(buffer.canSaveAutomatically()).toBeTrue();
   });
 
-  it("waits for Save before writing and asks again on a later save", async () => {
+  it("waits for Yes before writing and asks again on a later save", async () => {
     const first = startSave(() => editor.save());
     const notification = await first.notification;
     expect(notification.getType()).toBe("warning");
     expect(notification.getDetail()).toBe(confirmation.detail);
     expect(notification.isDismissable()).toBeTrue();
     expect(notification.getOptions().buttons.map((button) => button.text)).toEqual([
-      "Save",
-      "Cancel",
+      "Yes, always",
+      "Yes",
+      "No",
     ]);
     expectOriginalFile();
 
-    click(notification, "Save");
+    click(notification, "Yes");
     await first.operation;
     expect(notification.isDismissed()).toBeTrue();
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
     expect(editor.getFileState()).toBe("unmodified");
     expect(editor.getSaveConfirmation()).toEqual(confirmation);
+    expect(editor.canSaveAutomatically()).toBeFalse();
+    expect(buffer.canSaveAutomatically()).toBeFalse();
 
     editor.setText("print('another change')\n");
     const second = startSave(() => editor.save());
     const secondNotification = await second.notification;
     expect(secondNotification).not.toBe(notification);
-    click(secondNotification, "Cancel");
+    click(secondNotification, "No");
     await expectAsync(second.operation).toBeRejectedWithError(SaveCancelledError);
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
   });
 
-  it("keeps the original file and dirty contents when Cancel is selected", async () => {
+  it("remembers Yes, always for this buffer and its copies until the warning changes", async () => {
+    const copy = editor.copy();
+    editors.push(copy);
     const saving = startSave(() => editor.save());
     const notification = await saving.notification;
-    click(notification, "Cancel");
+    click(notification, "Yes, always");
+    await saving.operation;
+    expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
+    expect(editor.canSaveAutomatically()).toBeTrue();
+    expect(buffer.canSaveAutomatically()).toBeTrue();
+    expect(copy.canSaveAutomatically()).toBeTrue();
+
+    const independentBuffer = TextBuffer.loadSync(filePath);
+    buffers.push(independentBuffer);
+    independentBuffer.setSaveConfirmation(confirmation);
+    expect(independentBuffer.canSaveAutomatically()).toBeFalse();
+
+    const added = jasmine.createSpy("added");
+    subscriptions.push(lumine.notifications.onDidAddNotification(added));
+    copy.setSaveConfirmation({ ...confirmation });
+    expect(editor.canSaveAutomatically()).toBeTrue();
+    copy.setText("print('saved by the shared editor')\n");
+    await copy.save();
+    expect(fs.readFileSync(filePath, "utf8")).toBe("print('saved by the shared editor')\n");
+    buffer.setText("print('saved directly by the buffer')\n");
+    await buffer.save();
+    expect(fs.readFileSync(filePath, "utf8")).toBe("print('saved directly by the buffer')\n");
+    expect(added).not.toHaveBeenCalled();
+
+    const detail = "The example warning has changed.";
+    editor.setSaveConfirmation({ ...confirmation, detail });
+    expect(editor.canSaveAutomatically()).toBeFalse();
+    expect(copy.canSaveAutomatically()).toBeFalse();
+    const later = startSave(() => copy.save());
+    const laterNotification = await later.notification;
+    expect(laterNotification.getDetail()).toBe(detail);
+    click(laterNotification, "No");
+    await expectAsync(later.operation).toBeRejectedWithError(SaveCancelledError);
+  });
+
+  it("cancels only the current save with No and asks again through the shared buffer", async () => {
+    const saving = startSave(() => editor.save());
+    const notification = await saving.notification;
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
     expect(editor.getText()).toBe(changedText);
     expect(editor.getFileState()).toBe("modified");
     expect(notification.isDismissed()).toBeTrue();
+    expect(editor.canSaveAutomatically()).toBeFalse();
+    expect(buffer.canSaveAutomatically()).toBeFalse();
+
+    const copy = editor.copy();
+    editors.push(copy);
+    editor.setSaveConfirmation({ ...confirmation });
+    for (const action of [() => copy.save(), () => buffer.save()]) {
+      const retry = startSave(action);
+      const retryNotification = await retry.notification;
+      expect(retryNotification).not.toBe(notification);
+      click(retryNotification, "No");
+      await expectAsync(retry.operation).toBeRejectedWithError(SaveCancelledError);
+    }
+    expect(copy.canSaveAutomatically()).toBeFalse();
+    expectOriginalFile();
   });
 
   for (const dismissal of ["dismiss", "clear"]) {
@@ -149,6 +211,12 @@ describe("Save confirmation", () => {
       await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
       expectOriginalFile();
       expect(editor.getFileState()).toBe("modified");
+      expect(editor.canSaveAutomatically()).toBeFalse();
+
+      const retry = startSave(() => editor.save());
+      const retryNotification = await retry.notification;
+      retryNotification.dismiss();
+      await expectAsync(retry.operation).toBeRejectedWithError(SaveCancelledError);
     });
   }
 
@@ -169,6 +237,7 @@ describe("Save confirmation", () => {
 
   it("allows ordinary saving after the confirmation is cleared", async () => {
     editor.setSaveConfirmation(null);
+    expect(editor.canSaveAutomatically()).toBeTrue();
     const added = jasmine.createSpy("added");
     subscriptions.push(lumine.notifications.onDidAddNotification(added));
     await editor.save();
@@ -182,7 +251,7 @@ describe("Save confirmation", () => {
     const notification = await saving.notification;
     expect(notification.getOptions().window).toBe(lumine.workspace.getMainWindow());
     expectOriginalFile();
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
   });
 
@@ -192,7 +261,7 @@ describe("Save confirmation", () => {
     const saving = startSave(() => buffer.save());
     const notification = await saving.notification;
     expect(notification.getOptions().window).toBe(focused);
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
   });
@@ -204,7 +273,7 @@ describe("Save confirmation", () => {
     const saving = startSave(() => editor.save());
     const notification = await saving.notification;
     expect(notification.getOptions().window).toBe(owner);
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
   });
@@ -217,7 +286,7 @@ describe("Save confirmation", () => {
     expect(copy.getSaveConfirmation()).toEqual(confirmation);
     const saving = startSave(() => copy.save());
     const notification = await saving.notification;
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
     expect(editor.getFileState()).toBe("modified");
@@ -240,14 +309,14 @@ describe("Save confirmation", () => {
     await Promise.resolve();
     expect(added).toHaveBeenCalledTimes(1);
     expectOriginalFile();
-    click(notification, "Save");
+    click(notification, "Yes");
     await Promise.all([first.operation, second, third]);
     expect(saved).toHaveBeenCalledTimes(1);
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
   });
 
   it("preserves protection after serializing and restoring the buffer and editor", async () => {
-    const bufferState = JSON.parse(JSON.stringify(buffer.serialize()));
+    const bufferState = buffer.serialize();
     const editorState = JSON.parse(JSON.stringify(editor.serialize()));
     const restoredBuffer = await TextBuffer.deserialize(bufferState);
     buffers.push(restoredBuffer);
@@ -257,18 +326,49 @@ describe("Save confirmation", () => {
     });
     editors.push(restoredEditor);
     expect(restoredEditor.getSaveConfirmation()).toEqual(confirmation);
+    expect(restoredEditor.canSaveAutomatically()).toBeFalse();
+    expect(restoredEditor.getText()).toBe(changedText);
     const saving = startSave(() => restoredEditor.save());
     const notification = await saving.notification;
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
+  });
+
+  it("restores the warning without a remembered Yes, always decision", async () => {
+    const saving = startSave(() => editor.save());
+    const notification = await saving.notification;
+    click(notification, "Yes, always");
+    await saving.operation;
+    editor.setText("print('unsaved session changes')\n");
+    // TextBuffer's native outstandingChanges payload is a Buffer, not JSON.
+    const bufferState = buffer.serialize();
+    const restoredBuffer = await TextBuffer.deserialize(bufferState);
+    buffers.push(restoredBuffer);
+    await restoredBuffer.getFileWatchStartPromise();
+    const restoredEditor = TextEditor.deserialize(JSON.parse(JSON.stringify(editor.serialize())), {
+      assert: lumine.assert,
+      project: { bufferForIdSync: () => restoredBuffer },
+    });
+    editors.push(restoredEditor);
+    expect(editor.canSaveAutomatically()).toBeTrue();
+    expect(restoredBuffer.canSaveAutomatically()).toBeFalse();
+    expect(restoredEditor.canSaveAutomatically()).toBeFalse();
+    expect(restoredEditor.getSaveConfirmation()).toEqual(confirmation);
+
+    const restoredSave = startSave(() => restoredEditor.save());
+    const restoredNotification = await restoredSave.notification;
+    click(restoredNotification, "No");
+    await expectAsync(restoredSave.operation).toBeRejectedWithError(SaveCancelledError);
+    expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
+    expect(restoredEditor.getText()).toBe("print('unsaved session changes')\n");
   });
 
   it("also requires confirmation when Save As targets the original path", async () => {
     const saving = startSave(() => editor.saveAs(filePath));
     const notification = await saving.notification;
     expectOriginalFile();
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expectOriginalFile();
     expect(editor.getPath()).toBe(filePath);
@@ -284,6 +384,7 @@ describe("Save confirmation", () => {
     expect(fs.readFileSync(copyPath, "utf8")).toBe(changedText);
     expect(editor.getPath()).toBe(copyPath);
     expect(editor.getSaveConfirmation()).toBeNull();
+    expect(editor.canSaveAutomatically()).toBeTrue();
     expect(added).not.toHaveBeenCalled();
 
     editor.setText("print('my own changes')\n");
@@ -309,7 +410,7 @@ describe("Save confirmation", () => {
     buffer.setPath(newPath);
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(notification.isDismissed()).toBeTrue();
-    click(notification, "Save");
+    click(notification, "Yes");
     expectOriginalFile();
     expect(fs.existsSync(newPath)).toBeFalse();
   });
@@ -329,12 +430,17 @@ describe("Save confirmation", () => {
     fs.writeFileSync(filePath, externalText);
     await whenConflicted;
 
-    click(notification, "Save");
+    click(notification, "Yes, always");
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(fs.readFileSync(filePath, "utf8")).toBe(externalText);
     expect(editor.getText()).toBe(changedText);
     expect(editor.getFileState()).toBe("conflicted");
     expect(editor.getSaveConfirmation()).toEqual(confirmation);
+    expect(editor.canSaveAutomatically()).toBeFalse();
+    const retry = startSave(() => buffer.save());
+    const retryNotification = await retry.notification;
+    click(retryNotification, "No");
+    await expectAsync(retry.operation).toBeRejectedWithError(SaveCancelledError);
   });
 
   it("cancels a pending save when its buffer is destroyed", async () => {
@@ -343,7 +449,7 @@ describe("Save confirmation", () => {
     buffer.destroy();
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(notification.isDismissed()).toBeTrue();
-    click(notification, "Save");
+    click(notification, "Yes");
     expectOriginalFile();
   });
 
@@ -355,7 +461,7 @@ describe("Save confirmation", () => {
     owner.destroy();
     await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
     expect(notification.isDismissed()).toBeTrue();
-    click(notification, "Save");
+    click(notification, "Yes");
     expectOriginalFile();
     expect(editor.getFileState()).toBe("modified");
   });
@@ -368,7 +474,7 @@ describe("Save confirmation", () => {
         lumine.commands.dispatch(lumine.workspace.getElement(), command),
       );
       const notification = await saving.notification;
-      click(notification, "Cancel");
+      click(notification, "No");
       await expectAsync(saving.operation).toBeResolved();
       expect(pane.handleSaveError).not.toHaveBeenCalled();
       expectOriginalFile();
@@ -386,7 +492,7 @@ describe("Save confirmation", () => {
     const saving = startSave(() => lumine.workspace.saveAll());
     const notification = await saving.notification;
     expectOriginalFile();
-    click(notification, "Save");
+    click(notification, "Yes");
     await saving.operation;
     expect(fs.readFileSync(filePath, "utf8")).toBe(changedText);
     expect(fs.readFileSync(ordinaryPath, "utf8")).toBe("ordinary changed\n");
@@ -401,7 +507,7 @@ describe("Save confirmation", () => {
     spyOn(pane, "handleSaveError");
     const saving = startSave(() => pane.saveItemAs(editor));
     const notification = await saving.notification;
-    click(notification, "Cancel");
+    click(notification, "No");
     await expectAsync(saving.operation).toBeResolved();
     expect(pane.handleSaveError).not.toHaveBeenCalled();
     expectOriginalFile();
@@ -417,7 +523,7 @@ describe("Save confirmation", () => {
     spyOn(pane, "handleSaveError");
     const closing = startSave(() => pane.destroyItem(editor));
     const notification = await closing.notification;
-    click(notification, "Cancel");
+    click(notification, "No");
     expect(await closing.operation).toBeFalse();
     expect(owner.confirm).toHaveBeenCalledTimes(1);
     expect(pane.handleSaveError).not.toHaveBeenCalled();
@@ -435,7 +541,7 @@ describe("Save confirmation", () => {
     const closing = startSave(() => pane.destroyItem(editor));
     const notification = await closing.notification;
     expectOriginalFile();
-    click(notification, "Save");
+    click(notification, "Yes");
     expect(await closing.operation).toBeTrue();
     expect(pane.getItems()).not.toContain(editor);
     expect(editor.isDestroyed()).toBeTrue();

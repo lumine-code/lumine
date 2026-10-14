@@ -11,6 +11,7 @@ const { filterPatch } = require("../src/patch-filter");
 const Notification = require("../src/notification");
 const { watchDirectory, watchFile } = require("../src/file-watch");
 const { Icon } = require("../src/icon-descriptor");
+const { isSaveCancellationError } = require("../src/save-errors");
 
 const lumineExport = {
   BufferedNodeProcess,
@@ -28,6 +29,7 @@ const lumineExport = {
   Emitter,
   Disposable,
   CompositeDisposable,
+  isSaveCancellationError,
   watchDirectory,
   watchFile,
   // The factories an `icons.provider` builds its answers with. `Icon.none()` in

@@ -1928,7 +1928,9 @@ module.exports = class TextEditor {
    *
    * Require an explicit decision before saving to this editor's current path.
    * The policy belongs to the shared buffer, survives session restoration, and
-   * is cleared after a successful Save As to another path.
+   * is cleared after a successful Save As to another path. Approval for the
+   * session is shared with split editors and resets after restoration.
+   * Setting an identical policy preserves its pending warning and decision.
    *
    * @param {Object|null} confirmation - The warning text, or null to clear it.
    * @param {String} confirmation.message - The question shown before saving.
@@ -1950,6 +1952,21 @@ module.exports = class TextEditor {
    */
   getSaveConfirmation() {
     return this.buffer.getSaveConfirmation();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Determine whether this editor's current path can be saved automatically.
+   * Editors without a policy and paths approved for the shared buffer's
+   * session return true; policies awaiting approval return false.
+   *
+   * @returns {Boolean} Whether an automatic save may proceed.
+   * @category File Operations
+   */
+  canSaveAutomatically() {
+    return this.buffer.canSaveAutomatically();
   }
 
   // Determine whether the user should be prompted to save before closing

@@ -200,6 +200,7 @@ class TextBuffer {
     this.nextMarkerId = 1;
     this.outstandingSaveCount = 0;
     this.saveConfirmation = null;
+    this.saveConfirmationDecision = "ask";
     this.pendingConfirmedSave = null;
     this.loadCount = 0;
     this.cachedHasAstral = null;
@@ -866,6 +867,7 @@ class TextBuffer {
     if (!sameSavePath(this.getPath(), file?.getPath())) {
       this.pendingConfirmedSave?.cancel();
       this.saveConfirmation = null;
+      this.saveConfirmationDecision = "ask";
     }
 
     const hadFile = Boolean(this.file);
@@ -2736,8 +2738,10 @@ class TextBuffer {
    * @status public
    *
    * Require confirmation before saving to the current backing path. The
-   * serializable policy is shared by all editors of this buffer. Cancelling
-   * the warning leaves the buffer and backing file unchanged.
+   * serializable policy is shared by all editors of this buffer. The warning
+   * offers approval once, approval for this buffer's session, or cancellation.
+   * Session approval is not serialized. Setting the same policy again
+   * preserves its pending warning and session approval.
    *
    * @param {Object|null} confirmation - Warning text, or null to clear it.
    * @param {String} confirmation.message - The question shown before saving.
@@ -2755,8 +2759,17 @@ class TextBuffer {
         throw new TypeError("Save confirmation requires a message and optional detail strings");
       }
       if (!this.getPath()) throw new Error("Save confirmation requires a backing path");
+      if (
+        this.saveConfirmation &&
+        sameSavePath(this.saveConfirmation.path, this.getPath()) &&
+        this.saveConfirmation.message === confirmation.message &&
+        this.saveConfirmation.detail === (confirmation.detail ?? undefined)
+      ) {
+        return;
+      }
     }
     this.pendingConfirmedSave?.cancel();
+    this.saveConfirmationDecision = "ask";
     this.saveConfirmation =
       confirmation == null
         ? null
@@ -2781,6 +2794,24 @@ class TextBuffer {
     }
     const { message, detail } = this.saveConfirmation;
     return { message, ...(detail == null ? {} : { detail }) };
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Determine whether the current path can be saved automatically without
+   * asking for confirmation. Ordinary buffers and paths approved for this
+   * buffer's session return true; policies awaiting approval return false.
+   *
+   * @returns {Boolean} Whether an automatic save may proceed.
+   */
+  canSaveAutomatically() {
+    return (
+      !this.saveConfirmation ||
+      !sameSavePath(this.saveConfirmation.path, this.getPath()) ||
+      this.saveConfirmationDecision === "always"
+    );
   }
 
   /** @private */
@@ -2811,10 +2842,13 @@ class TextBuffer {
     operation.promise = Promise.resolve()
       .then(() => {
         this.assertConfirmedSaveCurrent(operation);
-        return confirmSave(this, confirmation, operation, options.window);
+        return this.saveConfirmationDecision === "always"
+          ? "always"
+          : confirmSave(this, confirmation, operation, options.window);
       })
-      .then(() => {
+      .then((decision) => {
         this.assertConfirmedSaveCurrent(operation);
+        if (decision === "always") this.saveConfirmationDecision = "always";
         return this.performSave(file, operation);
       })
       .finally(() => {
