@@ -428,7 +428,11 @@ async function benchmark({ positional, options }) {
     fail("--runs must be an integer from 1 through 50");
   }
   const packageThreshold = Number(options["package-threshold"] ?? 5);
-  if (!Number.isFinite(packageThreshold) || packageThreshold < 0) {
+  if (
+    typeof options["package-threshold"] === "boolean" ||
+    !Number.isFinite(packageThreshold) ||
+    packageThreshold < 0
+  ) {
     fail("--package-threshold must be a non-negative duration in milliseconds");
   }
 
