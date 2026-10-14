@@ -44,6 +44,8 @@ Never combine `async` with Jasmine's `done` argument. A spec body that declares 
 
 Every `lumine-code` package repository exposes the second form as `npm test`, so a fresh clone needs no further setup. The run exits with the suite's status code, and it loads the editor from the source checkout named by `LUMINE_RESOURCE_PATH` — see [Install and launch](https://lumine-code.github.io/docs.html#getting-started/install-and-launch) — or from the installed build when that variable is unset.
 
+Local Windows command-line runs render offscreen without displaying a window, including when a tool sets `CI=true`. GitHub Actions uses a visible, focused window for focus-dependent specs when both `CI` is set and `GITHUB_ACTIONS=true`; clearing `CI` there exercises the offscreen path. Unfocused local specs that require native focus are reported as pending. Offscreen rendering keeps animation frames running at 60 FPS.
+
 ## Tips
 
 - Activate the package under test explicitly with `lumine.packages.activatePackage` rather than assuming it is loaded.

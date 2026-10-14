@@ -3,11 +3,11 @@
 // fires focus and blur events at all, so without it the assertions describe the
 // host's window manager rather than the editor.
 //
-// CI shows the window and focuses it before the runner loads a single spec (see
+// GitHub Actions shows and focuses the window before loading a spec (see
 // src/initialize-test-window.js), so the precondition is guaranteed there and a
 // missing focus means the harness broke: throw, so CI can never quietly stop
-// covering these specs. Locally the window is shown without stealing focus from
-// whatever the developer is doing, so declare the specs disabled instead —
+// covering these specs. Local Windows command-line runs stay offscreen, even
+// with CI set, so declare unfocused specs disabled instead —
 // jasmine reports them as pending rather than failing, and the runner prints a
 // summary naming the reason once the run finishes.
 //
@@ -26,13 +26,14 @@
 // `beforeEach` chain allows.
 
 const focusTestWindow = require("../../src/focus-test-window");
+const { enforceDocumentFocus } = require("../../src/get-window-load-settings")();
 
 const skippedDescriptions = [];
 
 function documentIsFocused() {
   if (document.hasFocus()) return true;
 
-  if (process.env.CI) {
+  if (enforceDocumentFocus) {
     throw new Error("The spec window does not have focus; focus-dependent specs cannot run on CI");
   }
 

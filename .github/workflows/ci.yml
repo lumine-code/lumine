@@ -159,12 +159,15 @@ jobs:
         run: npm run build
       # The full CI suite uses a visible, focused window so focus-dependent
       # specs retain their coverage. Exercise the local-only Windows offscreen
-      # path once with CI cleared, including its animation-frame guard.
+      # path with CI cleared and with CI set without an active Actions marker,
+      # including native visibility and animation-frame guards.
       - name: Test offscreen spec window
         if: runner.os == 'Windows'
         shell: bash
         timeout-minutes: 5
-        run: env CI= npm run test:only -- spec/spec-window-rendering-spec.js
+        run: |
+          env CI= npm run test:only -- spec/spec-window-rendering-spec.js
+          env CI=true GITHUB_ACTIONS=false npm run test:only -- spec/spec-window-rendering-spec.js
       # A single full-suite Electron session, capped so a wedged session cannot
       # hang the job. No retries and no per-file fallback: a failure here is a
       # real regression or a flaky spec, and flaky specs get fixed rather than

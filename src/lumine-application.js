@@ -2473,9 +2473,11 @@ module.exports = class LumineApplication extends EventEmitter {
     // Local command-line runs on Windows must not cover the developer's
     // workspace with a native window. Electron's Linux offscreen compositor
     // does not deliver animation frames reliably, so other platforms retain
-    // showInactive(). CI still uses a visible, focused window so specs that
-    // assert real focus behaviour keep their coverage there.
-    const offscreen = Boolean(headless && !process.env.CI && process.platform === "win32");
+    // showInactive(). Only GitHub Actions uses a visible, focused window for
+    // focus-dependent specs. Local tools also set CI for unattended runs;
+    // that flag alone must never display a spec window or take native focus.
+    const enforceDocumentFocus = Boolean(process.env.CI && process.env.GITHUB_ACTIONS === "true");
+    const offscreen = Boolean(headless && !enforceDocumentFocus && process.platform === "win32");
     if (safeMode == null) {
       safeMode = false;
     }
@@ -2484,6 +2486,7 @@ module.exports = class LumineApplication extends EventEmitter {
       resourcePath,
       headless,
       offscreen,
+      enforceDocumentFocus,
       isSpec,
       devMode,
       testRunnerPath,
