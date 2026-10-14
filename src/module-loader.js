@@ -645,14 +645,19 @@ exports.registerPackage = function (directory) {
     const rootPrefixes = [...roots].map((candidate) => candidate + path.sep);
     // An already evaluated ESM namespace cannot be adopted by require.cache.
     // Keep its ordinary URL as the prior epoch and use a virtual managed one.
-    const preloadedESM = [...unmanagedESMSources].filter(
-      ([filename]) =>
-        rootPrefixes.some((prefix) => filename.startsWith(prefix)) &&
-        !path
-          .relative([...roots][0], filename)
-          .split(path.sep)
-          .includes("node_modules"),
-    );
+    const ownedRoots = [...roots].sort((left, right) => right.length - left.length);
+    const preloadedESM = [...unmanagedESMSources].filter(([filename]) => {
+      // A junction can point from outside node_modules into an installed
+      // package. Only paths below the matching root are dependencies; the
+      // route from its other alias must not exclude its own preloaded ESM.
+      const matchingRoot = ownedRoots.find((candidate) =>
+        filename.startsWith(candidate + path.sep),
+      );
+      return (
+        matchingRoot &&
+        !path.relative(matchingRoot, filename).split(path.sep).includes("node_modules")
+      );
+    });
     const entry = { roots, generation: preloadedESM.length ? nextGeneration++ : 0 };
     packages.set(root, entry);
     for (const candidate of roots) packageRoots.set(candidate, entry);

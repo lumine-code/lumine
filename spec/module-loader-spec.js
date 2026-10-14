@@ -616,6 +616,30 @@ describe("native package module loading", () => {
     }
   });
 
+  it("discovers preloaded native ESM through an alias of a package inside node_modules", async () => {
+    const installation = fs.realpathSync(temp.mkdirSync("native-installed-package"));
+    const physical = path.join(installation, "node_modules", "linked-package");
+    fs.mkdirSync(physical, { recursive: true });
+    fs.writeFileSync(path.join(physical, "package.json"), '{"type":"module"}');
+    const main = path.join(physical, "main.mjs");
+    fs.writeFileSync(
+      main,
+      "export default { Model: class Model {}, hasBoundRequire: typeof import.meta.require === 'function' };",
+    );
+    const first = (await import(pathToFileURL(main).href)).default;
+    expect(first.hasBoundRequire).toBeFalse();
+    const alias = path.join(temp.mkdirSync("native-installed-alias"), "package");
+    fs.symlinkSync(physical, alias, process.platform === "win32" ? "junction" : "dir");
+    discoveredDirectories.push(alias);
+    ModuleLoader.registerPackage(alias);
+    const managed = requireModule(path.join(alias, "main.mjs"));
+    expect(managed).not.toBe(first);
+    expect(managed.Model).not.toBe(first.Model);
+    expect(managed.hasBoundRequire).toBeTrue();
+    expect(requireModule(main)).toBe(managed);
+    expect((await import(pathToFileURL(main).href)).default).toBe(managed);
+  });
+
   it("retains canonical CommonJS callbacks and late native namespaces across successive epochs", async () => {
     write("package.json", '{"name":"canonical-cjs"}');
     write("helper.cjs", "exports.Model = class First {}; exports.foo = 1;");
