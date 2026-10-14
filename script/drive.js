@@ -77,6 +77,7 @@ Options:
   --runs <n>             benchmark: number of launches (default 5)
   --executable <file>    benchmark: launch a packaged Lumine executable
   --json                 benchmark: emit the full samples as JSON
+  --package-threshold <n> benchmark: report every package above this duration (default 5 ms)
   --ms <n>               console/issues: how long to stream, 0 to stream until killed (default 5000)
   --out <file>           shot: output path (default drive-shot.png)
   --scale <n>            shot: capture scale (default 1)
@@ -340,7 +341,7 @@ const STARTUP_STAGES = [
   {
     name: "deserialize",
     start: "window:environment:start-editor-window:deserialize-state",
-    end: "window:environment:start-editor-window:activate-packages",
+    end: "window:environment:start-editor-window:open-editor",
   },
   {
     name: "packageActivation",
@@ -426,6 +427,10 @@ async function benchmark({ positional, options }) {
   if (!Number.isInteger(runs) || runs < 1 || runs > 50) {
     fail("--runs must be an integer from 1 through 50");
   }
+  const packageThreshold = Number(options["package-threshold"] ?? 5);
+  if (!Number.isFinite(packageThreshold) || packageThreshold < 0) {
+    fail("--package-threshold must be a non-negative duration in milliseconds");
+  }
 
   const port = Number(options.port || DEFAULT_PORT);
   const executable = options.executable ? path.resolve(options.executable) : require("electron");
@@ -466,7 +471,7 @@ async function benchmark({ positional, options }) {
         `lumine.window.whenLoaded().then(() => ({
           windowLoadTime: lumine.window.getLoadTime(),
           markers: lumine.window.getStartupMarkers(),
-          packages: lumine.packages.getActivePackages().map(pack => ({
+          packages: lumine.packages.getLoadedPackages().map(pack => ({
             name: pack.name,
             loadTime: pack.loadTime,
             initializeTime: pack.initializeTime,
@@ -508,10 +513,18 @@ async function benchmark({ positional, options }) {
     samples,
     summary: summarizeStartup(warmSamples),
     packageLoad: summarizePackages(warmSamples, "loadTime"),
+    packageInitialization: summarizePackages(warmSamples, "initializeTime"),
     packageActivation: summarizePackages(warmSamples, "activateTime"),
     packageSettings: summarizePackages(warmSamples, "settingsLoadTime"),
     packageGrammars: summarizePackages(warmSamples, "grammarLoadTime"),
   };
+  result.slowPackages = Object.fromEntries(
+    ["packageLoad", "packageInitialization", "packageActivation"].map((stage) => [
+      stage,
+      result[stage].filter((pack) => pack.median > packageThreshold),
+    ]),
+  );
+  result.packageThreshold = packageThreshold;
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
     return;
@@ -535,13 +548,13 @@ async function benchmark({ positional, options }) {
       `  ${name.padEnd(20)} ${values.median.toFixed(1)} / ${values.min.toFixed(1)} / ${values.max.toFixed(1)}`,
     );
   }
-  console.log("slowest warm package activation medians (ms)");
-  for (const pack of result.packageActivation.slice(0, 10)) {
-    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
-  }
-  console.log("slowest warm package load medians (ms)");
-  for (const pack of result.packageLoad.slice(0, 10)) {
-    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
+  for (const [stage, packages] of Object.entries(result.slowPackages)) {
+    console.log(`${stage} warm medians above ${packageThreshold} ms (${packages.length})`);
+    for (const pack of packages) {
+      console.log(
+        `  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`,
+      );
+    }
   }
   console.log("slowest warm package settings medians (ms)");
   for (const pack of result.packageSettings.slice(0, 10)) {
