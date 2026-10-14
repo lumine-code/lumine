@@ -1016,8 +1016,10 @@ module.exports = class TextEditorComponent {
       const cache = this.contentCache;
       const style = this.refs.content.style;
 
-      const width = ceilToPhysicalPixelBoundary(this.getScrollWidth()) + "px";
-      const height = ceilToPhysicalPixelBoundary(this.getScrollHeight()) + "px";
+      const width =
+        ceilToPhysicalPixelBoundary(this.getScrollWidth(), this.window.devicePixelRatio) + "px";
+      const height =
+        ceilToPhysicalPixelBoundary(this.getScrollHeight(), this.window.devicePixelRatio) + "px";
 
       if (width !== cache.width) {
         style.width = width;
@@ -1043,8 +1045,14 @@ module.exports = class TextEditorComponent {
   updateContentScrollTransform() {
     if (this.hasInitialMeasurements) {
       const cache = this.contentCache;
-      const scrollLeft = roundToPhysicalPixelBoundary(this.getScrollLeft());
-      const scrollTop = roundToPhysicalPixelBoundary(this.getScrollTop());
+      const scrollLeft = roundToPhysicalPixelBoundary(
+        this.getScrollLeft(),
+        this.window.devicePixelRatio,
+      );
+      const scrollTop = roundToPhysicalPixelBoundary(
+        this.getScrollTop(),
+        this.window.devicePixelRatio,
+      );
       const transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
       if (transform !== cache.transform) {
         this.refs.content.style.transform = transform;
@@ -3321,8 +3329,8 @@ module.exports = class TextEditorComponent {
       // less.
       scaledDelta =
         yDirection === 1
-          ? ceilToPhysicalPixelBoundary(scaledDelta)
-          : floorToPhysicalPixelBoundary(scaledDelta);
+          ? ceilToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio)
+          : floorToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio);
       scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta) || scrolled;
     }
 
@@ -3333,8 +3341,8 @@ module.exports = class TextEditorComponent {
       // less.
       scaledDelta =
         xDirection === 1
-          ? ceilToPhysicalPixelBoundary(scaledDelta)
-          : floorToPhysicalPixelBoundary(scaledDelta);
+          ? ceilToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio)
+          : floorToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio);
       scrolled = this.setScrollLeft(this.getScrollLeft() + scaledDelta) || scrolled;
     }
 
@@ -3354,9 +3362,11 @@ module.exports = class TextEditorComponent {
     // the DOM. Project through that pending movement on the same physical-pixel
     // grid as the content transform so hit-testing already sees the new viewport.
     const pendingScrollLeft =
-      roundToPhysicalPixelBoundary(this.getScrollLeft()) - this.renderedScrollLeft;
+      roundToPhysicalPixelBoundary(this.getScrollLeft(), this.window.devicePixelRatio) -
+      this.renderedScrollLeft;
     const pendingScrollTop =
-      roundToPhysicalPixelBoundary(this.getScrollTop()) - this.renderedScrollTop;
+      roundToPhysicalPixelBoundary(this.getScrollTop(), this.window.devicePixelRatio) -
+      this.renderedScrollTop;
     return {
       top: clientY - linesRect.top + pendingScrollTop,
       left: clientX - linesRect.left + pendingScrollLeft,
@@ -3754,6 +3764,7 @@ module.exports = class TextEditorComponent {
       // and shifts `getContentWidth` by a pixel.
       this.measurements.longestLineWidth = roundToPhysicalPixelBoundary(
         lineComponent.element.firstChild.getBoundingClientRect().width,
+        this.window.devicePixelRatio,
       );
       this.longestLineToMeasure = null;
     }
@@ -3857,7 +3868,10 @@ module.exports = class TextEditorComponent {
           // width specs rely on.
           positions.set(
             nextColumnToMeasure,
-            roundToPhysicalPixelBoundary(clientPixelPosition - lineNodeClientLeft),
+            roundToPhysicalPixelBoundary(
+              clientPixelPosition - lineNodeClientLeft,
+              this.window.devicePixelRatio,
+            ),
           );
           continue columnLoop;
         } else {
@@ -3881,7 +3895,10 @@ module.exports = class TextEditorComponent {
 
       positions.set(
         nextColumnToMeasure,
-        roundToPhysicalPixelBoundary(lastTextNodeRight - lineNodeClientLeft),
+        roundToPhysicalPixelBoundary(
+          lastTextNodeRight - lineNodeClientLeft,
+          this.window.devicePixelRatio,
+        ),
       );
     }
   }

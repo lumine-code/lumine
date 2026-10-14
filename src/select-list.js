@@ -1326,10 +1326,10 @@ class SelectList extends InputDialog {
     const result = renderItem
       ? renderItem(item, opts)
       : { primary: opts.highlight(opts.filterKey) };
-    if (result instanceof HTMLElement) {
+    if (result?.nodeType === 1 && result.ownerDocument) {
       return result;
     }
-    if (result?.element instanceof HTMLElement) {
+    if (result?.element?.nodeType === 1 && result.element.ownerDocument) {
       if (result.destroy != null && typeof result.destroy !== "function") {
         throw new TypeError("A custom row view destroy property must be a function.");
       }

@@ -85,6 +85,7 @@ class PanelContainerElement extends HTMLElement {
 
       if (panel.autoFocus) {
         const focusOptions = {
+          document: this.ownerDocument,
           // focus-trap will attempt to give focus to the first tabbable element
           // on activation. If there aren't any tabbable elements,
           // give focus to the panel element itself
@@ -126,6 +127,7 @@ class PanelContainerElement extends HTMLElement {
   // Remembers where focus was before a modal opened. When modals open on top
   // of each other, only the element focused before the first modal is kept.
   capturePriorFocus() {
+    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !this.contains(active)) {
       this.priorFocus = active;
@@ -139,13 +141,14 @@ class PanelContainerElement extends HTMLElement {
     if (this.model.getPanels().some((panel) => panel.isVisible())) return;
 
     // the user moved focus elsewhere themselves — don't steal it back
+    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !panelElement.contains(active)) return;
 
-    if (this.priorFocus.isConnected) {
+    if (this.priorFocus.isConnected && this.priorFocus.ownerDocument === document) {
       this.priorFocus.focus();
     } else if (typeof lumine !== "undefined") {
-      const pane = lumine.workspace.getActivePane();
+      const pane = lumine.workspace.getWindowForElement(this)?.getEditorContainer().getActivePane();
       if (pane && !pane.isDestroyed()) pane.activate();
     }
     this.priorFocus = null;

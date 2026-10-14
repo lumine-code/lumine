@@ -63,4 +63,17 @@ describe("auxiliary presentation cleanup ownership", () => {
       if (extra) await extra.windowService.close();
     }
   });
+
+  it("closes the resolved child even if creating its service subscription throws", async () => {
+    let child;
+    const open = lumine.domWindow.open.bind(lumine.domWindow);
+    spyOn(lumine.domWindow, "open").and.callFake((...args) => (child = open(...args)));
+    spyOn(lumine.applicationDelegate, "onAuxiliaryWindowEvent").and.throwError(
+      "Subscription failed",
+    );
+    await expectAsync(new AuxiliaryWindowHost(lumine).open({ show: false })).toBeRejectedWithError(
+      "Subscription failed",
+    );
+    await conditionPromise(() => child.closed);
+  });
 });

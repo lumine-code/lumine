@@ -39,22 +39,31 @@ function objectsEqual(a, b) {
   return true;
 }
 
-function roundToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function roundToPhysicalPixelBoundary(
+  virtualPixelPosition,
+  devicePixelRatio = window.devicePixelRatio,
+) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatio;
   return (
     Math.round(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );
 }
 
-function ceilToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function ceilToPhysicalPixelBoundary(
+  virtualPixelPosition,
+  devicePixelRatio = window.devicePixelRatio,
+) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatio;
   return (
     Math.ceil(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );
 }
 
-function floorToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function floorToPhysicalPixelBoundary(
+  virtualPixelPosition,
+  devicePixelRatio = window.devicePixelRatio,
+) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatio;
   return (
     Math.floor(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );

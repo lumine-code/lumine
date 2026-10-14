@@ -117,7 +117,7 @@ module.exports = class GutterContainerComponent {
   // window still covers the viewport.
   updateScrollTop(scrollTop) {
     this.props.scrollTop = scrollTop;
-    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop)}px)`;
+    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop, this.element.ownerDocument.defaultView.devicePixelRatio)}px)`;
     if (transform !== this.lastTransform) {
       this.innerElement.style.transform = transform;
       this.lastTransform = transform;
@@ -274,7 +274,9 @@ class LineNumberGutterComponent {
       this.lastClassName = rootClassName;
     }
 
-    const heightPx = ceilToPhysicalPixelBoundary(height) + "px";
+    const heightPx =
+      ceilToPhysicalPixelBoundary(height, this.element.ownerDocument.defaultView.devicePixelRatio) +
+      "px";
     if (heightPx !== this.lastHeight) {
       this.element.style.height = heightPx;
       this.lastHeight = heightPx;

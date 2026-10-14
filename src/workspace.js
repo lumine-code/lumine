@@ -29,6 +29,7 @@ const ItemOpenRequestManager = require("./item-open-request-manager");
 const ItemRegistry = require("./item-registry");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
+const { captureLifecycleError, throwLifecycleErrors } = require("./package-lifecycle-errors");
 
 const PATH_KINDS = ["file", "directory"];
 const OPEN_DESTINATIONS = ["current", "new-window", "detached-window"];
@@ -3888,7 +3889,11 @@ module.exports = class Workspace extends Model {
    * @category Text Editors
    */
   getFocusedTextEditor(options) {
-    return this.getTextEditorForElement(document.activeElement, options);
+    const document =
+      this.getFocusedWindow()?.getDocument() ??
+      this.getActivePane()?.getContainer()?.getWindow?.()?.getDocument() ??
+      this.getMainWindow()?.getDocument();
+    return this.getTextEditorForElement(document?.activeElement, options);
   }
 
   /**
@@ -4291,31 +4296,36 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
-    for (const editorWindow of this.getWindows()) editorWindow.destroy();
+    const failures = [];
+    const capture = (callback) => captureLifecycleError(failures, callback);
+    for (const editorWindow of this.getWindows()) capture(() => editorWindow.destroy());
     this.#layoutGeneration++;
-    this.#itemOpenRequests.destroy();
+    capture(() => this.#itemOpenRequests.destroy());
     this.incoming.clear();
-    this.registeredTextEditorGrammarSubscription?.dispose();
+    capture(() => this.registeredTextEditorGrammarSubscription?.dispose());
     this.registeredTextEditorGrammarSubscription = null;
-    for (const lease of this.registeredGrammarUsageLeases.values()) lease.dispose();
+    for (const lease of this.registeredGrammarUsageLeases.values()) capture(() => lease.dispose());
     this.registeredGrammarUsageLeases.clear();
-    for (const lease of this.activeItemGrammarUsageLeases.values()) lease.dispose();
+    for (const lease of this.activeItemGrammarUsageLeases.values()) capture(() => lease.dispose());
     this.activeItemGrammarUsageLeases.clear();
-    this.fileDocumentObservation?.dispose();
-    this.fileDocuments.dispose();
-    this.closeStateStore();
-    void this.modalDialogFactory.destroy();
-    this.paneContainers.center.destroy();
-    this.paneContainers.left.destroy();
-    this.paneContainers.right.destroy();
-    this.paneContainers.bottom.destroy();
-    this.cancelStoppedChangingActivePaneItemTimeout();
+    capture(() => this.fileDocumentObservation?.dispose());
+    capture(() => this.fileDocuments.dispose());
+    capture(() => this.closeStateStore());
+    capture(() => {
+      void this.modalDialogFactory.destroy();
+    });
+    capture(() => this.paneContainers.center.destroy());
+    capture(() => this.paneContainers.left.destroy());
+    capture(() => this.paneContainers.right.destroy());
+    capture(() => this.paneContainers.bottom.destroy());
+    capture(() => this.cancelStoppedChangingActivePaneItemTimeout());
     if (this.activeItemSubscriptions != null) {
-      this.activeItemSubscriptions.dispose();
+      capture(() => this.activeItemSubscriptions.dispose());
     }
-    if (this.element) this.element.destroy();
-    for (const entry of [...this.grammarUsageEntries.values()]) entry.dispose();
+    if (this.element) capture(() => this.element.destroy());
+    for (const entry of [...this.grammarUsageEntries.values()]) capture(() => entry.dispose());
     this.grammarUsageEntries.clear();
+    throwLifecycleErrors(failures, "Unable to destroy every workspace presentation cleanly.");
   }
 
   /**
