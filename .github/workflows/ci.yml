@@ -68,6 +68,8 @@ jobs:
         run: node --test script/install-electron.test.js
       - name: Test application packaging
         run: node --test script/check-built-app.test.js
+      - name: Test demo capture validation
+        run: node --test script/demo.test.js
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       # Themes must not re-declare icon box geometry — the icon contract in
