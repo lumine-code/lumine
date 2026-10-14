@@ -301,6 +301,7 @@ async function capture(repository, options = {}) {
         ...(recipe.config || {}),
         core: { disabledPackages: wanted.filter((name) => name !== "one-theme") },
         about: { showOnStartup: false },
+        "lumine-updater": { checkForUpdatesOnLaunch: false },
         welcome: { showOnStartup: false },
         theme: { mode: "light" },
         "spell-check": { locales: ["en-US"] },
