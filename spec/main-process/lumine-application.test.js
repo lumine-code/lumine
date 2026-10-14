@@ -1432,6 +1432,9 @@ describe("LumineApplication", function () {
           ],
           opener: "text-editor",
           openerPath: scenario.convertEditorPath("a/1.md"),
+          initialLine: 12,
+          initialColumn: 3,
+          uriFragment: "#nameddest=GROUP",
           newWindow: true,
           reuseEmptyWindow: false,
         },
@@ -1442,6 +1445,11 @@ describe("LumineApplication", function () {
       assert.isFalse(Object.hasOwn(firstRoot, "opener"));
       assert.isFalse(Object.hasOwn(secondRoot, "opener"));
       assert.strictEqual(file.opener, "text-editor");
+      assert.strictEqual(file.initialLine, 12);
+      assert.strictEqual(file.initialColumn, 3);
+      assert.strictEqual(file.uriFragment, "#nameddest=GROUP");
+      assert.strictEqual(firstRoot.initialLine, null);
+      assert.strictEqual(secondRoot.initialColumn, null);
       assert.strictEqual(destination, scenario.getWindow(3));
     });
 

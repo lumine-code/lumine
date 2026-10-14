@@ -5408,6 +5408,31 @@ describe("Workspace", () => {
 
       expect(pane.getPendingItem()).toBeFalsy();
     });
+
+    it("honors an explicit forced pending Text Editor opening without changing the setting", async () => {
+      lumine.config.set("core.allowPendingPaneItems", false);
+      const editor = await workspace.open("sample.js", {
+        opener: "text-editor",
+        pending: true,
+        forcePending: true,
+        activatePane: false,
+      });
+
+      expect(workspace.getActivePane().getPendingItem()).toBe(editor);
+      expect(lumine.config.get("core.allowPendingPaneItems")).toBe(false);
+    });
+
+    it("replaces a forced pending editor with the next forced preview", async () => {
+      lumine.config.set("core.allowPendingPaneItems", false);
+      const pane = workspace.getActivePane();
+      const options = { opener: "text-editor", pending: true, forcePending: true };
+      await workspace.open("sample.js", options);
+      const next = await workspace.open("sample.txt", options);
+
+      expect(pane.getPendingItem()).toBe(next);
+      expect(pane.getItems()).toEqual([next]);
+      expect(next.getPath()).toBe(lumine.project.resolvePath("sample.txt"));
+    });
   });
 
   describe("grammar activation", () => {

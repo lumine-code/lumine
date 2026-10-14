@@ -302,6 +302,25 @@ describe("Path openers", () => {
     expect(pane.getItems()).toEqual([]);
   });
 
+  it("carries a target file's cursor position into an independent window", async () => {
+    const openWindow = spyOn(lumine.applicationDelegate, "open");
+    await workspace.openPathInNewWindow(filePath, {
+      opener: "text-editor",
+      initialLine: 12,
+      initialColumn: 3,
+      uriFragment: "#nameddest=GROUP",
+    });
+
+    expect(openWindow.calls.mostRecent().args[0]).toEqual(
+      jasmine.objectContaining({
+        openerPath: filePath,
+        initialLine: 12,
+        initialColumn: 3,
+        uriFragment: "#nameddest=GROUP",
+      }),
+    );
+  });
+
   it("does not request a window for an already cancelled opening", async () => {
     const { descriptor } = register();
     const openWindow = spyOn(lumine.applicationDelegate, "open");

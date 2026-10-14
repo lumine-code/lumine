@@ -1921,20 +1921,23 @@ class Environment {
   openFileLocations(fileLocations, { bypassLimit = false } = {}) {
     const lastIndex = fileLocations.length - 1;
     return Promise.all(
-      fileLocations.map(({ pathToOpen, initialLine, initialColumn, opener }, index) => {
-        const activate = index === lastIndex;
-        return (
-          this.workspace &&
-          this.workspace.open(pathToOpen, {
-            initialLine,
-            initialColumn,
-            ...(opener == null ? {} : { opener }),
-            activateItem: activate,
-            activatePane: activate,
-            bypassTextEditorLimit: bypassLimit,
-          })
-        );
-      }),
+      fileLocations.map(
+        ({ pathToOpen, initialLine, initialColumn, opener, uriFragment }, index) => {
+          const activate = index === lastIndex;
+          return (
+            this.workspace &&
+            this.workspace.open(pathToOpen, {
+              initialLine,
+              initialColumn,
+              ...(opener == null ? {} : { opener }),
+              ...(uriFragment == null ? {} : { uriFragment }),
+              activateItem: activate,
+              activatePane: activate,
+              bypassTextEditorLimit: bypassLimit,
+            })
+          );
+        },
+      ),
     );
   }
 

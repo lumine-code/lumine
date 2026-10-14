@@ -1984,6 +1984,9 @@ module.exports = class LumineApplication extends EventEmitter {
     pathsToOpen,
     opener,
     openerPath,
+    initialLine,
+    initialColumn,
+    uriFragment,
     foldersToOpen,
     windowStateId,
     executedFrom,
@@ -2017,10 +2020,14 @@ module.exports = class LumineApplication extends EventEmitter {
       ),
     );
 
-    if (opener != null) {
+    if (opener != null || initialLine != null || initialColumn != null || uriFragment != null) {
       for (const location of locationsToOpen) {
         if (openerPath != null ? location.pathToOpen === openerPath : !location.isDirectory) {
-          location.opener = opener;
+          if (opener != null) location.opener = opener;
+          if (Number.isInteger(initialLine) && initialLine >= 0) location.initialLine = initialLine;
+          if (Number.isInteger(initialColumn) && initialColumn >= 0)
+            location.initialColumn = initialColumn;
+          if (typeof uriFragment === "string") location.uriFragment = uriFragment;
         }
       }
     }
