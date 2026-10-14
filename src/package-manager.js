@@ -1028,7 +1028,9 @@ module.exports = class PackageManager {
       // Require every entrypoint before invoking any package initializer so a
       // bootstrap never depends on directory/activation order. Initializers
       // themselves remain the only phase allowed to publish package state.
-      for (const pack of packages) pack.requireMainModule();
+      for (const pack of packages) {
+        pack.measure("mainModuleLoadTime", () => pack.requireMainModule());
+      }
       this.config.transact(() => {
         for (const pack of packages) {
           pack.initializeForExternalUse("initial package bootstrap");

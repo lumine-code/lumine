@@ -478,6 +478,7 @@ async function benchmark({ positional, options }) {
           packages: lumine.packages.getLoadedPackages().map(pack => ({
             name: pack.name,
             loadTime: pack.loadTime,
+            mainModuleLoadTime: pack.mainModuleLoadTime,
             initializeTime: pack.initializeTime,
             activateTime: pack.activateTime,
             settingsLoadTime: pack.settingsLoadTime,
@@ -517,16 +518,16 @@ async function benchmark({ positional, options }) {
     samples,
     summary: summarizeStartup(warmSamples),
     packageLoad: summarizePackages(warmSamples, "loadTime"),
+    packageMainModuleLoad: summarizePackages(warmSamples, "mainModuleLoadTime"),
     packageInitialization: summarizePackages(warmSamples, "initializeTime"),
     packageActivation: summarizePackages(warmSamples, "activateTime"),
     packageSettings: summarizePackages(warmSamples, "settingsLoadTime"),
     packageGrammars: summarizePackages(warmSamples, "grammarLoadTime"),
   };
   result.slowPackages = Object.fromEntries(
-    ["packageLoad", "packageInitialization", "packageActivation"].map((stage) => [
-      stage,
-      result[stage].filter((pack) => pack.median > packageThreshold),
-    ]),
+    ["packageLoad", "packageMainModuleLoad", "packageInitialization", "packageActivation"].map(
+      (stage) => [stage, result[stage].filter((pack) => pack.median > packageThreshold)],
+    ),
   );
   result.packageThreshold = packageThreshold;
   if (options.json) {

@@ -19,6 +19,31 @@ describe("PackageManager", () => {
     spyOn(ModuleCache, "add");
   });
 
+  it("measures entrypoint loading separately from later initialization", () => {
+    let now = 0;
+    spyOn(window.performance, "now").and.callFake(() => now);
+    const pack = {
+      name: "startup-timing-spec",
+      measure: Package.prototype.measure,
+      requireMainModule: () => {
+        now += 9;
+      },
+      initializeForExternalUse: () => {
+        now += 23;
+      },
+    };
+    const manager = {
+      initialPackagesLoaded: true,
+      getLoadedPackagesForTypes: () => [pack],
+      isPackageDisabled: () => false,
+      config: { transact: (callback) => callback() },
+      emitter: { emit() {} },
+    };
+    PackageManager.prototype.initializePackages.call(manager);
+    expect(pack.mainModuleLoadTime).toBe(9);
+    expect(now).toBe(32);
+  });
+
   it("completes reset after a service cleanup error and unloads every package", async () => {
     const primary = new Error("Service cleanup failed during reset");
     const provider = await lumine.packages.activatePackage("package-with-provided-services");
