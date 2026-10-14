@@ -16,6 +16,7 @@ const dependencies = new Map();
 const dependencyEdges = new Map();
 const testModules = new Set();
 const sourceMaps = new Map();
+const sourceMapMetadata = new Map();
 const moduleGenerations = new WeakMap();
 const retiredModules = new Map();
 const moduleSources = new Map();
@@ -670,7 +671,31 @@ function recordSourceMap(url, sourceURL, source, insertion) {
     });
     generator.setSourceContent(sourceName, source);
   }
-  sourceMaps.set(fileURLToPath(url), { map: generator.toJSON(), url: sourceURL });
+  // The generated filename belongs to its runtime generation. All remaining
+  // mapping coordinates and source contents can be shared when they match.
+  const { file, ...payload } = generator.toJSON();
+  const serialized = JSON.stringify({ map: payload, url: sourceURL });
+  const digest = contentDigest(serialized);
+  let metadata = sourceMapMetadata.get(digest);
+  if (!metadata) {
+    // Round-tripping flattens generated mapping strings before retaining
+    // them. Keeping their concatenation trees multiplies the cost of a large
+    // vendored bundle even when no source-map consumer ever parses it.
+    metadata = freezeSourceMapMetadata(JSON.parse(serialized));
+    sourceMapMetadata.set(digest, metadata);
+  }
+  sourceMaps.set(
+    fileURLToPath(url),
+    Object.freeze({ map: Object.freeze({ file, ...metadata.map }), url: metadata.url }),
+  );
+}
+
+function freezeSourceMapMetadata(value) {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) freezeSourceMapMetadata(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 exports.getSourceMap = function (filePath) {

@@ -855,6 +855,119 @@ export default {
     }
   });
 
+  it("shares immutable source-map payloads across unchanged large CommonJS generations", () => {
+    const padding = Array.from({ length: 2500 }, (_, index) => `  ${index},`).join("\n");
+    const main = write(
+      "large-map.cjs",
+      `const values = [\n${padding}\n];\nmodule.exports = { values, fail() { throw new Error("original source failure"); } };`,
+    );
+    const failureLine = padding.split("\n").length + 3;
+    const generations = [];
+    const maps = [];
+    for (let reload = 0; reload < 3; reload++) {
+      if (reload) ModuleLoader.invalidatePackage(directory);
+      const loaded = require(main);
+      const virtual = Object.keys(require.cache).find(
+        (filename) =>
+          filename.includes(".lumine-generation-") && require.cache[filename].exports === loaded,
+      );
+      generations.push(loaded);
+      maps.push(ModuleLoader.getSourceMap(virtual));
+    }
+
+    expect(generations[1]).not.toBe(generations[0]);
+    expect(generations[2]).not.toBe(generations[1]);
+    expect(maps[1].map.file).not.toBe(maps[0].map.file);
+    expect(maps[2].map.file).not.toBe(maps[1].map.file);
+    for (const map of maps.slice(1)) {
+      expect(map.map.sources).toBe(maps[0].map.sources);
+      expect(map.map.names).toBe(maps[0].map.names);
+      expect(map.map.sourcesContent).toBe(maps[0].map.sourcesContent);
+      expect(map.map.mappings).toBe(maps[0].map.mappings);
+    }
+    expect(Object.isFrozen(maps[0])).toBe(true);
+    expect(Object.isFrozen(maps[0].map)).toBe(true);
+    expect(Object.isFrozen(maps[0].map.sourcesContent)).toBe(true);
+    for (const loaded of generations) {
+      let failure;
+      try {
+        loaded.fail();
+      } catch (error) {
+        failure = error;
+      }
+      expect(
+        failure.stack.includes(`${main}:${failureLine}:`) ||
+          failure.stack.includes(`${pathToFileURL(main).href}:${failureLine}:`),
+      )
+        .withContext(failure.stack)
+        .toBe(true);
+      expect(failure.stack).not.toContain(".lumine-generation-");
+    }
+  });
+
+  it("keeps changed source contents and their retired stack mappings separate", () => {
+    const main = write(
+      "changed-map.cjs",
+      'module.exports = { fail() {\n  throw new Error("old revision");\n} };',
+    );
+    const original = require(main);
+    const originalPath = Object.keys(require.cache).find(
+      (filename) =>
+        filename.includes(".lumine-generation-") && require.cache[filename].exports === original,
+    );
+    const originalMap = ModuleLoader.getSourceMap(originalPath);
+    write(
+      "changed-map.cjs",
+      'module.exports = { fail() {\n  throw new Error("new revision");\n} };',
+    );
+    ModuleLoader.invalidatePackage(directory);
+    const updated = require(main);
+    const updatedPath = Object.keys(require.cache).find(
+      (filename) =>
+        filename.includes(".lumine-generation-") && require.cache[filename].exports === updated,
+    );
+    const updatedMap = ModuleLoader.getSourceMap(updatedPath);
+
+    expect(updatedMap).not.toBe(originalMap);
+    expect(updatedMap.map.sourcesContent).not.toBe(originalMap.map.sourcesContent);
+    expect(updatedMap.map.mappings).toBe(originalMap.map.mappings);
+    expect(ModuleLoader.getSourceMap(originalPath)).toBe(originalMap);
+    expect(originalMap.map.sourcesContent.join("\n")).toContain("old revision");
+    expect(updatedMap.map.sourcesContent.join("\n")).toContain("new revision");
+    write(
+      "changed-map.cjs",
+      '\n\nmodule.exports = { fail() {\n  throw new Error("new revision");\n} };',
+    );
+    ModuleLoader.invalidatePackage(directory);
+    const shifted = require(main);
+    const shiftedPath = Object.keys(require.cache).find(
+      (filename) =>
+        filename.includes(".lumine-generation-") && require.cache[filename].exports === shifted,
+    );
+    const shiftedMap = ModuleLoader.getSourceMap(shiftedPath);
+    expect(shiftedMap.map.sourcesContent).not.toBe(updatedMap.map.sourcesContent);
+    expect(shiftedMap.map.mappings).not.toBe(updatedMap.map.mappings);
+    for (const [loaded, line] of [
+      [original, 2],
+      [updated, 2],
+      [shifted, 4],
+    ]) {
+      let failure;
+      try {
+        loaded.fail();
+      } catch (error) {
+        failure = error;
+      }
+      expect(
+        failure.stack.includes(`${main}:${line}:`) ||
+          failure.stack.includes(`${pathToFileURL(main).href}:${line}:`),
+      )
+        .withContext(failure.stack)
+        .toBe(true);
+      expect(failure.stack).not.toContain(".lumine-generation-");
+    }
+  });
+
   it("keeps source-map text and malformed diagnostics from preventing module execution", () => {
     const literal = "sourceMappingURL=data:application/json;base64,eyJ4IjoxfQ==";
     const main = write("map-literal.cjs", `module.exports = ${JSON.stringify(literal)};`);
