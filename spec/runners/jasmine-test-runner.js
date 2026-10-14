@@ -169,7 +169,7 @@ function reportDocumentFocusSkips() {
   console.log(
     `\nSkipped ${skipped.length} focus-dependent spec group(s): the spec window is not focused.\n` +
       skipped.map((description) => `  - ${description}`).join("\n") +
-      "\nRe-run with CI=1 in the environment to take focus and include them.\n",
+      "\nFocus-dependent specs are covered by remote CI; leave CI unset for local runs.\n",
   );
 }
 
