@@ -112,7 +112,7 @@
     "timecop": "github:lumine-code/timecop#e98da65d403d3b8257168edcf55d246fc72829d9",
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#c25ad2b458f26d6aea33be7e700ea9c123c66fc6",
-    "tree-view": "github:lumine-code/tree-view#4c6cb46a8a674409d944010514bfa2f81fb46604",
+    "tree-view": "github:lumine-code/tree-view#0eb65539b896f6df99292050c18c371c0efca8a4",
     "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#f04c95912b700da2d2361f8db52d8331f9feea6b",
     "winattr": "^4.0.0",
