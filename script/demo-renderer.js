@@ -29,6 +29,14 @@ async function setup(options) {
     state: {},
     waitFor,
     fixture,
+    project: options.project,
+    profile: options.profile,
+    nodePath: options.nodePath,
+    packagePath: (name, relative = "") => {
+      const directory = options.packagePaths[name];
+      if (!directory) throw new Error(`Declare ${name} in demo dependencies`);
+      return path.join(directory, relative);
+    },
     open: (relative) => lumine.workspace.open(fixture(relative)),
     command: (name, target = lumine.views.getView(lumine.workspace)) =>
       lumine.commands.dispatch(target, name),
@@ -48,6 +56,13 @@ async function setup(options) {
     lumine.workspace.getBottomDock(),
   ])
     dock.hide();
+  await recipe.before?.(context);
+  lumine.config.set(
+    "core.disabledPackages",
+    (lumine.config.get("core.disabledPackages") || []).filter(
+      (name) => !options.packages.includes(name),
+    ),
+  );
   for (const name of options.packages) await lumine.packages.activatePackage(name);
   // A fresh normal-mode profile may ask about OS protocol registration. Dismiss
   // this one prompt; choosing "never" would change the Windows registry.
@@ -60,17 +75,25 @@ async function setup(options) {
     async scene(id) {
       current = recipe.scenes.find((s) => s.id === id);
       await current.run(context);
-      await waitFor(() => current.ready(context), `${id} ready()`);
+      if (!current.afterPointerMove && !current.drag)
+        await waitFor(() => current.ready(context), `${id} ready()`, current.timeout || 15000);
       await frame();
+      return current.drag?.(context) || null;
     },
     async check() {
       // Let real dock-reveal transitions finish after moving the pointer away.
       await new Promise((resolve) => setTimeout(resolve, 450));
+      await current.afterPointerMove?.(context);
+      await waitFor(
+        () => current.ready(context),
+        `${current.id} ready()`,
+        current.timeout || 15000,
+      );
       await frame();
       if (!(await current.ready(context))) throw new Error("Scene lost its expected state");
       if (document.querySelector(".lumine-dock-toggle-button-visible"))
         throw new Error("A dock reveal button is visible");
-      if (document.querySelector("lumine-notification:not(.remove)"))
+      if (!current.allowNotifications && document.querySelector("lumine-notification:not(.remove)"))
         throw new Error("Unexpected notification in the demo");
       const toolbar = lumine.packages.getActivePackage("toolbar")?.mainModule.view;
       if (toolbar?.panel && !toolbar.hasContent?.()) throw new Error("Empty toolbar in the demo");

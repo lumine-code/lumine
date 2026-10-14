@@ -47,6 +47,21 @@ test("recipes reject traversal, duplicate scenes and missing readiness checks", 
     (r) => {
       r.version = 2;
     },
+    (r) => {
+      r.before = "run a command";
+    },
+    (r) => {
+      r.secrets = { token: "value" };
+    },
+    (r) => {
+      r.scenes[0].drag = [0, 0, 100, 100];
+    },
+    (r) => {
+      r.scenes[0].timeout = Infinity;
+    },
+    (r) => {
+      r.scenes[0].allowNotifications = "false";
+    },
   ]) {
     const r = recipe();
     change(r);

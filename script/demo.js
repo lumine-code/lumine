@@ -34,6 +34,16 @@ function validate(recipe) {
   if (recipe.version !== 1) throw new Error("demo.js must declare version: 1");
   if (!Array.isArray(recipe.scenes) || !recipe.scenes.length)
     throw new Error("A demo needs scenes");
+  for (const hook of ["before", "prepare", "cleanup"]) {
+    if (recipe[hook] !== undefined && typeof recipe[hook] !== "function")
+      throw new Error(`${hook} must be a function`);
+  }
+  if (
+    recipe.secrets !== undefined &&
+    (!Array.isArray(recipe.secrets) ||
+      recipe.secrets.some((key) => typeof key !== "string" || !key.trim()))
+  )
+    throw new Error("secrets must name encrypted store keys");
   for (const key of ["width", "height"]) {
     const n = recipe.viewport?.[key];
     if (!Number.isInteger(n) || n < 320 || n > 3840) throw new Error(`Invalid viewport ${key}`);
@@ -53,6 +63,17 @@ function validate(recipe) {
       throw new Error("A scene needs a plain one-line caption");
     if (typeof scene.run !== "function" || typeof scene.ready !== "function")
       throw new Error("Each scene needs run() and ready() hooks");
+    for (const hook of ["drag", "afterPointerMove"]) {
+      if (scene[hook] !== undefined && typeof scene[hook] !== "function")
+        throw new Error(`${hook} must be a function`);
+    }
+    if (
+      scene.timeout !== undefined &&
+      (!Number.isInteger(scene.timeout) || scene.timeout < 1 || scene.timeout > 90000)
+    )
+      throw new Error("Scene timeout must be between 1 and 90000 ms");
+    if (scene.allowNotifications !== undefined && typeof scene.allowNotifications !== "boolean")
+      throw new Error("allowNotifications must be a boolean");
     ids.add(scene.id);
     files.add(scene.file);
   }
@@ -257,10 +278,28 @@ async function capture(repository, options = {}) {
   fs.mkdirSync(path.join(directory, "images"));
   fs.mkdirSync(path.join(directory, "raw"));
   fs.writeFileSync(path.join(profile, "styles.css"), "");
+  if (recipe.secrets?.length) {
+    if (!options["secrets-file"])
+      throw new Error(
+        "This demo requires an authenticated profile; pass --secrets-file with its encrypted secret-store.json",
+      );
+    const source = readJSON(path.resolve(options["secrets-file"]));
+    const selected = {};
+    for (const key of recipe.secrets) {
+      if (typeof source[key] !== "string") throw new Error(`Missing requested credential: ${key}`);
+      selected[key] = source[key];
+    }
+    fs.writeFileSync(path.join(profile, "secret-store.json"), JSON.stringify(selected), {
+      mode: 0o600,
+    });
+  }
   fs.writeFileSync(
     path.join(profile, "config.json"),
     JSON.stringify({
       "*": {
+        ...(options.settings ? readJSON(path.resolve(options.settings)) : {}),
+        ...(recipe.config || {}),
+        core: { disabledPackages: wanted.filter((name) => name !== "one-theme") },
         about: { showOnStartup: false },
         welcome: { showOnStartup: false },
         theme: { mode: "light" },
@@ -268,6 +307,14 @@ async function capture(repository, options = {}) {
       },
     }),
   );
+  if (options["server-cache"]) {
+    const cache = fs.realpathSync(path.resolve(options["server-cache"]));
+    fs.symlinkSync(
+      cache,
+      path.join(profile, "language-servers"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
   fs.cpSync(fixtures, project, { recursive: true, dereference: false });
   // Give copied fixtures a clean baseline rather than inheriting the editor's
   // enclosing repository and showing every line as newly added.
@@ -340,13 +387,18 @@ async function capture(repository, options = {}) {
     ]);
     launched = true;
     run.environment = await evaluate(
-      `return await require(${JSON.stringify(path.join(__dirname, "demo-renderer.js"))}).setup(${JSON.stringify({ profile, project, recipePath, packages: wanted, viewport: recipe.viewport })});`,
+      `return await require(${JSON.stringify(path.join(__dirname, "demo-renderer.js"))}).setup(${JSON.stringify({ profile, project, recipePath, packages: wanted, packagePaths: Object.fromEntries(packages), nodePath: process.execPath, viewport: recipe.viewport })});`,
     );
     for (const scene of recipe.scenes) {
       console.log(`  ${scene.id}`);
-      await evaluate(
-        `await globalThis.lumineDemo.scene(${JSON.stringify(scene.id)}); return true;`,
+      const gesture = await evaluate(
+        `return await globalThis.lumineDemo.scene(${JSON.stringify(scene.id)});`,
       );
+      if (gesture) {
+        if (!Array.isArray(gesture) || gesture.length !== 4 || !gesture.every(Number.isFinite))
+          throw new Error("drag() must return four finite coordinates");
+        await drive(["drag", ...gesture.map(String)]);
+      }
       await drive(["move", "500", "20"]);
       await evaluate("await globalThis.lumineDemo.check(); return true;");
       const raw = path.join(directory, "raw", scene.file),
@@ -389,7 +441,7 @@ async function main(args) {
   const [command, ...rest] = args;
   if (!command || command === "--help") {
     console.log(
-      "Usage:\n  node script/demo.js capture <repo> [--workspace <dir>] [--out <new-dir>]\n  node script/demo.js check <run-dir>\n  node script/demo.js accept <run-dir> <repo>\n\nRead docs/reproducible-demos.md. Recipes execute trusted local JavaScript.",
+      "Usage:\n  node script/demo.js capture <repo> [--workspace <dir>] [--out <new-dir>]\n    [--settings <json>] [--server-cache <dir>] [--secrets-file <encrypted-json>]\n  node script/demo.js check <run-dir>\n  node script/demo.js accept <run-dir> <repo>\n\nRead docs/reproducible-demos.md. Recipes execute trusted local JavaScript.",
     );
     return;
   }
@@ -401,7 +453,12 @@ async function main(args) {
   if (command === "capture" && rest[0]) {
     const options = {};
     for (let i = 1; i < rest.length; i += 2) {
-      if (!["--workspace", "--out"].includes(rest[i]) || !rest[i + 1])
+      if (
+        !["--workspace", "--out", "--settings", "--server-cache", "--secrets-file"].includes(
+          rest[i],
+        ) ||
+        !rest[i + 1]
+      )
         throw new Error(`Unknown or incomplete option: ${rest[i]}`);
       options[rest[i].slice(2)] = rest[i + 1];
     }
