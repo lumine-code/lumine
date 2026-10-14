@@ -319,6 +319,10 @@ const handleWindowAction = async (event, action, ...args) => {
       window.center();
       return;
     case "focus":
+      // A nested Electron spec process can become macOS's active application.
+      // Focusing the parent BrowserWindow alone does not reactivate its app,
+      // so the spec runner must reclaim application focus before page focus.
+      if (lumineWindow.isSpec && process.platform === "darwin") app.focus({ steal: true });
       lumineWindow.focus();
       window.webContents.focus();
       return;

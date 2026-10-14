@@ -1053,6 +1053,28 @@ describe("LumineApplication", function () {
       assert.isFalse(app.openPaths.called);
     });
 
+    it("reactivates a macOS spec application before restoring its window and page focus", async function () {
+      const focusApplication = sinon.stub(electron.app, "focus");
+      w1.isSpec = true;
+      w1.focus.resetHistory();
+      w1.browserWindow.webContents.focus = sinon.spy();
+      const event = { sender: w1.browserWindow.webContents };
+
+      await LumineApplication.handleWindowAction(event, "focus");
+      assert.strictEqual(focusApplication.called, process.platform === "darwin");
+      if (process.platform === "darwin") {
+        assert.isTrue(focusApplication.calledOnceWithExactly({ steal: true }));
+        sinon.assert.callOrder(focusApplication, w1.focus, w1.browserWindow.webContents.focus);
+      }
+      assert.isTrue(w1.focus.calledOnce);
+      assert.isTrue(w1.browserWindow.webContents.focus.calledOnce);
+
+      focusApplication.resetHistory();
+      w1.isSpec = false;
+      await LumineApplication.handleWindowAction(event, "focus");
+      assert.isFalse(focusApplication.called);
+    });
+
     it("handles allowlisted window state and lifecycle operations for the originating window", async function () {
       const window = w1.browserWindow;
       const contents = window.webContents;
