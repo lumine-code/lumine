@@ -100,6 +100,52 @@ describe("TextBuffer deferred file observation", () => {
     });
   }
 
+  it("reports a deletion during an automatic read without emitting reload events", async () => {
+    const filePath = path.join(directory, "deleted-during-read");
+    fs.writeFileSync(filePath, "before");
+    buffer = await TextBuffer.load(filePath);
+    await buffer.getFileWatchStartPromise();
+    await conditionPromise(() => buffer.pendingFileLoads === 0, "initial file reads finished");
+
+    let releaseRead;
+    const readGate = new Promise((resolve) => {
+      releaseRead = resolve;
+    });
+    const originalLoad = buffer.buffer.load;
+    const load = spyOn(buffer.buffer, "load").and.callFake(function (...args) {
+      return readGate.then(() => originalLoad.apply(this, args));
+    });
+    const states = [];
+    const reloads = [];
+    buffer.onDidChangeFileState((state) => states.push(state));
+    buffer.onWillReload(() => reloads.push("will-reload"));
+    buffer.onDidReload(() => reloads.push("did-reload"));
+
+    handles[0].invalidate();
+    expect(load).toHaveBeenCalledTimes(1);
+    // The existence check succeeded, but the native reader has not opened the
+    // file yet. Its real ENOENT must report deletion without a text reload.
+    fs.unlinkSync(filePath);
+    releaseRead();
+    await conditionPromise(
+      () => buffer.getFileState() === "removed" && buffer.pendingFileLoads === 0,
+      "in-flight read observed deletion",
+    );
+    expect(buffer.getText()).toBe("before");
+    expect(states).toEqual(["removed"]);
+    expect(reloads).toEqual([]);
+
+    fs.writeFileSync(filePath, "recreated on disk");
+    handles[0].invalidate();
+    await conditionPromise(
+      () => buffer.getText() === "recreated on disk" && buffer.pendingFileLoads === 0,
+      "recreated file reloaded",
+    );
+    expect(buffer.getFileState()).toBe("unmodified");
+    expect(states).toEqual(["removed", "unmodified"]);
+    expect(reloads).toEqual(["will-reload", "did-reload"]);
+  });
+
   for (const newestFirst of [false, true]) {
     it(`cancels an obsolete native reload before applying its contents (${newestFirst ? "newest" : "oldest"} finishes first)`, async () => {
       const custom = source();

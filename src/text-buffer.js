@@ -3206,11 +3206,14 @@ class TextBuffer {
         ) {
           return this;
         }
+        // An automatic read can race with deletion. It leaves the text intact,
+        // so only initial loads and explicit reloads publish reload events.
+        const notifyReload = !this.loaded || Boolean(options?.discardChanges);
         this.loaded = true;
-        this.emitter.emit("will-reload");
+        if (notifyReload) this.emitter.emit("will-reload");
         if (options && options.discardChanges) this.clearTextForReload();
         if (this.didHaveFileOnDisk) this.setFileState("removed");
-        this.emitter.emit("did-reload");
+        if (notifyReload) this.emitter.emit("did-reload");
       } else {
         throw error;
       }
