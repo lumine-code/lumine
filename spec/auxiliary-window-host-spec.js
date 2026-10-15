@@ -746,6 +746,12 @@ describe("Auxiliary editor windows", () => {
     const main = workspace.getMainWindow().getEditorContainer();
     expect(main.getPaneItems()).toEqual([]);
     expect(workspace.getCenter().getActivePane().getContainer()).toBe(extra.getEditorContainer());
+    if (process.env.CI) {
+      // A click in the main window first transfers native focus. DOM focus
+      // alone leaves the detached window's asynchronous focus request pending.
+      await workspace.getMainWindow().focus();
+      await require("../src/focus-test-window")();
+    }
     const emptyPane = main.getActivePane();
     emptyPane.getElement().focus();
     expect(workspace.getCenter().getActivePane()).toBe(emptyPane);
