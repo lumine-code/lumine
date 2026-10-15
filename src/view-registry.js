@@ -71,6 +71,7 @@ module.exports = class ViewRegistry {
    * @status public
    *
    * Register a presentation component that needs state preparation across documents.
+   * Disposing its registration allows the same DOM root to be registered again.
    * @param {Element} root - The component's DOM root within a pane item.
    * @param {Object} participant - prepareWindowChange, didAttachToWindow, didChangeWindow and cancelWindowChange callbacks.
    * @returns {Disposable} Removes this component's lifecycle participation.
@@ -79,15 +80,27 @@ module.exports = class ViewRegistry {
   addWindowParticipant(root, participant) {
     if (this.windowParticipants.has(root))
       throw new Error("The presentation component is already registered.");
+    const documents = this.participantDocuments;
     this.windowParticipants.set(root, participant);
-    this.attachPresentationDocument(root.ownerDocument);
-    if (root.isConnected) {
-      const window = this.lumineEnvironment.workspace.getWindowForElement(root);
-      if (window) this.bindWindowParticipant(root, participant, window);
+    documents.delete(root);
+    const unregister = () => {
+      // clear() starts a new generation, even when it reuses this root and participant.
+      if (this.participantDocuments !== documents) return;
+      if (this.windowParticipants.get(root) !== participant) return;
+      this.windowParticipants.delete(root);
+      documents.delete(root);
+    };
+    try {
+      this.attachPresentationDocument(root.ownerDocument);
+      if (root.isConnected) {
+        const window = this.lumineEnvironment.workspace.getWindowForElement(root);
+        if (window) this.bindWindowParticipant(root, participant, window);
+      }
+    } catch (error) {
+      unregister();
+      throw error;
     }
-    return new Disposable(() => {
-      if (this.windowParticipants.get(root) === participant) this.windowParticipants.delete(root);
-    });
+    return new Disposable(unregister);
   }
 
   /** @private Rebind embedded components created or adopted after their pane first mounted. */
@@ -113,9 +126,10 @@ module.exports = class ViewRegistry {
   }
 
   bindWindowParticipant(root, participant, window) {
-    if (this.participantDocuments.get(root) === root.ownerDocument) return;
+    const documents = this.participantDocuments;
+    if (documents.get(root) === root.ownerDocument) return;
     participant.didAttachToWindow?.({ window, document: root.ownerDocument });
-    this.participantDocuments.set(root, root.ownerDocument);
+    documents.set(root, root.ownerDocument);
   }
 
   /** @private Capture an item and its registered embedded presentation components together. */
