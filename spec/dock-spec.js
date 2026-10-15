@@ -32,7 +32,7 @@ describe("Dock", () => {
   });
 
   describe("an empty split pane's context menu", () => {
-    it("offers Close Pane and Hide Dock", async () => {
+    it("offers Hide Dock before the separated Close Pane action", async () => {
       await lumine.reset();
       jasmine.attachToDOM(lumine.workspace.getElement());
 
@@ -43,11 +43,12 @@ describe("Dock", () => {
       const itemViews = emptyPane.getElement().querySelector(":scope > .item-views");
       const items = lumine.contextMenu
         .templateForElement(itemViews)
-        .map(({ label, command }) => ({ label, command }));
+        .map(({ label, command, type }) => (type === "separator" ? { type } : { label, command }));
 
       expect(items).toEqual([
-        { label: "Close Pane", command: "pane:close" },
         { label: "Hide Dock", command: "dock:hide" },
+        { type: "separator" },
+        { label: "Close Pane", command: "pane:close" },
       ]);
       await lumine.commands.dispatch(itemViews, "pane:close");
       expect(emptyPane.isDestroyed()).toBe(true);
