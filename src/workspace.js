@@ -364,6 +364,7 @@ module.exports = class Workspace extends Model {
   #windowLifecycleChanging = false;
   #windowCleanupDepth = 0;
   #pendingWindowOpens = new Set();
+  #windowOperationOpenOptions = new WeakSet();
 
   constructor(params) {
     super(...arguments);
@@ -559,12 +560,14 @@ module.exports = class Workspace extends Model {
    * @status public
    *
    * Create an additional editor window sharing this workspace's documents and packages.
+   * New calls are refused while the workspace windows prepare to unload.
    * @param {Object} options - Optional native bounds and visibility.
    * @returns {Promise<EditorWindow>} The ready presentation window.
    * @category Windows
    */
   openEditorWindow(options = {}) {
-    if (this.#windowCleanupDepth > 0)
+    const completingOperation = this.#windowOperationOpenOptions.delete(options);
+    if (this.#windowCleanupDepth > 0 || (this.windowLifecycleChanging && !completingOperation))
       return Promise.reject(new Error("The workspace windows are preparing to unload."));
     if (!this.editorWindowHost || !this.isAlive())
       return Promise.reject(new Error("This workspace cannot open an editor window."));
@@ -811,7 +814,11 @@ module.exports = class Workspace extends Model {
     if (!source || source.getLocation() !== "center" || !this.getPanes().includes(pane))
       throw new Error("Only document panes of this workspace can be detached.");
     return this.runWindowOperation([source.getWindow()], async () => {
-      const destination = await this.openEditorWindow({ show: false });
+      // An operation queued before the unload gate must be able to finish its
+      // own presentation, while unrelated public opens remain excluded.
+      const options = { show: false };
+      this.#windowOperationOpenOptions.add(options);
+      const destination = await this.openEditorWindow(options);
       this.windowOperations.set(destination, this.windowOperations.get(source.getWindow()));
       try {
         await transferPaneLayout(this, source, destination.getEditorContainer(), [pane]);
