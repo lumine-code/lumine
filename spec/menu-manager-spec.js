@@ -16,6 +16,66 @@ describe("MenuManager", function () {
   afterEach(() => menu.destroy());
 
   describe("::add(items)", function () {
+    it("shares package configuration files in the platform's configuration submenu", function () {
+      for (const platform of ["win32", "linux", "darwin"]) {
+        menu.clear();
+        menu.platform = platform;
+        const parent = platform === "darwin" ? "Lumine" : "File";
+        menu.add([
+          {
+            label: parent,
+            submenu: [
+              {
+                label: "Configuration Files",
+                groupOrder: ["editor", "packages", "extensions"],
+                submenu: [{ label: "Config", command: "config", group: "editor", order: 10 }],
+              },
+            ],
+          },
+        ]);
+        const contribution = [
+          {
+            label: "File",
+            submenu: [
+              { label: "New Notebook", command: "new-notebook" },
+              {
+                label: "Configuration Files",
+                submenu: [
+                  {
+                    label: "Project List",
+                    command: "edit-projects",
+                    group: "packages",
+                    order: 10,
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+        const original = JSON.stringify(contribution);
+        const registration = menu.add(contribution);
+        const configuration = () =>
+          menu
+            .getTemplate()
+            .find((item) => item.id === parent)
+            .submenu.find((item) => item.id === "Configuration Files").submenu;
+        expect(configuration().map((item) => item.command ?? item.type)).toEqual([
+          "config",
+          "separator",
+          "edit-projects",
+        ]);
+        const file = menu.getTemplate().find((item) => item.id === "File");
+        expect(file.submenu.some((item) => item.command === "new-notebook")).toBe(true);
+        if (platform === "darwin")
+          expect(file.submenu.some((item) => item.id === "Configuration Files")).toBe(false);
+        expect(JSON.stringify(contribution)).toBe(original);
+        registration.dispose();
+        expect(configuration().map((item) => item.command)).toEqual(["config"]);
+        if (platform === "darwin")
+          expect(menu.getTemplate().some((item) => item.id === "File")).toBe(false);
+      }
+    });
+
     it("drops the positioning keys, which the application menu never reads", function () {
       // sortMenuItems is the context menu's; nothing applies these here. Left
       // in place they would reach Menu.buildFromTemplate, which reads the same

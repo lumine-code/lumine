@@ -110,7 +110,7 @@ describe("platform menus", function () {
       const index = items.findIndex((item) => item.command === "window:toggle-full-screen");
       expect(items.slice(index + 1, index + 4).map((item) => strip(item.label))).toEqual([
         "Toggle View",
-        "Open View",
+        "Open or Focus View",
         "Editor",
       ]);
       for (const section of items.slice(index + 1, index + 4)) expect(section.submenu).toEqual([]);

@@ -279,6 +279,24 @@ module.exports = class MenuManager {
    */
   add(items) {
     items = _.deepClone(items);
+    // Packages contribute configuration files under File on every platform.
+    // macOS presents the same shared submenu under the application menu.
+    if (this.platform === "darwin") {
+      items = items.flatMap((item) => {
+        if ((item.id ?? MenuHelpers.normalizeLabel(item.label)) !== "File" || !item.submenu)
+          return [item];
+        const configurations = item.submenu.filter(
+          (child) =>
+            (child.id ?? MenuHelpers.normalizeLabel(child.label)) === "Configuration Files",
+        );
+        if (configurations.length === 0) return [item];
+        const remaining = item.submenu.filter((child) => !configurations.includes(child));
+        return [
+          ...(remaining.length > 0 ? [{ ...item, submenu: remaining }] : []),
+          { label: "Lumine", submenu: configurations },
+        ];
+      });
+    }
     // The application menu has no positioning pass of its own — `sortMenuItems`
     // is the context menu's. Left in place these would reach Electron's
     // `Menu.buildFromTemplate`, which reads the same keys against `id` rather
@@ -518,7 +536,7 @@ module.exports = class MenuManager {
   sortPackageMenus() {
     this.sortPackagesMenu();
     const viewMenu = this.template.find(({ id }) => id === "View");
-    for (const id of ["Toggle View", "Open View", "Editor"]) {
+    for (const id of ["Toggle View", "Open or Focus View", "Editor"]) {
       const section = viewMenu?.submenu?.find((item) => item.id === id);
       section?.submenu?.sort((left, right) =>
         (MenuHelpers.normalizeLabel(left.label) || "").localeCompare(

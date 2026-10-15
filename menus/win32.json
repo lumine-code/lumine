@@ -52,15 +52,15 @@
               "order": 10
             }
           ],
-          "group": "projects",
-          "order": 50,
+          "group": "history",
+          "order": 20,
           "groupOrder": ["recent", "history"]
         },
         {
-          "label": "Reopen Last &Item",
+          "label": "&Reopen Closed Tab",
           "command": "pane:reopen-closed-item",
-          "group": "projects",
-          "order": 60
+          "group": "history",
+          "order": 30
         },
         {
           "type": "separator"
@@ -79,27 +79,38 @@
           "submenu": [
             {
               "label": "&Config",
-              "command": "application:open-your-config"
+              "command": "application:open-your-config",
+              "group": "editor",
+              "order": 10
             },
             {
               "label": "&Init Script",
-              "command": "application:open-your-init-script"
+              "command": "application:open-your-init-script",
+              "group": "editor",
+              "order": 20
             },
             {
               "label": "&Keymap",
-              "command": "application:open-your-keymap"
+              "command": "application:open-your-keymap",
+              "group": "editor",
+              "order": 30
             },
             {
               "label": "S&nippets",
-              "command": "application:open-your-snippets"
+              "command": "application:open-your-snippets",
+              "group": "editor",
+              "order": 40
             },
             {
               "label": "&Stylesheet",
-              "command": "application:open-your-stylesheet"
+              "command": "application:open-your-stylesheet",
+              "group": "editor",
+              "order": 50
             }
           ],
           "group": "settings",
-          "order": 20
+          "order": 20,
+          "groupOrder": ["editor", "packages", "extensions"]
         },
         {
           "type": "separator"
@@ -157,6 +168,7 @@
         "new",
         "files",
         "projects",
+        "history",
         "save",
         "properties",
         "external",
@@ -197,7 +209,7 @@
           "order": 20
         },
         {
-          "label": "Copy Pat&h",
+          "label": "Copy Full Pat&h",
           "command": "editor:copy-path",
           "group": "clipboard",
           "order": 30
@@ -313,63 +325,64 @@
           "label": "Text",
           "submenu": [
             {
-              "label": "&Upper Case",
+              "label": "Convert to &Uppercase",
               "command": "editor:upper-case",
               "group": "case",
               "order": 10
             },
             {
-              "label": "&Lower Case",
+              "label": "Convert to &Lowercase",
               "command": "editor:lower-case",
               "group": "case",
               "order": 20
             },
             {
-              "label": "Collapse Content &Spaces",
-              "command": "editor:collapse-content-spaces",
-              "group": "transform",
-              "order": 5
-            },
-            {
               "type": "separator"
             },
             {
-              "label": "Delete to End of &Word",
-              "command": "editor:delete-to-end-of-word",
-              "group": "delete",
-              "order": 10
-            },
-            {
-              "label": "Delete to Previous Word Boundary",
-              "command": "editor:delete-to-previous-word-boundary",
-              "group": "delete",
-              "order": 20
-            },
-            {
-              "label": "Delete to Next Word Boundary",
-              "command": "editor:delete-to-next-word-boundary",
-              "group": "delete",
-              "order": 30
-            },
-            {
-              "label": "Delete to Next Line Content",
-              "command": "editor:delete-to-next-line-content",
-              "group": "delete",
-              "order": 40
-            },
-            {
-              "type": "separator"
-            },
-            {
-              "label": "&Transpose",
+              "label": "Swap Adjacent &Characters",
               "command": "editor:transpose",
               "group": "transform",
               "order": 60
+            },
+            {
+              "label": "Whitespace",
+              "submenu": [
+                {
+                  "label": "Collapse Repeated &Spaces",
+                  "command": "editor:collapse-content-spaces"
+                }
+              ],
+              "group": "whitespace",
+              "order": 10
+            },
+            {
+              "label": "Delete",
+              "submenu": [
+                {
+                  "label": "To End of &Word",
+                  "command": "editor:delete-to-end-of-word"
+                },
+                {
+                  "label": "To Previous Word Boundary",
+                  "command": "editor:delete-to-previous-word-boundary"
+                },
+                {
+                  "label": "To Next Word Boundary",
+                  "command": "editor:delete-to-next-word-boundary"
+                },
+                {
+                  "label": "Through Next Line Indentation",
+                  "command": "editor:delete-to-next-line-content"
+                }
+              ],
+              "group": "delete",
+              "order": 10
             }
           ],
           "group": "editing",
           "order": 40,
-          "groupOrder": ["case", "transform", "insert", "delete", "extensions"]
+          "groupOrder": ["case", "transform", "whitespace", "insert", "delete", "extensions"]
         },
         {
           "label": "Folding",
@@ -492,7 +505,7 @@
           "order": 30
         },
         {
-          "label": "Single Selection",
+          "label": "Keep Last Selection",
           "command": "editor:consolidate-selections",
           "group": "cursors",
           "order": 40
@@ -615,10 +628,10 @@
           "submenu": [],
           "group": "panels",
           "order": 10,
-          "groupOrder": ["panels", "docks", "chrome", "extensions"]
+          "groupOrder": ["panels", "docks", "extensions"]
         },
         {
-          "label": "Open View",
+          "label": "Open or Focus View",
           "submenu": [],
           "group": "panels",
           "order": 20,
@@ -706,13 +719,13 @@
               "order": 40
             },
             {
-              "label": "Focus Pane On Left",
+              "label": "Focus Pane on the Left",
               "command": "window:focus-pane-left",
               "group": "focus",
               "order": 50
             },
             {
-              "label": "Focus Pane On Right",
+              "label": "Focus Pane on the Right",
               "command": "window:focus-pane-right",
               "group": "focus",
               "order": 60
@@ -781,7 +794,14 @@
           "submenu": [],
           "group": "appearance",
           "order": 20,
-          "groupOrder": ["theme", "mode", "extensions"]
+          "groupOrder": ["theme", "mode", "chrome", "extensions"]
+        },
+        {
+          "label": "Jupyter",
+          "submenu": [],
+          "group": "panels",
+          "order": 30,
+          "groupOrder": ["reveal", "toggle", "extensions"]
         }
       ],
       "groupOrder": ["commands", "window", "panels", "font", "appearance", "extensions"]
@@ -872,7 +892,7 @@
     {
       "label": "G&it",
       "submenu": [],
-      "groupOrder": ["repository", "changes", "history", "branches", "remote", "extensions"]
+      "groupOrder": ["repository", "branches", "changes", "history", "remote", "extensions"]
     },
     {
       "label": "&Packages",
@@ -890,22 +910,10 @@
       "label": "&Developer",
       "submenu": [
         {
-          "label": "Open In &Dev Mode…",
-          "command": "application:open-dev",
-          "group": "windows",
-          "order": 10
-        },
-        {
-          "label": "Reopen Window in Dev &Mode",
-          "command": "application:reopen-window-in-dev-mode",
-          "group": "windows",
-          "order": 20
-        },
-        {
           "label": "&Reload Window",
           "command": "window:reload",
-          "group": "windows",
-          "order": 30
+          "group": "tools",
+          "order": 20
         },
         {
           "label": "Run Package &Specs",
@@ -916,17 +924,33 @@
         {
           "label": "Toggle Developer &Tools",
           "command": "window:toggle-dev-tools",
-          "group": "testing",
-          "order": 20
+          "group": "tools",
+          "order": 10
+        },
+        {
+          "label": "Development Windows",
+          "submenu": [
+            {
+              "label": "Open in &Dev Mode…",
+              "command": "application:open-dev"
+            },
+            {
+              "label": "Reopen Window in Dev &Mode",
+              "command": "application:reopen-window-in-dev-mode"
+            }
+          ],
+          "group": "windows",
+          "order": 10
         }
       ],
       "groupOrder": [
-        "windows",
+        "tools",
         "authoring",
         "testing",
         "services",
         "diagnostics",
         "inspection",
+        "windows",
         "extensions"
       ]
     },

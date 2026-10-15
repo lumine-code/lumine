@@ -19,7 +19,7 @@ An unknown or omitted group joins `extensions`. Declare that slot where addition
 
 Empty groups disappear, and exactly one separator appears between the remaining groups. Hidden items and empty submenus do not leave empty groups behind. `groupOrder`, `sortBy`, `group` and `order` describe layout and are removed from the rendered menu.
 
-A submenu without `groupOrder` or `sortBy` preserves its authored action sequence. `order` does not reorder such a sequence. Package-owned command menus can therefore retain their existing order and separators. An alphabetical parent such as `View > Open View` uses `sortBy: "label"`; a finite item `order` takes precedence over the label when supplied.
+A submenu without `groupOrder` or `sortBy` preserves its authored action sequence. `order` does not reorder such a sequence. Package-owned command menus can therefore retain their existing order and separators. An alphabetical parent such as `View > Open or Focus View` uses `sortBy: "label"`; a finite item `order` takes precedence over the label when supplied.
 
 ## Application-menu contributions
 
@@ -61,24 +61,31 @@ Contributions to core menus use `group` and `order` instead of written separator
 
 | Core parent             | Groups in display order                                                                                               |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `File`                  | `new`, `files`, `projects`, `save`, `properties`, `external`, `settings`, `extensions`, `close`, `quit`               |
+| `File`                  | `new`, `files`, `projects`, `history`, `save`, `properties`, `external`, `settings`, `extensions`, `close`, `quit`    |
+| `Configuration Files`   | `editor`, `packages`, `extensions`                                                                                    |
 | `File > Reopen Project` | `recent`, `history`                                                                                                   |
 | `Edit`                  | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions` |
+| `Edit > Text`           | `case`, `transform`, `whitespace`, `insert`, `delete`, `extensions`                                                   |
 | `View`                  | `commands`, `window`, `panels`, `font`, `appearance`, `extensions`                                                    |
-| `View > Appearance`     | `theme`, `mode`, `extensions`                                                                                         |
-| `View > Toggle View`    | `panels`, `docks`, `chrome`, `extensions`                                                                             |
+| `View > Appearance`     | `theme`, `mode`, `chrome`, `extensions`                                                                               |
+| `View > Toggle View`    | `panels`, `docks`, `extensions`                                                                                       |
+| `View > Jupyter`        | `reveal`, `toggle`, `extensions`                                                                                      |
 | `View > Editor`         | `grammar`, `appearance`, `structure`, `intelligence`, `editing`, `version-control`, `extensions`                      |
 | `View > Panes`          | `layout`, `items`, `focus`, `transfer`, `extensions`, `close`                                                         |
 | `Selection`             | `cursors`, `occurrences`, `units`, `ranges`, `document`, `structure`, `leaders`, `extensions`                         |
 | `Go`                    | `files`, `navigation`, `symbols`, `bookmarks`, `changes`, `matches`, `diagnostics`, `extensions`                      |
 | `Search`                | `buffer`, `project`, `results`, `extensions`, `history`                                                               |
-| `Git`                   | `repository`, `changes`, `history`, `branches`, `remote`, `extensions`                                                |
-| `Developer`             | `windows`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `extensions`                              |
+| `Git`                   | `repository`, `branches`, `changes`, `history`, `remote`, `extensions`                                                |
+| `Developer`             | `tools`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `windows`, `extensions`                     |
 | `Help`                  | `documentation`, `examples`, `updates`, `issues`, `extensions`, `about`                                               |
 
-The `settings` group keeps Settings and the Configuration Files submenu together before closing actions on Windows and Linux. Configuration Files contains Config, Init Script, Keymap, Snippets and Stylesheet; macOS keeps Settings and that submenu under `Lumine`. Register a package's own configuration commands in its `Packages` submenu.
+The `settings` group keeps Settings and the Configuration Files submenu together before closing actions on Windows and Linux. Configuration Files starts with Config, Init Script, Keymap, Snippets and Stylesheet in the `editor` group, followed by an alphabetical `packages` group. macOS keeps Settings and that submenu under `Lumine`.
 
-`Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with staging and stash operations nested under their subject. `Developer` owns development windows, package authoring, tests, services and inspection. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
+A package with an existing command that opens its persistent configuration file contributes a descriptive row to `File > Configuration Files`, with `group: "packages"` and `order: 10`. MenuManager routes that contribution to `Lumine > Configuration Files` on macOS, so one package menu serves every platform. Keep the command in the package's own submenu too. Configuration panels, bibliography content, project folders and other ordinary documents are not configuration-file contributions.
+
+`Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with branch selection before changing files and staging and stash operations nested under their subject. `Developer` puts Developer Tools and reload actions first, then authoring, tests, services and inspection; dev-mode window actions live under Development Windows at the end. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
+
+`View > Toggle View` contains view and dock visibility switches. `View > Open or Focus View` opens or focuses persistent surfaces. Jupyter surfaces share `View > Jupyter`; its reveal group opens or switches focus, while its toggle group changes visibility. Color picking belongs in Edit, marker-layer configuration in View > Editor, keyboard inspection in Developer, and file-diff selection in Git. Window chrome switches belong in View > Appearance.
 
 The Reopen Project menu preserves recent-project history order with explicit item orders in the `recent` group and puts Clear Project History last in `history`. Empty history contributes no separator.
 
