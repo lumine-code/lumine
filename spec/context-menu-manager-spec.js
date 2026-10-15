@@ -39,6 +39,46 @@ describe("ContextMenuManager", function () {
     );
   });
 
+  it("keeps pane actions around deeper package contributions and removes empty groups", () => {
+    contextMenu.loadPlatformItems();
+    const pane = document.createElement("lumine-pane");
+    const views = document.createElement("div");
+    views.className = "item-views";
+    const surface = document.createElement("div");
+    surface.className = "package-surface";
+    views.appendChild(surface);
+    pane.appendChild(views);
+    const packageMenu = contextMenu.add({
+      ".package-surface": [
+        { label: "New Document", command: "test:new", group: "views", order: 10 },
+        { type: "separator" },
+        { label: "Surface Action", command: "test:surface" },
+        { type: "separator" },
+      ],
+    });
+    const rows = (target) =>
+      contextMenu.templateForElement(target).map((item) => item.command ?? item.type);
+    const splits = [
+      "pane:split-up-and-copy-active-item",
+      "pane:split-down-and-copy-active-item",
+      "pane:split-left-and-copy-active-item",
+      "pane:split-right-and-copy-active-item",
+    ];
+    expect(rows(surface)).toEqual([
+      "test:new",
+      "separator",
+      ...splits,
+      "separator",
+      "test:surface",
+      "separator",
+      "pane:close",
+    ]);
+    packageMenu.dispose();
+    expect(rows(surface)).toEqual([...splits, "separator", "pane:close"]);
+    surface.remove();
+    expect(rows(views)).toEqual([...splits, "pane:detach", "separator", "pane:close"]);
+  });
+
   describe("::add(itemsBySelector)", function () {
     it("preserves fresh checkbox and radio states through every merge", function () {
       let enabled = true;

@@ -686,67 +686,50 @@
               "order": 40
             },
             {
-              "type": "separator"
-            },
-            {
               "label": "Toggle Preview Tab",
               "command": "pane:toggle-pending-item",
               "group": "items",
               "order": 10
             },
             {
-              "type": "separator"
-            },
-            {
-              "label": "Focus Next Pane",
-              "command": "window:focus-next-pane",
+              "label": "Focus Pane",
+              "submenu": [
+                {
+                  "label": "Next Pane",
+                  "command": "window:focus-next-pane"
+                },
+                {
+                  "label": "Previous Pane",
+                  "command": "window:focus-previous-pane"
+                },
+                {
+                  "type": "separator"
+                },
+                {
+                  "label": "Pane Above",
+                  "command": "window:focus-pane-up"
+                },
+                {
+                  "label": "Pane Below",
+                  "command": "window:focus-pane-down"
+                },
+                {
+                  "label": "Pane on the Left",
+                  "command": "window:focus-pane-left"
+                },
+                {
+                  "label": "Pane on the Right",
+                  "command": "window:focus-pane-right"
+                }
+              ],
               "group": "focus",
               "order": 10
-            },
-            {
-              "label": "Focus Previous Pane",
-              "command": "window:focus-previous-pane",
-              "group": "focus",
-              "order": 20
-            },
-            {
-              "type": "separator"
-            },
-            {
-              "label": "Focus Pane Above",
-              "command": "window:focus-pane-up",
-              "group": "focus",
-              "order": 30
-            },
-            {
-              "label": "Focus Pane Below",
-              "command": "window:focus-pane-down",
-              "group": "focus",
-              "order": 40
-            },
-            {
-              "label": "Focus Pane on the Left",
-              "command": "window:focus-pane-left",
-              "group": "focus",
-              "order": 50
-            },
-            {
-              "label": "Focus Pane on the Right",
-              "command": "window:focus-pane-right",
-              "group": "focus",
-              "order": 60
-            },
-            {
-              "type": "separator"
             },
             {
               "label": "Close Pane",
               "command": "pane:close",
               "group": "close",
               "order": 10
-            },
-            {
-              "type": "separator"
             },
             {
               "label": "Detach Pane",
@@ -1038,9 +1021,6 @@
       ],
       "items": [
         {
-          "type": "separator"
-        },
-        {
           "label": "Undo",
           "command": "core:undo",
           "group": "history",
@@ -1053,12 +1033,8 @@
           "order": 20
         },
         {
-          "type": "separator"
-        },
-        {
           "label": "Cut",
           "command": "core:cut",
-          "afterGroupContaining": ["core:redo"],
           "group": "clipboard",
           "order": 10
         },
@@ -1075,12 +1051,8 @@
           "order": 30
         },
         {
-          "type": "separator"
-        },
-        {
           "label": "Select All",
           "command": "core:select-all",
-          "afterGroupContaining": ["core:paste"],
           "group": "selection",
           "order": 10
         },
@@ -1089,157 +1061,112 @@
           "command": "core:delete",
           "group": "selection",
           "order": 20
-        },
-        {
-          "type": "separator"
         }
       ]
     },
-    "lumine-pane:not(lumine-dock lumine-pane) > .item-views:not(:empty)": [
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Split Up",
-        "command": "pane:split-up-and-copy-active-item",
-        "afterGroupContaining": [
-          {
-            "id": "diff-view:editor-context"
-          },
-          "link:open",
-          {
-            "id": "color-inline:editor-context"
-          },
-          "spell-check:check-selected",
-          "tasklist-tools:toggle-tick",
-          "core:select-all",
-          "core:paste",
-          "core:redo",
-          "core:undo"
-        ],
-        "group": "layout",
-        "order": 10
-      },
-      {
-        "label": "Split Down",
-        "command": "pane:split-down-and-copy-active-item",
-        "group": "layout",
-        "order": 20
-      },
-      {
-        "label": "Split Left",
-        "command": "pane:split-left-and-copy-active-item",
-        "group": "layout",
-        "order": 30
-      },
-      {
-        "label": "Split Right",
-        "command": "pane:split-right-and-copy-active-item",
-        "group": "layout",
-        "order": 40
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Close Pane",
-        "command": "pane:close",
-        "afterGroupContaining": [
-          "pane:split-up-and-copy-active-item",
-          {
-            "id": "diff-view:editor-context"
-          },
-          "link:open",
-          {
-            "id": "color-inline:editor-context"
-          },
-          "spell-check:check-selected",
-          "tasklist-tools:toggle-tick",
-          "core:select-all",
-          "core:paste",
-          "core:redo",
-          "core:undo"
-        ],
-        "group": "close",
-        "order": 10
-      },
-      {
-        "type": "separator"
-      }
-    ],
-    "lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty": [
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Split Up",
-        "command": "pane:split-up-and-copy-active-item",
-        "group": "layout",
-        "order": 10
-      },
-      {
-        "label": "Split Down",
-        "command": "pane:split-down-and-copy-active-item",
-        "group": "layout",
-        "order": 20
-      },
-      {
-        "label": "Split Left",
-        "command": "pane:split-left-and-copy-active-item",
-        "group": "layout",
-        "order": 30
-      },
-      {
-        "label": "Split Right",
-        "command": "pane:split-right-and-copy-active-item",
-        "group": "layout",
-        "order": 40
-      },
-      {
-        "label": "Detach Pane",
-        "command": "pane:detach",
-        "group": "layout",
-        "order": 50
-      },
-      {
-        "label": "Close Pane",
-        "command": "pane:close",
-        "group": "close",
-        "order": 10
-      },
-      {
-        "type": "separator"
-      }
-    ],
-    "lumine-dock lumine-pane-container > lumine-pane > .item-views:empty": [
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Hide Dock",
-        "command": "dock:hide"
-      },
-      {
-        "type": "separator"
-      }
-    ],
-    "lumine-dock lumine-pane-axis lumine-pane > .item-views:empty": [
-      {
-        "type": "separator"
-      },
-      {
-        "label": "Close Pane",
-        "command": "pane:close",
-        "group": "close",
-        "order": 10
-      },
-      {
-        "label": "Hide Dock",
-        "command": "dock:hide"
-      },
-      {
-        "type": "separator"
-      }
-    ]
+    "lumine-pane:not(lumine-dock lumine-pane) > .item-views:not(:empty)": {
+      "groupOrder": ["views", "layout", "extensions", "close"],
+      "items": [
+        {
+          "label": "Split Up",
+          "command": "pane:split-up-and-copy-active-item",
+          "group": "layout",
+          "order": 10
+        },
+        {
+          "label": "Split Down",
+          "command": "pane:split-down-and-copy-active-item",
+          "group": "layout",
+          "order": 20
+        },
+        {
+          "label": "Split Left",
+          "command": "pane:split-left-and-copy-active-item",
+          "group": "layout",
+          "order": 30
+        },
+        {
+          "label": "Split Right",
+          "command": "pane:split-right-and-copy-active-item",
+          "group": "layout",
+          "order": 40
+        },
+        {
+          "label": "Close Pane",
+          "command": "pane:close",
+          "group": "close",
+          "order": 10
+        }
+      ]
+    },
+    "lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty": {
+      "groupOrder": ["views", "layout", "extensions", "close"],
+      "items": [
+        {
+          "label": "Split Up",
+          "command": "pane:split-up-and-copy-active-item",
+          "group": "layout",
+          "order": 10
+        },
+        {
+          "label": "Split Down",
+          "command": "pane:split-down-and-copy-active-item",
+          "group": "layout",
+          "order": 20
+        },
+        {
+          "label": "Split Left",
+          "command": "pane:split-left-and-copy-active-item",
+          "group": "layout",
+          "order": 30
+        },
+        {
+          "label": "Split Right",
+          "command": "pane:split-right-and-copy-active-item",
+          "group": "layout",
+          "order": 40
+        },
+        {
+          "label": "Detach Pane",
+          "command": "pane:detach",
+          "group": "layout",
+          "order": 50
+        },
+        {
+          "label": "Close Pane",
+          "command": "pane:close",
+          "group": "close",
+          "order": 10
+        }
+      ]
+    },
+    "lumine-dock lumine-pane-container > lumine-pane > .item-views:empty": {
+      "groupOrder": ["visibility", "extensions", "close"],
+      "items": [
+        {
+          "label": "Hide Dock",
+          "command": "dock:hide",
+          "group": "visibility",
+          "order": 10
+        }
+      ]
+    },
+    "lumine-dock lumine-pane-axis lumine-pane > .item-views:empty": {
+      "groupOrder": ["visibility", "extensions", "close"],
+      "items": [
+        {
+          "label": "Close Pane",
+          "command": "pane:close",
+          "group": "close",
+          "order": 10
+        },
+        {
+          "label": "Hide Dock",
+          "command": "dock:hide",
+          "group": "visibility",
+          "order": 10
+        }
+      ]
+    }
   }
 }

@@ -87,6 +87,8 @@ A package with an existing command that opens its persistent configuration file 
 
 `View > Toggle View` contains view and dock visibility switches. `View > Open or Focus View` opens or focuses persistent surfaces. Jupyter surfaces share `View > Jupyter`; its reveal group opens or switches focus, while its toggle group changes visibility. Color picking belongs in Edit, marker-layer configuration in View > Editor, keyboard inspection in Developer, and file-diff selection in Git. Window chrome switches belong in View > Appearance.
 
+`View > Panes` keeps the four Split directions directly visible. Its Focus Pane submenu contains next and previous pane navigation followed by the four directions. Detach and attach actions stay together before closing actions.
+
 The Reopen Project menu preserves recent-project history order with explicit item orders in the `recent` group and puts Clear Project History last in `history`. Empty history contributes no separator.
 
 A package command exposed in the application menu registers once on `lumine-workspace` and resolves the editor or pane item from the dispatch target, falling back to the active item. A menu alias uses the same command as the package submenu. Group metadata changes placement without changing dispatch or keymap scope.
@@ -115,6 +117,8 @@ The following excerpt shows the object form with real core editor commands and g
 ```
 
 Core's complete editor policy declares `history`, `clipboard`, `selection`, `editing`, `insert`, `format`, `refactor`, `navigation`, `annotations`, `diagnostics`, `views`, `layout`, `extensions` and `close`, in that order. An editor contribution selects one of those groups; it does not replace the core selector descriptor. Use `:not([mini])` when the action should not appear in find fields or other mini editors.
+
+Center-pane content and empty panes declare `views`, `layout`, `extensions` and `close`. New and Open actions come first, the four Split actions stay together, additional package actions follow, and Close Pane stays last. Empty center panes also offer Detach Pane after the split directions. Empty dock panes declare `visibility`, `extensions` and `close`, placing Hide Dock before Close Pane where both apply. These policies preserve the same order when a package's contribution comes from a deeper element and remove empty groups after package disposal.
 
 Policy selection follows the clicked element and its ancestors. The nearest element with a matching policy supplies the layout; if several policies match that element, the most specific selector wins, with the latest registration breaking a tie. A `data-context-menu-boundary` stops inheritance of both menu items and policies, so an embedded surface can own its menu independently of its host.
 
