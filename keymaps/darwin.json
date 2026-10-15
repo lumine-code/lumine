@@ -24,7 +24,7 @@
     // Sublime Parity
     // macOS has one combined open panel, so there is no open-file/open-folder
     // split here. `shift-a` for add-project-folder matches win32 and linux.
-    "cmd-o": "application:open",
+    "cmd-o": "launcher:open",
     "cmd-shift-a": "application:add-project-folder",
     "cmd-ctrl-f": "window:toggle-full-screen",
     "shift-delete": "core:delete",

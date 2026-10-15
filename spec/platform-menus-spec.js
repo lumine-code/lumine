@@ -22,9 +22,7 @@ const ALLOWED_DIVERGENCES = [
   "/File/Configuration Files",
   // macOS ships a Window menu with the standard role.
   "/Window",
-  // The macOS open panel selects a file or a folder in one dialog.
-  "/File/Open…",
-  "/File/Open File…",
+  // The macOS Launcher open panel selects a file or a folder in one dialog.
   "/File/Open Folder…",
   // Quit is spelled by platform convention and lives in the app menu on macOS.
   "/File/Exit",
@@ -44,7 +42,7 @@ const ALLOWED_NODE_DIVERGENCES = [
 // Menu commands this repository does not register itself. Everything else must
 // resolve, which is what keeps a menu item from outliving its command — the way
 // `application:install-update` did after its main-process handler went away.
-const EXTERNALLY_PROVIDED = [/^settings-view:/, /^search-panel:/];
+const EXTERNALLY_PROVIDED = [/^settings-view:/, /^search-panel:/, /^launcher:/];
 
 // Not every core command is registered in the renderer a spec runs in: the
 // `window:*` family lives in WindowEventHandler, `application:*` is handled in
@@ -123,6 +121,19 @@ describe("platform menus", function () {
       const index = items.findIndex((item) => item.command === "application:new-window");
       expect(items[index + 1].command).toBe("window:new-detached-window");
       expect(strip(items[index + 1].label)).toBe("New Detached Window");
+    }
+  });
+
+  it("offers Launcher New and Open with a direct New Text File action on every platform", function () {
+    for (const platform of PLATFORMS) {
+      const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;
+      const action = (command) => items.find((item) => item.command === command);
+      expect(strip(action("launcher:new").label)).toBe("New…");
+      expect(strip(action("launcher:open").label)).toBe("Open…");
+      expect(strip(action("application:new-file").label)).toBe("New Text File");
+      expect(items.indexOf(action("launcher:new"))).toBeLessThan(
+        items.indexOf(action("application:new-file")),
+      );
     }
   });
 

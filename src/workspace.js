@@ -1160,6 +1160,28 @@ module.exports = class Workspace extends Model {
   }
 
   consumeServices({ serviceHub }) {
+    this.launcherProviderRegistration?.dispose();
+    this.disposables.remove(this.launcherProviderRegistration);
+    const generation = { active: true };
+    const registration = serviceHub.provide("launcher.provider", {
+      "1.0.0": {
+        id: "text-editor",
+        label: "Text Editor",
+        order: 0,
+        create: ({ signal } = {}) => {
+          signal?.throwIfAborted();
+          if (!generation.active || !this.isAlive()) {
+            throw new Error("The workspace launcher provider is no longer active.");
+          }
+          return this.buildTextEditor();
+        },
+      },
+    });
+    this.launcherProviderRegistration = new Disposable(() => {
+      generation.active = false;
+      registration.dispose();
+    });
+    this.disposables.add(this.launcherProviderRegistration);
     this.directorySearchers = [];
     serviceHub.consume("workspace.search-provider", "^1.0.0", (provider) =>
       this.directorySearchers.unshift(provider),
@@ -3484,7 +3506,7 @@ module.exports = class Workspace extends Model {
    * The opener is called only when its URI is not already open in the searched
    * pane. The searchAllPanes flag expands that search. File viewers use
    * {@link Workspace#addPathOpener}, which distinguishes existing item types
-   * for the same path and makes alternative views available through Open With.
+   * for the same path and makes alternative views available through Launcher Open.
    *
    * @param {Function} opener - A `Function` to be called when an internal URI is being opened. Register named file viewers with {@link Workspace#addPathOpener}.
    * @param {Object} [options] - Optional preview reuse capabilities.
@@ -3513,12 +3535,12 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
-   * Register a named path opener for automatic opening and Open With.
+   * Register a named path opener for automatic opening and Launcher Open.
    * Availability is checked without constructing a view or opening a path.
    *
    * @param {Object} descriptor - The path opener descriptor.
    * @param {String} descriptor.id - A unique stable opener ID.
-   * @param {String} descriptor.label - The name shown in Open With.
+   * @param {String} descriptor.label - The name shown in Launcher Open.
    * @param {Function} descriptor.canOpen - Synchronously return a boolean for `(uri, options)` without side effects.
    * @param {Function} descriptor.open - Create an item for `(uri, options)`, or perform an action and return an empty string. May return a Promise.
    * @param {Array<String>} [descriptor.pathKinds=['file']] - Supported local path kinds: 'file' and/or 'directory'.
@@ -4298,6 +4320,9 @@ module.exports = class Workspace extends Model {
   destroyed() {
     const failures = [];
     const capture = (callback) => captureLifecycleError(failures, callback);
+    capture(() => this.launcherProviderRegistration?.dispose());
+    this.disposables.remove(this.launcherProviderRegistration);
+    this.launcherProviderRegistration = null;
     for (const editorWindow of this.getWindows()) capture(() => editorWindow.destroy());
     this.#layoutGeneration++;
     capture(() => this.#itemOpenRequests.destroy());

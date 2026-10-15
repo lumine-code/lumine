@@ -16,7 +16,7 @@ const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const Environment = require("../src/environment");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
-const { Emitter } = require("@lumine-code/event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 
 describe("Workspace", () => {
   let workspace;
@@ -103,6 +103,78 @@ describe("Workspace", () => {
     });
     workspace.paneItemTransferService = lumine.paneItemTransfers;
   }
+
+  describe("Text Editor launcher provider", () => {
+    let environment, providers, revoked, subscription;
+
+    beforeEach(() => {
+      environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      providers = [];
+      revoked = [];
+      subscription = environment.packages.serviceHub.consume(
+        "launcher.provider",
+        "^1.0.0",
+        (provider) => {
+          providers.push(provider);
+          return new Disposable(() => revoked.push(provider));
+        },
+      );
+    });
+
+    afterEach(() => {
+      environment.destroy();
+      subscription.dispose();
+    });
+
+    it("creates a new document without opening it or changing the active center pane", () => {
+      expect(providers.length).toBe(1);
+      const provider = providers[0];
+      expect(provider.id).toBe("text-editor");
+      expect(provider.label).toBe("Text Editor");
+      const current = environment.workspace;
+      const pane = current.getCenter().getActivePane();
+      const before = current.getPaneItems();
+      const editor = provider.create({ pane, window: current.getMainWindow() });
+      try {
+        expect(editor instanceof TextEditor).toBe(true);
+        expect(editor.getPath()).toBeUndefined();
+        expect(editor.getText()).toBe("");
+        expect(current.paneForItem(editor)).toBeUndefined();
+        expect(current.getPaneItems()).toEqual(before);
+        expect(current.getCenter().getActivePane()).toBe(pane);
+      } finally {
+        editor.destroy();
+      }
+    });
+
+    it("rejects cancellation before building a text editor", () => {
+      const controller = new AbortController();
+      controller.abort();
+      const build = spyOn(environment.workspace, "buildTextEditor").and.callThrough();
+      expect(() => providers[0].create({ signal: controller.signal })).toThrow();
+      expect(build).not.toHaveBeenCalled();
+    });
+
+    it("replaces and invalidates the previous provider when the workspace resets", () => {
+      const previous = providers[0];
+      environment.workspace.reset(environment.packages);
+      expect(providers.length).toBe(2);
+      expect(revoked).toEqual([previous]);
+      expect(() => previous.create()).toThrowError(/no longer active/);
+      const editor = providers[1].create();
+      expect(editor.isDestroyed()).toBe(false);
+      editor.destroy();
+    });
+
+    it("unregisters and invalidates its provider when the workspace is destroyed", () => {
+      const provider = providers[0];
+      environment.workspace.destroy();
+      expect(revoked).toEqual([provider]);
+      expect(() => provider.create()).toThrowError(/no longer active/);
+      environment.workspace.destroy();
+      expect(revoked).toEqual([provider]);
+    });
+  });
 
   describe("serialization", () => {
     describe("when the workspace contains text editors", () => {

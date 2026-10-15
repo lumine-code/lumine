@@ -4,10 +4,16 @@
       "label": "&File",
       "submenu": [
         {
-          "label": "&New File",
-          "command": "application:new-file",
+          "label": "&New…",
+          "command": "launcher:new",
           "group": "new",
           "order": 10
+        },
+        {
+          "label": "New Text File",
+          "command": "application:new-file",
+          "group": "new",
+          "order": 20
         },
         {
           "label": "New &Window",
@@ -25,8 +31,8 @@
           "type": "separator"
         },
         {
-          "label": "&Open File…",
-          "command": "application:open-file",
+          "label": "&Open…",
+          "command": "launcher:open",
           "group": "files",
           "order": 10
         },

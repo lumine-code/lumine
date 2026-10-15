@@ -378,6 +378,18 @@ module.exports = class EditorWindow {
    * @public
    * @status public
    *
+   * Choose resources in a native dialog attached to this window.
+   * @param {Object} [options={}] - Electron open dialog options.
+   * @returns {Promise<Object>} The selected filePaths or a cancelled result.
+   */
+  showOpenDialog(options = {}) {
+    return this.windowService.showOpenDialog(options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Choose a save path in a native dialog attached to this window.
    * @param {Object} [options={}] - Electron save dialog options.
    * @returns {Promise<Object>} The selected filePath or a cancelled result.

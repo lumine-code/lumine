@@ -48,16 +48,14 @@ const PLATFORM_ONLY_COMMANDS = {
     "application:hide-other-applications",
     "application:minimize",
     "application:zoom",
-    // macOS selects a file or a folder in one open panel.
-    "application:open",
     // Cocoa line editing, system-wide on macOS and foreign everywhere else.
     "editor:cut-to-end-of-line",
     "editor:delete-to-beginning-of-line",
     "editor:delete-to-end-of-line",
     "editor:move-to-end-of-line",
   ],
-  win32: ["application:open-file", "application:open-folder"],
-  linux: ["application:open-file", "application:open-folder"],
+  win32: ["application:open-folder"],
+  linux: ["application:open-folder"],
 };
 
 // Keystrokes that deliberately mean different things per platform. `native!` is
@@ -115,6 +113,15 @@ function meaningsByPlatform(platform) {
 describe("the core platform keymaps", () => {
   it("keeps win32 and linux identical", () => {
     expect(bindings("win32")).toEqual(bindings("linux"));
+  });
+
+  it("opens the Launcher resource picker from the global open shortcut on every platform", () => {
+    for (const platform of PLATFORMS) {
+      const keystrokes = platform === "darwin" ? "cmd-o" : "ctrl-o";
+      expect(effective(platform).filter((binding) => binding.keystrokes === keystrokes)).toEqual([
+        { selector: "body", keystrokes, command: "launcher:open" },
+      ]);
+    }
   });
 
   it("binds every command on every platform unless the difference is named", () => {

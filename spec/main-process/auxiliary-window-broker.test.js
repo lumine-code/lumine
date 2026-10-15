@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const AuxiliaryWindowBroker = require("../../src/auxiliary-window-broker");
 
-function fixture() {
+function fixture(dialogService) {
   const events = [];
   const owner = {
     unloading: false,
@@ -11,6 +11,7 @@ function fixture() {
     sendToRenderer: (...event) => events.push(event),
   };
   const broker = new AuxiliaryWindowBroker(owner, {
+    dialogService,
     attachKeyboard: () => ({
       clear() {},
       dispose() {},
@@ -61,6 +62,48 @@ test("only prepared workspace presentations can open a native child", () => {
   );
   assert.throws(() => broker.prepare({ bounds: { width: -10 } }), /Invalid width/);
   broker.destroy();
+});
+
+test("open dialogs are owned by the addressed auxiliary presentation", async () => {
+  const requests = [];
+  const result = { canceled: false, filePaths: ["chosen.grv"] };
+  const { broker, window } = fixture({
+    showOpenDialog: (...args) => {
+      requests.push(args);
+      return Promise.resolve(result);
+    },
+  });
+  const other = fixture();
+  try {
+    broker.didCreateWindow(window, { frameName: broker.prepare() });
+    const options = { title: "Open", properties: ["openFile"] };
+    assert.equal(await broker.invoke(-17, "showOpenDialog", options), result);
+    assert.deepEqual(requests, [[window, options]]);
+    assert.throws(() => other.broker.invoke(-17, "showOpenDialog", options), /does not belong/);
+    window.destroy();
+    assert.throws(() => broker.invoke(-17, "showOpenDialog", options), /does not belong/);
+    assert.equal(requests.length, 1);
+  } finally {
+    broker.destroy();
+    other.broker.destroy();
+  }
+});
+
+test("invalid auxiliary open-dialog options never reach the native dialog", () => {
+  let requests = 0;
+  const { broker, window } = fixture({ showOpenDialog: () => requests++ });
+  try {
+    broker.didCreateWindow(window, { frameName: broker.prepare() });
+    for (const options of [undefined, null, [], "open", true, 42]) {
+      assert.throws(
+        () => broker.invoke(-17, "showOpenDialog", options),
+        /Open dialog options must be an object/,
+      );
+    }
+    assert.equal(requests, 0);
+  } finally {
+    broker.destroy();
+  }
 });
 
 test(

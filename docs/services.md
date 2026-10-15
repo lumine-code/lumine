@@ -100,3 +100,9 @@ This replaces `hover.provider` during preproduction. Migrate providers and consu
 ## Jupyter integrations
 
 The nine Jupyter packages share kernel sessions, explicit editor contexts, owned asynchronous requests, execution receipts, and canonical output rendering. See [Jupyter services and lifecycle](https://github.com/lumine-code/jupyter-repl/blob/master/docs/3_integration.md) for package responsibilities and teardown rules.
+
+## Workspace content
+
+Launcher owns the `launcher.provider` contract for creating new center content. A provider publishes a descriptor during bootstrap and creates a fresh, unattached pane item when requested; Launcher captures the destination, opens the item in center, and cancels or cleans up unfinished creations when the destination or provider disappears. Core provides the Text Editor factory on the same service hub. Existing resource viewers continue to register named path openers on the workspace; creating new content and opening existing resources are independent capabilities.
+
+The `launcher` service exposes the Open and New pickers to other packages. See the [creation provider contract](https://github.com/lumine-code/launcher/blob/master/docs/launcher.provider.md) and [picker service contract](https://github.com/lumine-code/launcher/blob/master/docs/launcher.md).

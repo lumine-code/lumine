@@ -104,6 +104,9 @@ module.exports = class AuxiliaryWindowService {
   showSaveDialog(options) {
     return this.invoke("showSaveDialog", options);
   }
+  showOpenDialog(options = {}) {
+    return this.invoke("showOpenDialog", options);
+  }
   confirm(options) {
     return this.invoke("confirm", options);
   }

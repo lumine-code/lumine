@@ -1,4 +1,6 @@
 const WindowService = require("../src/window-service");
+const AuxiliaryWindowService = require("../src/auxiliary-window-service");
+const { Disposable } = require("@lumine-code/event-kit");
 const getWindowLoadSettings = require("../src/get-window-load-settings");
 
 describe("WindowService", () => {
@@ -124,5 +126,50 @@ describe("WindowService", () => {
     expect(delegate.onDidUnmaximizeWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidFocusWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidBlurWindow).toHaveBeenCalledWith(callback);
+  });
+});
+
+describe("AuxiliaryWindowService open dialogs", () => {
+  let delegate, service, emit;
+
+  beforeEach(() => {
+    delegate = {
+      onAuxiliaryWindowEvent: (callback) => {
+        emit = callback;
+        return new Disposable();
+      },
+      invokeAuxiliaryWindow: jasmine.createSpy("invokeAuxiliaryWindow"),
+    };
+    service = new AuxiliaryWindowService(delegate, { id: -17, state: {} });
+  });
+
+  afterEach(() => service.destroy());
+
+  it("forwards selection and cancellation through its own native identity", async () => {
+    const options = { title: "Open Notebook", properties: ["openFile"] };
+    const selected = { canceled: false, filePaths: ["chosen.ipynb"] };
+    const canceled = { canceled: true, filePaths: [] };
+    delegate.invokeAuxiliaryWindow.and.returnValues(
+      Promise.resolve(selected),
+      Promise.resolve(canceled),
+    );
+    expect(await service.showOpenDialog(options)).toBe(selected);
+    expect(await service.showOpenDialog()).toBe(canceled);
+    expect(delegate.invokeAuxiliaryWindow.calls.allArgs()).toEqual([
+      ["invoke", -17, "showOpenDialog", options],
+      ["invoke", -17, "showOpenDialog", {}],
+    ]);
+  });
+
+  it("rejects an open dialog after its presentation closes without sending native work", async () => {
+    emit({ id: -18, type: "closed" });
+    delegate.invokeAuxiliaryWindow.and.resolveTo({ canceled: true, filePaths: [] });
+    await service.showOpenDialog();
+    delegate.invokeAuxiliaryWindow.calls.reset();
+    emit({ id: -17, type: "closed" });
+    await expectAsync(service.showOpenDialog()).toBeRejectedWith(
+      jasmine.objectContaining({ code: "CLOSED_WINDOW" }),
+    );
+    expect(delegate.invokeAuxiliaryWindow).not.toHaveBeenCalled();
   });
 });

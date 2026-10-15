@@ -21,7 +21,7 @@ describe("bundled-packages", function () {
     expect(names.length).toBe(EXPECTED_BUNDLED_COUNT);
     expect(names).toContain("about");
     expect(names).toContain("settings-view");
-    expect(names).toContain("open-with");
+    expect(names).toContain("launcher");
     expect(names).toContain("language-c");
     // snippets and language-source are bundled because core assumes them: core
     // seeds ~/.lumine/snippets.json and ships File > Open Your Snippets, and

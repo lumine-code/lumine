@@ -104,10 +104,16 @@
       "label": "File",
       "submenu": [
         {
-          "label": "New File",
-          "command": "application:new-file",
+          "label": "New…",
+          "command": "launcher:new",
           "group": "new",
           "order": 10
+        },
+        {
+          "label": "New Text File",
+          "command": "application:new-file",
+          "group": "new",
+          "order": 20
         },
         {
           "label": "New Window",
@@ -126,7 +132,7 @@
         },
         {
           "label": "Open…",
-          "command": "application:open",
+          "command": "launcher:open",
           "group": "files",
           "order": 10
         },

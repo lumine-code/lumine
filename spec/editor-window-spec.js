@@ -57,4 +57,30 @@ describe("EditorWindow", () => {
     presentation.destroy();
     expect(released).toHaveBeenCalledTimes(1);
   });
+
+  it("attaches open dialogs to the addressed presentation and returns its result", async () => {
+    const options = { title: "Open", properties: ["openFile"] };
+    const selected = { canceled: false, filePaths: ["chosen.txt"] };
+    const canceled = { canceled: true, filePaths: [] };
+    const services = [
+      { showOpenDialog: jasmine.createSpy("main dialog").and.resolveTo(selected) },
+      { showOpenDialog: jasmine.createSpy("auxiliary dialog").and.resolveTo(canceled) },
+    ];
+    const presentations = services.map(
+      (windowService) =>
+        new EditorWindow({
+          workspace: lumine.workspace,
+          editorContainer: { editorWindow: null },
+          windowService,
+        }),
+    );
+    try {
+      expect(await presentations[0].showOpenDialog(options)).toBe(selected);
+      expect(await presentations[1].showOpenDialog()).toBe(canceled);
+      expect(services[0].showOpenDialog).toHaveBeenCalledOnceWith(options);
+      expect(services[1].showOpenDialog).toHaveBeenCalledOnceWith({});
+    } finally {
+      for (const presentation of presentations) presentation.destroy();
+    }
+  });
 });

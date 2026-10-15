@@ -17,9 +17,17 @@ function assertBounds(bounds) {
 // Native presentations are owned by the opening LumineWindow, not registered
 // as independent editor sessions. The parent renderer alone can address them.
 module.exports = class AuxiliaryWindowBroker {
-  constructor(owner, { displayService = screen, attachKeyboard = attachEmbeddedKeyboardIpc } = {}) {
+  constructor(
+    owner,
+    {
+      displayService = screen,
+      dialogService = dialog,
+      attachKeyboard = attachEmbeddedKeyboardIpc,
+    } = {},
+  ) {
     this.owner = owner;
     this.displayService = displayService;
+    this.dialogService = dialogService;
     this.attachKeyboard = attachKeyboard;
     this.pending = new Map();
     this.windows = new Map();
@@ -309,8 +317,13 @@ module.exports = class AuxiliaryWindowBroker {
         if (!Number.isInteger(args[0]) || args[0] < 0) throw new TypeError("Invalid sheet offset.");
         window.setSheetOffset?.(args[0]);
         return;
+      case "showOpenDialog":
+        if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
+          throw new TypeError("Open dialog options must be an object");
+        }
+        return this.dialogService.showOpenDialog(window, args[0]);
       case "showSaveDialog":
-        return dialog.showSaveDialog(window, {
+        return this.dialogService.showSaveDialog(window, {
           title: "Save File",
           defaultPath: this.owner.projectRoots?.[0],
           ...args[0],
@@ -323,7 +336,7 @@ module.exports = class AuxiliaryWindowBroker {
           !options.buttons.every((button) => typeof button === "string")
         )
           throw new TypeError("Confirm options.buttons must be an array of strings.");
-        return dialog
+        return this.dialogService
           .showMessageBox(window, { type: "info", normalizeAccessKeys: true, ...options })
           .then((result) => result.response);
       }

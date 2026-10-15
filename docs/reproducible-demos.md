@@ -11,7 +11,7 @@ From the editor checkout:
 ```sh
 node script/demo.js capture ../bookmarks
 node script/demo.js capture ../markdown-preview
-node script/demo.js capture ../open-with
+node script/demo.js capture ../launcher
 ```
 
 Each command creates a new directory below `<drive>:\Lumine-Demos` on Windows or `/tmp/Lumine-Demos` on macOS and Linux, copies the fixtures into a disposable project with a clean local Git baseline, launches a fresh isolated profile in normal mode, checks each scene, and saves raw and rounded PNGs. It uses default fonts, the One theme, a fixed window size and a 10-pixel corner mask. It closes its window afterward. Your normal editor profile and dev-mode setup remain untouched. `--out <new-directory>` chooses another neutral output location; existing directories and locations inside the source workspace or user profile are rejected, including junction aliases. If the default root is not writable, pass a writable neutral directory outside those private roots.
@@ -85,4 +85,4 @@ Treat `demo/` as fixture data in package lint and formatting configuration, just
 
 The same recipe reproduces the workflow and framing. Pixel-identical output additionally needs the same OS, installed fonts, display scaling, editor dependencies and external tool versions. Prefer clean committed sources for published captures; a dirty-tree hash identifies a local state but cannot reconstruct uncommitted work. Review remains necessary: automated readiness checks cannot judge every visual defect.
 
-Recipes live alongside the visual packages, grammars and themes. `bookmarks` illustrates editor decorations, `markdown-preview` split panes and two theme modes, and `open-with` a real action picker. Use those as starting points for new packages. Pure libraries and packages with no clear visible effect need no recipe; developer-mode-only and private maintainer packages stay outside the public gallery.
+Recipes live alongside the visual packages, grammars and themes. `bookmarks` illustrates editor decorations, `markdown-preview` split panes and two theme modes, and `launcher` a real action picker. Use those as starting points for new packages. Pure libraries and packages with no clear visible effect need no recipe; developer-mode-only and private maintainer packages stay outside the public gallery.

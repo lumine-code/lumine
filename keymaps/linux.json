@@ -17,7 +17,7 @@
     "ctrl-shift-home": "core:select-to-top",
     "ctrl-shift-end": "core:select-to-bottom",
     // Sublime Parity
-    "ctrl-o": "application:open-file",
+    "ctrl-o": "launcher:open",
     "ctrl-f4": "core:close",
     "ctrl-insert": "core:copy",
     "shift-insert": "core:paste",
