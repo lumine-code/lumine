@@ -2376,7 +2376,9 @@ module.exports = class Workspace extends Model {
    * If the URI is already open, the existing item for that URI will be
    * activated. If no URI is given, or no registered opener can open
    * the URI, a new empty {@link TextEditor} will be created.
-   * Resetting or destroying the workspace, or closing an explicit destination
+   * The destination pane is captured before asynchronous opening begins, so
+   * later focus changes do not redirect the result into another window.
+   * Resetting or destroying the workspace, or closing the chosen destination
    * pane, cancels an unfinished open and resolves it to `undefined`. A late
    * opener-owned item is disposed if it remains unattached; an item supplied
    * by the caller stays caller-owned.
@@ -2445,6 +2447,14 @@ module.exports = class Workspace extends Model {
     };
     const performOpen = async () => {
       if (!this.#itemOpenRequests.isCurrent(openRequest)) return;
+      const openingPanes = new Map(
+        Object.values(this.paneContainers).map((container) => [
+          container,
+          container.getActivePane(),
+        ]),
+      );
+      const openingPaneFor = (container) =>
+        openingPanes.get(container) ?? container.getActivePane();
       if (typeof itemOrURI === "string") {
         ({ uri, options } = normalizePathOpening(this.project.resolvePath(itemOrURI), options));
       } else if (itemOrURI) {
@@ -2469,10 +2479,10 @@ module.exports = class Workspace extends Model {
             ? item
               ? this.paneForItem(item)
               : this.paneForPathOpener(uri, pathOpener, options)
-            : (
+            : openingPaneFor(
                 this.paneContainerForPathOpener(uri, pathOpener, options) ||
-                this.getActivePaneContainer()
-              ).getActivePane());
+                  this.getActivePaneContainer(),
+              ));
         const existingItem = item
           ? searchPane?.getItems().includes(item)
           : uri && this.itemForPathOpener(searchPane, uri, pathOpener, options);
@@ -2490,7 +2500,7 @@ module.exports = class Workspace extends Model {
         const destinationPane = existingItem
           ? searchPane
           : options.pane ||
-            (this.paneContainers[preferredLocation] || this.getCenter()).getActivePane();
+            openingPaneFor(this.paneContainers[preferredLocation] || this.getCenter());
         reuseRequest = openRequest;
         this.#itemOpenRequests.prepare(
           reuseRequest,
@@ -2552,7 +2562,7 @@ module.exports = class Workspace extends Model {
           if (!container) container = this.getActivePaneContainer();
 
           // The `split` option affects where we search for the item.
-          pane = container.getActivePane();
+          pane = openingPaneFor(container);
           switch (options.split) {
             case "left":
               pane = pane.findLeftmostSibling();
@@ -2646,7 +2656,12 @@ module.exports = class Workspace extends Model {
           location = allowedLocations.includes(location) ? location : allowedLocations[0];
 
           const container = this.paneContainers[location] || this.getCenter();
-          pane = container.getActivePane();
+          pane = openingPaneFor(container);
+          if (!pane || pane.isDestroyed() || !this.getPanes().includes(pane)) {
+            abortOpening();
+            discardUnpresentedItem();
+            return;
+          }
           switch (options.split) {
             case "left":
               {
