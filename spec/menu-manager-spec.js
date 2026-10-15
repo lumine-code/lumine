@@ -429,6 +429,27 @@ describe("MenuManager", function () {
       }
     });
 
+    it("preserves the source target while the title-bar menubar owns focus", async () => {
+      menu.add([{ label: "Actions", submenu: [{ label: "B", command: "b" }] }]);
+      const menuBar = menu.createMenuBar({ document });
+      menuBar.element.classList.add("title-bar-menu-bar");
+      document.body.appendChild(menuBar.element);
+      menu.observeNativeDocument(document);
+      try {
+        menuBar.focus();
+        expect(document.activeElement).toBe(menuBar.buttons[0].element);
+        await Promise.resolve();
+        expect(menu.getNativeMenuTarget(document)).toBe(target);
+        menu.beginNativeMenu(document);
+        expect(menu.getNativeMenuTarget(document)).toBe(target);
+        expect(
+          menu.prepareNativeTemplate(menu.getNativeMenuTarget(document))[0].submenu[0].enabled,
+        ).toBe(true);
+      } finally {
+        menuBar.destroy();
+      }
+    });
+
     it("cancels a pending browser-process update when destroyed", () => {
       menu.update();
       menu.destroy();

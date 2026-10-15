@@ -208,7 +208,7 @@ module.exports = class MenuManager {
     if (!document || this.nativeDocuments.has(document)) return;
     const record = { target: this.focusTargetForDocument(document) };
     const didFocus = (event) => {
-      if (event.target.closest?.("lumine-context-view, .menu-bar")) return;
+      if (event.target.closest?.("lumine-context-view, [role='menubar']")) return;
       record.target = this.focusTargetForDocument(document, event.target);
       if (
         this.nativeMenuSession &&
@@ -242,7 +242,8 @@ module.exports = class MenuManager {
         )
           return;
         const target = this.focusTargetForDocument(document);
-        if (target?.closest?.("lumine-context-view, .menu-bar") || target === record.target) return;
+        if (target?.closest?.("lumine-context-view, [role='menubar']") || target === record.target)
+          return;
         record.target = target;
         this.nativeMenuSession = null;
         this.scheduleNativeUpdate();
