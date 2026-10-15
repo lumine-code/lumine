@@ -7,13 +7,16 @@
  * DS207: Consider shorter variations of null checks
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
-let isKeyup;
+const {
+  normalizeKeystroke,
+  normalizeKeystrokes,
+  MODIFIERS,
+  isKeyup,
+} = require("./keymap-normalization");
 const { calculateSpecificity } = require("./css-selectors");
 const KeyboardLayout = require("@lumine-code/keyboard-layout");
 
-const MODIFIERS = new Set(["ctrl", "alt", "shift", "cmd"]);
 const ENDS_IN_MODIFIER_REGEX = /(ctrl|alt|shift|cmd)$/;
-const WHITESPACE_REGEX = /\s+/;
 const KEY_NAMES_BY_KEYBOARD_EVENT_CODE = {
   Space: "space",
   Backspace: "backspace",
@@ -99,96 +102,7 @@ const slovakCmdCharactersForKeyCode = function (code, layout) {
   }
 };
 
-exports.normalizeKeystrokes = function (keystrokes) {
-  const normalizedKeystrokes = [];
-  for (var keystroke of Array.from(keystrokes.split(WHITESPACE_REGEX))) {
-    var normalizedKeystroke;
-    if ((normalizedKeystroke = normalizeKeystroke(keystroke))) {
-      normalizedKeystrokes.push(normalizedKeystroke);
-    } else {
-      return false;
-    }
-  }
-  return normalizedKeystrokes.join(" ");
-};
-
-var normalizeKeystroke = function (keystroke) {
-  let keyup;
-  if ((keyup = isKeyup(keystroke))) {
-    keystroke = keystroke.slice(1);
-  }
-  const keys = parseKeystroke(keystroke);
-  if (!keys) {
-    return false;
-  }
-
-  let primaryKey = null;
-  const modifiers = new Set();
-
-  for (let i = 0; i < keys.length; i++) {
-    var key = keys[i].toLowerCase();
-    if (key === "cmdorctrl") {
-      key = process.platform === "darwin" ? "cmd" : "ctrl";
-    }
-    if (MODIFIERS.has(key)) {
-      modifiers.add(key);
-    } else {
-      // only the last key can be a non-modifier
-      if (i === keys.length - 1) {
-        primaryKey = key;
-      } else {
-        return false;
-      }
-    }
-  }
-
-  keystroke = [];
-  if (!keyup || (keyup && primaryKey == null)) {
-    if (modifiers.has("ctrl")) {
-      keystroke.push("ctrl");
-    }
-    if (modifiers.has("alt")) {
-      keystroke.push("alt");
-    }
-    if (modifiers.has("shift")) {
-      keystroke.push("shift");
-    }
-    if (modifiers.has("cmd")) {
-      keystroke.push("cmd");
-    }
-  }
-  if (primaryKey != null) {
-    keystroke.push(primaryKey);
-  }
-  keystroke = keystroke.join("-");
-  if (keyup) {
-    keystroke = `^${keystroke}`;
-  }
-  return keystroke;
-};
-
-var parseKeystroke = function (keystroke) {
-  const keys = [];
-  let keyStart = 0;
-  for (let index = 0; index < keystroke.length; index++) {
-    var character = keystroke[index];
-    if (character === "-") {
-      if (index > keyStart) {
-        keys.push(keystroke.substring(keyStart, index));
-        keyStart = index + 1;
-
-        // The keystroke has a trailing - and is invalid
-        if (keyStart === keystroke.length) {
-          return false;
-        }
-      }
-    }
-  }
-  if (keyStart < keystroke.length) {
-    keys.push(keystroke.substring(keyStart));
-  }
-  return keys;
-};
+exports.normalizeKeystrokes = normalizeKeystrokes;
 
 exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
   let characters;
@@ -274,12 +188,12 @@ exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
         // means that if an AltGr variant character exists for the current
         // keystroke, it likely to be the intended character, and we always
         // interpret it as such rather than favoring a `ctrl-alt-*` binding
-        // intepretation.
+        // interpretation, including non-ASCII letters such as Polish ż.
       } else if (process.platform === "win32" && event.code) {
         nonAltModifiedKey = nonAltModifiedKeyForKeyboardEvent(event);
-        if (nonAltModifiedKey && (metaKey || !isASCIICharacter(key))) {
+        if (nonAltModifiedKey && metaKey) {
           key = nonAltModifiedKey;
-        } else if (key !== nonAltModifiedKey) {
+        } else if (isWindowsAltGraphCharacter(event)) {
           ctrlKey = false;
           altKey = false;
           isAltModifiedKey = true;
@@ -310,7 +224,7 @@ exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
       // if (key.length is 1 and not isLatinKeymap(KeyboardLayout.getCurrentKeymap())) or
       (() => {
         if (
-          !isLatinKeymap(KeyboardLayout.getCurrentKeymap()) ||
+          (!isAltModifiedKey && !isLatinKeymap(KeyboardLayout.getCurrentKeymap())) ||
           (metaKey && currentLayout.indexOf("DVORAK-QWERTYCMD") > -1)
         ) {
           return usCharactersForKeyCode(event.code);
@@ -421,10 +335,27 @@ var nonAltModifiedKeyForKeyboardEvent = function (event) {
   }
 };
 
+function isWindowsAltGraphCharacter(event) {
+  if (
+    process.platform !== "win32" ||
+    !event.code ||
+    event.key.length !== 1 ||
+    event.metaKey ||
+    !event.getModifierState("AltGraph")
+  ) {
+    return false;
+  }
+  const key = event.shiftKey ? event.key.toUpperCase() : event.key.toLowerCase();
+  return key !== nonAltModifiedKeyForKeyboardEvent(event);
+}
+
 exports.MODIFIERS = MODIFIERS;
 
 exports.characterForKeyboardEvent = function (event) {
-  if (event.key.length === 1 && !(event.ctrlKey || event.metaKey)) {
+  if (
+    event.key.length === 1 &&
+    (!(event.ctrlKey || event.metaKey) || isWindowsAltGraphCharacter(event))
+  ) {
     return event.key;
   }
 };
@@ -436,7 +367,7 @@ exports.isBareModifier = (keystroke) => ENDS_IN_MODIFIER_REGEX.test(keystroke);
 exports.isModifierKeyup = (keystroke) =>
   isKeyup(keystroke) && ENDS_IN_MODIFIER_REGEX.test(keystroke);
 
-exports.isKeyup = isKeyup = (keystroke) => keystroke.startsWith("^") && keystroke !== "^";
+exports.isKeyup = isKeyup;
 
 exports.keydownEvent = (key, options) => buildKeyboardEvent(key, "keydown", options);
 

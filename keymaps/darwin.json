@@ -89,8 +89,6 @@
     "ctrl-alt-delete": "editor:delete-to-end-of-subword"
   },
   "lumine-workspace lumine-text-editor:not([mini])": {
-    // Lumine specific
-    "alt-cmd-ctrl-f": "editor:fold-selection",
     // Sublime Parity
     "shift-enter": "editor:newline",
     "ctrl-cmd-up": "editor:move-line-up",

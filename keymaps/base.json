@@ -43,7 +43,7 @@
     "cmdorctrl-shift-t": "pane:reopen-closed-item",
     "cmdorctrl-s": "core:save",
     "cmdorctrl-shift-s": "core:save-as",
-    "cmdorctrl-alt-s": "window:save-all",
+    "cmdorctrl-k s": "window:save-all",
     "cmdorctrl-w": "core:close",
     "cmdorctrl-z": "core:undo",
     "cmdorctrl-shift-z": "core:redo",
@@ -62,7 +62,7 @@
     "cmdorctrl-k left": "pane:split-left-and-copy-active-item",
     "cmdorctrl-k right": "pane:split-right-and-copy-active-item",
     "cmdorctrl-k cmdorctrl-w": "pane:close",
-    "cmdorctrl-k cmdorctrl-alt-w": "pane:close-other-items",
+    "cmdorctrl-k shift-w": "pane:close-other-items",
     "cmdorctrl-k cmdorctrl-p": "window:focus-previous-pane",
     "cmdorctrl-k cmdorctrl-n": "window:focus-next-pane",
     "cmdorctrl-k cmdorctrl-up": "window:focus-pane-up",
@@ -119,15 +119,16 @@
     "cmdorctrl-shift-l": "editor:split-selections-into-lines",
     "cmdorctrl-alt-shift-left": "editor:move-selection-left",
     "cmdorctrl-alt-shift-right": "editor:move-selection-right",
-    "cmdorctrl-alt-z": "editor:checkout-head-revision",
+    "cmdorctrl-k z": "editor:checkout-head-revision",
     // A developer command, so it takes a chord nothing reaches by accident.
-    "cmdorctrl-alt-shift-p": "editor:log-cursor-scope",
-    "cmdorctrl-alt-[": "editor:fold-current-row",
-    "cmdorctrl-alt-]": "editor:unfold-current-row",
-    "cmdorctrl-alt-{": "editor:fold-all",
-    // Lumine Specific
-    "cmdorctrl-alt-}": "editor:unfold-all",
-    // Lumine Specific
+    "cmdorctrl-k shift-i": "editor:log-cursor-scope",
+    // AltGr produces text on international layouts, so folding uses a chord
+    // family instead of Ctrl+Alt and layout-dependent bracket characters.
+    "cmdorctrl-k f f": "editor:fold-current-row",
+    "cmdorctrl-k f u": "editor:unfold-current-row",
+    "cmdorctrl-k f s": "editor:fold-selection",
+    "cmdorctrl-k f a": "editor:fold-all",
+    "cmdorctrl-k f x": "editor:unfold-all",
     "cmdorctrl-k cmdorctrl-0": "editor:unfold-all",
     "cmdorctrl-k cmdorctrl-1": "editor:fold-at-indent-level-1",
     "cmdorctrl-k cmdorctrl-2": "editor:fold-at-indent-level-2",
@@ -140,8 +141,8 @@
     "cmdorctrl-k cmdorctrl-9": "editor:fold-at-indent-level-9"
   },
   "lumine-workspace lumine-pane": {
-    "cmdorctrl-alt-=": "pane:increase-size",
-    "cmdorctrl-alt--": "pane:decrease-size"
+    "cmdorctrl-k =": "pane:increase-size",
+    "cmdorctrl-k -": "pane:decrease-size"
   },
   "lumine-workspace": {
     // Lumine Specific

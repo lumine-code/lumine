@@ -1,5 +1,14 @@
 const path = require("path");
 const CSON = require("@lumine-code/season");
+const KeyboardLayout = require("@lumine-code/keyboard-layout");
+const KeymapManager = require("../src/keymap-manager");
+const { normalizeKeystrokes } = require("../src/keymap-normalization");
+const {
+  buildKeydownEvent,
+  installHooks,
+  mockProcessPlatform,
+  stub,
+} = require("./keymap-spec-helpers/helpers");
 
 // `keymaps/{base,win32,linux,darwin}.json` are one keymap split four ways.
 // `base.json` holds everything shared, using `cmdorctrl` for a plain cmd/ctrl
@@ -176,6 +185,21 @@ describe("the core platform keymaps", () => {
     }
   });
 
+  it("never binds printable Ctrl+Alt strokes that become Windows AltGr text", () => {
+    for (const { selector, keystrokes, command } of effective("win32")) {
+      if (command === "native!") continue;
+      for (const stroke of normalizeKeystrokes(keystrokes, "win32").split(" ")) {
+        const key = stroke.replace(/^(?:(?:ctrl|alt|shift|cmd)-)+/, "");
+        const printable = key.length === 1 || key === "space" || key === "backquote";
+        expect(`${selector}: ${keystrokes} -> ${command}`).toBe(
+          /^ctrl-alt-/.test(stroke) && printable
+            ? "use a layout-independent chord instead of printable Ctrl+Alt"
+            : `${selector}: ${keystrokes} -> ${command}`,
+        );
+      }
+    }
+  });
+
   it("declares no selector twice in one file", () => {
     // A repeated key is not an error in JSON — the last one silently wins and
     // the earlier block disappears.
@@ -184,5 +208,92 @@ describe("the core platform keymaps", () => {
       const declared = [...source.matchAll(/^ {2}"([^"]+)":\s*\{/gm)].map((match) => match[1]);
       expect(declared.length).toBe(new Set(declared).size);
     }
+  });
+
+  describe("keyboard events on international layouts", () => {
+    installHooks();
+    let keymaps, currentKeymap;
+
+    beforeEach(() => {
+      currentKeymap = require("../src/us-keymap");
+      stub(KeyboardLayout, "getCurrentKeymap", () => currentKeymap);
+    });
+
+    afterEach(() => keymaps?.destroy());
+
+    function setup(platform) {
+      mockProcessPlatform(platform);
+      keymaps = new KeymapManager();
+      // Preserve selector specificity without invoking the editor's real
+      // command handlers against these model-free DOM fixtures.
+      const fixtureMap = (name) =>
+        Object.fromEntries(
+          Object.entries(load(name)).map(([selector, block]) => [
+            selector.replace(/\blumine-(workspace|pane|text-editor)\b/g, "keymap-$1"),
+            block,
+          ]),
+        );
+      keymaps.add("base", fixtureMap("base"));
+      keymaps.add(platform, fixtureMap(platform));
+      const body = document.createElement("body");
+      const workspace = document.createElement("keymap-workspace");
+      const pane = document.createElement("keymap-pane");
+      const editor = document.createElement("keymap-text-editor");
+      body.appendChild(workspace);
+      workspace.appendChild(pane);
+      pane.appendChild(editor);
+      const commands = [];
+      keymaps.onDidMatchBinding(({ binding }) => commands.push(binding.command));
+      const primary = platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
+      const send = (key, code, modifiers = {}) =>
+        keymaps.handleKeyboardEvent(buildKeydownEvent({ key, code, target: editor, ...modifiers }));
+      return { commands, send, prefix: () => send("k", "KeyK", primary) };
+    }
+
+    for (const platform of PLATFORMS) {
+      it(`reaches each folding operation without a competing exact prefix on ${platform}`, () => {
+        const { commands, send, prefix } = setup(platform);
+        for (const [suffix, command] of [
+          ["f", "editor:fold-current-row"],
+          ["u", "editor:unfold-current-row"],
+          ["s", "editor:fold-selection"],
+          ["a", "editor:fold-all"],
+          ["x", "editor:unfold-all"],
+        ]) {
+          const before = [...commands];
+          prefix();
+          send("f", "KeyF");
+          expect(commands).toEqual(before);
+          send(suffix, `Key${suffix.toUpperCase()}`);
+          expect(commands).toEqual([...before, command]);
+        }
+      });
+    }
+
+    it("reaches former Ctrl+Alt operations on Windows US-International", () => {
+      currentKeymap = require("./keymap-spec-helpers/keymaps/windows-us-international");
+      const { commands, send, prefix } = setup("win32");
+      const expected = [];
+      for (const [key, code, modifiers, command] of [
+        ["s", "KeyS", {}, "window:save-all"],
+        ["z", "KeyZ", {}, "editor:checkout-head-revision"],
+        ["W", "KeyW", { shiftKey: true }, "pane:close-other-items"],
+        ["I", "KeyI", { shiftKey: true }, "editor:log-cursor-scope"],
+        ["=", "Equal", {}, "pane:increase-size"],
+        ["-", "Minus", {}, "pane:decrease-size"],
+      ]) {
+        prefix();
+        send(key, code, modifiers);
+        expected.push(command);
+        expect(commands).toEqual(expected);
+      }
+      for (const [code, characters] of Object.entries(currentKeymap)) {
+        const key = characters.withAltGraph;
+        if (key?.length === 1) {
+          send(key, code, { ctrlKey: true, altKey: true, modifierState: { AltGraph: true } });
+        }
+      }
+      expect(commands).toEqual(expected);
+    });
   });
 });

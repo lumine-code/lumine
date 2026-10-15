@@ -2419,7 +2419,7 @@ describe("KeymapManager", function () {
           "ctrl-alt-g",
         );
       });
-      it("allows ASCII characters (<= 127) to be typed via the ctrl-alt- modifiers on Windows", function () {
+      it("allows ASCII and non-ASCII characters to be typed via AltGr on Windows", function () {
         mockProcessPlatform("win32");
         currentKeymap = require("./keymap-spec-helpers/keymaps/windows-swiss-german");
         assert.equal(
@@ -2442,7 +2442,7 @@ describe("KeymapManager", function () {
               altKey: true,
             }),
           ),
-          "ctrl-alt-4",
+          "°",
         );
         currentKeymap = require("./keymap-spec-helpers/keymaps/windows-us-international");
         return assert.equal(
@@ -2455,8 +2455,121 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "ctrl-alt-shift-c",
+          "¢",
         );
+      });
+      it("lets every Polish AltGr letter reach text input without dispatching Ctrl+Alt commands", function () {
+        mockProcessPlatform("win32");
+        const target = buildElement('<div class="editor"></div>');
+        const commands = [];
+        keymapManager.onDidMatchBinding(({ binding }) => commands.push(binding.command));
+        currentKeymap = { ...require("../src/us-keymap") };
+        for (const [letter, character] of Object.entries({
+          a: "ą",
+          c: "ć",
+          e: "ę",
+          l: "ł",
+          n: "ń",
+          o: "ó",
+          s: "ś",
+          x: "ź",
+          z: "ż",
+        })) {
+          const code = `Key${letter.toUpperCase()}`;
+          currentKeymap[code] = {
+            ...currentKeymap[code],
+            withAltGraph: character,
+            withAltGraphShift: character.toUpperCase(),
+          };
+          keymapManager.add(`ctrl-alt-${letter}`, {
+            ".editor": {
+              [`ctrl-alt-${letter}`]: "test:unshifted",
+              [`ctrl-alt-shift-${letter}`]: "test:shifted",
+            },
+          });
+          for (const shiftKey of [false, true]) {
+            const event = buildKeydownEvent({
+              key: shiftKey ? character.toUpperCase() : character,
+              code,
+              shiftKey,
+              target,
+              modifierState: { AltGraph: true },
+            });
+            assert.equal(
+              keymapManager.keystrokeForKeyboardEvent(event),
+              `${shiftKey ? "shift-" : ""}${character}`,
+            );
+            keymapManager.handleKeyboardEvent(event);
+            assert.equal(event.defaultPrevented, false);
+          }
+        }
+        assert.deepEqual(commands, []);
+      });
+      it("keeps genuine Ctrl+Alt commands when AltGraph is absent or no variant is produced", function () {
+        mockProcessPlatform("win32");
+        currentKeymap = require("../src/us-keymap");
+        const event = new KeyboardEvent("keydown", {
+          key: "s",
+          code: "KeyS",
+          ctrlKey: true,
+          altKey: true,
+        });
+        assert.equal(keymapManager.keystrokeForKeyboardEvent(event), "ctrl-alt-s");
+        for (const shiftKey of [false, true]) {
+          assert.equal(
+            keymapManager.keystrokeForKeyboardEvent(
+              buildKeydownEvent({
+                key: "S",
+                code: "KeyS",
+                ctrlKey: true,
+                altKey: true,
+                shiftKey,
+              }),
+            ),
+            shiftKey ? "ctrl-alt-shift-s" : "ctrl-alt-s",
+          );
+        }
+      });
+      it("preserves AltGr input when the Windows layout is missing or uses a non-Latin alphabet", function () {
+        mockProcessPlatform("win32");
+        for (const keymap of [
+          null,
+          {
+            KeyA: { unmodified: "ф", withShift: "Ф" },
+            KeyE: { unmodified: "у", withShift: "У", withAltGraph: "€" },
+          },
+        ]) {
+          currentKeymap = keymap;
+          assert.equal(
+            keymapManager.keystrokeForKeyboardEvent(
+              buildKeydownEvent({
+                key: "€",
+                code: "KeyE",
+                modifierState: { AltGraph: true },
+              }),
+            ),
+            "€",
+          );
+        }
+      });
+      it("replays the original Windows AltGr text after an unmatched character chord", function () {
+        mockProcessPlatform("win32");
+        currentKeymap = { ...require("../src/us-keymap") };
+        currentKeymap.KeyZ = { ...currentKeymap.KeyZ, withAltGraph: "ż" };
+        const target = buildElement('<div class="editor"></div>');
+        const text = [];
+        target.addEventListener("textInput", (event) => text.push(event.data));
+        keymapManager.add("character-chord", { ".editor": { "ż x": "test:chord" } });
+        keymapManager.handleKeyboardEvent(
+          buildKeydownEvent({
+            key: "ż",
+            code: "KeyZ",
+            target,
+            modifierState: { AltGraph: true },
+          }),
+        );
+        getFakeClock().tick(keymapManager.getPartialMatchTimeout());
+        assert.deepEqual(text, ["ż"]);
       });
       it("allows arbitrary characters to be typed via an altgraph modifier on Linux", function () {
         mockProcessPlatform("linux");
