@@ -1377,6 +1377,15 @@ describe("TextBuffer IO", () => {
       done();
     });
 
+    function recreateFile(contents) {
+      // Publish one complete version. Writing the watched path directly can
+      // expose its initial empty contents before the write, producing two
+      // legitimate reloads instead of the single recreation under test.
+      const recreatedPath = `${filePath}.recreated`;
+      fs.writeFileSync(recreatedPath, contents);
+      fs.renameSync(recreatedPath, filePath);
+    }
+
     for (const initiallyModified of [false, true]) {
       it(`retains its path and enters removed when initially ${
         initiallyModified ? "modified" : "unmodified"
@@ -1414,7 +1423,7 @@ describe("TextBuffer IO", () => {
         const removed = fileStatePromise(buffer, "removed");
         fs.removeSync(filePath);
         await removed;
-        fs.writeFileSync(filePath, recreatedText);
+        recreateFile(recreatedText);
         await conditionPromise(
           () => buffer.getFileState() === "unmodified" && buffer.getText() === recreatedText,
           "recreated clean file reconciled",
@@ -1453,7 +1462,7 @@ describe("TextBuffer IO", () => {
         buffer.onWillReload(() => reloads.push("will-reload"));
         buffer.onDidReload(() => reloads.push("did-reload"));
         const expectedState = recreatedText === "delete me" ? "modified" : "conflicted";
-        fs.writeFileSync(filePath, recreatedText);
+        recreateFile(recreatedText);
         await conditionPromise(
           () => buffer.getFileState() === expectedState,
           "recreated modified file reconciled",
