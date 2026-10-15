@@ -3,6 +3,7 @@ const ContextViewManager = require("../src/context-view-manager");
 const { showMenuPopup } = require("../src/menu-view");
 const MenuBarView = require("../src/menu-bar-view");
 const SelectBoxView = require("../src/select-box-view");
+const ContextMenuManager = require("../src/context-menu-manager");
 
 describe("HTML menu UI", () => {
   let contextViews, target;
@@ -76,6 +77,155 @@ describe("HTML menu UI", () => {
     expect(dispatchCount).toBe(1);
     expect(popup.element.isConnected).toBe(false);
     commands.dispose();
+  });
+
+  it("uses the pre-menu focus for status commands without changing the clicked context", async () => {
+    const container = document.createElement("div");
+    container.className = "menu-ui-command-workspace";
+    const editor = document.createElement("div");
+    editor.className = "menu-ui-command-editor";
+    editor.tabIndex = -1;
+    const tree = document.createElement("div");
+    tree.className = "menu-ui-command-tree";
+    tree.tabIndex = -1;
+    target.className = "menu-ui-status-trigger";
+    container.append(editor, tree, target);
+    document.body.append(container);
+    const contextMenu = new ContextMenuManager({
+      keymapManager: lumine.keymaps,
+      menuManager: {
+        ensureContextViewManager: () => contextViews,
+        showPopup: (options) => showMenuPopup(contextViews, options),
+      },
+    });
+    const calls = [];
+    const editorCommand = lumine.commands.add(".menu-ui-command-editor", {
+      "menu-ui-spec:editor-action": (event) => calls.push(event.target),
+    });
+    const globalCommand = lumine.commands.add(".menu-ui-command-workspace", {
+      "menu-ui-spec:workspace-action": () => {},
+    });
+    const contextualCommand = lumine.commands.add(target, {
+      "menu-ui-spec:status-action": () => {},
+    });
+    const bindings = lumine.keymaps.add("menu-ui-focus-status", {
+      ".menu-ui-command-editor": { "ctrl-k": "menu-ui-spec:editor-action" },
+    });
+    const menu = contextMenu.add({
+      ".menu-ui-status-trigger": {
+        commandTarget: "focus",
+        items: [
+          {
+            label: "Editor",
+            command: "menu-ui-spec:editor-action",
+            created(event) {
+              expect(event.target).toBe(target);
+            },
+          },
+          { label: "Workspace", command: "menu-ui-spec:workspace-action" },
+          {
+            label: "Workspace in Editor",
+            command: "menu-ui-spec:workspace-action",
+            scope: ".menu-ui-command-editor",
+          },
+          {
+            label: "Status Control",
+            command: "menu-ui-spec:status-action",
+            commandTarget: "context",
+          },
+        ],
+      },
+    });
+    try {
+      for (const origin of [tree, editor]) {
+        origin.focus();
+        target.dispatchEvent(new MouseEvent("mousedown", { button: 2, bubbles: true }));
+        target.focus();
+        const popup = contextMenu.showForEvent({ target });
+        const [local, global, narrowed, contextual] = popup.rootList.items;
+        expect(popup.element.contains(document.activeElement)).toBe(true);
+        expect(local.enabled).toBe(origin === editor);
+        expect(local.element.getAttribute("aria-disabled")).toBe(origin === tree ? "true" : null);
+        expect(global.enabled).toBe(true);
+        expect(narrowed.enabled).toBe(origin === editor);
+        expect(contextual.enabled).toBe(true);
+        expect(local.keystrokeElement.textContent).toBe(
+          origin === tree ? "" : process.platform === "darwin" ? "⌃K" : "Ctrl+K",
+        );
+        if (origin === editor) {
+          local.element.click();
+          await Promise.resolve();
+        } else {
+          popup.close({ cancelled: true });
+        }
+        expect(document.activeElement).toBe(origin);
+      }
+      expect(calls).toEqual([editor]);
+    } finally {
+      menu.dispose();
+      bindings.dispose();
+      editorCommand.dispose();
+      globalCommand.dispose();
+      contextualCommand.dispose();
+      container.remove();
+    }
+  });
+
+  it("keeps the clicked surface as the target of an ordinary context menu", async () => {
+    const editor = document.createElement("div");
+    editor.className = "menu-ui-inactive-editor";
+    const content = document.createElement("span");
+    editor.append(content);
+    document.body.append(editor);
+    target.focus();
+    const calls = [];
+    const commands = lumine.commands.add(".menu-ui-inactive-editor", {
+      "menu-ui-spec:context-action": (event) => calls.push(event.target),
+    });
+    const contextMenu = new ContextMenuManager({
+      keymapManager: lumine.keymaps,
+      menuManager: {
+        ensureContextViewManager: () => contextViews,
+        showPopup: (options) => showMenuPopup(contextViews, options),
+      },
+    });
+    const menu = contextMenu.add({
+      ".menu-ui-inactive-editor": [
+        { label: "Context Action", command: "menu-ui-spec:context-action" },
+      ],
+    });
+    try {
+      const popup = contextMenu.showForEvent({ target: content });
+      expect(popup.rootList.items[0].enabled).toBe(true);
+      popup.rootList.items[0].element.click();
+      await Promise.resolve();
+      expect(calls).toEqual([content]);
+    } finally {
+      commands.dispose();
+      menu.dispose();
+      editor.remove();
+    }
+  });
+
+  it("rechecks the same command target when its handler or surface disappears", async () => {
+    for (const removeTarget of [false, true]) {
+      const action = jasmine.createSpy("action");
+      const commands = lumine.commands.add(target, { "menu-ui-spec:removed": action });
+      const popup = showMenuPopup(contextViews, {
+        target,
+        anchor: target,
+        template: [{ label: "Removed", command: "menu-ui-spec:removed" }],
+      });
+      const item = popup.rootList.items[0];
+      expect(item.enabled).toBe(true);
+      if (removeTarget) target.remove();
+      else commands.dispose();
+      item.element.click();
+      await Promise.resolve();
+      expect(action).not.toHaveBeenCalled();
+      commands.dispose();
+      document.body.appendChild(target);
+    }
   });
 
   it("cancels a context menu on native caption input without synthesizing mouse input", () => {
@@ -180,6 +330,47 @@ describe("HTML menu UI", () => {
     }
   });
 
+  it("resolves shortcut mappings once per target and refreshes them for the next popup", () => {
+    target.className = "menu-ui-binding-cache";
+    const commands = lumine.commands.add(target, { "menu-ui-spec:cached-action": () => {} });
+    const original = lumine.keymaps.add("menu-ui-binding-cache-default", {
+      ".menu-ui-binding-cache": { "ctrl-j": "menu-ui-spec:cached-action" },
+    });
+    const lookup = spyOn(lumine.keymaps, "findKeyBindings").and.callThrough();
+    const options = {
+      target,
+      anchor: target,
+      template: [
+        { label: "First", command: "menu-ui-spec:cached-action" },
+        { label: "Alias", command: "menu-ui-spec:cached-action" },
+        {
+          label: "Nested",
+          submenu: [{ label: "Action", command: "menu-ui-spec:cached-action" }],
+        },
+      ],
+    };
+    let override;
+    try {
+      const popup = showMenuPopup(contextViews, options);
+      popup.openSubmenu(popup.rootList.items[2]);
+      expect(lookup).toHaveBeenCalledTimes(1);
+      popup.close();
+      override = lumine.keymaps.add("menu-ui-binding-cache-user", {
+        ".menu-ui-binding-cache": { "ctrl-u": "menu-ui-spec:cached-action" },
+      });
+      const next = showMenuPopup(contextViews, options);
+      expect(lookup).toHaveBeenCalledTimes(2);
+      expect(next.rootList.items[0].keystrokeElement.textContent).toBe(
+        process.platform === "darwin" ? "⌃U" : "Ctrl+U",
+      );
+      next.close();
+    } finally {
+      override?.dispose();
+      original.dispose();
+      commands.dispose();
+    }
+  });
+
   it("shows an equivalent contextual shortcut while dispatching to the original tile", async () => {
     const editor = document.createElement("div");
     editor.classList.add("menu-ui-editor-scope");
@@ -278,9 +469,9 @@ describe("HTML menu UI", () => {
           anchor: target,
           template: [{ label: "Action", command: options.keyBindingCommand }],
         });
-        expect(withoutTarget.rootList.items[0].keystrokeElement.textContent).toBe(
-          title.querySelector(".keystroke").textContent,
-        );
+        // An unscoped tooltip can describe any binding. A command menu keeps
+        // the real focus target and cannot advertise a different surface's key.
+        expect(withoutTarget.rootList.items[0].keystrokeElement.textContent).toBe("");
         withoutTarget.close();
       } finally {
         unscoped.dispose();
@@ -483,7 +674,7 @@ describe("HTML menu UI", () => {
       anchor: target,
       target,
       autoSelectFirstItem: true,
-      template: [{ label: "Parent", submenu: [{ label: "Child", command: "spec:child" }] }],
+      template: [{ label: "Parent", submenu: [{ label: "Child" }] }],
     });
     const parent = popup.element.querySelector(".menu-item");
     parent.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -540,7 +731,7 @@ describe("HTML menu UI", () => {
     const popup = showMenuPopup(contextViews, {
       anchor: target,
       target,
-      template: [{ label: "Parent", submenu: [{ label: "Child", command: "spec:child" }] }],
+      template: [{ label: "Parent", submenu: [{ label: "Child" }] }],
     });
     const parent = popup.element.querySelector(".menu-item");
     parent.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
@@ -579,7 +770,7 @@ describe("HTML menu UI", () => {
       anchor: target,
       target,
       autoSelectFirstItem: true,
-      template: [{ label: "Action", command: "spec:action" }],
+      template: [{ label: "Action" }],
     });
     const action = popup.element.querySelector(".menu-item");
     expect(action.classList).toContain("selected");
@@ -692,10 +883,7 @@ describe("HTML menu UI", () => {
       getTemplate: () => [
         {
           label: "&File",
-          submenu: [
-            { label: "Open", command: "core:open" },
-            { label: "Save", command: "core:save" },
-          ],
+          submenu: [{ label: "Open" }, { label: "Save" }],
         },
       ],
       onDidChange: (callback) => emitter.on("change", callback),

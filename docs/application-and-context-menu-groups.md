@@ -91,11 +91,13 @@ A package with an existing command that opens its persistent configuration file 
 
 The Reopen Project menu preserves recent-project history order with explicit item orders in the `recent` group and puts Clear Project History last in `history`. Empty history contributes no separator.
 
-A package command exposed in the application menu registers once on `lumine-workspace` and resolves the editor or pane item from the dispatch target, falling back to the active item. A menu alias uses the same command as the package submenu. Group metadata changes placement without changing dispatch or keymap scope.
+A command registers on the scope that actually handles it. An editor-local command may appear in the application menu: the menu preserves the focus from before it opened, checks the registered handlers against that target and disables an unavailable row. Do not move a command to `lumine-workspace` just to expose it in a menu. A workspace command may deliberately resolve the center document and guard its own operation while another surface has focus. A menu alias uses the same command as the package submenu; group metadata changes placement without changing dispatch or keymap scope.
+
+An optional row `scope` adds a CSS selector constraint on the command target or its ancestors. For example, a particular alias of a command registered in several surfaces may be restricted to `lumine-text-editor:not([mini])`. This is an additional context constraint, not a registration selector to compare as text or a selector for finding a different target. The same constraint applies when preparing the row and before executing it. Omit it when the registered command scope already expresses the row's contract.
 
 ## Context-menu policies and contributions
 
-A context-menu selector accepts either an item array or an object with `items`, `groupOrder` and optional `sortBy`. Use the object form to declare the layout of a surface you own. A package contributing to the editor's existing layout can keep the array form and classify its rows.
+A context-menu selector accepts either an item array or an object with `items`, optional `groupOrder`, `sortBy` and `commandTarget`. Use the object form to declare the layout or command target of a surface you own. A package contributing to the editor's existing layout can keep the array form and classify its rows.
 
 The following excerpt shows the object form with real core editor commands and groups:
 
@@ -126,20 +128,33 @@ Grouped definitions and classified contributions need no separator fences. Exist
 
 Declare nested groups on the submenu item that owns them. A submenu does not inherit its parent's `groupOrder`. Its children retain their authored sequence unless that submenu declares its own layout.
 
-## Contextual keyboard shortcuts
+## Command targets
 
-Shortcut labels resolve from the menu's invoked element by default. A status or title control whose action applies to an editor can provide `keyBindingTarget` on a runtime row. It accepts an element or a function called with the invoking element as `this` and its first argument; return the owning editor element, or `null` when its scoped shortcut does not apply. Menu and tooltip labels share the same resolver and select the highest-precedence matching binding, including user overrides. This affects the displayed shortcut only: command dispatch still uses the original menu target and its `commandDetail`.
+A context menu dispatches to its clicked element by default (`commandTarget: "context"`). Preserve that target for menus on tabs, tree entries and Jupyter results: the clicked object may differ from the active tab, editor or cursor result. A status or title control whose menu acts on the previously focused surface declares `commandTarget: "focus"` on its selector descriptor. The focus is captured before the menu takes it; opening the menu does not activate an editor or search for another target when the focused surface has no matching command handler.
 
-Rows with `commandDetail` do not automatically borrow the command's shortcut, because keyboard dispatch supplies no such parameters. If a contextual wrapper performs exactly the same operation as a public keyboard command, name that command in `keyBindingCommand`. A combined or behavior-changing variant needs its own command and binding; it must not advertise a standalone action's shortcut. Labels are resolved from current user keymaps each time the menu opens, and lookup-only targets and callbacks are removed from the prepared context-menu template.
-
-```javascript
+```json
 {
-  label: "Sticky Mode",
-  command: "column-selection:sticky",
-  keyBindingTarget: (target) =>
-    lumine.workspace.resolveCommandContext(target).embeddedEditor?.getElement() ?? null
+  "context-menu": {
+    ".overtype-mode-icon": {
+      "commandTarget": "focus",
+      "items": [
+        { "label": "Overtype for All Editors", "command": "overtype-mode:toggle-global" },
+        { "label": "Overtype for This Editor", "command": "overtype-mode:toggle-editor" }
+      ]
+    }
+  }
 }
 ```
+
+A row can override its descriptor's `commandTarget` with `"context"` or `"focus"`. The selected target is reused for availability, default shortcut lookup and execution. Selector matching and ownership callbacks (`shouldDisplay` and `created`) retain the original clicked event, so a status menu can still identify its own tile. Optional `scope` constrains the selected target without changing it. Command matching uses the existing command registry; it does not require a second validator on every command. Runtime guards still handle changing domain state such as a missing kernel, an unsaved file or a stopped build.
+
+## Contextual keyboard shortcuts
+
+Shortcut labels resolve from the selected command target by default. A focus-targeted status menu therefore checks the previously focused surface rather than borrowing a shortcut from an editor in the center. Command availability and shortcut availability are independent: a workspace command may be enabled while its editor-only binding does not apply to the saved focus. Menu and tooltip labels share the same resolver and select the highest-precedence matching binding, including user overrides.
+
+A runtime row may provide `keyBindingTarget` for a contextual wrapper whose captured parameters perform the same operation on another explicit object. It accepts an element or a function called with the original invoking element as `this` and its first argument; return that object's element, or `null` when its shortcut does not apply. This changes only the displayed shortcut, never the command target. Ordinary status controls use `commandTarget: "focus"` instead of a callback projecting the active editor.
+
+Rows with `commandDetail` do not automatically borrow the command's shortcut, because keyboard dispatch supplies no such parameters. If a contextual wrapper performs exactly the same operation as a public keyboard command, name that command in `keyBindingCommand`. A combined or behavior-changing variant needs its own command and binding; it must not advertise a standalone action's shortcut. Labels are resolved from current user keymaps each time the menu opens, and lookup-only targets and callbacks are removed from the prepared context-menu template.
 
 ## Visibility and lifecycle
 

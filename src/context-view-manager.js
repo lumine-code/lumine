@@ -52,7 +52,7 @@ class ContextViewHandle {
     this.options = options;
     this.closed = false;
     this.emitter = new Emitter();
-    this.previousFocus = manager.document.activeElement;
+    this.previousFocus = options.restoreFocusTarget ?? manager.document.activeElement;
     this.element = manager.document.createElement("lumine-context-view");
     this.element.classList.add("context-view");
     if (options.className) {
@@ -199,6 +199,35 @@ module.exports = class ContextViewManager {
     this.document = document ?? globalThis.document;
     this.window = window ?? this.document?.defaultView ?? globalThis.window;
     this.activeHandle = null;
+    this.contextGesture = null;
+    this.captureContextGesture = (event) => {
+      const contextual = event.button === 2 || (event.button === 0 && event.ctrlKey);
+      if (!contextual) {
+        this.contextGesture = null;
+        return;
+      }
+      if (event.type === "mousedown" && this.contextGesture?.pointerTarget === event.target) return;
+      const activeElement = this.document.activeElement;
+      this.contextGesture = {
+        pointerTarget: event.type === "pointerdown" ? event.target : null,
+        target: event.target,
+        focusTarget: this.activeHandle?.element.contains(activeElement)
+          ? this.activeHandle.previousFocus
+          : activeElement,
+      };
+    };
+    this.clearContextGesture = () => (this.contextGesture = null);
+    this.document.addEventListener("pointerdown", this.captureContextGesture, true);
+    this.document.addEventListener("mousedown", this.captureContextGesture, true);
+    this.document.addEventListener("keydown", this.clearContextGesture, true);
+  }
+
+  // Capture at the start of the opening gesture: a focusable status control
+  // can receive focus before the later contextmenu event is delivered.
+  getFocusTarget(event) {
+    const gesture = this.contextGesture;
+    this.contextGesture = null;
+    return gesture?.target === event?.target ? gesture.focusTarget : this.document.activeElement;
   }
 
   show(options) {
@@ -219,7 +248,12 @@ module.exports = class ContextViewManager {
   }
 
   destroy() {
+    if (!this.document) return;
     this.hide({ cancelled: true });
+    this.document.removeEventListener("pointerdown", this.captureContextGesture, true);
+    this.document.removeEventListener("mousedown", this.captureContextGesture, true);
+    this.document.removeEventListener("keydown", this.clearContextGesture, true);
+    this.contextGesture = null;
     this.document = null;
     this.window = null;
   }

@@ -14,6 +14,7 @@ describe("MacApplicationMenu", () => {
   let originalSetApplicationMenu;
   let originalLumineApplication;
   let sentCommands;
+  let sentCommandOptions;
 
   const buildFakeMenu = (template) => {
     const menu = new EventEmitter();
@@ -40,6 +41,7 @@ describe("MacApplicationMenu", () => {
     builtTemplates = [];
     installedMenus = [];
     sentCommands = [];
+    sentCommandOptions = [];
 
     originalBuildFromTemplate = Menu.buildFromTemplate;
     originalSetApplicationMenu = Menu.setApplicationMenu;
@@ -51,7 +53,10 @@ describe("MacApplicationMenu", () => {
 
     originalLumineApplication = global.lumineApplication;
     global.lumineApplication = {
-      sendCommand: (command, detail) => sentCommands.push([command, detail]),
+      sendCommand: (command, detail, options) => {
+        sentCommands.push([command, detail]);
+        sentCommandOptions.push(options);
+      },
     };
 
     applicationMenu = new MacApplicationMenu("1.2.3");
@@ -78,16 +83,12 @@ describe("MacApplicationMenu", () => {
   describe("::translateTemplate", () => {
     it("adds accelerators and displays chords and paste bindings in labels", () => {
       const template = [
-        { label: "Save", command: "core:save" },
-        { label: "Run", command: "run", metadata: {} },
-        { label: "Paste", command: "core:paste" },
+        { label: "Save", command: "core:save", keystrokes: ["ctrl-s"] },
+        { label: "Run", command: "run", metadata: {}, keystrokes: ["ctrl-a ctrl-b"] },
+        { label: "Paste", command: "core:paste", keystrokes: ["ctrl-v"] },
       ];
 
-      applicationMenu.translateTemplate(template, {
-        "core:save": ["ctrl-s"],
-        run: ["ctrl-a ctrl-b"],
-        "core:paste": ["ctrl-v"],
-      });
+      applicationMenu.translateTemplate(template);
 
       assert.strictEqual(template[0].accelerator, "Ctrl+S");
       assert.strictEqual(
@@ -109,7 +110,7 @@ describe("MacApplicationMenu", () => {
         { label: "Services", role: "services", submenu: [] },
       ];
 
-      applicationMenu.translateTemplate(template, {});
+      applicationMenu.translateTemplate(template);
       template[0].click();
 
       assert.isTrue(template[0].metadata.windowSpecific);
@@ -118,11 +119,11 @@ describe("MacApplicationMenu", () => {
       assert.deepStrictEqual(sentCommands, [["core:save", detail]]);
     });
 
-    it("only infers accelerators for commands without a detail payload at every depth", () => {
+    it("uses each row's prepared shortcut without inferring variants from another row", () => {
       const details = [{ redistribute: true }, {}, false, 0, "alternate"];
       const template = [
-        { label: "Plain", command: "layout" },
-        { label: "Null Detail", command: "layout", commandDetail: null },
+        { label: "Plain", command: "layout", keystrokes: ["ctrl-s"] },
+        { label: "Null Detail", command: "layout", commandDetail: null, keystrokes: ["ctrl-s"] },
         ...details.map((commandDetail, index) => ({
           label: `Variant ${index}`,
           command: "layout",
@@ -131,13 +132,13 @@ describe("MacApplicationMenu", () => {
         {
           label: "Nested",
           submenu: [
-            { label: "Plain", command: "layout" },
+            { label: "Plain", command: "layout", keystrokes: ["ctrl-s"] },
             { label: "Variant", command: "layout", commandDetail: { sequentize: true } },
           ],
         },
       ];
 
-      applicationMenu.translateTemplate(template, { layout: ["ctrl-s"] });
+      applicationMenu.translateTemplate(template);
       assert.strictEqual(template[0].accelerator, "Ctrl+S");
       assert.strictEqual(template[1].accelerator, "Ctrl+S");
       for (const [index, detail] of details.entries()) {
@@ -154,10 +155,44 @@ describe("MacApplicationMenu", () => {
       assert.deepStrictEqual(sentCommands.at(-1), ["layout", { sequentize: true }]);
     });
 
-    it("ignores inherited binding-map keys after structured clone", () => {
+    it("does not infer a shortcut from a command's name", () => {
       const template = [{ label: "Break", command: "constructor" }];
-      applicationMenu.translateTemplate(template, {});
+      applicationMenu.translateTemplate(template);
       assert.isUndefined(template[0].accelerator);
+    });
+
+    it("preserves prepared availability and sends scope separately from command details", () => {
+      const detail = { alternate: true };
+      const template = [
+        { label: "Scoped", command: "editor:action", commandDetail: detail, scope: ".editing" },
+        { label: "Disabled", command: "editor:action", enabled: false },
+      ];
+      applicationMenu.translateTemplate(template);
+      template[0].click();
+      template[1].click();
+      assert.deepStrictEqual(sentCommands, [["editor:action", detail]]);
+      assert.deepStrictEqual(sentCommandOptions, [{ applicationMenu: true, scope: ".editing" }]);
+      assert.isFalse(template[1].enabled);
+      assert.isUndefined(template[0].scope);
+      assert.isUndefined(template[0].keystrokes);
+    });
+
+    it("routes a prepared menu through the window that supplied its template", () => {
+      const browserWindow = createWindow();
+      const owner = {};
+      const routed = [];
+      global.lumineApplication.lumineWindowForBrowserWindow = (window) => {
+        assert.strictEqual(window, browserWindow);
+        return owner;
+      };
+      global.lumineApplication.sendCommandToWindow = (...args) => routed.push(args);
+      const template = [{ label: "Save", command: "core:save" }];
+      applicationMenu.translateTemplate(template, browserWindow);
+      template[0].click();
+      assert.deepStrictEqual(routed, [
+        ["core:save", owner, undefined, { applicationMenu: true, scope: undefined }],
+      ]);
+      assert.deepStrictEqual(sentCommands, []);
     });
   });
 

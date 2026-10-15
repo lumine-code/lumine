@@ -27,8 +27,8 @@ module.exports = class MacApplicationMenu {
   /**
    * Replace the system menu template associated with a BrowserWindow.
    */
-  update(window, template, keystrokesByCommand) {
-    this.translateTemplate(template, keystrokesByCommand);
+  update(window, template) {
+    this.translateTemplate(template, window);
     this.substituteVersion(template);
     this.windowTemplates.set(window, template);
     if (window === this.lastFocusedWindow) this.setActiveTemplate(template);
@@ -183,18 +183,13 @@ module.exports = class MacApplicationMenu {
    * Add native accelerators and main-process command handlers to a renderer
    * template.
    */
-  translateTemplate(template, keystrokesByCommand) {
+  translateTemplate(template, window) {
     template.forEach((item) => {
       if (item.metadata == null) item.metadata = {};
       if (item.command) {
-        // Structured clone does not preserve the renderer's null prototype, so
-        // inherited Object keys must never masquerade as real bindings.
-        // Key bindings dispatch the command without a detail payload, so a
-        // parameterized menu action must not borrow its accelerator.
-        const keystrokes =
-          item.commandDetail == null && Object.hasOwn(keystrokesByCommand, item.command)
-            ? keystrokesByCommand[item.command]
-            : null;
+        // The renderer has already resolved availability and shortcut scope
+        // against the original DOM target. Main receives only serializable data.
+        const keystrokes = item.keystrokes;
         if (keystrokes && keystrokes.length > 0) {
           const keystroke = keystrokes[0];
           if (keystroke.includes(" ")) {
@@ -210,10 +205,27 @@ module.exports = class MacApplicationMenu {
             item.accelerator = MenuHelpers.acceleratorForKeystroke(keystroke);
           }
         }
-        item.click = () => global.lumineApplication.sendCommand(item.command, item.commandDetail);
+        const options = { applicationMenu: true, scope: item.scope };
+        item.click = () => {
+          if (item.enabled === false) return;
+          const application = global.lumineApplication;
+          const owner = application.lumineWindowForBrowserWindow?.(window);
+          if (window && item.metadata.windowSpecific && !owner) return;
+          if (owner)
+            return application.sendCommandToWindow(
+              item.command,
+              owner,
+              item.commandDetail,
+              options,
+            );
+          return application.sendCommand(item.command, item.commandDetail, options);
+        };
         if (!/^application:/.test(item.command)) item.metadata.windowSpecific = true;
       }
-      if (item.submenu) this.translateTemplate(item.submenu, keystrokesByCommand);
+      delete item.keystrokes;
+      delete item.scope;
+      delete item.commandTarget;
+      if (item.submenu) this.translateTemplate(item.submenu, window);
     });
     return template;
   }

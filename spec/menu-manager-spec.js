@@ -1,5 +1,7 @@
 const path = require("path");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 const MenuManager = require("../src/menu-manager");
+const WindowEventHandler = require("../src/window-event-handler");
 
 describe("MenuManager", function () {
   let menu = null;
@@ -8,6 +10,7 @@ describe("MenuManager", function () {
     menu = new MenuManager({
       keymapManager: lumine.keymaps,
       packageManager: lumine.packages,
+      commandRegistry: lumine.commands,
     });
     spyOn(menu, "sendToBrowserProcess"); // Do not modify Lumine's actual menus
     menu.initialize({ resourcePath: lumine.application.getResourcePath() });
@@ -185,9 +188,28 @@ describe("MenuManager", function () {
   });
 
   describe("::update()", function () {
-    beforeEach(() => (menu.platform = "darwin"));
+    let target, commands, bindings;
 
-    it("prepares no unused change snapshot before a native menu flush", () => {
+    beforeEach(() => {
+      menu.platform = "darwin";
+      target = document.createElement("button");
+      target.className = "native-menu-target";
+      document.body.appendChild(target);
+      target.focus();
+      commands = lumine.commands.add(target, { b() {}, c() {}, d() {} });
+      bindings = [];
+    });
+
+    afterEach(() => {
+      for (const binding of bindings) binding.dispose();
+      commands.dispose();
+      target.remove();
+    });
+
+    const addBindings = (keymap) => bindings.push(lumine.keymaps.add("native-menu-spec", keymap));
+    const sentItems = () => menu.sendToBrowserProcess.calls.mostRecent().args[0][0].submenu;
+
+    it("prepares one native snapshot when flushing a batch of changes", () => {
       spyOn(menu, "getTemplate").and.callThrough();
       menu.update();
       menu.update();
@@ -196,7 +218,7 @@ describe("MenuManager", function () {
       expect(menu.getTemplate).toHaveBeenCalledTimes(1);
     });
 
-    it("delivers prepared change snapshots synchronously to observers", () => {
+    it("delivers canonical change snapshots synchronously to observers", () => {
       const changed = jasmine.createSpy("changed");
       const subscription = menu.onDidChange(changed);
       menu.add([{ label: "Startup", submenu: [{ label: "Action", command: "spec:action" }] }]);
@@ -205,35 +227,148 @@ describe("MenuManager", function () {
       subscription.dispose();
     });
 
-    it("sends the current menu template and associated key bindings to the browser process", function () {
-      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
-      lumine.keymaps.add("test", { "lumine-workspace": { "ctrl-b": "b" } });
-      menu.update();
-      advanceClock(1);
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toEqual(["ctrl-b"]);
-    });
-
-    it("cancels a pending browser-process update when destroyed", function () {
-      menu.update();
-      menu.destroy();
-      advanceClock(1);
-      expect(menu.sendToBrowserProcess).not.toHaveBeenCalled();
-    });
-
-    it("omits key bindings that are mapped to unset! in any context", function () {
-      // it would be nice to be smarter about omitting, but that would require a much
-      // more dynamic interaction between the currently focused element and the menu
-      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
-      lumine.keymaps.add("test", { "lumine-workspace": { "ctrl-b": "b" } });
-      lumine.keymaps.add("test", { "lumine-text-editor": { "ctrl-b": "unset!" } });
-      advanceClock(1);
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
-    });
-
-    it("omits key bindings that could conflict with AltGraph characters on macOS", function () {
+    it("uses the real target for availability, scope, and effective shortcuts", () => {
       menu.add([
         {
-          label: "A",
+          label: "Actions",
+          submenu: [
+            { label: "Available", command: "b", scope: ".native-menu-target" },
+            { label: "Wrong Scope", command: "b", scope: ".other-target" },
+            { label: "Missing", command: "missing" },
+            { label: "Explicitly Disabled", command: "b", enabled: false },
+            { label: "System", command: "application:quit" },
+            { label: "Native", role: "hide" },
+          ],
+        },
+      ]);
+      addBindings({ ".native-menu-target": { "ctrl-b": "b" } });
+      advanceClock(1);
+      expect(sentItems().map((item) => item.enabled)).toEqual([
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+      ]);
+      expect(
+        sentItems()
+          .slice(0, 4)
+          .map((item) => item.keystrokes),
+      ).toEqual([["ctrl-b"], [], [], []]);
+      expect(sentItems()[5].keystrokes).toEqual([]);
+    });
+
+    it("does not infer an editor binding while an unrelated input has focus", () => {
+      menu.add([{ label: "Actions", submenu: [{ label: "B", command: "b" }] }]);
+      addBindings({ "lumine-text-editor": { "ctrl-b": "b" } });
+      advanceClock(1);
+      expect(sentItems()[0].keystrokes).toEqual([]);
+    });
+
+    it("keeps native editing commands available on supported Chromium inputs", () => {
+      const subscriptions = new CompositeDisposable();
+      const performWebContentsAction = jasmine.createSpy("performWebContentsAction");
+      WindowEventHandler.prototype.handleNativeKeybindings.call({
+        lumineEnvironment: lumine,
+        subscriptions,
+        applicationDelegate: { performWebContentsAction },
+      });
+      const input = document.createElement("input");
+      input.className = "native-key-bindings";
+      document.body.appendChild(input);
+      menu.add([
+        {
+          label: "Edit",
+          submenu: ["copy", "paste", "undo", "redo", "select-all", "cut"].map((name) => ({
+            label: name,
+            command: `core:${name}`,
+          })),
+        },
+      ]);
+      try {
+        expect(menu.prepareNativeTemplate(input)[0].submenu.map((item) => item.enabled)).toEqual([
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+        ]);
+        lumine.commands.dispatch(input, "core:copy");
+        expect(performWebContentsAction).toHaveBeenCalledOnceWith("copy");
+        input.className = "";
+        expect(menu.prepareNativeTemplate(input)[0].submenu.map((item) => item.enabled)).toEqual([
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+        ]);
+      } finally {
+        subscriptions.dispose();
+        input.remove();
+      }
+    });
+
+    it("respects overrides and unset bindings only in the current target ancestry", () => {
+      menu.add([{ label: "Actions", submenu: [{ label: "B", command: "b" }] }]);
+      addBindings({ ".native-menu-target": { "ctrl-b": "b", "ctrl-c": "b" } });
+      addBindings({ ".unrelated-target": { "ctrl-b": "unset!" } });
+      addBindings({ ".native-menu-target": { "ctrl-c": "c" } });
+      advanceClock(1);
+      expect(sentItems()[0].keystrokes).toEqual(["ctrl-b"]);
+      addBindings({ ".native-menu-target": { "ctrl-b": "unset!" } });
+      menu.update();
+      advanceClock(1);
+      expect(sentItems()[0].keystrokes).toEqual([]);
+    });
+
+    it("scans bindings once for rows sharing the same target", () => {
+      menu.add([
+        {
+          label: "Actions",
+          submenu: [
+            { label: "B", command: "b" },
+            { label: "C", command: "c" },
+          ],
+        },
+      ]);
+      const find = spyOn(lumine.keymaps, "findKeyBindings").and.callThrough();
+      menu.prepareNativeTemplate(target);
+      expect(find).toHaveBeenCalledOnceWith({ target });
+    });
+
+    it("resolves explicit shortcut targets before sending serializable row state", () => {
+      menu.add([
+        {
+          label: "Actions",
+          submenu: [
+            { label: "Plain", command: "b" },
+            { label: "Variant", command: "b", commandDetail: { alternate: true } },
+            {
+              label: "Equivalent",
+              command: "b",
+              commandDetail: { alternate: true },
+              keyBindingCommand: "c",
+              keyBindingTarget: () => target,
+            },
+          ],
+        },
+      ]);
+      addBindings({ ".native-menu-target": { "ctrl-b": "b", "ctrl-c": "c" } });
+      advanceClock(1);
+      expect(sentItems().map((item) => item.keystrokes)).toEqual([["ctrl-b"], [], ["ctrl-c"]]);
+      expect(sentItems()[2].keyBindingTarget).toBeUndefined();
+      expect(sentItems()[2].keyBindingCommand).toBeUndefined();
+      expect(() => structuredClone(sentItems())).not.toThrow();
+    });
+
+    it("omits shortcuts that conflict with AltGraph characters on macOS", () => {
+      menu.add([
+        {
+          label: "Actions",
           submenu: [
             { label: "B", command: "b" },
             { label: "C", command: "c" },
@@ -241,80 +376,66 @@ describe("MenuManager", function () {
           ],
         },
       ]);
-
-      lumine.keymaps.add("test", {
-        "lumine-workspace": {
-          "alt-b": "b",
-          "alt-shift-c": "c",
-          "alt-cmd-d": "d",
-        },
+      addBindings({
+        ".native-menu-target": { "alt-b": "b", "alt-shift-c": "c", "alt-cmd-d": "d" },
       });
-
       advanceClock(1);
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["c"]).toBeUndefined();
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["d"]).toEqual(["alt-cmd-d"]);
+      expect(sentItems().map((item) => item.keystrokes)).toEqual([[], [], ["alt-cmd-d"]]);
     });
 
-    it("collects a command that names something on Object.prototype", function () {
-      // A command is whatever a keymap file says. Against a plain object the
-      // `== null` guard in `update` reads `Object.prototype.constructor`, finds
-      // it non-null, and unshifts onto `Object` — a TypeError inside the
-      // timeout, which takes every later menu update with it.
+    it("refreshes native availability after command registration and removal", () => {
+      menu.add([{ label: "Actions", submenu: [{ label: "Later", command: "native-menu:later" }] }]);
+      advanceClock(1);
+      expect(sentItems()[0].enabled).toBe(false);
+      const changed = jasmine.createSpy("changed");
+      const subscription = menu.onDidChange(changed);
+      const later = lumine.commands.add(target, "native-menu:later", () => {});
+      advanceClock(1);
+      expect(sentItems()[0].enabled).toBe(true);
+      later.dispose();
+      advanceClock(1);
+      expect(sentItems()[0].enabled).toBe(false);
+      expect(changed).not.toHaveBeenCalled();
+      subscription.dispose();
+    });
+
+    it("refreshes a focused row when its scope attributes change", async () => {
+      menu.observeNativeDocument(document);
       menu.add([
         {
-          label: "A",
-          submenu: [
-            { label: "B", command: "constructor" },
-            { label: "C", command: "hasOwnProperty" },
-          ],
+          label: "Actions",
+          submenu: [{ label: "Scoped", command: "b", scope: ".native-menu-target" }],
         },
       ]);
-      lumine.keymaps.add("test", {
-        "lumine-workspace": { "ctrl-b": "constructor", "ctrl-c": "hasOwnProperty" },
-      });
-
       advanceClock(1);
-      const keystrokesByCommand = menu.sendToBrowserProcess.calls.argsFor(0)[1];
-      expect(keystrokesByCommand["constructor"]).toEqual(["ctrl-b"]);
-      expect(keystrokesByCommand["hasOwnProperty"]).toEqual(["ctrl-c"]);
-      expect(Object.getPrototypeOf(keystrokesByCommand)).toBeNull();
+      expect(sentItems()[0].enabled).toBe(true);
+      target.className = "changed-context";
+      await Promise.resolve();
+      advanceClock(1);
+      expect(sentItems()[0].enabled).toBe(false);
     });
 
-    it("measures every binding against the body classes the pass started with", function () {
-      // The simulated tree used to be built once and kept for the life of the
-      // manager, so a selector qualified by a body class answered for whatever
-      // classes were on the body when the first menu was built.
-      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
-      lumine.keymaps.add("test", { ".theme-under-test lumine-text-editor": { "ctrl-b": "b" } });
-
-      menu.update();
-      advanceClock(1);
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
-
-      document.body.classList.add("theme-under-test");
+    it("releases a cancelled session on a genuine later focus change", () => {
+      menu.observeNativeDocument(document);
+      menu.beginNativeMenu(document);
+      menu.endNativeMenu();
+      const other = document.createElement("button");
+      document.body.appendChild(other);
       try {
-        menu.update();
-        advanceClock(1);
-        expect(menu.sendToBrowserProcess.calls.argsFor(1)[1]["b"]).toEqual(["ctrl-b"]);
+        other.focus();
+        expect(menu.getNativeMenuTarget(document)).toBe(other);
       } finally {
-        document.body.classList.remove("theme-under-test");
+        other.remove();
       }
     });
 
-    it("builds one simulated tree per pass and keeps none of it", function () {
-      spyOn(menu, "buildTestEditor").and.callThrough();
-      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
-      lumine.keymaps.add("test", { "lumine-workspace": { "ctrl-b": "b" } });
-
+    it("cancels a pending browser-process update when destroyed", () => {
       menu.update();
+      menu.destroy();
       advanceClock(1);
-
-      expect(menu.buildTestEditor.calls.count()).toBe(1);
-      expect(menu.testEditor).toBeNull();
+      expect(menu.sendToBrowserProcess).not.toHaveBeenCalled();
     });
   });
-
   describe("core-owned menu layout", () => {
     it("retains the core layout through extension insertion and disposal", () => {
       menu.loadPlatformItems();
@@ -343,25 +464,6 @@ describe("MenuManager", function () {
       disposable.dispose();
       expect(fileMenu()).toEqual(initial);
       expect(JSON.stringify(menu.getTemplate())).not.toContain('"groupOrder"');
-    });
-  });
-
-  describe("::includeSelector(selector)", function () {
-    it("answers against the body's classes as they are now", function () {
-      expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(false);
-
-      document.body.classList.add("theme-under-test");
-      try {
-        expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(true);
-      } finally {
-        document.body.classList.remove("theme-under-test");
-      }
-
-      expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(false);
-    });
-
-    it("refuses a selector it cannot parse", function () {
-      expect(menu.includeSelector("<not a selector>")).toBe(false);
     });
   });
 

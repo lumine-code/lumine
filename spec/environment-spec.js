@@ -69,6 +69,88 @@ describe("Environment", () => {
     });
   });
 
+  describe("native application menu command targets", () => {
+    let original, other, registration, dispatched;
+    const visibility = (visible) =>
+      lumine.applicationDelegate
+        .ipcMessageEmitter()
+        .emit("did-change-application-menu-visibility", {
+          visible,
+          windowId: lumine.workspace.getMainWindow().getId(),
+        });
+
+    beforeEach(() => {
+      original = document.createElement("button");
+      original.className = "native-menu-command-target";
+      other = document.createElement("button");
+      document.body.append(original, other);
+      dispatched = jasmine.createSpy("dispatched");
+      registration = lumine.commands.add(
+        ".native-menu-command-target",
+        "native-menu-spec:run",
+        dispatched,
+      );
+      original.focus();
+    });
+
+    afterEach(() => {
+      visibility(false);
+      lumine.menu.nativeMenuSession = null;
+      registration.dispose();
+      original.remove();
+      other.remove();
+    });
+
+    it("dispatches at the opening target after menu focus changes and close notification", () => {
+      visibility(true);
+      other.focus();
+      visibility(false);
+      const detail = { source: "native-menu" };
+      lumine.dispatchApplicationMenuCommand("native-menu-spec:run", detail, {
+        applicationMenu: true,
+        scope: ".native-menu-command-target",
+      });
+      expect(dispatched).toHaveBeenCalledTimes(1);
+      const [event] = dispatched.calls.mostRecent().args;
+      expect(event.target).toBe(original);
+      expect(event.detail).toBe(detail);
+    });
+
+    it("revalidates scope and registration on that same target before dispatch", () => {
+      visibility(true);
+      original.className = "changed-context";
+      other.focus();
+      lumine.dispatchApplicationMenuCommand("native-menu-spec:run", null, {
+        applicationMenu: true,
+        scope: ".native-menu-command-target",
+      });
+      expect(dispatched).not.toHaveBeenCalled();
+
+      original.className = "native-menu-command-target";
+      original.focus();
+      visibility(false);
+      visibility(true);
+      registration.dispose();
+      lumine.dispatchApplicationMenuCommand("native-menu-spec:run", null, {
+        applicationMenu: true,
+      });
+      expect(dispatched).not.toHaveBeenCalled();
+    });
+
+    it("keeps the addressed document even if another presentation becomes focused", () => {
+      visibility(true);
+      const otherDocument = document.implementation.createHTMLDocument();
+      spyOn(lumine.workspace, "getFocusedWindow").and.returnValue({
+        getDocument: () => otherDocument,
+      });
+      lumine.dispatchApplicationMenuCommand("native-menu-spec:run", null, {
+        applicationMenu: true,
+      });
+      expect(dispatched).toHaveBeenCalledTimes(1);
+      expect(dispatched.calls.mostRecent().args[0].target).toBe(original);
+    });
+  });
+
   describe("namespaced process APIs", () => {
     it("does not expose the removed top-level API", () => {
       for (const method of [

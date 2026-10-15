@@ -1,5 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const { keyBindingLabelForCommand, resolveKeyBindingTarget } = require("./key-binding-helpers");
+const { validateSelector } = require("./css-selectors");
 
 const ItemSpecificities = new WeakMap();
 
@@ -99,6 +100,14 @@ function normalizeLabel(label) {
 }
 
 function cloneMenuItem(item) {
+  if (item.scope != null) {
+    if (typeof item.scope !== "string")
+      throw new TypeError("Menu item scope must be a CSS selector");
+    validateSelector(item.scope);
+  }
+  if (item.commandTarget != null && !["focus", "context"].includes(item.commandTarget)) {
+    throw new TypeError("Menu commandTarget must be 'focus' or 'context'");
+  }
   item = _.pick(
     item,
     "type",
@@ -108,6 +117,8 @@ function cloneMenuItem(item) {
     "checked",
     "visible",
     "command",
+    "scope",
+    "commandTarget",
     "submenu",
     "commandDetail",
     "keyBindingCommand",
@@ -192,7 +203,13 @@ const MODIFIER_KEYS = new Set([
 // Contextual wrappers can name the equivalent keyboard command without changing
 // their dispatch target or details. A behavior-changing variant has no inferred
 // binding unless its owner explicitly identifies such a command.
-function keyBindingLabelForMenuItem(item, target, keymapManager) {
+function keyBindingLabelForMenuItem(
+  item,
+  target,
+  keymapManager,
+  invokingElement = target,
+  bindingsByTarget,
+) {
   const explicitCommand = item.keyBindingCommand !== undefined;
   const explicitTarget = item.keyBindingTarget !== undefined;
   const command = explicitCommand
@@ -202,9 +219,27 @@ function keyBindingLabelForMenuItem(item, target, keymapManager) {
       : null;
   const emptyLabel = explicitCommand || explicitTarget ? "" : undefined;
   if (!command || !keymapManager) return emptyLabel;
-  const bindingTarget = resolveKeyBindingTarget(item.keyBindingTarget, target, target);
+  const bindingTarget = resolveKeyBindingTarget(item.keyBindingTarget, invokingElement, target);
   if (explicitTarget && bindingTarget == null) return "";
-  return keyBindingLabelForCommand(keymapManager, command, bindingTarget) ?? emptyLabel;
+  return (
+    keyBindingLabelForCommand(keymapManager, command, bindingTarget, bindingsByTarget) ?? emptyLabel
+  );
+}
+
+// A menu scope narrows this row's context without choosing another dispatch
+// target or a particular registration of its command.
+function matchesScope(target, scope) {
+  if (scope == null) return true;
+  for (let element = target; element != null; element = element.parentElement) {
+    const matches = element.matches ?? element.webkitMatchesSelector;
+    if (matches?.call(element, scope)) return true;
+  }
+  return false;
+}
+
+function isMenuItemEnabled(item, target, commandRegistry = globalThis.lumine?.commands) {
+  if (item.enabled === false || !matchesScope(target, item.scope)) return false;
+  return !item.command || commandRegistry?.canDispatch(target, item.command) === true;
 }
 
 function acceleratorForKeystroke(keystroke) {
@@ -244,4 +279,6 @@ module.exports = {
   stripPositioningKeys,
   acceleratorForKeystroke,
   keyBindingLabelForMenuItem,
+  matchesScope,
+  isMenuItemEnabled,
 };

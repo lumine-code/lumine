@@ -6,6 +6,55 @@ const MenuManager = require("../src/menu-manager");
 // Electron. Every menu convention in the workspace CLAUDE.md follows from that,
 // so pin the behaviour here rather than rediscovering it from a broken menu.
 describe("MenuHelpers", function () {
+  describe("command availability", () => {
+    it("combines the registered command with an additional ancestor scope", () => {
+      const surface = document.createElement("div");
+      surface.className = "menu-command-surface";
+      const target = document.createElement("span");
+      surface.append(target);
+      const commands = {
+        canDispatch: jasmine.createSpy("canDispatch").and.returnValue(true),
+      };
+      const item = { command: "test:run", scope: ".menu-command-surface" };
+      expect(MenuHelpers.isMenuItemEnabled(item, target, commands)).toBe(true);
+      expect(commands.canDispatch).toHaveBeenCalledOnceWith(target, "test:run");
+      commands.canDispatch.calls.reset();
+      surface.className = "other-surface";
+      expect(MenuHelpers.isMenuItemEnabled(item, target, commands)).toBe(false);
+      expect(commands.canDispatch).not.toHaveBeenCalled();
+      surface.className = "menu-command-surface";
+      commands.canDispatch.and.returnValue(false);
+      expect(MenuHelpers.isMenuItemEnabled(item, target, commands)).toBe(false);
+      expect(MenuHelpers.isMenuItemEnabled({ ...item, enabled: false }, target, commands)).toBe(
+        false,
+      );
+    });
+
+    it("preserves and validates the optional scope and command target policy", () => {
+      expect(
+        MenuHelpers.cloneMenuItem({
+          label: "Editor",
+          scope: "lumine-text-editor:not([mini])",
+          commandTarget: "focus",
+        }),
+      ).toEqual({
+        id: "Editor",
+        label: "Editor",
+        scope: "lumine-text-editor:not([mini])",
+        commandTarget: "focus",
+      });
+      expect(() => MenuHelpers.cloneMenuItem({ label: "Invalid", scope: 1 })).toThrowError(
+        TypeError,
+      );
+      expect(() => MenuHelpers.cloneMenuItem({ label: "Invalid", scope: "[" })).toThrowError(
+        SyntaxError,
+      );
+      expect(() =>
+        MenuHelpers.cloneMenuItem({ label: "Invalid", commandTarget: "active-editor" }),
+      ).toThrowError(TypeError);
+    });
+  });
+
   describe("::stripPositioningKeys", function () {
     it("removes all four keys at every depth and leaves everything else", function () {
       const items = [

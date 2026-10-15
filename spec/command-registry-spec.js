@@ -278,6 +278,179 @@ describe("CommandRegistry", () => {
     });
   });
 
+  describe("::canDispatch(target, commandName)", () => {
+    it("matches the target and its ancestors without invoking handlers", () => {
+      const handler = jasmine.createSpy("handler");
+      registry.add(".grandchild", "test:local", handler);
+      registry.add(".parent", "test:ancestor", handler);
+
+      expect(registry.canDispatch(grandchild, "test:local")).toBe(true);
+      expect(registry.canDispatch(child, "test:local")).toBe(false);
+      expect(registry.canDispatch(grandchild, "test:ancestor")).toBe(true);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("honors mini and read-only exclusions in the registered scope", () => {
+      child.classList.add("text-editor");
+      registry.add(".text-editor:not([mini]):not([readonly])", "test:edit", () => {});
+
+      expect(registry.canDispatch(grandchild, "test:edit")).toBe(true);
+      child.setAttribute("mini", "");
+      expect(registry.canDispatch(grandchild, "test:edit")).toBe(false);
+      child.removeAttribute("mini");
+      child.setAttribute("readonly", "");
+      expect(registry.canDispatch(grandchild, "test:edit")).toBe(false);
+      child.removeAttribute("readonly");
+      expect(registry.canDispatch(grandchild, "test:edit")).toBe(true);
+    });
+
+    it("finds inline handlers only on the target's route and observes their disposal", () => {
+      const registration = registry.add(child, "test:inline", () => {});
+
+      expect(registry.canDispatch(grandchild, "test:inline")).toBe(true);
+      expect(registry.canDispatch(parent, "test:inline")).toBe(false);
+      registration.dispose();
+      expect(registry.canDispatch(grandchild, "test:inline")).toBe(false);
+    });
+
+    it("observes selector disposal without treating the remaining command event as registered", () => {
+      const registration = registry.add(".parent", "test:scoped", () => {});
+
+      expect(registry.canDispatch(grandchild, "test:scoped")).toBe(true);
+      registration.dispose();
+      expect(registry.canDispatch(grandchild, "test:scoped")).toBe(false);
+    });
+
+    it("includes detached ancestors and the target's window", () => {
+      parent.remove();
+      registry.add(".parent", "test:detached", () => {});
+      registry.add(window, "test:window", () => {});
+
+      expect(registry.canDispatch(grandchild, "test:detached")).toBe(true);
+      expect(registry.canDispatch(grandchild, "test:window")).toBe(true);
+      expect(registry.canDispatch(document, "test:window")).toBe(true);
+      expect(registry.canDispatch(window, "test:window")).toBe(true);
+    });
+
+    it("stays in a foreign target's window instead of reaching the registry's window", () => {
+      const frame = document.createElement("iframe");
+      parent.append(frame);
+      const childWindow = frame.contentWindow;
+      const target = childWindow.document.createElement("div");
+      childWindow.document.body.append(target);
+      registry.add(window, "test:main-window", () => {});
+      registry.add(childWindow, "test:foreign-window", () => {});
+
+      expect(registry.canDispatch(target, "test:main-window")).toBe(false);
+      expect(registry.canDispatch(target, "test:foreign-window")).toBe(true);
+      expect(registry.canDispatch(childWindow.document, "test:foreign-window")).toBe(true);
+      expect(registry.canDispatch(childWindow, "test:foreign-window")).toBe(true);
+      frame.remove();
+    });
+
+    it("returns false for missing commands or targets", () => {
+      registry.add(".parent", "test:known", () => {});
+
+      expect(registry.canDispatch(grandchild, "test:unknown")).toBe(false);
+      expect(registry.canDispatch(grandchild, "toString")).toBe(false);
+      expect(registry.canDispatch(grandchild, null)).toBe(false);
+      expect(registry.canDispatch(grandchild, "")).toBe(false);
+      expect(registry.canDispatch(null, "test:known")).toBe(false);
+      expect(registry.canDispatch(undefined, "test:known")).toBe(false);
+      expect(registry.canDispatch()).toBe(false);
+    });
+
+    it("looks up only the requested command and stops at the first match", () => {
+      registry.add(".grandchild", "test:requested", () => {});
+      registry.add(".parent", "test:requested", () => {});
+      registry.add(".grandchild", "test:unrelated", () => {});
+      registry.add(grandchild, "test:unrelated-inline", () => {});
+      spyOn(registry, "findCommands").and.throwError("Must not build a command catalogue");
+      const laterMatch = registry.selectorBasedListenersByCommandName["test:requested"][1];
+      spyOn(laterMatch, "matchesTarget").and.throwError("Must stop after the first match");
+      const preventScan = {
+        ownKeys() {
+          throw new Error("Must not scan unrelated commands");
+        },
+      };
+      registry.selectorBasedListenersByCommandName = new Proxy(
+        registry.selectorBasedListenersByCommandName,
+        preventScan,
+      );
+      registry.inlineListenersByCommandName = new Proxy(
+        registry.inlineListenersByCommandName,
+        preventScan,
+      );
+
+      expect(registry.canDispatch(grandchild, "test:requested")).toBe(true);
+      expect(registry.canDispatch(child, "test:unrelated-inline")).toBe(false);
+    });
+  });
+
+  describe("::onDidChange(callback)", () => {
+    it("notifies after selector and inline registrations are added and removed", () => {
+      const states = [];
+      registry.onDidChange(() => states.push(registry.canDispatch(grandchild, "test:change")));
+
+      const selector = registry.add(".parent", "test:change", () => {});
+      selector.dispose();
+      const inline = registry.add(child, "test:change", () => {});
+      inline.dispose();
+
+      expect(states).toEqual([true, false, true, false]);
+    });
+
+    it("survives clear and ignores disposal from a cleared generation", () => {
+      const oldSelector = registry.add(".parent", "test:change", () => {});
+      const oldInline = registry.add(child, "test:inline-change", () => {});
+      const changed = jasmine.createSpy("changed");
+      registry.onDidChange(changed);
+
+      registry.clear();
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(registry.canDispatch(grandchild, "test:change")).toBe(false);
+      registry.add(".parent", "test:change", () => {});
+      registry.add(child, "test:inline-change", () => {});
+      expect(changed).toHaveBeenCalledTimes(3);
+      oldSelector.dispose();
+      oldInline.dispose();
+      expect(changed).toHaveBeenCalledTimes(3);
+      expect(registry.canDispatch(grandchild, "test:change")).toBe(true);
+      expect(registry.canDispatch(grandchild, "test:inline-change")).toBe(true);
+    });
+
+    it("notifies after restoring a snapshot and ignores a displaced registration's disposal", () => {
+      registry.add(".parent", "test:snapshot", () => {});
+      const snapshot = registry.getSnapshot();
+      const discarded = registry.add(".grandchild", "test:discarded", () => {});
+      const changed = jasmine.createSpy("changed").and.callFake(() => {
+        expect(registry.canDispatch(grandchild, "test:snapshot")).toBe(true);
+        expect(registry.canDispatch(grandchild, "test:discarded")).toBe(false);
+      });
+      registry.onDidChange(changed);
+
+      registry.restoreSnapshot(snapshot);
+      expect(changed).toHaveBeenCalledTimes(1);
+      discarded.dispose();
+      expect(changed).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops notifications when the subscription or registry is disposed", () => {
+      const changed = jasmine.createSpy("changed");
+      const subscription = registry.onDidChange(changed);
+      registry.add(".parent", "test:before-dispose", () => {});
+      subscription.dispose();
+      registry.add(".parent", "test:after-dispose", () => {});
+      expect(changed).toHaveBeenCalledTimes(1);
+
+      const destroyed = jasmine.createSpy("destroyed");
+      registry.onDidChange(destroyed);
+      registry.destroy();
+      registry.clear();
+      expect(destroyed).not.toHaveBeenCalled();
+    });
+  });
+
   describe("::findCommands({target})", () => {
     it("returns command descriptors that can be invoked on the target or its ancestors", () => {
       registry.add(".parent", "namespace:command-1", () => {});

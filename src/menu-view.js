@@ -1,5 +1,5 @@
 const { Emitter } = require("@lumine-code/event-kit");
-const { keyBindingLabelForMenuItem } = require("./menu-helpers");
+const { keyBindingLabelForMenuItem, isMenuItemEnabled } = require("./menu-helpers");
 
 const itemViewsByElement = new WeakMap();
 const POINTER_SELECTION_DELAY = 250;
@@ -45,17 +45,13 @@ function renderMnemonic(element, label, enabled = true) {
   return parsed;
 }
 
-function commandTarget(explicitTarget, document) {
-  const presentation = globalThis.lumine?.workspace?.getWindowForElement?.(document.body);
-  return (
-    explicitTarget ||
-    presentation?.getEditorContainer()?.getActivePaneItem()?.getElement?.() ||
-    presentation?.getEditorContainer()?.getActivePane()?.getElement?.() ||
-    globalThis.lumine?.workspace?.getActiveTextEditor?.()?.getElement?.() ||
-    globalThis.lumine?.workspace?.getActivePane?.()?.getElement?.() ||
-    globalThis.lumine?.views?.getView?.(globalThis.lumine?.workspace) ||
-    document.querySelector("lumine-workspace") ||
-    document.body
+function normalizeCommandTarget(target, document) {
+  return target === document.body ? (document.querySelector("lumine-workspace") ?? target) : target;
+}
+
+function usesFocusTarget(items) {
+  return items.some(
+    (item) => item.commandTarget === "focus" || (item.submenu && usesFocusTarget(item.submenu)),
   );
 }
 
@@ -64,10 +60,13 @@ class MenuItemView {
     this.list = list;
     this.popup = list.popup;
     this.template = template;
+    this.commandTarget = this.popup.targetForItem(template);
     this.selected = false;
     this.open = false;
     this.visible = template.visible !== false;
-    this.enabled = template.enabled !== false;
+    this.enabled =
+      (!template.command || this.popup.isTargetAvailable(this.commandTarget)) &&
+      isMenuItemEnabled(template, this.commandTarget);
     this.separator = template.type === "separator";
     this.submenu = Array.isArray(template.submenu) ? template.submenu : null;
     this.element = this.popup.document.createElement(this.separator ? "hr" : "div");
@@ -125,8 +124,10 @@ class MenuItemView {
         template.keyBindingLabel ??
         keyBindingLabelForMenuItem(
           template,
-          this.popup.options.target,
+          this.commandTarget,
           globalThis.lumine?.keymaps,
+          this.popup.contextTarget,
+          this.popup.bindingsByTarget,
         ) ??
         "";
     }
@@ -323,12 +324,14 @@ class MenuListView {
   selectFirst() {
     const item = this.navigableItems()[0];
     if (item) this.selectItem(item, { focus: true });
+    else this.element.focus({ preventScroll: true });
   }
 
   selectLast() {
     const items = this.navigableItems();
     const item = items[items.length - 1];
     if (item) this.selectItem(item, { focus: true });
+    else this.element.focus({ preventScroll: true });
   }
 
   onKeyDown(event) {
@@ -420,6 +423,14 @@ class MenuPopup {
     this.document = contextViewManager.document;
     this.window = contextViewManager.window;
     this.options = options;
+    const target = Object.hasOwn(options, "target") ? options.target : this.document.activeElement;
+    this.commandTarget = normalizeCommandTarget(target, this.document);
+    this.focusTarget = normalizeCommandTarget(
+      Object.hasOwn(options, "focusTarget") ? options.focusTarget : this.document.activeElement,
+      this.document,
+    );
+    this.contextTarget = options.contextTarget ?? this.commandTarget;
+    this.bindingsByTarget = new Map();
     this.lists = [];
     this.emitter = new Emitter();
     this.closed = false;
@@ -435,6 +446,9 @@ class MenuPopup {
         fixedPlacement: options.fixedPlacement,
         alignment: options.alignment,
         edgePadding: options.edgePadding,
+        restoreFocusTarget:
+          options.restoreFocusTarget ??
+          (usesFocusTarget(options.template) ? this.focusTarget : undefined),
         dismissBoundary: options.dismissBoundary,
         className: ["menu-context-view", options.className].filter(Boolean).join(" "),
         onLayout: () => this.positionOpenSubmenus(),
@@ -509,17 +523,44 @@ class MenuPopup {
   }
 
   execute(item) {
+    if (!item.isNavigable()) return;
     const { command, commandDetail } = item.template;
-    const target = commandTarget(this.options.target, this.document);
+    const target = item.commandTarget;
     this.close({ cancelled: false, restoreFocus: true });
     if (!command) return;
     queueMicrotask(() => {
+      if (!this.canExecuteItem(item)) return;
       try {
         lumine.commands.dispatch(target, command, commandDetail);
       } catch (error) {
         console.error(`Unable to dispatch menu command '${command}'`, error);
       }
     });
+  }
+
+  targetForItem(item) {
+    if (item.commandTarget === "focus") return this.focusTarget;
+    if (item.commandTarget === "context") return this.contextTarget;
+    if (item.commandTarget != null) {
+      throw new TypeError("Menu commandTarget must be 'focus' or 'context'");
+    }
+    return this.commandTarget;
+  }
+
+  canExecuteItem(item) {
+    const enabled =
+      this.isTargetAvailable(item.commandTarget) &&
+      isMenuItemEnabled(item.template, item.commandTarget);
+    if (!enabled) {
+      item.enabled = false;
+      item.element.classList.add("disabled");
+      item.element.setAttribute("aria-disabled", "true");
+    }
+    return enabled;
+  }
+
+  isTargetAvailable(target) {
+    return Boolean(target && (!target.nodeType || target.isConnected));
   }
 
   openSubmenu(item, { selectFirst = false } = {}) {
@@ -601,6 +642,7 @@ class MenuPopup {
   finishClose({ cancelled, restoreFocus }) {
     if (this.closed) return;
     this.closed = true;
+    this.bindingsByTarget.clear();
     this.window.removeEventListener("mouseup", this.boundMouseUp, true);
     this.tooltipSuspension?.dispose();
     this.emitter.emit("did-close", { cancelled, restoreFocus });

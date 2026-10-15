@@ -972,7 +972,7 @@ describe("LumineApplication", function () {
     it("discards stale one-way renderer signals after their window was unregistered", async function () {
       const staleEvent = { sender: { id: 9002, isDestroyed: () => false } };
       assert.isUndefined(
-        await LumineApplication.handleWindowAction(staleEvent, "updateApplicationMenu", [], {}),
+        await LumineApplication.handleWindowAction(staleEvent, "updateApplicationMenu", []),
       );
       assert.isUndefined(await LumineApplication.handleWindowAction(staleEvent, "loaded"));
       assert.isUndefined(
@@ -1241,39 +1241,33 @@ describe("LumineApplication", function () {
 
       try {
         const event = { sender: w1.browserWindow.webContents };
-        const template = [{ label: "File", submenu: [{ label: "Save", command: "core:save" }] }];
-        const keybindings = { "core:save": ["cmd-s"] };
+        const template = [
+          {
+            label: "File",
+            submenu: [
+              { label: "Save", command: "core:save", enabled: true, keystrokes: ["cmd-s"] },
+            ],
+          },
+        ];
 
         assert.isUndefined(
-          await LumineApplication.handleWindowAction(
-            event,
-            "updateApplicationMenu",
-            template,
-            keybindings,
-          ),
+          await LumineApplication.handleWindowAction(event, "updateApplicationMenu", template),
         );
-        assert.isTrue(
-          applicationMenu.update.calledWithExactly(w1.browserWindow, template, keybindings),
-        );
+        assert.isTrue(applicationMenu.update.calledWithExactly(w1.browserWindow, template));
 
         app.applicationMenu = null;
         assert.isUndefined(
-          await LumineApplication.handleWindowAction(
-            event,
-            "updateApplicationMenu",
-            template,
-            keybindings,
-          ),
+          await LumineApplication.handleWindowAction(event, "updateApplicationMenu", template),
         );
         app.applicationMenu = applicationMenu;
 
         for (const args of [
           [],
-          [template],
-          [null, keybindings],
+          [null],
+          [{}],
           [template, null],
           [template, []],
-          [template, keybindings, true],
+          [template, {}, true],
         ]) {
           await assert.rejects(
             LumineApplication.handleWindowAction(event, "updateApplicationMenu", ...args),

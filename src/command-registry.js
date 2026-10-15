@@ -57,6 +57,7 @@ module.exports = class CommandRegistry {
     this.keymapManager = keymapManager;
     this.rootNode = null;
     this.rootNodes = new Set();
+    this.changeEmitter = new Emitter();
     this.clear();
   }
 
@@ -71,6 +72,7 @@ module.exports = class CommandRegistry {
     this.selectorBasedListenersByCommandName = {};
     this.inlineListenersByCommandName = {};
     this.emitter = new Emitter();
+    this.changeEmitter.emit("did-change");
   }
 
   attach(rootNode) {
@@ -98,6 +100,7 @@ module.exports = class CommandRegistry {
 
   destroy() {
     for (const root of [...this.rootNodes]) this.detach(root);
+    this.changeEmitter.dispose();
   }
 
   /**
@@ -190,15 +193,15 @@ module.exports = class CommandRegistry {
     listenersForCommand.push(selectorListener);
 
     this.commandRegistered(commandName);
+    this.changeEmitter.emit("did-change");
 
     return new Disposable(() => {
       listenersForCommand.splice(listenersForCommand.indexOf(selectorListener), 1);
-      if (
-        listenersForCommand.length === 0 &&
-        this.selectorBasedListenersByCommandName[commandName] === listenersForCommand
-      ) {
+      if (this.selectorBasedListenersByCommandName[commandName] !== listenersForCommand) return;
+      if (listenersForCommand.length === 0) {
         delete this.selectorBasedListenersByCommandName[commandName];
       }
+      this.changeEmitter.emit("did-change");
     });
   }
 
@@ -217,18 +220,51 @@ module.exports = class CommandRegistry {
     listenersForElement.push(inlineListener);
 
     this.commandRegistered(commandName);
+    this.changeEmitter.emit("did-change");
 
     return new Disposable(() => {
       listenersForElement.splice(listenersForElement.indexOf(inlineListener), 1);
       if (listenersForElement.length === 0) {
         listenersForCommand.delete(element);
       }
+      if (this.inlineListenersByCommandName[commandName] === listenersForCommand)
+        this.changeEmitter.emit("did-change");
     });
   }
 
   /**
    * @category Accessing Commands
    */
+
+  /**
+   * @public
+   * @status public
+   *
+   * Determine whether a registered handler matches a target or its ancestors.
+   * This checks registration scope without invoking handlers or evaluating their
+   * internal guards. It follows the same route as command dispatch, including
+   * detached targets and the target's own window.
+   *
+   * @param {Node|Window} target - The target from which the command would be dispatched.
+   * @param {String} commandName - The command to look up.
+   * @returns {Boolean} Whether dispatch can reach a registered handler.
+   */
+  canDispatch(target, commandName) {
+    if (!target || typeof commandName !== "string" || !commandName) return false;
+    const inlineListeners = Object.hasOwn(this.inlineListenersByCommandName, commandName)
+      ? this.inlineListenersByCommandName[commandName]
+      : null;
+    const selectorListeners = Object.hasOwn(this.selectorBasedListenersByCommandName, commandName)
+      ? this.selectorBasedListenersByCommandName[commandName]
+      : null;
+    if (!inlineListeners && !selectorListeners?.length) return false;
+
+    for (const currentTarget of commandTargetPath(target)) {
+      if (inlineListeners?.get(currentTarget)?.length) return true;
+      if (selectorListeners?.some((listener) => listener.matchesTarget(currentTarget))) return true;
+    }
+    return false;
+  }
 
   /**
    * @public
@@ -252,14 +288,9 @@ module.exports = class CommandRegistry {
    * @returns {Array<Object>} Command descriptors containing the documented keys.
    */
   findCommands({ target }) {
-    const targetWindow =
-      target?.ownerDocument?.defaultView ??
-      target?.defaultView ??
-      (target?.window === target ? target : window);
     const commandNames = new Set();
     const commands = [];
-    let currentTarget = target;
-    while (true) {
+    for (const currentTarget of commandTargetPath(target)) {
       let listeners;
       for (const name in this.inlineListenersByCommandName) {
         listeners = this.inlineListenersByCommandName[name];
@@ -281,11 +312,6 @@ module.exports = class CommandRegistry {
           }
         }
       }
-
-      if (currentTarget === targetWindow) {
-        break;
-      }
-      currentTarget = currentTarget.parentNode || targetWindow;
     }
 
     return commands;
@@ -432,6 +458,21 @@ module.exports = class CommandRegistry {
     return this.emitter.on("did-dispatch", callback);
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Invoke the callback when command registrations are added, removed, cleared
+   * or restored. Unlike dispatch subscriptions, this subscription survives
+   * `clear()` and is disposed when the registry is destroyed.
+   *
+   * @param {Function} callback - Called after registrations change.
+   * @returns {Disposable} Removes the event subscription.
+   */
+  onDidChange(callback) {
+    return this.changeEmitter.on("did-change", callback);
+  }
+
   getSnapshot() {
     const snapshot = {};
     for (const commandName in this.selectorBasedListenersByCommandName) {
@@ -447,13 +488,11 @@ module.exports = class CommandRegistry {
       const listeners = snapshot[commandName];
       this.selectorBasedListenersByCommandName[commandName] = listeners.slice();
     }
+    this.changeEmitter.emit("did-change");
   }
 
   handleCommandEvent(event) {
-    const targetWindow =
-      event.target?.ownerDocument?.defaultView ??
-      event.target?.defaultView ??
-      (event.target?.window === event.target ? event.target : window);
+    const targetWindow = commandTargetWindow(event.target);
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let matched = [];
@@ -511,7 +550,7 @@ module.exports = class CommandRegistry {
     const dispatchToListeners = () => {
       this.emitter.emit("will-dispatch", dispatchedEvent);
 
-      while (true) {
+      for (currentTarget of commandTargetPath(event.target, targetWindow)) {
         const commandInlineListeners = this.inlineListenersByCommandName[event.type]
           ? this.inlineListenersByCommandName[event.type].get(currentTarget)
           : null;
@@ -536,13 +575,9 @@ module.exports = class CommandRegistry {
           matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
         }
 
-        if (currentTarget === targetWindow) {
-          break;
-        }
         if (propagationStopped) {
           break;
         }
-        currentTarget = currentTarget.parentNode || targetWindow;
       }
 
       this.emitter.emit("did-dispatch", dispatchedEvent);
@@ -567,6 +602,26 @@ module.exports = class CommandRegistry {
     }
   }
 };
+
+// Commands bubble through the target's document, then its own window. Detached
+// targets follow the same route without crossing into the registry's window.
+function* commandTargetPath(target, targetWindow = commandTargetWindow(target)) {
+  if (!target) return;
+  let currentTarget = target;
+  while (true) {
+    yield currentTarget;
+    if (currentTarget === targetWindow) return;
+    currentTarget = currentTarget.parentNode || targetWindow;
+  }
+}
+
+function commandTargetWindow(target) {
+  return (
+    target?.ownerDocument?.defaultView ??
+    target?.defaultView ??
+    (target?.window === target ? target : window)
+  );
+}
 
 // type Listener = {
 //   descriptor: CommandDescriptor,

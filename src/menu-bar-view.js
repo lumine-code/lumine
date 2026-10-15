@@ -156,7 +156,9 @@ module.exports = class MenuBarView {
     button.element.focus({ preventScroll: true });
     this.setTemporarilyVisible(true);
     const popup = this.menuManager.showPopup({
-      target: this.previousFocus,
+      target: this.previousFocus ?? this.document.body,
+      focusTarget: this.previousFocus ?? this.document.body,
+      restoreFocusTarget: this.previousFocus ?? this.document.body,
       template,
       anchor: button.element,
       dismissBoundary: button.element,
@@ -240,7 +242,6 @@ module.exports = class MenuBarView {
     const activeElement = this.document.activeElement;
     if (
       activeElement &&
-      activeElement !== this.document.body &&
       !this.element.contains(activeElement) &&
       !this.popup?.element.contains(activeElement)
     ) {

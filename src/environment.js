@@ -336,6 +336,7 @@ class Environment {
     this.menu = new MenuManager({
       keymapManager: this.keymaps,
       packageManager: this.packages,
+      commandRegistry: this.commands,
     });
 
     /**
@@ -660,6 +661,7 @@ class Environment {
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
     this.workspace.getMainWindow().setPresentation(this.domWindow, this.workspace.getElement());
+    this.menu.attachWorkspace(this.workspace);
     this.workspaceDrops.initialize();
 
     const didChangeStyles = this.didChangeStyles.bind(this);
@@ -675,12 +677,14 @@ class Environment {
           const presentation = this.workspace
             .getWindows()
             .find((window) => window.getId() === windowId);
-          this.#applicationMenuTooltipSuspension ??= this.tooltips.suspend(
+          const document =
             presentation?.getDocument() ??
-              this.workspace.getFocusedWindow()?.getDocument() ??
-              this.document,
-          );
+            this.workspace.getFocusedWindow()?.getDocument() ??
+            this.document;
+          this.menu.beginNativeMenu(document);
+          this.#applicationMenuTooltipSuspension ??= this.tooltips.suspend(document);
         } else {
+          this.menu.endNativeMenu();
           this.#applicationMenuTooltipSuspension?.dispose();
           this.#applicationMenuTooltipSuspension = null;
         }
@@ -1171,7 +1175,8 @@ class Environment {
       this.disposables.add(
         this.applicationDelegate.onAuxiliaryWindowCommand(({ id, command, args }) => {
           const presentation = this.workspace.getWindows().find((window) => window.getId() === id);
-          if (presentation) this.dispatchApplicationMenuCommand(command, args?.[0], presentation);
+          if (presentation)
+            this.dispatchApplicationMenuCommand(command, args?.[0], presentation, args?.[1]);
         }),
       );
       this.disposables.add(
@@ -1856,18 +1861,21 @@ class Environment {
     this.document.body.classList.add(`platform-${process.platform}`);
   }
 
-  dispatchApplicationMenuCommand(
-    command,
-    arg,
-    presentation = this.workspace.getFocusedWindow() ?? this.workspace.getMainWindow(),
-  ) {
+  dispatchApplicationMenuCommand(command, arg, presentationOrOptions, menuOptions) {
+    const presentation =
+      typeof presentationOrOptions?.getDocument === "function"
+        ? presentationOrOptions
+        : (this.workspace.getFocusedWindow() ?? this.workspace.getMainWindow());
+    if (presentationOrOptions?.applicationMenu) menuOptions = presentationOrOptions;
     const document = presentation?.getDocument() ?? this.document;
+    if (menuOptions?.applicationMenu)
+      return this.menu.dispatchNativeMenuCommand(command, arg, menuOptions, document);
     let { activeElement } = document;
     // Use the workspace element if body has focus
     if (activeElement === document.body) {
       activeElement = presentation?.getElement() ?? this.workspace.getElement();
     }
-    this.commands.dispatch(activeElement, command, arg);
+    return this.commands.dispatch(activeElement, command, arg);
   }
 
   dispatchURIMessage(uri) {

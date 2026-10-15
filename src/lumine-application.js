@@ -465,17 +465,10 @@ const handleWindowAction = async (event, action, ...args) => {
       window.emit("window:locations-opened");
       return;
     case "updateApplicationMenu":
-      if (
-        args.length !== 2 ||
-        !Array.isArray(args[0]) ||
-        !args[1] ||
-        typeof args[1] !== "object" ||
-        Array.isArray(args[1])
-      ) {
-        throw new TypeError("Application-menu data must be serializable template and keymap data");
-      }
+      if (args.length !== 1 || !Array.isArray(args[0]))
+        throw new TypeError("Application-menu data must be a serializable template");
       if (currentApplication().applicationMenu) {
-        currentApplication().applicationMenu.update(window, args[0], args[1]);
+        currentApplication().applicationMenu.update(window, args[0]);
       }
       return;
     case "sendInputEvent":

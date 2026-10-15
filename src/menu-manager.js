@@ -6,6 +6,7 @@ const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 const ContextViewManager = require("./context-view-manager");
+const { keyBindingsForTarget, resolveKeyBindingTarget } = require("./key-binding-helpers");
 const menuLayout = require("./menu-layout");
 
 const buildMetadata = require("../package.json");
@@ -78,10 +79,17 @@ if (buildMetadata) {
  * See {@link #add} for more information about adding menus directly.
  */
 module.exports = class MenuManager {
-  constructor({ resourcePath, keymapManager, packageManager, platform = process.platform }) {
+  constructor({
+    resourcePath,
+    keymapManager,
+    packageManager,
+    commandRegistry,
+    platform = process.platform,
+  }) {
     this.resourcePath = resourcePath;
     this.keymapManager = keymapManager;
     this.packageManager = packageManager;
+    this.commandRegistry = commandRegistry;
     this.platform = platform;
     this.initialized = false;
     this.pendingUpdateOperation = null;
@@ -89,6 +97,8 @@ module.exports = class MenuManager {
     this.emitter = new Emitter();
     this.contextViewManager = null;
     this.contextViewManagers = new Map();
+    this.nativeDocuments = new Map();
+    this.nativeMenuSession = null;
     this.template = [];
     // Paths of the submenus declared by core. Keep their positions when the
     // last contributing package deactivates. See {@link MenuHelpers.unmerge}.
@@ -108,6 +118,9 @@ module.exports = class MenuManager {
     this.resourcePath = resourcePath;
     this.ensureContextViewManager();
     this.disposables.add(this.keymapManager.onDidReloadKeymap(() => this.update()));
+    this.disposables.add(this.keymapManager.onDidUnloadKeymap(() => this.update()));
+    if (this.commandRegistry)
+      this.disposables.add(this.commandRegistry.onDidChange(() => this.scheduleNativeUpdate()));
     this.update();
     this.initialized = true;
   }
@@ -119,6 +132,7 @@ module.exports = class MenuManager {
       this.pendingUpdateOperation = null;
     }
     this.disposables.dispose();
+    for (const document of this.nativeDocuments.keys()) this.releaseNativeDocument(document);
     for (const manager of this.contextViewManagers.values()) manager.destroy();
     this.contextViewManagers.clear();
     this.contextViewManager = null;
@@ -176,6 +190,131 @@ module.exports = class MenuManager {
   releaseDocument(document) {
     this.contextViewManagers.get(document)?.destroy();
     this.contextViewManagers.delete(document);
+    this.releaseNativeDocument(document);
+  }
+
+  attachWorkspace(workspace) {
+    this.workspace = workspace;
+    if (this.platform !== "darwin") return;
+    this.disposables.add(
+      workspace.observeWindows((presentation) =>
+        this.observeNativeDocument(presentation.getDocument()),
+      ),
+    );
+    this.scheduleNativeUpdate();
+  }
+
+  observeNativeDocument(document) {
+    if (!document || this.nativeDocuments.has(document)) return;
+    const record = { target: this.focusTargetForDocument(document) };
+    const didFocus = (event) => {
+      if (event.target.closest?.("lumine-context-view, .menu-bar")) return;
+      record.target = this.focusTargetForDocument(document, event.target);
+      if (
+        this.nativeMenuSession &&
+        !this.nativeMenuSession.open &&
+        (this.nativeMenuSession.document !== document ||
+          this.nativeMenuSession.target !== record.target)
+      )
+        this.nativeMenuSession = null;
+      this.nativeDocument = document;
+      this.scheduleNativeUpdate();
+    };
+    const didFocusWindow = () => {
+      if (
+        this.nativeMenuSession &&
+        !this.nativeMenuSession.open &&
+        this.nativeMenuSession.document !== document
+      )
+        this.nativeMenuSession = null;
+      this.nativeDocument = document;
+      this.scheduleNativeUpdate();
+    };
+    const didBlurWindow = () => {
+      if (!this.nativeMenuSession?.open) this.nativeMenuSession = null;
+    };
+    const didBlurTarget = () => {
+      queueMicrotask(() => {
+        if (
+          !this.nativeDocuments.has(document) ||
+          !document.hasFocus() ||
+          this.nativeMenuSession?.open
+        )
+          return;
+        const target = this.focusTargetForDocument(document);
+        if (target?.closest?.("lumine-context-view, .menu-bar") || target === record.target) return;
+        record.target = target;
+        this.nativeMenuSession = null;
+        this.scheduleNativeUpdate();
+      });
+    };
+    document.addEventListener("focusin", didFocus, true);
+    document.addEventListener("focusout", didBlurTarget, true);
+    document.defaultView.addEventListener("focus", didFocusWindow);
+    document.defaultView.addEventListener("blur", didBlurWindow);
+    const observer = new document.defaultView.MutationObserver((mutations) => {
+      if (!record.target?.isConnected) {
+        record.target = this.focusTargetForDocument(document);
+        this.scheduleNativeUpdate();
+      } else if (
+        mutations.some(
+          (mutation) => mutation.type === "attributes" && mutation.target.contains(record.target),
+        )
+      )
+        this.scheduleNativeUpdate();
+    });
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+    record.dispose = () => {
+      document.removeEventListener("focusin", didFocus, true);
+      document.removeEventListener("focusout", didBlurTarget, true);
+      document.defaultView.removeEventListener("focus", didFocusWindow);
+      document.defaultView.removeEventListener("blur", didBlurWindow);
+      observer.disconnect();
+    };
+    this.nativeDocuments.set(document, record);
+  }
+
+  releaseNativeDocument(document) {
+    this.nativeDocuments.get(document)?.dispose();
+    this.nativeDocuments.delete(document);
+    if (this.nativeDocument === document) this.nativeDocument = null;
+    if (this.nativeMenuSession?.document === document) this.nativeMenuSession = null;
+  }
+
+  focusTargetForDocument(document, target = document?.activeElement) {
+    return target === document?.body
+      ? (document.body.querySelector("lumine-workspace") ?? target)
+      : target;
+  }
+
+  getNativeMenuTarget(document) {
+    if (this.nativeMenuSession?.document === document) return this.nativeMenuSession.target;
+    return this.nativeDocuments.get(document)?.target ?? this.focusTargetForDocument(document);
+  }
+
+  beginNativeMenu(document) {
+    if (!document || this.nativeMenuSession?.open) return;
+    this.nativeMenuSession = {
+      document,
+      target: this.nativeDocuments.get(document)?.target ?? this.focusTargetForDocument(document),
+      open: true,
+    };
+  }
+
+  endNativeMenu() {
+    // Cocoa may deliver the selected command after menu-will-close. Keep its
+    // original target until the command arrives or another session begins.
+    if (this.nativeMenuSession) this.nativeMenuSession.open = false;
+  }
+
+  dispatchNativeMenuCommand(command, detail, { scope } = {}, document) {
+    document = this.nativeMenuSession?.document ?? document;
+    const target = this.getNativeMenuTarget(document);
+    this.nativeMenuSession = null;
+    if (!target?.isConnected || !MenuHelpers.matchesScope(target, scope)) return null;
+    const commands = this.commandRegistry ?? globalThis.lumine?.commands;
+    if (!commands?.canDispatch(target, command)) return null;
+    return commands.dispatch(target, command, detail);
   }
 
   /**
@@ -270,6 +409,8 @@ module.exports = class MenuManager {
    * @param {String} items.label - The `String` menu label.
    * @param {Array} items.submenu - An optional `Array` of sub menu items.
    * @param {String} items.command - An optional `String` command to trigger when the item is clicked.
+   * @param {String} items.scope - An optional CSS selector that must match the command target or an ancestor.
+   * @param {String} items.commandTarget - `focus` or `context`; application-menu rows use the focus captured before opening.
    * @param {String} items.group - An optional group declared by the containing core menu; defaults to its extensions group.
    * @param {Number} items.order - An optional position within the group; items without a position follow ordered items.
    * @param {Array<String>} items.groupOrder - The ordered group names for a submenu the caller owns.
@@ -328,56 +469,49 @@ module.exports = class MenuManager {
     return this.update();
   }
 
-  // Should the binding for the given selector be included in the menu
-  // commands.
-  //
-  // * `selector` A `String` selector to check.
-  //
-  // Returns a `Boolean`, true to include the selector, false otherwise.
-  includeSelector(selector) {
-    try {
-      if (document.body.webkitMatchesSelector(selector)) {
-        return true;
+  prepareNativeTemplate(target) {
+    const commands = this.commandRegistry ?? globalThis.lumine?.commands;
+    const bindingsByTarget = new Map();
+    const keystrokesForTarget = (bindingTarget) => {
+      if (bindingsByTarget.has(bindingTarget)) return bindingsByTarget.get(bindingTarget);
+      const byCommand = new Map();
+      for (const binding of keyBindingsForTarget(this.keymapManager, bindingTarget)) {
+        if (/^alt-(shift-)?.$/.test(binding.keystrokes)) continue;
+        const keystrokes = byCommand.get(binding.command) ?? [];
+        keystrokes.push(binding.keystrokes);
+        byCommand.set(binding.command, keystrokes);
       }
-    } catch {
-      // Selector isn't valid
-      return false;
-    }
-    // The simulated tree mirrors the real body's classes, and those change
-    // under the editor's feet — a theme swap, `is-blurred`, a package adding
-    // one. `update` builds one tree for the length of its pass and clears it
-    // again; a call from anywhere else builds and discards its own. Caching it
-    // across passes is what made a menu accelerator answer for the theme that
-    // was active when the first menu was built.
-    let element = this.testEditor ?? this.buildTestEditor();
-    while (element) {
-      if (element.webkitMatchesSelector(selector)) {
-        return true;
-      }
-      element = element.parentElement;
-    }
-    return false;
-  }
-
-  // Simulate an lumine-text-editor element attached to an lumine-workspace
-  // element attached to a body element that has the same classes as the current
-  // body element.
-  buildTestEditor() {
-    // Use new document so that custom elements don't actually get created
-    const testDocument = document.implementation.createDocument(document.namespaceURI, "html");
-    const testBody = testDocument.createElement("body");
-    testBody.classList.add(...this.classesForElement(document.body));
-    const testWorkspace = testDocument.createElement("lumine-workspace");
-    let workspaceClasses = this.classesForElement(document.body.querySelector("lumine-workspace"));
-    if (workspaceClasses.length === 0) {
-      workspaceClasses = ["workspace"];
-    }
-    testWorkspace.classList.add(...workspaceClasses);
-    testBody.appendChild(testWorkspace);
-    const testEditor = testDocument.createElement("lumine-text-editor");
-    testEditor.classList.add("editor");
-    testWorkspace.appendChild(testEditor);
-    return testEditor;
+      bindingsByTarget.set(bindingTarget, byCommand);
+      return byCommand;
+    };
+    const prepare = (items) =>
+      items.map((item) => {
+        if (item.submenu) item.submenu = prepare(item.submenu);
+        // Application commands and Electron roles are handled by the main
+        // process. They do not require a renderer command registration.
+        const native = item.role || /^application:/.test(item.command ?? "");
+        item.enabled = MenuHelpers.isMenuItemEnabled(
+          native ? { ...item, command: undefined } : item,
+          target,
+          commands,
+        );
+        const bindingCommand =
+          item.keyBindingCommand !== undefined
+            ? item.keyBindingCommand
+            : item.commandDetail == null
+              ? item.command
+              : null;
+        const bindingTarget = resolveKeyBindingTarget(item.keyBindingTarget, target, target);
+        item.keystrokes =
+          bindingCommand && bindingTarget && item.enabled
+            ? [...(keystrokesForTarget(bindingTarget).get(bindingCommand) ?? [])]
+            : [];
+        // DOM elements and callback resolvers must never cross the IPC boundary.
+        delete item.keyBindingTarget;
+        delete item.keyBindingCommand;
+        return item;
+      });
+    return prepare(this.getTemplate());
   }
 
   /**
@@ -390,57 +524,28 @@ module.exports = class MenuManager {
     if (this.emitter.listenerCountForEventName("did-change") > 0) {
       this.emitter.emit("did-change", this.getTemplate());
     }
-    if (!this.initialized) {
-      return;
-    }
+    this.scheduleNativeUpdate();
+  }
+
+  scheduleNativeUpdate() {
     // Only macOS presents the application template in the main process. The
     // HTML menu bar on Windows and Linux reads the same prepared snapshot and
     // resolves displayed bindings when it opens.
-    if (this.platform !== "darwin") return;
+    if (!this.initialized || this.platform !== "darwin") return;
     if (this.pendingUpdateOperation != null) {
       clearTimeout(this.pendingUpdateOperation);
     }
     this.pendingUpdateOperation = setTimeout(() => {
       this.pendingUpdateOperation = null;
-      const unsetKeystrokes = new Set();
-      for (let binding of this.keymapManager.getKeyBindings()) {
-        if (binding.command === "unset!") {
-          unsetKeystrokes.add(binding.keystrokes);
-        }
-      }
-      // A command is an arbitrary string out of a keymap file, so a plain
-      // object would answer `constructor` and friends from `Object.prototype`:
-      // the `== null` check below would not fire and `unshift` would run on
-      // `Object`, throwing inside this timeout and killing every later update.
-      // The main process needs its own guard as well — the prototype does not
-      // survive the structured clone in `sendToBrowserProcess`, only the keys.
-      const keystrokesByCommand = Object.create(null);
-      // One simulated tree for the whole pass — every binding is measured
-      // against the same body classes — and none of it kept afterwards.
-      this.testEditor = this.buildTestEditor();
-      try {
-        for (let binding of this.keymapManager.getKeyBindings()) {
-          if (!this.includeSelector(binding.selector)) {
-            continue;
-          }
-          if (unsetKeystrokes.has(binding.keystrokes)) {
-            continue;
-          }
-          if (this.platform === "darwin" && /^alt-(shift-)?.$/.test(binding.keystrokes)) {
-            continue;
-          }
-          if (this.platform === "win32" && /^ctrl-alt-(shift-)?.$/.test(binding.keystrokes)) {
-            continue;
-          }
-          if (keystrokesByCommand[binding.command] == null) {
-            keystrokesByCommand[binding.command] = [];
-          }
-          keystrokesByCommand[binding.command].unshift(binding.keystrokes);
-        }
-      } finally {
-        this.testEditor = null;
-      }
-      this.sendToBrowserProcess(this.getTemplate(), keystrokesByCommand);
+      const document = this.nativeMenuSession?.open
+        ? this.nativeMenuSession.document
+        : (this.workspace?.getFocusedWindow()?.getDocument() ??
+          this.nativeDocument ??
+          globalThis.document);
+      const target = this.nativeMenuSession?.open
+        ? this.nativeMenuSession.target
+        : (this.nativeDocuments.get(document)?.target ?? this.focusTargetForDocument(document));
+      this.sendToBrowserProcess(this.prepareNativeTemplate(target));
     }, 1);
   }
 
@@ -482,28 +587,17 @@ module.exports = class MenuManager {
     MenuHelpers.unmerge(menu, item, this.structuralIds);
   }
 
-  sendToBrowserProcess(template, keystrokesByCommand) {
+  sendToBrowserProcess(template) {
     if (this.platform !== "darwin") return;
     if (global.lumine?.isDestroying || global.lumine?.unloading) return;
-    void ipcRenderer
-      .invoke("lumine:window", "updateApplicationMenu", template, keystrokesByCommand)
-      .catch((error) => {
-        // The main process can unregister the window between this asynchronous
-        // invocation leaving the renderer and its handler running. That race
-        // is expected only during teardown; active-window failures still need
-        // to remain visible.
-        if (global.lumine?.isDestroying || global.lumine?.unloading) return;
-        console.error(error);
-      });
-  }
-
-  // Get an `Array` of `String` classes for the given element.
-  classesForElement(element) {
-    if (element && element.classList) {
-      return Array.prototype.slice.apply(element.classList);
-    } else {
-      return [];
-    }
+    void ipcRenderer.invoke("lumine:window", "updateApplicationMenu", template).catch((error) => {
+      // The main process can unregister the window between this asynchronous
+      // invocation leaving the renderer and its handler running. That race
+      // is expected only during teardown; active-window failures still need
+      // to remain visible.
+      if (global.lumine?.isDestroying || global.lumine?.unloading) return;
+      console.error(error);
+    });
   }
 
   sortPackagesMenu() {

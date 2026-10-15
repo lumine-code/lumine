@@ -140,6 +140,8 @@ module.exports = class ContextMenuManager {
    * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are item `Arrays` or `{items, groupOrder, sortBy}` descriptors. A descriptor's `groupOrder` lists named groups in display order; `sortBy: 'label'` sorts its items by label. Items contain the following keys:
    * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
    * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
+   * @param {String} [itemsBySelector.scope] - An additional CSS selector restricting this row to its command target or an ancestor. It never selects another target or command registration.
+   * @param {String} [itemsBySelector.commandTarget] - Set to `focus` to dispatch at the element focused before the menu opened, or `context` to use the clicked element (the default). A selector descriptor and submenu may supply an inherited default.
    * @param {String} [itemsBySelector.keyBindingCommand] - An equivalent public command whose keyboard shortcut should be displayed. Use this for a contextual wrapper that preserves the same operation; behavior-changing command variants must not borrow a different action's shortcut.
    * @param {Element|Function} [itemsBySelector.keyBindingTarget] - The element used only to resolve the shortcut. A function is called with the invoking element as `this` and its first argument, matching tooltip target callbacks; return its editor or another binding scope, or `null` to suppress the shortcut. The selected command still dispatches to the original menu target.
    * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
@@ -184,7 +186,10 @@ module.exports = class ContextMenuManager {
     return this.templateForEvent({ target });
   }
 
-  templateForEvent(event) {
+  templateForEvent(event, options = {}) {
+    const focusTarget = Object.hasOwn(options, "focusTarget")
+      ? options.focusTarget
+      : this.focusTargetForEvent(event);
     const template = [];
     let layoutPolicy = null;
     let currentTarget = event.target;
@@ -207,7 +212,7 @@ module.exports = class ContextMenuManager {
       }
       for (let itemSet of matchingItemSets) {
         for (let item of itemSet.items) {
-          const itemForEvent = this.cloneItemForEvent(item, event);
+          const itemForEvent = this.cloneItemForEvent(item, event, itemSet.commandTarget);
           if (itemForEvent) {
             MenuHelpers.merge(currentTargetItems, itemForEvent, itemSet.specificity);
           }
@@ -227,7 +232,7 @@ module.exports = class ContextMenuManager {
       }
       currentTarget = currentTarget.parentElement;
     }
-    this.addAccelerators(template, event.target);
+    this.addAccelerators(template, event.target, focusTarget);
     // Build each layout from the filtered contributions. Named groups supply
     // their own separators; arrays retain their legacy positioning rules.
     // Rendering metadata is spent once sorting has read it.
@@ -237,15 +242,23 @@ module.exports = class ContextMenuManager {
   // Resolve displayed key bindings at the element the command will target.
   // The HTML renderer receives one canonical label produced by
   // underscore-plus for both single strokes and chords.
-  addAccelerators(template, target) {
+  addAccelerators(template, target, focusTarget = target, bindingsByTarget = new Map()) {
     for (const item of template) {
-      const label = MenuHelpers.keyBindingLabelForMenuItem(item, target, this.keymapManager);
+      const commandTarget = item.commandTarget === "focus" ? focusTarget : target;
+      const label = MenuHelpers.keyBindingLabelForMenuItem(
+        item,
+        commandTarget,
+        this.keymapManager,
+        target,
+        bindingsByTarget,
+      );
       if (label !== undefined) item.keyBindingLabel = label;
       // Resolve DOM references and callbacks in the invoking renderer. The
       // prepared template carries only the label, not those lookup resources.
       delete item.keyBindingCommand;
       delete item.keyBindingTarget;
-      if (Array.isArray(item.submenu)) this.addAccelerators(item.submenu, target);
+      if (Array.isArray(item.submenu))
+        this.addAccelerators(item.submenu, target, focusTarget, bindingsByTarget);
     }
   }
 
@@ -258,11 +271,12 @@ module.exports = class ContextMenuManager {
   }
 
   // Returns an object compatible with `::add()` or `null`.
-  cloneItemForEvent(item, event) {
+  cloneItemForEvent(item, event, commandTarget) {
     if (item.devMode && !this.devMode) {
       return null;
     }
     item = Object.create(item);
+    if (item.commandTarget == null && commandTarget != null) item.commandTarget = commandTarget;
     if (typeof item.shouldDisplay === "function" && !item.shouldDisplay(event)) {
       return null;
     }
@@ -271,18 +285,25 @@ module.exports = class ContextMenuManager {
     }
     if (Array.isArray(item.submenu)) {
       item.submenu = item.submenu
-        .map((submenuItem) => this.cloneItemForEvent(submenuItem, event))
+        .map((submenuItem) => this.cloneItemForEvent(submenuItem, event, item.commandTarget))
         .filter((submenuItem) => submenuItem !== null);
     }
     return item;
   }
 
   showForEvent(event) {
-    const menuTemplate = this.templateForEvent(event);
+    const focusTarget = this.focusTargetForEvent(event);
+    const menuTemplate = this.templateForEvent(event, { focusTarget });
     if (!(menuTemplate && menuTemplate.length > 0)) {
       return;
     }
-    return this.show(event.target, menuTemplate, { anchor: event });
+    return this.show(event.target, menuTemplate, { anchor: event, focusTarget });
+  }
+
+  focusTargetForEvent(event) {
+    const document = event.target?.ownerDocument ?? globalThis.document;
+    const manager = this.menuManager.ensureContextViewManager?.(document);
+    return manager ? manager.getFocusTarget(event) : document.activeElement;
   }
 
   /**
@@ -304,6 +325,10 @@ module.exports = class ContextMenuManager {
     return this.menuManager.showPopup({
       template: menuTemplate,
       target,
+      contextTarget: target,
+      focusTarget: Object.hasOwn(options, "focusTarget")
+        ? options.focusTarget
+        : target?.ownerDocument?.activeElement,
       anchor: options.anchor ?? target,
       placement: options.placement,
       alignment: options.alignment,
@@ -324,7 +349,14 @@ var ContextMenuItemSet = class ContextMenuItemSet {
       this.items = definition;
       this.layoutPolicy = null;
     } else {
+      if (
+        definition.commandTarget != null &&
+        !["focus", "context"].includes(definition.commandTarget)
+      ) {
+        throw new TypeError("Context menu commandTarget must be 'focus' or 'context'");
+      }
       this.items = definition.items;
+      this.commandTarget = definition.commandTarget;
       this.layoutPolicy =
         definition.groupOrder !== undefined || definition.sortBy !== undefined
           ? { groupOrder: definition.groupOrder, sortBy: definition.sortBy }
