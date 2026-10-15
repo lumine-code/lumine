@@ -72,6 +72,17 @@ jasmine.describeWithDocumentFocus = (description, fn) => {
   });
 };
 
+// Offscreen Chromium can focus a document without giving its BrowserWindow OS
+// focus. Native input ownership cannot be tested there. CI retains the normal
+// compositor and the same mandatory focus checks as other focus-dependent specs.
+jasmine.describeWithNativeWindowFocus = (description, fn) => {
+  if (require("../../src/get-window-load-settings")().offscreen) {
+    skippedDescriptions.push(`${description} (native window focus unavailable offscreen)`);
+    return xdescribe(description, fn);
+  }
+  return jasmine.describeWithDocumentFocus(description, fn);
+};
+
 jasmine.itWithDocumentFocus = (description, fn, timeout) => {
   if (!documentIsFocused()) {
     skippedDescriptions.push(description);
