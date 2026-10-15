@@ -86,7 +86,7 @@
     "language-typescript": "github:lumine-code/language-typescript#3f7f0ea9149d6ed855f2f12b615f0d78e2da8711",
     "language-xml": "github:lumine-code/language-xml#ab5ba1742c9cea59754c8974704ab6182dba2b3f",
     "language-yaml": "github:lumine-code/language-yaml#dbafc1d05c0322c0db0945ad158bdbbf8408c623",
-    "launcher": "github:lumine-code/launcher#d5b1bbadf3e574c9345f9cd4c10d77ef9b0807ed",
+    "launcher": "github:lumine-code/launcher#b5232276e4e26f8cad9481756593c4a67bcb4fbd",
     "line-ending": "github:lumine-code/line-ending#6bb008c3c626bf39a8c0682ee9ef9981bd18aec4",
     "lumine-updater": "github:lumine-code/lumine-updater#6c841b151a9f536cbec6dee8e9192b9f3b492309",
     "markdown-it": "^15.0.2",
