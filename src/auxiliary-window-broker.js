@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const { screen, dialog } = require("electron");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
+const attachNativeWindowInput = require("./native-window-input");
 
 function assertBounds(bounds) {
   if (!bounds || typeof bounds !== "object") throw new TypeError("Window bounds are required.");
@@ -108,6 +109,9 @@ module.exports = class AuxiliaryWindowBroker {
     const id = -window.webContents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
     this.windows.set(id, record);
+    attachNativeWindowInput(window, () =>
+      this.owner.sendToRenderer("did-mouse-down-on-caption", { windowId: id }),
+    );
     this.updateRuntimeThrottling();
     request.record = record;
     record.keyboard = this.attachKeyboard(window.webContents, {

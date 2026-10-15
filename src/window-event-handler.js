@@ -97,6 +97,19 @@ module.exports = class WindowEventHandler {
     this.subscriptions.add(
       this.applicationDelegate.onDidLeaveFullScreen(this.handleLeaveFullScreen),
     );
+    this.subscriptions.add(
+      this.applicationDelegate.onDidMouseDownOnCaption(({ windowId }) => {
+        const editorWindow = this.lumineEnvironment.workspace
+          .getWindows()
+          .find((candidate) => candidate.getId() === windowId && !candidate.isDestroyed());
+        const domWindow = editorWindow?.getDOMWindow();
+        // Caption clicks never enter Chromium's DOM input path. Notify only
+        // the owning presentation, without synthesizing a mouse event or
+        // interfering with the operating system's drag/double-click handling.
+        if (domWindow && !domWindow.closed)
+          domWindow.dispatchEvent(new domWindow.Event("lumine:native-caption-mousedown"));
+      }),
+    );
   }
 
   // Wire commands that should be handled by Chromium for elements with the

@@ -73,9 +73,11 @@ class ContextViewHandle {
       }
     };
     this.boundWindowBlur = () => this.close({ cancelled: true, restoreFocus: false });
+    this.boundCaptionMouseDown = () => this.close({ cancelled: true });
     this.boundLayout = () => this.layout();
     manager.window.addEventListener("mousedown", this.boundOutsideMouseDown, true);
     manager.window.addEventListener("blur", this.boundWindowBlur);
+    manager.window.addEventListener("lumine:native-caption-mousedown", this.boundCaptionMouseDown);
     manager.window.addEventListener("resize", this.boundLayout);
     manager.window.addEventListener("scroll", this.boundLayout, true);
     const ResizeObserverClass = manager.window.ResizeObserver ?? globalThis.ResizeObserver;
@@ -158,6 +160,10 @@ class ContextViewHandle {
     this.resizeObserver?.disconnect();
     this.manager.window.removeEventListener("mousedown", this.boundOutsideMouseDown, true);
     this.manager.window.removeEventListener("blur", this.boundWindowBlur);
+    this.manager.window.removeEventListener(
+      "lumine:native-caption-mousedown",
+      this.boundCaptionMouseDown,
+    );
     this.manager.window.removeEventListener("resize", this.boundLayout);
     this.manager.window.removeEventListener("scroll", this.boundLayout, true);
     const activeElement = this.manager.document.activeElement;

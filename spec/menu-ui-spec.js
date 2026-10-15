@@ -78,6 +78,39 @@ describe("HTML menu UI", () => {
     commands.dispose();
   });
 
+  it("cancels a context menu on native caption input without synthesizing mouse input", () => {
+    target.focus();
+    const action = jasmine.createSpy("action");
+    const commands = lumine.commands.add(target, { "menu-ui-spec:caption-action": action });
+    const mouseDown = jasmine.createSpy("mouseDown");
+    window.addEventListener("mousedown", mouseDown);
+    let closeEvent;
+    try {
+      const popup = showMenuPopup(contextViews, {
+        anchor: target,
+        target,
+        autoSelectFirstItem: true,
+        template: [{ label: "Run", command: "menu-ui-spec:caption-action" }],
+      });
+      popup.onDidClose((event) => (closeEvent = event));
+      expect(popup.element.contains(document.activeElement)).toBe(true);
+      const event = new Event("lumine:native-caption-mousedown", { cancelable: true });
+
+      expect(window.dispatchEvent(event)).toBe(true);
+
+      expect(popup.element.isConnected).toBe(false);
+      expect(contextViews.activeHandle).toBeNull();
+      expect(closeEvent).toEqual({ cancelled: true, restoreFocus: true });
+      expect(document.activeElement).toBe(target);
+      expect(action).not.toHaveBeenCalled();
+      expect(mouseDown).not.toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(false);
+    } finally {
+      window.removeEventListener("mousedown", mouseDown);
+      commands.dispose();
+    }
+  });
+
   it("shows keyboard shortcuts without extra mouse shortcut labels", () => {
     const popup = showMenuPopup(contextViews, {
       anchor: target,
@@ -935,6 +968,99 @@ describe("HTML menu UI", () => {
     expect(menuBar.element.classList).toContain("no-menu-bar");
     menuBar.destroy();
     emitter.dispose();
+  });
+
+  for (const autoHide of [false, true]) {
+    it(`closes an ${autoHide ? "auto-hidden" : "always-visible"} application menu on native caption input`, () => {
+      const emitter = new Emitter();
+      const menuBar = new MenuBarView(
+        {
+          getTemplate: () => [
+            { label: "&File", submenu: [{ label: "Open", command: "core:open" }] },
+          ],
+          onDidChange: (callback) => emitter.on("change", callback),
+          showPopup: (options) => showMenuPopup(contextViews, options),
+        },
+        { autoHide },
+      );
+      document.body.appendChild(menuBar.element);
+      try {
+        target.focus();
+        menuBar.focus();
+        menuBar.openButton(menuBar.visibleButtons()[0], { selectFirst: true });
+        const popup = menuBar.popup;
+        expect(popup.element.contains(document.activeElement)).toBe(true);
+        expect(menuBar.element.classList).not.toContain("no-menu-bar");
+
+        const event = new Event("lumine:native-caption-mousedown", { cancelable: true });
+        expect(window.dispatchEvent(event)).toBe(true);
+
+        expect(popup.element.isConnected).toBe(false);
+        expect(menuBar.popup).toBeNull();
+        expect(menuBar.activeButton).toBeNull();
+        expect(menuBar.element.querySelector(".open, .focused")).toBeNull();
+        expect(menuBar.element.classList.contains("no-menu-bar")).toBe(autoHide);
+        expect(menuBar.element.classList).not.toContain("focused");
+        expect(document.activeElement).toBe(target);
+        expect(event.defaultPrevented).toBe(false);
+      } finally {
+        menuBar.destroy();
+        emitter.dispose();
+      }
+    });
+  }
+
+  it("ends a keyboard MenuBar session on native caption input before a popup opens", () => {
+    const emitter = new Emitter();
+    const menuBar = new MenuBarView(
+      {
+        getTemplate: () => [{ label: "&File", submenu: [{ label: "Open", command: "core:open" }] }],
+        onDidChange: (callback) => emitter.on("change", callback),
+        showPopup: (options) => showMenuPopup(contextViews, options),
+      },
+      { autoHide: true },
+    );
+    document.body.appendChild(menuBar.element);
+    try {
+      target.focus();
+      menuBar.focus();
+      expect(menuBar.popup).toBeNull();
+      expect(menuBar.element.contains(document.activeElement)).toBe(true);
+      expect(menuBar.element.classList).not.toContain("no-menu-bar");
+
+      window.dispatchEvent(new Event("lumine:native-caption-mousedown"));
+
+      expect(menuBar.element.classList).toContain("no-menu-bar");
+      expect(menuBar.element.classList).not.toContain("focused");
+      expect(menuBar.element.querySelector(".focused")).toBeNull();
+      expect(document.activeElement).toBe(target);
+    } finally {
+      menuBar.destroy();
+      emitter.dispose();
+    }
+  });
+
+  it("removes native caption listeners when a context view and MenuBar are destroyed", () => {
+    const handle = contextViews.show({ anchor: target, render() {} });
+    const close = spyOn(handle, "close").and.callThrough();
+    handle.destroy();
+    close.calls.reset();
+    const emitter = new Emitter();
+    const menuBar = new MenuBarView({
+      getTemplate: () => [],
+      onDidChange: (callback) => emitter.on("change", callback),
+    });
+    const blur = spyOn(menuBar, "blur").and.callThrough();
+    menuBar.destroy();
+    blur.calls.reset();
+    try {
+      window.dispatchEvent(new Event("lumine:native-caption-mousedown"));
+
+      expect(close).not.toHaveBeenCalled();
+      expect(blur).not.toHaveBeenCalled();
+    } finally {
+      emitter.dispose();
+    }
   });
 
   it("closes an open MenuBar menu when its active label is clicked again", () => {

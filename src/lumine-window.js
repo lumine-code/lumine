@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const AuxiliaryWindowBroker = require("./auxiliary-window-broker");
 const StartupTime = require("./startup-time");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
+const attachNativeWindowInput = require("./native-window-input");
 
 // Packaged builds ship the icon under resourcesPath; a source checkout falls
 // back to the repo's own copy. Parameterized by filename rather than a single
@@ -134,6 +135,9 @@ module.exports = class LumineWindow extends EventEmitter {
     this.lumineApplication.registerLumineWindow?.(this);
 
     this.handleEvents();
+    attachNativeWindowInput(this.browserWindow, () =>
+      this.sendToRenderer("did-mouse-down-on-caption", { windowId: this.id }),
+    );
     this.embeddedKeyboardIpc = attachEmbeddedKeyboardIpc(this.browserWindow.webContents, {
       testing: !!this.isSpec,
       isWindowFocused: () => this.browserWindow.isFocused?.() === true,

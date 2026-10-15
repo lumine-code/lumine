@@ -53,6 +53,108 @@ describe("WindowEventHandler", () => {
     expect(event.dataTransfer.dropEffect).toBe("none");
   });
 
+  describe("native caption mouse input", () => {
+    const { ipcRenderer } = require("electron");
+    const notify = (windowId) => ipcRenderer.emit("did-mouse-down-on-caption", {}, { windowId });
+    const presentation = (id, domWindow) => ({
+      getId: () => id,
+      getDOMWindow: () => domWindow,
+      isDestroyed: () => false,
+    });
+    const auxiliaryDOMWindow = () => {
+      const domWindow = new EventTarget();
+      domWindow.Event = class extends Event {};
+      return domWindow;
+    };
+
+    afterEach(() => {
+      // Environment cleanup needs the real presentation registry before
+      // Jasmine restores this spec's spies.
+      lumine.workspace.getWindows.and.callThrough();
+    });
+
+    it("routes main-window caption input without dispatching or cancelling DOM mouse input", () => {
+      const auxiliary = auxiliaryDOMWindow();
+      spyOn(lumine.workspace, "getWindows").and.returnValue([
+        presentation(17, window),
+        presentation(-18, auxiliary),
+      ]);
+      const caption = jasmine.createSpy("caption");
+      const mouseDown = jasmine.createSpy("mouseDown");
+      const auxiliaryCaption = jasmine.createSpy("auxiliaryCaption");
+      window.addEventListener("lumine:native-caption-mousedown", caption);
+      window.addEventListener("mousedown", mouseDown);
+      auxiliary.addEventListener("lumine:native-caption-mousedown", auxiliaryCaption);
+      try {
+        notify(17);
+
+        expect(caption.calls.count()).toBe(1);
+        const event = caption.calls.mostRecent().args[0];
+        expect(event.target).toBe(window);
+        expect(event.bubbles).toBe(false);
+        expect(event.cancelable).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        expect(mouseDown).not.toHaveBeenCalled();
+        expect(auxiliaryCaption).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener("lumine:native-caption-mousedown", caption);
+        window.removeEventListener("mousedown", mouseDown);
+      }
+    });
+
+    it("routes auxiliary caption input only to the matching presentation using its Event constructor", () => {
+      const auxiliary = auxiliaryDOMWindow();
+      spyOn(lumine.workspace, "getWindows").and.returnValue([
+        presentation(17, window),
+        presentation(-18, auxiliary),
+      ]);
+      const mainCaption = jasmine.createSpy("mainCaption");
+      const caption = jasmine.createSpy("caption");
+      window.addEventListener("lumine:native-caption-mousedown", mainCaption);
+      auxiliary.addEventListener("lumine:native-caption-mousedown", caption);
+      try {
+        notify(-18);
+
+        expect(caption.calls.count()).toBe(1);
+        expect(caption.calls.mostRecent().args[0] instanceof auxiliary.Event).toBe(true);
+        expect(caption.calls.mostRecent().args[0].target).toBe(auxiliary);
+        expect(mainCaption).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener("lumine:native-caption-mousedown", mainCaption);
+      }
+    });
+
+    it("ignores unknown, destroyed and closed presentations", () => {
+      const destroyed = auxiliaryDOMWindow();
+      const closed = auxiliaryDOMWindow();
+      closed.closed = true;
+      spyOn(lumine.workspace, "getWindows").and.returnValue([
+        { ...presentation(-18, destroyed), isDestroyed: () => true },
+        presentation(-19, closed),
+        presentation(-20, null),
+      ]);
+      const caption = jasmine.createSpy("caption");
+      destroyed.addEventListener("lumine:native-caption-mousedown", caption);
+      closed.addEventListener("lumine:native-caption-mousedown", caption);
+
+      for (const id of [-18, -19, -20, 999]) expect(() => notify(id)).not.toThrow();
+
+      expect(caption).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribes from native caption input when disposed", () => {
+      const auxiliary = auxiliaryDOMWindow();
+      spyOn(lumine.workspace, "getWindows").and.returnValue([presentation(-18, auxiliary)]);
+      const caption = jasmine.createSpy("caption");
+      auxiliary.addEventListener("lumine:native-caption-mousedown", caption);
+
+      windowEventHandler.unsubscribe();
+      notify(-18);
+
+      expect(caption).not.toHaveBeenCalled();
+    });
+  });
+
   describe("when the window is loaded", () =>
     it("doesn't have .is-blurred on the body tag", () => {
       expect(document.body.className).not.toMatch("is-blurred");

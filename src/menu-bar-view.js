@@ -39,6 +39,7 @@ module.exports = class MenuBarView {
     this.boundFocusOut = (event) => this.onFocusOut(event);
     this.boundWindowBlur = () => this.onWindowBlur();
     this.boundWindowClick = (event) => this.onWindowClick(event);
+    this.boundCaptionMouseDown = () => this.blur();
     // Observe Alt usage before an embedded surface consumes its keyboard or
     // pointer events. Only a standalone Alt press should focus the menu.
     this.document.body.addEventListener("keydown", this.boundKeyDown, true);
@@ -50,6 +51,7 @@ module.exports = class MenuBarView {
     });
     this.window.addEventListener("blur", this.boundWindowBlur);
     this.window.addEventListener("click", this.boundWindowClick);
+    this.window.addEventListener("lumine:native-caption-mousedown", this.boundCaptionMouseDown);
     this.element.addEventListener("focusout", this.boundFocusOut);
     this.subscriptions.add(menuManager.onDidChange(() => this.scheduleUpdate()));
     this.renderTemplate();
@@ -439,6 +441,7 @@ module.exports = class MenuBarView {
     this.window.removeEventListener("mousedown", this.boundMouseDown, { capture: true });
     this.window.removeEventListener("blur", this.boundWindowBlur);
     this.window.removeEventListener("click", this.boundWindowClick);
+    this.window.removeEventListener("lumine:native-caption-mousedown", this.boundCaptionMouseDown);
     this.element.removeEventListener("focusout", this.boundFocusOut);
     this.element.remove();
     this.emitter.dispose();

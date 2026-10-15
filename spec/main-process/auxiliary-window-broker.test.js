@@ -63,6 +63,36 @@ test("only prepared workspace presentations can open a native child", () => {
   broker.destroy();
 });
 
+test(
+  "native caption presses address only their auxiliary presentation",
+  {
+    skip: process.platform !== "win32",
+  },
+  async () => {
+    const { broker, events, window } = fixture();
+    const hooks = new Map();
+    window.hookWindowMessage = (message, callback) => hooks.set(message, callback);
+    window.isWindowMessageHooked = (message) => hooks.has(message);
+    window.unhookWindowMessage = (message) => hooks.delete(message);
+    const token = broker.prepare();
+    broker.didCreateWindow(window, { frameName: token });
+    const { id } = await broker.resolve(token);
+    const caption = Buffer.alloc(8);
+    caption.writeUInt32LE(2);
+    const callback = hooks.get(0x00a1);
+    try {
+      assert.equal(callback(caption, Buffer.alloc(8)), undefined);
+      assert.deepEqual(events.at(-1), ["did-mouse-down-on-caption", { windowId: id }]);
+      window.destroy();
+      const count = events.length;
+      callback(caption, Buffer.alloc(8));
+      assert.equal(events.length, count);
+    } finally {
+      broker.destroy();
+    }
+  },
+);
+
 test("keeps the shared runtime unthrottled until the last auxiliary window closes", () => {
   const { broker, owner, window: first } = fixture();
   const second = fixture().window;

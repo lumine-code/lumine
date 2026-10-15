@@ -41,6 +41,44 @@ describe("LumineWindow", function () {
     assert.strictEqual(window.browserWindow.webContents.listenerCount("before-input-event"), 0);
   });
 
+  if (process.platform === "win32") {
+    it("forwards native caption presses without consuming the window message", async function () {
+      class NativeBrowserWindow extends StubBrowserWindow {
+        constructor(options) {
+          super(options);
+          this.hooks = new Map();
+        }
+        isWindowMessageHooked(message) {
+          return this.hooks.has(message);
+        }
+        hookWindowMessage(message, callback) {
+          this.hooks.set(message, callback);
+        }
+        unhookWindowMessage(message) {
+          this.hooks.delete(message);
+        }
+      }
+      const window = new LumineWindow(app, service, {
+        browserWindowConstructor: NativeBrowserWindow,
+        resourcePath: path.resolve(__dirname, "../.."),
+      });
+      const caption = Buffer.alloc(8);
+      caption.writeUInt32LE(2);
+      const callback = window.browserWindow.hooks.get(0x00a1);
+      assert.isUndefined(callback(caption, Buffer.alloc(8)));
+      assert.deepEqual(window.browserWindow.sent.at(-1), [
+        "did-mouse-down-on-caption",
+        { windowId: window.id },
+      ]);
+      window.browserWindow.emit("closed");
+      await window.closedPromise;
+      const count = window.browserWindow.sent.length;
+      callback(caption, Buffer.alloc(8));
+      assert.strictEqual(window.browserWindow.sent.length, count);
+      assert.strictEqual(window.browserWindow.hooks.size, 0);
+    });
+  }
+
   describe("creating a real window", function () {
     let resourcePath, windowInitializationScript, lumineHome, browserWindow;
     let original, extraWindows, devPackageLinks;

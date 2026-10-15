@@ -62,6 +62,12 @@ module.exports = class ApplicationDelegate {
     return ipcHelpers.on(ipcRenderer, "did-blur-window", callback);
   }
 
+  onDidMouseDownOnCaption(callback) {
+    return ipcHelpers.on(ipcRenderer, "did-mouse-down-on-caption", (_event, detail) =>
+      callback(detail),
+    );
+  }
+
   didClosePathWithWaitSession(path) {
     return this.invokeWindow("didClosePathWithWaitSession", path);
   }
