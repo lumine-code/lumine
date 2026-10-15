@@ -31,6 +31,8 @@ const AnyConstructor = Symbol("any-constructor");
  * You can access the `ViewRegistry` object via `lumine.views`.
  */
 module.exports = class ViewRegistry {
+  #participantGeneration = null;
+
   constructor(lumineEnvironment) {
     this.animationFrameRequest = null;
     this.documentReadInProgress = false;
@@ -45,6 +47,7 @@ module.exports = class ViewRegistry {
     this.views = new WeakMap();
     this.paneItemDocuments = new WeakMap();
     this.windowParticipants = new Map();
+    this.#participantGeneration = {};
     this.participantDocuments = new WeakMap();
     this.participantObservers = new Map();
     this.retiredPresentationWindows = new WeakSet();
@@ -80,15 +83,15 @@ module.exports = class ViewRegistry {
   addWindowParticipant(root, participant) {
     if (this.windowParticipants.has(root))
       throw new Error("The presentation component is already registered.");
-    const documents = this.participantDocuments;
+    const generation = this.#participantGeneration;
     this.windowParticipants.set(root, participant);
-    documents.delete(root);
+    this.participantDocuments.delete(root);
     const unregister = () => {
       // clear() starts a new generation, even when it reuses this root and participant.
-      if (this.participantDocuments !== documents) return;
+      if (this.#participantGeneration !== generation) return;
       if (this.windowParticipants.get(root) !== participant) return;
       this.windowParticipants.delete(root);
-      documents.delete(root);
+      this.participantDocuments.delete(root);
     };
     try {
       this.attachPresentationDocument(root.ownerDocument);
