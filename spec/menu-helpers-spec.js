@@ -290,7 +290,7 @@ describe("MenuManager::sortPackagesMenu", function () {
         submenu: [
           { label: "Toggle View", submenu: [{ label: "Zulu", command: "z" }] },
           { label: "Editor", submenu: [{ label: "Zoom", command: "zoom" }] },
-          { label: "Open View", submenu: [{ label: "Zulu", command: "open-z" }] },
+          { label: "Open or Focus View", submenu: [{ label: "Zulu", command: "open-z" }] },
           { label: "Panes", submenu: [{ label: "Split Up" }, { label: "Split Down" }] },
         ],
       },
@@ -305,7 +305,7 @@ describe("MenuManager::sortPackagesMenu", function () {
         submenu: [
           { label: "Toggle View", submenu: [{ label: "Alpha", command: "a" }] },
           { label: "Editor", submenu: [{ label: "Guides", command: "guides" }] },
-          { label: "Open View", submenu: [{ label: "Alpha", command: "open-a" }] },
+          { label: "Open or Focus View", submenu: [{ label: "Alpha", command: "open-a" }] },
         ],
       },
     ]);
@@ -314,7 +314,7 @@ describe("MenuManager::sortPackagesMenu", function () {
     expect(view.submenu.map(({ label }) => label)).toEqual([
       "Toggle View",
       "Editor",
-      "Open View",
+      "Open or Focus View",
       "Panes",
     ]);
     expect(view.submenu[0].submenu.map(({ label }) => label)).toEqual(["Alpha", "Zulu"]);
