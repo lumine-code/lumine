@@ -1129,8 +1129,8 @@
         {
           "label": "Detach Pane",
           "command": "pane:detach",
-          "group": "layout",
-          "order": 50
+          "group": "close",
+          "order": 0
         },
         {
           "label": "Close Pane",

@@ -76,7 +76,7 @@ describe("ContextMenuManager", function () {
     packageMenu.dispose();
     expect(rows(surface)).toEqual([...splits, "separator", "pane:close"]);
     surface.remove();
-    expect(rows(views)).toEqual([...splits, "pane:detach", "separator", "pane:close"]);
+    expect(rows(views)).toEqual([...splits, "separator", "pane:detach", "pane:close"]);
   });
 
   describe("::add(itemsBySelector)", function () {
