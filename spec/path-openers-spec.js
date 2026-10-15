@@ -68,6 +68,163 @@ describe("Path openers", () => {
     workspace.enablePersistence = persistence;
   });
 
+  describe("preparing path opener descriptors", () => {
+    it("discovers descriptors on the first query after local URI and kind normalization", () => {
+      let descriptor;
+      const prepare = jasmine.createSpy("prepare openers").and.callFake(({ uri, options }) => {
+        expect(uri).toBe(filePath);
+        expect(options).toEqual(
+          jasmine.objectContaining({ pathKind: "file", uriFragment: "#page=2" }),
+        );
+        descriptor ??= register().descriptor;
+      });
+      registrations.add(workspace.onWillResolvePathOpeners(prepare));
+      expect(prepare).not.toHaveBeenCalled();
+      const uri = `${pathToFileURL(filePath).href}#page=2`;
+      expect(workspace.getAvailablePathOpeners(uri)[0].id).toBe("test-viewer");
+      expect(workspace.getAvailablePathOpeners(uri)[0].id).toBe("test-viewer");
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(descriptor.open).not.toHaveBeenCalled();
+    });
+
+    it("prepares an explicit opener ID before its first opening", async () => {
+      let descriptor;
+      registrations.add(
+        workspace.onWillResolvePathOpeners(({ uri, options }) => {
+          expect(uri).toBe(filePath);
+          expect(options.opener).toBe("late-viewer");
+          descriptor ??= register({ id: "late-viewer" }).descriptor;
+        }),
+      );
+      const item = await workspace.open(`${pathToFileURL(filePath).href}#part`, {
+        opener: "late-viewer",
+      });
+      expect(item.type).toBe("viewer");
+      expect(descriptor.open).toHaveBeenCalledTimes(1);
+      const [openedURI, openedOptions] = descriptor.open.calls.mostRecent().args;
+      expect(openedURI).toBe(filePath);
+      expect(openedOptions.opener).toBe("late-viewer");
+      expect(openedOptions.uriFragment).toBe("#part");
+    });
+
+    it("retains destination restrictions for descriptors discovered during explicit lookup", () => {
+      let descriptor;
+      registrations.add(
+        workspace.onWillResolvePathOpeners(({ options }) => {
+          expect(options.destination).toBe("detached-window");
+          expect(options.pathKind).toBe("file");
+          descriptor ??= register({ id: "local-action", destinations: ["current"] }).descriptor;
+        }),
+      );
+      expect(() =>
+        workspace.resolvePathOpener(pathToFileURL(filePath).href, {
+          opener: "local-action",
+          destination: "detached-window",
+        }),
+      ).toThrowError(/does not support.*detached-window/);
+      expect(descriptor.open).not.toHaveBeenCalled();
+    });
+
+    it("provides directory kind before discovering a directory-specific opener", () => {
+      const directory = path.dirname(filePath);
+      registrations.add(
+        workspace.onWillResolvePathOpeners(({ uri, options }) => {
+          expect(uri).toBe(directory);
+          expect(options.pathKind).toBe("directory");
+          register({ id: "late-directory", pathKinds: ["directory"], canOpen: () => true });
+        }),
+      );
+      expect(workspace.getAvailablePathOpeners(directory)[0].id).toBe("late-directory");
+    });
+
+    it("removes callbacks independently of the descriptors they registered", () => {
+      let descriptor;
+      const prepare = jasmine.createSpy("prepare").and.callFake(() => {
+        descriptor ??= register().descriptor;
+      });
+      const discovery = workspace.onWillResolvePathOpeners(prepare);
+      registrations.add(discovery);
+      workspace.getAvailablePathOpeners(filePath);
+      discovery.dispose();
+      expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("test-viewer");
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(descriptor.open).not.toHaveBeenCalled();
+    });
+
+    it("retires discovery subscriptions on reset without letting old disposers retire new ones", () => {
+      const prepare = jasmine.createSpy("prepare");
+      const previous = workspace.onWillResolvePathOpeners(prepare);
+      registrations.add(previous);
+      workspace.reset(lumine.packages);
+      workspace.getAvailablePathOpeners(filePath);
+      expect(prepare).not.toHaveBeenCalled();
+      registrations.add(workspace.onWillResolvePathOpeners(prepare));
+      previous.dispose();
+      workspace.getAvailablePathOpeners(filePath);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips a running callback during reentrant resolution and can retire a pending callback", () => {
+      const skipped = jasmine.createSpy("retired listener");
+      let second;
+      const first = jasmine.createSpy("reentrant prepare").and.callFake(() => {
+        second.dispose();
+        expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("text-editor");
+        expect(workspace.resolvePathOpener(filePath).id).toBe("text-editor");
+      });
+      registrations.add(workspace.onWillResolvePathOpeners(first));
+      second = workspace.onWillResolvePathOpeners(skipped);
+      registrations.add(second);
+      workspace.getAvailablePathOpeners(filePath);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(skipped).not.toHaveBeenCalled();
+    });
+
+    it("releases its reentrancy guard after a discovery error so the next query can retry", () => {
+      const failure = new Error("discovery failed");
+      let calls = 0;
+      registrations.add(
+        workspace.onWillResolvePathOpeners(() => {
+          if (++calls === 1) throw failure;
+          register();
+        }),
+      );
+      expect(() => workspace.getAvailablePathOpeners(filePath)).toThrow(failure);
+      expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("test-viewer");
+      expect(calls).toBe(2);
+    });
+
+    it("rejects Promise-returning callbacks and allows disposal after rejection", () => {
+      expect(() => workspace.onWillResolvePathOpeners(null)).toThrowError(/function/);
+      const discovery = workspace.onWillResolvePathOpeners(() => Promise.resolve());
+      registrations.add(discovery);
+      expect(() => workspace.getAvailablePathOpeners(filePath)).toThrowError(/synchronously/);
+      discovery.dispose();
+      expect(workspace.getAvailablePathOpeners(filePath)[0].id).toBe("text-editor");
+    });
+
+    it("does not discover for internal or remote URIs or an invalid path kind", () => {
+      const prepare = jasmine.createSpy("prepare local paths");
+      registrations.add(workspace.onWillResolvePathOpeners(prepare));
+      for (const uri of [
+        "lumine://settings",
+        `markdown-preview://${filePath}`,
+        "https://example.test/file.js",
+        "ssh://example.test/file.js",
+      ]) {
+        expect(workspace.getAvailablePathOpeners(uri)).toEqual([]);
+        expect(workspace.resolvePathOpener(uri)).toBeNull();
+        expect(() => workspace.resolvePathOpener(uri, { opener: "missing" })).toThrowError(
+          /not available/,
+        );
+      }
+      expect(() =>
+        workspace.getAvailablePathOpeners(filePath, { pathKind: "unknown" }),
+      ).toThrowError(/path kind/);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+  });
+
   it("discovers the default and Text Editor without opening either", () => {
     const { descriptor } = register();
     expect(workspace.getAvailablePathOpeners(filePath)).toEqual([

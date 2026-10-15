@@ -365,6 +365,7 @@ module.exports = class Workspace extends Model {
   #windowCleanupDepth = 0;
   #pendingWindowOpens = new Set();
   #windowOperationOpenOptions = new WeakSet();
+  #pathOpenerResolutionListeners = new Set();
 
   constructor(params) {
     super(...arguments);
@@ -1134,6 +1135,7 @@ module.exports = class Workspace extends Model {
       this.openers = [];
       this.openerReuseCapabilities.clear();
       this.pathOpeners = [];
+      this.#pathOpenerResolutionListeners.clear();
       this.pathOpenerItems = new WeakMap();
       this.destroyedItemURIs = [];
       this.invalidateLongTitles();
@@ -3557,6 +3559,43 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
+   * Prepare path opener descriptors synchronously before resolving a local path.
+   * Use cheap path checks before discovering optional installed integrations.
+   * The callback may register openers; their canOpen predicates remain side-effect free.
+   * A reentrant query skips callbacks already running, and errors propagate to the caller.
+   * Internal and remote URIs do not invoke these callbacks.
+   *
+   * @param {Function} callback - Receives `{uri, options}` with the normalized local path, URI fragment and detected pathKind. It must finish synchronously without returning a Promise.
+   * @returns {Disposable} Removes this callback; opener registrations remain separately owned.
+   * @category Opening
+   */
+  onWillResolvePathOpeners(callback) {
+    if (typeof callback !== "function")
+      throw new TypeError("A path opener resolution callback must be a function");
+    const listener = { callback, invoking: false };
+    this.#pathOpenerResolutionListeners.add(listener);
+    return new Disposable(() => this.#pathOpenerResolutionListeners.delete(listener));
+  }
+
+  /** @private Discover descriptors before availability checks or explicit ID lookup. */
+  preparePathOpeners(uri, options) {
+    for (const listener of [...this.#pathOpenerResolutionListeners]) {
+      if (listener.invoking || !this.#pathOpenerResolutionListeners.has(listener)) continue;
+      listener.invoking = true;
+      try {
+        const result = listener.callback({ uri, options });
+        if (result && typeof result.then === "function")
+          throw new TypeError("Path opener resolution callbacks must finish synchronously");
+      } finally {
+        listener.invoking = false;
+      }
+    }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Register a named path opener for automatic opening and Launcher Open.
    * Availability is checked without constructing a view or opening a path.
    *
@@ -3674,6 +3713,7 @@ module.exports = class Workspace extends Model {
     ({ uri, options } = normalizePathOpening(this.project.resolvePath(uri), options));
     if (!uri || !isPathURI(uri)) return [];
     options = this.pathOpenerOptions(uri, options);
+    this.preparePathOpeners(uri, options);
     const available = this.pathOpeners.filter((entry) =>
       this.pathOpenerAvailable(entry, uri, options),
     );
@@ -3706,9 +3746,8 @@ module.exports = class Workspace extends Model {
   }
 
   pathOpenerOptions(uri, options) {
-    return options.pathKind == null
-      ? { ...options, pathKind: this.pathKind(uri, options) }
-      : options;
+    const pathKind = this.pathKind(uri, options);
+    return options.pathKind == null ? { ...options, pathKind } : options;
   }
 
   pathOpenerAvailable(entry, uri, options) {
@@ -3730,7 +3769,11 @@ module.exports = class Workspace extends Model {
   }
 
   resolvePathOpener(uri, options = {}) {
-    if (uri && isPathURI(uri)) options = this.pathOpenerOptions(uri, options);
+    ({ uri, options } = normalizePathOpening(this.project.resolvePath(uri), options));
+    if (uri && isPathURI(uri)) {
+      options = this.pathOpenerOptions(uri, options);
+      this.preparePathOpeners(uri, options);
+    }
     let entry;
     if (options.opener != null) {
       entry = [this.textPathOpener, this.projectPathOpener, ...this.pathOpeners].find(
@@ -4340,6 +4383,7 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    this.#pathOpenerResolutionListeners.clear();
     const failures = [];
     const capture = (callback) => captureLifecycleError(failures, callback);
     capture(() => this.launcherProviderRegistration?.dispose());
