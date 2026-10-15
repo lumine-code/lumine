@@ -55,15 +55,21 @@ describe("WindowEventHandler", () => {
 
   describe("native caption mouse input", () => {
     const { ipcRenderer } = require("electron");
-    const notify = (windowId) => ipcRenderer.emit("did-mouse-down-on-caption", {}, { windowId });
+    const notify = (windowId, position) =>
+      ipcRenderer.emit("did-mouse-down-in-window", {}, { windowId, position });
     const presentation = (id, domWindow) => ({
       getId: () => id,
       getDOMWindow: () => domWindow,
       isDestroyed: () => false,
     });
-    const auxiliaryDOMWindow = () => {
+    const auxiliaryDOMWindow = ({ target = null, devicePixelRatio = 1 } = {}) => {
       const domWindow = new EventTarget();
       domWindow.Event = class extends Event {};
+      domWindow.devicePixelRatio = devicePixelRatio;
+      domWindow.document = {
+        elementFromPoint: jasmine.createSpy("elementFromPoint").and.returnValue(target),
+      };
+      domWindow.getComputedStyle = (element) => window.getComputedStyle(element);
       return domWindow;
     };
 
@@ -121,6 +127,98 @@ describe("WindowEventHandler", () => {
         expect(mainCaption).not.toHaveBeenCalled();
       } finally {
         window.removeEventListener("lumine:native-caption-mousedown", mainCaption);
+      }
+    });
+
+    for (const devicePixelRatio of [1, 1.25, 2.5]) {
+      it(`hit-tests physical mouse coordinates in CSS pixels at effective scale ${devicePixelRatio}`, () => {
+        const titleBar = document.createElement("div");
+        titleBar.style.setProperty("app-region", "drag");
+        const title = titleBar.appendChild(document.createElement("span"));
+        document.body.appendChild(titleBar);
+        const auxiliary = auxiliaryDOMWindow({ target: title, devicePixelRatio });
+        spyOn(lumine.workspace, "getWindows").and.returnValue([presentation(-18, auxiliary)]);
+        const caption = jasmine.createSpy("caption");
+        auxiliary.addEventListener("lumine:native-caption-mousedown", caption);
+        try {
+          // The effective ratio includes both monitor DPI and page zoom.
+          notify(-18, { x: 240 * devicePixelRatio, y: 32 * devicePixelRatio });
+
+          expect(auxiliary.document.elementFromPoint).toHaveBeenCalledWith(240, 32);
+          expect(caption.calls.count()).toBe(1);
+          expect(caption.calls.mostRecent().args[0] instanceof auxiliary.Event).toBe(true);
+        } finally {
+          titleBar.remove();
+        }
+      });
+    }
+
+    it("excludes a no-drag ancestor even when a nested element declares drag", () => {
+      const titleBar = document.createElement("div");
+      titleBar.style.setProperty("app-region", "drag");
+      const controls = titleBar.appendChild(document.createElement("div"));
+      controls.style.setProperty("app-region", "no-drag");
+      const button = controls.appendChild(document.createElement("button"));
+      button.style.setProperty("app-region", "drag");
+      const icon = button.appendChild(document.createElement("span"));
+      document.body.appendChild(titleBar);
+      const auxiliary = auxiliaryDOMWindow({ target: icon });
+      spyOn(lumine.workspace, "getWindows").and.returnValue([presentation(-18, auxiliary)]);
+      const caption = jasmine.createSpy("caption");
+      auxiliary.addEventListener("lumine:native-caption-mousedown", caption);
+      try {
+        notify(-18, { x: 240, y: 32 });
+
+        expect(auxiliary.document.elementFromPoint).toHaveBeenCalledWith(240, 32);
+        expect(caption).not.toHaveBeenCalled();
+      } finally {
+        titleBar.remove();
+      }
+    });
+
+    it("ignores client clicks outside an element or in ordinary editor content", () => {
+      const editor = document.createElement("div");
+      editor.classList.add("editor");
+      const text = editor.appendChild(document.createElement("span"));
+      document.body.appendChild(editor);
+      const auxiliary = auxiliaryDOMWindow();
+      spyOn(lumine.workspace, "getWindows").and.returnValue([presentation(-18, auxiliary)]);
+      const caption = jasmine.createSpy("caption");
+      auxiliary.addEventListener("lumine:native-caption-mousedown", caption);
+      try {
+        notify(-18, { x: 240, y: 80 });
+        auxiliary.document.elementFromPoint.and.returnValue(text);
+        notify(-18, { x: 240, y: 80 });
+
+        expect(caption).not.toHaveBeenCalled();
+      } finally {
+        editor.remove();
+      }
+    });
+
+    it("uses only the matching window's document and scale for client clicks", () => {
+      const titleBar = document.createElement("div");
+      titleBar.style.setProperty("app-region", "drag");
+      document.body.appendChild(titleBar);
+      const first = auxiliaryDOMWindow({ target: titleBar, devicePixelRatio: 1 });
+      const second = auxiliaryDOMWindow({ target: titleBar, devicePixelRatio: 2 });
+      spyOn(lumine.workspace, "getWindows").and.returnValue([
+        presentation(-18, first),
+        presentation(-19, second),
+      ]);
+      const firstCaption = jasmine.createSpy("firstCaption");
+      const secondCaption = jasmine.createSpy("secondCaption");
+      first.addEventListener("lumine:native-caption-mousedown", firstCaption);
+      second.addEventListener("lumine:native-caption-mousedown", secondCaption);
+      try {
+        notify(-19, { x: 480, y: 64 });
+
+        expect(first.document.elementFromPoint).not.toHaveBeenCalled();
+        expect(firstCaption).not.toHaveBeenCalled();
+        expect(second.document.elementFromPoint).toHaveBeenCalledWith(240, 32);
+        expect(secondCaption.calls.count()).toBe(1);
+      } finally {
+        titleBar.remove();
       }
     });
 

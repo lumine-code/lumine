@@ -135,8 +135,11 @@ module.exports = class LumineWindow extends EventEmitter {
     this.lumineApplication.registerLumineWindow?.(this);
 
     this.handleEvents();
-    attachNativeWindowInput(this.browserWindow, () =>
-      this.sendToRenderer("did-mouse-down-on-caption", { windowId: this.id }),
+    attachNativeWindowInput(this.browserWindow, (position) =>
+      this.sendToRenderer("did-mouse-down-in-window", {
+        windowId: this.id,
+        ...(position && { position }),
+      }),
     );
     this.embeddedKeyboardIpc = attachEmbeddedKeyboardIpc(this.browserWindow.webContents, {
       testing: !!this.isSpec,

@@ -109,8 +109,11 @@ module.exports = class AuxiliaryWindowBroker {
     const id = -window.webContents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
     this.windows.set(id, record);
-    attachNativeWindowInput(window, () =>
-      this.owner.sendToRenderer("did-mouse-down-on-caption", { windowId: id }),
+    attachNativeWindowInput(window, (position) =>
+      this.owner.sendToRenderer("did-mouse-down-in-window", {
+        windowId: id,
+        ...(position && { position }),
+      }),
     );
     this.updateRuntimeThrottling();
     request.record = record;

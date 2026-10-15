@@ -1,4 +1,10 @@
 const HTCAPTION = 2;
+const WM_PARENTNOTIFY = 0x0210;
+const CHILD_MOUSE_DOWN_MESSAGES = new Set([
+  0x0201, // WM_LBUTTONDOWN
+  0x0204, // WM_RBUTTONDOWN
+  0x0207, // WM_MBUTTONDOWN
+]);
 const CAPTION_MOUSE_DOWN_MESSAGES = [
   0x00a1, // WM_NCLBUTTONDOWN
   0x00a3, // WM_NCLBUTTONDBLCLK
@@ -8,9 +14,12 @@ const CAPTION_MOUSE_DOWN_MESSAGES = [
   0x00a9, // WM_NCMBUTTONDBLCLK
 ];
 
-// Draggable CSS regions do not deliver DOM mouse events. Observe Windows'
-// caption messages without consuming them, so native dragging and double-click
-// actions still run. A double-click replaces the second button-down message.
+// Draggable CSS regions do not deliver DOM mouse events. Chromium can receive
+// their caption input on a child HWND and bypass the parent window's caption
+// hooks. WM_PARENTNOTIFY still reaches the parent for those clicks, including
+// double-clicks, and carries the position in native client pixels. The renderer
+// checks whether that position belongs to a draggable region. None of these
+// observers consumes input, so native dragging and double-click actions run.
 module.exports = function attachNativeWindowInput(
   browserWindow,
   onMouseDown,
@@ -52,6 +61,14 @@ module.exports = function attachNativeWindowInput(
     if (browserWindow.isWindowMessageHooked(message)) continue;
     browserWindow.hookWindowMessage(message, notify);
     hookedMessages.push(message);
+  }
+  if (!browserWindow.isWindowMessageHooked(WM_PARENTNOTIFY)) {
+    browserWindow.hookWindowMessage(WM_PARENTNOTIFY, (wParam, lParam) => {
+      if (!disposed && CHILD_MOUSE_DOWN_MESSAGES.has(wParam.readUInt16LE(0))) {
+        onMouseDown({ x: lParam.readInt16LE(0), y: lParam.readInt16LE(2) });
+      }
+    });
+    hookedMessages.push(WM_PARENTNOTIFY);
   }
   if (hookedMessages.length > 0) {
     browserWindow.once("closed", disposable.dispose);

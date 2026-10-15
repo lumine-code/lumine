@@ -67,8 +67,20 @@ describe("LumineWindow", function () {
       const callback = window.browserWindow.hooks.get(0x00a1);
       assert.isUndefined(callback(caption, Buffer.alloc(8)));
       assert.deepEqual(window.browserWindow.sent.at(-1), [
-        "did-mouse-down-on-caption",
+        "did-mouse-down-in-window",
         { windowId: window.id },
+      ]);
+      const mouseDown = Buffer.alloc(8);
+      mouseDown.writeUInt32LE(0x0201);
+      const point = Buffer.alloc(8);
+      point.writeInt16LE(640, 0);
+      point.writeInt16LE(24, 2);
+      // Chromium can forward the child's caption input without invoking the
+      // top-level WM_NCLBUTTONDOWN hook at all.
+      assert.isUndefined(window.browserWindow.hooks.get(0x0210)(mouseDown, point));
+      assert.deepEqual(window.browserWindow.sent.at(-1), [
+        "did-mouse-down-in-window",
+        { windowId: window.id, position: { x: 640, y: 24 } },
       ]);
       window.browserWindow.emit("closed");
       await window.closedPromise;

@@ -82,7 +82,17 @@ test(
     const callback = hooks.get(0x00a1);
     try {
       assert.equal(callback(caption, Buffer.alloc(8)), undefined);
-      assert.deepEqual(events.at(-1), ["did-mouse-down-on-caption", { windowId: id }]);
+      assert.deepEqual(events.at(-1), ["did-mouse-down-in-window", { windowId: id }]);
+      const mouseDown = Buffer.alloc(8);
+      mouseDown.writeUInt32LE(0x0201);
+      const point = Buffer.alloc(8);
+      point.writeInt16LE(640, 0);
+      point.writeInt16LE(24, 2);
+      assert.equal(hooks.get(0x0210)(mouseDown, point), undefined);
+      assert.deepEqual(events.at(-1), [
+        "did-mouse-down-in-window",
+        { windowId: id, position: { x: 640, y: 24 } },
+      ]);
       window.destroy();
       const count = events.length;
       callback(caption, Buffer.alloc(8));

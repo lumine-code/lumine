@@ -98,16 +98,35 @@ module.exports = class WindowEventHandler {
       this.applicationDelegate.onDidLeaveFullScreen(this.handleLeaveFullScreen),
     );
     this.subscriptions.add(
-      this.applicationDelegate.onDidMouseDownOnCaption(({ windowId }) => {
+      this.applicationDelegate.onDidMouseDownInWindow(({ windowId, position }) => {
         const editorWindow = this.lumineEnvironment.workspace
           .getWindows()
           .find((candidate) => candidate.getId() === windowId && !candidate.isDestroyed());
         const domWindow = editorWindow?.getDOMWindow();
-        // Caption clicks never enter Chromium's DOM input path. Notify only
-        // the owning presentation, without synthesizing a mouse event or
-        // interfering with the operating system's drag/double-click handling.
-        if (domWindow && !domWindow.closed)
-          domWindow.dispatchEvent(new domWindow.Event("lumine:native-caption-mousedown"));
+        if (!domWindow || domWindow.closed) return;
+        if (position) {
+          // WM_PARENTNOTIFY covers child-HWND clicks, including CSS drag
+          // regions that bypass the top-level non-client message hooks. Its
+          // client coordinates are native pixels; DOM hit testing uses CSS
+          // pixels, including both display scaling and the page's zoom.
+          let element = domWindow.document.elementFromPoint(
+            position.x / domWindow.devicePixelRatio,
+            position.y / domWindow.devicePixelRatio,
+          );
+          let draggable = false;
+          while (element) {
+            const style = domWindow.getComputedStyle(element);
+            const region =
+              style.getPropertyValue("app-region") || style.getPropertyValue("-webkit-app-region");
+            if (region === "no-drag") return;
+            if (region === "drag") draggable = true;
+            element = element.parentElement;
+          }
+          if (!draggable) return;
+        }
+        // Notify the owning presentation without synthesizing DOM mouse input
+        // or interfering with the operating system's native window handling.
+        domWindow.dispatchEvent(new domWindow.Event("lumine:native-caption-mousedown"));
       }),
     );
   }
