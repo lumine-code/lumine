@@ -322,7 +322,9 @@ const handleWindowAction = async (event, action, ...args) => {
       // A nested Electron spec process can become macOS's active application.
       // Focusing the parent BrowserWindow alone does not reactivate its app,
       // so the spec runner must reclaim application focus before page focus.
-      if (lumineWindow.isSpec && process.platform === "darwin") app.focus({ steal: true });
+      if (lumineWindow.isSpec && !lumineWindow.offscreen && process.platform === "darwin") {
+        app.focus({ steal: true });
+      }
       lumineWindow.focus();
       window.webContents.focus();
       return;
@@ -331,7 +333,7 @@ const handleWindowAction = async (event, action, ...args) => {
       return;
     case "showInactive":
       if (!lumineWindow.isSpec) throw new Error("showInactive is restricted to spec windows");
-      window.showInactive();
+      if (!lumineWindow.offscreen) window.showInactive();
       return;
     case "hide":
       window.hide();
@@ -1205,6 +1207,7 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   showWindow(lumineWindow) {
+    if (lumineWindow.offscreen) return;
     const window = lumineWindow.browserWindow;
     window.show();
     if (lumineWindow.preserveFocus) {

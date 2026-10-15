@@ -139,6 +139,9 @@ describe("Auxiliary editor windows", () => {
     expect(editor.getElement()).toBe(element);
     expect(copy.getBuffer()).toBe(editor.getBuffer());
     expect(element.ownerDocument).toBe(document);
+    if (require("../src/get-window-load-settings")().offscreen) {
+      expect(await lumine.window.isVisible()).toBe(false);
+    }
   });
 
   it("honors logo clicks while the visible detached pane is finishing its window operation", async () => {

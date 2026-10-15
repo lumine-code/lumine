@@ -418,6 +418,28 @@ describe("LumineWindow", function () {
       assert.isTrue(browserWindow.webContents.startPainting.calledOnce);
     });
 
+    it("never reveals offscreen windows through native presentation operations", function () {
+      const window = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        isSpec: true,
+        headless: true,
+        offscreen: true,
+      });
+      for (const method of [
+        "focus",
+        "minimize",
+        "maximize",
+        "unmaximize",
+        "restore",
+        "setFullScreen",
+      ]) {
+        const nativeOperation = (window.browserWindow[method] = sinon.spy());
+        window[method](true);
+        assert.isFalse(nativeOperation.called, `${method} must not reveal the offscreen host`);
+      }
+      assert.isTrue(window.browserWindow.webContents.startPainting.calledOnce);
+    });
+
     it("opens initial locations", async function () {
       const locationsToOpen = [
         {

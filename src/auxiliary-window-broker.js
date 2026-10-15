@@ -235,7 +235,7 @@ module.exports = class AuxiliaryWindowBroker {
       case "getState":
         return this.state(record);
       case "focus":
-        window.focus();
+        if (!this.owner.offscreen) window.focus();
         window.webContents.focus();
         return;
       case "show":
@@ -245,13 +245,13 @@ module.exports = class AuxiliaryWindowBroker {
         window.hide();
         return;
       case "minimize":
-        window.minimize();
+        if (!this.owner.offscreen) window.minimize();
         return;
       case "maximize":
-        window.maximize();
+        if (!this.owner.offscreen) window.maximize();
         return;
       case "unmaximize":
-        window.unmaximize();
+        if (!this.owner.offscreen) window.unmaximize();
         return;
       case "isMaximized":
         return window.isMaximized();
@@ -273,7 +273,7 @@ module.exports = class AuxiliaryWindowBroker {
         return;
       case "setFullScreen":
         if (typeof args[0] !== "boolean") throw new TypeError("Fullscreen must be a boolean.");
-        window.setFullScreen(args[0]);
+        if (!this.owner.offscreen) window.setFullScreen(args[0]);
         return;
       case "setTitle":
         if (typeof args[0] !== "string") throw new TypeError("A window title must be a string.");

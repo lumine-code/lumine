@@ -196,6 +196,33 @@ test("developer tools toggle on the addressed presentation", async () => {
   broker.destroy();
 });
 
+for (const offscreen of [false, true]) {
+  test(`native presentation requests respect the offscreen owner (${offscreen})`, async () => {
+    const { broker, owner, window } = fixture();
+    owner.headless = true;
+    owner.offscreen = offscreen;
+    const nativeCalls = [];
+    const pageCalls = [];
+    for (const method of ["focus", "show", "minimize", "maximize", "unmaximize", "setFullScreen"]) {
+      window[method] = () => nativeCalls.push(method);
+    }
+    window.webContents.focus = () => pageCalls.push("focus");
+    const token = broker.prepare();
+    broker.didCreateWindow(window, { frameName: token });
+    const descriptor = await broker.resolve(token);
+
+    for (const action of ["focus", "show", "minimize", "maximize", "unmaximize", "setFullScreen"]) {
+      broker.invoke(descriptor.id, action, true);
+    }
+    assert.deepEqual(
+      nativeCalls,
+      offscreen ? [] : ["focus", "minimize", "maximize", "unmaximize", "setFullScreen"],
+    );
+    assert.deepEqual(pageCalls, ["focus"]);
+    broker.destroy();
+  });
+}
+
 test("saved presentation identities are valid and cannot alias another host", () => {
   const { broker } = fixture();
   for (const persistentId of ["main", "", null, {}, []])

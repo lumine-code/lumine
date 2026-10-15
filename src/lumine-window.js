@@ -517,26 +517,34 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   focus() {
+    // Native focus can reveal Electron's offscreen placeholder. Page focus is
+    // handled separately by the caller and remains available to specs.
+    if (this.offscreen) return;
     return this.browserWindow.focus();
   }
 
   minimize() {
+    if (this.offscreen) return;
     return this.browserWindow.minimize();
   }
 
   maximize() {
+    if (this.offscreen) return;
     return this.browserWindow.maximize();
   }
 
   unmaximize() {
+    if (this.offscreen) return;
     return this.browserWindow.unmaximize();
   }
 
   restore() {
+    if (this.offscreen) return;
     return this.browserWindow.restore();
   }
 
   setFullScreen(fullScreen) {
+    if (this.offscreen) return;
     return this.browserWindow.setFullScreen(fullScreen);
   }
 

@@ -9,6 +9,7 @@ const electron = require("electron");
 const sandbox = require("sinon").createSandbox();
 
 const LumineApplication = require("../../src/lumine-application");
+const LumineWindow = require("../../src/lumine-window");
 const applicationLauncher = require("../../src/application-launcher");
 const parseCommandLine = require("../../src/parse-command-line");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
@@ -904,6 +905,44 @@ describe("LumineApplication", function () {
         assert.isFalse(w1.focus.called);
         assert.isFalse(focusApplication.called);
       }
+    });
+
+    it("keeps an offscreen spec window hidden when asked to show it", function () {
+      w1.isSpec = true;
+      w1.offscreen = true;
+      w1.preserveFocus = false;
+      w1.browserWindow.show = sinon.spy();
+      w1.browserWindow.focus = sinon.spy();
+      const focusApplication = sinon.stub(electron.app, "focus");
+
+      app.showWindow(w1);
+
+      assert.isFalse(w1.browserWindow.show.called);
+      assert.isFalse(w1.browserWindow.focus.called);
+      assert.isFalse(focusApplication.called);
+    });
+
+    it("keeps offscreen spec window actions hidden while allowing page focus", async function () {
+      w1.isSpec = true;
+      w1.offscreen = true;
+      w1.preserveFocus = false;
+      w1.focus = LumineWindow.prototype.focus.bind(w1);
+      w1.browserWindow.show = sinon.spy();
+      w1.browserWindow.showInactive = sinon.spy();
+      w1.browserWindow.focus = sinon.spy();
+      w1.browserWindow.webContents.focus = sinon.spy();
+      const focusApplication = sinon.stub(electron.app, "focus");
+      const event = { sender: w1.browserWindow.webContents };
+
+      await LumineApplication.handleWindowAction(event, "show");
+      await LumineApplication.handleWindowAction(event, "showInactive");
+      await LumineApplication.handleWindowAction(event, "focus");
+
+      assert.isFalse(w1.browserWindow.show.called);
+      assert.isFalse(w1.browserWindow.showInactive.called);
+      assert.isFalse(w1.browserWindow.focus.called);
+      assert.isFalse(focusApplication.called);
+      assert.isTrue(w1.browserWindow.webContents.focus.calledOnce);
     });
 
     it("accepts only the exact live WebContents registered for a Lumine window", function () {
