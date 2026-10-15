@@ -115,6 +115,12 @@ describe("the core platform keymaps", () => {
     expect(bindings("win32")).toEqual(bindings("linux"));
   });
 
+  it("keeps direct text creation and assigns Shift-New to Launcher", () => {
+    const shared = load("base").body;
+    expect(shared["cmdorctrl-n"]).toBe("application:new-file");
+    expect(shared["cmdorctrl-shift-n"]).toBe("launcher:new");
+  });
+
   it("opens the Launcher resource picker from the global open shortcut on every platform", () => {
     for (const platform of PLATFORMS) {
       const keystrokes = platform === "darwin" ? "cmd-o" : "ctrl-o";

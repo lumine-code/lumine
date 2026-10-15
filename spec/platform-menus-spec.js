@@ -131,9 +131,10 @@ describe("platform menus", function () {
       expect(strip(action("launcher:new").label)).toBe("New…");
       expect(strip(action("launcher:open").label)).toBe("Open…");
       expect(strip(action("application:new-file").label)).toBe("New Text File");
-      expect(items.indexOf(action("launcher:new"))).toBeLessThan(
-        items.indexOf(action("application:new-file")),
+      expect(items.indexOf(action("application:new-file"))).toBeLessThan(
+        items.indexOf(action("launcher:new")),
       );
+      expect(action("application:new-file").order).toBeLessThan(action("launcher:new").order);
     }
   });
 

@@ -38,7 +38,7 @@
     "cmdorctrl-q": "application:quit",
     "cmdorctrl-,": "application:show-settings",
     "cmdorctrl-n": "application:new-file",
-    "cmdorctrl-shift-n": "application:new-window",
+    "cmdorctrl-shift-n": "launcher:new",
     "cmdorctrl-shift-w": "window:close",
     "cmdorctrl-shift-t": "pane:reopen-closed-item",
     "cmdorctrl-s": "core:save",
