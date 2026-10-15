@@ -22,8 +22,6 @@ const ALLOWED_DIVERGENCES = [
   "/File/Configuration Files",
   // macOS ships a Window menu with the standard role.
   "/Window",
-  // The macOS Launcher open panel selects a file or a folder in one dialog.
-  "/File/Open Folder…",
   // Quit is spelled by platform convention and lives in the app menu on macOS.
   "/File/Exit",
   "/File/Quit",
@@ -130,6 +128,7 @@ describe("platform menus", function () {
       const action = (command) => items.find((item) => item.command === command);
       expect(strip(action("launcher:new").label)).toBe("New…");
       expect(strip(action("launcher:open").label)).toBe("Open…");
+      expect(strip(action("application:open-folder").label)).toBe("Open Folder…");
       expect(strip(action("application:new-file").label)).toBe("New Text File");
       expect(items.indexOf(action("application:new-file"))).toBeLessThan(
         items.indexOf(action("launcher:new")),

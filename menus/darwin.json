@@ -137,6 +137,12 @@
           "order": 10
         },
         {
+          "label": "Open Folder…",
+          "command": "application:open-folder",
+          "group": "projects",
+          "order": 10
+        },
+        {
           "label": "Add Project Folder…",
           "command": "application:add-project-folder",
           "group": "projects",
