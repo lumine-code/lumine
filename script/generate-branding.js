@@ -21,6 +21,7 @@
  *                  design change without dirtying the tree
  *   --brand-only   only render the README banners and desktop wallpapers
  *   --gallery-only only compose the README gallery from authentic captures
+ *   --installer-only only render the Windows installer sidebar and header
  *
  * Before this script the rasters were hand-exported from art that no longer
  * matched lumine.svg: every white element carried a drop shadow the vector
@@ -80,7 +81,7 @@ const STAGE = 1024;
 
 const WORDMARK_FAMILY = "Segoe UI";
 const WORDMARK_WEIGHT = 600;
-const WORDMARK_SIZE = 26;
+const WORDMARK_SIZE = 28;
 
 // The mark's ink spans 19..109 of lumine.svg's 128-unit canvas (a 90-unit
 // box). Scaling that canvas by 0.77 inside a tile reproduces the ink box of
@@ -126,7 +127,13 @@ function scriptArgs(argv) {
 }
 
 function parseArgs(argv) {
-  const options = { check: false, outDir: REPO_ROOT, brandOnly: false, galleryOnly: false };
+  const options = {
+    check: false,
+    outDir: REPO_ROOT,
+    brandOnly: false,
+    galleryOnly: false,
+    installerOnly: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
@@ -139,6 +146,9 @@ function parseArgs(argv) {
       case "--gallery-only":
         options.galleryOnly = true;
         break;
+      case "--installer-only":
+        options.installerOnly = true;
+        break;
       case "--out":
         options.outDir = path.resolve(argv[++i] ?? fail("--out needs a value"));
         break;
@@ -146,7 +156,8 @@ function parseArgs(argv) {
         fail(`Unknown option: ${arg}`);
     }
   }
-  if (options.brandOnly && options.galleryOnly) fail("Choose --brand-only or --gallery-only");
+  if ([options.brandOnly, options.galleryOnly, options.installerOnly].filter(Boolean).length > 1)
+    fail("Choose only one of --brand-only, --gallery-only or --installer-only");
   return options;
 }
 
@@ -256,19 +267,23 @@ function tileArt({ mark }) {
 }
 
 // 164x314, MUI_WELCOMEFINISHPAGE_BITMAP (and, since uninstallerSidebar is left
-// unset, MUI_UNWELCOMEFINISHPAGE_BITMAP too). The gradient's cx/cy/r are
-// objectBoundingBox units, so filling a 164x314 rect stretches the icon's
-// circular falloff into an ellipse matching the panel — which is what a
-// full-bleed brand panel wants.
-function sidebarArt({ gradient, mark }) {
+// unset, MUI_UNWELCOMEFINISHPAGE_BITMAP too). Match the website's neutral
+// surface and full-length rules, with the canonical gold disc as the accent.
+function sidebarArt({ gradient, disc, mark }) {
+  const palette = brandAssets.PALETTES.light;
   return svg(
     "0 0 164 314",
     `<defs>${gradient}</defs>` +
-      `<rect width="164" height="314" fill="url(#lumine-gold)"/>` +
-      `<g fill="#fff" transform="translate(34 75) scale(0.75)">${mark}</g>` +
-      `<text x="82" y="215" fill="#fff" text-anchor="middle" letter-spacing="0.5" ` +
+      `<rect width="164" height="314" fill="${palette.bg}"/>` +
+      `<path d="M14.5 0V314 M149.5 0V314 M0 32.5H164 M0 169.5H164 M0 254.5H164" fill="none" stroke="${palette.line}"/>` +
+      `<text x="26" y="21" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">TEXT EDITOR</text>` +
+      `<g transform="translate(34 53) scale(0.75)">${disc}<g fill="#fff">${mark}</g></g>` +
+      `<text x="25" y="209" fill="${palette.ink}" letter-spacing="-1" ` +
       `font-family="${WORDMARK_FAMILY}" font-weight="${WORDMARK_WEIGHT}" ` +
-      `font-size="${WORDMARK_SIZE}">Lumine</text>`,
+      `font-size="${WORDMARK_SIZE}">Lumine</text>` +
+      `<text x="26" y="233" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="11">Your editor. Your way.</text>` +
+      `<path d="M14.5 254.5H54.5" stroke="${palette.gold}" stroke-width="2"/>` +
+      `<text x="26" y="287" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">OPEN SOURCE</text>`,
   );
 }
 
@@ -276,11 +291,14 @@ function sidebarArt({ gradient, mark }) {
 // background (electron-builder does not override MUI_BGCOLOR). This one uses
 // the full icon, gold disc included: the white-only mark would be invisible.
 function headerArt({ gradient, disc, mark }) {
+  const palette = brandAssets.PALETTES.light;
   return svg(
     "0 0 150 57",
     `<defs>${gradient}</defs>` +
       `<rect width="150" height="57" fill="#ffffff"/>` +
-      `<g transform="translate(99 8) scale(0.3203125)">${disc}<g fill="#fff">${mark}</g></g>`,
+      `<path d="M98.5 0V57 M0 56.5H150" fill="none" stroke="${palette.line}"/>` +
+      `<text x="10" y="35" fill="${palette.ink}" font-family="${WORDMARK_FAMILY}" font-weight="${WORDMARK_WEIGHT}" font-size="20" letter-spacing="-0.5">Lumine</text>` +
+      `<g transform="translate(104 8) scale(0.3203125)">${disc}<g fill="#fff">${mark}</g></g>`,
   );
 }
 
@@ -822,19 +840,26 @@ function assertNotUniform(bgra, label) {
   fail(`${label}: every pixel is ${bgra[2]},${bgra[1]},${bgra[0]} — the frame never composited`);
 }
 
-// The gradient's last stop, #9a6214, is what the sidebar's far corner clamps
-// to. Getting something else there means the gradient did not resolve — the
-// likeliest cause being a lumine.svg edit that renamed the `lumine-gold` id.
-function assertSidebarGradient(bgra, width, height) {
+// Check the neutral surface and the gold disc separately, so a broken fill
+// reference cannot quietly produce a black logo on an otherwise valid frame.
+function assertSidebarPalette(bgra, width, height) {
   const corner = (height - 1) * width * 4 + (width - 1) * 4;
   const actual = { b: bgra[corner], g: bgra[corner + 1], r: bgra[corner + 2] };
-  const off = Math.abs(actual.b - 0x14) + Math.abs(actual.g - 0x62) + Math.abs(actual.r - 0x9a);
-  if (off > 12) {
+  const color = brandAssets.PALETTES.light.bg.slice(1);
+  const expected = [0, 2, 4].map((index) => parseInt(color.slice(index, index + 2), 16));
+  const off =
+    Math.abs(actual.r - expected[0]) +
+    Math.abs(actual.g - expected[1]) +
+    Math.abs(actual.b - expected[2]);
+  if (off > 3) {
     fail(
       `installerSidebar.bmp: far corner is rgb(${actual.r},${actual.g},${actual.b}), ` +
-        "expected the gradient's final stop rgb(154,98,20) — did lumine.svg's gradient id change?",
+        `expected the shared light palette ${brandAssets.PALETTES.light.bg}`,
     );
   }
+  const gold = (85 * width + 50) * 4;
+  if (!(bgra[gold + 2] > bgra[gold + 1] + 15 && bgra[gold + 1] > bgra[gold] + 35))
+    fail("installerSidebar.bmp: the canonical gold disc did not render");
 }
 
 // Transparent art must actually be transparent at the corners, and opaque
@@ -889,7 +914,7 @@ async function renderAsset(win, asset) {
       assertOpaque(bgra, label);
       assertNotUniform(bgra, label);
       if (label === "installerSidebar.bmp") {
-        assertSidebarGradient(bgra, asset.width, asset.height);
+        assertSidebarPalette(bgra, asset.width, asset.height);
       }
       return encodeBmp24(bgra, asset.width, asset.height, BACKGROUNDS[asset.background]);
     }
@@ -944,9 +969,13 @@ async function main() {
   const options = parseArgs(scriptArgs(process.argv));
   const art = readMasterArt(MASTER_SVG);
   const description = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"))).description;
-  const assets = options.galleryOnly ? [] : brandAssets(art, description);
-  if (!options.brandOnly) assets.push(...galleryAssets(REPO_ROOT));
-  if (!options.brandOnly && !options.galleryOnly) {
+  const assets = options.installerOnly
+    ? assetList(art).filter((asset) => asset.kind === "bmp")
+    : options.galleryOnly
+      ? []
+      : brandAssets(art, description);
+  if (!options.brandOnly && !options.installerOnly) assets.push(...galleryAssets(REPO_ROOT));
+  if (!options.brandOnly && !options.galleryOnly && !options.installerOnly) {
     assets.push(...assetList(art));
     for (const variant of MODE_VARIANTS) {
       assets.push(...modeVariantAssets(readMasterArt(variant.svg), variant.name));
@@ -990,7 +1019,9 @@ async function main() {
   }
   const sources = [
     MASTER_SVG,
-    ...(options.brandOnly || options.galleryOnly ? [] : MODE_VARIANTS.map((v) => v.svg)),
+    ...(options.brandOnly || options.galleryOnly || options.installerOnly
+      ? []
+      : MODE_VARIANTS.map((v) => v.svg)),
   ].map((p) => path.basename(p));
   const sourceLabel = options.galleryOnly ? "authentic gallery captures" : sources.join(", ");
   console.log(`branding: ${rendered.length} assets written from ${sourceLabel}`);

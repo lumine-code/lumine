@@ -350,7 +350,7 @@ let options = {
     // directories.buildResources defaults to build/, which this repo has no
     // such directory for, so without them NSIS falls back to its own stock
     // nsis3-metro sidebar and draws no header at all. Regenerate the bitmaps
-    // with `npm run generate:win-branding`. uninstallerSidebar is deliberately
+    // with `npm run generate:branding -- --installer-only`. uninstallerSidebar is deliberately
     // unset -- electron-builder reuses installerSidebar for the uninstaller's
     // MUI_UNWELCOMEFINISHPAGE_BITMAP.
     installerSidebar: "resources/win/installerSidebar.bmp",
