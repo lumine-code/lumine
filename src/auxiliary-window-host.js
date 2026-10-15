@@ -160,6 +160,7 @@ module.exports = class AuxiliaryWindowHost {
       };
       const focused = () => {
         environment.views.setAnimationFrameWindow(domWindow);
+        environment.repositories?.handleWindowFocus();
         document.body.classList.remove("is-blurred");
       };
       const blurred = () => document.body.classList.add("is-blurred");
