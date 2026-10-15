@@ -1,7 +1,7 @@
 module.exports = class OverlayComponent {
   constructor(props) {
     this.props = props;
-    this.element = document.createElement("lumine-overlay");
+    this.element = props.element.ownerDocument.createElement("lumine-overlay");
     if (this.props.className != null) this.element.classList.add(this.props.className);
     this.element.appendChild(this.props.element);
     this.element.style.position = "fixed";
@@ -12,13 +12,19 @@ module.exports = class OverlayComponent {
     this.element.style.left = (this.props.pixelLeft || 0) + "px";
     this.applyAnchor();
     this.currentContentRect = null;
+    this.didAttach();
+    this.props.overlayComponents.add(this);
+  }
 
+  bindResizeObserver() {
+    this.resizeObserver?.disconnect();
+    const window = this.element.ownerDocument.defaultView;
     // Synchronous DOM updates in response to resize events might trigger a
     // "loop limit exceeded" error. We disconnect the observer before
     // potentially mutating the DOM, and then reconnect it on the next tick.
     // Note: ResizeObserver calls its callback when .observe is called
-    this.resizeObserver = new ResizeObserver((entries) => {
-      if (!this.attached || this.destroyed) return;
+    const observer = new window.ResizeObserver((entries) => {
+      if (!this.attached || this.destroyed || this.resizeObserver !== observer) return;
       const { contentRect } = entries[0];
 
       if (
@@ -29,19 +35,18 @@ module.exports = class OverlayComponent {
       ) {
         // The first placement may have measured empty content before its
         // queued render. Its first real size must refit the overlay too.
-        this.resizeObserver.disconnect();
+        observer.disconnect();
         this.props.didResize(this);
         process.nextTick(() => {
-          if (this.attached && !this.destroyed) {
-            this.resizeObserver.observe(this.props.element);
+          if (this.attached && !this.destroyed && this.resizeObserver === observer) {
+            observer.observe(this.props.element);
           }
         });
       }
 
       this.currentContentRect = contentRect;
     });
-    this.didAttach();
-    this.props.overlayComponents.add(this);
+    this.resizeObserver = observer;
   }
 
   destroy() {
@@ -101,6 +106,7 @@ module.exports = class OverlayComponent {
     if (this.destroyed) return;
     this.attached = true;
     this.currentContentRect = null;
+    this.bindResizeObserver();
     this.resizeObserver.observe(this.props.element);
   }
 

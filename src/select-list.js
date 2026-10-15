@@ -381,14 +381,18 @@ class SelectList extends InputDialog {
 
   observeOverflowViewport() {
     const viewport = this.props.overflowSections != null ? this.component?.refs?.items : null;
-    if (viewport === this.overflowViewport) return;
+    const window = viewport?.ownerDocument.defaultView;
+    if (viewport === this.overflowViewport && window === this.overflowWindow) return;
     this.overflowResizeObserver?.disconnect();
+    this.overflowResizeObserver = null;
     this.overflowViewport = viewport ?? null;
+    this.overflowWindow = window;
     if (!viewport) return;
-    this.overflowResizeObserver ??= new ResizeObserver(() => {
-      if (!this.destroyed) void this.updateComponent();
+    const observer = new window.ResizeObserver(() => {
+      if (!this.destroyed && this.overflowResizeObserver === observer) void this.updateComponent();
     });
-    this.overflowResizeObserver.observe(viewport);
+    this.overflowResizeObserver = observer;
+    observer.observe(viewport);
   }
 
   /** @private */
