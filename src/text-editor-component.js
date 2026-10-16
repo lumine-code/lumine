@@ -294,7 +294,12 @@ module.exports = class TextEditorComponent {
     // These bail-outs resolve any pending update promise for the same reason
     // the mirrored ones in `updateSync` do: no update is going to happen, so a
     // caller already awaiting `getNextUpdatePromise()` would hang forever.
-    if (!this.visible || this.suppressUpdates || this.props.model.isDestroyed()) {
+    const { model } = this.props;
+    if (
+      (!this.visible && (!this.attached || !model.getAutoHeight())) ||
+      this.suppressUpdates ||
+      model.isDestroyed()
+    ) {
       // A destroyed editor must never render. Destroying an attached editor
       // emits synchronous marker and decoration events mid-teardown; rendering
       // from those would repopulate the destroyed display layer's spatial index
@@ -325,15 +330,26 @@ module.exports = class TextEditorComponent {
       return;
     }
 
-    // Don't proceed if we know we are not visible. Resolve rather than leak
-    // the pending update promise - the component may never be shown again, and
-    // a caller awaiting getNextUpdatePromise() would hang forever. The other
-    // bail-outs in this method resolve it for the same reason.
-    if (!this.visible) {
+    // An auto-height editor contributes its content height to its parent's
+    // layout even outside the viewport. Keep that geometry current without
+    // marking it visible or starting its language mode's visible work. A
+    // display:none ancestor has no layout box and still suppresses updates.
+    // Resolve rather than leak an update promise when no update can happen.
+    if (
+      !this.visible &&
+      (!this.attached ||
+        !this.props.model.getAutoHeight() ||
+        this.element.getClientRects().length === 0)
+    ) {
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
     }
+
+    // A collapsed ancestor can conceal the editor during didAttach. The
+    // first resize after it expands may arrive while the editor remains
+    // outside the viewport, before IntersectionObserver ever calls didShow.
+    if (!this.hasInitialMeasurements) this.measureDimensions();
 
     // Don't proceed if we have to pay for a measurement anyway and detect
     // that we are no longer visible.
