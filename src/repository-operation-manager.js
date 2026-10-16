@@ -807,7 +807,7 @@ module.exports = class RepositoryOperationManager {
   }
 
   emitOperationProviderChange(collectError) {
-    if (this.destroyed || this.entriesById.size === 0) return;
+    if (this.destroyed) return;
     const repositories = this.getRepositories();
     this.emitChange(
       {

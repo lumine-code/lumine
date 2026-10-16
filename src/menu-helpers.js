@@ -245,7 +245,9 @@ function normalizeCommandTarget(target, document = target?.ownerDocument) {
 
 function isMenuItemEnabled(item, target, commandRegistry = globalThis.lumine?.commands) {
   if (item.enabled === false || !matchesScope(target, item.scope)) return false;
-  return !item.command || commandRegistry?.canDispatch(target, item.command) === true;
+  return (
+    !item.command || commandRegistry?.canDispatch(target, item.command, item.commandDetail) === true
+  );
 }
 
 function acceleratorForKeystroke(keystroke) {

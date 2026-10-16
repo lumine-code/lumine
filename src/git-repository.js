@@ -7,6 +7,7 @@ const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
 const { isRepositoryUnavailableError } = require("./git-error");
+const completeCleanup = require("./complete-cleanup");
 
 // A missing executable is shared by every repository in a window. Key the
 // warning by its NotificationManager so one broken git.path does not produce a
@@ -29,6 +30,16 @@ function deepFreeze(value) {
 function statusPathKey(filePath) {
   const normalized = filePath.split(path.sep).join("/").replace(/^\.\//, "");
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function cachedHeadsEqual(left, right) {
+  return (
+    left === right ||
+    ((left?.name ?? null) === (right?.name ?? null) &&
+      (left?.oid ?? null) === (right?.oid ?? null) &&
+      Boolean(left?.detached) === Boolean(right?.detached) &&
+      Boolean(left?.unborn) === Boolean(right?.unborn))
+  );
 }
 
 function snapshotAbortError() {
@@ -420,6 +431,29 @@ module.exports = class GitRepository {
       if (this.refsSnapshotSubscriberCount === 0) this.cancelScheduledSnapshotRefresh("refs");
       subscription.dispose();
     });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe accepted changes to the cached status, refs or effective HEAD.
+   * Unlike the snapshot subscriptions, this declares no interest, schedules no
+   * refresh and performs no Git or filesystem work. It does not replay the
+   * current state. Combined refreshes publish both caches before notifying.
+   *
+   * @param {Function} callback - called with a frozen `{repository, kind, snapshot}` object, where `kind` is `status` or `refs` and `snapshot` is the accepted immutable cache.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeCachedState(callback) {
+    return this.emitter.on("did-change-cached-state", callback);
+  }
+
+  emitCachedStateChange(kind, snapshot) {
+    this.emitter.emit(
+      "did-change-cached-state",
+      Object.freeze({ repository: this, kind, snapshot }),
+    );
   }
 
   /**
@@ -1237,16 +1271,21 @@ module.exports = class GitRepository {
   async applyStatusSnapshotSection(section, signal, { deferCommit = false } = {}) {
     if (signal?.aborted) throw snapshotAbortError();
     if (section.unchanged) {
+      let headChanged = false;
       const prepared = {
         commit: () => {
+          headChanged = !cachedHeadsEqual(this.snapshotHead, this.statusSnapshot.head);
           this.statusSnapshotFingerprint = section.fingerprint;
           this.snapshotHead = this.statusSnapshot.head;
         },
-        emit: () => {},
+        emit: () => {
+          if (headChanged) this.emitCachedStateChange("status", this.statusSnapshot);
+        },
         value: this.statusSnapshot,
       };
       if (deferCommit) return prepared;
       prepared.commit();
+      prepared.emit();
       return prepared.value;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
@@ -1322,7 +1361,14 @@ module.exports = class GitRepository {
         this.ignoredDirKeys = ignoredDirKeys;
         this.submodulePathKeys = submodulePathKeys;
       },
-      emit: () => this.emitter.emit("did-change-status-snapshot", snapshot),
+      emit: () =>
+        completeCleanup(
+          [
+            () => this.emitter.emit("did-change-status-snapshot", snapshot),
+            () => this.emitCachedStateChange("status", snapshot),
+          ],
+          "Unable to notify repository status observers",
+        ),
       value: snapshot,
     };
     if (deferCommit) return prepared;
@@ -1334,16 +1380,21 @@ module.exports = class GitRepository {
   async applyRefsSnapshotSection(section, signal, { deferCommit = false } = {}) {
     if (signal?.aborted) throw snapshotAbortError();
     if (section.unchanged) {
+      let headChanged = false;
       const prepared = {
         commit: () => {
+          headChanged = !cachedHeadsEqual(this.snapshotHead, this.refsSnapshot.head);
           this.refsSnapshotFingerprint = section.fingerprint;
           this.snapshotHead = this.refsSnapshot.head;
         },
-        emit: () => {},
+        emit: () => {
+          if (headChanged) this.emitCachedStateChange("refs", this.refsSnapshot);
+        },
         value: this.refsSnapshot,
       };
       if (deferCommit) return prepared;
       prepared.commit();
+      prepared.emit();
       return prepared.value;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
@@ -1362,7 +1413,14 @@ module.exports = class GitRepository {
         this.refsSnapshot = snapshot;
         this.snapshotHead = snapshot.head;
       },
-      emit: () => this.emitter.emit("did-change-refs-snapshot", snapshot),
+      emit: () =>
+        completeCleanup(
+          [
+            () => this.emitter.emit("did-change-refs-snapshot", snapshot),
+            () => this.emitCachedStateChange("refs", snapshot),
+          ],
+          "Unable to notify repository refs observers",
+        ),
       value: snapshot,
     };
     if (deferCommit) return prepared;

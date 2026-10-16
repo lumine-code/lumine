@@ -820,6 +820,7 @@ module.exports = class RepositoryRegistry {
         ...entries.flatMap((entry) => [
           () => entry.destroySubscription.dispose(),
           () => entry.unavailableSubscription.dispose(),
+          () => entry.cachedStateSubscription.dispose(),
           () => this.disposeOperationImplementations(entry),
           () => entry.repository.setOperations?.(null),
           () => {
@@ -966,6 +967,29 @@ module.exports = class RepositoryRegistry {
    */
   onDidRemoveRepository(callback) {
     return this.emitter.on("did-remove-repository", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe cached state or available-operation changes in registered repositories.
+   * The subscription is passive: it does not load snapshots, retain repositories,
+   * create operation implementations or perform Git or filesystem reads.
+   * Registration and removal remain available through their separate events.
+   *
+   * @param {Function} callback - called with a frozen `{repository}` object.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeRepositoryState(callback) {
+    return this.emitter.on("did-change-repository-state", callback);
+  }
+
+  emitRepositoryStateChange(repository) {
+    const entry = this.entryByRepository.get(repository);
+    if (this.destroyed || !entry || entry.removing || this.entriesById.get(entry.id) !== entry)
+      return;
+    this.emitter.emit("did-change-repository-state", Object.freeze({ repository }));
   }
 
   /**
@@ -1136,10 +1160,10 @@ module.exports = class RepositoryRegistry {
   getCommandContext(event, { scope = "repository" } = {}) {
     const element = event?.target?.closest?.("lumine-text-editor:not([mini])");
     const editor =
-      element?.getModel?.() ||
-      event?.context?.embeddedEditor ||
-      this.workspace?.getActiveTextEditor?.() ||
-      null;
+      element?.getModel?.() ??
+      (event?.context
+        ? (event.context.embeddedEditor ?? null)
+        : (this.workspace?.getActiveTextEditor?.() ?? null));
     const filePath = editor?.getPath?.() || null;
     const repository =
       scope === "file" ? (filePath ? this.getForPath(filePath) : null) : this.getActiveRepository();
@@ -3592,6 +3616,7 @@ module.exports = class RepositoryRegistry {
       removing: false,
       destroySubscription: null,
       unavailableSubscription: null,
+      cachedStateSubscription: null,
     };
 
     entry.operationQueue = this.operationManager.createQueue(entry);
@@ -3605,6 +3630,9 @@ module.exports = class RepositoryRegistry {
     });
     entry.unavailableSubscription =
       repository.onDidBecomeUnavailable?.(() => this.removeUnavailableEntry(entry)) ||
+      new Disposable();
+    entry.cachedStateSubscription =
+      repository.onDidChangeCachedState?.(() => this.emitRepositoryStateChange(repository)) ||
       new Disposable();
 
     this.entriesById.set(id, entry);
@@ -3819,6 +3847,7 @@ module.exports = class RepositoryRegistry {
       [
         () => entry.destroySubscription.dispose(),
         () => entry.unavailableSubscription.dispose(),
+        () => entry.cachedStateSubscription.dispose(),
         () => this.disposeOperationImplementations(entry),
         () => entry.repository.setOperations?.(null),
         ...activeCleanup,
@@ -3866,6 +3895,9 @@ module.exports = class RepositoryRegistry {
     }
     for (const repository of change.removed) {
       notify(() => this.emitter.emit("did-remove-repository", repository));
+    }
+    for (const repository of new Set(change.updated)) {
+      notify(() => this.emitRepositoryStateChange(repository));
     }
     notify(() => this.emitter.emit("did-change", event));
   }

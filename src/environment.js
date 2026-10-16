@@ -383,6 +383,11 @@ class Environment {
       packageManager: this.packages,
       confirm: (options) => this.applicationDelegate.confirm(options),
     });
+    this.disposables.add(
+      this.repositories.onDidChange(() => this.commands.invalidateAvailability()),
+      this.repositories.onDidChangeActiveRepository(() => this.commands.invalidateAvailability()),
+      this.repositories.onDidChangeRepositoryState(() => this.commands.invalidateAvailability()),
+    );
     this.icons.attachRepositories(this.repositories);
     // Interactive credential/passphrase prompting for git operations that run in
     // the git-host worker, so the user's system git credential helpers stay the

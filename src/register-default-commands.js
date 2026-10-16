@@ -259,6 +259,8 @@ module.exports = function ({
       },
       "git:update-repositories": {
         description: "Look for Git repositories again and reread what each one holds.",
+        isAvailable: () =>
+          project.getPaths().length > 0 || repositories.getRepositories().length > 0,
         didDispatch: function () {
           return repositories.update();
         },

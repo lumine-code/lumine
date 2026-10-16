@@ -17,7 +17,7 @@ describe("MenuHelpers", function () {
       };
       const item = { command: "test:run", scope: ".menu-command-surface" };
       expect(MenuHelpers.isMenuItemEnabled(item, target, commands)).toBe(true);
-      expect(commands.canDispatch).toHaveBeenCalledOnceWith(target, "test:run");
+      expect(commands.canDispatch).toHaveBeenCalledOnceWith(target, "test:run", undefined);
       commands.canDispatch.calls.reset();
       surface.className = "other-surface";
       expect(MenuHelpers.isMenuItemEnabled(item, target, commands)).toBe(false);

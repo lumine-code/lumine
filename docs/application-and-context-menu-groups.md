@@ -146,7 +146,15 @@ A context menu dispatches to its clicked element by default (`commandTarget: "co
 }
 ```
 
-A row can override its descriptor's `commandTarget` with `"context"` or `"focus"`. The selected target is reused for availability, default shortcut lookup and execution. Selector matching and ownership callbacks (`shouldDisplay` and `created`) retain the original clicked event, so a status menu can still identify its own tile. Optional `scope` constrains the selected target without changing it. Command matching uses the existing command registry; it does not require a second validator on every command. Runtime guards still handle changing domain state such as a missing kernel, an unsaved file or a stopped build.
+A row can override its descriptor's `commandTarget` with `"context"` or `"focus"`. The selected target is reused for availability, default shortcut lookup and execution. Selector matching and ownership callbacks (`shouldDisplay` and `created`) retain the original clicked event, so a status menu can still identify its own tile. Optional `scope` constrains the selected target without changing it.
+
+## Command availability
+
+The registered scope says which surface handles a command. An optional `isAvailable({target, currentTarget, detail, context})` predicate on its command descriptor says whether the operation makes sense in the current state. It returns only `true` or `false`, synchronously and without side effects or I/O; for example, repository actions can require an existing repository. Omit the predicate when the scope alone is sufficient. `this` and `currentTarget` identify the matching registration node, while `target` remains the saved dispatch target and `context` is the same captured workspace context supplied to the handler.
+
+`commands.canDispatch(target, name, detail)` checks scope first and returns true when any matching handler is enabled. Menu rows and command-palette presentations use this Boolean to gray unavailable commands without adding a reason or removing them from the palette's existing scoped catalogue. The predicate is evaluated again before each handler executes. A declined keyboard command can fall through to another binding; an enabled ancestor handler retains normal bubbling semantics.
+
+Availability predicates read current state on every query. Call `commands.invalidateAvailability()` when their underlying state changes so live presentations, including the native application menu and an open command palette, refresh. Runtime guards still handle state changing during asynchronous operations.
 
 ## Contextual keyboard shortcuts
 

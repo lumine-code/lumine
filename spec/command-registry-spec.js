@@ -575,6 +575,7 @@ describe("CommandRegistry", () => {
         name: "namespace:command",
         displayName: "A Command",
         description: "Does one thing.",
+        enabled: true,
         keystrokes: ["ctrl-x", "alt-x"],
       });
       expect(Object.isFrozen(presentation)).toBe(true);
@@ -613,8 +614,8 @@ describe("CommandRegistry", () => {
       });
 
       expect(presentations).toEqual([
-        { name: "namespace:first", displayName: "First", keystrokes: ["ctrl-x"] },
-        { name: "namespace:second", displayName: "Second", keystrokes: ["alt-y"] },
+        { name: "namespace:first", displayName: "First", enabled: true, keystrokes: ["ctrl-x"] },
+        { name: "namespace:second", displayName: "Second", enabled: true, keystrokes: ["alt-y"] },
       ]);
       expect(registry.findCommands).toHaveBeenCalledTimes(1);
       expect(keymapManager.findKeyBindings).toHaveBeenCalledOnceWith({ target: child });

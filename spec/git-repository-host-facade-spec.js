@@ -84,6 +84,48 @@ describe("GitRepository host facade", () => {
     if (repo && !repo.isDestroyed()) repo.destroy();
   });
 
+  it("observes cached state without declaring snapshot interest or starting reads", async () => {
+    const read = jasmine.createSpy("snapshot read");
+    repo = await createGitRepository(copyRepository(), { gitHostClient: { getSnapshot: read } });
+    const status = spyOn(repo, "scheduleStatusSnapshotRefresh").and.callThrough();
+    const refs = spyOn(repo, "scheduleRefsSnapshotRefresh").and.callThrough();
+    const changed = jasmine.createSpy("cached state");
+    const subscription = repo.onDidChangeCachedState(changed);
+    await Promise.resolve();
+    expect(repo.statusSnapshotSubscriberCount).toBe(0);
+    expect(repo.refsSnapshotSubscriberCount).toBe(0);
+    expect(status).not.toHaveBeenCalled();
+    expect(refs).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    subscription.dispose();
+    subscription.dispose();
+    expect(repo.statusSnapshotSubscriberCount).toBe(0);
+    expect(repo.refsSnapshotSubscriberCount).toBe(0);
+  });
+
+  it("does not notify passive observers for a response rejected after cancellation", async () => {
+    let finish;
+    repo = await createGitRepository(copyRepository(), {
+      gitHostClient: {
+        getSnapshot: () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      },
+    });
+    const changed = jasmine.createSpy("cached state");
+    repo.onDidChangeCachedState(changed);
+    const controller = new AbortController();
+    const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
+    await Promise.resolve();
+    controller.abort();
+    finish({ status: { fingerprint: "late", unchanged: false, value: statusValue(1) } });
+    await expectAsync(pending).toBeRejected();
+    expect(changed).not.toHaveBeenCalled();
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+  });
+
   it("combines status and refs requests and reuses fingerprints", async () => {
     const calls = [];
     const gitHostClient = {
@@ -114,6 +156,8 @@ describe("GitRepository host facade", () => {
     repo = await createGitRepository(copyRepository(), { gitHostClient });
     const statusChanged = jasmine.createSpy("status changed");
     const refsChanged = jasmine.createSpy("refs changed");
+    const cachedChanged = jasmine.createSpy("cached state changed");
+    repo.onDidChangeCachedState(cachedChanged);
     repo.onDidChangeStatusSnapshot(statusChanged);
     repo.onDidChangeRefsSnapshot(refsChanged);
 
@@ -138,6 +182,7 @@ describe("GitRepository host facade", () => {
     expect(Object.isFrozen(refs)).toBe(true);
     expect(statusChanged.calls.count()).toBe(1);
     expect(refsChanged.calls.count()).toBe(1);
+    expect(cachedChanged.calls.count()).toBe(2);
 
     await Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]);
     expect(calls.length).toBe(2);
@@ -147,6 +192,7 @@ describe("GitRepository host facade", () => {
     });
     expect(statusChanged.calls.count()).toBe(1);
     expect(refsChanged.calls.count()).toBe(1);
+    expect(cachedChanged.calls.count()).toBe(2);
   });
 
   it("queues a different snapshot kind behind an active request", async () => {
@@ -405,8 +451,14 @@ describe("GitRepository host facade", () => {
     await repo.refreshRefsSnapshot();
     expect(repo.getShortHead()).toBe("feature");
 
+    const changed = jasmine.createSpy("cached head changed");
+    repo.onDidChangeCachedState(changed);
     await repo.refreshStatusSnapshot();
     expect(repo.getShortHead()).toBe("main");
+    expect(changed.calls.mostRecent().args[0].kind).toBe("status");
+    changed.calls.reset();
+    await repo.refreshStatusSnapshot();
+    expect(changed).not.toHaveBeenCalled();
   });
 
   it("reads an explicit stage-0 index object through the host client", async () => {
@@ -813,12 +865,15 @@ describe("GitRepository host facade", () => {
         },
       };
       repo = await createGitRepository(copyRepository(), { gitHostClient });
+      const accepted = [];
+      repo.onDidChangeCachedState(({ kind }) => accepted.push(kind));
 
       await expectAsync(
         Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]),
       ).toBeRejectedWithError(/omitted the requested/);
       expect(repo.getStatusSnapshot().initialized).toBe(successfulKind === "status");
       expect(repo.getRefsSnapshot().initialized).toBe(successfulKind === "refs");
+      expect(accepted).toEqual([successfulKind]);
       repo.destroy();
     }
   });
@@ -842,6 +897,14 @@ describe("GitRepository host facade", () => {
     };
     repo = await createGitRepository(copyRepository(), { gitHostClient });
     const refsChanged = jasmine.createSpy("refs changed");
+    const accepted = [];
+    repo.onDidChangeCachedState((event) => {
+      expect(Object.isFrozen(event)).toBe(true);
+      expect(event.repository).toBe(repo);
+      expect(repo.getStatusSnapshot().initialized).toBe(true);
+      expect(repo.getRefsSnapshot().initialized).toBe(true);
+      accepted.push(event.kind);
+    });
     repo.onDidChangeStatusSnapshot(() => {
       expect(repo.getRefsSnapshot().initialized).toBe(true);
       throw new Error("status listener failed");
@@ -854,6 +917,7 @@ describe("GitRepository host facade", () => {
     expect(repo.getStatusSnapshot().initialized).toBe(true);
     expect(repo.getRefsSnapshot().initialized).toBe(true);
     expect(refsChanged).toHaveBeenCalled();
+    expect(accepted).toEqual(["status", "refs"]);
   });
 
   it("reports background snapshot failures with at most one warning per repository", async () => {

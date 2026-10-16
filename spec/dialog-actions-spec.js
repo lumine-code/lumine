@@ -38,6 +38,10 @@ describe("DialogActions", () => {
       TypeError,
       /confirm must be a function/,
     );
+    expect(() => new DialogActions({ dispatch, isAvailable: true })).toThrowError(
+      TypeError,
+      /isAvailable must be a function/,
+    );
     expect(() => new DialogActions({ dispatch, hooks: { stay: true } })).toThrowError(
       TypeError,
       /hook 'stay' must be a function/,
@@ -257,6 +261,18 @@ describe("DialogActions", () => {
       expect(disabled.reason).toBe("No permission");
       expect(dispatch).not.toHaveBeenCalled();
       expect(hooks.stay).not.toHaveBeenCalled();
+    });
+
+    it("does not close or record recents when dispatch declines the action", async () => {
+      dispatch.and.resolveTo(DialogActions.DECLINED);
+      actions.set([dialogAction("spec:declined", { disposition: "close", recordsRecent: true })]);
+
+      const result = await actions.run("spec:declined");
+
+      expect(result.status).toBe("disabled");
+      expect(result.reason).toBeUndefined();
+      expect(hooks.close).not.toHaveBeenCalled();
+      expect(hooks.recordRecent).not.toHaveBeenCalled();
     });
 
     it("asks for confirmation only when the descriptor requests it", async () => {

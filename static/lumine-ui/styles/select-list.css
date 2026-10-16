@@ -256,7 +256,7 @@
   }
 }
 
-.select-list-actions [role="option"][aria-disabled="true"] {
+.select-list [role="option"][aria-disabled="true"] {
   color: var(--text-color-subtle);
   opacity: 0.65;
 }

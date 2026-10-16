@@ -481,6 +481,14 @@ class MenuPopup {
       throw error;
     }
     this.element = this.handle.element;
+    this.availabilitySubscription = globalThis.lumine?.commands?.onDidChange?.(() => {
+      if (this.availabilityRefreshPending) return;
+      this.availabilityRefreshPending = true;
+      queueMicrotask(() => {
+        this.availabilityRefreshPending = false;
+        if (!this.closed) this.refreshAvailability();
+      });
+    });
   }
 
   onDidClose(callback) {
@@ -577,6 +585,27 @@ class MenuPopup {
     return Boolean(target && (!target.nodeType || target.isConnected));
   }
 
+  refreshAvailability() {
+    for (const list of [...this.lists]) {
+      if (!this.lists.includes(list)) continue;
+      for (const item of list.items) {
+        if (item.separator) continue;
+        item.enabled = this.isItemEnabled(item.template);
+        item.element.classList.toggle("disabled", !item.enabled);
+        if (item.enabled) item.element.removeAttribute("aria-disabled");
+        else {
+          item.element.setAttribute("aria-disabled", "true");
+          if (list.selectedItem === item) list.selectItem(null);
+          if (item.open) {
+            const hadFocus = this.element.contains(this.document.activeElement);
+            this.closeSubmenusAfter(list);
+            if (hadFocus) list.element.focus({ preventScroll: true });
+          }
+        }
+      }
+    }
+  }
+
   openSubmenu(item, { selectFirst = false } = {}) {
     if (!item.submenu || !item.isNavigable()) return null;
     this.closeSubmenusAfter(item.list);
@@ -656,6 +685,7 @@ class MenuPopup {
   finishClose({ cancelled, restoreFocus }) {
     if (this.closed) return;
     this.closed = true;
+    this.availabilitySubscription?.dispose();
     this.bindingsByTarget.clear();
     this.window.removeEventListener("mouseup", this.boundMouseUp, true);
     this.tooltipSuspension?.dispose();

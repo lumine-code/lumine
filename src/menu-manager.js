@@ -314,7 +314,7 @@ module.exports = class MenuManager {
     this.nativeMenuSession = null;
     if (!target?.isConnected || !MenuHelpers.matchesScope(target, scope)) return null;
     const commands = this.commandRegistry ?? globalThis.lumine?.commands;
-    if (!commands?.canDispatch(target, command)) return null;
+    if (!commands?.canDispatch(target, command, detail)) return null;
     return commands.dispatch(target, command, detail);
   }
 

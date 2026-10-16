@@ -134,6 +134,91 @@ describe("application menu command targets", () => {
     expect(menuBar.popup.rootList.items[0].enabled).toBe(true);
   });
 
+  it("grays a scoped command when its state declines and rechecks before execution", async () => {
+    const target = document.createElement("button");
+    container.append(target);
+    let enabled = false;
+    const handler = jasmine.createSpy("conditional menu handler");
+    subscriptions.add(
+      lumine.commands.add(target, "menu-command-target:conditional", {
+        isAvailable: () => enabled,
+        didDispatch: handler,
+      }),
+    );
+    createMenu({ label: "Conditional", command: "menu-command-target:conditional" });
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    expect(menuBar.popup.rootList.items[0].enabled).toBe(false);
+    expect(menuBar.popup.rootList.items[0].element.getAttribute("aria-disabled")).toBe("true");
+    menuBar.blur();
+    enabled = true;
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    const row = menuBar.popup.rootList.items[0];
+    expect(row.enabled).toBe(true);
+    enabled = false;
+    row.activate();
+    await Promise.resolve();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("uses each menu row's command detail for availability and dispatch", async () => {
+    const target = document.createElement("button");
+    container.append(target);
+    const detail = { allowed: true };
+    const handler = jasmine.createSpy("variant handler");
+    subscriptions.add(
+      lumine.commands.add(target, "menu-command-target:variant", {
+        isAvailable: ({ detail }) => detail?.allowed === true,
+        didDispatch: handler,
+      }),
+    );
+    createMenu({ label: "Variant", command: "menu-command-target:variant", commandDetail: detail });
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    const row = menuBar.popup.rootList.items[0];
+    expect(row.enabled).toBe(true);
+    row.activate();
+    await Promise.resolve();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.calls.mostRecent().args[0].detail).toBe(detail);
+  });
+
+  it("refreshes open menus and closes a submenu when all its actions become unavailable", async () => {
+    const target = document.createElement("button");
+    container.append(target);
+    let available = false;
+    subscriptions.add(
+      lumine.commands.add(target, "menu-command-target:live", {
+        isAvailable: () => available,
+        didDispatch() {},
+      }),
+    );
+    createMenu({ label: "Live", submenu: [{ label: "Run", command: "menu-command-target:live" }] });
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    const parent = menuBar.popup.rootList.items[0];
+    expect(parent.enabled).toBe(false);
+    available = true;
+    lumine.commands.invalidateAvailability();
+    await Promise.resolve();
+    expect(parent.enabled).toBe(true);
+    const submenu = menuBar.popup.openSubmenu(parent, { selectFirst: true });
+    expect(submenu.items[0].enabled).toBe(true);
+    available = false;
+    lumine.commands.invalidateAvailability();
+    await Promise.resolve();
+    expect(parent.enabled).toBe(false);
+    expect(parent.element.getAttribute("aria-disabled")).toBe("true");
+    expect(parent.open).toBe(false);
+    expect(menuBar.popup.lists.length).toBe(1);
+    expect(menuBar.popup.commandTarget).toBe(target);
+    menuBar.blur();
+    // Closed popups must not retain a live registry subscription.
+    lumine.commands.invalidateAvailability();
+    await Promise.resolve();
+  });
+
   it("keeps a removed session target disabled when its submenu is created later", async () => {
     const editor = document.createElement("button");
     editor.className = "menu-command-target-editor";

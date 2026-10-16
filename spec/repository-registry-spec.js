@@ -5,6 +5,7 @@ const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const temp = require("@lumine-code/fs-temp").track();
 
 const RepositoryRegistry = require("../src/repository-registry");
+const RepositoryDiscovery = require("../src/repository-discovery");
 const ServiceHub = require("../src/service-hub");
 const GitRepository = require("../src/git-repository");
 const GitRepositoryProvider = require("../src/git-repository-provider");
@@ -172,6 +173,10 @@ class FakeRepository {
     return this.emitter.on("did-become-unavailable", callback);
   }
 
+  onDidChangeCachedState(callback) {
+    return this.emitter.on("did-change-cached-state", callback);
+  }
+
   becomeUnavailable(error = new Error("Repository unavailable")) {
     this.emitter.emit("did-become-unavailable", { repository: this, error });
   }
@@ -324,6 +329,88 @@ describe("RepositoryRegistry", () => {
   });
 
   afterEach(() => registry.destroy());
+
+  it("forwards passive repository state and detaches it when an entry is removed", async () => {
+    const repository = new FakeRepository(temp.mkdirSync("passive-repository-state"));
+    const status = spyOn(repository, "scheduleStatusSnapshotRefresh").and.callThrough();
+    const refs = spyOn(repository, "scheduleRefsSnapshotRefresh").and.callThrough();
+    const changed = jasmine.createSpy("repository state");
+    const subscription = registry.onDidChangeRepositoryState(changed);
+    const entry = registry.register(repository);
+    await Promise.resolve();
+    expect(status).not.toHaveBeenCalled();
+    expect(refs).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    repository.emitter.emit("did-change-cached-state", { kind: "status" });
+    repository.emitter.emit("did-change-cached-state", { kind: "refs" });
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(changed.calls.mostRecent().args[0]).toEqual({ repository });
+    expect(Object.isFrozen(changed.calls.mostRecent().args[0])).toBe(true);
+    registry.removeEntry(entry, { destroy: false });
+    repository.emitter.emit("did-change-cached-state", { kind: "status" });
+    expect(changed).toHaveBeenCalledTimes(2);
+    subscription.dispose();
+    repository.destroy();
+  });
+
+  it("withdraws passive repository listeners when the registry is destroyed", () => {
+    const repository = new FakeRepository(temp.mkdirSync("passive-registry-destroy"));
+    const entry = registry.register(repository);
+    const dispose = spyOn(entry.cachedStateSubscription, "dispose").and.callThrough();
+    registry.destroy();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies operation provider availability without creating implementations or reading snapshots", () => {
+    const repository = new FakeRepository(temp.mkdirSync("passive-provider-state"));
+    registry.register(repository);
+    const create = jasmine.createSpy("create implementation").and.returnValue({ commit() {} });
+    const changed = jasmine.createSpy("provider availability");
+    registry.onDidChangeRepositoryState(changed);
+    const provider = registry.addOperationProvider({ createRepositoryOperations: create });
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed.calls.mostRecent().args[0]).toEqual({ repository });
+    provider.dispose();
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(create).not.toHaveBeenCalled();
+    expect(repository.refreshStatusSnapshotCount).toBe(0);
+    expect(repository.refreshRefsSnapshotCount).toBe(0);
+  });
+
+  it("announces provider changes in an empty registry without invalidating routing or discovering paths", () => {
+    const lookup = jasmine.createSpy("repository lookup");
+    const discovery = new RepositoryDiscovery({
+      registry,
+      providers: [{ repositoryForPath: lookup }],
+    });
+    const cachedPath = path.resolve(__filename);
+    const cached = Promise.resolve(null);
+    discovery.repositoryPromisesByPath.set(cachedPath, cached);
+    project.invalidateRepositoryPathCache = (prefixes) =>
+      discovery.invalidateRepositoryPathCache(prefixes);
+    const update = jasmine.createSpy("buffer routing update");
+    registry.bufferOwners.set(bufferFor(cachedPath), { update, subscriptions: new Disposable() });
+    const activeItem = jasmine.createSpy("active item read");
+    registry.workspace = { getCenter: () => ({ getActivePaneItem: activeItem }) };
+    const changed = jasmine.createSpy("global availability");
+    registry.onDidChange(changed);
+    expect(registry.canPerformWorkspaceOperation("initialize")).toBe(false);
+
+    const provider = registry.addOperationProvider({ initializeRepository() {} });
+    expect(registry.canPerformWorkspaceOperation("initialize")).toBe(true);
+    expect(changed).toHaveBeenCalledTimes(1);
+    provider.dispose();
+    expect(registry.canPerformWorkspaceOperation("initialize")).toBe(false);
+    expect(changed).toHaveBeenCalledTimes(2);
+    for (const call of changed.calls.all()) {
+      expect(call.args[0].updated).toEqual([]);
+      expect(call.args[0].routingChangedPrefixes).toEqual([]);
+    }
+    expect(discovery.repositoryPromisesByPath.get(cachedPath)).toBe(cached);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(activeItem).not.toHaveBeenCalled();
+  });
 
   it("treats the filesystem root as containing its descendants", () => {
     const rootPath = path.parse(process.cwd()).root;
@@ -2765,6 +2852,14 @@ describe("RepositoryRegistry", () => {
   });
 
   describe("command context", () => {
+    it("does not borrow a global editor when the captured window has no document", () => {
+      const globalEditor = { getPath: () => path.join(temp.dir, "global.txt") };
+      registry.workspace = { getActiveTextEditor: () => globalEditor };
+      const context = registry.getCommandContext({ context: {} }, { scope: "file" });
+      expect(context).toEqual({ repository: null, editor: null, path: null });
+      expect(registry.getCommandContext(undefined, { scope: "file" }).editor).toBe(globalEditor);
+    });
+
     it("uses the captured window editor when dispatch comes from a local non-editor surface", () => {
       const first = new FakeRepository(temp.mkdirSync("context-local-window"));
       const other = new FakeRepository(temp.mkdirSync("context-other-window"));

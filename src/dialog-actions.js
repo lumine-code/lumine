@@ -7,22 +7,26 @@ const DISPOSITIONS = new Set(["close", "stay", "push"]);
 const DISPATCH_TARGETS = new Set(["local", "workspace", "opener"]);
 const TONES = new Set(["normal", "danger"]);
 const DEFAULT_GROUP = Symbol("default-dialog-action-group");
+const DECLINED = Symbol("declined-dialog-action");
 
 /**
  * Owns the explicit action catalogue and execution policy for a dialog.
  *
  * This class deliberately knows nothing about panels, command registries, or
- * DOM elements. Its collaborators resolve item identities, dispatch commands,
+ * DOM elements. Its collaborators resolve item identities and availability, dispatch commands,
  * ask for confirmation, and apply the requested UI disposition.
  * @private
  */
 class DialogActions {
-  constructor({ dispatch, confirm, getItemId, resolveItemById, hooks } = {}) {
+  constructor({ dispatch, confirm, isAvailable, getItemId, resolveItemById, hooks } = {}) {
     if (typeof dispatch !== "function") {
       throw new TypeError("DialogActions requires a dispatch callback.");
     }
     if (confirm != null && typeof confirm !== "function") {
       throw new TypeError("DialogActions confirm must be a function.");
+    }
+    if (isAvailable != null && typeof isAvailable !== "function") {
+      throw new TypeError("DialogActions isAvailable must be a function.");
     }
     if (getItemId != null && typeof getItemId !== "function") {
       throw new TypeError("DialogActions getItemId must be a function.");
@@ -33,6 +37,7 @@ class DialogActions {
 
     this.dispatch = dispatch;
     this.confirm = confirm ?? null;
+    this.isAvailable = isAvailable ?? null;
     this.getItemId = getItemId ?? defaultItemId;
     this.resolveItemById = resolveItemById ?? null;
     if (hooks != null && (typeof hooks !== "object" || Array.isArray(hooks))) {
@@ -387,9 +392,15 @@ class DialogActions {
   evaluate(context) {
     return this.applicableRecords(context).map(({ record, primary }) => {
       const action = record.action;
-      const enabled = evaluateBoolean(action.enabled, true, context, action, "enabled");
+      const locallyEnabled = evaluateBoolean(action.enabled, true, context, action, "enabled");
+      const available =
+        !locallyEnabled || !this.isAvailable ? true : this.isAvailable(action, context);
+      if (typeof available !== "boolean") {
+        throw new TypeError("DialogActions isAvailable must return a Boolean.");
+      }
+      const enabled = locallyEnabled && available;
       let disabledReason = null;
-      if (!enabled && action.disabledReason != null) {
+      if (!locallyEnabled && action.disabledReason != null) {
         disabledReason = evaluateValue(action.disabledReason, context, action, "disabledReason");
       }
       return {
@@ -476,6 +487,9 @@ class DialogActions {
         () => this.dispatch({ action: evaluated.view, context, signal }),
         signal,
       );
+      // The dispatch boundary can decline after asynchronous validation. It
+      // must not close the dialog or record an action that never ran.
+      if (value === DECLINED) return this.finish(state, "disabled", { context });
       const payload = {
         action: evaluated.view,
         context,
@@ -630,4 +644,5 @@ function callWithSignal(callback, signal) {
   return waitFor(value, signal);
 }
 
+DialogActions.DECLINED = DECLINED;
 module.exports = DialogActions;

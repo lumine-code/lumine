@@ -293,6 +293,37 @@ describe("MenuManager", function () {
       expect(menu.prepareNativeTemplate(target).map((item) => item.enabled)).toEqual([true, false]);
     });
 
+    it("refreshes native availability without moving focus and passes variant details", () => {
+      let available = false;
+      const detail = { repository: "selected" };
+      const handler = jasmine.createSpy("native conditional handler");
+      const registration = lumine.commands.add(target, "menu-manager:conditional", {
+        isAvailable: (context) => available && context.detail?.repository === detail.repository,
+        didDispatch: handler,
+      });
+      menu.add([
+        {
+          label: "Git",
+          submenu: [{ label: "Run", command: "menu-manager:conditional", commandDetail: detail }],
+        },
+      ]);
+      try {
+        advanceClock(1);
+        expect(sentItems()[0].enabled).toBe(false);
+        available = true;
+        lumine.commands.invalidateAvailability();
+        advanceClock(1);
+        expect(sentItems()[0].enabled).toBe(true);
+        available = false;
+        expect(
+          menu.dispatchNativeMenuCommand("menu-manager:conditional", detail, {}, document),
+        ).toBeNull();
+        expect(handler).not.toHaveBeenCalled();
+      } finally {
+        registration.dispose();
+      }
+    });
+
     it("keeps native editing commands available on supported Chromium inputs", () => {
       const subscriptions = new CompositeDisposable();
       const performWebContentsAction = jasmine.createSpy("performWebContentsAction");

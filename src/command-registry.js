@@ -143,6 +143,7 @@ module.exports = class CommandRegistry {
    *   the bundled command palette by default.
    * @param {Boolean|String} [listener.modal] - Declares that the command opens a
    *   modal, optionally naming its breadcrumb label.
+   * @param {Function} [listener.isAvailable] - A synchronous, side-effect-free predicate returning a Boolean. It receives `{target, currentTarget, detail, context}` with `this` set to the matching node. It runs only after the registration scope matches, for availability queries and immediately before invoking this handler. Omit it when the scope alone is sufficient.
    * @param {Boolean} [throwOnInvalidSelector=true] - Throw when `target` is an
    *   invalid selector.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added command handler(s).
@@ -172,6 +173,9 @@ module.exports = class CommandRegistry {
       throw new Error(
         "Listener must be a callback function or an object with a didDispatch method.",
       );
+    }
+    if (listener.isAvailable != null && typeof listener.isAvailable !== "function") {
+      throw new TypeError("Command isAvailable must be a synchronous predicate function.");
     }
 
     if (typeof target === "string") {
@@ -240,16 +244,17 @@ module.exports = class CommandRegistry {
    * @public
    * @status public
    *
-   * Determine whether a registered handler matches a target or its ancestors.
-   * This checks registration scope without invoking handlers or evaluating their
-   * internal guards. It follows the same route as command dispatch, including
-   * detached targets and the target's own window.
+   * Determine whether an enabled handler matches a target or its ancestors.
+   * Registration scope is checked before its optional `isAvailable` predicate.
+   * Handlers are never invoked. This follows the same route as command dispatch,
+   * including detached targets and the target's own window.
    *
    * @param {Node|Window} target - The target from which the command would be dispatched.
    * @param {String} commandName - The command to look up.
-   * @returns {Boolean} Whether dispatch can reach a registered handler.
+   * @param {*} [detail] - The arguments that would be supplied to dispatch.
+   * @returns {Boolean} Whether dispatch can reach an enabled handler.
    */
-  canDispatch(target, commandName) {
+  canDispatch(target, commandName, detail) {
     if (!target || typeof commandName !== "string" || !commandName) return false;
     const inlineListeners = Object.hasOwn(this.inlineListenersByCommandName, commandName)
       ? this.inlineListenersByCommandName[commandName]
@@ -259,9 +264,25 @@ module.exports = class CommandRegistry {
       : null;
     if (!inlineListeners && !selectorListeners?.length) return false;
 
+    let query;
+    const available = (listener, currentTarget) =>
+      !listener.isAvailable ||
+      isListenerAvailable(
+        listener,
+        currentTarget,
+        (query ??= createAvailabilityQuery(this, target, commandName, detail)),
+      );
     for (const currentTarget of commandTargetPath(target)) {
-      if (inlineListeners?.get(currentTarget)?.length) return true;
-      if (selectorListeners?.some((listener) => listener.matchesTarget(currentTarget))) return true;
+      if (
+        inlineListeners?.get(currentTarget)?.some((listener) => available(listener, currentTarget))
+      )
+        return true;
+      if (
+        selectorListeners?.some(
+          (listener) => listener.matchesTarget(currentTarget) && available(listener, currentTarget),
+        )
+      )
+        return true;
     }
     return false;
   }
@@ -329,9 +350,10 @@ module.exports = class CommandRegistry {
    * @param {Object} options
    * @param {Element} [options.target] - Element from which the command would be dispatched.
    * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
-   * @returns {Object|null} The command descriptor with `keystrokes`, or null when unavailable.
+   * @param {*} [options.detail] - Arguments used to evaluate the command's availability.
+   * @returns {Object|null} The scoped command descriptor with `keystrokes` and Boolean `enabled`, or null when no registration matches the scope.
    */
-  getCommandPresentation(commandName, { target, bindingTarget = target }) {
+  getCommandPresentation(commandName, { target, bindingTarget = target, detail }) {
     const descriptor = this.findCommands({ target }).find(({ name }) => name === commandName);
     if (!descriptor) return null;
 
@@ -349,6 +371,7 @@ module.exports = class CommandRegistry {
     }
     return Object.freeze({
       ...descriptor,
+      enabled: this.canDispatch(target, commandName, detail),
       keystrokes: Object.freeze(keystrokes),
     });
   }
@@ -358,13 +381,13 @@ module.exports = class CommandRegistry {
    * @status experimental
    *
    * Return presentation metadata for every effective command at a target.
-   * Commands and keybindings are each scanned once, making this the preferred
-   * path for command pickers and other complete catalogues.
+   * Metadata and keybindings are each scanned once; availability uses the
+   * indexed registrations of each command. Disabled commands remain visible.
    *
    * @param {Object} options
    * @param {Element} [options.target] - Element from which commands would be dispatched.
    * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
-   * @returns {Array<Object>} One frozen descriptor per command, each with frozen `keystrokes`.
+   * @returns {Array<Object>} One frozen descriptor per scoped command, each with Boolean `enabled` and frozen `keystrokes`.
    */
   getCommandPresentations({ target, bindingTarget = target }) {
     const keystrokesByCommand = new Map();
@@ -391,7 +414,13 @@ module.exports = class CommandRegistry {
       const keystrokes = Object.freeze([
         ...(keystrokesByCommand.get(descriptor.name)?.keystrokes ?? []),
       ]);
-      presentations.push(Object.freeze({ ...descriptor, keystrokes }));
+      presentations.push(
+        Object.freeze({
+          ...descriptor,
+          enabled: this.canDispatch(target, descriptor.name),
+          keystrokes,
+        }),
+      );
     }
     return Object.freeze(presentations);
   }
@@ -418,7 +447,7 @@ module.exports = class CommandRegistry {
    * @param {Node} target - The DOM node at which to start bubbling the command event.
    * @param {String} commandName - indicating the name of the command to dispatch.
    * @param {*} [detail] - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
-   * @returns {Promise<Array<*>>|null} Resolves to the listener results after all matched handlers finish, or `null` when no handler matches. Rejected handler promises reject the returned promise; synchronous handler errors are thrown.
+   * @returns {Promise<Array<*>>|null} Resolves to the listener results after all enabled matching handlers finish, or `null` when none is available. Rejected handler promises reject the returned promise; synchronous handler errors are thrown.
    */
   dispatch(target, commandName, detail) {
     const event = new CustomEvent(commandName, { bubbles: true, detail });
@@ -463,7 +492,7 @@ module.exports = class CommandRegistry {
    * @status public
    *
    * Invoke the callback when command registrations are added, removed, cleared
-   * or restored. Unlike dispatch subscriptions, this subscription survives
+   * or restored, or their availability is invalidated. Unlike dispatch subscriptions, this subscription survives
    * `clear()` and is disposed when the registry is destroyed.
    *
    * @param {Function} callback - Called after registrations change.
@@ -471,6 +500,19 @@ module.exports = class CommandRegistry {
    */
   onDidChange(callback) {
     return this.changeEmitter.on("did-change", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Notify command surfaces that state used by `isAvailable` predicates changed.
+   * Predicates are evaluated afresh on every query; this asks live presentations
+   * such as the native application menu to refresh without a focus change.
+   * @returns {void}
+   */
+  invalidateAvailability() {
+    this.changeEmitter.emit("did-change");
   }
 
   getSnapshot() {
@@ -535,6 +577,8 @@ module.exports = class CommandRegistry {
     });
     Object.defineProperty(dispatchedEvent, "abortKeyBinding", {
       value() {
+        propagationStopped = true;
+        immediatePropagationStopped = true;
         if (typeof event.abortKeyBinding === "function") {
           event.abortKeyBinding();
         }
@@ -549,6 +593,8 @@ module.exports = class CommandRegistry {
 
     const dispatchToListeners = () => {
       this.emitter.emit("will-dispatch", dispatchedEvent);
+      let availability;
+      let disabledMatch = false;
 
       for (currentTarget of commandTargetPath(event.target, targetWindow)) {
         const commandInlineListeners = this.inlineListenersByCommandName[event.type]
@@ -572,6 +618,23 @@ module.exports = class CommandRegistry {
           if (immediatePropagationStopped) {
             break;
           }
+          if (
+            listener.isAvailable &&
+            !isListenerAvailable(
+              listener,
+              currentTarget,
+              (availability ??= createAvailabilityQuery(
+                this,
+                event.target,
+                event.type,
+                event.detail,
+                () => dispatchedEvent.context,
+              )),
+            )
+          ) {
+            disabledMatch = true;
+            continue;
+          }
           matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
         }
 
@@ -581,7 +644,10 @@ module.exports = class CommandRegistry {
       }
 
       this.emitter.emit("did-dispatch", dispatchedEvent);
-      if (matched.length === 0) return null;
+      if (matched.length === 0) {
+        if (disabledMatch) event.abortKeyBinding?.();
+        return null;
+      }
       const result = Promise.all(matched);
       // Native DOM dispatch ignores a listener's return value. Observe the
       // rejection here while returning the original Promise to programmatic
@@ -631,6 +697,7 @@ class SelectorBasedListener {
   constructor(selector, commandName, listener) {
     this.selector = selector;
     this.didDispatch = extractDidDispatch(listener);
+    this.isAvailable = listener.isAvailable;
     this.metadata = extractMetadata(listener);
     this.descriptor = descriptorFromMetadata(commandName, this.metadata);
     this.specificity = calculateSpecificity(this.selector);
@@ -649,6 +716,7 @@ class SelectorBasedListener {
 class InlineListener {
   constructor(commandName, listener) {
     this.didDispatch = extractDidDispatch(listener);
+    this.isAvailable = listener.isAvailable;
     this.descriptor = extractDescriptor(commandName, listener);
   }
 }
@@ -669,7 +737,58 @@ function descriptorFromMetadata(name, metadata) {
 }
 
 function extractMetadata(listener) {
-  return _.omit(listener, "didDispatch", "name");
+  return _.omit(listener, "didDispatch", "isAvailable", "name");
+}
+
+function createAvailabilityQuery(registry, target, commandName, detail, resolveContext) {
+  const event = Object.freeze({ target, type: commandName, detail: detail ?? null });
+  let resolved = false;
+  let context;
+  let error;
+  return {
+    target,
+    detail: event.detail,
+    get context() {
+      if (!resolved) {
+        resolved = true;
+        try {
+          context = resolveContext ? resolveContext() : registry.resolveContext?.(event);
+        } catch (failure) {
+          error = failure;
+        }
+      }
+      if (error) throw error;
+      return context;
+    },
+  };
+}
+
+function isListenerAvailable(listener, currentTarget, query) {
+  if (!listener.isAvailable) return true;
+  try {
+    const result = listener.isAvailable.call(
+      currentTarget,
+      Object.freeze({
+        target: query.target,
+        currentTarget,
+        detail: query.detail,
+        get context() {
+          return query.context;
+        },
+      }),
+    );
+    if (typeof result !== "boolean") {
+      if (typeof result?.then === "function") Promise.resolve(result).catch(() => {});
+      throw new TypeError("Command isAvailable must return a Boolean synchronously.");
+    }
+    return result;
+  } catch (error) {
+    if (!listener.reportedAvailabilityError) {
+      listener.reportedAvailabilityError = true;
+      console.error(`Unable to evaluate command '${listener.descriptor.name}' availability`, error);
+    }
+    return false;
+  }
 }
 
 function extractDidDispatch(listener) {

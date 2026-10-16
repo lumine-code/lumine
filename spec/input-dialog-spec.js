@@ -797,6 +797,28 @@ describe("InputDialog", () => {
       destination.remove();
     });
 
+    it("leaves a disabled primary action silent when no reason is supplied", async () => {
+      const handler = jasmine.createSpy("disabled action");
+      view = createInputDialog({
+        commands: { "spec:disabled-silent": handler },
+        actions: [
+          {
+            command: "spec:disabled-silent",
+            context: "dialog",
+            disposition: "stay",
+            primary: true,
+            enabled: false,
+          },
+        ],
+      });
+
+      const result = await view.confirm();
+
+      expect(result.status).toBe("disabled");
+      expect(handler).not.toHaveBeenCalled();
+      expect(view.getStatus()).toBeNull();
+    });
+
     it("reports the reason when a primary action is disabled", async () => {
       view = createInputDialog({
         commands: { "spec:disabled": () => {} },
