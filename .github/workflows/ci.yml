@@ -157,6 +157,8 @@ jobs:
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
+      - name: Test command-line launchers
+        run: npm run test:launchers
       # The full CI suite uses a visible, focused window so focus-dependent
       # specs retain their coverage. Exercise the local-only Windows offscreen
       # path once with CI cleared, including its animation-frame guard.

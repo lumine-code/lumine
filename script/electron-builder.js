@@ -105,7 +105,7 @@ let options = {
     "!hooks/",
     // Windows packaging inputs only: the tile manifest and its PNGs ship via
     // win.extraFiles (Windows must read them from disk next to Lumine.exe), the
-    // .ico/.cmd/.js via win.extraResources, and the .nsh files are compiled into
+    // .ico/.cmd/.js/.sh via win.extraResources, and the .nsh files are compiled into
     // the NSIS installer. Nothing reads resources/win/ at runtime, so keep it
     // out of app.asar on every platform. resources/app-icons/ must stay -- that
     // one IS read from inside the asar, by src/lumine-window.js.
@@ -226,10 +226,7 @@ let options = {
     "!**/*.{markdown,md,mkd,ts,jst,tgz,swp}",
   ],
 
-  extraResources: [
-    { from: "lumine.sh", to: `${baseName}.sh` },
-    { from: "LICENSE", to: "LICENSE" },
-  ],
+  extraResources: [{ from: "LICENSE", to: "LICENSE" }],
   compression: "normal",
   deb: {
     afterInstall: "script/post-install.sh",
@@ -256,6 +253,7 @@ let options = {
     synopsis: "A community-led hyper-hackable text editor",
     target: [{ target: "appimage" }, { target: "deb" }, { target: "rpm" }, { target: "tar.gz" }],
     extraResources: [
+      { from: "lumine.sh", to: `${baseName}.sh` },
       {
         // Extra SVG icon included in the resources folder to give a chance to
         // Linux packagers to add a scalable desktop icon under
@@ -292,7 +290,7 @@ let options = {
         },
       ],
     },
-    extraResources: [],
+    extraResources: [{ from: "lumine.sh", to: `${baseName}.sh` }],
   },
 
   dmg: {
@@ -310,6 +308,7 @@ let options = {
       { from: "resources/win/file.ico", to: "file.ico" },
       { from: "resources/win/lumine.cmd", to: `${baseName}.cmd` },
       { from: "resources/win/lumine.js", to: `${baseName}.js` },
+      { from: "resources/win/lumine.sh", to: `${baseName}.sh` },
       { from: "resources/win/NSIS_Licenses.txt", to: "NSIS_Licenses.txt" },
     ],
     // Unlike extraResources (which targets <root>/resources), extraFiles
@@ -411,4 +410,6 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { whatToBuild };

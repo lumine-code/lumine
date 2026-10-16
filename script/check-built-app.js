@@ -256,6 +256,18 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
       `Build dependency shipped in app.asar: ${name}`,
     );
   }
+  const shellLauncher = path.join(path.dirname(file), "lumine.sh");
+  const sourceLauncher = path.join(
+    repoRoot,
+    platform === "win32" ? "resources/win/lumine.sh" : "lumine.sh",
+  );
+  expect(fs.existsSync(shellLauncher), `Missing ${platform} shell launcher: lumine.sh`);
+  if (fs.existsSync(shellLauncher) && fs.existsSync(sourceLauncher)) {
+    expect(
+      fs.readFileSync(shellLauncher).equals(fs.readFileSync(sourceLauncher)),
+      `Incorrect ${platform} shell launcher: lumine.sh differs from its platform source`,
+    );
+  }
   if (platform === "win32") {
     const resources = path.dirname(file);
     for (const entry of ["file.ico", "lumine.cmd", "lumine.js", "NSIS_Licenses.txt"]) {

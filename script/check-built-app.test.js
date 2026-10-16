@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const asar = require("@electron/asar");
+const { whatToBuild } = require("./electron-builder");
 const {
   checkBuiltApp,
   findArchives,
@@ -39,6 +40,11 @@ async function fixture(
   }[platform];
   const resources = path.join(buildDir, relativeResources);
   const archive = path.join(resources, "app.asar");
+  const launchers = {
+    "lumine.sh": "#!/bin/bash\n# POSIX application launcher\n",
+    "resources/win/lumine.sh": "#!/bin/bash\n# Windows application launcher\n",
+  };
+  for (const [entry, contents] of Object.entries(launchers)) write(repoRoot, entry, contents);
   const manifest = {
     name: "lumine",
     version: "1.0.0",
@@ -109,6 +115,11 @@ async function fixture(
   for (const entry of omit) fs.unlinkSync(path.join(source, entry));
   fs.mkdirSync(resources, { recursive: true });
   await asar.createPackageWithOptions(source, archive, packNative ? {} : { unpack: "**/*.node" });
+  write(
+    resources,
+    "lumine.sh",
+    launchers[platform === "win32" ? "resources/win/lumine.sh" : "lumine.sh"],
+  );
   // A sibling manifest must never stand in for the one the app actually reads.
   write(resources, "package.json", { lumineMetadata: {} });
   if (platform === "win32") {
@@ -125,6 +136,20 @@ async function fixture(
   }
   return { archive, repoRoot, buildDir, nativeFile };
 }
+
+test("packages exactly one shell launcher for each target platform", () => {
+  const config = whatToBuild();
+  for (const [platform, source] of [
+    ["linux", "lumine.sh"],
+    ["mac", "lumine.sh"],
+    ["win", "resources/win/lumine.sh"],
+  ]) {
+    const launchers = [...config.extraResources, ...config[platform].extraResources].filter(
+      (entry) => entry.to === "lumine.sh",
+    );
+    assert.deepEqual(launchers, [{ from: source, to: "lumine.sh" }]);
+  }
+});
 
 for (const platform of ["linux", "win32", "darwin"]) {
   test(`validates a real ${platform} ASAR and detects its output layout`, async (t) => {
@@ -241,6 +266,27 @@ test("rejects missing unpacked native files and Windows shell resources", async 
     (error) =>
       /Missing app.asar.unpacked file/.test(error.message) &&
       /Missing Windows extra resource: file.ico/.test(error.message),
+  );
+});
+
+test("rejects a Windows build shipping the POSIX shell launcher", async (t) => {
+  const app = await fixture(t, { platform: "win32" });
+  const launcher = path.join(path.dirname(app.archive), "lumine.sh");
+  fs.copyFileSync(path.join(app.repoRoot, "lumine.sh"), launcher);
+
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /Incorrect win32 shell launcher/,
+  );
+});
+
+test("rejects a build missing its shell launcher", async (t) => {
+  const app = await fixture(t);
+  fs.unlinkSync(path.join(path.dirname(app.archive), "lumine.sh"));
+
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /Missing linux shell launcher/,
   );
 });
 

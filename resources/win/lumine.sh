@@ -1,28 +1,51 @@
 #!/bin/bash
-# Get current path in Windows format
-if command -v "cygpath" > /dev/null; then
-  # We have cygpath to do the conversion
-  LUMINECMD=$(cygpath "$(dirname "$0")/lumine.cmd" -a -w)
-  ARGS=( $(cygpath -a -w "$@" | tr '\n' ' ') )
+
+# Use Electron's bundled Node runtime directly. Going through cmd.exe would
+# parse the arguments again and loses paths containing spaces or shell syntax.
+SCRIPT_PATH=$(readlink -f -- "$0") || exit 1
+SCRIPT_DIR=$(dirname -- "$SCRIPT_PATH")
+LUMINE_EXECUTABLE="$SCRIPT_DIR/../Lumine.exe"
+WSL_LAUNCH=false
+if command -v cygpath >/dev/null 2>&1; then
+  windows_path() { cygpath -a -w -- "$1"; }
+  LUMINE_LAUNCHER=$(cygpath -a -w -- "$SCRIPT_DIR/lumine.js") || exit 1
+elif command -v wslpath >/dev/null 2>&1; then
+  WSL_LAUNCH=true
+  windows_path() { wslpath -w "$1"; }
+  LUMINE_LAUNCHER=$(wslpath -w "$SCRIPT_DIR/lumine.js") || exit 1
 else
-  ARGS=$@
-  pushd "$(dirname "$0")" > /dev/null
-  if [[ $(uname -r) =~ (M|m)icrosoft ]]; then
-    # We are in Windows Subsystem for Linux, map /mnt/drive
-    root="/mnt/"
-    # If different root mount point defined in /etc/wsl.conf, use that instead
-    eval $(grep "^root" /etc/wsl.conf | sed -e "s/ //g")
-    root="$(echo $root | sed 's|/|\\/|g')"
-    LUMINECMD="$(echo $PWD | sed 's/\/mnt\/\([a-z]*\)\(.*\)/\1:\2/')/lumine.cmd"
-  else
-    # We don't have cygpath or WSL so try pwd -W
-    LUMINECMD="$(pwd -W)/lumine.cmd"
-  fi
-  popd > /dev/null
+  echo "Cannot convert paths to Windows paths (cygpath or wslpath is required)." >&2
+  exit 1
 fi
 
-if [ "$(uname -o)" == "Msys" ] || [[ $(uname -r) == *-Microsoft ]]; then
-  cmd.exe //C "$LUMINECMD" "$@" # Msys amd WSL think /C is a Windows path...
+ARGS=()
+OPTIONS=true
+for argument in "$@"; do
+  if [[ "$argument" == /* ]]; then
+    argument=$(windows_path "$argument") || exit 1
+  elif $OPTIONS; then
+    case "$argument" in
+      --) OPTIONS=false ;;
+      --resource-path=/*|--log-file=/*|--user-data-dir=/*|--executed-from=/*|--link=/*|--unlink=/*)
+        prefix=${argument%%=*}
+        value=$(windows_path "${argument#*=}") || exit 1
+        argument="$prefix=$value"
+        ;;
+      *)
+        if [[ "$argument" != --* && "$argument" =~ ^(-[^rl]*[rl]=?)(/.*)$ ]]; then
+          prefix=${BASH_REMATCH[1]}
+          value=$(windows_path "${BASH_REMATCH[2]}") || exit 1
+          argument="$prefix$value"
+        fi
+        ;;
+    esac
+  fi
+  ARGS+=("$argument")
+done
+
+if $WSL_LAUNCH; then
+  # WSL only exports named Linux variables to a Windows process through WSLENV.
+  WSLENV="${WSLENV:+$WSLENV:}ELECTRON_RUN_AS_NODE/w" ELECTRON_RUN_AS_NODE=1 MSYS2_ARG_CONV_EXCL='*' "$LUMINE_EXECUTABLE" "$LUMINE_LAUNCHER" Lumine.exe "${ARGS[@]}"
 else
-  cmd.exe /C "$LUMINECMD" "${ARGS[@]}" # Cygwin does not
+  ELECTRON_RUN_AS_NODE=1 MSYS2_ARG_CONV_EXCL='*' "$LUMINE_EXECUTABLE" "$LUMINE_LAUNCHER" Lumine.exe "${ARGS[@]}"
 fi
