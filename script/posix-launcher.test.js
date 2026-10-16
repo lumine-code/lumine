@@ -26,13 +26,46 @@ function executable(filePath, source) {
   fs.writeFileSync(filePath, source, { mode: 0o755 });
 }
 
+async function waitForOwnedProcessExit(pid) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return;
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Launcher fixture process ${pid} did not exit before cleanup.`);
+}
+
 function fixture(t, platform = "Linux") {
   const directory = fs.realpathSync.native(
     fs.mkdtempSync(path.join(os.tmpdir(), "lumine launcher ")),
   );
-  t.after(() =>
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
-  );
+  const children = [];
+  t.after(async () => {
+    // The launcher may finish while its detached native probe is still alive.
+    // Finish fixture-owned work before removing a working directory that
+    // Windows keeps locked until the actual processes have exited.
+    for (const key of ["LUMINE_TEST_KEEPALIVE", "LUMINE_TEST_RELEASE"]) {
+      if (env[key]) fs.writeFileSync(env[key], "fixture cleanup\n");
+    }
+    for (const { child, closed } of children) {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await closed;
+    }
+    if (fs.existsSync(env.LUMINE_TEST_REPORT)) {
+      const { pid, parentPid } = JSON.parse(fs.readFileSync(env.LUMINE_TEST_REPORT, "utf8"));
+      await waitForOwnedProcessExit(pid);
+      // The probe reports its own native shell parent before it can be
+      // reparented. Never wait on this test process or the system's adopter.
+      if (parentPid > 1 && parentPid !== process.pid) await waitForOwnedProcessExit(parentPid);
+    }
+    assert.equal(path.dirname(directory), fs.realpathSync.native(os.tmpdir()));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
   const install = path.join(directory, "Editor Apps", "Lumine");
   const app = path.join(install, "Lumine.app");
   const script =
@@ -70,7 +103,7 @@ if (options.wait && process.env.LUMINE_TEST_RELEASE) {
 if (process.env.LUMINE_TEST_PROBE_EXITED) {
   process.on("exit", () => fs.writeFileSync(process.env.LUMINE_TEST_PROBE_EXITED, "exited\\n"));
 }
-const report = { argv, input, home: process.env.LUMINE_HOME, homeExisted, seeded: fs.existsSync(path.join(process.env.LUMINE_HOME, "init.js")) };
+const report = { pid: process.pid, parentPid: process.ppid, argv, input, home: process.env.LUMINE_HOME, homeExisted, seeded: fs.existsSync(path.join(process.env.LUMINE_HOME, "init.js")) };
 fs.writeFileSync(process.env.LUMINE_TEST_REPORT + ".tmp", JSON.stringify(report));
 fs.renameSync(process.env.LUMINE_TEST_REPORT + ".tmp", process.env.LUMINE_TEST_REPORT);
 console.log("launcher probe");
@@ -134,13 +167,15 @@ process.exitCode = Number(process.env.LUMINE_TEST_EXIT || 0);
       "launcher-test",
       ...args,
     ];
-    return (options.async ? spawn : spawnSync)(bash, shellArgs, {
+    const child = (options.async ? spawn : spawnSync)(bash, shellArgs, {
       cwd,
       env,
       encoding: "utf8",
       timeout: options.async ? undefined : 10000,
       ...options,
     });
+    if (options.async) children.push({ child, closed: once(child, "close") });
+    return child;
   };
   return {
     directory,
