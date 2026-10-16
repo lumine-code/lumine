@@ -2600,12 +2600,14 @@ module.exports = class LumineApplication extends EventEmitter {
       path.resolve(executedFrom, fs.normalize(result.pathToOpen)),
     );
 
-    if (!URL.canParse(result.pathToOpen)) {
-      // If this isn't a URL, it's a file path. File paths need to be resolved
-      // and normalized, whereas we assume URLs are already unambiguous.
-      // Absolute Windows paths parse as URLs with a drive-letter scheme and
-      // are left as-is; they are already absolute.
+    if (path.isAbsolute(result.pathToOpen) || !URL.canParse(result.pathToOpen)) {
+      // Absolute Windows paths also parse as URLs with a drive-letter scheme.
+      // Normalize them as file paths so trailing separators and parent segments
+      // do not prevent the renderer from recognizing an exact project root.
       result.pathToOpen = normalizedPath;
+      if (process.platform === "win32") {
+        result.pathToOpen = result.pathToOpen.replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+      }
     }
 
     await new Promise((resolve, reject) => {

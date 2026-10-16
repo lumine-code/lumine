@@ -711,6 +711,38 @@ describe("LumineApplication", function () {
       assert.isFalse(w._locations[0].isFile);
     });
 
+    for (const [description, input] of [
+      ["a trailing separator", (root) => root + path.sep],
+      ["parent segments", (root) => root + path.sep + ".." + path.sep + "a" + path.sep],
+      ...(process.platform === "win32"
+        ? [["a lowercase drive letter", (root) => root[0].toLowerCase() + root.slice(1)]]
+        : []),
+    ]) {
+      it(`normalizes an absolute directory path with ${description} before creating the window`, async function () {
+        const app = scenario.addApplication();
+        const projectRoot = scenario.convertRootPath("a");
+
+        const window = await app.openPaths({
+          pathsToOpen: [input(projectRoot)],
+          executedFrom: scenario.root,
+        });
+
+        assert.strictEqual(window.loadSettings.locationsToOpen[0].pathToOpen, projectRoot);
+        assert.isTrue(window.loadSettings.locationsToOpen[0].isDirectory);
+        assert.deepEqual(window.projectRoots, [projectRoot]);
+        await scenario.assert("[a _]");
+      });
+    }
+
+    it("preserves provider URL syntax when opening a directory", async function () {
+      const uri = "remote://server:3437/some%20directory/../path/";
+      await scenario.open(parseCommandLine([uri]));
+
+      const window = scenario.getWindow(0);
+      assert.strictEqual(window.loadSettings.locationsToOpen[0].pathToOpen, uri);
+      assert.isFalse(window.loadSettings.locationsToOpen[0].exists);
+    });
+
     it("truncates trailing whitespace and colons", async function () {
       await scenario.open(parseCommandLine(["b/2.md::  "]));
       await scenario.assert("[_ 2.md]");
