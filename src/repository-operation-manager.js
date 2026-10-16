@@ -173,28 +173,55 @@ module.exports = class RepositoryOperationManager {
   }
 
   canPerformOperation(repository, operationName) {
-    return this.findOperationImplementation(repository, operationName) != null;
+    return this.#operationProviderRegistrations.some(({ provider }) =>
+      this.operationProviderCapabilities(repository, provider).includes(operationName),
+    );
   }
 
   getOperationCapabilities(repository) {
     const capabilities = new Set();
     for (const { provider } of this.#operationProviderRegistrations) {
-      const record = this.getOperationImplementation(repository, provider);
-      if (!record) continue;
-
-      for (const operationName of RepositoryOperations.standardCapabilities) {
-        if (this.operationImplementationSupports(record, operationName)) {
-          capabilities.add(operationName);
-        }
-      }
-      const customCapabilities = record.implementation.getCapabilities?.() || [];
-      for (const operationName of customCapabilities) {
-        if (this.operationImplementationSupports(record, operationName)) {
-          capabilities.add(operationName);
-        }
-      }
+      for (const name of this.operationProviderCapabilities(repository, provider))
+        capabilities.add(name);
     }
     return Object.freeze(Array.from(capabilities));
+  }
+
+  operationProviderCapabilities(repository, provider) {
+    const entry = this.entryByRepository.get(repository);
+    if (
+      !entry ||
+      entry.removing ||
+      this.entriesById.get(entry.id) !== entry ||
+      repository.isDestroyed?.()
+    )
+      return [];
+    if (typeof provider.getRepositoryOperationCapabilities === "function") {
+      const capabilities = provider.getRepositoryOperationCapabilities(
+        Object.freeze({
+          repository,
+          workingDirectory: entry.workingDirectory,
+          gitDirectory: repository.getPath?.() || null,
+        }),
+      );
+      if (
+        !Array.isArray(capabilities) ||
+        capabilities.some((name) => typeof name !== "string" || !name)
+      ) {
+        throw new TypeError(
+          "Repository operation capabilities must be a synchronous array of names",
+        );
+      }
+      return capabilities;
+    }
+    // Providers without passive metadata advertise only an implementation that
+    // execution already created. A capability read never invokes its factory.
+    const record = entry.operationImplementations.get(provider);
+    if (!record || record.disposed) return [];
+    return [
+      ...RepositoryOperations.standardCapabilities,
+      ...(record.implementation.getCapabilities?.() || []),
+    ].filter((name) => this.operationImplementationSupports(record, name));
   }
 
   getPendingOperations(repository) {
@@ -241,7 +268,7 @@ module.exports = class RepositoryOperationManager {
       refresh: false,
     });
     options?.signal?.throwIfAborted();
-    if (repository && this.canPerformOperation(repository, "executeGit")) {
+    if (repository && this.findOperationImplementation(repository, "executeGit")) {
       return this.performOperation(repository, "executeGit", [args, options]);
     }
     return this.workspaceOperationQueue.enqueue("executeGit", workingDirectory || process.cwd(), [

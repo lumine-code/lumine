@@ -145,6 +145,20 @@ class DialogActions {
     return !this.destroyed && this.actionsByCommand.has(command);
   }
 
+  // Registry predicates must not query registry-backed action presentation
+  // recursively. These guards inspect only the declared local action state.
+  isLocallyAvailable(command, context, { allowPending = false } = {}) {
+    const action = this.actionsByCommand.get(command)?.action;
+    return Boolean(
+      !this.destroyed &&
+      action &&
+      (allowPending || !this.isPending(command)) &&
+      (action.context !== "item" || context.item != null) &&
+      evaluateBoolean(action.when, true, context, action, "when") &&
+      evaluateBoolean(action.enabled, true, context, action, "enabled"),
+    );
+  }
+
   /**
    * Returns whether at least one action applies. This deliberately skips
    * `enabled` and `disabledReason`, while still validating the primary action.
@@ -389,16 +403,16 @@ class DialogActions {
     return this.sort(applicable);
   }
 
-  evaluate(context) {
+  evaluate(context, { allowPending = false } = {}) {
     return this.applicableRecords(context).map(({ record, primary }) => {
       const action = record.action;
       const locallyEnabled = evaluateBoolean(action.enabled, true, context, action, "enabled");
-      const available =
-        !locallyEnabled || !this.isAvailable ? true : this.isAvailable(action, context);
+      const ready = locallyEnabled && (allowPending || !this.isPending(action.command));
+      const available = !ready || !this.isAvailable ? true : this.isAvailable(action, context);
       if (typeof available !== "boolean") {
         throw new TypeError("DialogActions isAvailable must return a Boolean.");
       }
-      const enabled = locallyEnabled && available;
+      const enabled = ready && available;
       let disabledReason = null;
       if (!locallyEnabled && action.disabledReason != null) {
         disabledReason = evaluateValue(action.disabledReason, context, action, "disabledReason");
@@ -543,7 +557,11 @@ class DialogActions {
     // An action can be removed or replaced while an async resolver/confirmation
     // is in flight. The stale registration must never dispatch its replacement.
     if (this.actionsByCommand.get(record.action.command) !== record) return null;
-    return this.evaluate(context).find((candidate) => candidate.record === record) ?? null;
+    return (
+      this.evaluate(context, { allowPending: true }).find(
+        (candidate) => candidate.record === record,
+      ) ?? null
+    );
   }
 
   finish(state, status, details = {}) {

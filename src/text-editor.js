@@ -776,8 +776,10 @@ module.exports = class TextEditor {
     if (value !== this.readOnly) {
       this.readOnly = value;
       if (this.component != null) {
+        this.component.element.toggleAttribute("readonly", Boolean(value));
         this.component.scheduleUpdate();
       }
+      this.emitter.emit("did-change-read-only", value);
     }
     if (finish) this.finishUpdate();
   }
@@ -1602,6 +1604,19 @@ module.exports = class TextEditor {
 
   isReadOnly() {
     return this.readOnly;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Invoke the callback when this editor starts or stops rejecting text edits.
+   * @param {Function} callback - Receives the current read-only Boolean.
+   * @returns {Disposable} Removes the subscription.
+   * @category Event Subscription
+   */
+  onDidChangeReadOnly(callback) {
+    return this.emitter.on("did-change-read-only", callback);
   }
 
   enableKeyboardInput(enabled) {
@@ -7047,6 +7062,11 @@ module.exports = class TextEditor {
         this.emitter.emit("did-tokenize");
       });
     if (this.languageModeSubscription) this.disposables.add(this.languageModeSubscription);
+    if (this.component) {
+      const scope = languageMode.grammar?.scopeName;
+      if (scope) this.component.element.dataset.grammar = scope.replace(/\./g, " ");
+      else delete this.component.element.dataset.grammar;
+    }
     this.emitter.emit("did-change-grammar", languageMode.grammar);
   }
 

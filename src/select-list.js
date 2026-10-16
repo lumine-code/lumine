@@ -703,6 +703,13 @@ class SelectList extends InputDialog {
     return this.model?.getItemById(id) ?? null;
   }
 
+  /** @private A captured action keeps its identity while list data is replaced. */
+  currentActionContext(context) {
+    if (context.item == null) return context;
+    const item = this.model?.getItemById(context.itemId) ?? null;
+    return item === context.item ? context : Object.freeze({ ...context, item });
+  }
+
   recordActionRecent({ item }) {
     if (item != null) {
       return this.recordRecentItem(item).catch((error) => this.didFailRecents(error));

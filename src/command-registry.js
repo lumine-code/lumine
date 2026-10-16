@@ -496,6 +496,8 @@ module.exports = class CommandRegistry {
    * `clear()` and is disposed when the registry is destroyed.
    *
    * @param {Function} callback - Called after registrations change.
+   * @param {Object} [callback.change] - A local availability change; absent for a global change.
+   * @param {Node} [callback.change.target] - Only command targets within this subtree are affected.
    * @returns {Disposable} Removes the event subscription.
    */
   onDidChange(callback) {
@@ -509,10 +511,12 @@ module.exports = class CommandRegistry {
    * Notify command surfaces that state used by `isAvailable` predicates changed.
    * Predicates are evaluated afresh on every query; this asks live presentations
    * such as the native application menu to refresh without a focus change.
+   * @param {Object} [options] - Optional scope of a local state change.
+   * @param {Node} [options.target] - The changed command subtree. Omit for domain-wide changes.
    * @returns {void}
    */
-  invalidateAvailability() {
-    this.changeEmitter.emit("did-change");
+  invalidateAvailability({ target } = {}) {
+    this.changeEmitter.emit("did-change", target ? Object.freeze({ target }) : undefined);
   }
 
   getSnapshot() {

@@ -387,6 +387,7 @@ class Environment {
       this.repositories.onDidChange(() => this.commands.invalidateAvailability()),
       this.repositories.onDidChangeActiveRepository(() => this.commands.invalidateAvailability()),
       this.repositories.onDidChangeRepositoryState(() => this.commands.invalidateAvailability()),
+      this.repositories.onDidFinishOperation(() => this.commands.invalidateAvailability()),
     );
     this.icons.attachRepositories(this.repositories);
     // Interactive credential/passphrase prompting for git operations that run in

@@ -48,6 +48,80 @@ describe("Dialog command availability", () => {
     expect(model.getStatus()).toBeNull();
   });
 
+  it("reflects local action eligibility in registry state even without a command predicate", async () => {
+    let enabled = false;
+    const handler = jasmine.createSpy("local action handler");
+    host = lumine.workspace.addSelectList({
+      items: [],
+      getItemId: (item) => item.id,
+      commands: { [command]: handler },
+      actions: [
+        { command, context: "item", primary: true, disposition: "stay", enabled: () => enabled },
+      ],
+    });
+    model = host.getModel();
+    await host.show();
+    const target = model.getQueryEditor().getElement();
+    expect(lumine.commands.canDispatch(target, command)).toBe(false);
+    await model.update({ items: [{ id: "one" }] });
+    expect(lumine.commands.canDispatch(target, command)).toBe(false);
+    enabled = true;
+    expect(lumine.commands.canDispatch(target, command)).toBe(true);
+    await model.confirmSelection();
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a custom Confirm registration override the dialog default exactly once", async () => {
+    const handler = jasmine.createSpy("custom confirm");
+    host = lumine.workspace.addInputDialog({ commands: { "core:confirm": handler } });
+    model = host.getModel();
+    const defaultConfirm = spyOn(model, "confirm").and.callThrough();
+    await host.show();
+    await lumine.commands.dispatch(model.getQueryEditor().getElement(), "core:confirm");
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(defaultConfirm).not.toHaveBeenCalled();
+  });
+
+  it("disables a pending local command while allowing its owned dispatch exactly once", async () => {
+    let finish;
+    const handler = jasmine.createSpy("pending action").and.callFake(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    host = lumine.workspace.addInputDialog({
+      commands: { [command]: handler },
+      actions: [{ command, context: "dialog", primary: true, disposition: "stay" }],
+    });
+    model = host.getModel();
+    await host.show();
+    const running = model.confirm();
+    await conditionPromise(() => handler.calls.count() === 1);
+    expect(lumine.commands.canDispatch(model.getQueryEditor().getElement(), command)).toBe(false);
+    finish();
+    await running;
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(lumine.commands.canDispatch(model.getQueryEditor().getElement(), command)).toBe(true);
+  });
+
+  it("updates picker forwarders and silently declines an action that became unavailable", async () => {
+    let available = true;
+    const handler = jasmine.createSpy("forwarded conditional action");
+    await openDialog(() => available, handler, { disposition: "stay" });
+    await host.showActions();
+    const picker = host.services.actionService.picker;
+    expect(lumine.commands.canDispatch(picker.getQueryEditor().getElement(), command)).toBe(true);
+    available = false;
+    lumine.commands.invalidateAvailability({ target: model.getElement() });
+    await globalThis.flushMicrotasks();
+    expect(lumine.commands.canDispatch(picker.getQueryEditor().getElement(), command)).toBe(false);
+    expect(picker.getItems()[0].enabled).toBe(false);
+    await picker.confirmSelection();
+    expect(handler).not.toHaveBeenCalled();
+    expect(picker.getStatus()).toBeNull();
+  });
+
   it("adapts a local command keystroke to its action detail and invokes the handler once", async () => {
     const handler = jasmine.createSpy("conditional keyboard command");
     await openDialog(({ detail }) => detail.query === "run", handler);

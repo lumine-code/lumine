@@ -23,6 +23,42 @@ function paneForCommand(workspace, event) {
   return workspace.getActivePane();
 }
 
+function documentItemForCommand(workspace, event) {
+  return event?.context
+    ? event.context.documentItem
+    : workspace.getCenter().getActivePane().getActiveItem();
+}
+
+function canSaveItem(item, saveAs = false) {
+  if (!item || item.isDestroyed?.()) return false;
+  if (saveAs) return typeof item.saveAs === "function";
+  const uri = item.getURI?.() ?? item.getUri?.();
+  return typeof item[uri == null ? "saveAs" : "save"] === "function";
+}
+
+function hasItemsToSave(pane) {
+  return pane
+    .getItems()
+    .some(
+      (item) =>
+        typeof item.getFileState === "function" &&
+        item.getFileState() !== "unmodified" &&
+        canSaveItem(item),
+    );
+}
+
+function canCheckoutEditor(editor, repositories) {
+  const filePath = editor.getPath();
+  const repository = filePath && repositories.getForPath(filePath);
+  if (!repository || repository.isDestroyed?.()) return false;
+  const status = repository.getStatusSnapshot?.();
+  if (status?.initialized && !status.head?.oid) return false;
+  const entry = repository.getStatusEntry?.(filePath);
+  // A clean tracked path has no status entry. Unsaved buffer edits can still
+  // be discarded by Checkout HEAD, whose execution reloads that buffer.
+  return !entry?.untracked && entry?.indexStatus !== "A";
+}
+
 const PANE_ITEM_COMMANDS = require("./pane-item-command-definitions");
 
 function paneItemCommands(notifications) {
@@ -51,6 +87,19 @@ function paneItemCommands(notifications) {
     const { direction, action, split, description } = definition;
     commands[name] = {
       ...(description ? { description } : {}),
+      ...(action === "focus"
+        ? {}
+        : {
+            isAvailable(event) {
+              const item = paneForCommand(this.getModel(), event)?.getActiveItem();
+              return Boolean(
+                item &&
+                !item.isDestroyed?.() &&
+                (action !== "copy" ||
+                  (typeof item.copy === "function" && item.canCopy?.() !== false)),
+              );
+            },
+          }),
       didDispatch(event) {
         const workspace = this.getModel();
         const sourcePane = paneForCommand(workspace, event);
@@ -354,6 +403,9 @@ module.exports = function ({
       ...paneItemCommands(notificationManager),
       "pane:detach": {
         description: "Move this pane and its tabs into an additional editor window.",
+        isAvailable(event) {
+          return paneForCommand(this.getModel(), event)?.getContainer().getLocation() === "center";
+        },
         didDispatch: function (event) {
           const workspace = this.getModel();
           const pane = paneForCommand(workspace, event);
@@ -367,6 +419,7 @@ module.exports = function ({
       },
       "window:attach-to-main-window": {
         description: "Move every pane of this editor window back into the main window.",
+        isAvailable: ({ context }) => Boolean(context?.window && !context.window.isMain()),
         didDispatch: function (event) {
           const window = event?.context?.window;
           if (!window || window.isMain()) return;
@@ -379,8 +432,15 @@ module.exports = function ({
             );
         },
       },
-      "window:save-all": function () {
-        return settleSaveCommand(this.getModel().saveAll());
+      "window:save-all": {
+        isAvailable() {
+          return this.getModel()
+            .getPaneContainers()
+            .some((container) => container.getPanes().some(hasItemsToSave));
+        },
+        didDispatch() {
+          return settleSaveCommand(this.getModel().saveAll());
+        },
       },
       "window:toggle-invisibles": {
         description: "Show or hide the marks standing for spaces, tabs and line ends.",
@@ -418,11 +478,21 @@ module.exports = function ({
           return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow(event?.context);
         },
       },
-      "core:save": function (event) {
-        return settleSaveCommand(this.getModel().saveActivePaneItem(event?.context));
+      "core:save": {
+        isAvailable(event) {
+          return canSaveItem(documentItemForCommand(this.getModel(), event));
+        },
+        didDispatch(event) {
+          return settleSaveCommand(this.getModel().saveActivePaneItem(event?.context));
+        },
       },
-      "core:save-as": function (event) {
-        return this.getModel().saveActivePaneItemAs(event?.context);
+      "core:save-as": {
+        isAvailable(event) {
+          return canSaveItem(documentItemForCommand(this.getModel(), event), true);
+        },
+        didDispatch(event) {
+          return this.getModel().saveActivePaneItemAs(event?.context);
+        },
       },
       "modal:go-back": {
         hiddenInCommandPalette: true,
@@ -482,6 +552,9 @@ module.exports = function ({
     {
       "pane:save-items": {
         description: "Save every unsaved tab in this pane.",
+        isAvailable() {
+          return hasItemsToSave(this.getModel());
+        },
         didDispatch: function () {
           return settleSaveCommand(this.getModel().saveItems());
         },
@@ -914,6 +987,12 @@ module.exports = function ({
       },
       "editor:validate-grammar-queries": {
         description: "Report the errors in this Tree-sitter grammar's own queries.",
+        isAvailable() {
+          return (
+            typeof this.getModel().getBuffer().getLanguageMode().validateGrammarQueries ===
+            "function"
+          );
+        },
         didDispatch: function () {
           let languageMode = this.getBuffer().getLanguageMode();
           if (typeof languageMode.validateGrammarQueries !== "function") {
@@ -931,12 +1010,18 @@ module.exports = function ({
       },
       "editor:copy-path": {
         description: "Copy this file's full path from the filesystem root.",
+        isAvailable() {
+          return Boolean(this.getModel().getPath());
+        },
         didDispatch: function () {
           return copyPathToClipboard(this, project, clipboard, false);
         },
       },
       "editor:copy-project-path": {
         description: "Copy this file's path relative to the project root.",
+        isAvailable() {
+          return Boolean(this.getModel().getPath());
+        },
         didDispatch: function () {
           return copyPathToClipboard(this, project, clipboard, true);
         },
@@ -1022,6 +1107,9 @@ module.exports = function ({
       },
       "editor:checkout-head-revision": {
         description: "Discard this file's changes and restore it from Git HEAD.",
+        isAvailable() {
+          return canCheckoutEditor(this.getModel(), repositories);
+        },
         didDispatch: function () {
           return lumine.workspace.checkoutHeadRevision(this);
         },

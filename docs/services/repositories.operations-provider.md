@@ -29,6 +29,11 @@ In your `package.json`:
 
 ```ts
 type OperationsProvider = {
+  getRepositoryOperationCapabilities?(context: {
+    repository: Repository;
+    workingDirectory: string;
+    gitDirectory: string | null;
+  }): string[];
   createRepositoryOperations?(context: {
     repository: Repository;
     workingDirectory: string;
@@ -66,6 +71,7 @@ type OperationImplementation = {
 module.exports = {
   provideRepositoriesOperationsProvider() {
     return {
+      getRepositoryOperationCapabilities: () => ["stageFiles", "commit"],
       createRepositoryOperations({ workingDirectory: root }) {
         return {
           stageFiles: (paths) => this.run(root, ["add", "--", ...paths]),
@@ -99,7 +105,7 @@ After a successful per-repository operation the registry refreshes the repositor
 
 The worktree operations (`worktreeAdd`, `worktreeRemove`, `worktreeMove`, `worktreeLock`, `worktreeUnlock`, `worktreePrune`) are the clearest case for `"refs"`: they act on a checkout other than the one the repository represents, so its index and working tree cannot change, while the worktree list the refs snapshot carries always can.
 
-Capability discovery is the intended way to drive a UI: `canPerformOperation(repository, name)` walks the providers and reports whether anyone implements it, and `getOperationCapabilities(repository)` returns the union of the standard operations that resolve plus whatever each implementation's own `getCapabilities()` adds. Grey out what nothing supports rather than failing at the call.
+Capability discovery is passive: `canPerformOperation(repository, name)` and `getOperationCapabilities(repository)` consult `getRepositoryOperationCapabilities(context)` without constructing an operation implementation. This optional provider method returns an array of supported operation names synchronously, using only cached metadata and without side effects or I/O. It must agree with the methods that its factory supplies for that context. A provider without this metadata advertises only implementations already created by explicit execution; availability queries never invoke `createRepositoryOperations`. Grey out what nothing supports rather than failing at the call.
 
 Repository-backed raw commands use `repository.getOperations().executeGit(args, options)`. They are descriptor-bound and share the named-write queue. Nonzero exits reject with the shared GitOperationError unless allowedExitCodes explicitly permits them, including when a provider returns an unchecked result. Repository-selection globals cannot override the bound descriptor. Mark actual reads with `{readOnly: true}` to avoid mutation refresh and credential prompting. The registry-level `executeGit(args, cwd, options)` routes known repositories to that same queue and serializes unbound commands by destination.
 

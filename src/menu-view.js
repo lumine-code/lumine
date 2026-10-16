@@ -1,4 +1,5 @@
 const { Emitter } = require("@lumine-code/event-kit");
+const changeAffectsTarget = require("./command-availability-change");
 const {
   keyBindingLabelForMenuItem,
   isMenuItemEnabled,
@@ -481,7 +482,13 @@ class MenuPopup {
       throw error;
     }
     this.element = this.handle.element;
-    this.availabilitySubscription = globalThis.lumine?.commands?.onDidChange?.(() => {
+    this.availabilitySubscription = globalThis.lumine?.commands?.onDidChange?.((change) => {
+      if (
+        ![this.commandTarget, this.contextTarget, this.focusTarget].some((target) =>
+          changeAffectsTarget(change, target),
+        )
+      )
+        return;
       if (this.availabilityRefreshPending) return;
       this.availabilityRefreshPending = true;
       queueMicrotask(() => {

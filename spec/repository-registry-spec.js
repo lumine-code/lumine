@@ -778,7 +778,7 @@ describe("RepositoryRegistry", () => {
 
     expect(repository.getOperations().isAvailable("commit")).toBe(false);
     const entry = registry.entryByRepository.get(repository);
-    expect(entry.operationImplementations.has(provider)).toBe(true);
+    expect(entry.operationImplementations.has(provider)).toBe(false);
 
     providerDisposable.dispose();
     expect(entry.operationImplementations.has(provider)).toBe(false);
@@ -803,6 +803,7 @@ describe("RepositoryRegistry", () => {
         },
         { fallback: true },
       );
+      registry.operationManager.findOperationImplementation(repository, "commit");
     });
 
     it("rolls a throwing registration observer back, disposes its implementation once, and restores fallback", async () => {
@@ -811,7 +812,7 @@ describe("RepositoryRegistry", () => {
       const destroy = jasmine.createSpy("failed provider cleanup");
       const commit = jasmine.createSpy("failed provider commit").and.resolveTo("must not run");
       const subscription = registry.onDidChange(() => {
-        operations.getCapabilities();
+        registry.operationManager.findOperationImplementation(repository, "commit");
         subscription.dispose();
         throw original;
       });
@@ -846,8 +847,8 @@ describe("RepositoryRegistry", () => {
       const firstDestroy = jasmine.createSpy("first cleanup").and.throwError(firstFailure);
       const secondDestroy = jasmine.createSpy("second cleanup").and.throwError(secondFailure);
       const subscription = registry.onDidChange(() => {
-        operations.getCapabilities();
-        second.getOperations().getCapabilities();
+        registry.operationManager.findOperationImplementation(repository, "commit");
+        registry.operationManager.findOperationImplementation(second, "commit");
         subscription.dispose();
         throw original;
       });
@@ -880,7 +881,7 @@ describe("RepositoryRegistry", () => {
       const commit = jasmine.createSpy("failed provider commit").and.resolveTo("must not run");
       let writing;
       const subscription = registry.onDidChange(() => {
-        operations.getCapabilities();
+        registry.operationManager.findOperationImplementation(repository, "commit");
         writing = operations.commit("queued by observer");
         subscription.dispose();
         throw original;
@@ -953,7 +954,7 @@ describe("RepositoryRegistry", () => {
       const original = Object.freeze(new Error("Observer failed after registry destruction"));
       const destroy = jasmine.createSpy("failed provider cleanup");
       const subscription = registry.onDidChange(() => {
-        operations.getCapabilities();
+        registry.operationManager.findOperationImplementation(repository, "commit");
         subscription.dispose();
         registry.destroy();
         throw original;
@@ -988,7 +989,7 @@ describe("RepositoryRegistry", () => {
       expect(await operations.commit("before")).toBe("shared");
       const original = new Error("Duplicate provider observer failed");
       const subscription = registry.onDidChange(() => {
-        operations.getCapabilities();
+        registry.operationManager.findOperationImplementation(repository, "commit");
         subscription.dispose();
         throw original;
       });
@@ -1057,6 +1058,7 @@ describe("RepositoryRegistry", () => {
     const operations = repository.getOperations();
 
     registry.addOperationProvider({
+      getRepositoryOperationCapabilities: () => ["commit"],
       createRepositoryOperations(context) {
         providerContext = context;
         return {
@@ -1079,6 +1081,30 @@ describe("RepositoryRegistry", () => {
     expect(commits).toEqual([{ message: "Subject", options: { amend: true } }]);
     expect(repository.refreshStatusSnapshotCount).toBe(1);
     expect(repository.refreshRefsSnapshotCount).toBe(1);
+  });
+
+  it("queries declared operation capabilities without creating or caching an implementation", async () => {
+    const workdir = temp.mkdirSync("passive-operation-capabilities");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const create = jasmine
+      .createSpy("lazy operation factory")
+      .and.returnValue({ commit: async () => "created" });
+    const provider = {
+      getRepositoryOperationCapabilities: () => ["commit"],
+      createRepositoryOperations: create,
+    };
+    registry.addOperationProvider(provider);
+    const operations = repository.getOperations();
+    expect(operations.isAvailable("commit")).toBe(true);
+    expect(operations.isAvailable("push")).toBe(false);
+    expect(operations.getCapabilities()).toEqual(["commit"]);
+    expect(create).not.toHaveBeenCalled();
+    expect(registry.entryByRepository.get(repository).operationImplementations.size).toBe(0);
+
+    expect(await operations.commit("Subject")).toBe("created");
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it("removes a stale entry when a manual mutation reports its descriptor unavailable", async () => {
@@ -1410,6 +1436,7 @@ describe("RepositoryRegistry", () => {
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
     registry.addOperationProvider({
+      getRepositoryOperationCapabilities: () => ["customWrite"],
       createRepositoryOperations() {
         return {
           customWrite: async () => "custom-result",
@@ -1736,7 +1763,9 @@ describe("RepositoryRegistry", () => {
           destroy: repository === first ? firstCleanup : secondCleanup,
         }),
       });
+      registry.operationManager.findOperationImplementation(first, "commit");
       expect(first.getOperations().getCapabilities()).toContain("commit");
+      registry.operationManager.findOperationImplementation(second, "commit");
       expect(second.getOperations().getCapabilities()).toContain("commit");
       const firstDestroyed = jasmine.createSpy("first repository destroyed");
       const secondDestroyed = jasmine.createSpy("second repository destroyed");
@@ -1780,15 +1809,19 @@ describe("RepositoryRegistry", () => {
     const cleanupFailure = new Error("Implementation cleanup failed");
     const observerFailure = new Error("Removal observer failed");
     const laterCleanup = jasmine.createSpy("later implementation cleanup");
-    registry.addOperationProvider({
+    const laterProvider = {
       createRepositoryOperations: () => ({ commit: async () => "unused", destroy: laterCleanup }),
-    });
+    };
+    registry.addOperationProvider(laterProvider);
     const firstCleanup = jasmine
       .createSpy("first implementation cleanup")
       .and.throwError(cleanupFailure);
-    registry.addOperationProvider({
+    const firstProvider = {
       createRepositoryOperations: () => ({ commit: async () => "unused", destroy: firstCleanup }),
-    });
+    };
+    registry.addOperationProvider(firstProvider);
+    registry.operationManager.getOperationImplementation(repository, laterProvider);
+    registry.operationManager.getOperationImplementation(repository, firstProvider);
     expect(repository.getOperations().getCapabilities()).toContain("commit");
     registry.setActiveRepository(repository, { pin: true });
     const activeChanged = jasmine.createSpy("active repository cleared");
@@ -1840,7 +1873,9 @@ describe("RepositoryRegistry", () => {
     });
     const firstOperations = first.getOperations();
     const secondOperations = second.getOperations();
+    registry.operationManager.findOperationImplementation(first, "commit");
     expect(firstOperations.getCapabilities()).toContain("commit");
+    registry.operationManager.findOperationImplementation(second, "commit");
     expect(secondOperations.getCapabilities()).toContain("commit");
     const changed = jasmine.createSpy("provider removal published");
     registry.onDidChange(changed);

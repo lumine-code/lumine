@@ -53,8 +53,10 @@ class InputDialog {
     this.actionsExpanded = false;
     this.pendingActionCommands = new Set();
     this.dispatchedActionCommand = null;
+    this.evaluatingActionCommand = null;
     this.actionPresentationCache = null;
     this.actionCommandsDisposable = null;
+    this.actionCommandNames = new Set();
     this.host = null;
     this.hostVisible = false;
     this.dialogActions = new DialogActions({
@@ -481,6 +483,7 @@ class InputDialog {
 
   registerActionCommands(commands) {
     const listeners = this.prepareActionCommandListeners(commands);
+    this.actionCommandNames = new Set(Object.keys(listeners));
     const nextDisposable =
       Object.keys(listeners).length > 0
         ? this.services.commandRegistry.add(this.getElement(), listeners)
@@ -523,25 +526,35 @@ class InputDialog {
           return this.consumeUiAction(this.runAction(command, { source: "command" }));
         },
       };
-      if (isAvailable) {
-        const dialog = this;
-        listeners[command].isAvailable = function (query) {
-          if (!dialog.dialogActions.has(command) || query.detail?.dialog === dialog) {
-            return isAvailable.call(this, query);
-          }
-          return isAvailable.call(
-            this,
-            Object.freeze({
-              target: query.target,
-              currentTarget: query.currentTarget,
-              detail: Object.freeze(dialog.getActionContext("command")),
-              get context() {
-                return query.context;
-              },
-            }),
-          );
-        };
-      }
+      const dialog = this;
+      listeners[command].isAvailable = function (query) {
+        if (!dialog.dialogActions.has(command))
+          return isAvailable ? isAvailable.call(this, query) : true;
+        const detail = dialog.currentActionContext(
+          query.detail?.dialog === dialog
+            ? query.detail
+            : Object.freeze(dialog.getActionContext("command")),
+        );
+        if (
+          dialog.evaluatingActionCommand !== command &&
+          !dialog.dialogActions.isLocallyAvailable(command, detail, {
+            allowPending: dialog.dispatchedActionCommand === command,
+          })
+        )
+          return false;
+        if (!isAvailable) return true;
+        return isAvailable.call(
+          this,
+          Object.freeze({
+            target: query.target,
+            currentTarget: query.currentTarget,
+            detail,
+            get context() {
+              return query.context;
+            },
+          }),
+        );
+      };
     }
     return listeners;
   }
@@ -672,6 +685,7 @@ class InputDialog {
    * @returns {Array<Object>}
    */
   getAvailableActions(context = this.getActionContext()) {
+    context = this.currentActionContext(context);
     // Availability and presentation share one command lookup per action.
     // Nested queries restore their caller's cache when they finish.
     const previous = this.actionPresentationCache;
@@ -688,6 +702,19 @@ class InputDialog {
 
   getActionAvailability(command, context = this.getActionContext()) {
     return this.dialogActions.getAvailability(command, context);
+  }
+
+  /** @private Synchronous effective state for command forwarders. */
+  isActionAvailable(command, context = this.getActionContext()) {
+    context = this.currentActionContext(context);
+    if (!this.dialogActions.isLocallyAvailable(command, context)) return false;
+    const action = this.dialogActions.actionsByCommand.get(command).action;
+    return this.isDialogActionAvailable(action, context);
+  }
+
+  /** @private Resolve any synchronous item state without running async validation. */
+  currentActionContext(context) {
+    return context;
   }
 
   /**
@@ -712,16 +739,22 @@ class InputDialog {
 
   isDialogActionAvailable(action, context) {
     const target = this.commandTargetForAction(action, context);
-    if (this.actionPresentationCache) {
-      const presentation = this.services.commandRegistry.getCommandPresentation(action.command, {
-        target,
-        bindingTarget: this.queryEditor.getElement(),
-        detail: context,
-      });
-      this.actionPresentationCache.set(action.command, presentation);
-      return presentation?.enabled === true;
+    const previous = this.evaluatingActionCommand;
+    this.evaluatingActionCommand = action.command;
+    try {
+      if (this.actionPresentationCache) {
+        const presentation = this.services.commandRegistry.getCommandPresentation(action.command, {
+          target,
+          bindingTarget: this.queryEditor.getElement(),
+          detail: context,
+        });
+        this.actionPresentationCache.set(action.command, presentation);
+        return presentation?.enabled === true;
+      }
+      return this.services.commandRegistry.canDispatch(target, action.command, context);
+    } finally {
+      this.evaluatingActionCommand = previous;
     }
-    return this.services.commandRegistry.canDispatch(target, action.command, context);
   }
 
   describeDialogAction(action, context, presentations) {
@@ -757,6 +790,7 @@ class InputDialog {
       ...action,
       enabled: action.enabled && descriptor?.enabled === true,
       name: (descriptor?.displayName ?? action.command).replace(/^[^:]+:\s*/, ""),
+      displayName: descriptor?.displayName,
       description: descriptor?.description,
       commandKeystrokes,
       keystrokes,
@@ -896,6 +930,7 @@ class InputDialog {
     const pending = this.pendingActionCommands.size > 0;
     if (pending) this.component.element.setAttribute("aria-busy", "true");
     else this.component.element.removeAttribute("aria-busy");
+    this.services.commandRegistry.invalidateAvailability({ target: this.component.element });
     void this.component.update().catch(() => {});
   }
 
@@ -906,7 +941,7 @@ class InputDialog {
    * @private
    */
   commandsForElement() {
-    return {
+    const defaults = {
       "core:confirm": (event) => {
         const result = this.consumeUiAction(this.confirm());
         event.stopPropagation();
@@ -934,6 +969,30 @@ class InputDialog {
         event.stopPropagation();
       },
     };
+    return Object.fromEntries(
+      Object.entries(defaults).map(([command, didDispatch]) => [
+        command,
+        {
+          isAvailable: () =>
+            !this.actionCommandNames.has(command) &&
+            (command !== "core:confirm" || this.canConfirm()),
+          didDispatch,
+        },
+      ]),
+    );
+  }
+
+  /** @private Confirm follows the declared primary action when one applies. */
+  canConfirm() {
+    const context = this.currentActionContext(this.getActionContext("primary"));
+    const primary = this.dialogActions.applicableRecords(context).find((entry) => entry.primary)
+      ?.record.action;
+    if (!primary) return true;
+    if (!this.dialogActions.isLocallyAvailable(primary.command, context)) return false;
+    if (this.actionPresentationCache?.has(primary.command)) {
+      return this.actionPresentationCache.get(primary.command)?.enabled === true;
+    }
+    return this.isDialogActionAvailable(primary, context);
   }
 
   /**
@@ -1369,6 +1428,9 @@ class InputDialog {
    * @private
    */
   refreshItemActionsIndicator() {
+    if (this.component) {
+      this.services.commandRegistry.invalidateAvailability({ target: this.component.element });
+    }
     if (!this.component?.refs?.itemActionsIndicator) return;
     const available = Boolean(this.host) && this.hostVisible && this.hasAvailableActions();
     this.itemActionsAvailable = available;

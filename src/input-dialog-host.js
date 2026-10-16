@@ -306,6 +306,11 @@ class InputDialogHost {
     }
   }
 
+  /** @private Synchronous availability for the shared actions picker. */
+  isActionAvailable(command, context) {
+    return !this.destroyed && this.model.isActionAvailable(command, context);
+  }
+
   /** @category Event Subscription */
 
   /**

@@ -8,6 +8,7 @@ const MenuHelpers = require("./menu-helpers");
 const ContextViewManager = require("./context-view-manager");
 const { keyBindingsForTarget, resolveKeyBindingTarget } = require("./key-binding-helpers");
 const menuLayout = require("./menu-layout");
+const changeAffectsTarget = require("./command-availability-change");
 
 const buildMetadata = require("../package.json");
 var platformMenu;
@@ -120,7 +121,12 @@ module.exports = class MenuManager {
     this.disposables.add(this.keymapManager.onDidReloadKeymap(() => this.update()));
     this.disposables.add(this.keymapManager.onDidUnloadKeymap(() => this.update()));
     if (this.commandRegistry)
-      this.disposables.add(this.commandRegistry.onDidChange(() => this.scheduleNativeUpdate()));
+      this.disposables.add(
+        this.commandRegistry.onDidChange((change) => {
+          const target = this.getNativeMenuTarget(this.nativeDocument);
+          if (changeAffectsTarget(change, target)) this.scheduleNativeUpdate();
+        }),
+      );
     this.update();
     this.initialized = true;
   }
@@ -289,6 +295,7 @@ module.exports = class MenuManager {
   }
 
   getNativeMenuTarget(document) {
+    if (!document) return null;
     if (this.nativeMenuSession?.document === document) return this.nativeMenuSession.target;
     return this.nativeDocuments.get(document)?.target ?? this.focusTargetForDocument(document);
   }

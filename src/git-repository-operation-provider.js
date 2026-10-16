@@ -8,6 +8,7 @@ const {
   AUTH_OPERATIONS,
   operationRefreshHint,
 } = require("./git-operation-metadata");
+const REPOSITORY_CAPABILITIES = Object.freeze(Object.keys(OPERATION_OPTION_INDEX));
 
 // The renderer owns prompts and transport. Git argv and filesystem work are
 // implemented once in the worker's GitRepositoryOperations.
@@ -121,6 +122,10 @@ module.exports = class GitRepositoryOperationProvider {
     if (!descriptor)
       throw new TypeError("Repository operations require an exact repository descriptor");
     return new RemoteGitOperations(this, descriptor);
+  }
+
+  getRepositoryOperationCapabilities({ repository }) {
+    return repository?.getHostDescriptor?.() ? REPOSITORY_CAPABILITIES : [];
   }
 
   initializeRepository(directoryPath, options = {}) {

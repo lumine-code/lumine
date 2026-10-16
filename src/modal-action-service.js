@@ -2,6 +2,7 @@
 
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
+const changeAffectsTarget = require("./command-availability-change");
 
 /**
  * Owns the single action picker used by every modal model in one workspace.
@@ -58,13 +59,19 @@ module.exports = class ModalActionService {
     this.owner = owner;
     this.context = capturedContext;
     this.actionCommands = actions.map(({ command }) => command);
+    this.actionsByCommand = new Map(actions.map((action) => [action.command, action]));
 
     const forwarders = {};
     const keyBindings = {};
     for (const action of actions) {
-      forwarders[action.command] = (event) => {
-        event.stopPropagation();
-        return this.confirmAction(action).catch(() => false);
+      forwarders[action.command] = {
+        ...(action.displayName ? { displayName: action.displayName } : {}),
+        ...(action.description ? { description: action.description } : {}),
+        isAvailable: () => this.isActionAvailable(action.command),
+        didDispatch: (event) => {
+          event.stopPropagation();
+          return this.confirmAction(action).catch(() => false);
+        },
       };
       for (const keystrokes of action.commandKeystrokes ?? []) {
         if (!Object.prototype.hasOwnProperty.call(keyBindings, keystrokes)) {
@@ -73,6 +80,16 @@ module.exports = class ModalActionService {
       }
     }
     const registrations = [this.commandRegistry.add(picker.getElement(), forwarders)];
+    if (this.commandRegistry.onDidChange) {
+      registrations.push(
+        this.commandRegistry.onDidChange((change) => {
+          const source = owner.getModel?.()?.getElement();
+          if (!changeAffectsTarget(change, source)) return;
+          if (change?.target && changeAffectsTarget(change, picker.getElement())) return;
+          this.scheduleActionStateRefresh(owner, generation);
+        }),
+      );
+    }
     if (Object.keys(keyBindings).length > 0) {
       registrations.push(
         this.keymapManager.add("core:modal-action-service", {
@@ -83,14 +100,14 @@ module.exports = class ModalActionService {
     if (typeof owner.onDidStartAction === "function") {
       registrations.push(
         owner.onDidStartAction(() => {
-          void this.refreshActionStates(owner, generation).catch(() => {});
+          this.scheduleActionStateRefresh(owner, generation);
         }),
       );
     }
     if (typeof owner.onDidFinishAction === "function") {
       registrations.push(
         owner.onDidFinishAction(() => {
-          void this.refreshActionStates(owner, generation).catch(() => {});
+          this.scheduleActionStateRefresh(owner, generation);
         }),
       );
     }
@@ -118,6 +135,23 @@ module.exports = class ModalActionService {
     return sections;
   }
 
+  isActionAvailable(command) {
+    const action = this.actionsByCommand?.get(command);
+    if (!this.owner || !action) return false;
+    return this.owner.isActionAvailable
+      ? this.owner.isActionAvailable(command, this.context)
+      : action.enabled !== false && !action.pending;
+  }
+
+  scheduleActionStateRefresh(owner, generation) {
+    if (this.refreshPending) return;
+    this.refreshPending = true;
+    queueMicrotask(() => {
+      this.refreshPending = false;
+      void this.refreshActionStates(owner, generation).catch(() => {});
+    });
+  }
+
   async refreshActionStates(owner, showGeneration) {
     if (this.owner !== owner || this.showGeneration !== showGeneration || !this.actionCommands) {
       return;
@@ -128,6 +162,7 @@ module.exports = class ModalActionService {
         owner.getAvailableActions(this.context).map((action) => [action.command, action]),
       );
       const actions = this.actionCommands.map((command) => current.get(command)).filter(Boolean);
+      this.actionsByCommand = new Map(actions.map((action) => [action.command, action]));
       await this.picker.update({ sections: this.sectionsForActions(actions) });
     } catch (error) {
       if (
@@ -160,6 +195,7 @@ module.exports = class ModalActionService {
           "select-list:confirm-action-picker": {
             description: "Run the selected dialog action.",
             hiddenInCommandPalette: true,
+            isAvailable: ({ detail }) => this.isActionAvailable(detail.item?.command),
             didDispatch: (event) => this.confirmAction(event.detail.item),
           },
         },
@@ -236,17 +272,9 @@ module.exports = class ModalActionService {
         };
     if (this.owner !== owner || this.context !== context) return false;
     if (availability.status !== "available") {
-      await this.picker.setStatus({
-        type: "warning",
-        message:
-          availability.status === "disabled" && availability.reason
-            ? String(availability.reason)
-            : availability.status === "pending"
-              ? "This action is already in progress."
-              : availability.status === "unavailable"
-                ? "This action is no longer available."
-                : "This action is unavailable.",
-      });
+      if (availability.status === "disabled" && availability.reason) {
+        await this.picker.setStatus({ type: "warning", message: String(availability.reason) });
+      }
       return false;
     }
 
@@ -301,6 +329,7 @@ module.exports = class ModalActionService {
     this.owner = null;
     this.context = null;
     this.actionCommands = null;
+    this.actionsByCommand = null;
     this.actionStateGeneration++;
     if (clearPicker && this.picker && !this.picker.isDestroyed?.()) {
       void this.picker

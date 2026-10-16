@@ -27,6 +27,7 @@ const ModalDialogFactory = require("./modal-dialog-factory");
 const FileDocumentRegistry = require("./file-document-registry");
 const ItemOpenRequestManager = require("./item-open-request-manager");
 const ItemRegistry = require("./item-registry");
+const CommandAvailabilityObserver = require("./command-availability-observer");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item-locations");
 const { captureLifecycleError, throwLifecycleErrors } = require("./package-lifecycle-errors");
@@ -398,6 +399,7 @@ module.exports = class Workspace extends Model {
     this.enablePersistence = params.enablePersistence;
     this.packageManager = params.packageManager;
     this.config = params.config;
+    this.commandRegistry = params.commandRegistry;
     this.project = params.project;
     this.fileDocuments = new FileDocumentRegistry();
     this.fileMoveReadiness = Promise.resolve();
@@ -1182,6 +1184,10 @@ module.exports = class Workspace extends Model {
     this.subscribeToRegisteredTextEditorGrammarUsage();
     this.subscribeToMovedItems();
     this.subscribeToDockToggling();
+    this.disposables.remove(this.commandAvailabilityObserver);
+    this.commandAvailabilityObserver?.dispose();
+    this.commandAvailabilityObserver = new CommandAvailabilityObserver(this);
+    this.disposables.add(this.commandAvailabilityObserver);
   }
 
   closeStateStore() {

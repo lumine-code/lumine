@@ -284,7 +284,8 @@ describe("ModalActionService", () => {
     const listener = commandRegistry.listeners[open.command];
     const event = { stopPropagation: jasmine.createSpy("stopPropagation") };
 
-    await listener(event);
+    expect(listener.isAvailable()).toBe(true);
+    await listener.didDispatch(event);
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(owner.runAction).toHaveBeenCalledTimes(1);
     expect(commandRegistry.listeners).toBeNull();
@@ -356,7 +357,12 @@ describe("ModalActionService", () => {
     resolveFirstUpdate();
     await expectAsync(firstShow).toBeResolvedTo(false);
     expect(service.owner).toBe(secondOwner);
-    expect(commandRegistry.listeners["spec:second"]).toEqual(jasmine.any(Function));
+    expect(commandRegistry.listeners["spec:second"]).toEqual(
+      jasmine.objectContaining({
+        isAvailable: jasmine.any(Function),
+        didDispatch: jasmine.any(Function),
+      }),
+    );
     expect(commandRegistry.listeners["spec:first"]).toBeUndefined();
   });
 
