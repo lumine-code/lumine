@@ -2038,10 +2038,16 @@ describe("Environment", () => {
   describe("::startEditorWindow()", () => {
     let environment;
 
-    const buildEnvironment = ({ initialProjectRoots, state = null, clearWindowState = false }) => {
+    const buildEnvironment = ({
+      initialProjectRoots,
+      hasOpenFiles = false,
+      state = null,
+      clearWindowState = false,
+    }) => {
       const loadSettings = {
         ...lumine.applicationDelegate.getWindowLoadSettings(),
         initialProjectRoots,
+        hasOpenFiles,
         safeMode: true,
         clearWindowState,
       };
@@ -2138,13 +2144,47 @@ describe("Environment", () => {
       spyOn(env, "deserialize").and.callFake(async () => {
         expect(env.workspace.endInitialDockRestore).not.toHaveBeenCalled();
       });
+      spyOn(env.workspace, "openDefaultDockItems").and.callFake(async () => {
+        expect(env.deserialize).toHaveBeenCalled();
+        expect(env.workspace.endInitialDockRestore).not.toHaveBeenCalled();
+      });
 
       await env.startEditorWindow();
 
       expect(env.packages.activate).toHaveBeenCalled();
       expect(env.deserialize).toHaveBeenCalled();
+      expect(env.workspace.openDefaultDockItems).toHaveBeenCalled();
       expect(env.workspace.endInitialDockRestore).toHaveBeenCalled();
     });
+
+    for (const [launch, hasProject, hasOpenFiles, visible] of [
+      ["a project", true, false, true],
+      ["a project with an initial file", true, true, true],
+      ["only an initial file", false, true, false],
+      ["an empty window", false, false, true],
+    ]) {
+      it(`resolves default dock visibility when starting ${launch}`, async () => {
+        const env = buildEnvironment({
+          initialProjectRoots: hasProject ? [temp.mkdirSync("default-dock-project-")] : [],
+          hasOpenFiles,
+        });
+        const item = {
+          element: document.createElement("div"),
+          getTitle: () => "Default panel",
+          getURI: () => "lumine://default-startup-panel",
+          getDefaultLocation: () => "left",
+          getDefaultVisibility: () => "project-or-empty",
+        };
+        spyOn(env.packages, "activate").and.callFake(async () => {
+          env.workspace.addDefaultDockItem(() => item);
+        });
+
+        await env.startEditorWindow();
+
+        expect(env.workspace.getLeftDock().isVisible()).toBe(visible);
+        expect(Boolean(env.workspace.paneForItem(item))).toBe(visible);
+      });
+    }
 
     it("clears private states and the project index together", async () => {
       const env = buildEnvironment({ initialProjectRoots: [], clearWindowState: true });

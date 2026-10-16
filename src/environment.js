@@ -1245,6 +1245,12 @@ class Environment {
         StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
         await this.deserialize(state);
         this.deserializeTimings.lumine = Date.now() - startTime;
+        const loadSettings = this.#getLoadSettings();
+        await this.workspace.openDefaultDockItems({
+          hasProject: (loadSettings.initialProjectRoots?.length ?? 0) > 0,
+          hasOpenFiles: loadSettings.hasOpenFiles,
+          hasPaneItemTransfer: Boolean(loadSettings.paneItemTransfer),
+        });
       } finally {
         this.workspace.endInitialDockRestore();
       }
