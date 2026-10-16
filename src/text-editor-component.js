@@ -335,12 +335,7 @@ module.exports = class TextEditorComponent {
     // marking it visible or starting its language mode's visible work. A
     // display:none ancestor has no layout box and still suppresses updates.
     // Resolve rather than leak an update promise when no update can happen.
-    if (
-      !this.visible &&
-      (!this.attached ||
-        !this.props.model.getAutoHeight() ||
-        this.element.getClientRects().length === 0)
-    ) {
+    if (!this.visible && !this.canMeasureOffscreenAutoHeight()) {
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
@@ -435,6 +430,12 @@ module.exports = class TextEditorComponent {
     }
 
     this.updateScheduled = false;
+  }
+
+  canMeasureOffscreenAutoHeight() {
+    return (
+      this.attached && this.props.model.getAutoHeight() && this.element.getClientRects().length > 0
+    );
   }
 
   updateOffscreenAutoHeightLayout() {
@@ -4637,7 +4638,9 @@ module.exports = class TextEditorComponent {
   }
 
   didResizeBlockDecorations(entries) {
-    if (!this.visible) return;
+    // Auto-height blocks still size their parent outside the viewport. The
+    // observer must preserve that geometry when asynchronous content grows.
+    if (!this.visible && !this.canMeasureOffscreenAutoHeight()) return;
 
     for (let i = 0; i < entries.length; i++) {
       const { target, contentRect } = entries[i];

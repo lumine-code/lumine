@@ -134,6 +134,59 @@ describe("TextEditor auto-height layout outside the viewport", () => {
     expect(host.scrollHeight).toBe(height);
   });
 
+  it("keeps offscreen block growth in the parent's layout", async () => {
+    const item = document.createElement("div");
+    item.style.height = "20px";
+    const decoration = editor.decorateMarker(editor.markBufferPosition([0, 0]), {
+      type: "block",
+      position: "after",
+      item,
+    });
+    expandHost();
+    const oldHeight = editor.getElement().offsetHeight;
+    const oldScrollHeight = host.scrollHeight;
+    expect(component.heightsByBlockDecoration.get(decoration)).toBe(20);
+    expect(component.visible).toBe(false);
+
+    item.style.height = "120px";
+    await conditionPromise(
+      () => component.heightsByBlockDecoration.get(decoration) === 120,
+      "offscreen block resize measurement",
+    );
+    expect(editor.getElement().offsetHeight).toBe(oldHeight + 100);
+    expect(host.scrollHeight).toBe(oldScrollHeight + 100);
+    expect(component.visible).toBe(false);
+    component.didShow();
+    expect(host.scrollHeight).toBe(oldScrollHeight + 100);
+  });
+
+  it("ignores block resize callbacks without an eligible offscreen layout", () => {
+    const item = document.createElement("div");
+    item.style.height = "20px";
+    editor.decorateMarker(editor.markBufferPosition([0, 0]), {
+      type: "block",
+      position: "after",
+      item,
+    });
+    expandHost();
+    expect(editor.getElement().contains(item)).toBe(true);
+    const invalidate = spyOn(component, "invalidateBlockDecorationDimensions").and.callThrough();
+    const entries = [{ target: item, contentRect: { height: 120 } }];
+    host.style.display = "none";
+    component.didResizeBlockDecorations(entries);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    host.style.display = "block";
+    editor.update({ autoHeight: false });
+    component.didResizeBlockDecorations(entries);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    editor.update({ autoHeight: true });
+    host.remove();
+    component.didResizeBlockDecorations(entries);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
   it("keeps display:none and fixed-height editors suppressed", () => {
     const measure = spyOn(component, "measureDimensions").and.callThrough();
     component.updateSync();
