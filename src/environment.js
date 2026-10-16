@@ -1259,6 +1259,10 @@ class Environment {
         StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
         await this.deserialize(state);
         this.deserializeTimings.lumine = Date.now() - startTime;
+        // Saved project paths can omit roots requested for this launch. Restore
+        // that intent before revealing dock contents, rather than waiting for
+        // the open-locations message delivered after the window reports loaded.
+        this.project.addPaths(loadSettings.initialProjectRoots ?? [], { exact: true });
         await this.workspace.openDefaultDockItems(initialDockContext);
       } finally {
         this.workspace.endInitialDockRestore();

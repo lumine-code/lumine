@@ -2091,7 +2091,7 @@ describe("Environment", () => {
       expect(didChangePaths).not.toHaveBeenCalled();
     });
 
-    it("exposes launch roots to activation before restoring saved project order", async () => {
+    it("keeps restored project order and appends launch roots before opening docks", async () => {
       const firstRestoredRoot = temp.mkdirSync("startup-restored-first-");
       const secondRestoredRoot = temp.mkdirSync("startup-restored-second-");
       const addedRoot = temp.mkdirSync("startup-added-");
@@ -2108,10 +2108,46 @@ describe("Environment", () => {
         expect(env.project.getPaths()).toEqual([secondRestoredRoot, addedRoot, firstRestoredRoot]);
         await Promise.resolve();
       });
+      spyOn(env.workspace, "openDefaultDockItems").and.callFake(async () => {
+        expect(env.project.getPaths()).toEqual([firstRestoredRoot, secondRestoredRoot, addedRoot]);
+      });
 
       await env.startEditorWindow();
 
       expect(env.packages.activate).toHaveBeenCalled();
+      expect(env.workspace.openDefaultDockItems).toHaveBeenCalled();
+      expect(env.project.getPaths()).toEqual([firstRestoredRoot, secondRestoredRoot, addedRoot]);
+    });
+
+    it("restores launch roots before opening docks when saved project paths are empty", async () => {
+      const projectRoot = temp.mkdirSync("startup-empty-saved-project-");
+      const env = buildEnvironment({
+        initialProjectRoots: [projectRoot],
+        state: { project: { buffers: [], paths: [] } },
+      });
+      spyOn(env.packages, "activate").and.resolveTo();
+      spyOn(env.workspace, "openDefaultDockItems").and.callFake(async () => {
+        expect(env.project.getPaths()).toEqual([projectRoot]);
+      });
+      const endInitialDockRestore = env.workspace.endInitialDockRestore.bind(env.workspace);
+      spyOn(env.workspace, "endInitialDockRestore").and.callFake(() => {
+        expect(env.project.getPaths()).toEqual([projectRoot]);
+        endInitialDockRestore();
+      });
+
+      await env.startEditorWindow();
+
+      expect(env.workspace.openDefaultDockItems).toHaveBeenCalled();
+      expect(env.workspace.endInitialDockRestore).toHaveBeenCalled();
+      const didChangePaths = jasmine.createSpy("didChangePaths");
+      const subscription = env.project.onDidChangePaths(didChangePaths);
+      try {
+        await env.openLocations([{ pathToOpen: projectRoot, isDirectory: true }]);
+      } finally {
+        subscription.dispose();
+      }
+      expect(env.project.getPaths()).toEqual([projectRoot]);
+      expect(didChangePaths).not.toHaveBeenCalled();
     });
 
     it("ignores a missing launch root without opening its parent or aborting startup", async () => {
