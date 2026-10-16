@@ -291,8 +291,8 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  * Declares the initial visibility of a dock item registered with
  * {@link Workspace#addDefaultDockItem}. Returns `"visible"` to show it in a new
  * layout, or `"project-or-empty"` to show it when opening a project (including
- * a project with files) or starting without documents. Opening only files does
- * not show a `"project-or-empty"` item. An absent method, `undefined`, `false`
+ * a project with files) or starting without requested documents. Opening only
+ * files does not show a `"project-or-empty"` item. An absent method, `undefined`, `false`
  * or `"manual"` leaves opening to the user.
  *
  * Saved dock layouts take precedence, including hidden docks and closed items.
@@ -1269,9 +1269,9 @@ module.exports = class Workspace extends Model {
     const generation = this.#layoutGeneration;
     const savedLocations = new Set(this.initialDockRestoreLocations);
     const registrations = [...this.#defaultDockItems];
-    const projectOrEmpty =
-      hasProject ||
-      (!hasOpenFiles && !hasPaneItemTransfer && this.getCenter().getPaneItems().length === 0);
+    // Launch intent stays empty even when a package opens its welcome page
+    // during activation. Requested files may not have arrived in center yet.
+    const projectOrEmpty = hasProject || (!hasOpenFiles && !hasPaneItemTransfer);
     for (const registration of registrations) {
       const isCurrent = () =>
         this.isAlive() &&

@@ -123,7 +123,7 @@ describe("default dock items", () => {
     });
   }
 
-  it("does not treat an existing center document as an empty start", async () => {
+  it("keeps an empty launch's default visible when a package opens a welcome item", async () => {
     const center = workspace.getCenter().getActivePane();
     const document = copyableElement();
     center.addItem(document);
@@ -132,8 +132,8 @@ describe("default dock items", () => {
     await openDefaults();
 
     expect(center.getItems()).toEqual([document]);
-    expect(workspace.paneForItem(item)).toBeUndefined();
-    expect(workspace.getLeftDock().isVisible()).toBe(false);
+    expect(workspace.getLeftDock().getActivePaneItem()).toBe(item);
+    expect(workspace.getLeftDock().isVisible()).toBe(true);
   });
 
   for (const visibility of ["missing", undefined, false, "manual"]) {
