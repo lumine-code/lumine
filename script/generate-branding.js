@@ -82,6 +82,9 @@ const STAGE = 1024;
 const WORDMARK_FAMILY = "Segoe UI";
 const WORDMARK_WEIGHT = 600;
 const WORDMARK_SIZE = 28;
+// NSIS fits the bitmap to its DPI-scaled control. Render from vector art at
+// 300% so normal desktop scaling downsamples rather than enlarging a 1x raster.
+const INSTALLER_SCALE = 3;
 
 // The mark's ink spans 19..109 of lumine.svg's 128-unit canvas (a 90-unit
 // box). Scaling that canvas by 0.77 inside a tile reproduces the ink box of
@@ -266,7 +269,7 @@ function tileArt({ mark }) {
   );
 }
 
-// 164x314, MUI_WELCOMEFINISHPAGE_BITMAP (and, since uninstallerSidebar is left
+// Logical 164x314, MUI_WELCOMEFINISHPAGE_BITMAP (and, since uninstallerSidebar is left
 // unset, MUI_UNWELCOMEFINISHPAGE_BITMAP too). Match the website's neutral
 // surface and full-length rules within a framed panel. White margins keep its
 // frame separate from NSIS's page edge and footer separator.
@@ -289,7 +292,7 @@ function sidebarArt({ gradient, disc, mark }) {
   );
 }
 
-// 150x57, MUI_HEADERIMAGE_BITMAP, drawn top-right against MUI2's white page
+// Logical 150x57, MUI_HEADERIMAGE_BITMAP, drawn top-right against MUI2's white page
 // background (electron-builder does not override MUI_BGCOLOR). This one uses
 // the full icon, gold disc included: the white-only mark would be invisible.
 // The frame ends above the bitmap's bottom edge; NSIS draws the page rule.
@@ -385,16 +388,16 @@ function assetList(art) {
       file: "resources/win/installerSidebar.bmp",
       kind: "bmp",
       markup: sidebarArt(art),
-      width: 164,
-      height: 314,
+      width: 164 * INSTALLER_SCALE,
+      height: 314 * INSTALLER_SCALE,
       background: "#ffffff",
     },
     {
       file: "resources/win/installerHeader.bmp",
       kind: "bmp",
       markup: headerArt(art),
-      width: 150,
-      height: 57,
+      width: 150 * INSTALLER_SCALE,
+      height: 57 * INSTALLER_SCALE,
       background: "#ffffff",
     },
 
@@ -847,7 +850,8 @@ function assertNotUniform(bgra, label) {
 // Check the neutral surface and the gold disc separately, so a broken fill
 // reference cannot quietly produce a black logo on an otherwise valid frame.
 function assertSidebarPalette(bgra, width, height) {
-  const surface = ((height - 12) * width + width - 25) * 4;
+  const scale = width / 164;
+  const surface = ((height - 12 * scale) * width + width - 25 * scale) * 4;
   const actual = { b: bgra[surface], g: bgra[surface + 1], r: bgra[surface + 2] };
   const color = brandAssets.PALETTES.light.bg.slice(1);
   const expected = [0, 2, 4].map((index) => parseInt(color.slice(index, index + 2), 16));
@@ -861,7 +865,7 @@ function assertSidebarPalette(bgra, width, height) {
         `expected the shared light palette ${brandAssets.PALETTES.light.bg}`,
     );
   }
-  const gold = (85 * width + 50) * 4;
+  const gold = (85 * scale * width + 50 * scale) * 4;
   if (!(bgra[gold + 2] > bgra[gold + 1] + 15 && bgra[gold + 1] > bgra[gold] + 35))
     fail("installerSidebar.bmp: the canonical gold disc did not render");
 }

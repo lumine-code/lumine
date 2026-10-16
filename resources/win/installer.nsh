@@ -1,6 +1,7 @@
 !include "${BUILD_RESOURCES_DIR}\..\resources\win\EnvVarUpdate.nsh" ; Relative to 'build\'
 !include "${BUILD_RESOURCES_DIR}\..\resources\win\GetWindowsVersion.nsh"
 !include nsDialogs.nsh
+!include "${BUILD_RESOURCES_DIR}\..\resources\win\installer-art.nsh"
 XPStyle on
 
 !macro customInit ; Macro called by electron-builder; inserted at start of .OnInit callback
