@@ -64,6 +64,8 @@ jobs:
         run: npm run test:api-extractor
       - name: Test JSX lint rules
         run: npm run test:eslint-jsx
+      - name: Test package storage concurrency
+        run: npm run test:storage
       - name: Test Electron download retries
         run: node --test script/install-electron.test.js
       - name: Test application packaging

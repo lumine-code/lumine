@@ -307,6 +307,7 @@ module.exports = class Package {
     this.resourceLoadPromise = null;
     this.initializationDisposables = null;
     this.hooks = null;
+    this.lifecycleContext = null;
     this.lifecycleState = "loaded";
   }
 
@@ -348,18 +349,36 @@ module.exports = class Package {
         // package after handleError merely displayed a notification.
         if (!this.mainModule) this.requireMainModule();
         this.configSchemaRegisteredOnActivate ||= this.registerConfigSchemaFromMainModule();
-        if (this.mainModule && typeof this.mainModule.initialize === "function") {
-          const result = this.mainModule.initialize(
-            this.packageManager.getPackageState(this.name) || {},
-            {
-              package: this,
-              packageManager: this.packageManager,
-              hooks,
-              services: this.packageManager.serviceHub,
-              subscriptions: initializationDisposables,
-              ...context,
-            },
+        if (
+          this.mainModule &&
+          (("serialize" in this.mainModule && typeof this.mainModule.serialize === "function") ||
+            ("restoreState" in this.mainModule &&
+              typeof this.mainModule.restoreState === "function"))
+        ) {
+          throw new TypeError(
+            `Package '${this.name}' must use scoped storage for persistent state`,
           );
+        }
+        if (
+          typeof this.mainModule?.serializeSessionState === "function" &&
+          typeof this.mainModule?.restoreSessionState !== "function"
+        ) {
+          throw new TypeError(
+            `Package '${this.name}' document recovery requires restoreSessionState()`,
+          );
+        }
+        const lifecycleContext = {
+          ...context,
+          package: this,
+          packageManager: this.packageManager,
+          hooks,
+          services: this.packageManager.serviceHub,
+          subscriptions: initializationDisposables,
+          ...this.packageManager.storage.forPackage(this.name),
+        };
+        this.lifecycleContext = lifecycleContext;
+        if (this.mainModule && typeof this.mainModule.initialize === "function") {
+          const result = this.mainModule.initialize(lifecycleContext);
           if (result && typeof result.then === "function") {
             result.catch(() => {});
             throw new TypeError(
@@ -368,6 +387,7 @@ module.exports = class Package {
             );
           }
         }
+        this.restoreSessionState(this.packageManager.getDocumentState(this.name));
         this.mainInitialized = true;
       });
     } catch (error) {
@@ -376,6 +396,7 @@ module.exports = class Package {
       if (this.initializationDisposables === initializationDisposables) {
         this.initializationDisposables = null;
         this.hooks = null;
+        this.lifecycleContext = null;
       }
       captureLifecycleError(failures, () => initializationDisposables.dispose());
       throwLifecycleErrors(failures, `Package '${this.name}' initialization and cleanup failed`);
@@ -411,7 +432,7 @@ module.exports = class Package {
 
   /**
    * Invoke the package main module's synchronous activation contract. Main
-   * modules receive their serialized state first and `{signal, cause}` second.
+   * modules receive their package-owned lifecycle context and storage handles.
    * Activation is the lightweight public bootstrap: commands, openers,
    * services and resource registrations must be ready before this method
    * returns. Expensive work belongs behind a package-owned `ensure` method.
@@ -443,24 +464,16 @@ module.exports = class Package {
       this.activateStylesheets();
 
       if (this.mainModule && !this.mainActivated) {
-        this.initializeIfNeeded();
+        this.initializeIfNeeded({ signal, cause });
         this.mainActivationStarted = true;
         if (typeof this.mainModule.activateConfig === "function") {
           this.mainModule.activateConfig();
         }
 
         let activationResult;
+        Object.assign(this.lifecycleContext, { signal, cause });
         if (typeof this.mainModule.activate === "function") {
-          activationResult = this.mainModule.activate(
-            this.packageManager.getPackageState(this.name) || {},
-            {
-              signal,
-              cause,
-              hooks: this.hooks,
-              services: this.packageManager.serviceHub,
-              subscriptions: this.initializationDisposables,
-            },
-          );
+          activationResult = this.mainModule.activate(this.lifecycleContext);
         }
 
         if (activationResult && typeof activationResult.then === "function") {
@@ -1071,16 +1084,26 @@ module.exports = class Package {
     return this.packageRootEntries instanceof Set ? this.packageRootEntries.has(name) : null;
   }
 
-  serialize() {
-    if (!this.mainActivated || typeof this.mainModule.serialize !== "function") return;
-    const state = this.mainModule.serialize();
-    if (state?.then) {
+  serializeSessionState() {
+    if (!this.mainInitialized || typeof this.mainModule?.serializeSessionState !== "function")
+      return;
+    const state = this.mainModule.serializeSessionState();
+    if (typeof state?.then === "function") {
       Promise.resolve(state).catch(() => {});
       throw new TypeError(
-        `Package '${this.name}' serialize() must be synchronous; use prepareToSerialize() for asynchronous work.`,
+        `Package '${this.name}' serializeSessionState() must be synchronous; use prepareToSerialize() for asynchronous work.`,
       );
     }
     return state;
+  }
+
+  restoreSessionState(state = {}) {
+    if (typeof this.mainModule?.restoreSessionState !== "function") return;
+    const result = this.mainModule.restoreSessionState(state);
+    if (typeof result?.then === "function") {
+      Promise.resolve(result).catch(() => {});
+      throw new TypeError(`Package '${this.name}' restoreSessionState() must be synchronous`);
+    }
   }
 
   async deactivate() {
@@ -1113,6 +1136,7 @@ module.exports = class Package {
     const subscriptions = this.initializationDisposables;
     this.initializationDisposables = null;
     this.hooks = null;
+    this.lifecycleContext = null;
     subscriptions?.dispose();
   }
 

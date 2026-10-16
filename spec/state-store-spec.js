@@ -6,6 +6,18 @@ const { DatabaseSync } = require("node:sqlite");
 const StateStore = require("../src/state-store.js");
 
 describe("StateStore", () => {
+  let openedStores;
+  const createStore = (...args) => {
+    const store = new StateStore(...args);
+    openedStores.push(store);
+    return store;
+  };
+  beforeEach(() => {
+    openedStores = [];
+  });
+  afterEach(() => {
+    for (const store of openedStores) store.close();
+  });
   let databaseName = `test-database-${Date.now()}`;
   let version = 1;
 
@@ -15,7 +27,7 @@ describe("StateStore", () => {
     });
 
     it("can save, load, and delete states", async () => {
-      const store = new StateStore(databaseName, version);
+      const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
 
       await store.save("key", { foo: "bar" });
@@ -30,7 +42,7 @@ describe("StateStore", () => {
     });
 
     it("resolves with null when a non-existent key is loaded", () => {
-      const store = new StateStore(databaseName, version);
+      const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
       return store.load("no-such-key").then((value) => {
         expect(value).toBeNull();
@@ -38,7 +50,7 @@ describe("StateStore", () => {
     });
 
     it("can clear the state object store", async () => {
-      const store = new StateStore(databaseName, version);
+      const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
 
       await store.save("key", { foo: "bar" });
@@ -49,14 +61,14 @@ describe("StateStore", () => {
     });
 
     it("returns a database instance via dbPromise", async () => {
-      const store = new StateStore(databaseName, version);
+      const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
       const instance = await store.dbPromise;
       expect(instance instanceof DatabaseSync).toBe(true);
     });
 
     it("configures a busy timeout so concurrently restored windows wait for the lock", async () => {
-      const store = new StateStore(databaseName, version);
+      const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
       const db = await store.dbPromise;
       expect(db.prepare("PRAGMA busy_timeout").get().timeout).toBe(5000);
@@ -75,9 +87,39 @@ describe("StateStore", () => {
         .run("existing-key", JSON.stringify({ value: { migrated: true } }));
       database.close();
 
-      const store = new StateStore(existingDatabaseName, version);
+      const store = createStore(existingDatabaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });
       expect(await store.load("existing-key")).toEqual({ migrated: true });
+    });
+  });
+
+  describe("session snapshot and index commits", () => {
+    let snapshots, index;
+    beforeEach(() => {
+      jasmine.useRealClock();
+      snapshots = createStore("atomic-session-snapshots", 1);
+      index = createStore("atomic-session-index", 1);
+      for (const store of [snapshots, index])
+        store.initialize({ configDirPath: lumine.getConfigDirPath() });
+    });
+    afterEach(() => {
+      snapshots.close();
+      index.close();
+    });
+    it("commits the snapshot and its latest-project pointer together", async () => {
+      await snapshots.saveWithIndex("window-project", { documents: ["unsaved"] }, index, "project");
+      expect(await snapshots.load("window-project")).toEqual({ documents: ["unsaved"] });
+      expect(await index.load("project")).toBe("window-project");
+    });
+    it("retains the previous snapshot when the index write fails", async () => {
+      await snapshots.save("window-project", { documents: ["previous"] });
+      await index.connect();
+      const db = await index.dbPromise;
+      db.exec('DROP TABLE "atomic-session-index1"');
+      await expectAsync(
+        snapshots.saveWithIndex("window-project", { documents: ["partial"] }, index, "project"),
+      ).toBeRejected();
+      expect(await snapshots.load("window-project")).toEqual({ documents: ["previous"] });
     });
   });
 
@@ -88,8 +130,8 @@ describe("StateStore", () => {
     beforeEach(() => {
       jasmine.useRealClock();
       const name = `${databaseName}-atomic-${updateDatabaseIndex++}`;
-      first = new StateStore(name, version);
-      second = new StateStore(name, version);
+      first = createStore(name, version);
+      second = createStore(name, version);
       for (const store of [first, second]) {
         store.initialize({ configDirPath: lumine.getConfigDirPath() });
       }

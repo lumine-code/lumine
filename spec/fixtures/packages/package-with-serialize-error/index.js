@@ -1,9 +1,10 @@
 module.exports = {
+  restoreSessionState() {},
   activate() {},
 
   deactivate() {},
 
-  serialize() {
+  serializeSessionState() {
     throw new Error("I'm no good at this.");
   },
 };

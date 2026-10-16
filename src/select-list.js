@@ -37,6 +37,15 @@ let nextSelectListId = 1;
  * list actually overflows its viewport; shorter lists retain their natural
  * order without section separators. Pass `null` to remove this alternative.
  *
+ * A recents adapter's `save(ids, change)` receives the operation's intent:
+ * `{type: 'record'|'remove'|'clear'|'limit'|'replace', id?, limit}`. Apply it to
+ * the latest stored IDs with {@link updateRecentItemIds} inside a scoped
+ * state's `mutate()` callback. Returning the committed IDs synchronizes a
+ * successful no-op too; returning nothing remains valid for other adapters.
+ * Project adapters notify `onDidChange` on a project rebind even when the IDs
+ * are equal. Use the scoped state's `observe()` subscription, skipping its
+ * initial callback, so a pending save cannot project into a different project.
+ *
  * Destroy this model with the inherited {@link InputDialog#destroy}; calling
  * the inherited {@link InputDialog#confirm} delegates to {@link #confirmSelection}.
  */
@@ -275,10 +284,10 @@ class SelectList extends InputDialog {
     return this.component ? report() : Promise.resolve().then(report);
   }
 
-  saveRecentItemIds(recentIds) {
+  saveRecentItemIds(recentIds, change) {
     const save = () => {
       try {
-        return Promise.resolve(this.recentConfiguration.adapter.save(recentIds));
+        return Promise.resolve(this.recentConfiguration.adapter.save(recentIds, change));
       } catch (error) {
         return Promise.reject(error);
       }
@@ -1687,14 +1696,25 @@ class SelectList extends InputDialog {
    * @param {Boolean} [options.persist=true] - Save through the configured recents adapter.
    * @returns {Promise<SelectList>}
    */
-  async setRecentItemIds(recentIds, { persist = true } = {}) {
+  setRecentItemIds(recentIds, options = {}) {
+    return this.setRecentItemIdsWithChange(recentIds, { type: "replace" }, options);
+  }
+
+  /** @private */
+  async setRecentItemIdsWithChange(recentIds, change, { persist = true } = {}) {
     if (!Array.isArray(recentIds)) throw new TypeError("Recent item IDs must be an array.");
     const limit = this.getRecentLimit();
     const normalized = Array.from(new Set(recentIds)).slice(0, limit);
     const update = this.update({ recentItemIds: normalized });
+    const revision = this.recentRevision;
+    const metadata = Object.freeze({ ...change, limit });
     const save =
-      persist && this.recentConfiguration ? this.saveRecentItemIds(normalized) : Promise.resolve();
-    await Promise.all([update, save]);
+      persist && this.recentConfiguration
+        ? this.saveRecentItemIds(normalized, metadata)
+        : Promise.resolve();
+    const [, committed] = await Promise.all([update, save]);
+    if (Array.isArray(committed) && !this.destroyed && revision === this.recentRevision)
+      await this.setRecentItemIds(committed, { persist: false });
     return this;
   }
 
@@ -1725,7 +1745,7 @@ class SelectList extends InputDialog {
       throw new Error("Cannot set a recent item limit without a recents adapter.");
     }
     this.recentConfiguration.limit = limit;
-    return this.setRecentItemIds(this.getRecentItemIds());
+    return this.setRecentItemIdsWithChange(this.getRecentItemIds(), { type: "limit" });
   }
 
   /**
@@ -1753,7 +1773,7 @@ class SelectList extends InputDialog {
     const id = this.getItemId(item);
     const recentIds = this.getRecentItemIds().filter((candidate) => candidate !== id);
     recentIds.unshift(id);
-    return this.setRecentItemIds(recentIds);
+    return this.setRecentItemIdsWithChange(recentIds, { type: "record", id });
   }
 
   /**
@@ -1766,7 +1786,10 @@ class SelectList extends InputDialog {
    */
   removeRecentItem(itemOrId) {
     const id = this.model.getItems().includes(itemOrId) ? this.model.getItemId(itemOrId) : itemOrId;
-    return this.setRecentItemIds(this.getRecentItemIds().filter((candidate) => candidate !== id));
+    return this.setRecentItemIdsWithChange(
+      this.getRecentItemIds().filter((candidate) => candidate !== id),
+      { type: "remove", id },
+    );
   }
 
   /**
@@ -1777,7 +1800,7 @@ class SelectList extends InputDialog {
    * @returns {Promise<SelectList>}
    */
   clearRecentItems() {
-    return this.setRecentItemIds([]);
+    return this.setRecentItemIdsWithChange([], { type: "clear" });
   }
 
   /**

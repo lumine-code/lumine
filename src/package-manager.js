@@ -8,6 +8,7 @@ const CSON = require("@lumine-code/season");
 const ServiceHub = require("./service-hub");
 const ActivationHooks = require("./activation-hooks");
 const Package = require("./package");
+const PackageStorage = require("./package-storage");
 const {
   appendLifecycleError,
   awaitLifecycleCleanup,
@@ -98,7 +99,8 @@ module.exports = class PackageManager {
     this.loadedPackages = {};
     this.activePackages = {};
     this.packageLifecycles = new Map();
-    this.packageStates = {};
+    this.documentStates = {};
+    this.storage = params.storage || new PackageStorage();
     this.themePackRegistrationsByPackageName = new Map();
     this.virtualThemeNamesByPackageName = new Map();
     this.virtualThemeOwnerByName = new Map();
@@ -158,7 +160,7 @@ module.exports = class PackageManager {
     this.initialPackagesInitialized = false;
     this.initialPackagesActivated = false;
     this.initialPackagesActivationTime = null;
-    this.packageStates = {};
+    this.documentStates = {};
     this.themePackRegistrationsByPackageName.clear();
     this.virtualThemeNamesByPackageName.clear();
     this.virtualThemeOwnerByName.clear();
@@ -857,28 +859,24 @@ module.exports = class PackageManager {
    * @category Private
    */
 
-  getPackageState(name) {
-    return this.packageStates[name];
+  getDocumentState(name) {
+    return this.documentStates[name];
   }
 
-  setPackageState(name, state) {
-    this.packageStates[name] = state;
+  setDocumentState(name, state) {
+    this.documentStates[name] = state;
   }
 
   /**
-   * Restore project-specific state in already-active package generations.
-   * Packages opt in with an awaitable `restoreState(state)` on their main
-   * module. This never activates a package or replaces window package state.
-   * Rejections propagate so a project switch can restore its outgoing state.
+   * Hydrate package-owned document recovery data before workspace documents.
+   * Preferences live in scoped storage and never enter a session snapshot.
    * @private
    */
-  async restoreActivePackageStates(packageStates) {
-    for (const pack of this.getActivePackages()) {
-      if (this.getActivePackage(pack.name) !== pack) continue;
-      const mainModule = pack.mainModule;
-      if (typeof mainModule?.restoreState === "function") {
-        await mainModule.restoreState(packageStates?.[pack.name] ?? {});
-      }
+  restoreDocumentStates(documentStates = {}) {
+    this.documentStates = structuredClone(documentStates);
+    for (const pack of this.getLoadedPackages()) {
+      if (this.getLoadedPackage(pack.name) !== pack || !pack.mainInitialized) continue;
+      pack.restoreSessionState(this.documentStates[pack.name] ?? {});
     }
   }
 
@@ -1880,16 +1878,17 @@ module.exports = class PackageManager {
     markLifecycleErrorReported(error);
   }
 
-  serialize() {
-    for (const pack of this.getActivePackages()) {
-      this.serializePackage(pack);
+  serializeSessionState() {
+    for (const pack of this.getLoadedPackages()) {
+      if (pack.mainInitialized) this.serializePackageSessionState(pack);
     }
-    return this.packageStates;
+    return structuredClone(this.documentStates);
   }
 
-  serializePackage(pack) {
-    if (typeof pack.serialize === "function") {
-      this.setPackageState(pack.name, pack.serialize());
+  serializePackageSessionState(pack) {
+    if (typeof pack.serializeSessionState === "function") {
+      const state = pack.serializeSessionState();
+      if (state !== undefined) this.setDocumentState(pack.name, structuredClone(state));
     }
   }
 
@@ -1969,7 +1968,7 @@ module.exports = class PackageManager {
     const prepareState =
       serialize && wasActive && typeof pack.mainModule?.prepareToSerialize === "function";
     if (serialize && wasActive && !prepareState) {
-      captureLifecycleError(failures, () => this.serializePackage(pack));
+      captureLifecycleError(failures, () => this.serializePackageSessionState(pack));
     }
     // Remove URI registrations immediately; arbitrary package code is then
     // allowed to finish/abort before teardown.
@@ -1993,7 +1992,7 @@ module.exports = class PackageManager {
         await awaitLifecycleCleanup(failures, () =>
           pack.mainModule.prepareToSerialize({ isUnloading: true }),
         );
-        captureLifecycleError(failures, () => this.serializePackage(pack));
+        captureLifecycleError(failures, () => this.serializePackageSessionState(pack));
       }
       captureLifecycleError(failures, () => this.unregisterThemePacksForPackage(pack.name));
       await awaitLifecycleCleanup(failures, () => pack.deactivate());

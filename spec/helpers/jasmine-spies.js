@@ -8,7 +8,9 @@ const clipboardBridge = require("../../src/clipboard-bridge");
 const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
 const { testPaths } = getWindowLoadSettings();
-let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
+const { specPackages } = require("./build-environment");
+const specPackagePath = specPackages.packagePath;
+const specPackageName = specPackages.packageName;
 
 // CI provisions packages that a spec activates into a private LUMINE_HOME.
 // Older specs still spell those dependencies as sibling checkout paths (for
@@ -17,15 +19,7 @@ let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
 // the test home (or as one of the editor's bundled packages). Keep the
 // compatibility seam in the spec helper rather than making PackageManager
 // reinterpret arbitrary missing production paths.
-const testPackageNames = new Set(
-  (process.env.LUMINE_TEST_PACKAGES || "").split(/\s+/).filter(Boolean),
-);
-
-let specPackageName;
-if (specPackagePath) {
-  const packageMetadata = require(path.join(specPackagePath, "package.json"));
-  specPackageName = packageMetadata.name;
-}
+const testPackageNames = new Set(specPackages.packages.keys());
 
 let specDirectory = FindParentDir.sync(testPaths[0], "fixtures");
 let specProjectPath;

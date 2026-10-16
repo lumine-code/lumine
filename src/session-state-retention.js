@@ -1,9 +1,14 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const {
+  SESSION_STATE_VERSION,
+  ENVIRONMENT_TABLE,
+  PROJECT_INDEX_TABLE,
+} = require("./session-state-schema");
 
 const WINDOW_KEY =
-  /^editor-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-([0-9a-f]{40})$/i;
+  /^editor-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-([0-9a-f]{40}|empty)$/i;
 const PROJECT_KEY = /^editor-([0-9a-f]{40})$/i;
 const DELETE_BATCH_SIZE = 8;
 const DELETE_BATCH_BYTES = 1024 * 1024;
@@ -35,20 +40,20 @@ function hasTables(db) {
       .all()
       .map((row) => row.name),
   );
-  return tables.has("Environments1") && tables.has("ProjectStateIndex1");
+  return tables.has(ENVIRONMENT_TABLE) && tables.has(PROJECT_INDEX_TABLE);
 }
 
 function readIndexProtection(db) {
   const existingKeys = new Set(
     db
-      .prepare("SELECT key FROM Environments1")
+      .prepare(`SELECT key FROM ${ENVIRONMENT_TABLE}`)
       .all()
       .map((row) => row.key),
   );
   const referencedKeys = new Set();
   const brokenProjects = new Set();
   const indexedProjectKeys = new Map();
-  for (const row of db.prepare("SELECT key, value FROM ProjectStateIndex1").all()) {
+  for (const row of db.prepare(`SELECT key, value FROM ${PROJECT_INDEX_TABLE}`).all()) {
     const project = typeof row.key === "string" && PROJECT_KEY.exec(row.key);
     if (!project) continue;
     const projectDigest = project[1].toLowerCase();
@@ -81,7 +86,7 @@ function parseSnapshot(serialized) {
   }
   // Unknown state versions may use a different recovery contract. Retention
   // must not turn an unreadable snapshot into permanent loss of user work.
-  if (!isRecord(state) || state.version !== 1) return null;
+  if (!isRecord(state) || state.version !== SESSION_STATE_VERSION) return null;
   if (
     state.project != null &&
     (!isRecord(state.project) || !Array.isArray(state.project.buffers))
@@ -104,7 +109,7 @@ function parseSnapshot(serialized) {
       ))
   )
     return null;
-  if (state.packageStates != null && !isRecord(state.packageStates)) return null;
+  if (state.documentStates != null && !isRecord(state.documentStates)) return null;
   return state;
 }
 
@@ -170,7 +175,7 @@ function fingerprintSerialized(serialized) {
 
 function readReferencedFingerprints(db, indexedProjectKeys, projectDigests, recoveryHashes = null) {
   const fingerprints = new Map();
-  const readState = db.prepare("SELECT rowid, value FROM Environments1 WHERE key = ?");
+  const readState = db.prepare(`SELECT rowid, value FROM ${ENVIRONMENT_TABLE} WHERE key = ?`);
   for (const digest of projectDigests) {
     const key = indexedProjectKeys.get(digest);
     if (!key) continue;
@@ -193,10 +198,12 @@ function readReferencedFingerprints(db, indexedProjectKeys, projectDigests, reco
 function collectRetiredSnapshots(db) {
   if (!hasTables(db)) return [];
   const { referencedKeys, brokenProjects, indexedProjectKeys } = readIndexProtection(db);
-  const readState = db.prepare("SELECT value FROM Environments1 WHERE key = ? AND rowid = ?");
+  const readState = db.prepare(
+    `SELECT value FROM ${ENVIRONMENT_TABLE} WHERE key = ? AND rowid = ?`,
+  );
   const candidates = [];
   const referenceFingerprints = new Map();
-  for (const row of db.prepare("SELECT key, rowid FROM Environments1").all()) {
+  for (const row of db.prepare(`SELECT key, rowid FROM ${ENVIRONMENT_TABLE}`).all()) {
     const parts = windowKeyParts(row.key);
     if (!parts || referencedKeys.has(row.key) || brokenProjects.has(parts.projectDigest)) continue;
     const stored = readState.get(row.key, row.rowid);
@@ -237,12 +244,12 @@ function pruneRetiredSnapshots(db, candidates, { protectedWindowIds = [] } = {})
   };
   if (!hasTables(db)) return stats;
   const protectedIds = new Set(Array.from(protectedWindowIds, (id) => String(id).toLowerCase()));
-  const readRow = db.prepare("SELECT rowid, value FROM Environments1 WHERE key = ?");
+  const readRow = db.prepare(`SELECT rowid, value FROM ${ENVIRONMENT_TABLE} WHERE key = ?`);
   const unchangedReference = db.prepare(
-    "SELECT rowid FROM Environments1 WHERE key = ? AND rowid = ? AND value = ?",
+    `SELECT rowid FROM ${ENVIRONMENT_TABLE} WHERE key = ? AND rowid = ? AND value = ?`,
   );
   const deleteRow = db.prepare(
-    "DELETE FROM Environments1 WHERE key = ? AND rowid = ? AND value = ?",
+    `DELETE FROM ${ENVIRONMENT_TABLE} WHERE key = ? AND rowid = ? AND value = ?`,
   );
   let offset = 0;
   while (offset < candidates.length) {

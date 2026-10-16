@@ -16,6 +16,7 @@ module.exports = class ProjectStateController {
     serialize,
     loadProjectState,
     restoreState,
+    switchProjectStorage = async () => {},
     releaseReservation,
     isAvailable = () => true,
   }) {
@@ -23,27 +24,40 @@ module.exports = class ProjectStateController {
     this.workspace = workspace;
     this.config = config;
     this.packages = packages;
-    this.saveState = saveState;
+    this.persistState = saveState;
     this.serialize = serialize;
     this.loadProjectState = loadProjectState;
     this.restoreState = restoreState;
+    this.switchProjectStorage = switchProjectStorage;
     this.releaseReservation = releaseReservation;
     this.isAvailable = isAvailable;
     this.pendingChange = Promise.resolve();
     this.generation = 0;
     this.destroyed = false;
+    this.recoveryFailed = false;
   }
 
   setState(projectPaths) {
+    const requestedPaths = Array.isArray(projectPaths) ? projectPaths.slice() : projectPaths;
+    return this.enqueue((generation) => this.performChange(requestedPaths, generation));
+  }
+
+  saveState(options) {
+    return this.enqueue(async (generation) => {
+      this.assertCurrent(generation);
+      if (this.recoveryFailed) throw new Error("Session recovery must complete before saving");
+      return this.persistState(options, undefined, () => this.assertCurrent(generation));
+    });
+  }
+
+  enqueue(operation) {
     if (this.destroyed || !this.isAvailable()) {
       return Promise.reject(this.cancellationError());
     }
-    // Copy before queuing: commands can arrive while a dialog or read is pending.
-    const requestedPaths = Array.isArray(projectPaths) ? projectPaths.slice() : projectPaths;
     const generation = this.generation;
     const changing = this.pendingChange.then(async () => {
       try {
-        return await this.performChange(requestedPaths, generation);
+        return await operation(generation);
       } catch (error) {
         if (
           this.isCurrent(generation) ||
@@ -65,6 +79,7 @@ module.exports = class ProjectStateController {
 
   reset() {
     this.generation++;
+    this.recoveryFailed = false;
     // Keep the queue: old asynchronous work must finish before a new generation
     // can start its own transition against the same model objects.
   }
@@ -126,7 +141,7 @@ module.exports = class ProjectStateController {
 
     // Flush before teardown. The unloading snapshot retains marker layers and
     // undo history, so returning restores the session as it was left.
-    await this.saveState({ isUnloading: true });
+    await this.persistState({ isUnloading: true }, undefined, assertCurrent);
     this.assertCurrent(generation);
 
     const closing = await this.workspace.confirmClose({
@@ -140,9 +155,10 @@ module.exports = class ProjectStateController {
     // Save/Save As can change both contents and paths. Preserve that result
     // rather than the snapshot taken before confirmation.
     this.resolveFolders(folders);
-    await this.saveState({ isUnloading: true });
-    this.assertCurrent(generation);
     const outgoingState = await this.serialize({ isUnloading: true });
+    this.assertCurrent(generation);
+    await this.persistState({ isUnloading: true }, outgoingState, assertCurrent);
+    this.assertCurrent(generation);
     const outgoingProjectFile = this.config.projectFile;
     const outgoingProjectSettings = {
       "*": this.config.projectSettings,
@@ -161,7 +177,6 @@ module.exports = class ProjectStateController {
 
       const restoreOptions = {
         locations: PROJECT_STATE_LOCATIONS,
-        preservePackageState: true,
         preserveRetainedBuffers: true,
         throwProjectErrors: true,
       };
@@ -172,13 +187,15 @@ module.exports = class ProjectStateController {
         this.assertCurrent(generation);
         this.config.clearProjectSettings();
         this.assertCurrent(generation);
+        await this.switchProjectStorage(folders);
+        this.assertCurrent(generation);
 
         if (loaded.state) {
           await this.restoreState(loaded.state, restoreOptions, assertCurrent);
           this.assertCurrent(generation);
           this.project.destroyUnretainedBuffers();
         } else {
-          await this.packages.restoreActivePackageStates({});
+          this.packages.restoreDocumentStates({});
           this.assertCurrent(generation);
           this.project.setPaths(folders, { mustExist: true, exact: true });
           this.assertCurrent(generation);
@@ -239,9 +256,12 @@ module.exports = class ProjectStateController {
       this.assertCurrent(generation);
       this.project.destroyUnretainedBuffers();
       this.assertCurrent(generation);
+      await this.switchProjectStorage(state.project.paths);
+      this.assertCurrent(generation);
       await this.restoreState(state, options, assertCurrent);
       this.assertCurrent(generation);
     } catch (error) {
+      if (this.isCurrent(generation)) this.recoveryFailed = true;
       failures.push(error);
     } finally {
       // Even an incomplete document rollback must restore the outgoing config.
@@ -249,6 +269,7 @@ module.exports = class ProjectStateController {
         try {
           this.config.resetProjectSettings(settings, projectFile);
         } catch (error) {
+          this.recoveryFailed = true;
           failures.push(error);
         }
       }

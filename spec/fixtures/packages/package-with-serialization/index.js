@@ -1,9 +1,9 @@
 module.exports = {
-  activate({ someNumber } = {}) {
+  restoreSessionState({ someNumber } = {}) {
     this.someNumber = someNumber ?? 1;
   },
 
-  serialize() {
+  serializeSessionState() {
     return { someNumber: this.someNumber };
   },
 };

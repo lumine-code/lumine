@@ -1,16 +1,45 @@
 const Package = require("../src/package");
 
 describe("workspace state capture", () => {
+  it("omits resource-only packages without document recovery modules", () => {
+    expect(
+      Package.prototype.serializeSessionState.call({ mainInitialized: true, mainModule: null }),
+    ).toBeUndefined();
+  });
+
+  it("accepts document JSON with a plain then property", () => {
+    const state = { then: "document metadata" };
+    const pack = {
+      mainInitialized: true,
+      mainModule: {
+        serializeSessionState: () => state,
+        restoreSessionState: () => state,
+      },
+    };
+    expect(Package.prototype.serializeSessionState.call(pack)).toEqual(state);
+    expect(() => Package.prototype.restoreSessionState.call(pack, state)).not.toThrow();
+  });
   it("awaits package payload preparation before serializing the layout", async () => {
     let finish;
     const ready = new Promise((resolve) => {
       finish = resolve;
     });
-    const pack = { mainModule: { prepareToSerialize: () => ready } };
-    spyOn(lumine.packages, "getActivePackages").and.returnValue([pack]);
+    let preparing;
+    const started = new Promise((resolve) => (preparing = resolve));
+    const pack = {
+      name: "initialized-document-owner",
+      mainInitialized: true,
+      mainModule: {
+        prepareToSerialize: () => {
+          preparing();
+          return ready;
+        },
+      },
+    };
+    spyOn(lumine.packages, "getLoadedPackages").and.returnValue([pack]);
     const serialize = spyOn(lumine, "serialize").and.returnValue({ prepared: true });
     const capture = lumine.captureState({ isUnloading: true });
-    await Promise.resolve();
+    await started;
     expect(serialize).not.toHaveBeenCalled();
     finish();
     expect(await capture).toEqual({ prepared: true });
@@ -19,8 +48,12 @@ describe("workspace state capture", () => {
 
   it("retries a payload invalidated by another prepared package", async () => {
     const prepare = jasmine.createSpy("prepare");
-    spyOn(lumine.packages, "getActivePackages").and.returnValue([
-      { mainModule: { prepareToSerialize: prepare } },
+    spyOn(lumine.packages, "getLoadedPackages").and.returnValue([
+      {
+        name: "initialized-document-owner",
+        mainInitialized: true,
+        mainModule: { prepareToSerialize: prepare },
+      },
     ]);
     const changed = Object.assign(new Error("changed"), { code: "STATE_SNAPSHOT_CHANGED" });
     spyOn(lumine, "serialize").and.returnValues(undefined);
@@ -30,6 +63,18 @@ describe("workspace state capture", () => {
     });
     expect(await lumine.captureState()).toEqual({ current: true });
     expect(prepare.calls.count()).toBe(2);
+  });
+
+  it("detaches the completed snapshot from live arrays and future serialization", async () => {
+    const state = { documentStates: { example: { documents: ["A"] } } };
+    spyOn(lumine, "serialize").and.returnValue(state);
+    const snapshot = await lumine.captureState();
+    state.documentStates.example.documents.push("B");
+    expect(snapshot.documentStates.example.documents).toEqual(["A"]);
+    expect(snapshot).not.toBe(state);
+    const later = await lumine.captureState();
+    expect(later.documentStates.example.documents).toEqual(["A", "B"]);
+    expect(snapshot.documentStates.example.documents).toEqual(["A"]);
   });
 
   it("keeps the native window open when its durable state cannot be written", async () => {
@@ -49,9 +94,9 @@ describe("workspace state capture", () => {
       await Promise.resolve();
       prepared = true;
     };
-    spyOn(pack.mainModule, "serialize").and.callFake(() => ({ prepared }));
+    spyOn(pack.mainModule, "serializeSessionState").and.callFake(() => ({ prepared }));
     await lumine.packages.deactivatePackage(pack.name);
-    expect(lumine.packages.packageStates[pack.name]).toEqual({ prepared: true });
+    expect(lumine.packages.documentStates[pack.name]).toEqual({ prepared: true });
   });
 
   it("leaves transfer operations available after an ordinary snapshot", async () => {
@@ -70,13 +115,15 @@ describe("workspace state capture", () => {
   it("rejects asynchronous or failed package serialization instead of persisting an empty payload", () => {
     const pack = {
       name: "snapshot-test",
-      mainActivated: true,
-      mainModule: { serialize: () => Promise.resolve({ unsafe: true }) },
+      mainInitialized: true,
+      mainModule: { serializeSessionState: () => Promise.resolve({ unsafe: true }) },
     };
-    expect(() => Package.prototype.serialize.call(pack)).toThrowError(TypeError);
-    pack.mainModule.serialize = () => {
+    expect(() => Package.prototype.serializeSessionState.call(pack)).toThrowError(TypeError);
+    pack.mainModule.serializeSessionState = () => {
       throw new Error("unavailable pixels");
     };
-    expect(() => Package.prototype.serialize.call(pack)).toThrowError("unavailable pixels");
+    expect(() => Package.prototype.serializeSessionState.call(pack)).toThrowError(
+      "unavailable pixels",
+    );
   });
 });

@@ -426,11 +426,6 @@ const handleWindowAction = async (event, action, ...args) => {
         await window.webContents.devToolsWebContents.executeJavaScript(args[0]);
       }
       return;
-    case "getTemporaryState":
-      return window.temporaryState;
-    case "setTemporaryState":
-      window.temporaryState = args[0];
-      return;
     case "didClosePathWithWaitSession":
       assertString(args[0], "path");
       lumineWindow.didClosePathWithWaitSession(args[0]);
@@ -1504,6 +1499,15 @@ module.exports = class LumineApplication extends EventEmitter {
           }
         }
       }),
+      ipcHelpers.on(ipcMain, "did-change-package-storage", (event, change) => {
+        if (!change || typeof change.scopeId !== "string" || typeof change.sourceId !== "string")
+          return;
+        if (change.revision != null && !Number.isFinite(change.revision)) return;
+        for (const window of this.getAllWindows()) {
+          if (window.browserWindow.webContents !== event.sender)
+            window.sendToRenderer("did-change-package-storage", change);
+        }
+      }),
     );
 
     // A request from the associated render process to open a set of paths using the standard window location logic.
@@ -1526,7 +1530,7 @@ module.exports = class LumineApplication extends EventEmitter {
           if (options.pathsToOpen && options.pathsToOpen.length > 0) {
             this.openPaths(options);
           } else {
-            this.addWindow(this.createWindow(options));
+            this.openPaths({ ...options, pathsToOpen: [null] });
           }
         } else {
           this.promptForPathToOpen("all", {});

@@ -402,12 +402,59 @@ describe("SelectList", () => {
 
       await view.recordRecentItem("two");
       expect(view.getRecentItemIds()).toEqual(["two", "three"]);
-      expect(save).toHaveBeenCalledWith(["two", "three"]);
+      expect(save).toHaveBeenCalledWith(["two", "three"], {
+        type: "record",
+        id: "two",
+        limit: 2,
+      });
 
       await view.selectItemById("two");
       await view.runAction("select-list:remove-recent");
       expect(view.getRecentItemIds()).toEqual(["three"]);
       expect(view.getSelectedItem()).toBe("two");
+    });
+
+    it("passes explicit record, removal, clear, limit and replacement intents to persistence", async () => {
+      const save = jasmine.createSpy("save");
+      view = textItemView({ recents: { adapter: { load: () => [], save } } });
+      await view.recordRecentItem("one");
+      await view.removeRecentItem("one");
+      await view.clearRecentItems();
+      await view.setRecentLimit(2);
+      await view.setRecentItemIds(["two"]);
+
+      expect(save.calls.allArgs().map(([, change]) => change)).toEqual([
+        { type: "record", id: "one", limit: Infinity },
+        { type: "remove", id: "one", limit: Infinity },
+        { type: "clear", limit: Infinity },
+        { type: "limit", limit: 2 },
+        { type: "replace", limit: 2 },
+      ]);
+    });
+
+    it("accepts canonical IDs from a successful save without requiring a change event", async () => {
+      view = textItemView({
+        recents: { adapter: { load: () => ["one"], save: () => ["one", "two"] } },
+      });
+      await view.recordRecentItem("one");
+      expect(view.getRecentItemIds()).toEqual(["one", "two"]);
+    });
+
+    it("does not let a completed save overwrite newer recent state", async () => {
+      let finishSave;
+      view = textItemView({
+        recents: {
+          adapter: {
+            load: () => [],
+            save: () => new Promise((resolve) => (finishSave = resolve)),
+          },
+        },
+      });
+      const saving = view.recordRecentItem("one");
+      await view.setRecentItemIds(["three"], { persist: false });
+      finishSave(["one", "two"]);
+      await saving;
+      expect(view.getRecentItemIds()).toEqual(["three"]);
     });
 
     it("keeps standard recent actions across command maps and command updates", async () => {

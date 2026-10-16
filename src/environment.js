@@ -8,6 +8,8 @@ const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("source-map-support");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
+const PackageStorage = require("./package-storage");
+const { SESSION_STATE_VERSION } = require("./session-state-schema");
 const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
 const ProjectStateController = require("./project-state-controller");
 const {
@@ -101,6 +103,7 @@ class Environment {
   #applicationMenuTooltipSuspension = null;
   #resetting = 0;
   #destroyed = false;
+  #storageReady = Promise.resolve();
 
   #getLoadSettings() {
     return this.applicationDelegate.getWindowLoadSettings();
@@ -224,9 +227,9 @@ class Environment {
 
     /** @private Window-state persistence. `TextEditor` consults it before
      * prompting to save, and specs stub it; not a package-facing namespace. */
-    this.stateStore = new StateStore("Environments", 1);
+    this.stateStore = new StateStore("Environments", SESSION_STATE_VERSION);
     /** @private Maps a project identity to its most recently saved private state. */
-    this.projectStateIndex = new StateStore("ProjectStateIndex", 1);
+    this.projectStateIndex = new StateStore("ProjectStateIndex", SESSION_STATE_VERSION);
 
     /**
      * @public
@@ -301,6 +304,9 @@ class Environment {
       deserializerManager: this.deserializers,
       viewRegistry: this.views,
       uriHandlerRegistry: this.uriHandlers,
+      storage: new PackageStorage({
+        onDidCommit: (change) => this.applicationDelegate?.didChangePackageStorage?.(change),
+      }),
     });
 
     /**
@@ -497,11 +503,13 @@ class Environment {
       workspace: this.workspace,
       config: this.config,
       packages: this.packages,
-      saveState: (options) => this.saveState(options),
+      saveState: (options, snapshot, assertCurrent) =>
+        this.persistState(options, snapshot, assertCurrent),
       serialize: (options) => this.captureState(options),
       loadProjectState: (projectPaths) => this.loadProjectState(projectPaths),
       restoreState: (state, options, assertCurrent) =>
         this.restoreStateIntoThisEnvironment(state, options, assertCurrent),
+      switchProjectStorage: (paths) => this.packages.storage.switchProject(paths),
       releaseReservation: (id, projectPaths) =>
         this.releaseUnusedProjectStateReservation(id, projectPaths),
       isAvailable: () => !this.isDestroying && !this.unloading && this.#resetting === 0,
@@ -609,6 +617,14 @@ class Environment {
     this.projectStateIndex.initialize({
       configDirPath: this.getConfigDirPath(),
     });
+    this.#storageReady = this.packages.storage.initialize({
+      configDirPath: this.getConfigDirPath(),
+      projectPaths: this.#getLoadSettings().initialProjectRoots ?? this.project.getPaths(),
+      windowStateId: this.windowStateId,
+      enabled: Boolean(this.enablePersistence),
+    });
+    this.#storageReady.catch(() => {});
+    this.observeProjectStorage();
 
     this.config.initialize({
       mainSource:
@@ -678,6 +694,11 @@ class Environment {
 
     this.disposables.add(
       this.applicationDelegate.onDidChangeHistoryManager(() => this.history.loadState()),
+      this.applicationDelegate.onDidChangePackageStorage((change) => {
+        void this.packages.storage
+          .reloadScope(change)
+          .catch((error) => console.error("Unable to refresh package storage", error));
+      }),
       this.applicationDelegate.onDidChangeApplicationMenuVisibility(({ visible, windowId }) => {
         if (visible) {
           const presentation = this.workspace
@@ -731,7 +752,8 @@ class Environment {
         const save = () => {
           if (!this.unloading && !this.#destroyed)
             Promise.resolve(this.saveState({ isUnloading: false })).catch((error) => {
-              console.error("Unable to save the workspace snapshot", error);
+              if (error?.code !== "ABORT_ERR")
+                console.error("Unable to save the workspace snapshot", error);
             });
         };
         const window = !sourceWindow.closed ? sourceWindow : this.domWindow;
@@ -764,6 +786,19 @@ class Environment {
         if (!window.isMain() && window.getDocument()) listen(window.getDocument(), window);
       }),
     );
+  }
+
+  observeProjectStorage() {
+    if (this.projectStorageSubscription) {
+      this.disposables.remove(this.projectStorageSubscription);
+      this.projectStorageSubscription.dispose();
+    }
+    this.projectStorageSubscription = this.project.onDidChangePaths((paths) => {
+      void this.packages.storage
+        .switchProject(paths)
+        .catch((error) => console.error("Unable to switch package project storage", error));
+    });
+    this.disposables.add(this.projectStorageSubscription);
   }
 
   registerDefaultDeserializers() {
@@ -921,6 +956,11 @@ class Environment {
       capture(() => this.workspace.reset(this.packages));
       capture(() => this.registerDefaultOpeners());
       capture(() => this.project.reset(this.packages));
+      await cleanup(() => this.packages.storage.reset());
+      await cleanup(() => this.packages.storage.switchProject(this.project.getPaths()));
+      capture(() => this.stateStore.close());
+      capture(() => this.projectStateIndex.close());
+      capture(() => this.observeProjectStorage());
       capture(() => this.workspace.observeFileDocuments());
       // The reset recreated the pane containers, so the registry's active-item
       // subscription must be rebuilt against the new center.
@@ -999,6 +1039,11 @@ class Environment {
     });
     capture(() => this.stateStore.close());
     capture(() => this.projectStateIndex.close());
+    capture(() => {
+      void this.packages.storage
+        .close()
+        .catch((error) => console.error("Unable to close package storage", error));
+    });
 
     capture(() => this.uninstallWindowEventHandler());
     throwLifecycleErrors(failures, "Unable to destroy the environment cleanly");
@@ -1146,6 +1191,7 @@ class Environment {
     }
 
     this.unloading = false;
+    await this.#storageReady;
 
     const updateProcessEnvPromise = this.updateProcessEnvAndTriggerHooks();
 
@@ -1200,11 +1246,12 @@ class Environment {
       this.sweepInterruptedInstalls();
 
       StartupTime.addMarker("window:environment:start-editor-window:load-packages");
-      // Package initialization is deliberately before restore, so its
-      // synchronous bootstrap can register deserializers/openers and consume
-      // the package's own persisted state. `deserialize()` repeats this
-      // assignment for callers that use it directly.
-      this.packages.packageStates = state?.packageStates || {};
+      // Document recovery is staged before synchronous bootstrap. Preferences
+      // are already loaded in their global and project storage scopes.
+      await this.packages.storage.switchProject(
+        state?.project?.paths ?? this.#getLoadSettings().initialProjectRoots ?? [],
+      );
+      this.packages.documentStates = structuredClone(state?.documentStates ?? {});
       this.packages.loadPackages({ initialize: true });
       StartupTime.addMarker("window:environment:start-editor-window:load-packages:end");
 
@@ -1317,7 +1364,7 @@ class Environment {
       version: this.constructor.version,
       project: this.project.serialize(options),
       workspace: this.workspace.serialize(),
-      packageStates: this.packages.serialize(),
+      documentStates: this.packages.serializeSessionState(),
       grammars: this.grammars.serialize(),
       uriHistory: this.uriHandlers.serialize(),
       fullScreen: Boolean(this.windowDimensions?.fullScreen),
@@ -1337,14 +1384,14 @@ class Environment {
       }),
     );
     for (let attempt = 0; attempt < 3; attempt++) {
-      const packages = this.packages.getActivePackages();
+      const packages = this.packages.getLoadedPackages().filter((pack) => pack.mainInitialized);
       await Promise.all(packages.map((pack) => pack.mainModule?.prepareToSerialize?.(options)));
       await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
-      const current = this.packages.getActivePackages();
+      const current = this.packages.getLoadedPackages().filter((pack) => pack.mainInitialized);
       if (packages.length !== current.length || packages.some((pack) => !current.includes(pack)))
         continue;
       try {
-        return this.serialize(options);
+        return cloneSessionSnapshot(this.serialize(options));
       } catch (error) {
         if (error.code !== "STATE_SNAPSHOT_CHANGED" || attempt === 2) throw error;
       }
@@ -1353,10 +1400,10 @@ class Environment {
   }
 
   async prepareToUnloadEditorWindow() {
-    try {
-      await this.workspace?.whenWindowOperationsIdle();
+    const save = async () => {
       try {
         await this.saveState({ isUnloading: true });
+        return true;
       } catch (error) {
         console.error(error);
         this.notifications.addError("Unable to save the workspace before closing", {
@@ -1365,6 +1412,10 @@ class Environment {
         });
         return false;
       }
+    };
+    try {
+      await this.workspace?.whenWindowOperationsIdle();
+      if (!(await save())) return false;
 
       const closing =
         !this.workspace ||
@@ -1374,6 +1425,9 @@ class Environment {
         }));
 
       if (closing) {
+        // Confirmation can save or rename documents. Preserve that final state
+        // before deactivation can release their shared recovery payloads.
+        if (!(await save())) return false;
         this.unloading = true;
         // Package deactivation runs while the window is still visible. Mark the
         // document first so package-owned empty-workspace UI can disappear
@@ -1391,6 +1445,7 @@ class Environment {
         // deferred to a later frame on its way out therefore runs before
         // `destroy()` takes the workspace away.
         await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
+        await this.packages.storage.close();
         // Watchers are not package-owned, and stopping them only from the later
         // DOM unload hook is too late for a caller that must release a project or
         // configuration directory before the renderer disappears. In
@@ -1416,6 +1471,9 @@ class Environment {
     void this.fileWatchClient.close();
     this.stateStore.close();
     this.projectStateIndex.close();
+    void this.packages.storage
+      .close()
+      .catch((error) => console.error("Unable to close package storage", error));
     this.workspace.closeStateStore();
     GitHost.reset();
     const closingGitAuth = this.#gitAuthBroker?.terminate();
@@ -1687,17 +1745,31 @@ class Environment {
     return this.#projectStateController.setState(projectPaths);
   }
 
-  async saveState(options) {
+  saveState(options) {
+    return this.#projectStateController.saveState(options);
+  }
+
+  async persistState(options, snapshot, assertCurrent = () => {}) {
+    assertCurrent();
     if (this.enablePersistence && this.project) {
-      const state = await this.captureState(options);
-      const projectPaths = this.project.getPaths();
+      const initialPaths = this.project.getPaths().slice();
+      const state = snapshot ?? (await this.captureState(options));
+      assertCurrent();
+      const projectPaths = state.project?.paths ?? initialPaths;
       const projectKey = getProjectStateKey(projectPaths);
       const windowProjectKey = getWindowProjectStateKey(this.windowStateId, projectPaths);
-      if (windowProjectKey) {
-        const saved = await this.stateStore.save(windowProjectKey, state);
-        if (saved != null) await this.projectStateIndex.save(projectKey, windowProjectKey);
+      await this.packages.storage.flush();
+      assertCurrent();
+      if (projectKey) {
+        await this.stateStore.saveWithIndex(
+          windowProjectKey,
+          state,
+          this.projectStateIndex,
+          projectKey,
+        );
       } else {
-        await this.applicationDelegate.setTemporaryWindowState(state);
+        const saved = await this.stateStore.save(windowProjectKey, state);
+        if (saved == null) throw new Error("Session storage is unavailable");
       }
     }
   }
@@ -1712,7 +1784,7 @@ class Environment {
     const projectKey = getProjectStateKey(projectPaths);
     if (!projectKey) {
       return {
-        state: await this.applicationDelegate.getTemporaryWindowState(),
+        state: await this.stateStore.load(getWindowProjectStateKey(this.windowStateId, [])),
         reservationId: null,
       };
     }
@@ -1782,13 +1854,12 @@ class Environment {
 
     const missingProjectPaths = [];
 
-    if (!options.preservePackageState) {
-      this.packages.packageStates = state.packageStates || {};
-      if (this.packages.hasLoadedInitialPackages()) {
-        this.packages.initializePackages();
-      }
-    }
-    await this.packages.restoreActivePackageStates(state.packageStates || {});
+    await this.#storageReady;
+    assertCurrent();
+    await this.packages.storage.switchProject(state.project?.paths ?? this.project.getPaths());
+    assertCurrent();
+    this.packages.restoreDocumentStates(state.documentStates ?? {});
+    if (this.packages.hasLoadedInitialPackages()) this.packages.initializePackages();
     assertCurrent();
     this.uriHandlers.deserialize(state.uriHistory);
 
@@ -2208,6 +2279,12 @@ function firstStackFrame(stack) {
   }
 }
 
-Environment.version = 1;
+function cloneSessionSnapshot(state) {
+  return JSON.parse(JSON.stringify(state), (_key, value) =>
+    value?.type === "Buffer" ? Buffer.from(value.data) : value,
+  );
+}
+
+Environment.version = SESSION_STATE_VERSION;
 Environment.prototype.saveStateDebounceInterval = 1000;
 module.exports = Environment;

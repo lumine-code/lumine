@@ -98,7 +98,7 @@ describe("PackageManager", () => {
           phase === "entrypoint"
             ? nativeRequire
             : `module.exports = {
-            ${phase}(_state, {subscriptions}) {
+            ${phase}({subscriptions}) {
               subscriptions.add(lumine.commands.add("lumine-workspace", {${JSON.stringify(partialCommand)}() {}}));
               ${nativeRequire}
             },
@@ -897,17 +897,17 @@ describe("PackageManager", () => {
       });
     });
 
-    it("passes the activate method the package's previously serialized state if it exists", async () => {
+    it("restores document recovery data before reactivating a package", async () => {
       const pack = await lumine.packages.activatePackage("package-with-serialization");
       expect(pack.mainModule.someNumber).not.toBe(77);
       pack.mainModule.someNumber = 77;
-      lumine.packages.serializePackage("package-with-serialization");
+      lumine.packages.serializePackageSessionState(pack);
       await lumine.packages.deactivatePackage("package-with-serialization");
 
-      spyOn(pack.mainModule, "activate").and.callThrough();
+      spyOn(pack.mainModule, "restoreSessionState").and.callThrough();
       await lumine.packages.activatePackage("package-with-serialization");
-      expect(pack.mainModule.activate.calls.mostRecent().args[0]).toEqual({ someNumber: 77 });
-      expect(pack.mainModule.activate.calls.mostRecent().args[1].signal.aborted).toBe(false);
+      expect(pack.mainModule.restoreSessionState).toHaveBeenCalledOnceWith({ someNumber: 77 });
+      expect(pack.mainModule.someNumber).toBe(77);
     });
 
     it("invokes ::onDidActivatePackage listeners with the activated package", async () => {
@@ -970,7 +970,7 @@ describe("PackageManager", () => {
       let reentrantDeactivation;
       const laterCleanup = jasmine.createSpy("laterCleanup");
       const deactivated = jasmine.createSpy("deactivated");
-      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+      spyOn(pack.mainModule, "initialize").and.callFake((context) => {
         context.subscriptions.add(
           new Disposable(() => {
             reentrantDeactivation = lumine.packages.deactivatePackage(pack.name, {
@@ -1650,78 +1650,81 @@ describe("PackageManager", () => {
     });
   });
 
-  describe("::restoreActivePackageStates", () => {
-    const restoredModules = [];
-
-    afterEach(() => {
-      for (const mainModule of restoredModules.splice(0)) delete mainModule.restoreState;
-    });
-
-    it("awaits active opt-in hooks without activating or serializing packages", async () => {
+  describe("::restoreDocumentStates", () => {
+    it("hydrates initialized document owners and replaces detached inactive recovery data", async () => {
       const pack = await lumine.packages.activatePackage("package-with-serialization");
       const inactive = lumine.packages.loadPackage("package-with-deactivate");
-      inactive.requireMainModule();
-      restoredModules.push(pack.mainModule, inactive.mainModule);
-      let complete;
-      const pending = new Promise((resolve) => (complete = resolve));
-      pack.mainModule.restoreState = jasmine
-        .createSpy("restoreState")
-        .and.callFake(function (state) {
-          this.someNumber = state.someNumber;
-          return pending;
-        });
-      inactive.mainModule.restoreState = jasmine.createSpy("inactive restoreState");
+      inactive.initializeForExternalUse("spec");
+      spyOn(pack.mainModule, "restoreSessionState").and.callThrough();
+      spyOn(inactive, "restoreSessionState").and.callThrough();
       const activate = spyOn(lumine.packages, "activatePackage").and.callThrough();
-      const serialize = spyOn(pack, "serialize").and.callThrough();
-      const windowState = { inactive: { value: "window" } };
-      lumine.packages.packageStates = windowState;
-      const incoming = { [pack.name]: { someNumber: 42 }, [inactive.name]: { someNumber: 99 } };
-      let finished = false;
-      const restoring = lumine.packages
-        .restoreActivePackageStates(incoming)
-        .then(() => (finished = true));
-      await Promise.resolve();
-      expect(pack.mainModule.restoreState).toHaveBeenCalledWith(incoming[pack.name]);
+      const serialize = spyOn(pack, "serializeSessionState").and.callThrough();
+      lumine.packages.documentStates = { absent: { value: "outgoing" } };
+      const incoming = {
+        [pack.name]: { someNumber: 42 },
+        [inactive.name]: { someNumber: 99 },
+        unloaded: { nested: ["incoming"] },
+      };
+      expect(lumine.packages.restoreDocumentStates(incoming)).toBeUndefined();
+      expect(pack.mainModule.restoreSessionState).toHaveBeenCalledWith(incoming[pack.name]);
       expect(pack.mainModule.someNumber).toBe(42);
-      expect(finished).toBe(false);
-      expect(inactive.mainModule.restoreState).not.toHaveBeenCalled();
+      expect(inactive.restoreSessionState).toHaveBeenCalledOnceWith(incoming[inactive.name]);
       expect(activate).not.toHaveBeenCalled();
       expect(serialize).not.toHaveBeenCalled();
-      expect(lumine.packages.packageStates).toBe(windowState);
-      complete();
-      await restoring;
-      expect(finished).toBe(true);
+      expect(lumine.packages.documentStates).not.toBe(incoming);
+      expect(lumine.packages.getDocumentState("absent")).toBeUndefined();
+      incoming.unloaded.nested.push("mutated");
+      expect(lumine.packages.getDocumentState("unloaded")).toEqual({ nested: ["incoming"] });
       expect(lumine.packages.getActivePackage(pack.name)).toBe(pack);
     });
 
     it("resets omitted namespaces and propagates failures to the restoration caller", async () => {
       const pack = await lumine.packages.activatePackage("package-with-serialization");
-      restoredModules.push(pack.mainModule);
-      pack.mainModule.restoreState = jasmine.createSpy("restoreState").and.resolveTo();
-      await lumine.packages.restoreActivePackageStates({ [pack.name]: null });
-      expect(pack.mainModule.restoreState).toHaveBeenCalledWith({});
-      pack.mainModule.restoreState.and.rejectWith(new Error("Restore failed"));
-      await expectAsync(lumine.packages.restoreActivePackageStates({})).toBeRejectedWithError(
-        "Restore failed",
+      spyOn(pack.mainModule, "restoreSessionState").and.callThrough();
+      lumine.packages.restoreDocumentStates({ [pack.name]: null });
+      expect(pack.mainModule.restoreSessionState).toHaveBeenCalledWith({});
+      pack.mainModule.restoreSessionState.and.throwError("Restore failed");
+      expect(() => lumine.packages.restoreDocumentStates({})).toThrowError("Restore failed");
+    });
+
+    it("rejects asynchronous document hydration instead of allowing a partial restore", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-serialization");
+      spyOn(pack.mainModule, "restoreSessionState").and.resolveTo();
+      expect(() => lumine.packages.restoreDocumentStates({})).toThrowError(
+        TypeError,
+        /must be synchronous/,
       );
     });
 
-    it("skips a package generation withdrawn by an earlier restore hook", async () => {
+    it("skips uninitialized packages while replacing the state they will receive", () => {
+      const pack = lumine.packages.loadPackage("package-with-serialization");
+      spyOn(pack, "restoreSessionState").and.callThrough();
+      lumine.packages.restoreDocumentStates({ [pack.name]: { someNumber: 99 } });
+      expect(pack.restoreSessionState).not.toHaveBeenCalled();
+      pack.initializeForExternalUse("spec");
+      expect(pack.mainModule.someNumber).toBe(99);
+    });
+
+    it("skips a package generation withdrawn by an earlier recovery hook", async () => {
       const first = await lumine.packages.activatePackage("package-with-serialization");
       const second = await lumine.packages.activatePackage("package-with-deactivate");
-      restoredModules.push(first.mainModule, second.mainModule);
-      first.mainModule.restoreState = jasmine
-        .createSpy("first restoreState")
-        .and.callFake(() => lumine.packages.deactivatePackage(second.name, { serialize: false }));
-      second.mainModule.restoreState = jasmine.createSpy("second restoreState");
-      await lumine.packages.restoreActivePackageStates({});
-      expect(first.mainModule.restoreState).toHaveBeenCalled();
-      expect(second.mainModule.restoreState).not.toHaveBeenCalled();
-      expect(lumine.packages.getActivePackage(second.name)).toBeUndefined();
+      let withdrawn = false;
+      const getLoadedPackage = lumine.packages.getLoadedPackage.bind(lumine.packages);
+      spyOn(lumine.packages, "getLoadedPackage").and.callFake((name) =>
+        withdrawn && name === second.name ? undefined : getLoadedPackage(name),
+      );
+      spyOn(first.mainModule, "restoreSessionState").and.callFake(() => {
+        withdrawn = true;
+      });
+      spyOn(second, "restoreSessionState").and.callThrough();
+      lumine.packages.restoreDocumentStates({});
+      expect(first.mainModule.restoreSessionState).toHaveBeenCalled();
+      expect(second.restoreSessionState).not.toHaveBeenCalled();
+      withdrawn = false;
     });
   });
 
-  describe("::serialize", () => {
+  describe("::serializeSessionState", () => {
     it("does not serialize packages that threw an error during activation", async () => {
       spyOn(lumine.window, "isSpecMode").and.returnValue(false);
       spyOn(console, "warn");
@@ -1730,22 +1733,38 @@ describe("PackageManager", () => {
       await expectAsync(
         lumine.packages.activatePackage("package-that-throws-on-activate"),
       ).toBeRejected();
-      spyOn(badPack.mainModule, "serialize").and.callThrough();
+      spyOn(badPack.mainModule, "serializeSessionState").and.callThrough();
 
-      lumine.packages.serialize();
-      expect(badPack.mainModule.serialize).not.toHaveBeenCalled();
+      lumine.packages.serializeSessionState();
+      expect(badPack.mainModule.serializeSessionState).not.toHaveBeenCalled();
     });
 
     it("rejects an incomplete snapshot when a package cannot serialize", async () => {
       const broken = await lumine.packages.activatePackage("package-with-serialize-error");
       await lumine.packages.activatePackage("package-with-serialization");
-      expect(() => lumine.packages.serialize()).toThrow();
-      expect(lumine.packages.packageStates["package-with-serialize-error"]).toBeUndefined();
-      spyOn(broken.mainModule, "serialize").and.returnValue({ recovered: true });
-      lumine.packages.serialize();
-      expect(lumine.packages.packageStates["package-with-serialization"]).toEqual({
+      expect(() => lumine.packages.serializeSessionState()).toThrow();
+      expect(lumine.packages.documentStates["package-with-serialize-error"]).toBeUndefined();
+      spyOn(broken.mainModule, "serializeSessionState").and.returnValue({ recovered: true });
+      lumine.packages.serializeSessionState();
+      expect(lumine.packages.documentStates["package-with-serialization"]).toEqual({
         someNumber: 1,
       });
+    });
+
+    it("captures initialized inactive owners and detaches earlier snapshots", () => {
+      const pack = lumine.packages.loadPackage("package-with-serialization");
+      pack.initializeForExternalUse("spec");
+      pack.mainModule.someNumber = 7;
+      lumine.packages.setDocumentState("unloaded", { nested: ["saved"] });
+      const outgoing = lumine.packages.serializeSessionState();
+      expect(outgoing[pack.name]).toEqual({ someNumber: 7 });
+      pack.mainModule.someNumber = 9;
+      lumine.packages.getDocumentState("unloaded").nested.push("later");
+      const current = lumine.packages.serializeSessionState();
+      expect(current[pack.name]).toEqual({ someNumber: 9 });
+      expect(outgoing[pack.name]).toEqual({ someNumber: 7 });
+      expect(outgoing.unloaded).toEqual({ nested: ["saved"] });
+      expect(outgoing).not.toBe(lumine.packages.documentStates);
     });
   });
 
@@ -1755,10 +1774,10 @@ describe("PackageManager", () => {
       const pack2 = await lumine.packages.activatePackage("package-with-serialization");
 
       spyOn(pack1.mainModule, "deactivate");
-      spyOn(pack2.mainModule, "serialize");
+      spyOn(pack2.mainModule, "serializeSessionState");
       await lumine.packages.deactivatePackages();
       expect(pack1.mainModule.deactivate).toHaveBeenCalled();
-      expect(pack2.mainModule.serialize).not.toHaveBeenCalled();
+      expect(pack2.mainModule.serializeSessionState).not.toHaveBeenCalled();
     });
 
     // The window is going away, and the main process is waiting on the reply
@@ -1826,11 +1845,11 @@ describe("PackageManager", () => {
   describe("::deactivatePackage() serialization", () => {
     it("honors the public serialize option", async () => {
       const pack = await lumine.packages.activatePackage("package-with-serialization");
-      spyOn(pack.mainModule, "serialize").and.callThrough();
+      spyOn(pack.mainModule, "serializeSessionState").and.callThrough();
 
       await lumine.packages.deactivatePackage(pack.name, { serialize: false });
 
-      expect(pack.mainModule.serialize).not.toHaveBeenCalled();
+      expect(pack.mainModule.serializeSessionState).not.toHaveBeenCalled();
     });
   });
 
@@ -2055,7 +2074,7 @@ describe("PackageManager", () => {
       const pack = lumine.packages.loadPackage("package-with-view-providers");
       pack.requireMainModule();
       let activationSignal;
-      spyOn(pack.mainModule, "activate").and.callFake((_state, { signal }) => {
+      spyOn(pack.mainModule, "activate").and.callFake(({ signal }) => {
         activationSignal = signal;
       });
       await lumine.packages.activatePackage(pack.name);
@@ -2069,7 +2088,7 @@ describe("PackageManager", () => {
     it("shares teardown ownership before calling a reentrant serializer", async () => {
       const pack = await lumine.packages.activatePackage("package-with-serialization");
       let reentrantDeactivation;
-      spyOn(pack.mainModule, "serialize").and.callFake(() => {
+      spyOn(pack.mainModule, "serializeSessionState").and.callFake(() => {
         reentrantDeactivation = lumine.packages.deactivatePackage(pack.name);
         return { someNumber: 77 };
       });
@@ -2078,7 +2097,7 @@ describe("PackageManager", () => {
       await lumine.packages.deactivatePackage(pack.name);
       await reentrantDeactivation;
 
-      expect(pack.mainModule.serialize).toHaveBeenCalledTimes(1);
+      expect(pack.mainModule.serializeSessionState).toHaveBeenCalledTimes(1);
       expect(pack.deactivate).toHaveBeenCalledTimes(1);
       expect(lumine.packages.getPackageLifecycleState(pack.name)).toBe("loaded");
     });

@@ -11,8 +11,7 @@ function getProjectStateKey(projectPaths) {
 }
 
 function getWindowProjectStateKey(windowStateId, projectPaths) {
-  const digest = getProjectStateDigest(projectPaths);
-  if (!digest) return null;
+  const digest = getProjectStateDigest(projectPaths) || "empty";
   if (typeof windowStateId !== "string" || windowStateId.length === 0) {
     throw new TypeError("A window state id is required for persistent project state");
   }

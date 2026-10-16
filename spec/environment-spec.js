@@ -747,6 +747,47 @@ describe("Environment", () => {
       );
     });
 
+    it("persists empty sessions across environment restarts without sharing unrelated windows", async () => {
+      const identity = crypto.randomUUID();
+      const first = buildPersistentEnvironment(identity);
+      spyOn(first, "serialize").and.returnValue({ workspace: { recovery: "untitled document" } });
+      await first.saveState();
+      first.stateStore.close();
+      const restored = buildPersistentEnvironment(identity);
+      const unrelated = buildPersistentEnvironment(crypto.randomUUID());
+      expect((await restored.loadProjectState([])).state).toEqual({
+        workspace: { recovery: "untitled document" },
+      });
+      expect((await unrelated.loadProjectState([])).state).toBeNull();
+    });
+
+    it("rejects an empty-session save when durable storage is unavailable", async () => {
+      const environment = buildPersistentEnvironment(crypto.randomUUID());
+      spyOn(environment, "serialize").and.returnValue({ workspace: { recovery: "unsaved" } });
+      spyOn(environment.stateStore, "save").and.resolveTo(null);
+      await expectAsync(environment.saveState()).toBeRejectedWithError(
+        "Session storage is unavailable",
+      );
+    });
+
+    it("uses the captured snapshot's roots if direct path changes occur during preparation", async () => {
+      const first = temp.mkdirSync("capture-first-");
+      const second = temp.mkdirSync("capture-second-");
+      const environment = buildPersistentEnvironment(crypto.randomUUID());
+      environment.project.setPaths([first]);
+      const snapshot = {
+        project: { paths: [second], buffers: [] },
+        workspace: { documents: ["second"] },
+      };
+      spyOn(environment, "captureState").and.callFake(async () => {
+        environment.project.setPaths([second]);
+        return snapshot;
+      });
+      await environment.saveState();
+      expect((await environment.loadProjectState([first])).state).toBeNull();
+      expect((await environment.loadProjectState([second])).state).toEqual(snapshot);
+    });
+
     it("adopts the latest project state into a window with no private history", async () => {
       const projectPath = temp.mkdirSync("adopted-project-");
       const source = buildPersistentEnvironment("33333333-3333-4333-8333-333333333333");
@@ -887,7 +928,7 @@ describe("Environment", () => {
         "the workspace snapshot idle callback",
       );
       idleCallbacks.shift()();
-      expect(lumineEnv.saveState.calls.count()).toBe(1);
+      expect(lumineEnv.saveState.calls.count()).toBe(2);
 
       mousedown = new MouseEvent("mousedown");
       lumineEnv.document.dispatchEvent(mousedown);
@@ -896,7 +937,7 @@ describe("Environment", () => {
         "the workspace snapshot idle callback",
       );
       idleCallbacks.shift()();
-      expect(lumineEnv.saveState.calls.count()).toBe(1);
+      expect(lumineEnv.saveState.calls.count()).toBe(2);
 
       lumineEnv.destroy();
     });
@@ -944,6 +985,37 @@ describe("Environment", () => {
 
       lumineEnv.destroy();
     });
+
+    for (const failFinalSave of [false, true]) {
+      it(`captures Save and Save As changes before unload${failFinalSave ? " and keeps the window open if that capture fails" : ""}`, async () => {
+        const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+        environment.initialize({
+          window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+          document: document.implementation.createHTMLDocument(),
+        });
+        const snapshots = [];
+        let documentPath = "before-save-as";
+        spyOn(environment, "saveState").and.callFake(async () => {
+          snapshots.push(documentPath);
+          if (failFinalSave && snapshots.length === 2) throw new Error("Final capture failed");
+        });
+        spyOn(environment.workspace, "confirmClose").and.callFake(async () => {
+          documentPath = "after-save-as";
+          return true;
+        });
+        const deactivate = spyOn(environment.packages, "deactivatePackages").and.resolveTo();
+        spyOn(environment.notifications, "addError");
+        spyOn(console, "error");
+        try {
+          expect(await environment.prepareToUnloadEditorWindow()).toBe(!failFinalSave);
+          expect(snapshots).toEqual(["before-save-as", "after-save-as"]);
+          expect(deactivate.calls.count()).toBe(failFinalSave ? 0 : 1);
+          expect(environment.unloading).toBe(!failFinalSave);
+        } finally {
+          environment.destroy();
+        }
+      });
+    }
 
     it("serializes the project state with all the options supplied in saveState", async () => {
       spyOn(lumine.project, "serialize").and.returnValue({ foo: 42 });
@@ -1364,20 +1436,24 @@ describe("Environment", () => {
       return { buffer, dockEditor, dockItem };
     };
 
-    const addProjectStatePackage = (state) => {
+    const addDocumentStatePackage = (state) => {
       const mainModule = {
         state,
-        restoreState: jasmine.createSpy("restoreState").and.callFake(async function (incoming) {
-          await Promise.resolve();
-          this.state = structuredClone(incoming);
-        }),
+        restoreSessionState: jasmine
+          .createSpy("restoreSessionState")
+          .and.callFake(function (incoming) {
+            this.state = structuredClone(incoming);
+          }),
       };
       const pack = {
         name: "project-state-package",
         mainModule,
-        serialize: () => structuredClone(mainModule.state),
+        serializeSessionState: () => structuredClone(mainModule.state),
+        restoreSessionState: (incoming) => mainModule.restoreSessionState(incoming),
+        mainInitialized: true,
       };
       env.packages.activePackages[pack.name] = pack;
+      env.packages.loadedPackages[pack.name] = pack;
       env.packages.packageLifecycles.set(pack.name, { pack, state: "active" });
       return pack;
     };
@@ -1598,7 +1674,7 @@ describe("Environment", () => {
     });
 
     for (const invalidation of ["reset", "destroy"]) {
-      it(`does not deserialize URI, project, or workspace state after ${invalidation} during package restoration`, async () => {
+      it(`does not deserialize URI, project, or workspace state after ${invalidation} during project storage restoration`, async () => {
         const incoming = await savedIncomingState();
         if (invalidation === "reset") prepareForReset();
         spyOn(env, "loadProjectState").and.returnValue(
@@ -1607,8 +1683,11 @@ describe("Environment", () => {
         spyOn(env.window, "isFullScreen").and.resolveTo(false);
         spyOn(env.window, "setFullScreen").and.resolveTo();
         let startPackages, finishPackages;
+        let firstStorageSwitch = true;
         const packagesStarted = new Promise((resolve) => (startPackages = resolve));
-        spyOn(env.packages, "restoreActivePackageStates").and.callFake(() => {
+        spyOn(env.packages.storage, "switchProject").and.callFake(() => {
+          if (!firstStorageSwitch) return Promise.resolve();
+          firstStorageSwitch = false;
           startPackages();
           return new Promise((resolve) => (finishPackages = resolve));
         });
@@ -1925,21 +2004,21 @@ describe("Environment", () => {
       expect(env.config.projectFile).toBe(projectFile);
     });
 
-    it("does not replace window package state with a saved project's package state", async () => {
+    it("replaces inactive document recovery data when changing sessions", async () => {
       await env.workspace.open(fileA);
-      env.packages.packageStates = { "inactive-package": { value: "saved A" } };
+      env.packages.documentStates = { "inactive-package": { value: "saved A" } };
       expect(await env.project.setState([dirB])).toBe(true);
       const windowPackageStates = { "inactive-package": { value: "current window" } };
-      env.packages.packageStates = windowPackageStates;
+      env.packages.documentStates = windowPackageStates;
       expect(await env.project.setState([dirA])).toBe(true);
-      expect(env.packages.packageStates).toBe(windowPackageStates);
-      expect(env.packages.getPackageState("inactive-package")).toEqual({ value: "current window" });
+      expect(env.packages.documentStates).not.toBe(windowPackageStates);
+      expect(env.packages.getDocumentState("inactive-package")).toEqual({ value: "saved A" });
     });
 
-    it("restores opt-in package state across projects while preserving its live dock", async () => {
-      const stateA = { documentSources: [[fileA, "symbol-tree-sitter"]] };
-      const stateB = { documentSources: [[fileB, "language-server"]] };
-      const pack = addProjectStatePackage(stateA);
+    it("restores package-owned documents across projects while preserving its live dock", async () => {
+      const stateA = { documents: [{ filePath: fileA, text: "unsaved A" }] };
+      const stateB = { documents: [{ filePath: fileB, text: "unsaved B" }] };
+      const pack = addDocumentStatePackage(stateA);
       const dockItem = {
         element: document.createElement("div"),
         getTitle: () => "Live Package Panel",
@@ -1953,12 +2032,12 @@ describe("Environment", () => {
       const activate = spyOn(env.packages, "activatePackage").and.callThrough();
 
       expect(await env.project.setState([dirB])).toBe(true);
-      expect(pack.mainModule.restoreState).toHaveBeenCalledWith({});
+      expect(pack.mainModule.restoreSessionState).toHaveBeenCalledWith({});
       expect(pack.mainModule.state).toEqual({});
       pack.mainModule.state = stateB;
       await env.workspace.open(fileB);
       const windowStates = { "inactive-package": { value: "window" } };
-      env.packages.packageStates = windowStates;
+      env.packages.documentStates = windowStates;
       const deserializeWorkspace = env.workspace.deserialize.bind(env.workspace);
       spyOn(env.workspace, "deserialize").and.callFake((...args) => {
         expect(pack.mainModule.state).toEqual(stateA);
@@ -1966,12 +2045,12 @@ describe("Environment", () => {
       });
 
       expect(await env.project.setState([dirA])).toBe(true);
-      expect(pack.mainModule.restoreState).toHaveBeenCalledWith(stateA);
+      expect(pack.mainModule.restoreSessionState).toHaveBeenCalledWith(stateA);
       expect(pack.mainModule.state).toEqual(stateA);
       expect(env.packages.getActivePackage(pack.name)).toBe(pack);
       expect(activate).not.toHaveBeenCalled();
-      expect(env.packages.packageStates).toBe(windowStates);
-      expect(env.packages.getPackageState("inactive-package")).toEqual({ value: "window" });
+      expect(env.packages.documentStates).not.toBe(windowStates);
+      expect(env.packages.getDocumentState("inactive-package")).toBeUndefined();
       expect(env.workspace.paneForItem(dockItem)).toBe(dockPane);
       expect(dockPane.getActiveItem()).toBe(dockItem);
       expect(env.workspace.getBottomDock().isVisible()).toBe(true);
@@ -1979,15 +2058,15 @@ describe("Environment", () => {
     });
 
     it("rolls active package state back when an incoming restore hook rejects", async () => {
-      const stateA = { documentSources: [[fileA, "symbol-tree-sitter"]] };
-      const stateB = { documentSources: [[fileB, "language-server"]] };
-      const pack = addProjectStatePackage(stateA);
+      const stateA = { documents: [{ filePath: fileA, text: "unsaved A" }] };
+      const stateB = { documents: [{ filePath: fileB, text: "unsaved B" }] };
+      const pack = addDocumentStatePackage(stateA);
       await env.workspace.open(fileA);
       expect(await env.project.setState([dirB])).toBe(true);
       pack.mainModule.state = stateB;
       await env.workspace.open(fileB);
       let rejectIncoming = true;
-      pack.mainModule.restoreState.and.callFake(async function (state) {
+      pack.mainModule.restoreSessionState.and.callFake(function (state) {
         this.state = structuredClone(state);
         if (rejectIncoming) {
           rejectIncoming = false;
@@ -1998,7 +2077,7 @@ describe("Environment", () => {
       await expectAsync(env.project.setState([dirA])).toBeRejectedWithError(
         "Package state restoration failed",
       );
-      expect(pack.mainModule.restoreState.calls.mostRecent().args).toEqual([stateB]);
+      expect(pack.mainModule.restoreSessionState.calls.mostRecent().args).toEqual([stateB]);
       expect(pack.mainModule.state).toEqual(stateB);
       expect(env.packages.getActivePackage(pack.name)).toBe(pack);
       expect(env.project.getPaths()).toEqual([dirB]);

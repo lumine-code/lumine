@@ -24,12 +24,25 @@ module.exports = class StateStore {
     return this._getOrCreateImplementation().save(key, value);
   }
 
+  saveWithIndex(key, value, indexStore, indexKey) {
+    return this._getOrCreateImplementation().saveWithIndex(
+      key,
+      value,
+      indexStore._getOrCreateImplementation(),
+      indexKey,
+    );
+  }
+
   update(key, updater) {
     return this._getOrCreateImplementation().update(key, updater);
   }
 
   load(key) {
     return this._getOrCreateImplementation().load(key);
+  }
+
+  loadSync(key) {
+    return this._getOrCreateImplementation().loadSync(key);
   }
 
   delete(key) {

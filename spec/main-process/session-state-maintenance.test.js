@@ -262,13 +262,13 @@ describe("SessionStateMaintenance", function () {
     const recoveryWindow = crypto.randomUUID();
     const projectHash = "a".repeat(40);
     const key = (window) => `editor-${window}-${projectHash}`;
-    const clean = { version: 1, project: { buffers: [] }, workspace: {}, packageStates: {} };
+    const clean = { version: 2, project: { buffers: [] }, workspace: {}, documentStates: {} };
     const database = new DatabaseSync(databasePath);
     try {
       database.exec(
-        "CREATE TABLE Environments1 (key TEXT PRIMARY KEY, value JSON); CREATE TABLE ProjectStateIndex1 (key TEXT PRIMARY KEY, value JSON)",
+        "CREATE TABLE Environments2 (key TEXT PRIMARY KEY, value JSON); CREATE TABLE ProjectStateIndex2 (key TEXT PRIMARY KEY, value JSON)",
       );
-      const save = database.prepare("INSERT INTO Environments1 VALUES (?, ?)");
+      const save = database.prepare("INSERT INTO Environments2 VALUES (?, ?)");
       for (const window of [latestWindow, retiredWindow, liveWindow])
         save.run(key(window), JSON.stringify({ value: clean, storedAt: new Date().toString() }));
       save.run(
@@ -284,7 +284,7 @@ describe("SessionStateMaintenance", function () {
       );
       save.run("history-manager", JSON.stringify({ value: { projects: [] } }));
       database
-        .prepare("INSERT INTO ProjectStateIndex1 VALUES (?, ?)")
+        .prepare("INSERT INTO ProjectStateIndex2 VALUES (?, ?)")
         .run(`editor-${projectHash}`, JSON.stringify({ value: key(latestWindow) }));
     } finally {
       database.close();
@@ -301,7 +301,7 @@ describe("SessionStateMaintenance", function () {
     const restored = new DatabaseSync(databasePath, { readOnly: true });
     try {
       const keys = restored
-        .prepare("SELECT key FROM Environments1")
+        .prepare("SELECT key FROM Environments2")
         .all()
         .map((row) => row.key);
       assert.equal(keys.includes(key(retiredWindow)), false);

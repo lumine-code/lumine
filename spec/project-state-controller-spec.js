@@ -70,7 +70,7 @@ describe("ProjectStateController", () => {
     const stateFor = (paths) => ({
       project: { paths: paths.slice() },
       workspace: { items: paths.map((projectPath) => `${projectPath}/editor`) },
-      packageStates: {},
+      documentStates: {},
     });
     const applyState = (state) => {
       project.paths = state.project.paths.slice();
@@ -81,15 +81,15 @@ describe("ProjectStateController", () => {
       workspace,
       config,
       packages: {
-        restoreActivePackageStates: jasmine
-          .createSpy("restoreActivePackageStates")
+        restoreDocumentStates: jasmine
+          .createSpy("restoreDocumentStates")
           .and.returnValue(Promise.resolve()),
       },
       saveState: jasmine.createSpy("saveState").and.returnValue(Promise.resolve()),
       serialize: jasmine.createSpy("serialize").and.callFake(() => ({
         project: { paths: project.getPaths() },
         workspace: { items: workspace.items.slice() },
-        packageStates: {},
+        documentStates: {},
       })),
       loadProjectState: jasmine.createSpy("loadProjectState").and.callFake(async (paths) => ({
         state: stateFor(paths),
@@ -116,6 +116,99 @@ describe("ProjectStateController", () => {
     expect(config.projectSettings).toEqual({ editor: { tabLength: 7 } });
     expect(config.scopedSettings).toEqual({ ".source.js": { editor: { tabLength: 5 } } });
   }
+
+  it("defers automatic saves until the incoming session is fully restored", async () => {
+    const fixture = buildController();
+    const restoring = deferred();
+    const finish = deferred();
+    const snapshots = [];
+    fixture.saveState.and.callFake(async () => {
+      snapshots.push({ paths: fixture.project.getPaths(), items: fixture.workspace.items.slice() });
+    });
+    fixture.restoreState.and.callFake(async (state) => {
+      restoring.resolve();
+      await finish.promise;
+      fixture.applyState(state);
+    });
+    const transition = fixture.controller.setState(["project-b"]);
+    await restoring.promise;
+    const save = fixture.controller.saveState({ isUnloading: false });
+    await Promise.resolve();
+    expect(snapshots.length).toBe(2);
+    finish.resolve();
+    await transition;
+    await save;
+    expect(snapshots.at(-1)).toEqual({ paths: ["project-b"], items: ["project-b/editor"] });
+  });
+
+  it("persists the exact detached outgoing snapshot retained for rollback", async () => {
+    const fixture = buildController();
+    const outgoing = fixture.serialize();
+    fixture.serialize.and.returnValue(outgoing);
+    fixture.restoreState.and.callFake(async (state) => {
+      if (state.project.paths[0] === "project-b") throw new Error("Incoming failed");
+      fixture.applyState(state);
+    });
+    await expectAsync(fixture.controller.setState(["project-b"])).toBeRejectedWithError(
+      "Incoming failed",
+    );
+    expect(fixture.serialize).toHaveBeenCalledTimes(2);
+    expect(fixture.saveState.calls.mostRecent().args.slice(0, 2)).toEqual([
+      { isUnloading: true },
+      outgoing,
+    ]);
+    expect(fixture.restoreState.calls.mostRecent().args[0]).toBe(outgoing);
+  });
+
+  it("refuses automatic saves after an incomplete rollback", async () => {
+    const fixture = buildController();
+    fixture.restoreState.and.rejectWith(new Error("Cannot restore documents"));
+    await expectAsync(fixture.controller.setState(["project-b"])).toBeRejected();
+    const writes = fixture.saveState.calls.count();
+    await expectAsync(fixture.controller.saveState()).toBeRejectedWithError(
+      "Session recovery must complete before saving",
+    );
+    expect(fixture.saveState.calls.count()).toBe(writes);
+  });
+
+  it("guards a pending save against a reset before the durable write", async () => {
+    const fixture = buildController();
+    const started = deferred();
+    const finish = deferred();
+    let writes = 0;
+    fixture.saveState.and.callFake(async (_options, _snapshot, assertCurrent) => {
+      started.resolve();
+      await finish.promise;
+      assertCurrent();
+      writes++;
+    });
+    const saving = rejectionOf(fixture.controller.saveState());
+    await started.promise;
+    fixture.controller.reset();
+    finish.resolve();
+    expect((await saving).code).toBe("ABORT_ERR");
+    expect(writes).toBe(0);
+  });
+
+  it("does not poison saves in a new generation when an obsolete rollback is cancelled", async () => {
+    const fixture = buildController();
+    const rollbackStarted = deferred();
+    const finish = deferred();
+    fixture.controller.switchProjectStorage = async (paths) => {
+      if (paths[0] === "project-a") {
+        rollbackStarted.resolve();
+        await finish.promise;
+      }
+    };
+    fixture.restoreState.and.rejectWith(new Error("Incoming failed"));
+    const transition = rejectionOf(fixture.controller.setState(["project-b"]));
+    await rollbackStarted.promise;
+    fixture.controller.reset();
+    finish.resolve();
+    expect((await transition).code).toBe("ABORT_ERR");
+    expect(fixture.controller.recoveryFailed).toBe(false);
+    await expectAsync(fixture.controller.saveState()).toBeResolved();
+  });
 
   it("preserves the original restoration error when rollback and release succeed", async () => {
     const fixture = buildController();

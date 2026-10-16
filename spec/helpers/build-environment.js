@@ -1,18 +1,25 @@
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/fs-temp");
 const path = require("path");
+const resolveSpecPackagePaths = require("./spec-package-paths");
+const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
 const userHome = process.env.LUMINE_HOME || path.join(fs.getHomeDirectory(), ".lumine");
 const lumineHome = temp.mkdirSync({ prefix: "lumine-test-home-" });
-if (process.env.LUMINE_TEST_PACKAGES) {
-  const testPackages = process.env.LUMINE_TEST_PACKAGES.split(/\s+/);
+const { testPaths, resourcePath } = getWindowLoadSettings();
+const specPackages = resolveSpecPackagePaths({
+  testPaths,
+  userHome,
+  resourcePath,
+  extraNames: (process.env.LUMINE_TEST_PACKAGES || "").split(/\s+/).filter(Boolean),
+});
+if (specPackages.packages.size) {
   fs.makeTreeSync(path.join(lumineHome, "packages"));
-  for (let packName of Array.from(testPackages)) {
-    const userPack = path.join(userHome, "packages", packName);
+  for (const [packName, userPack] of specPackages.packages) {
     const loadablePack = path.join(lumineHome, "packages", packName);
 
     try {
-      fs.symlinkSync(userPack, loadablePack, "dir");
+      fs.symlinkSync(userPack, loadablePack, process.platform === "win32" ? "junction" : "dir");
     } catch {
       fs.copySync(userPack, loadablePack);
     }
@@ -26,3 +33,4 @@ applicationDelegate.setWindowDocumentEdited = function () {};
 
 exports.lumineHome = lumineHome;
 exports.applicationDelegate = applicationDelegate;
+exports.specPackages = specPackages;

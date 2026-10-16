@@ -1,7 +1,8 @@
 module.exports = {
+  restoreSessionState() {},
   activate() {
     throw new Error("Top that");
   },
   deactivate() {},
-  serialize() {},
+  serializeSessionState() {},
 };

@@ -11,8 +11,11 @@ describe("project state keys", () => {
     );
   });
 
-  it("does not persist an empty project", () => {
+  it("persists empty sessions privately without a shared project index", () => {
     expect(getProjectStateKey([])).toBeNull();
-    expect(getWindowProjectStateKey("window-a", [])).toBeNull();
+    expect(getWindowProjectStateKey("window-a", [])).toBe("editor-window-a-empty");
+    expect(getWindowProjectStateKey("window-a", [])).not.toBe(
+      getWindowProjectStateKey("window-b", []),
+    );
   });
 });

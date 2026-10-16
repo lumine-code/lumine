@@ -65,7 +65,7 @@ module.exports = class SQLStateStore {
   }
 
   async save(key, value) {
-    if (!this.db) return null;
+    if (!this.db) throw new Error("State storage is unavailable");
     return exec(
       this.db,
       `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
@@ -74,7 +74,40 @@ module.exports = class SQLStateStore {
     );
   }
 
+  async saveWithIndex(key, value, indexStore, indexKey) {
+    if (!this.db || !indexStore.db) throw new Error("State storage is unavailable");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const storedAt = new Date().toString();
+      exec(
+        this.db,
+        `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
+        key,
+        JSON.stringify({ value, storedAt }),
+      );
+      exec(
+        this.db,
+        `REPLACE INTO ${indexStore.tableName} VALUES (?, ?)`,
+        indexKey,
+        JSON.stringify({ value: key, storedAt }),
+      );
+      this.db.exec("COMMIT");
+      return true;
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* Preserve the write failure. */
+      }
+      throw error;
+    }
+  }
+
   async load(key) {
+    return this.loadSync(key);
+  }
+
+  loadSync(key) {
     if (!this.db) return null;
     const result = getOne(this.db, `SELECT value FROM ${this.tableName} WHERE key = ?`, key);
     if (!result) return null;

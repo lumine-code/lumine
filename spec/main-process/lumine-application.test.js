@@ -1483,6 +1483,50 @@ describe("LumineApplication", function () {
       await scenario.assert("[a 1.md] [c,d _] [b _]");
     });
 
+    for (const pathOptions of [{ pathsToOpen: [] }, {}]) {
+      const label = Object.hasOwn(pathOptions, "pathsToOpen") ? "empty paths" : "omitted paths";
+      it(`"open" gives a new rootless window canonical boot settings with ${label}`, async function () {
+        const suppliedWindowStateId = crypto.randomUUID();
+        app.devResourcePath = path.resolve(__dirname, "../..");
+        electron.ipcMain.emit(
+          "open",
+          {},
+          {
+            ...pathOptions,
+            newWindow: true,
+            devMode: true,
+            windowStateId: suppliedWindowStateId,
+          },
+        );
+
+        const opened = await app.openPaths.lastCall.returnValue;
+        assert.isTrue(app.openPaths.calledOnce);
+        assert.deepEqual(app.openPaths.lastCall.args[0].pathsToOpen, [null]);
+        assert.isTrue(app.openPaths.lastCall.args[0].newWindow);
+        assert.strictEqual(opened, scenario.getWindow(3));
+        assert.isTrue(opened.devMode);
+        assert.strictEqual(opened.loadSettings.resourcePath, app.devResourcePath);
+        assert.strictEqual(
+          opened.loadSettings.windowInitializationScript,
+          require.resolve("../../src/initialize-application-window"),
+        );
+        assert.notStrictEqual(opened.windowStateId, suppliedWindowStateId);
+        await scenario.assert("[a _] [_ _] [b _] [_ _]");
+      });
+    }
+
+    it('"open" derives development mode for a rootless window from the environment', async function () {
+      process.env.LUMINE_DEV_MODE = "1";
+      electron.ipcMain.emit("open", {}, { pathsToOpen: [], newWindow: true });
+
+      const opened = await app.openPaths.lastCall.returnValue;
+      assert.strictEqual(opened, scenario.getWindow(3));
+      assert.isTrue(opened.devMode);
+      assert.strictEqual(typeof opened.loadSettings.resourcePath, "string");
+      assert.strictEqual(typeof opened.loadSettings.windowInitializationScript, "string");
+      await scenario.assert("[a _] [_ _] [b _] [_ _]");
+    });
+
     it('"open" honors LUMINE_DEV_MODE for internal window requests', async function () {
       process.env.LUMINE_DEV_MODE = "1";
 

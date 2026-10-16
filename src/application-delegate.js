@@ -29,15 +29,6 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.send("open", params);
   }
 
-  async getTemporaryWindowState() {
-    const stateJSON = await this.invokeWindow("getTemporaryState");
-    return stateJSON && JSON.parse(stateJSON);
-  }
-
-  setTemporaryWindowState(state) {
-    return this.invokeWindow("setTemporaryState", JSON.stringify(state));
-  }
-
   onDidEnterFullScreen(callback) {
     return ipcHelpers.on(ipcRenderer, "did-enter-full-screen", callback);
   }
@@ -187,6 +178,16 @@ module.exports = class ApplicationDelegate {
 
   didChangeHistoryManager() {
     return ipcRenderer.send("did-change-history-manager");
+  }
+
+  onDidChangePackageStorage(callback) {
+    const listener = (_event, change) => callback(change);
+    ipcRenderer.on("did-change-package-storage", listener);
+    return new Disposable(() => ipcRenderer.removeListener("did-change-package-storage", listener));
+  }
+
+  didChangePackageStorage(change) {
+    ipcRenderer.send("did-change-package-storage", change);
   }
 
   onDidChangeAccentColor(callback) {

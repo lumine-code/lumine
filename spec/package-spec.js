@@ -560,7 +560,7 @@ describe("Package", function () {
       const initializationError = new Error("Initialization cleanup failed");
       const laterCleanup = jasmine.createSpy("laterCleanup");
       const deactivated = jasmine.createSpy("deactivated");
-      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+      spyOn(pack.mainModule, "initialize").and.callFake((context) => {
         context.subscriptions.add(
           new Disposable(() => {
             throw initializationError;
@@ -659,6 +659,84 @@ describe("Package", function () {
   });
 
   describe("the initialize() hook", function () {
+    it("shares scoped storage handles with the single activation context", async function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      const initialize = spyOn(pack.mainModule, "initialize").and.callThrough();
+      const activate = spyOn(pack.mainModule, "activate").and.callThrough();
+      try {
+        pack.activateMain({ signal: new AbortController().signal });
+        await pack.resourceLoadPromise;
+        expect(initialize.calls.mostRecent().args.length).toBe(1);
+        expect(activate.calls.mostRecent().args.length).toBe(1);
+        const initialized = initialize.calls.mostRecent().args[0];
+        const activated = activate.calls.mostRecent().args[0];
+        expect(activated).toBe(initialized);
+        const storage = lumine.packages.storage.forPackage(pack.name);
+        expect(initialized.globalState).toBe(activated.globalState);
+        expect(initialized.workspaceState).toBe(activated.workspaceState);
+        expect(initialized.globalState).toBe(storage.globalState);
+        expect(initialized.workspaceState).toBe(storage.workspaceState);
+        expect(initialized.storage).toBeUndefined();
+        expect(activated.storage).toBeUndefined();
+        expect(initialized.subscriptions).toBe(activated.subscriptions);
+        expect(initialized.hooks).toBe(activated.hooks);
+        expect(activated.signal.aborted).toBe(false);
+        expect(typeof initialized.globalState.update).toBe("function");
+        expect(typeof initialized.globalState.mutate).toBe("function");
+        expect(typeof initialized.workspaceState.observe).toBe("function");
+      } finally {
+        await pack.deactivate();
+        pack.unload();
+      }
+    });
+
+    for (const legacyHook of ["serialize", "restoreState"]) {
+      it(`rejects the legacy ${legacyHook} hook instead of treating preferences as recovery data`, function () {
+        const packagePath = lumine.project
+          .getDirectories()[0]
+          .resolve("packages/package-with-view-providers");
+        const pack = buildPackage(packagePath);
+        pack.load();
+        pack.requireMainModule();
+        pack.mainModule[legacyHook] = () => ({});
+        try {
+          expect(() => pack.initializeIfNeeded()).toThrowError(
+            TypeError,
+            /must use scoped storage/,
+          );
+          expect(pack.mainInitialized).toBe(false);
+        } finally {
+          delete pack.mainModule[legacyHook];
+          pack.unload();
+        }
+      });
+    }
+
+    it("requires a recovery reader whenever a package provides a recovery writer", function () {
+      const packagePath = lumine.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-view-providers");
+      const pack = buildPackage(packagePath);
+      pack.load();
+      pack.requireMainModule();
+      pack.mainModule.serializeSessionState = () => ({});
+      try {
+        expect(() => pack.initializeIfNeeded()).toThrowError(
+          TypeError,
+          /requires restoreSessionState/,
+        );
+        expect(pack.mainInitialized).toBe(false);
+      } finally {
+        delete pack.mainModule.serializeSessionState;
+        pack.unload();
+      }
+    });
+
     it("preserves the initialize failure while finishing every subscription cleanup", async function () {
       const packagePath = lumine.project
         .getDirectories()[0]
@@ -670,7 +748,7 @@ describe("Package", function () {
       const cleanup = new Error("Initialization subscription failed");
       const lateHook = jasmine.createSpy("lateHook");
       const laterCleanup = jasmine.createSpy("laterCleanup");
-      spyOn(pack.mainModule, "initialize").and.callFake((_state, context) => {
+      spyOn(pack.mainModule, "initialize").and.callFake((context) => {
         context.subscriptions.add(
           new Disposable(() => {
             expect(pack.initializationDisposables).toBeNull();

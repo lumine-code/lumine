@@ -20,8 +20,8 @@ describe("session state retention", function () {
   beforeEach(function () {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-session-retention-"));
     db = new DatabaseSync(path.join(directory, "session-store.db"));
-    db.exec("CREATE TABLE Environments1 (key VARCHAR UNIQUE, value JSON)");
-    db.exec("CREATE TABLE ProjectStateIndex1 (key VARCHAR UNIQUE, value JSON)");
+    db.exec("CREATE TABLE Environments2 (key VARCHAR UNIQUE, value JSON)");
+    db.exec("CREATE TABLE ProjectStateIndex2 (key VARCHAR UNIQUE, value JSON)");
   });
 
   afterEach(function () {
@@ -35,25 +35,31 @@ describe("session state retention", function () {
   }
 
   function state(overrides = {}) {
-    return { version: 1, project: { buffers: [] }, workspace: {}, packageStates: {}, ...overrides };
+    return {
+      version: 2,
+      project: { buffers: [] },
+      workspace: {},
+      documentStates: {},
+      ...overrides,
+    };
   }
 
   function save(snapshotKey, value = state()) {
-    db.prepare("REPLACE INTO Environments1 VALUES (?, ?)").run(
+    db.prepare("REPLACE INTO Environments2 VALUES (?, ?)").run(
       snapshotKey,
       JSON.stringify({ value }),
     );
   }
 
   function point(project, snapshotKey) {
-    db.prepare("REPLACE INTO ProjectStateIndex1 VALUES (?, ?)").run(
+    db.prepare("REPLACE INTO ProjectStateIndex2 VALUES (?, ?)").run(
       `editor-${project}`,
       JSON.stringify({ value: snapshotKey }),
     );
   }
 
   function exists(snapshotKey) {
-    return Boolean(db.prepare("SELECT key FROM Environments1 WHERE key = ?").get(snapshotKey));
+    return Boolean(db.prepare("SELECT key FROM Environments2 WHERE key = ?").get(snapshotKey));
   }
 
   it("removes only retired modern window rows and keeps the latest project state", function () {
@@ -154,13 +160,13 @@ describe("session state retention", function () {
     save(
       key(),
       state({
-        packageStates: { "jupyter-view": { documents: { document: { fileState: "modified" } } } },
+        documentStates: { "jupyter-view": { documents: { document: { fileState: "modified" } } } },
       }),
     );
     save(
       key(retiredId, secondProject),
       state({
-        packageStates: {
+        documentStates: {
           "jupyter-view": {
             documents: {
               document: { sourceControllerState: { bufferState: { fileState: "modified" } } },
@@ -177,7 +183,7 @@ describe("session state retention", function () {
       key(),
       state({
         project: { buffers: [{ filePath: "/saved.txt", fileState: "unmodified" }] },
-        packageStates: {
+        documentStates: {
           cache: { content: ["rebuildable"], rows: [["rebuildable"]] },
           source: {
             bufferState: { text: "projection", defaultMarkerLayerId: 0, fileState: "unmodified" },
@@ -189,8 +195,8 @@ describe("session state retention", function () {
   });
 
   it("leaves malformed snapshots and unknown state versions untouched", function () {
-    db.prepare("REPLACE INTO Environments1 VALUES (?, ?)").run(key(), "{broken");
-    save(key(firstId), state({ version: 2 }));
+    db.prepare("REPLACE INTO Environments2 VALUES (?, ?)").run(key(), "{broken");
+    save(key(firstId), state({ version: 999 }));
     save(key(secondId), state({ project: { buffers: "not an array" } }));
     save(key(retiredId, secondProject), state({ workspace: { paneContainers: "corrupt" } }));
     assert.deepEqual(collectRetiredSnapshots(db), []);
@@ -199,7 +205,7 @@ describe("session state retention", function () {
   it("protects all copies of a project whose index is broken or dangling", function () {
     save(key());
     save(key(firstId));
-    db.prepare("REPLACE INTO ProjectStateIndex1 VALUES (?, ?)").run(
+    db.prepare("REPLACE INTO ProjectStateIndex2 VALUES (?, ?)").run(
       `editor-${firstProject}`,
       "bad JSON",
     );
@@ -251,7 +257,7 @@ describe("session state retention", function () {
 
   it("deduplicates recovery copies with different stored-at envelope metadata", function () {
     const recovery = state({ project: { buffers: [{ text: "unsaved work" }] } });
-    const insert = db.prepare("REPLACE INTO Environments1 VALUES (?, ?)");
+    const insert = db.prepare("REPLACE INTO Environments2 VALUES (?, ?)");
     insert.run(key(), JSON.stringify({ value: recovery, storedAt: "earlier save" }));
     insert.run(key(firstId), JSON.stringify({ value: recovery, storedAt: "later save" }));
     point(firstProject, key(firstId));
@@ -292,7 +298,7 @@ describe("session state retention", function () {
       prepare: (...args) => db.prepare(...args),
       exec(command) {
         if (command === "BEGIN IMMEDIATE") {
-          db.prepare("UPDATE Environments1 SET value = ? WHERE key = ?").run(
+          db.prepare("UPDATE Environments2 SET value = ? WHERE key = ?").run(
             JSON.stringify({
               value: state({ project: { buffers: [{ text: "changed latest" }] } }),
             }),
@@ -319,10 +325,10 @@ describe("session state retention", function () {
   it("preserves new contents after deletion and rowid reuse for the same key", function () {
     save(key());
     const candidates = collectRetiredSnapshots(db);
-    db.prepare("DELETE FROM Environments1 WHERE key = ?").run(key());
+    db.prepare("DELETE FROM Environments2 WHERE key = ?").run(key());
     save(key(), state({ project: { buffers: [{ text: "new unsaved text" }] } }));
     assert.equal(
-      db.prepare("SELECT rowid FROM Environments1 WHERE key = ?").get(key()).rowid,
+      db.prepare("SELECT rowid FROM Environments2 WHERE key = ?").get(key()).rowid,
       candidates[0].rowid,
     );
     assert.equal(pruneRetiredSnapshots(db, candidates, {}).skippedChanged, 1);
@@ -332,7 +338,7 @@ describe("session state retention", function () {
   it("preserves contents updated in place without changing rowid", function () {
     save(key());
     const candidates = collectRetiredSnapshots(db);
-    db.prepare("UPDATE Environments1 SET value = ? WHERE key = ?").run(
+    db.prepare("UPDATE Environments2 SET value = ? WHERE key = ?").run(
       JSON.stringify({ value: state({ project: { buffers: [{ text: "new work" }] } }) }),
       key(),
     );
@@ -347,7 +353,7 @@ describe("session state retention", function () {
       prepare: (...args) => db.prepare(...args),
       exec(command) {
         if (command === "BEGIN IMMEDIATE") {
-          db.prepare("UPDATE Environments1 SET value = ? WHERE key = ?").run(
+          db.prepare("UPDATE Environments2 SET value = ? WHERE key = ?").run(
             JSON.stringify({ value: state({ project: { buffers: [{ text: "raced edit" }] } }) }),
             key(),
           );
@@ -360,7 +366,7 @@ describe("session state retention", function () {
   });
 
   it("commits a large deletion separately from later small snapshots", function () {
-    save(key(), state({ packageStates: { cache: "x".repeat(1024 * 1024) } }));
+    save(key(), state({ documentStates: { cache: "x".repeat(1024 * 1024) } }));
     save(key(firstId));
     const commands = [];
     const tracingDb = {
@@ -376,8 +382,8 @@ describe("session state retention", function () {
   });
 
   it("does not create tables when called against an unrelated database", function () {
-    db.exec("DROP TABLE Environments1");
-    db.exec("DROP TABLE ProjectStateIndex1");
+    db.exec("DROP TABLE Environments2");
+    db.exec("DROP TABLE ProjectStateIndex2");
     assert.deepEqual(collectRetiredSnapshots(db), []);
     assert.equal(pruneRetiredSnapshots(db, [], {}).removed, 0);
     assert.deepEqual(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all(), []);

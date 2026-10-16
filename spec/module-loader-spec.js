@@ -1046,7 +1046,7 @@ process.stdout.write(JSON.stringify({ parses, value }));
 export default {
   version: ${version},
   events: [],
-  initialize(_state, { subscriptions }) {
+  initialize({ subscriptions }) {
     this.events.push("initialize");
     this.subscriptions = subscriptions;
     subscriptions.add(new Disposable(() => this.events.push("cleanup")));

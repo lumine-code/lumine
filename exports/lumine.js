@@ -12,6 +12,7 @@ const Notification = require("../src/notification");
 const { watchDirectory, watchFile } = require("../src/file-watch");
 const { Icon } = require("../src/icon-descriptor");
 const { isSaveCancellationError } = require("../src/save-errors");
+const { updateRecentItemIds } = require("../src/select-list-recents");
 
 const lumineExport = {
   BufferedNodeProcess,
@@ -30,6 +31,7 @@ const lumineExport = {
   Disposable,
   CompositeDisposable,
   isSaveCancellationError,
+  updateRecentItemIds,
   watchDirectory,
   watchFile,
   // The factories an `icons.provider` builds its answers with. `Icon.none()` in
