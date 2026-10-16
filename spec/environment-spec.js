@@ -2157,6 +2157,62 @@ describe("Environment", () => {
       expect(env.workspace.endInitialDockRestore).toHaveBeenCalled();
     });
 
+    it("reserves default dock geometry before awaiting package resources or painting center", async () => {
+      const env = buildEnvironment({
+        initialProjectRoots: [temp.mkdirSync("reserved-dock-project-")],
+        hasOpenFiles: true,
+      });
+      env.document = document;
+      const element = env.workspace.getElement();
+      element.style.cssText = "position:fixed;inset:0;width:1000px;height:600px;";
+      const item = {
+        element: document.createElement("div"),
+        getTitle: () => "Reserved default panel",
+        getURI: () => "lumine://reserved-startup-panel",
+        getDefaultLocation: () => "left",
+        getDefaultVisibility: () => "project-or-empty",
+        getPreferredWidth: () => 233,
+      };
+      let release, entered;
+      const resources = new Promise((resolve) => (release = resolve));
+      const bootstrapped = new Promise((resolve) => (entered = resolve));
+      spyOn(env.packages, "activate").and.callFake(() => {
+        env.workspace.addDefaultDockItem(() => item);
+        entered();
+        return resources;
+      });
+
+      const starting = env.startEditorWindow();
+      let initialCenter;
+      try {
+        await bootstrapped;
+        jasmine.attachToDOM(element);
+        await new Promise(requestAnimationFrame);
+        const dock = env.workspace.getLeftDock();
+        expect(dock.isVisible()).toBe(true);
+        expect(dock.getElement().getBoundingClientRect().width).toBe(233);
+        expect(env.workspace.paneForItem(item)).toBeUndefined();
+        initialCenter = env.workspace
+          .getCenter()
+          .paneContainer.getElement()
+          .getBoundingClientRect();
+        expect(initialCenter.width).toBeGreaterThan(0);
+      } finally {
+        release();
+        await starting;
+      }
+
+      await new Promise(requestAnimationFrame);
+      const finalCenter = env.workspace
+        .getCenter()
+        .paneContainer.getElement()
+        .getBoundingClientRect();
+      expect(finalCenter.left).toBe(initialCenter.left);
+      expect(finalCenter.width).toBe(initialCenter.width);
+      expect(env.workspace.getLeftDock().getElement().getBoundingClientRect().width).toBe(233);
+      expect(env.workspace.getLeftDock().getActivePaneItem()).toBe(item);
+    });
+
     for (const [launch, hasProject, hasOpenFiles, visible] of [
       ["a project", true, false, true],
       ["a project with an initial file", true, true, true],

@@ -78,6 +78,194 @@ describe("default dock items", () => {
     });
   }
 
+  function attachWorkspace() {
+    const element = workspace.getElement();
+    element.style.width = "1000px";
+    element.style.height = "600px";
+    jasmine.attachToDOM(element);
+    const dock = workspace.getLeftDock();
+    const center = workspace.getCenter().getActivePane().getElement();
+    return {
+      dock,
+      measure: () => ({
+        dock: dock.getElement().getBoundingClientRect().width,
+        center: center.getBoundingClientRect().width,
+        centerLeft: center.getBoundingClientRect().left,
+      }),
+    };
+  }
+
+  it("reserves the final dock width synchronously before mounting the default item", async () => {
+    const { dock, measure } = attachWorkspace();
+    const before = measure();
+    const { item, getItem } = registerItem();
+    item.getPreferredWidth = () => 214;
+
+    workspace.prepareDefaultDockItems({ hasProject: true });
+
+    const prepared = measure();
+    expect(prepared.dock).toBe(214);
+    expect(prepared.center).toBeCloseTo(before.center - 214, 1);
+    expect(prepared.centerLeft).toBeCloseTo(before.centerLeft + 214, 1);
+    expect(dock.state.size).toBe(214);
+    expect(dock.isVisible()).toBe(true);
+    expect(dock.state.restoring).toBeFalsy();
+    expect(dock.getPaneItems()).toEqual([]);
+    expect(workspace.paneForItem(item)).toBeUndefined();
+
+    await openDefaults({ hasProject: true });
+
+    expect(measure()).toEqual(prepared);
+    expect(getItem).toHaveBeenCalledTimes(1);
+    expect(dock.getPaneItems()).toEqual([item]);
+  });
+
+  it("holds the reserved center geometry while activation and the default opening are pending", async () => {
+    const { dock, measure } = attachWorkspace();
+    const { item, getItem } = registerItem();
+    item.getPreferredWidth = () => 226;
+    const open = workspace.open.bind(workspace);
+    let releaseActivation, releaseOpen, entered;
+    const activation = new Promise((resolve) => (releaseActivation = resolve));
+    const openGate = new Promise((resolve) => (releaseOpen = resolve));
+    const started = new Promise((resolve) => (entered = resolve));
+    spyOn(workspace, "open").and.callFake(async (openingItem, options) => {
+      entered();
+      await openGate;
+      return open(openingItem, options);
+    });
+    workspace.prepareDefaultDockItems({ hasProject: true });
+    const prepared = measure();
+    const opening = activation.then(() => openDefaults({ hasProject: true }));
+    try {
+      await Promise.resolve();
+      expect(measure()).toEqual(prepared);
+      expect(dock.getPaneItems()).toEqual([]);
+      releaseActivation();
+      await started;
+      expect(measure()).toEqual(prepared);
+      expect(dock.getPaneItems()).toEqual([]);
+    } finally {
+      releaseActivation();
+      releaseOpen();
+      await opening;
+    }
+
+    expect(prepared.dock).toBe(226);
+    expect(measure()).toEqual(prepared);
+    expect(getItem).toHaveBeenCalledTimes(1);
+    expect(dock.getPaneItems()).toEqual([item]);
+  });
+
+  it("reserves no dock width for a standalone file launch", async () => {
+    const { dock, measure } = attachWorkspace();
+    const before = measure();
+    registerItem();
+
+    workspace.prepareDefaultDockItems({ hasOpenFiles: true });
+
+    expect(measure()).toEqual(before);
+    expect(measure().dock).toBe(0);
+    expect(dock.isVisible()).toBe(false);
+    await openDefaults({ hasOpenFiles: true });
+    expect(measure()).toEqual(before);
+  });
+
+  it("keeps a saved hidden dock out of the first layout frame", async () => {
+    const { dock, measure } = attachWorkspace();
+    const saved = dock.serialize();
+    saved.size = 241;
+    workspace.beginInitialDockRestore({ paneContainers: { left: saved } });
+    const before = measure();
+    const { item } = registerItem();
+
+    workspace.prepareDefaultDockItems({ hasProject: true });
+
+    expect(dock.state.size).toBe(241);
+    expect(dock.isVisible()).toBe(false);
+    expect(measure()).toEqual(before);
+    expect(measure().dock).toBe(0);
+    await openDefaults({ hasProject: true });
+    expect(workspace.paneForItem(item)).toBeUndefined();
+    expect(measure()).toEqual(before);
+  });
+
+  it("releases an empty reservation when its registration is disposed", async () => {
+    const { dock, measure } = attachWorkspace();
+    const before = measure();
+    const { registration, item } = registerItem();
+    workspace.prepareDefaultDockItems({ hasProject: true });
+    expect(measure().dock).toBeGreaterThan(0);
+
+    registration.dispose();
+
+    expect(dock.isVisible()).toBe(false);
+    expect(measure()).toEqual(before);
+    await openDefaults({ hasProject: true });
+    expect(workspace.paneForItem(item)).toBeUndefined();
+    expect(measure()).toEqual(before);
+  });
+
+  it("preserves an explicit item and its geometry when a prepared registration is disposed", async () => {
+    const { dock, measure } = attachWorkspace();
+    const { registration, item } = registerItem();
+    workspace.prepareDefaultDockItems({ hasProject: true });
+    const explicit = buildItem({ title: "Explicit item after preparation" });
+    await workspace.open(explicit);
+    const explicitGeometry = measure();
+
+    registration.dispose();
+    await openDefaults({ hasProject: true });
+
+    expect(dock.getPaneItems()).toEqual([explicit]);
+    expect(dock.getActivePaneItem()).toBe(explicit);
+    expect(dock.isVisible()).toBe(true);
+    expect(measure()).toEqual(explicitGeometry);
+    expect(workspace.paneForItem(item)).toBeUndefined();
+  });
+
+  it("honors a user hiding a prepared dock before its item opens", async () => {
+    const { dock, measure } = attachWorkspace();
+    const before = measure();
+    const { item, registration } = registerItem();
+    workspace.prepareDefaultDockItems({ hasProject: true });
+    dock.hide();
+    registration.dispose();
+
+    await openDefaults({ hasProject: true });
+
+    expect(dock.isVisible()).toBe(false);
+    expect(measure()).toEqual(before);
+    expect(workspace.paneForItem(item)).toBeUndefined();
+  });
+
+  it("preserves an empty dock the user reopens after canceling its reservation", async () => {
+    const { dock, measure } = attachWorkspace();
+    const { item } = registerItem();
+    workspace.prepareDefaultDockItems({ hasProject: true });
+    dock.hide();
+    dock.show();
+    const reopened = measure();
+
+    await openDefaults({ hasProject: true });
+
+    expect(dock.isVisible()).toBe(true);
+    expect(dock.getPaneItems()).toEqual([]);
+    expect(measure()).toEqual(reopened);
+    expect(workspace.paneForItem(item)).toBeUndefined();
+  });
+
+  it("ignores registrations made after the initial geometry was prepared", async () => {
+    workspace.prepareDefaultDockItems({ hasOpenFiles: true });
+    const { item, getItem } = registerItem();
+
+    await openDefaults({ hasProject: true });
+
+    expect(getItem).not.toHaveBeenCalled();
+    expect(workspace.paneForItem(item)).toBeUndefined();
+    expect(workspace.getLeftDock().isVisible()).toBe(false);
+  });
+
   it("registers the item factory without constructing or opening its view", async () => {
     const getItem = jasmine.createSpy("construct default item").and.callFake(() => buildItem());
     workspace.addDefaultDockItem(getItem);

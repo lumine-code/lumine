@@ -443,6 +443,84 @@ describe("Dock", () => {
     });
   });
 
+  describe("reserving space for a default item", () => {
+    for (const [location, getDock, dimension, preferred] of [
+      ["left", "getLeftDock", "offsetWidth", 211],
+      ["right", "getRightDock", "offsetWidth", 233],
+      ["bottom", "getBottomDock", "offsetHeight", 157],
+    ]) {
+      it(`reserves the preferred ${location} dock size before adding the item`, () => {
+        jasmine.attachToDOM(lumine.workspace.getElement());
+        const dock = lumine.workspace[getDock]();
+        let preferredSize = preferred;
+        const item = {
+          element: document.createElement("div"),
+          getDefaultLocation: () => location,
+          getAllowedLocations: () => [location],
+          getPreferredWidth: () => (location === "bottom" ? 999 : preferredSize),
+          getPreferredHeight: () => (location === "bottom" ? preferredSize : 999),
+        };
+
+        dock.reserveSpaceForItem(item);
+
+        expect(dock.getPaneItems()).toEqual([]);
+        expect(dock.isVisible()).toBe(true);
+        expect(dock.getElement()[dimension]).toBe(preferred);
+        expect(dock.state.restoring).toBeFalsy();
+
+        preferredSize += 100;
+        dock.getActivePane().addItem(item);
+
+        expect(dock.state.size).toBe(preferred);
+        expect(dock.getElement()[dimension]).toBe(preferred);
+      });
+    }
+
+    for (const [preferredSize, reservedSize] of [
+      [undefined, 300],
+      [0, 300],
+      [45, 100],
+    ]) {
+      it(`reserves ${reservedSize}px when the preferred size is ${preferredSize}`, () => {
+        jasmine.attachToDOM(lumine.workspace.getElement());
+        const dock = lumine.workspace.getLeftDock();
+
+        dock.reserveSpaceForItem({ getPreferredWidth: () => preferredSize });
+
+        expect(dock.state.size).toBe(reservedSize);
+        expect(dock.getElement().offsetWidth).toBe(reservedSize);
+      });
+    }
+
+    it("retains the existing dock size", () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getLeftDock();
+      dock.setState({ size: 417 });
+
+      dock.reserveSpaceForItem({ getPreferredWidth: () => 233 });
+
+      expect(dock.state.size).toBe(417);
+      expect(dock.getElement().offsetWidth).toBe(417);
+    });
+
+    it("preserves normal visibility changes while the item has not been added", () => {
+      const dock = lumine.workspace.getLeftDock();
+      const changed = jasmine.createSpy("dock visibility changed");
+      const subscription = dock.onDidChangeVisible(changed);
+      try {
+        dock.reserveSpaceForItem({});
+        dock.hide();
+        dock.show();
+
+        expect(changed.calls.allArgs()).toEqual([[true], [false], [true]]);
+        expect(dock.isVisible()).toBe(true);
+        expect(dock.state.restoring).toBeFalsy();
+      } finally {
+        subscription.dispose();
+      }
+    });
+  });
+
   describe("a deserialized dock", () => {
     it("reserves its saved geometry without painting provisional contents", () => {
       jasmine.attachToDOM(lumine.workspace.getElement());

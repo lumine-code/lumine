@@ -1238,19 +1238,22 @@ class Environment {
 
       try {
         StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
-        await this.packages.activate();
+        const activation = this.packages.activate();
+        const loadSettings = this.#getLoadSettings();
+        const initialDockContext = {
+          hasProject: (loadSettings.initialProjectRoots?.length ?? 0) > 0,
+          hasOpenFiles: loadSettings.hasOpenFiles,
+          hasPaneItemTransfer: Boolean(loadSettings.paneItemTransfer),
+        };
+        this.workspace.prepareDefaultDockItems(initialDockContext);
+        await activation;
         StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
 
         const startTime = Date.now();
         StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
         await this.deserialize(state);
         this.deserializeTimings.lumine = Date.now() - startTime;
-        const loadSettings = this.#getLoadSettings();
-        await this.workspace.openDefaultDockItems({
-          hasProject: (loadSettings.initialProjectRoots?.length ?? 0) > 0,
-          hasOpenFiles: loadSettings.hasOpenFiles,
-          hasPaneItemTransfer: Boolean(loadSettings.paneItemTransfer),
-        });
+        await this.workspace.openDefaultDockItems(initialDockContext);
       } finally {
         this.workspace.endInitialDockRestore();
       }

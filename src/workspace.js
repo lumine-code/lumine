@@ -381,6 +381,7 @@ module.exports = class Workspace extends Model {
   #windowOperationOpenOptions = new WeakSet();
   #pathOpenerResolutionListeners = new Set();
   #defaultDockItems = new Set();
+  #defaultDockItemsPrepared = false;
   #defaultDockItemsApplied = false;
 
   constructor(params) {
@@ -1070,6 +1071,7 @@ module.exports = class Workspace extends Model {
   reset(packageManager) {
     this.#layoutGeneration++;
     this.#clearDefaultDockItems();
+    this.#defaultDockItemsPrepared = false;
     this.#defaultDockItemsApplied = false;
     this.#resettingItemOpens++;
     try {
@@ -1238,10 +1240,11 @@ module.exports = class Workspace extends Model {
    * it during package activation. Call this from the package's synchronous
    * bootstrap and dispose the registration when the package deactivates.
    *
-   * After initial package activation and layout restoration, the workspace
-   * calls `getItem` synchronously and reads the item's `getDefaultVisibility()`.
-   * A saved dock layout takes precedence over defaults. Registrations made
-   * after this initial pass do not automatically open their items.
+   * After the synchronous package bootstraps, the workspace calls `getItem`
+   * and reads the item's `getDefaultVisibility()`. It reserves the dock's space
+   * before the first workspace frame, then opens its content after layout
+   * restoration. A saved dock layout takes precedence over defaults.
+   * Registrations made after this initial preparation do not open automatically.
    *
    * Disposing cancels an unfinished default opening. The package retains
    * ownership of the item and is responsible for destroying it on deactivation.
@@ -1252,7 +1255,7 @@ module.exports = class Workspace extends Model {
    */
   addDefaultDockItem(getItem) {
     if (typeof getItem !== "function") throw new TypeError("Expected a dock item factory");
-    if (!this.isAlive() || this.#defaultDockItemsApplied) return new Disposable();
+    if (!this.isAlive() || this.#defaultDockItemsPrepared) return new Disposable();
     const registration = { getItem, controller: new AbortController() };
     this.#defaultDockItems.add(registration);
     return new Disposable(() => {
@@ -1261,18 +1264,17 @@ module.exports = class Workspace extends Model {
     });
   }
 
-  // Initial presentation belongs to the workspace, after deserializers have
-  // selected the real dock items and before the dock restore becomes visible.
-  async openDefaultDockItems({ hasProject, hasOpenFiles, hasPaneItemTransfer } = {}) {
-    if (this.#defaultDockItemsApplied || !this.isAlive()) return;
-    this.#defaultDockItemsApplied = true;
+  // Package bootstraps are synchronous. Reserve new default docks before
+  // awaiting their resources so the first center frame has its final width.
+  prepareDefaultDockItems({ hasProject, hasOpenFiles, hasPaneItemTransfer } = {}) {
+    if (this.#defaultDockItemsPrepared || !this.isAlive()) return;
+    this.#defaultDockItemsPrepared = true;
     const generation = this.#layoutGeneration;
     const savedLocations = new Set(this.initialDockRestoreLocations);
-    const registrations = [...this.#defaultDockItems];
     // Launch intent stays empty even when a package opens its welcome page
     // during activation. Requested files may not have arrived in center yet.
     const projectOrEmpty = hasProject || (!hasOpenFiles && !hasPaneItemTransfer);
-    for (const registration of registrations) {
+    for (const registration of [...this.#defaultDockItems]) {
       const isCurrent = () =>
         this.isAlive() &&
         generation === this.#layoutGeneration &&
@@ -1300,34 +1302,73 @@ module.exports = class Workspace extends Model {
         if (!DOCK_LOCATIONS.includes(location))
           throw new TypeError("Default dock items must open in a dock");
         const dock = this.paneContainers[location];
-        if (savedLocations.has(location) || dock.getPaneItems().length > 0) continue;
-        // A user opening another item or changing visibility while this open
-        // yields takes precedence over the initial default.
+        if (
+          !isCurrent() ||
+          savedLocations.has(location) ||
+          dock.getPaneItems().length > 0 ||
+          dock.isVisible()
+        )
+          continue;
+        const previousSize = dock.state.size;
+        dock.reserveSpaceForItem(item);
+        registration.item = item;
+        registration.dock = dock;
+        // A user opening another item or changing visibility while resources
+        // or the default opening are pending takes precedence over the default.
         const presentation = new CompositeDisposable(
           dock.onDidChangeVisible(() => registration.controller.abort()),
           dock.onDidAddPaneItem(({ item: added }) => {
             if (added !== item) registration.controller.abort();
           }),
         );
-        let opened;
-        try {
-          opened = await this.open(item, {
-            searchAllPanes: true,
-            activatePane: false,
-            activateItem: false,
-            signal: registration.controller.signal,
-          });
-        } finally {
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
           presentation.dispose();
-        }
-        if (
-          isCurrent() &&
-          opened === item &&
-          this.paneContainerForItem(item) === dock &&
-          dock.getActivePaneItem() === item &&
-          dock.getPaneItems().length === 1
-        )
-          dock.show();
+          registration.controller.signal.removeEventListener("abort", release);
+          if (!dock.destroyed && dock.getPaneItems().length === 0)
+            dock.setState({ visible: false, size: previousSize });
+        };
+        registration.release = release;
+        registration.controller.signal.addEventListener("abort", release, { once: true });
+        if (!isCurrent()) release();
+      } catch (error) {
+        if (isCurrent())
+          this.notificationManager.addError("Unable to open default dock item", {
+            description: error.message,
+            stack: error.stack,
+          });
+      }
+    }
+  }
+
+  // Only the content waits for deserialization. Geometry was already reserved
+  // synchronously, and explicit user choices keep priority throughout startup.
+  async openDefaultDockItems(context) {
+    if (this.#defaultDockItemsApplied || !this.isAlive()) return;
+    this.prepareDefaultDockItems(context);
+    this.#defaultDockItemsApplied = true;
+    const generation = this.#layoutGeneration;
+    for (const registration of [...this.#defaultDockItems]) {
+      const { item, dock, controller } = registration;
+      const isCurrent = () =>
+        this.isAlive() &&
+        generation === this.#layoutGeneration &&
+        this.#defaultDockItems.has(registration) &&
+        !controller.signal.aborted;
+      try {
+        if (!isCurrent() || !item || item.isDestroyed?.()) continue;
+        const uri = item.getURI?.();
+        if (this.paneForItem(item) || (uri && this.paneForURI(uri))) continue;
+        if (dock.destroyed || this.paneContainers[dock.getLocation()] !== dock) continue;
+        if (dock.getPaneItems().length > 0) continue;
+        await this.open(item, {
+          searchAllPanes: true,
+          activatePane: false,
+          activateItem: false,
+          signal: controller.signal,
+        });
       } catch (error) {
         if (isCurrent())
           this.notificationManager.addError("Unable to open default dock item", {
@@ -1335,6 +1376,7 @@ module.exports = class Workspace extends Model {
             stack: error.stack,
           });
       } finally {
+        registration.release?.();
         this.#defaultDockItems.delete(registration);
       }
     }

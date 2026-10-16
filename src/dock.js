@@ -514,6 +514,18 @@ module.exports = class Dock {
     return false;
   }
 
+  // Reserve a default item's final geometry before asynchronous startup work
+  // yields, without suspending normal visibility changes or mounting its view.
+  reserveSpaceForItem(item) {
+    this.setState({
+      visible: true,
+      size: Math.max(
+        MINIMUM_SIZE,
+        this.state.size || getPreferredSize(item, this.location) || DEFAULT_INITIAL_SIZE,
+      ),
+    });
+  }
+
   getInitialSize() {
     // The item may not have been activated yet. If that's the case, just use the first item.
     const activePaneItem =
