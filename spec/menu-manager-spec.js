@@ -285,6 +285,14 @@ describe("MenuManager", function () {
       expect(menu.prepareNativeTemplate(target)[0].enabled).toBe(true);
     });
 
+    it("leaves native Services available for the operating system to populate", () => {
+      menu.add([
+        { label: "Services", role: "services", submenu: [] },
+        { label: "Empty Extension", submenu: [] },
+      ]);
+      expect(menu.prepareNativeTemplate(target).map((item) => item.enabled)).toEqual([true, false]);
+    });
+
     it("keeps native editing commands available on supported Chromium inputs", () => {
       const subscriptions = new CompositeDisposable();
       const performWebContentsAction = jasmine.createSpy("performWebContentsAction");

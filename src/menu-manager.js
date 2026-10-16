@@ -496,7 +496,8 @@ module.exports = class MenuManager {
           target,
           commands,
         );
-        if (Array.isArray(item.submenu)) {
+        // Cocoa populates role-owned menus such as Services after this snapshot.
+        if (Array.isArray(item.submenu) && !item.role) {
           item.enabled &&= item.submenu.some(
             (child) => child.type !== "separator" && child.visible !== false && child.enabled,
           );
