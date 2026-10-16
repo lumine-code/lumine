@@ -181,7 +181,105 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "6564a9e21899b5541e9c8f8006f9be6d6d72e6ad"
+      "themeSourceRevision": "828c35ac1816466699effa6f7cf7eedccc930ff9",
+      "capturedOn": "2026-10-16",
+      "sourceRevision": "f8d8badf72a1a2e010c2c5d76306bade6c5fefd0",
+      "packageSourceRevisions": {
+        "linter": "21341130b995028e80d912c625a7efec5157f8c0",
+        "linter-panel": "8429c011240fa648cd88a3911cdaead2dc16b381",
+        "settings-view": "28ae9cdb478e153c0e74d11c35f142ab25ed62b0",
+        "tree-view": "c94a3fd6465481fc2a2ec090ced0c60fe46018f2"
+      },
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "44d0b29a5b7ef09a3f103b2677233d2373df51d6698f13cf6906f57c270d76d7",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.7.1",
+          "chrome": "152.0.7977.149",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
+        "sources": {
+          "editor": {
+            "revision": "f8d8badf72a1a2e010c2c5d76306bade6c5fefd0",
+            "dirty": true,
+            "workingTreeHash": "c20cd43d5c666eabe04f96b80f9a67779d5602cd70e096a7b8e3ee6627ad90e2"
+          },
+          "linter": {
+            "revision": "21341130b995028e80d912c625a7efec5157f8c0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter-panel": {
+            "revision": "8429c011240fa648cd88a3911cdaead2dc16b381",
+            "dirty": true,
+            "workingTreeHash": "cfd317319c1ec7ae6f1fb78b6fb92195aca8c1361322b0f2e6e38f7637f2002e"
+          },
+          "one-theme": {
+            "revision": "828c35ac1816466699effa6f7cf7eedccc930ff9",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "settings-view": {
+            "revision": "28ae9cdb478e153c0e74d11c35f142ab25ed62b0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "c94a3fd6465481fc2a2ec090ced0c60fe46018f2",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/data/samples.csv",
+            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+          },
+          {
+            "file": "Signal Lab/docs/experiments.md",
+            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+          },
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+          },
+          {
+            "file": "Signal Lab/package.json",
+            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+          },
+          {
+            "file": "Signal Lab/src/signal.js",
+            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+          }
+        ],
+        "sha256": "befae78bf2c649e8ec9a83f968a6d2d209521918bea5bca886d636b73fe41a00"
+      }
     },
     {
       "file": "view-4.png",
