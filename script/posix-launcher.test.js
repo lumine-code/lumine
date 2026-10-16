@@ -49,7 +49,11 @@ function fixture(t, platform = "Linux") {
     // The launcher may finish while its detached native probe is still alive.
     // Finish fixture-owned work before removing a working directory that
     // Windows keeps locked until the actual processes have exited.
-    for (const key of ["LUMINE_TEST_KEEPALIVE", "LUMINE_TEST_RELEASE"]) {
+    for (const key of [
+      "LUMINE_TEST_KEEPALIVE",
+      "LUMINE_TEST_RELEASE",
+      "LUMINE_TEST_REPORTER_RELEASE",
+    ]) {
       if (env[key]) fs.writeFileSync(env[key], "fixture cleanup\n");
     }
     for (const { child, closed } of children) {
@@ -57,11 +61,15 @@ function fixture(t, platform = "Linux") {
       await closed;
     }
     if (fs.existsSync(env.LUMINE_TEST_REPORT)) {
-      const { pid, parentPid } = JSON.parse(fs.readFileSync(env.LUMINE_TEST_REPORT, "utf8"));
+      const { pid, parentPid, reporterPid } = JSON.parse(
+        fs.readFileSync(env.LUMINE_TEST_REPORT, "utf8"),
+      );
       await waitForOwnedProcessExit(pid);
       // The probe reports its own native shell parent before it can be
       // reparented. Never wait on this test process or the system's adopter.
       if (parentPid > 1 && parentPid !== process.pid) await waitForOwnedProcessExit(parentPid);
+      if (reporterPid > 1 && reporterPid !== process.pid)
+        await waitForOwnedProcessExit(reporterPid);
     }
     assert.equal(path.dirname(directory), fs.realpathSync.native(os.tmpdir()));
     fs.rmSync(directory, { recursive: true, force: true });
@@ -103,7 +111,7 @@ if (options.wait && process.env.LUMINE_TEST_RELEASE) {
 if (process.env.LUMINE_TEST_PROBE_EXITED) {
   process.on("exit", () => fs.writeFileSync(process.env.LUMINE_TEST_PROBE_EXITED, "exited\\n"));
 }
-const report = { pid: process.pid, parentPid: process.ppid, argv, input, home: process.env.LUMINE_HOME, homeExisted, seeded: fs.existsSync(path.join(process.env.LUMINE_HOME, "init.js")) };
+const report = { pid: process.pid, parentPid: process.ppid, reporterPid: Number(process.env.LUMINE_TEST_REPORTER_PID), argv, input, home: process.env.LUMINE_HOME, homeExisted, seeded: fs.existsSync(path.join(process.env.LUMINE_HOME, "init.js")) };
 fs.writeFileSync(process.env.LUMINE_TEST_REPORT + ".tmp", JSON.stringify(report));
 fs.renameSync(process.env.LUMINE_TEST_REPORT + ".tmp", process.env.LUMINE_TEST_REPORT);
 console.log("launcher probe");
@@ -114,13 +122,20 @@ process.exitCode = Number(process.env.LUMINE_TEST_EXIT || 0);
     platform === "Darwin"
       ? path.join(app, "Contents", "MacOS", "Lumine")
       : path.join(install, "lumine"),
-    '#!/bin/bash\nexec "$LUMINE_TEST_NODE" "$LUMINE_TEST_PROBE" "$@"\n',
+    // MSYS exec can leave a native helper between Node and its logical shell
+    // parent. Capture the reporter before exec, while its MSYS parent PID is
+    // still available, and translate that PID for Node's native liveness check.
+    '#!/bin/bash\nLUMINE_TEST_REPORTER_PID=$PPID\nif [ -r "/proc/$PPID/winpid" ]; then read -r LUMINE_TEST_REPORTER_PID < "/proc/$PPID/winpid"; fi\nexport LUMINE_TEST_REPORTER_PID\nexec "$LUMINE_TEST_NODE" "$LUMINE_TEST_PROBE" "$@"\n',
   );
   const bin = path.join(directory, "bin");
   executable(path.join(bin, "uname"), `#!/bin/bash\nprintf '%s\\n' '${platform}'\n`);
   executable(
     path.join(bin, "open"),
     '#!/bin/bash\nif [ -n "$LUMINE_TEST_OPEN_EXIT" ]; then exit "$LUMINE_TEST_OPEN_EXIT"; fi\nwhile [ "$#" -gt 0 ] && [ "$1" != --args ]; do shift; done\nshift\nexec "$LUMINE_TEST_APP" "$@" >/dev/null 2>&1\n',
+  );
+  executable(
+    path.join(bin, "rmdir"),
+    '#!/bin/bash\nif [ -n "$LUMINE_TEST_REPORTER_HELPER" ]; then "$LUMINE_TEST_NODE" "$LUMINE_TEST_REPORTER_HELPER"; fi\nexec "$(PATH=/usr/bin:/bin command -v rmdir)" "$@"\n',
   );
   const resources = path.join(directory, "defaults");
   fs.mkdirSync(path.join(resources, "dot-lumine"), { recursive: true });
@@ -157,6 +172,9 @@ process.exitCode = Number(process.env.LUMINE_TEST_EXIT || 0);
     "LUMINE_TEST_KEEPALIVE",
     "LUMINE_TEST_PROBE_EXITED",
     "LUMINE_TEST_READ_STDIN",
+    "LUMINE_TEST_REPORTER_HELPER",
+    "LUMINE_TEST_REPORTER_READY",
+    "LUMINE_TEST_REPORTER_RELEASE",
   ]) {
     delete env[name];
   }
@@ -406,6 +424,45 @@ test(
     assert.equal(f.report().homeExisted, false);
     assert.equal(f.report().seeded, true);
     assert.deepEqual(parseOptions(f.report().argv)._, ["--help"]);
+  },
+);
+
+test(
+  "Linux detached fixture owns the reporter after its native probe exits",
+  { timeout: 15000 },
+  async (t) => {
+    const f = fixture(t);
+    f.env.LUMINE_TEST_REPORTER_READY = path.join(f.directory, "reporter-ready");
+    f.env.LUMINE_TEST_REPORTER_RELEASE = path.join(f.directory, "release-reporter");
+    f.env.LUMINE_TEST_REPORTER_HELPER = path.join(f.directory, "reporter-gate.js");
+    fs.writeFileSync(
+      f.env.LUMINE_TEST_REPORTER_HELPER,
+      `
+const fs = require("node:fs");
+const path = require("node:path");
+const release = process.env.LUMINE_TEST_REPORTER_RELEASE;
+const watcher = fs.watch(path.dirname(release), () => {
+  if (fs.existsSync(release)) watcher.close();
+});
+fs.writeFileSync(process.env.LUMINE_TEST_REPORTER_READY, "ready\\n");
+if (fs.existsSync(release)) watcher.close();
+`,
+    );
+    const ready = reportReady(f.env.LUMINE_TEST_REPORTER_READY);
+    t.after(ready.close);
+    const child = f.launch(["project"], { async: true, stdio: "ignore" });
+    const closed = once(child, "close");
+    await ready.ready;
+    assert.deepEqual(await closed, [0, null]);
+    const report = f.report();
+    await waitForOwnedProcessExit(report.pid);
+    assert.ok(report.reporterPid > 1);
+    assert.notEqual(report.reporterPid, process.pid);
+    process.kill(report.reporterPid, 0);
+    assert.equal(
+      fs.readdirSync(f.directory).some((name) => name.startsWith("lumine-output.")),
+      true,
+    );
   },
 );
 
