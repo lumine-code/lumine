@@ -390,6 +390,12 @@ module.exports = class TextEditorComponent {
       this.remeasureCharacterDimensions = false;
     }
 
+    if (!this.visible && this.updateOffscreenAutoHeightLayout()) {
+      if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
+      this.updateScheduled = false;
+      return;
+    }
+
     if (this.isVisible()) this.measureBlockDecorations();
 
     this.updateSyncBeforeMeasuringContent(updateMode);
@@ -429,6 +435,45 @@ module.exports = class TextEditorComponent {
     }
 
     this.updateScheduled = false;
+  }
+
+  updateOffscreenAutoHeightLayout() {
+    const { model } = this.props;
+    // Wrapped, externally sized editors need no longest-line DOM measurement
+    // or scrollbar space to determine their height. Rich block content and
+    // auto-width/unwrapped editors retain the complete measurement path.
+    if (!model.isSoftWrapped() || model.getAutoWidth() || this.blockDecorationElements.size > 0) {
+      return false;
+    }
+
+    this.queryMaxLineNumberDigits();
+    this.queryGuttersToRender();
+    // A gutter's width changes the wrapping width. Reconcile its measurement
+    // placeholder through the full path when its digits or configuration
+    // change; ordinary offscreen sizing keeps the existing gutter shell.
+    if (
+      this.remeasureGutterDimensions ||
+      this.showLineNumbers !== model.doesShowLineNumbers() ||
+      this.guttersToRender.some(
+        (gutter) => gutter !== model.getLineNumberGutter() && gutter.isVisible(),
+      )
+    ) {
+      return false;
+    }
+
+    this.derivedDimensionsCache = {};
+    this.updateModelSoftWrapColumn();
+    // Auto-height is part of the parent's layout, so its full wrapped extent
+    // must be exact even though none of its lines needs to paint yet.
+    model.getScreenLineCount();
+    this.derivedDimensionsCache = {};
+    this.updateRootElement();
+    this.updateClientContainerElement();
+    this.updateScrollContainerElement();
+    this.updateContentElement();
+    this.updateLineTilesElement();
+    this.syncDummyScrollbars();
+    return true;
   }
 
   // Smooth scrolling normally changes only the viewport position. If the

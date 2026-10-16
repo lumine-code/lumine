@@ -19,7 +19,6 @@ describe("TextEditor auto-height layout outside the viewport", () => {
       autoWidth: false,
       softWrapped: true,
       softWrapAtPreferredLineLength: false,
-      lineNumberGutterVisible: false,
       showInvisibles: false,
     });
     editor.setText("a long example with enough words to wrap ".repeat(16));
@@ -51,17 +50,24 @@ describe("TextEditor auto-height layout outside the viewport", () => {
 
   it("establishes wrapped height when its collapsed parent expands offscreen", async () => {
     const setVisible = spyOn(editor, "setVisible").and.callThrough();
+    const render = spyOn(component, "renderSync").and.callThrough();
     expandHost();
 
     expect(component.hasInitialMeasurements).toBe(true);
     expect(editor.getElement().offsetHeight).toBeGreaterThan(component.getLineHeight());
     expectFullContentHeight();
+    expect(render).not.toHaveBeenCalled();
+    expect(editor.getElement().querySelector(".line:not(.dummy)")).toBeNull();
+    expect(editor.getElement().querySelector(".line-number:not(.dummy)")).toBeNull();
     await conditionPromise(() => !component.visible);
     expect(setVisible.calls.allArgs().some(([visible]) => visible)).toBe(false);
     const height = host.scrollHeight;
     host.scrollTop = 1000;
     await conditionPromise(() => component.visible);
     expect(host.scrollHeight).toBe(height);
+    expect(render).toHaveBeenCalled();
+    expect(editor.getElement().querySelector(".line:not(.dummy)")).not.toBeNull();
+    expect(editor.getElement().querySelector(".line-number:not(.dummy)")).not.toBeNull();
   });
 
   it("reflows and updates its content height while outside the viewport", async () => {
@@ -76,6 +82,56 @@ describe("TextEditor auto-height layout outside the viewport", () => {
     editor.setText(`${editor.getText()}\n${editor.getText()}`);
     await conditionPromise(() => editor.getElement().offsetHeight > wrappedHeight);
     expectFullContentHeight();
+  });
+
+  it("shrinks previously rendered content without painting it again offscreen", async () => {
+    expandHost();
+    component.didShow();
+    const oldHeight = editor.getElement().offsetHeight;
+    expect(editor.getElement().querySelector(".line:not(.dummy)")).not.toBeNull();
+    component.didHide();
+    const render = spyOn(component, "renderSync").and.callThrough();
+
+    editor.setText("Short example.");
+    await conditionPromise(() => editor.getElement().offsetHeight < oldHeight);
+    expectFullContentHeight();
+    expect(render).not.toHaveBeenCalled();
+    const height = host.scrollHeight;
+    component.didShow();
+    expect(host.scrollHeight).toBe(height);
+    expect(editor.getElement().querySelector(".line:not(.dummy)").textContent).toContain(
+      "Short example.",
+    );
+  });
+
+  it("reconciles wider gutter digits before sizing offscreen content", () => {
+    expandHost();
+    const oldGutterWidth = component.getGutterContainerWidth();
+    editor.setText(Array.from({ length: 100 }, () => "long wrapped example ".repeat(8)).join("\n"));
+    component.updateSync();
+
+    expect(component.getGutterContainerWidth()).toBeGreaterThan(oldGutterWidth);
+    expect(component.lineNumbersToRender.maxDigits).toBe(3);
+    expectFullContentHeight();
+    const height = host.scrollHeight;
+    component.didShow();
+    expect(host.scrollHeight).toBe(height);
+  });
+
+  it("fully measures custom gutters before sizing offscreen content", () => {
+    editor.addGutter({
+      name: "custom-numbers",
+      type: "line-number",
+      labelFn: ({ bufferRow }) => `label ${bufferRow}`,
+    });
+    const render = spyOn(component, "renderSync").and.callThrough();
+    expandHost();
+
+    expect(render).toHaveBeenCalled();
+    expectFullContentHeight();
+    const height = host.scrollHeight;
+    component.didShow();
+    expect(host.scrollHeight).toBe(height);
   });
 
   it("keeps display:none and fixed-height editors suppressed", () => {
