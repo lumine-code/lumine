@@ -4,7 +4,7 @@ echoerr() { echo "$@" 1>&2; }
 
 if [ "$(uname)" == 'Darwin' ]; then
   OS='Mac'
-elif [ "$(expr substr $(uname -s) 1 5)" == 'Linux' ]; then
+elif [[ "$(uname -s)" == Linux* ]]; then
   OS='Linux'
 else
   echoerr "Your platform ($(uname -a)) is not supported."
