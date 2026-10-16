@@ -470,6 +470,55 @@ describe("Save confirmation", () => {
     expect(editor.canSaveAutomatically()).toBeFalse();
   });
 
+  it("cancels confirmation opened while a cancelled load reconciles the backing file", async () => {
+    const externalText = "print('changed while the cancelled load was reconciling')\n";
+    let saving, notification;
+    spyOn(buffer.buffer, "load").and.resolveTo(null);
+    const matchesFile = spyOn(buffer.buffer, "baseTextMatchesFile");
+    matchesFile.and.callFake(async () => {
+      matchesFile.and.callThrough();
+      saving = startSave(() => editor.save());
+      notification = await saving.notification;
+      fs.writeFileSync(filePath, externalText);
+      return false;
+    });
+
+    await buffer.load({ internal: true });
+    expect(editor.getFileState()).toBe("conflicted");
+    expect(notification.isDismissed()).toBeTrue();
+    click(notification, "Yes, remember");
+
+    await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
+    expect(fs.readFileSync(filePath, "utf8")).toBe(externalText);
+    expect(editor.getText()).toBe(changedText);
+    expect(editor.getFileState()).toBe("conflicted");
+    expect(editor.canSaveAutomatically()).toBeFalse();
+  });
+
+  it("cancels confirmation opened while a cancelled load discovers a deleted backing file", async () => {
+    let saving, notification;
+    spyOn(buffer.buffer, "load").and.resolveTo(null);
+    const matchesFile = spyOn(buffer.buffer, "baseTextMatchesFile");
+    matchesFile.and.callFake(async () => {
+      matchesFile.and.callThrough();
+      saving = startSave(() => editor.save());
+      notification = await saving.notification;
+      fs.unlinkSync(filePath);
+      throw Object.assign(new Error("The backing file was deleted"), { code: "ENOENT" });
+    });
+
+    await buffer.load({ internal: true });
+    expect(editor.getFileState()).toBe("removed");
+    expect(notification.isDismissed()).toBeTrue();
+    click(notification, "Yes, remember");
+
+    await expectAsync(saving.operation).toBeRejectedWithError(SaveCancelledError);
+    expect(fs.existsSync(filePath)).toBeFalse();
+    expect(editor.getText()).toBe(changedText);
+    expect(editor.getFileState()).toBe("removed");
+    expect(editor.canSaveAutomatically()).toBeFalse();
+  });
+
   it("cancels a pending save when its buffer is destroyed", async () => {
     const saving = startSave(() => buffer.save());
     const notification = await saving.notification;

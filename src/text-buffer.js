@@ -3344,6 +3344,7 @@ class TextBuffer {
         this.file === file &&
         !this.isDestroyed()
       ) {
+        this.pendingConfirmedSave?.cancel();
         this.setFileState("removed");
       }
       return;
@@ -3363,6 +3364,9 @@ class TextBuffer {
     if (baseTextMatchesFile) {
       this.updateFileStateFromBuffer({ resolveStickyState: true });
     } else {
+      // A save prompt can open after this load starts but before its backing
+      // file comparison finishes, sharing the same operation generation.
+      this.pendingConfirmedSave?.cancel();
       this.setFileState("conflicted");
     }
   }
