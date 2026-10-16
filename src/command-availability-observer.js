@@ -74,11 +74,15 @@ module.exports = class CommandAvailabilityObserver {
     const subscriptions = new CompositeDisposable();
     this.items.set(item, subscriptions);
     for (const method of ["onDidChangeURI", "onDidChangeFileState"]) {
-      if (typeof item[method] === "function")
-        subscriptions.add(item[method](() => this.invalidate()));
+      if (typeof item[method] !== "function") continue;
+      const subscription = item[method](() => this.invalidate());
+      if (typeof subscription?.dispose === "function") subscriptions.add(subscription);
     }
-    if (typeof item.onDidDestroy === "function")
-      subscriptions.add(item.onDidDestroy(() => this.removeItem(item)));
+    if (typeof item.onDidDestroy === "function") {
+      const subscription = item.onDidDestroy(() => this.removeItem(item));
+      if (typeof subscription?.dispose === "function") subscriptions.add(subscription);
+    }
+    this.invalidate();
   }
 
   removeItem(item) {

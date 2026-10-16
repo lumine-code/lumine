@@ -59,6 +59,36 @@ describe("command availability follows model state", () => {
     expect(changes).toHaveBeenCalledWith(undefined);
   });
 
+  it("invalidates Save All when a non-active custom pane item is added", async () => {
+    const pane = lumine.workspace.getActivePane();
+    await lumine.workspace.open();
+    await globalThis.flushMicrotasks();
+    const changes = jasmine.createSpy("custom pane item added");
+    registrations.push(lumine.commands.onDidChange(changes));
+    const item = {
+      element: document.createElement("div"),
+      getTitle: () => "Custom modified document",
+      getURI: () => "custom://modified",
+      getFileState: () => "modified",
+      save() {},
+    };
+    pane.addItem(item, { activateItem: false });
+    await globalThis.flushMicrotasks();
+    expect(changes).toHaveBeenCalled();
+    expect(lumine.commands.canDispatch(lumine.workspace.element, "window:save-all")).toBeTrue();
+  });
+
+  it("tolerates custom pane items whose optional subscription methods return nothing", () => {
+    const item = {
+      element: document.createElement("div"),
+      getTitle: () => "Custom pane item",
+      onDidChangeFileState() {},
+      onDidChangeURI() {},
+      onDidDestroy() {},
+    };
+    expect(() => lumine.workspace.commandAvailabilityObserver.observeItem(item)).not.toThrow();
+  });
+
   it("matches the new grammar scope before the next view render", async () => {
     const editor = await lumine.workspace.open();
     const target = editor.getElement();
