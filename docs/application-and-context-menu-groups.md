@@ -162,6 +162,6 @@ Register runtime contributions during synchronous package activation and dispose
 
 Context callbacks receive `(event, context)`: the original clicked event remains available for ownership checks, while `context.commandTarget` resolves the row's saved dispatch target. `context.contextTarget` is the clicked element and `context.focusTarget` is the captured focus. Compute an action's checked and enabled state from its command target so a focus-targeted status menu describes the same surface it will operate on.
 
-A submenu is disabled when it contains no visible, enabled action. This applies recursively to both HTML menus and the native application menu.
+A submenu is disabled when it contains no visible, enabled action. This applies recursively to both HTML menus and the native application menu; native roles such as Services remain available for the operating system to populate.
 
 The native application menu and HTML application-menu bars receive the same prepared layout. Context menus use the same group and separator rules after their selector and event filtering. Disabling, unloading or reactivating a package therefore recalculates groups from the remaining contributions, removes empty groups and restores commands to their declared positions. Core-owned submenu paths stay registered even while their rendered contents are empty.
