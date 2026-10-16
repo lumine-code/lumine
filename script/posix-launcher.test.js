@@ -72,6 +72,10 @@ class Probe {
     info.UseShellExecute = false;
     bool readInput = Environment.GetEnvironmentVariable("LUMINE_TEST_READ_STDIN") == "1";
     info.RedirectStandardInput = readInput;
+    // Framework Process.Start uses Console.InputEncoding for its stdin writer
+    // and flushes the preamble before the raw byte pump can access BaseStream.
+    if (readInput && Console.InputEncoding.CodePage == 65001 && Console.InputEncoding.GetPreamble().Length > 0)
+      Console.InputEncoding = new System.Text.UTF8Encoding(false);
     using (var child = Process.Start(info)) {
       if (nodeMode) File.WriteAllText(Environment.GetEnvironmentVariable("LUMINE_TEST_BOOTSTRAP"), "{\"pid\":" + child.Id + ",\"parentPid\":" + Process.GetCurrentProcess().Id + "}");
       if (readInput) { Console.OpenStandardInput().CopyTo(child.StandardInput.BaseStream); child.StandardInput.Close(); }
@@ -201,10 +205,14 @@ const argv = process.argv.slice(2);
 const options = require(process.env.LUMINE_TEST_PARSER)(argv);
 const homeExisted = fs.existsSync(process.env.LUMINE_HOME);
 let input = null;
+let inputHex = null;
 if (process.env.LUMINE_TEST_READ_STDIN) {
-  input = "";
+  const bytes = [];
   const byte = Buffer.alloc(1);
-  while (!input.endsWith("\\n") && fs.readSync(0, byte, 0, 1, null)) input += byte.toString("utf8");
+  while (fs.readSync(0, byte, 0, 1, null)) { bytes.push(byte[0]); if (byte[0] === 10) break; }
+  const buffer = Buffer.from(bytes);
+  input = buffer.toString("utf8");
+  inputHex = buffer.toString("hex");
 }
 if (process.env.LUMINE_TEST_SEED) require(process.env.LUMINE_TEST_PATHS).seedUserConfig(process.env.LUMINE_TEST_RESOURCES);
 if (process.env.LUMINE_TEST_RELEASE || process.env.LUMINE_TEST_KEEPALIVE) {
@@ -217,7 +225,7 @@ if (process.env.LUMINE_TEST_RELEASE || process.env.LUMINE_TEST_KEEPALIVE) {
   });
 }
 if (process.env.LUMINE_TEST_PROBE_EXITED) process.on("exit", () => fs.writeFileSync(process.env.LUMINE_TEST_PROBE_EXITED, "exited\\n"));
-const report = { pid: process.pid, parentPid: process.ppid, waiterPid: options.wait ? options.pid : null, argv, input, home: process.env.LUMINE_HOME, homeExisted,
+const report = { pid: process.pid, parentPid: process.ppid, waiterPid: options.wait ? options.pid : null, argv, input, inputHex, home: process.env.LUMINE_HOME, homeExisted,
   seeded: fs.existsSync(path.join(process.env.LUMINE_HOME, "init.js")), nodeMode: process.env.ELECTRON_RUN_AS_NODE ?? null,
   shellEnvironment: process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT,
   resourcePath: process.env.LUMINE_RESOURCE_PATH, devMode: process.env.LUMINE_DEV_MODE, logging: process.env.ELECTRON_ENABLE_LOGGING };
@@ -422,16 +430,19 @@ for (const platform of ["Linux", "Darwin"]) {
     assert.equal(shellPath((await f.report()).home), `${shellPath(f.directory)}/.lumine`);
   });
 
-  test(`${platform} preserves stdin and returns failure for --foreground with --wait`, async (t) => {
-    const f = fixture(t, platform);
-    f.env.LUMINE_TEST_READ_STDIN = "1";
-    f.env.LUMINE_TEST_EXIT = "7";
-    const result = f.launch(["--wait", "-f"], { input: "launcher input\n" });
-    assert.equal(result.status, 7, result.stderr);
-    const report = await f.report();
-    assert.equal(report.input, "launcher input\n");
-    assert.throws(() => process.kill(report.waiterPid, 0), { code: "ESRCH" });
-  });
+  for (const input of ["launcher input\n", "żółć λ 日本語\n", "\uFEFFintentional input BOM\n"]) {
+    test(`${platform} preserves stdin bytes and failure with --foreground --wait: ${JSON.stringify(input)}`, async (t) => {
+      const f = fixture(t, platform);
+      f.env.LUMINE_TEST_READ_STDIN = "1";
+      f.env.LUMINE_TEST_EXIT = "7";
+      const result = f.launch(["--wait", "-f"], { input });
+      assert.equal(result.status, 7, result.stderr);
+      const report = await f.report();
+      assert.equal(report.input, input);
+      assert.equal(report.inputHex, Buffer.from(input, "utf8").toString("hex"));
+      assert.throws(() => process.kill(report.waiterPid, 0), { code: "ESRCH" });
+    });
+  }
 
   for (const args of [[], ["-f"], ["--wait"]]) {
     test(`${platform} applies common failure policy for ${JSON.stringify(args)}`, async (t) => {
