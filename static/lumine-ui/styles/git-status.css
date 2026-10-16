@@ -92,4 +92,29 @@
   .tab-bar .tab:not(.active) .status-conflicted {
     color: var(--tab-inactive-status-conflicted);
   }
+
+  /* A staged-only path uses the same muted palette as staged gutter hunks.
+     Any worktree or unsaved buffer change keeps the ordinary status color. */
+  .status-added.status-staged {
+    --git-staged-color: var(--text-color-added-staged);
+    color: var(--git-staged-color);
+  }
+  .status-modified.status-staged {
+    --git-staged-color: var(--text-color-modified-staged);
+    color: var(--git-staged-color);
+  }
+
+  .list-group,
+  .list-tree {
+    li:not(.list-nested-item).status-staged:is(.status-added, .status-modified),
+    li.list-nested-item.status-staged:is(.status-added, .status-modified) > .list-item,
+    li:not(.list-nested-item).selected.status-staged:is(.status-added, .status-modified),
+    li.list-nested-item.selected.status-staged:is(.status-added, .status-modified) > .list-item {
+      color: var(--git-staged-color);
+    }
+  }
+
+  .tab-bar .tab:not(.active) .status-staged:is(.status-added, .status-modified) {
+    color: color-mix(in srgb, var(--git-staged-color) 65%, transparent);
+  }
 }

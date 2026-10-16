@@ -129,6 +129,8 @@ function summaryFromStatusEntry(entry) {
     modified,
     added,
     renamed: entry.kind === "renamed" || entry.kind === "copied",
+    staged: Boolean(entry.staged),
+    unstaged: Boolean(entry.unstaged),
   });
 }
 
@@ -1328,12 +1330,20 @@ module.exports = class GitRepository {
             const key = separatorIndex === -1 ? "" : entryKey.slice(0, separatorIndex);
             let aggregate = directoryStatusAggregates.get(key);
             if (!aggregate) {
-              aggregate = { conflicted: false, modified: false, added: false };
+              aggregate = {
+                conflicted: false,
+                modified: false,
+                added: false,
+                staged: false,
+                unstaged: false,
+              };
               directoryStatusAggregates.set(key, aggregate);
             }
             aggregate.conflicted ||= conflicted;
             aggregate.modified ||= modified;
             aggregate.added ||= added;
+            aggregate.staged ||= Boolean(entry.staged);
+            aggregate.unstaged ||= Boolean(entry.unstaged);
 
             const pendingYield = checkpoint();
             if (pendingYield && !(await pendingYield)) return this.statusSnapshot;
@@ -1485,7 +1495,7 @@ module.exports = class GitRepository {
    * snapshot.
    *
    * @param {String} filePath - A `String` path, absolute or repository-relative.
-   * @returns {Object|null} frozen `{source, conflicted, modified, added, renamed}` object (`source` is always `"snapshot"`), or `null` for clean, ignored, unknown, and pre-snapshot paths.
+   * @returns {Object|null} frozen `{source, conflicted, modified, added, renamed, staged, unstaged}` object (`source` is always `"snapshot"`), or `null` for clean, ignored, unknown, and pre-snapshot paths. Both `staged` and `unstaged` can be true.
    */
   getPathStatusSummary(filePath) {
     if (filePath == null || this.isDestroyed() || !this.statusSnapshot.initialized) return null;
@@ -1520,6 +1530,8 @@ module.exports = class GitRepository {
       conflicted: aggregate.conflicted,
       modified: aggregate.modified,
       added: aggregate.added,
+      staged: aggregate.staged,
+      unstaged: aggregate.unstaged,
     });
   }
 

@@ -102,8 +102,10 @@
   --ui-row-height: calc(var(--ui-unit) * 2);
   --use-custom-controls: true;
   --text-color-added: var(--text-color-success);
+  --text-color-added-staged: var(--syntax-color-added-staged);
   --text-color-ignored: var(--text-color-subtle);
   --text-color-modified: var(--text-color-warning);
+  --text-color-modified-staged: var(--syntax-color-modified-staged);
   --text-color-removed: var(--text-color-error);
   --text-color-renamed: var(--text-color-info);
   --text-color-conflicted: var(--text-color-error);

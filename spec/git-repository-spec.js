@@ -974,6 +974,39 @@ describe("GitRepository", () => {
       expect(repo.getDirectoryStatusSummary(workingDirectory)).toBeNull();
     });
 
+    it("preserves staged and unstaged flags in file and directory summaries", async () => {
+      output = [
+        "# branch.oid abc123",
+        "# branch.head main",
+        "1 M. N... 100644 100644 100644 aaa bbb staged/edited.txt",
+        "1 A. N... 000000 100644 100644 000 bbb staged/new.txt",
+        "1 .M N... 100644 100644 100644 aaa bbb unstaged/edited.txt",
+        "1 MM N... 100644 100644 100644 aaa bbb mixed/edited.txt",
+        "? untracked/new.txt",
+        "! ignored/cache.txt",
+        "",
+      ].join("\0");
+      await repo.refreshStatusSnapshot();
+      for (const [name, staged, unstaged] of [
+        ["staged/edited.txt", true, false],
+        ["staged/new.txt", true, false],
+        ["unstaged/edited.txt", false, true],
+        ["mixed/edited.txt", true, true],
+        ["untracked/new.txt", false, true],
+      ]) {
+        expect(repo.getPathStatusSummary(name)).toEqual(
+          jasmine.objectContaining({ staged, unstaged }),
+        );
+        expect(repo.getDirectoryStatusSummary(path.dirname(name))).toEqual(
+          jasmine.objectContaining({ staged, unstaged }),
+        );
+      }
+      expect(repo.getDirectoryStatusSummary(workingDirectory)).toEqual(
+        jasmine.objectContaining({ staged: true, unstaged: true }),
+      );
+      expect(repo.getDirectoryStatusSummary("ignored")).toBeNull();
+    });
+
     it("pins the snapshot classification to the public modified-beats-added order", async () => {
       output = [
         "# branch.oid abc123",
