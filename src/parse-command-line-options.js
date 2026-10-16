@@ -52,13 +52,6 @@ function optionValue(definition, value) {
   }
 }
 
-function positionalValue(value) {
-  // Match yargs' default numeric coercion. parse-command-line deliberately
-  // ignores numeric positionals rather than treating them as file names.
-  if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(value)) return Number(value);
-  return value;
-}
-
 function assignOption(result, definition, value) {
   result[definition.name] = optionValue(definition, value);
 }
@@ -117,20 +110,24 @@ function consumeShortOptions(args, index, result) {
 }
 
 function parseCommandLineOptions(processArgs) {
-  const args = processArgs.filter((argument) => !argument.startsWith("-psn_"));
+  const args = processArgs;
   const result = { _: [] };
 
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
     if (argument === "--") {
-      result._.push(...args.slice(index + 1).map(positionalValue));
+      result._.push(...args.slice(index + 1));
       break;
+    } else if (argument.startsWith("-psn_")) {
+      // Finder's process serial number is a launcher option. After --, the
+      // same spelling is an ordinary file name and must reach the editor.
+      continue;
     } else if (argument.startsWith("--")) {
       index = consumeLongOption(args, index, result);
     } else if (argument.startsWith("-") && argument.length > 1) {
       index = consumeShortOptions(args, index, result);
     } else {
-      result._.push(positionalValue(argument));
+      result._.push(argument);
     }
   }
 

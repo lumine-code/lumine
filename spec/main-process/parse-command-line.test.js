@@ -68,8 +68,8 @@ describe("parseCommandLine", () => {
       });
     });
 
-    describe("and a non-flag number is passed as an argument", () => {
-      it("does not attempt to parse numbers as paths or URIs", () => {
+    describe("and a numeric name is passed as an argument", () => {
+      it("preserves numeric file and directory names", () => {
         const args = parseCommandLine([
           "43",
           "/some/path",
@@ -84,11 +84,23 @@ describe("parseCommandLine", () => {
         ]);
         assert.deepEqual(args.urlsToOpen, ["lumine://test/url", "lumine://other/url"]);
         assert.deepEqual(args.pathsToOpen, [
+          "43",
           "/some/path",
+          "22",
+          "97",
           "some/other/path",
+          "885",
+          "42",
           "./another-path.file",
         ]);
       });
+    });
+
+    it("preserves option-like and numeric names after --", () => {
+      const args = parseCommandLine(["--", "-psn_project", "--safe", "43", "-43"]);
+
+      assert.deepEqual(args.pathsToOpen, ["-psn_project", "--safe", "43", "-43"]);
+      assert.isUndefined(args.safeMode);
     });
   });
 
@@ -106,6 +118,13 @@ describe("parseCommandLine", () => {
       assert.isUndefined(args.devMode);
       assert.isUndefined(args.safeMode);
       assert.isUndefined(args.test);
+      assert.deepEqual(args.urlsToOpen, ["lumine://test/url"]);
+      assert.deepEqual(args.pathsToOpen, []);
+    });
+
+    it("ignores numeric names without failing to open the URL", () => {
+      const args = parseCommandLine(["--uri-handler", "43", "lumine://test/url"]);
+
       assert.deepEqual(args.urlsToOpen, ["lumine://test/url"]);
       assert.deepEqual(args.pathsToOpen, []);
     });

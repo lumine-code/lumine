@@ -24,7 +24,7 @@ describe("parseCommandLineOptions", () => {
   it("keeps values after -- positional and ignores unknown Electron switches", () => {
     const args = parseCommandLineOptions(["--no-sandbox", "file.js", "--", "-literal-name", "43"]);
 
-    assert.deepEqual(args._, ["file.js", "-literal-name", 43]);
+    assert.deepEqual(args._, ["file.js", "-literal-name", "43"]);
   });
 
   it("retains a string option with no value and continues parsing options", () => {
@@ -38,6 +38,21 @@ describe("parseCommandLineOptions", () => {
     const args = parseCommandLineOptions(["-psn_0_123456", "--_", "first.js", "-_", "second.js"]);
 
     assert.deepEqual(args._, ["first.js", "second.js"]);
+  });
+
+  it("preserves numeric names and Finder-like names after --", () => {
+    const args = parseCommandLineOptions([
+      "43",
+      "0007",
+      "3.14",
+      "--",
+      "-psn_project",
+      "-43",
+      "--safe",
+    ]);
+
+    assert.deepEqual(args._, ["43", "0007", "3.14", "-psn_project", "-43", "--safe"]);
+    assert.isUndefined(args.safe);
   });
 
   it("removes the app path from source-launch arguments", () => {

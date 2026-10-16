@@ -878,6 +878,22 @@ describe("LumineWindow", function () {
 
       const promise = w.openLocations(locationsToOpen);
       assert.deepEqual(w.projectRoots, ["directory0", "directory1"]);
+      assert.deepEqual(w.loadSettings.initialProjectRoots, ["directory0", "directory1"]);
+      assert.isTrue(w.loadSettings.hasOpenFiles);
+      w.resolveLoadedPromise();
+      await promise;
+    });
+
+    it("retains pending files when another launch adds only project roots", async function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        locationsToOpen: [{ pathToOpen: "file.txt", isFile: true }],
+      });
+
+      const promise = w.openLocations([{ pathToOpen: "directory0", isDirectory: true }]);
+
+      assert.deepEqual(w.loadSettings.initialProjectRoots, ["directory0"]);
+      assert.isTrue(w.loadSettings.hasOpenFiles);
       w.resolveLoadedPromise();
       await promise;
     });

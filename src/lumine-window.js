@@ -160,11 +160,6 @@ module.exports = class LumineWindow extends EventEmitter {
 
     this.addLocationsToOpen(locationsToOpen);
 
-    this.loadSettings.hasOpenFiles = locationsToOpen.some(
-      (location) => location.pathToOpen && !location.isDirectory,
-    );
-    this.loadSettings.initialProjectRoots = this.projectRoots;
-
     StartupTime.addMarker("main-process:lumine-window:end");
 
     // Only send to the first non-spec window created
@@ -423,6 +418,12 @@ module.exports = class LumineWindow extends EventEmitter {
 
     this.projectRoots = Array.from(roots);
     this.projectRoots.sort();
+    // Another launch can claim this window before its renderer bootstraps.
+    // Keep that bootstrap's project and file intent in sync with queued opens.
+    this.loadSettings.initialProjectRoots = this.projectRoots;
+    this.loadSettings.hasOpenFiles ||= locationsToOpen.some(
+      (location) => location.pathToOpen && !location.isDirectory,
+    );
   }
 
   replaceEnvironment(env) {
