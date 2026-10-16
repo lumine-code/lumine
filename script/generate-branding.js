@@ -268,37 +268,41 @@ function tileArt({ mark }) {
 
 // 164x314, MUI_WELCOMEFINISHPAGE_BITMAP (and, since uninstallerSidebar is left
 // unset, MUI_UNWELCOMEFINISHPAGE_BITMAP too). Match the website's neutral
-// surface and full-length rules, with the canonical gold disc as the accent.
+// surface and full-length rules within a framed panel. White margins keep its
+// frame separate from NSIS's page edge and footer separator.
 function sidebarArt({ gradient, disc, mark }) {
   const palette = brandAssets.PALETTES.light;
   return svg(
     "0 0 164 314",
     `<defs>${gradient}</defs>` +
-      `<rect width="164" height="314" fill="${palette.bg}"/>` +
-      `<path d="M14.5 0V314 M149.5 0V314 M0 32.5H164 M0 169.5H164 M0 254.5H164" fill="none" stroke="${palette.line}"/>` +
-      `<text x="26" y="21" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">TEXT EDITOR</text>` +
+      `<rect width="164" height="314" fill="#ffffff"/>` +
+      `<rect x="14.5" y="8.5" width="135" height="297" fill="${palette.bg}" stroke="${palette.line}"/>` +
+      `<path d="M14.5 32.5H149.5 M14.5 169.5H149.5 M14.5 254.5H149.5" fill="none" stroke="${palette.line}"/>` +
+      `<text x="26" y="24" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">TEXT EDITOR</text>` +
       `<g transform="translate(34 53) scale(0.75)">${disc}<g fill="#fff">${mark}</g></g>` +
       `<text x="25" y="209" fill="${palette.ink}" letter-spacing="-1" ` +
       `font-family="${WORDMARK_FAMILY}" font-weight="${WORDMARK_WEIGHT}" ` +
       `font-size="${WORDMARK_SIZE}">Lumine</text>` +
       `<text x="26" y="233" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="11">Your editor. Your way.</text>` +
       `<path d="M14.5 254.5H54.5" stroke="${palette.gold}" stroke-width="2"/>` +
-      `<text x="26" y="287" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">OPEN SOURCE</text>`,
+      `<text x="26" y="284" fill="${palette.muted}" font-family="${WORDMARK_FAMILY}" font-size="9" letter-spacing="0.8">OPEN SOURCE</text>`,
   );
 }
 
 // 150x57, MUI_HEADERIMAGE_BITMAP, drawn top-right against MUI2's white page
 // background (electron-builder does not override MUI_BGCOLOR). This one uses
 // the full icon, gold disc included: the white-only mark would be invisible.
+// The frame ends above the bitmap's bottom edge; NSIS draws the page rule.
 function headerArt({ gradient, disc, mark }) {
   const palette = brandAssets.PALETTES.light;
   return svg(
     "0 0 150 57",
     `<defs>${gradient}</defs>` +
       `<rect width="150" height="57" fill="#ffffff"/>` +
-      `<path d="M98.5 0V57 M0 56.5H150" fill="none" stroke="${palette.line}"/>` +
-      `<text x="10" y="35" fill="${palette.ink}" font-family="${WORDMARK_FAMILY}" font-weight="${WORDMARK_WEIGHT}" font-size="20" letter-spacing="-0.5">Lumine</text>` +
-      `<g transform="translate(104 8) scale(0.3203125)">${disc}<g fill="#fff">${mark}</g></g>`,
+      `<rect x="4.5" y="6.5" width="141" height="44" fill="none" stroke="${palette.line}"/>` +
+      `<path d="M98.5 6.5V50.5" fill="none" stroke="${palette.line}"/>` +
+      `<text x="14" y="35" fill="${palette.ink}" font-family="${WORDMARK_FAMILY}" font-weight="${WORDMARK_WEIGHT}" font-size="20" letter-spacing="-0.5">Lumine</text>` +
+      `<g transform="translate(104 10.5) scale(0.28125)">${disc}<g fill="#fff">${mark}</g></g>`,
   );
 }
 
@@ -843,8 +847,8 @@ function assertNotUniform(bgra, label) {
 // Check the neutral surface and the gold disc separately, so a broken fill
 // reference cannot quietly produce a black logo on an otherwise valid frame.
 function assertSidebarPalette(bgra, width, height) {
-  const corner = (height - 1) * width * 4 + (width - 1) * 4;
-  const actual = { b: bgra[corner], g: bgra[corner + 1], r: bgra[corner + 2] };
+  const surface = ((height - 12) * width + width - 25) * 4;
+  const actual = { b: bgra[surface], g: bgra[surface + 1], r: bgra[surface + 2] };
   const color = brandAssets.PALETTES.light.bg.slice(1);
   const expected = [0, 2, 4].map((index) => parseInt(color.slice(index, index + 2), 16));
   const off =
@@ -853,13 +857,26 @@ function assertSidebarPalette(bgra, width, height) {
     Math.abs(actual.b - expected[2]);
   if (off > 3) {
     fail(
-      `installerSidebar.bmp: far corner is rgb(${actual.r},${actual.g},${actual.b}), ` +
+      `installerSidebar.bmp: panel surface is rgb(${actual.r},${actual.g},${actual.b}), ` +
         `expected the shared light palette ${brandAssets.PALETTES.light.bg}`,
     );
   }
   const gold = (85 * width + 50) * 4;
   if (!(bgra[gold + 2] > bgra[gold + 1] + 15 && bgra[gold + 1] > bgra[gold] + 35))
     fail("installerSidebar.bmp: the canonical gold disc did not render");
+}
+
+// The native wizard supplies its own borders. No bitmap rule may reach its
+// outer edge, where scaling or a neighbouring native line would double it.
+function assertInstallerMargins(bgra, width, height, label) {
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (x !== 0 && x !== width - 1 && y !== 0 && y !== height - 1) continue;
+      const at = (y * width + x) * 4;
+      if (bgra[at] !== 255 || bgra[at + 1] !== 255 || bgra[at + 2] !== 255)
+        fail(`${label}: artwork reaches the native page edge at ${x},${y}`);
+    }
+  }
 }
 
 // Transparent art must actually be transparent at the corners, and opaque
@@ -913,6 +930,7 @@ async function renderAsset(win, asset) {
       const bgra = await capture(win, asset);
       assertOpaque(bgra, label);
       assertNotUniform(bgra, label);
+      assertInstallerMargins(bgra, asset.width, asset.height, label);
       if (label === "installerSidebar.bmp") {
         assertSidebarPalette(bgra, asset.width, asset.height);
       }
