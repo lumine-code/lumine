@@ -15,7 +15,7 @@ module.exports = function bufferGitStatus(
 
   const relative = repository.relativize?.(filePath);
   if (relative != null) {
-    const normalized = relative.replaceAll("\\", "/");
+    const normalized = relative.split(path.sep).join("/");
     if (path.isAbsolute(relative) || normalized === ".." || normalized.startsWith("../"))
       return null;
     const first = normalized.split("/")[0];

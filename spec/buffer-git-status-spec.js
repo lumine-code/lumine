@@ -122,6 +122,16 @@ describe("Git status for buffers", () => {
     expect(status(".git/config")).toBeNull();
   });
 
+  if (process.platform !== "win32") {
+    it("does not mistake a literal backslash in a POSIX filename for Git metadata", async () => {
+      fs.writeFileSync(path.join(root, ".git\\notes.txt"), "ordinary file\n");
+      await repository.refreshStatusSnapshot();
+      expect(status(".git\\notes.txt")).toEqual(
+        jasmine.objectContaining({ status: "added", untracked: true, canDiff: false }),
+      );
+    });
+  }
+
   it("distinguishes staged changes from an additional buffer edit", async () => {
     fs.writeFileSync(path.join(root, "tracked.txt"), "staged\n");
     await git(["add", "tracked.txt"]);
