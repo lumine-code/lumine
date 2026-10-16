@@ -398,6 +398,12 @@ const THEME_VARIABLES = Object.freeze([
   ...define("Git status colors", "ui", "semantic", [
     ["text-color-added", "color", "var(--text-color-success)", "Foreground for added Git items."],
     [
+      "text-color-added-staged",
+      "color",
+      "var(--syntax-color-added-staged)",
+      "Foreground for staged-only added Git items.",
+    ],
+    [
       "text-color-ignored",
       "color",
       "var(--text-color-subtle)",
@@ -408,6 +414,12 @@ const THEME_VARIABLES = Object.freeze([
       "color",
       "var(--text-color-warning)",
       "Foreground for modified Git items.",
+    ],
+    [
+      "text-color-modified-staged",
+      "color",
+      "var(--syntax-color-modified-staged)",
+      "Foreground for staged-only modified Git items.",
     ],
     ["text-color-removed", "color", "var(--text-color-error)", "Foreground for removed Git items."],
     ["text-color-renamed", "color", "var(--text-color-info)", "Foreground for renamed Git items."],
