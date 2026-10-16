@@ -91,9 +91,11 @@ function paneItemCommands(notifications) {
         ? {}
         : {
             isAvailable(event) {
-              const item = paneForCommand(this.getModel(), event)?.getActiveItem();
+              const pane = paneForCommand(this.getModel(), event);
+              if (!pane || pane.isDestroyed?.()) return false;
+              const item = pane.getActiveItem();
+              if (!item) return Boolean(split);
               return Boolean(
-                item &&
                 !item.isDestroyed?.() &&
                 (action !== "copy" ||
                   (typeof item.copy === "function" && item.canCopy?.() !== false)),
@@ -105,7 +107,13 @@ function paneItemCommands(notifications) {
         const sourcePane = paneForCommand(workspace, event);
         if (action === "focus") return workspace.focusPaneInDirection(direction, { sourcePane });
         const item = sourcePane?.getActiveItem();
-        if (!item) return;
+        if (!item) {
+          if (split && sourcePane && !sourcePane.isDestroyed?.()) {
+            const method = `split${direction[0].toUpperCase()}${direction.slice(1)}`;
+            return settle(() => sourcePane[method]());
+          }
+          return;
+        }
         const options = { sourcePane };
         if (split) options.splitDirection = direction;
         else {
