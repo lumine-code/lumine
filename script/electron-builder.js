@@ -105,13 +105,16 @@ let options = {
     "!hooks/",
     // Windows packaging inputs only: the tile manifest and its PNGs ship via
     // win.extraFiles (Windows must read them from disk next to Lumine.exe), the
-    // .ico/.cmd/.js/.sh via win.extraResources, and the .nsh files are compiled into
+    // .ico/.cmd/.sh via win.extraResources, and the .nsh files are compiled into
     // the NSIS installer. Nothing reads resources/win/ at runtime, so keep it
     // out of app.asar on every platform. resources/app-icons/ must stay -- that
     // one IS read from inside the asar, by src/lumine-window.js.
     // Listing an icon in extraResources also excludes its source from app.asar,
     // so keep the runtime PNGs only in this files set.
     "!resources/win/",
+    // The shared CLI runs in the embedded Node runtime beside app.asar.
+    // Its extraResources mapping must not leave a second copy in the archive.
+    "!resources/lumine.js",
     // The raw SVG is runtime art: the empty editor pane uses it as a mask. Its
     // PNG sibling and the square badges are alternate-format brand assets that
     // nothing in the editor loads, so they have no business riding along in
@@ -226,7 +229,10 @@ let options = {
     "!**/*.{markdown,md,mkd,ts,jst,tgz,swp}",
   ],
 
-  extraResources: [{ from: "LICENSE", to: "LICENSE" }],
+  extraResources: [
+    { from: "LICENSE", to: "LICENSE" },
+    { from: "resources/lumine.js", to: `${baseName}.js` },
+  ],
   compression: "normal",
   deb: {
     afterInstall: "script/post-install.sh",
@@ -307,7 +313,6 @@ let options = {
       // a registry DefaultIcon at a real path; files inside app.asar can't.
       { from: "resources/win/file.ico", to: "file.ico" },
       { from: "resources/win/lumine.cmd", to: `${baseName}.cmd` },
-      { from: "resources/win/lumine.js", to: `${baseName}.js` },
       { from: "resources/win/lumine.sh", to: `${baseName}.sh` },
       { from: "resources/win/NSIS_Licenses.txt", to: "NSIS_Licenses.txt" },
     ],

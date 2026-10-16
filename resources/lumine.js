@@ -2,13 +2,14 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const childProcess = require("node:child_process");
 
 // Installed launchers live beside app.asar. The source copy remains directly
 // runnable, including from the launcher's own integration tests.
 const parserPath = fs.existsSync(path.join(__dirname, "app.asar"))
   ? path.join(__dirname, "app.asar", "src", "parse-command-line-options")
-  : path.join(__dirname, "..", "..", "src", "parse-command-line-options");
+  : path.join(__dirname, "..", "src", "parse-command-line-options");
 const parseOptions = require(parserPath);
 const WAITER = "--lumine-cli-waiter";
 const OUTPUT_OPTIONS = [
@@ -52,7 +53,10 @@ function observe(child) {
 }
 
 function exitCode({ code, signal }) {
-  return code ?? (signal ? 1 : 0);
+  if (code != null) return code;
+  if (!signal) return 0;
+  const number = os.constants.signals[signal];
+  return process.platform !== "win32" && number ? 128 + number : 1;
 }
 
 async function launch(
@@ -76,7 +80,7 @@ async function launch(
     !HEADLESS_OPTIONS.some((name) => hasOption(options, name));
   const childEnv = { ...env };
   delete childEnv.ELECTRON_RUN_AS_NODE;
-  childEnv.LUMINE_BASE_NAME = path.basename(__filename, ".js");
+  childEnv.LUMINE_BASE_NAME ??= path.basename(__filename, ".js");
   if (Object.hasOwn(options, "enable-electron-logging")) {
     if (options["enable-electron-logging"]) childEnv.ELECTRON_ENABLE_LOGGING = "1";
     else delete childEnv.ELECTRON_ENABLE_LOGGING;
@@ -126,15 +130,15 @@ async function launch(
   const interrupted = new Promise((resolve) => {
     signalExit = resolve;
   });
-  const onSignal = () => signalExit(1);
-  for (const signal of signals) process.on(signal, onSignal);
+  const signalHandlers = signals.map((signal) => [signal, () => signalExit(exitCode({ signal }))]);
+  for (const [signal, handler] of signalHandlers) process.on(signal, handler);
 
   try {
     const initialized = await Promise.race([
       waiterReady.then(() => true),
       interrupted.then(() => false),
     ]);
-    if (!initialized) return 1;
+    if (!initialized) return await interrupted;
     appArgs.unshift("--pid", String(waiter.pid));
     const child = spawn(executable, appArgs, {
       cwd,
@@ -154,7 +158,7 @@ async function launch(
     });
     return await Promise.race([waiterObserved.closed.then(() => 0), failed, interrupted]);
   } finally {
-    for (const signal of signals) process.removeListener(signal, onSignal);
+    for (const [signal, handler] of signalHandlers) process.removeListener(signal, handler);
     if (waiter.exitCode === null && waiter.signalCode === null) waiter.kill();
     await waiterObserved.closed;
   }

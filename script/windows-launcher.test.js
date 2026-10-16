@@ -7,11 +7,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { launch } = require("../resources/win/lumine");
+const { launch } = require("../resources/lumine");
 const parseOptions = require("../src/parse-command-line-options");
 
 const root = path.resolve(__dirname, "..");
-const helper = path.join(root, "resources", "win", "lumine.js");
+const helper = path.join(root, "resources", "lumine.js");
 
 function fakeProcess(pid) {
   const child = new EventEmitter();
@@ -47,9 +47,14 @@ for (const [args, foreground, expectedCode] of [
     (flag) => [[flag, "--wait"], true, 0],
   ),
 ]) {
-  test(`Windows helper classifies ${JSON.stringify(args)}`, async () => {
+  test(`Shared CLI classifies ${JSON.stringify(args)}`, async () => {
     const calls = [];
-    const env = { ELECTRON_RUN_AS_NODE: "1", LUMINE_RESOURCE_PATH: "source", LUMINE_DEV_MODE: "1" };
+    const env = {
+      ELECTRON_RUN_AS_NODE: "1",
+      LUMINE_RESOURCE_PATH: "source",
+      LUMINE_DEV_MODE: "1",
+      LUMINE_BASE_NAME: "lumine-shell",
+    };
     const cwd = path.resolve("project with spaces");
     const code = await launch(path.resolve("Lumine.exe"), args, {
       env,
@@ -74,11 +79,82 @@ for (const [args, foreground, expectedCode] of [
     assert.equal(calls[0].options.env.ELECTRON_RUN_AS_NODE, undefined);
     assert.equal(calls[0].options.env.LUMINE_RESOURCE_PATH, "source");
     assert.equal(calls[0].options.env.LUMINE_DEV_MODE, "1");
+    assert.equal(calls[0].options.env.LUMINE_BASE_NAME, "lumine-shell");
     assert.equal(env.ELECTRON_RUN_AS_NODE, "1", "the caller's environment remains intact");
   });
 }
 
-test("Windows helper waits for waiter readiness and keeps waiting after a single-instance handoff", async () => {
+test("Shared CLI reports native termination signals with platform exit statuses", async () => {
+  const code = await launch(path.resolve("lumine"), ["--foreground"], {
+    spawn() {
+      const child = fakeProcess(100);
+      process.nextTick(() => {
+        child.emit("spawn");
+        child.signalCode = "SIGTERM";
+        child.emit("close", null, "SIGTERM");
+      });
+      return child;
+    },
+  });
+  assert.equal(code, process.platform === "win32" ? 1 : 143);
+});
+
+test("Shared CLI rejects a missing executable before detached startup succeeds", async () => {
+  const missing = path.join(os.tmpdir(), `lumine-missing-launcher-${process.pid}`, "lumine");
+  await assert.rejects(launch(missing, ["project"]), { code: "ENOENT" });
+});
+
+test("Shared CLI preserves foreground stdin, output, and native failure codes", (t) => {
+  const directory = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), "lumine shared CLI ")),
+  );
+  t.after(() => {
+    assert.equal(path.dirname(directory), fs.realpathSync.native(os.tmpdir()));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const probe = path.join(directory, "probe.js");
+  const driver = path.join(directory, "driver.js");
+  const report = path.join(directory, "report.json");
+  fs.writeFileSync(
+    probe,
+    `
+const fs = require("node:fs");
+fs.writeFileSync(process.env.LUMINE_TEST_REPORT, JSON.stringify({ input: fs.readFileSync(0, "utf8"), argv: process.argv.slice(2), cwd: process.cwd(), nodeMode: process.env.ELECTRON_RUN_AS_NODE ?? null }));
+process.stdout.write("native stdout\\n");
+process.stderr.write("native stderr\\n");
+process.exitCode = 17;
+`,
+  );
+  fs.writeFileSync(
+    driver,
+    `
+const { launch } = require(${JSON.stringify(helper)});
+const { spawn } = require("node:child_process");
+launch(process.execPath, process.argv.slice(2), { spawn(executable, args, options) { return spawn(executable, [${JSON.stringify(probe)}, ...args], options); } }).then(code => { process.exitCode = code; }).catch(error => { console.error(error); process.exitCode = 1; });
+`,
+  );
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1", LUMINE_TEST_REPORT: report };
+  delete env.CI;
+  const result = spawnSync(process.execPath, [driver, "--foreground", "123", "file with spaces"], {
+    cwd: directory,
+    env,
+    input: "launcher stdin\n",
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10000,
+  });
+  assert.equal(result.status, 17, result.stderr);
+  assert.equal(result.stdout, "native stdout\n");
+  assert.equal(result.stderr, "native stderr\n");
+  assert.deepEqual(JSON.parse(fs.readFileSync(report, "utf8")), {
+    input: "launcher stdin\n",
+    argv: ["--executed-from", directory, "--foreground", "123", "file with spaces"],
+    cwd: directory,
+    nodeMode: null,
+  });
+});
+
+test("Shared CLI waits for waiter readiness and keeps waiting after a single-instance handoff", async () => {
   const children = [];
   const calls = [];
   let settled = false;
@@ -110,7 +186,7 @@ test("Windows helper waits for waiter readiness and keeps waiting after a single
   assert.equal(await pending, 0);
 });
 
-test("Windows helper cleans up the waiter after an application startup failure", async () => {
+test("Shared CLI cleans up the waiter after an application startup failure", async () => {
   let waiter;
   const missing = path.join(os.tmpdir(), `lumine-missing-launcher-${process.pid}`, "Lumine.exe");
   await assert.rejects(
@@ -128,7 +204,28 @@ test("Windows helper cleans up the waiter after an application startup failure",
   assert.throws(() => process.kill(waiter.pid, 0), { code: "ESRCH" });
 });
 
-test("Windows helper cleans up the waiter when the application exits with an error", async () => {
+test("Shared CLI preserves interruption status before waiter readiness and removes its signal handlers", async () => {
+  const previous = process.listeners("SIGTERM");
+  const children = [];
+  const pending = launch(path.resolve("lumine"), ["--wait", "project"], {
+    spawn() {
+      const child = fakeProcess(100);
+      children.push(child);
+      process.nextTick(() => child.emit("spawn"));
+      return child;
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const interrupt = process.listeners("SIGTERM").find((listener) => !previous.includes(listener));
+  assert.equal(typeof interrupt, "function");
+  interrupt();
+  assert.equal(await pending, process.platform === "win32" ? 1 : 143);
+  assert.equal(children.length, 1, "an interrupted waiter must not launch the application");
+  assert.equal(children[0].exitCode, 1);
+  assert.deepEqual(process.listeners("SIGTERM"), previous);
+});
+
+test("Shared CLI cleans up the waiter when the application exits with an error", async () => {
   const children = [];
   const pending = launch(path.resolve("Lumine.exe"), ["--wait", "project"], {
     spawn(_executable, args) {
@@ -149,7 +246,7 @@ test("Windows helper cleans up the waiter when the application exits with an err
   assert.equal(children[0].exitCode, 1);
 });
 
-test("Windows waiter exits when its parent connection disappears", { timeout: 5000 }, async () => {
+test("CLI waiter exits when its parent connection disappears", { timeout: 5000 }, async () => {
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
   delete env.CI;
   const child = spawn(process.execPath, [helper, "--lumine-cli-waiter"], {
@@ -244,9 +341,10 @@ function fixture(t) {
     assert.equal(path.dirname(path.resolve(directory)), fs.realpathSync.native(os.tmpdir()));
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  for (const name of ["lumine.cmd", "lumine.js", "lumine.sh"]) {
+  for (const name of ["lumine.cmd", "lumine.sh"]) {
     fs.copyFileSync(path.join(root, "resources", "win", name), path.join(resources, name));
   }
+  fs.copyFileSync(helper, path.join(resources, "lumine.js"));
   const parser = path.join(resources, "app.asar", "src", "parse-command-line-options.js");
   fs.mkdirSync(path.dirname(parser), { recursive: true });
   fs.copyFileSync(path.join(root, "src", "parse-command-line-options.js"), parser);

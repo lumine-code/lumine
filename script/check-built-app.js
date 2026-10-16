@@ -18,6 +18,7 @@ const ROOT = path.resolve(__dirname, "..");
 const PLATFORMS = ["darwin", "linux", "win32"];
 const RUNTIME_ASSETS = [
   "exports/lumine.js",
+  "src/parse-command-line-options.js",
   "static/index.html",
   "static/index.js",
   "static/auxiliary-window.js",
@@ -256,6 +257,10 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
       `Build dependency shipped in app.asar: ${name}`,
     );
   }
+  expect(
+    !entries.includes("resources/lumine.js"),
+    "Shared command-line launcher must ship outside app.asar: resources/lumine.js",
+  );
   const shellLauncher = path.join(path.dirname(file), "lumine.sh");
   const sourceLauncher = path.join(
     repoRoot,
@@ -268,9 +273,18 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
       `Incorrect ${platform} shell launcher: lumine.sh differs from its platform source`,
     );
   }
+  const sharedLauncher = path.join(path.dirname(file), "lumine.js");
+  const sourceSharedLauncher = path.join(repoRoot, "resources", "lumine.js");
+  expect(fs.existsSync(sharedLauncher), "Missing shared command-line launcher: lumine.js");
+  if (fs.existsSync(sharedLauncher) && fs.existsSync(sourceSharedLauncher)) {
+    expect(
+      fs.readFileSync(sharedLauncher).equals(fs.readFileSync(sourceSharedLauncher)),
+      "Incorrect shared command-line launcher: lumine.js differs from its source",
+    );
+  }
   if (platform === "win32") {
     const resources = path.dirname(file);
-    for (const entry of ["file.ico", "lumine.cmd", "lumine.js", "NSIS_Licenses.txt"]) {
+    for (const entry of ["file.ico", "lumine.cmd", "NSIS_Licenses.txt"]) {
       expect(
         fs.existsSync(path.join(resources, entry)),
         `Missing Windows extra resource: ${entry}`,

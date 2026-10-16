@@ -42,6 +42,7 @@ async function fixture(
   const archive = path.join(resources, "app.asar");
   const launchers = {
     "lumine.sh": "#!/bin/bash\n# POSIX application launcher\n",
+    "resources/lumine.js": '"use strict";\n// Shared application launcher\n',
     "resources/win/lumine.sh": "#!/bin/bash\n# Windows application launcher\n",
   };
   for (const [entry, contents] of Object.entries(launchers)) write(repoRoot, entry, contents);
@@ -120,10 +121,11 @@ async function fixture(
     "lumine.sh",
     launchers[platform === "win32" ? "resources/win/lumine.sh" : "lumine.sh"],
   );
+  write(resources, "lumine.js", launchers["resources/lumine.js"]);
   // A sibling manifest must never stand in for the one the app actually reads.
   write(resources, "package.json", { lumineMetadata: {} });
   if (platform === "win32") {
-    for (const entry of ["file.ico", "lumine.cmd", "lumine.js", "NSIS_Licenses.txt"]) {
+    for (const entry of ["file.ico", "lumine.cmd", "NSIS_Licenses.txt"]) {
       write(resources, entry, "resource");
     }
     for (const entry of [
@@ -151,6 +153,19 @@ test("packages exactly one shell launcher for each target platform", () => {
   }
 });
 
+test("packages the same shared launcher for every target platform", () => {
+  const config = whatToBuild();
+  const helper = { from: "resources/lumine.js", to: "lumine.js" };
+  assert.ok(config.extraResources.some((entry) => entry.from === helper.from));
+  assert.ok(config.files.includes("!resources/lumine.js"));
+  for (const platform of ["linux", "mac", "win"]) {
+    const helpers = [...config.extraResources, ...config[platform].extraResources].filter(
+      (entry) => entry.to === helper.to,
+    );
+    assert.deepEqual(helpers, [helper]);
+  }
+});
+
 for (const platform of ["linux", "win32", "darwin"]) {
   test(`validates a real ${platform} ASAR and detects its output layout`, async (t) => {
     const app = await fixture(t, { platform });
@@ -159,6 +174,26 @@ for (const platform of ["linux", "win32", "darwin"]) {
     const result = checkBuiltApp(app.archive, { repoRoot: app.repoRoot });
     assert.equal(result.bundledPackages, 1);
     assert.equal(result.unpackedFiles, 1);
+  });
+
+  test(`rejects a ${platform} build missing its shared launcher`, async (t) => {
+    const app = await fixture(t, { platform });
+    fs.unlinkSync(path.join(path.dirname(app.archive), "lumine.js"));
+
+    assert.throws(
+      () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+      /Missing shared command-line launcher: lumine.js/,
+    );
+  });
+
+  test(`rejects a ${platform} build with a stale shared launcher`, async (t) => {
+    const app = await fixture(t, { platform });
+    fs.writeFileSync(path.join(path.dirname(app.archive), "lumine.js"), "// stale launcher\n");
+
+    assert.throws(
+      () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+      /Incorrect shared command-line launcher: lumine.js/,
+    );
   });
 }
 
@@ -197,6 +232,7 @@ test("rejects wrong platform menus, incomplete bundled metadata, and changed pin
 
 test("rejects missing parser, query, snippets, and package main files", async (t) => {
   const omitted = [
+    "src/parse-command-line-options.js",
     "node_modules/sample/grammars/sample.wasm",
     "node_modules/sample/grammars/sample.scm",
     "node_modules/sample/snippets/main.json",
@@ -244,6 +280,17 @@ test("rejects build tools copied into the runtime node_modules", async (t) => {
   assert.throws(
     () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
     /Build dependency shipped in app.asar: electron-builder/,
+  );
+});
+
+test("rejects a shared launcher copied inside ASAR", async (t) => {
+  const app = await fixture(t, {
+    add: { "resources/lumine.js": "// redundant launcher\n" },
+  });
+
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /Shared command-line launcher must ship outside app.asar/,
   );
 });
 
