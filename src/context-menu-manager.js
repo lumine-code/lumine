@@ -159,8 +159,10 @@ module.exports = class ContextMenuManager {
    * @param {Array} [itemsBySelector.afterGroupContaining] - References to items whose whole separator group this item's group follows, using the same reference format and fallback behavior as `beforeGroupContaining`. Group positioning preserves the separator between groups.
    * @param {Function} [itemsBySelector.created] - A `Function` that is called on the item each time a context menu is created via a right click. You can assign properties to `this` to dynamically compute the command, label, etc. This method is actually called on a clone of the original item template to prevent state from leaking across context menu deployments. Called with the following argument:
    * @param {MouseEvent} itemsBySelector.created.event - The click event that deployed the context menu.
+   * @param {Object} itemsBySelector.created.context - The captured menu context. `commandTarget` is the DOM element this row dispatches to; `contextTarget` is the clicked element and `focusTarget` is the element focused before opening.
    * @param {Function} [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:
    * @param {MouseEvent} itemsBySelector.shouldDisplay.event - The click event that deployed the context menu.
+   * @param {Object} itemsBySelector.shouldDisplay.context - The same captured menu context passed to `created`.
    * @param {Boolean} [throwOnInvalidSelector=true] - Throw for an invalid selector.
    * @returns {Disposable} Removes the added context-menu items.
    */
@@ -187,9 +189,9 @@ module.exports = class ContextMenuManager {
   }
 
   templateForEvent(event, options = {}) {
-    const focusTarget = Object.hasOwn(options, "focusTarget")
-      ? options.focusTarget
-      : this.focusTargetForEvent(event);
+    const focusTarget = MenuHelpers.normalizeCommandTarget(
+      Object.hasOwn(options, "focusTarget") ? options.focusTarget : this.focusTargetForEvent(event),
+    );
     const template = [];
     let layoutPolicy = null;
     let currentTarget = event.target;
@@ -212,7 +214,12 @@ module.exports = class ContextMenuManager {
       }
       for (let itemSet of matchingItemSets) {
         for (let item of itemSet.items) {
-          const itemForEvent = this.cloneItemForEvent(item, event, itemSet.commandTarget);
+          const itemForEvent = this.cloneItemForEvent(
+            item,
+            event,
+            itemSet.commandTarget,
+            focusTarget,
+          );
           if (itemForEvent) {
             MenuHelpers.merge(currentTargetItems, itemForEvent, itemSet.specificity);
           }
@@ -244,7 +251,9 @@ module.exports = class ContextMenuManager {
   // underscore-plus for both single strokes and chords.
   addAccelerators(template, target, focusTarget = target, bindingsByTarget = new Map()) {
     for (const item of template) {
-      const commandTarget = item.commandTarget === "focus" ? focusTarget : target;
+      const commandTarget = MenuHelpers.normalizeCommandTarget(
+        item.commandTarget === "focus" ? focusTarget : target,
+      );
       const label = MenuHelpers.keyBindingLabelForMenuItem(
         item,
         commandTarget,
@@ -271,21 +280,32 @@ module.exports = class ContextMenuManager {
   }
 
   // Returns an object compatible with `::add()` or `null`.
-  cloneItemForEvent(item, event, commandTarget) {
+  cloneItemForEvent(item, event, commandTarget, focusTarget) {
     if (item.devMode && !this.devMode) {
       return null;
     }
     item = Object.create(item);
     if (item.commandTarget == null && commandTarget != null) item.commandTarget = commandTarget;
-    if (typeof item.shouldDisplay === "function" && !item.shouldDisplay(event)) {
+    const context = Object.freeze({
+      contextTarget: event.target,
+      focusTarget,
+      get commandTarget() {
+        return MenuHelpers.normalizeCommandTarget(
+          item.commandTarget === "focus" ? focusTarget : event.target,
+        );
+      },
+    });
+    if (typeof item.shouldDisplay === "function" && !item.shouldDisplay(event, context)) {
       return null;
     }
     if (typeof item.created === "function") {
-      item.created(event);
+      item.created(event, context);
     }
     if (Array.isArray(item.submenu)) {
       item.submenu = item.submenu
-        .map((submenuItem) => this.cloneItemForEvent(submenuItem, event, item.commandTarget))
+        .map((submenuItem) =>
+          this.cloneItemForEvent(submenuItem, event, item.commandTarget, focusTarget),
+        )
         .filter((submenuItem) => submenuItem !== null);
     }
     return item;

@@ -1,5 +1,9 @@
 const { Emitter } = require("@lumine-code/event-kit");
-const { keyBindingLabelForMenuItem, isMenuItemEnabled } = require("./menu-helpers");
+const {
+  keyBindingLabelForMenuItem,
+  isMenuItemEnabled,
+  normalizeCommandTarget,
+} = require("./menu-helpers");
 
 const itemViewsByElement = new WeakMap();
 const POINTER_SELECTION_DELAY = 250;
@@ -45,10 +49,6 @@ function renderMnemonic(element, label, enabled = true) {
   return parsed;
 }
 
-function normalizeCommandTarget(target, document) {
-  return target === document.body ? (document.querySelector("lumine-workspace") ?? target) : target;
-}
-
 function usesFocusTarget(items) {
   return items.some(
     (item) => item.commandTarget === "focus" || (item.submenu && usesFocusTarget(item.submenu)),
@@ -64,9 +64,7 @@ class MenuItemView {
     this.selected = false;
     this.open = false;
     this.visible = template.visible !== false;
-    this.enabled =
-      (!template.command || this.popup.isTargetAvailable(this.commandTarget)) &&
-      isMenuItemEnabled(template, this.commandTarget);
+    this.enabled = this.popup.isItemEnabled(template);
     this.separator = template.type === "separator";
     this.submenu = Array.isArray(template.submenu) ? template.submenu : null;
     this.element = this.popup.document.createElement(this.separator ? "hr" : "div");
@@ -429,7 +427,10 @@ class MenuPopup {
       Object.hasOwn(options, "focusTarget") ? options.focusTarget : this.document.activeElement,
       this.document,
     );
-    this.contextTarget = options.contextTarget ?? this.commandTarget;
+    this.contextTarget = normalizeCommandTarget(
+      options.contextTarget ?? this.commandTarget,
+      this.document,
+    );
     this.bindingsByTarget = new Map();
     this.lists = [];
     this.emitter = new Emitter();
@@ -545,6 +546,19 @@ class MenuPopup {
       throw new TypeError("Menu commandTarget must be 'focus' or 'context'");
     }
     return this.commandTarget;
+  }
+
+  isItemEnabled(template) {
+    const target = this.targetForItem(template);
+    if (template.command && !this.isTargetAvailable(target)) return false;
+    if (!isMenuItemEnabled(template, target)) return false;
+    return (
+      !Array.isArray(template.submenu) ||
+      template.submenu.some(
+        (child) =>
+          child.type !== "separator" && child.visible !== false && this.isItemEnabled(child),
+      )
+    );
   }
 
   canExecuteItem(item) {

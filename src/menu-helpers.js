@@ -237,6 +237,12 @@ function matchesScope(target, scope) {
   return false;
 }
 
+function normalizeCommandTarget(target, document = target?.ownerDocument) {
+  return document && target === document.body
+    ? (document.body.querySelector("lumine-workspace") ?? target)
+    : target;
+}
+
 function isMenuItemEnabled(item, target, commandRegistry = globalThis.lumine?.commands) {
   if (item.enabled === false || !matchesScope(target, item.scope)) return false;
   return !item.command || commandRegistry?.canDispatch(target, item.command) === true;
@@ -280,5 +286,6 @@ module.exports = {
   acceleratorForKeystroke,
   keyBindingLabelForMenuItem,
   matchesScope,
+  normalizeCommandTarget,
   isMenuItemEnabled,
 };

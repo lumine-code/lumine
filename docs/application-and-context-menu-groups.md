@@ -160,4 +160,8 @@ Rows with `commandDetail` do not automatically borrow the command's shortcut, be
 
 Register runtime contributions during synchronous package activation and dispose their registrations during deactivation. `lumine.menu.add()` and `lumine.contextMenu.add()` return disposables; menu files are managed by the package lifecycle. Runtime context items can retain `shouldDisplay` and `created` callbacks, so event-specific visibility, labels and command details are resolved for each deployment before layout.
 
+Context callbacks receive `(event, context)`: the original clicked event remains available for ownership checks, while `context.commandTarget` resolves the row's saved dispatch target. `context.contextTarget` is the clicked element and `context.focusTarget` is the captured focus. Compute an action's checked and enabled state from its command target so a focus-targeted status menu describes the same surface it will operate on.
+
+A submenu is disabled when it contains no visible, enabled action. This applies recursively to both HTML menus and the native application menu.
+
 The native application menu and HTML application-menu bars receive the same prepared layout. Context menus use the same group and separator rules after their selector and event filtering. Disabling, unloading or reactivating a package therefore recalculates groups from the remaining contributions, removes empty groups and restores commands to their declared positions. Core-owned submenu paths stay registered even while their rendered contents are empty.

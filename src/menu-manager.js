@@ -496,6 +496,11 @@ module.exports = class MenuManager {
           target,
           commands,
         );
+        if (Array.isArray(item.submenu)) {
+          item.enabled &&= item.submenu.some(
+            (child) => child.type !== "separator" && child.visible !== false && child.enabled,
+          );
+        }
         const bindingCommand =
           item.keyBindingCommand !== undefined
             ? item.keyBindingCommand

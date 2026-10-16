@@ -266,6 +266,25 @@ describe("MenuManager", function () {
       expect(sentItems()[0].keystrokes).toEqual([]);
     });
 
+    it("disables native submenus when every visible action is unavailable", () => {
+      menu.add([
+        {
+          label: "Actions",
+          submenu: [
+            { label: "Missing", command: "menu-manager:unregistered" },
+            { type: "separator" },
+            { label: "Hidden", command: "application:new-window", visible: false },
+            { label: "Disabled", command: "application:new-window", enabled: false },
+          ],
+        },
+      ]);
+      expect(menu.prepareNativeTemplate(target)[0].enabled).toBe(false);
+      menu.add([
+        { label: "Actions", submenu: [{ label: "New Window", command: "application:new-window" }] },
+      ]);
+      expect(menu.prepareNativeTemplate(target)[0].enabled).toBe(true);
+    });
+
     it("keeps native editing commands available on supported Chromium inputs", () => {
       const subscriptions = new CompositeDisposable();
       const performWebContentsAction = jasmine.createSpy("performWebContentsAction");

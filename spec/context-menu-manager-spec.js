@@ -306,6 +306,86 @@ describe("ContextMenuManager", function () {
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([]);
     });
 
+    it("passes the captured command target to callbacks while preserving the clicked event", () => {
+      const contexts = [];
+      const event = { target: grandchild };
+      contextMenu.add({
+        ".grandchild": {
+          commandTarget: "focus",
+          items: [
+            {
+              label: "Focus Surface",
+              shouldDisplay(actualEvent, context) {
+                expect(actualEvent).toBe(event);
+                expect(context.contextTarget).toBe(grandchild);
+                expect(context.focusTarget).toBe(parent);
+                expect(context.commandTarget).toBe(parent);
+                contexts.push(context);
+                return true;
+              },
+              created(actualEvent, context) {
+                expect(actualEvent).toBe(event);
+                expect(context).toBe(contexts[0]);
+                this.checked = context.commandTarget === parent;
+              },
+              submenu: [
+                {
+                  label: "Clicked Surface",
+                  commandTarget: "context",
+                  created(actualEvent, context) {
+                    expect(actualEvent).toBe(event);
+                    expect(context.commandTarget).toBe(grandchild);
+                    contexts.push(context);
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      });
+      const [item] = contextMenu.templateForEvent(event, { focusTarget: parent });
+      expect(item.checked).toBe(true);
+      expect(contexts.length).toBe(2);
+      // Each deployment captures its own focus, independently of the live DOM focus.
+      parent.focus();
+      expect(contexts[1].commandTarget).toBe(grandchild);
+    });
+
+    it("normalizes body focus for both callback state and shortcut lookup", () => {
+      let workspace = document.querySelector("lumine-workspace");
+      if (!workspace) {
+        workspace = document.createElementNS("urn:context-menu-spec", "lumine-workspace");
+        parent.append(workspace);
+      }
+      const keys = lumine.keymaps.add("context-menu-body-focus-spec", {
+        "lumine-workspace": { "ctrl-alt-1": "test:body-focus" },
+      });
+      contextMenu.add({
+        ".grandchild": {
+          commandTarget: "focus",
+          items: [
+            {
+              label: "Workspace Action",
+              command: "test:body-focus",
+              created(event, context) {
+                expect(event.target).toBe(grandchild);
+                expect(context.commandTarget).toBe(workspace);
+              },
+            },
+          ],
+        },
+      });
+      try {
+        const [item] = contextMenu.templateForEvent(
+          { target: grandchild },
+          { focusTarget: document.body },
+        );
+        expect(item.keyBindingLabel).toBe(process.platform === "darwin" ? "⌃⌥1" : "Ctrl+Alt+1");
+      } finally {
+        keys.dispose();
+      }
+    });
+
     it("prunes a trailing separator", function () {
       contextMenu.add({
         ".grandchild": [

@@ -109,6 +109,31 @@ describe("application menu command targets", () => {
     expect(item.element.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("disables a submenu with no visible available action", () => {
+    const target = document.createElement("button");
+    target.className = "menu-command-target-editor";
+    container.append(target);
+    subscriptions.add(lumine.commands.add(target, "menu-command-target:available", () => {}));
+    const template = {
+      label: "Editor Actions",
+      submenu: [
+        { label: "Missing", command: "menu-command-target:missing" },
+        { type: "separator" },
+        { label: "Hidden", command: "menu-command-target:available", visible: false },
+        { label: "Disabled", command: "menu-command-target:available", enabled: false },
+      ],
+    };
+    createMenu(template);
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    expect(menuBar.popup.rootList.items[0].enabled).toBe(false);
+    menuBar.blur();
+    template.submenu.push({ label: "Available", command: "menu-command-target:available" });
+    target.focus();
+    menuBar.openButton(menuBar.buttons[0]);
+    expect(menuBar.popup.rootList.items[0].enabled).toBe(true);
+  });
+
   it("keeps a removed session target disabled when its submenu is created later", async () => {
     const editor = document.createElement("button");
     editor.className = "menu-command-target-editor";
