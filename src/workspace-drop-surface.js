@@ -294,7 +294,12 @@ module.exports = class WorkspaceDropSurface {
   }
 
   updateOverlay(context, proposal) {
-    if (!context.target.adapter?.showOverlay && !context.target.builtin) return this.hideOverlay();
+    if (
+      proposal.showOverlay === false ||
+      (!context.target.adapter?.showOverlay && !context.target.builtin)
+    ) {
+      return this.hideOverlay();
+    }
     const split = proposal.allowSplit === false ? null : context.candidateSplit;
     const rect = context.dropElement.getBoundingClientRect();
     const bounds = boundsForSplit(rect, split);

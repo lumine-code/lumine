@@ -136,6 +136,29 @@ describe("workspace drop preview rendering", () => {
     expect(manager.activeClaim).toBe(null);
   });
 
+  for (const entry of [null, { isDirectory: true }]) {
+    it(`closes a file preview for native folders with ${entry ? "readable" : "protected"} entry details`, () => {
+      const { rect } = showFullPreview();
+      expect(manager.overlay.matches(":popover-open")).toBe(true);
+      const dataTransfer = new DataTransfer();
+      Object.defineProperty(dataTransfer, "items", {
+        value: [{ kind: "file", webkitGetAsEntry: () => entry }],
+      });
+
+      dispatchDrag(
+        "dragover",
+        item,
+        dataTransfer,
+        rect.left + (rect.width * 5) / 6,
+        rect.top + rect.height / 2,
+      );
+
+      expect(manager.overlay.classList.contains("visible")).toBe(false);
+      expect(manager.overlay.matches(":popover-open")).toBe(false);
+      expect(pane.getContainer().getPanes()).toEqual([pane]);
+    });
+  }
+
   it("tracks fractional pane bounds without rewriting unchanged preview geometry", () => {
     workspaceElement.style.left = "17.25px";
     workspaceElement.style.top = "23.5px";

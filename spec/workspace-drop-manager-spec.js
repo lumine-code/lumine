@@ -33,7 +33,12 @@ class TestDataTransfer {
   }
 }
 
-function dragEvent(type, target, dataTransfer, { x = 50, y = 50, relatedTarget = null } = {}) {
+function dragEvent(
+  type,
+  target,
+  dataTransfer,
+  { x = 50, y = 50, relatedTarget = null, dispatch = true } = {},
+) {
   const event = new CustomEvent(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     dataTransfer: { value: dataTransfer },
@@ -41,7 +46,15 @@ function dragEvent(type, target, dataTransfer, { x = 50, y = 50, relatedTarget =
     clientY: { value: y },
     relatedTarget: { value: relatedTarget },
   });
-  target.dispatchEvent(event);
+  if (dispatch) target.dispatchEvent(event);
+  else {
+    const eventPath = [];
+    for (let element = target; element; element = element.parentElement) eventPath.push(element);
+    Object.defineProperties(event, {
+      target: { value: target },
+      composedPath: { value: () => eventPath },
+    });
+  }
   return event;
 }
 
@@ -336,9 +349,15 @@ describe("WorkspaceDropManager", () => {
     expect(pane.getContainer().getPanes().length).toBe(2);
   });
 
-  it("opens a native folder in the current window without proposing a split", async () => {
+  it("opens a native folder in the current window without a drop preview", async () => {
     pane.addItem(copyableElement("div"));
     const directoryPath = path.join(__dirname, "fixtures");
+    const fileDrag = new TestDataTransfer();
+    fileDrag.items = [{ kind: "file", getAsEntry: () => ({ isFile: true }) }];
+    dragEvent("dragover", itemViews, fileDrag, { x: 110, y: 45 });
+    expect(manager.overlay.classList.contains("visible")).toBe(true);
+    expect(manager.overlay.matches(":popover-open")).toBe(true);
+
     const dataTransfer = new TestDataTransfer();
     dataTransfer.files = [{ path: directoryPath }];
     dataTransfer.items = [{ kind: "file", getAsEntry: () => ({ isDirectory: true }) }];
@@ -350,12 +369,82 @@ describe("WorkspaceDropManager", () => {
     });
 
     dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
-    expect(manager.overlay.getBoundingClientRect().left).toBe(0);
-    expect(manager.overlay.getBoundingClientRect().width).toBe(120);
+    expect(manager.overlay.classList.contains("visible")).toBe(false);
+    expect(manager.overlay.matches(":popover-open")).toBe(false);
     dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45 });
     expect(await directoriesOpened).toEqual({ pathsToOpen: [directoryPath], here: true });
 
     expect(pane.getContainer().getPanes().length).toBe(1);
+  });
+
+  it("opens a protected native folder here without a preview when entry details are hidden", async () => {
+    pane.addItem(copyableElement("div"));
+    const directoryPath = path.join(__dirname, "fixtures");
+    const dataTransfer = new TestDataTransfer();
+    dataTransfer.items = [{ kind: "file", webkitGetAsEntry: () => null }];
+    dataTransfer.mode = "protected";
+    spyOn(lumine.workspace, "open");
+    spyOn(lumine.applicationDelegate, "open").and.resolveTo();
+
+    dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
+    expect(manager.overlay.classList.contains("visible")).toBe(false);
+    expect(manager.overlay.matches(":popover-open")).toBe(false);
+
+    dataTransfer.mode = "readonly";
+    dataTransfer.files = [{ path: directoryPath }];
+    const dropping = manager.handleDrop(
+      dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45, dispatch: false }),
+    );
+    dataTransfer.files = [];
+    await dropping;
+
+    expect(lumine.workspace.open).not.toHaveBeenCalled();
+    expect(lumine.applicationDelegate.open).toHaveBeenCalledOnceWith({
+      pathsToOpen: [directoryPath],
+      here: true,
+    });
+    expect(pane.getContainer().getPanes()).toEqual([pane]);
+    expect(manager.overlay.matches(":popover-open")).toBe(false);
+    expect(manager.activeClaim).toBeNull();
+  });
+
+  it("snapshots protected native files before asynchronously opening them in a split", async () => {
+    pane.addItem(copyableElement("div"));
+    const filePath = path.join(__dirname, "fixtures", "sample.js");
+    const dataTransfer = new TestDataTransfer();
+    dataTransfer.items = [{ kind: "file", webkitGetAsEntry: () => null }];
+    dataTransfer.mode = "protected";
+    let finishOpeningFile;
+    const openingFile = new Promise((resolve) => (finishOpeningFile = resolve));
+    spyOn(lumine.workspace, "open").and.callFake(async (_filePath, { pane: targetPane }) => {
+      await openingFile;
+      const item = copyableElement("div");
+      targetPane.addItem(item);
+      return item;
+    });
+    spyOn(lumine.applicationDelegate, "open");
+
+    dragEvent("dragover", itemViews, dataTransfer, { x: 110, y: 45 });
+    expect(manager.overlay.classList.contains("visible")).toBe(false);
+    expect(manager.overlay.matches(":popover-open")).toBe(false);
+    dataTransfer.mode = "readonly";
+    dataTransfer.files = [{ path: filePath }];
+    const dropping = manager.handleDrop(
+      dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45, dispatch: false }),
+    );
+    dataTransfer.files = [];
+    await conditionPromise(() => lumine.workspace.open.calls.count() === 1);
+    expect(pane.getContainer().getPanes()).toEqual([pane]);
+
+    finishOpeningFile();
+    await dropping;
+
+    const [openedPath, openOptions] = lumine.workspace.open.calls.mostRecent().args;
+    expect(openedPath).toBe(filePath);
+    expect(openOptions.split).toBe("right");
+    expect(pane.getContainer().getPanes().length).toBe(2);
+    expect(lumine.applicationDelegate.open).not.toHaveBeenCalled();
+    expect(manager.activeClaim).toBeNull();
   });
 
   it("opens only file entries from a mixed tree-view descriptor", async () => {

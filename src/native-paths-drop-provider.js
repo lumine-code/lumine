@@ -24,6 +24,9 @@ module.exports = class NativePathsDropProvider {
     return {
       effect: "copy",
       allowedLocations: ["center"],
+      // Protected native drags may hide whether an item is a file or folder.
+      // Only file drops should advertise a pane destination or split.
+      showOverlay: serializedPaths || treeFiles ? offer.files : native.known && native.hasFiles,
       allowSplit:
         serializedPaths || treeFiles
           ? offer.files
