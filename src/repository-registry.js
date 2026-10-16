@@ -7,6 +7,7 @@ const path = require("path");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
 const RepositoryPathObserver = require("./repository-path-observer");
+const bufferGitStatus = require("./buffer-git-status");
 const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
@@ -1144,6 +1145,28 @@ module.exports = class RepositoryRegistry {
       this.subscriptions.remove(observer);
       observer.dispose();
     });
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Combine Git's cached path status with a buffer's persistence state.
+   * Returns null outside a repository or before its status (including ignored
+   * paths) is ready. Git ignore rules, conflicts and untracked files take
+   * precedence over unsaved edits. `canDiff` identifies paths with a usable
+   * Git baseline; directory summaries should only aggregate buffers owned by
+   * that directory's repository. No filesystem access or Git process occurs.
+   *
+   * @param {String} filePath - Absolute path of the buffer's backing file.
+   * @param {Object} [options] - Buffer and repository context.
+   * @param {String} [options.fileState="unmodified"] - Current buffer persistence state.
+   * @param {Boolean} [options.pendingSave=false] - Preserve the unsaved status until a post-save Git snapshot arrives.
+   * @param {GitRepository|null} [options.repository] - Already resolved repository; otherwise uses the registry's cached owner.
+   * @returns {Object|null} Frozen `{status, staged, unstaged, ignored, conflicted, untracked, canDiff, bufferModified}` summary, or null when Git status is unavailable.
+   */
+  getBufferStatusSummary(filePath, { repository = this.getForPath(filePath), ...options } = {}) {
+    return bufferGitStatus(repository, filePath, options);
   }
 
   /**
