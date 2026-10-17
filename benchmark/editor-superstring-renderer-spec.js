@@ -1,4 +1,5 @@
 const fs = require("fs");
+const crypto = require("crypto");
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
 const TextEditorComponent = require("../src/text-editor-component");
@@ -30,7 +31,7 @@ function summarize(samplesMs) {
 }
 
 describe("Text editor superstring renderer benchmark", () => {
-  it("reports large paste, undo and redo model costs and synchronous component updates", () => {
+  it("reports large paste, undo and redo model costs and synchronous component updates", async () => {
     jasmine.useRealClock();
     const original = multilineText("original");
     const pasted = multilineText("pasted");
@@ -107,8 +108,14 @@ describe("Text editor superstring renderer benchmark", () => {
         component.updateSync();
         checkState(original, beforePosition);
         buffer.clearUndoStack();
+        // Drain this sample's deferred aggregation outside the timing windows,
+        // then let scheduled callbacks run before the next user interaction.
+        buffer.emitDidStopChangingEvent();
+        component.updateSync();
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
+      const font = getComputedStyle(component.element.querySelector(".line"));
       const report = {
         runtime: {
           electron: process.versions.electron,
@@ -129,6 +136,9 @@ describe("Text editor superstring renderer benchmark", () => {
           editorHeight: EDITOR_HEIGHT,
           softWrapped: false,
           syntax: buffer.getLanguageMode().constructor.name,
+          fontFamily: font.fontFamily,
+          fontSize: font.fontSize,
+          devicePixelRatio: window.devicePixelRatio,
           clipboard: "synchronous memory clipboard; excludes clipboard IPC",
           autoIndent: false,
         },
@@ -136,11 +146,22 @@ describe("Text editor superstring renderer benchmark", () => {
           model: "synchronous TextEditor command with component updates scheduled",
           componentUpdate:
             "explicit component.updateSync; DOM and layout work, excludes frame paint",
+          yieldsBetweenSamples: true,
         },
+        benchmarkSha256: crypto
+          .createHash("sha256")
+          .update(fs.readFileSync(__filename))
+          .digest("hex"),
+        nativeHashes: Object.keys(require.cache)
+          .filter((file) => file.endsWith("superstring.node"))
+          .map((file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")),
         results: Object.entries(measurements).map(([operation, samples]) => ({
           operation,
           model: summarize(samples.model),
           componentUpdate: summarize(samples.componentUpdate),
+          commandAndComponent: summarize(
+            samples.model.map((value, index) => value + samples.componentUpdate[index]),
+          ),
         })),
       };
       const output = process.env.LUMINE_SUPERSTRING_RENDERER_BENCHMARK_OUTPUT;

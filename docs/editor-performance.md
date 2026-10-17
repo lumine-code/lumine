@@ -2,6 +2,8 @@
 
 Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; newer integration measurements live in [Superstring integration performance](superstring-performance.md).
 
+The later [text change boundary comparison](text-change-performance.md) records transaction-transfer optimizations, a native preparation experiment and paired renderer measurements.
+
 ## Display performance benchmarks
 
 The editor repository provides `npm run benchmark:display` for display mapping, decoration queries, long-line edits and scrolling. Freeze the baseline before changing production code; the runner copies the source and the exact installed Superstring addon into the output directory. Use the same directory for the subsequent comparison:

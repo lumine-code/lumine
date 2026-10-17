@@ -23,6 +23,7 @@ const samples = Number(option("samples", 9));
 const warmups = Number(option("warmups", 2));
 const units = option("units", "1000000,8000000").split(",").map(Number);
 const filter = option("filter") ? new RegExp(option("filter")) : null;
+const gcAfterSetup = args.includes("--gc-after-setup");
 assert(Number.isInteger(samples) && samples >= 7, "--samples must be at least 7");
 assert(Number.isInteger(warmups) && warmups >= 1, "--warmups must be at least 1");
 assert(
@@ -309,6 +310,7 @@ async function main() {
         ? crypto.createHash("sha256").update(fs.readFileSync(bindingPath)).digest("hex")
         : undefined,
       gcBetweenSamples: typeof global.gc === "function",
+      gcAfterSetup: gcAfterSetup && typeof global.gc === "function",
     },
     methodology: {
       samples,
@@ -324,7 +326,24 @@ async function main() {
       excludes:
         "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
       comparison: "One native build per process; alternate serial process runs to limit drift",
+      yieldsBetweenSamples: true,
     },
+    sourceHashes: Object.fromEntries(
+      [
+        "text-buffer.js",
+        "default-history-provider.js",
+        "helpers.js",
+        "text-editor.js",
+        "display-layer.js",
+      ].map((file) => [
+        file,
+        crypto
+          .createHash("sha256")
+          .update(fs.readFileSync(path.join(source, "src", file)))
+          .digest("hex"),
+      ]),
+    ),
+    benchmarkSha256: crypto.createHash("sha256").update(fs.readFileSync(__filename)).digest("hex"),
     results: [],
     checksum: 0,
   };
@@ -334,6 +353,7 @@ async function main() {
       if (global.gc) global.gc();
       const state = testCase.setup();
       try {
+        if (gcAfterSetup && global.gc) global.gc();
         const started = performance.now();
         let result = testCase.run(state);
         if (result && typeof result.then === "function") result = await result;
@@ -343,6 +363,10 @@ async function main() {
       } finally {
         state.destroy();
       }
+      // Let pending debounce timers release destroyed fixture buffers. A fully
+      // synchronous sweep otherwise retains their change strings until every
+      // case finishes, even with explicit GC, and can exhaust the baseline heap.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
     report.results.push({ id: testCase.id, workload: testCase.workload, ...summarize(samplesMs) });
   }

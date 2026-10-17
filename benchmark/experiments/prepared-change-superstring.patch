@@ -1,0 +1,63 @@
+diff --git a/src/bindings/text-buffer-wrapper.cc b/src/bindings/text-buffer-wrapper.cc
+index 82579bf..7f2a059 100644
+--- a/src/bindings/text-buffer-wrapper.cc
++++ b/src/bindings/text-buffer-wrapper.cc
+@@ -230,6 +230,7 @@ void TextBufferWrapper::init(Napi::Env env, Object exports) {
+     InstanceMethod<&TextBufferWrapper::get_character_at_position>("getCharacterAtPosition", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::get_text_in_range>("getTextInRange", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::set_text_in_range>("setTextInRange", napi_default_method),
++    InstanceMethod<&TextBufferWrapper::prepare_change>("prepareChange", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::get_text>("getText", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::set_text>("setText", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::diff>("diff", napi_default_method),
+@@ -334,6 +335,38 @@ void TextBufferWrapper::set_text_in_range(const CallbackInfo &info) {
+   }
+ }
+ 
++Napi::Value TextBufferWrapper::prepare_change(const CallbackInfo &info) {
++  auto env = info.Env();
++  auto range = RangeWrapper::range_from_js(info[0]);
++  if (!range) return env.Undefined();
++  auto string = string_conversion::string_from_js(info[1]);
++  if (!string) return env.Undefined();
++  Point start = text_buffer.clip_position(range->start).position;
++  Point end = text_buffer.clip_position(range->end).position;
++  if (end < start) {
++    RangeError::New(env, "prepareChange expects an ordered range").ThrowAsJavaScriptException();
++    return env.Undefined();
++  }
++  Text old_text{text_buffer.text_in_range(Range{start, end})};
++  Text new_text{move(*string)};
++  Point new_extent = new_text.extent();
++  Object result = Object::New(env);
++  result.Set("oldStart", PointWrapper::from_point(env, start));
++  result.Set("oldEnd", PointWrapper::from_point(env, end));
++  result.Set("newStart", PointWrapper::from_point(env, start));
++  result.Set("newEnd", PointWrapper::from_point(env, start.traverse(new_extent)));
++  result.Set("oldText", string_conversion::string_to_js(env, old_text.content));
++  result.Set("newText", info[1]);
++  if (env.IsExceptionPending()) return env.Undefined();
++  Patch patch;
++  if (!patch.splice(start, end.traversal(start), new_extent, move(old_text), move(new_text))) {
++    Error::New(env, "Prepared patch does not apply").ThrowAsJavaScriptException();
++    return env.Undefined();
++  }
++  result.Set("patch", PatchWrapper::from_patch(env, move(patch)));
++  return result;
++}
++
+ void TextBufferWrapper::set_text(const CallbackInfo &info) {
+   this->cancel_queued_workers();
+   auto &text_buffer = this->text_buffer;
+diff --git a/src/bindings/text-buffer-wrapper.h b/src/bindings/text-buffer-wrapper.h
+index 3c2e174..4899521 100644
+--- a/src/bindings/text-buffer-wrapper.h
++++ b/src/bindings/text-buffer-wrapper.h
+@@ -30,6 +30,7 @@ private:
+   Napi::Value get_text_in_range(const Napi::CallbackInfo &info);
+   void set_text(const Napi::CallbackInfo &info);
+   void set_text_in_range(const Napi::CallbackInfo &info);
++  Napi::Value prepare_change(const Napi::CallbackInfo &info);
+   Napi::Value diff(const Napi::CallbackInfo &info);
+   Napi::Value line_for_row(const Napi::CallbackInfo &info);
+   Napi::Value line_length_for_row(const Napi::CallbackInfo &info);
