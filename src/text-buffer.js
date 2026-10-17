@@ -18,6 +18,7 @@ const {
   spliceArray,
   newlineRegex,
   patchFromChanges,
+  compactPatchChanges,
   normalizePatchChanges,
   extentForText,
   debounce,
@@ -1890,6 +1891,7 @@ class TextBuffer {
     this.historyProvider.groupChangesSinceCheckpoint(checkpointBefore, {
       markers: endMarkerSnapshot,
       deleteCheckpoint: true,
+      returnChanges: false,
     });
     this.historyProvider.applyGroupingInterval(groupingInterval);
     this.historyProvider.enforceUndoStackSizeLimit();
@@ -3317,6 +3319,7 @@ class TextBuffer {
       this.historyProvider.groupChangesSinceCheckpoint(checkpoint, {
         markers: markersSnapshot,
         deleteCheckpoint: true,
+        returnChanges: false,
       });
 
       this.emitDidChangeEvent(new ChangeEvent(this, changes, "reload"));
@@ -3940,9 +3943,7 @@ class TextBuffer {
         this.changeOriginsSinceLastDidChangeTextEvent.clear();
         const appliedChanges = this.appliedChanges;
         this.appliedChanges = null;
-        const compactedChanges = patchFromChanges(
-          this.changesSinceLastDidChangeTextEvent,
-        ).getChanges();
+        const compactedChanges = compactPatchChanges(this.changesSinceLastDidChangeTextEvent);
         this.changesSinceLastDidChangeTextEvent.length = 0;
         this.transactionsSinceLastStoppedChangingEvent.push(
           Object.freeze({
@@ -3986,9 +3987,7 @@ class TextBuffer {
   emitDidStopChangingEvent() {
     if (this.destroyed) return;
     const compactedChanges = Object.freeze(
-      normalizePatchChanges(
-        patchFromChanges(this.changesSinceLastStoppedChangingEvent).getChanges(),
-      ),
+      normalizePatchChanges(compactPatchChanges(this.changesSinceLastStoppedChangingEvent)),
     );
     this.changesSinceLastStoppedChangingEvent.length = 0;
     const transactions = Object.freeze(this.transactionsSinceLastStoppedChangingEvent.splice(0));

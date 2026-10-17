@@ -1,8 +1,6 @@
 const { Patch } = require("@lumine-code/superstring");
 const Range = require("./range");
-const { traversal } = require("./point-helpers");
-
-const LF_REGEX = /\n/g;
+const { traverse, traversal } = require("./point-helpers");
 
 exports.newlineRegex = /\r\n|\n|\r/g;
 
@@ -60,6 +58,67 @@ exports.patchFromChanges = function patchFromChanges(changes) {
   return patch;
 };
 
+// A single splice is already compact. Keep its existing JS strings instead of
+// copying them into a native Patch and immediately copying them back out. Undo
+// updates may have different old/new starts, so anchor both ranges at newStart
+// just as patchFromChanges does. Fresh points preserve the native result's
+// independence when event consumers freeze or retain their ranges.
+exports.compactPatchChanges = function compactPatchChanges(changes) {
+  if (changes.length !== 1) return exports.patchFromChanges(changes).getChanges();
+  const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = changes[0];
+  // Keep native coercion and saturation for nonstandard coordinates. In
+  // particular, clipPosition permits fractions even though native edits use
+  // integer coordinates. The common path only handles ordinary text splices.
+  if (
+    typeof oldText !== "string" ||
+    typeof newText !== "string" ||
+    !isOrdinaryPatchPoint(oldStart) ||
+    !isOrdinaryPatchPoint(oldEnd) ||
+    !isOrdinaryPatchPoint(newStart) ||
+    !isOrdinaryPatchPoint(newEnd)
+  )
+    return exports.patchFromChanges(changes).getChanges();
+  const oldExtent = traversal(oldEnd, oldStart);
+  const newExtent = traversal(newEnd, newStart);
+  if (!isOrdinaryPatchPoint(oldExtent) || !isOrdinaryPatchPoint(newExtent)) {
+    return exports.patchFromChanges(changes).getChanges();
+  }
+  if (
+    oldExtent.row === 0 &&
+    oldExtent.column === 0 &&
+    newExtent.row === 0 &&
+    newExtent.column === 0
+  ) {
+    return [];
+  }
+  const rebasedOldEnd = traverse(newStart, oldExtent);
+  const rebasedNewEnd = traverse(newStart, newExtent);
+  if (!isOrdinaryPatchPoint(rebasedOldEnd) || !isOrdinaryPatchPoint(rebasedNewEnd)) {
+    return exports.patchFromChanges(changes).getChanges();
+  }
+  return [
+    {
+      oldStart: { row: newStart.row + 0, column: newStart.column + 0 },
+      oldEnd: { row: rebasedOldEnd.row + 0, column: rebasedOldEnd.column + 0 },
+      newStart: { row: newStart.row + 0, column: newStart.column + 0 },
+      newEnd: { row: rebasedNewEnd.row + 0, column: rebasedNewEnd.column + 0 },
+      oldText,
+      newText,
+    },
+  ];
+};
+
+function isOrdinaryPatchPoint(point) {
+  return (
+    Number.isInteger(point.row) &&
+    point.row >= 0 &&
+    point.row <= 0xffffffff &&
+    Number.isInteger(point.column) &&
+    point.column >= 0 &&
+    point.column <= 0xffffffff
+  );
+}
+
 exports.normalizePatchChanges = function normalizePatchChanges(changes) {
   return changes.map(
     (change) =>
@@ -75,10 +134,11 @@ exports.normalizePatchChanges = function normalizePatchChanges(changes) {
 exports.extentForText = function extentForText(text) {
   let lastLineStartIndex = 0;
   let row = 0;
-  LF_REGEX.lastIndex = 0;
-  while (LF_REGEX.exec(text)) {
+  let newlineIndex = text.indexOf("\n");
+  while (newlineIndex !== -1) {
     row++;
-    lastLineStartIndex = LF_REGEX.lastIndex;
+    lastLineStartIndex = newlineIndex + 1;
+    newlineIndex = text.indexOf("\n", lastLineStartIndex);
   }
   return { row, column: text.length - lastLineStartIndex };
 };

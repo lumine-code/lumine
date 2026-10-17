@@ -107,7 +107,9 @@ class DefaultHistoryProvider {
       if (deleteCheckpoint) {
         this.undoStack.splice(checkpointIndex, 1);
       }
-      return composedPatches.getChanges();
+      // Internal transaction completion only needs the grouped history entry.
+      // Public callers retain the existing materialized-change return value.
+      return options?.returnChanges === false ? true : composedPatches.getChanges();
     } else {
       return false;
     }
