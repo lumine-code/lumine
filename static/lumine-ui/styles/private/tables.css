@@ -17,7 +17,7 @@ table {
 caption {
   padding-top: 8px; /* @table-cell-padding */
   padding-bottom: 8px;
-  color: #777; /* @text-muted: @gray-light */
+  color: var(--text-color-subtle);
   text-align: left;
 }
 th {
@@ -40,14 +40,14 @@ th {
         padding: 8px; /* @table-cell-padding */
         line-height: 1.428571429; /* @line-height-base */
         vertical-align: top;
-        border-top: 1px solid #ddd; /* @table-border-color */
+        border-top: 1px solid var(--base-border-color);
       }
     }
   }
   /* Bottom align for column headings */
   > thead > tr > th {
     vertical-align: bottom;
-    border-bottom: 2px solid #ddd; /* @table-border-color */
+    border-bottom: 2px solid var(--base-border-color);
   }
   /* Remove top border from thead by default */
   > caption + thead,
@@ -62,7 +62,7 @@ th {
   }
   /* Account for multiple tbody instances */
   > tbody + tbody {
-    border-top: 2px solid #ddd; /* @table-border-color */
+    border-top: 2px solid var(--base-border-color);
   }
 
   /* Nesting */
@@ -91,14 +91,14 @@ th {
    Add borders all around the table and between all the columns. */
 
 .table-bordered {
-  border: 1px solid #ddd; /* @table-border-color */
+  border: 1px solid var(--base-border-color);
   > thead,
   > tbody,
   > tfoot {
     > tr {
       > th,
       > td {
-        border: 1px solid #ddd; /* @table-border-color */
+        border: 1px solid var(--base-border-color);
       }
     }
   }
@@ -116,7 +116,7 @@ th {
 
 .table-striped {
   > tbody > tr:nth-of-type(odd) {
-    background-color: #f9f9f9; /* @table-bg-accent */
+    background-color: color-mix(in srgb, var(--text-color) 4%, var(--base-background-color));
   }
 }
 
@@ -126,7 +126,7 @@ th {
 
 .table-hover {
   > tbody > tr:hover {
-    background-color: #f5f5f5; /* @table-bg-hover */
+    background-color: var(--background-color-highlight);
   }
 }
 
@@ -165,7 +165,7 @@ table {
   > th.active,
   &.active > td,
   &.active > th {
-    background-color: #f5f5f5; /* @table-bg-active */
+    background-color: var(--background-color-highlight);
   }
 }
 .table-hover > tbody > tr {
@@ -174,7 +174,8 @@ table {
   &.active:hover > td,
   &:hover > .active,
   &.active:hover > th {
-    background-color: #e8e8e8; /* darken(#f5f5f5, 5%) */
+    color: var(--text-color-selected);
+    background-color: var(--background-color-selected);
   }
 }
 
@@ -186,7 +187,12 @@ table {
   > th.success,
   &.success > td,
   &.success > th {
-    background-color: #dff0d8; /* @state-success-bg */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-success) 12%,
+      var(--base-background-color)
+    );
   }
 }
 .table-hover > tbody > tr {
@@ -195,7 +201,12 @@ table {
   &.success:hover > td,
   &:hover > .success,
   &.success:hover > th {
-    background-color: #d0e9c6; /* darken(#dff0d8, 5%) */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-success) 18%,
+      var(--base-background-color)
+    );
   }
 }
 
@@ -207,7 +218,12 @@ table {
   > th.info,
   &.info > td,
   &.info > th {
-    background-color: #d9edf7; /* @state-info-bg */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-info) 12%,
+      var(--base-background-color)
+    );
   }
 }
 .table-hover > tbody > tr {
@@ -216,7 +232,12 @@ table {
   &.info:hover > td,
   &:hover > .info,
   &.info:hover > th {
-    background-color: #c4e3f3; /* darken(#d9edf7, 5%) */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-info) 18%,
+      var(--base-background-color)
+    );
   }
 }
 
@@ -228,7 +249,12 @@ table {
   > th.warning,
   &.warning > td,
   &.warning > th {
-    background-color: #fcf8e3; /* @state-warning-bg */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-warning) 12%,
+      var(--base-background-color)
+    );
   }
 }
 .table-hover > tbody > tr {
@@ -237,7 +263,12 @@ table {
   &.warning:hover > td,
   &:hover > .warning,
   &.warning:hover > th {
-    background-color: #faf2cc; /* darken(#fcf8e3, 5%) */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-warning) 18%,
+      var(--base-background-color)
+    );
   }
 }
 
@@ -249,7 +280,12 @@ table {
   > th.danger,
   &.danger > td,
   &.danger > th {
-    background-color: #f2dede; /* @state-danger-bg */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-error) 12%,
+      var(--base-background-color)
+    );
   }
 }
 .table-hover > tbody > tr {
@@ -258,6 +294,11 @@ table {
   &.danger:hover > td,
   &:hover > .danger,
   &.danger:hover > th {
-    background-color: #ebcccc; /* darken(#f2dede, 5%) */
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-error) 18%,
+      var(--base-background-color)
+    );
   }
 }

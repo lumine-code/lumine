@@ -40,9 +40,9 @@ legend {
   margin-bottom: var(--line-height-computed);
   font-size: calc(var(--ui-font-size) * 1.5);
   line-height: inherit;
-  color: #333; /* @legend-color: @gray-dark */
+  color: var(--text-color-highlight);
   border: 0;
-  border-bottom: 1px solid #e5e5e5; /* @legend-border-color */
+  border-bottom: 1px solid var(--base-border-color);
 }
 
 label {
@@ -101,7 +101,7 @@ output {
   padding-top: 7px; /* (@padding-base-vertical + 1) */
   font-size: var(--ui-font-size);
   line-height: 1.428571429; /* @line-height-base */
-  color: #555; /* @input-color: @gray */
+  color: var(--text-color);
 }
 
 /* Common form controls
@@ -135,29 +135,27 @@ output {
   padding: 6px 12px; /* @padding-base-vertical @padding-base-horizontal */
   font-size: var(--ui-font-size);
   line-height: 1.428571429; /* @line-height-base */
-  color: #555; /* @input-color: @gray */
-  background-color: #fff; /* @input-bg */
+  color: var(--text-color);
+  background-color: var(--input-background-color);
   background-image: none; /* Reset unusual Firefox-on-Android default style; see https://github.com/necolas/normalize.css/issues/214 */
-  border: 1px solid #ccc; /* @input-border */
-  border-radius: 4px; /* @input-border-radius; has no effect on <select>s in some browsers */
+  border: 1px solid var(--input-border-color);
+  border-radius: var(--ui-border-radius);
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
   transition:
     border-color ease-in-out 0.15s,
     box-shadow ease-in-out 0.15s;
 
   /* Customize the `:focus` state to imitate native WebKit styles.
-     (.form-control-focus() inlined, @input-border-focus: #66afe9) */
+     (.form-control-focus() inlined, @input-border-focus: var(--accent-indicator-color)) */
   &:focus {
-    border-color: #66afe9;
+    border-color: var(--accent-indicator-color);
     outline: 0;
-    box-shadow:
-      inset 0 1px 1px rgba(0, 0, 0, 0.075),
-      0 0 8px rgba(102, 175, 233, 0.6);
+    box-shadow: 0 0 0 1px var(--accent-indicator-color);
   }
 
-  /* Placeholder (.placeholder() inlined, @input-color-placeholder: #999) */
+  /* Placeholder (.placeholder() inlined, @input-color-placeholder: var(--text-color-subtle)) */
   &::-webkit-input-placeholder {
-    color: #999;
+    color: var(--text-color-subtle);
   }
 
   /* Unstyle the caret on `<select>`s in IE10+. */
@@ -174,7 +172,7 @@ output {
   &[disabled],
   &[readonly],
   fieldset[disabled] & {
-    background-color: #eee; /* @input-bg-disabled: @gray-lighter */
+    background-color: var(--background-color-highlight);
     opacity: 1; /* iOS fix for unreadable disabled content; see https://github.com/twbs/bootstrap/issues/11655 */
   }
 
@@ -448,28 +446,30 @@ input[type="checkbox"] {
   &.checkbox label,
   &.radio-inline label,
   &.checkbox-inline label {
-    color: #3c763d; /* @state-success-text */
+    color: var(--text-color-success);
   }
   /* Set the border and box shadow on specific inputs to match */
   .form-control {
-    border-color: #3c763d;
+    border-color: var(--text-color-success);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075); /* Redeclare so transitions work */
     &:focus {
-      border-color: #2b542c; /* darken(#3c763d, 10%) */
-      box-shadow:
-        inset 0 1px 1px rgba(0, 0, 0, 0.075),
-        0 0 6px #67b168; /* lighten(#3c763d, 20%) */
+      border-color: var(--text-color-success);
+      box-shadow: 0 0 0 1px var(--text-color-success);
     }
   }
   /* Set validation states also for addons */
   .input-group-addon {
-    color: #3c763d;
-    border-color: #3c763d;
-    background-color: #dff0d8; /* @state-success-bg */
+    color: var(--text-color-success);
+    border-color: var(--text-color-success);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-success) 12%,
+      var(--input-background-color)
+    );
   }
   /* Optional feedback icon */
   .form-control-feedback {
-    color: #3c763d;
+    color: var(--text-color-success);
   }
 }
 .has-warning {
@@ -483,25 +483,27 @@ input[type="checkbox"] {
   &.checkbox label,
   &.radio-inline label,
   &.checkbox-inline label {
-    color: #8a6d3b; /* @state-warning-text */
+    color: var(--text-color-warning);
   }
   .form-control {
-    border-color: #8a6d3b;
+    border-color: var(--text-color-warning);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
     &:focus {
-      border-color: #66512c; /* darken(#8a6d3b, 10%) */
-      box-shadow:
-        inset 0 1px 1px rgba(0, 0, 0, 0.075),
-        0 0 6px #c0a16b; /* lighten(#8a6d3b, 20%) */
+      border-color: var(--text-color-warning);
+      box-shadow: 0 0 0 1px var(--text-color-warning);
     }
   }
   .input-group-addon {
-    color: #8a6d3b;
-    border-color: #8a6d3b;
-    background-color: #fcf8e3; /* @state-warning-bg */
+    color: var(--text-color-warning);
+    border-color: var(--text-color-warning);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-warning) 12%,
+      var(--input-background-color)
+    );
   }
   .form-control-feedback {
-    color: #8a6d3b;
+    color: var(--text-color-warning);
   }
 }
 .has-error {
@@ -515,25 +517,27 @@ input[type="checkbox"] {
   &.checkbox label,
   &.radio-inline label,
   &.checkbox-inline label {
-    color: #a94442; /* @state-danger-text */
+    color: var(--text-color-error);
   }
   .form-control {
-    border-color: #a94442;
+    border-color: var(--text-color-error);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
     &:focus {
-      border-color: #843534; /* darken(#a94442, 10%) */
-      box-shadow:
-        inset 0 1px 1px rgba(0, 0, 0, 0.075),
-        0 0 6px #ce8483; /* lighten(#a94442, 20%) */
+      border-color: var(--text-color-error);
+      box-shadow: 0 0 0 1px var(--text-color-error);
     }
   }
   .input-group-addon {
-    color: #a94442;
-    border-color: #a94442;
-    background-color: #f2dede; /* @state-danger-bg */
+    color: var(--text-color-error);
+    border-color: var(--text-color-error);
+    background-color: color-mix(
+      in srgb,
+      var(--background-color-error) 12%,
+      var(--input-background-color)
+    );
   }
   .form-control-feedback {
-    color: #a94442;
+    color: var(--text-color-error);
   }
 }
 
@@ -556,7 +560,7 @@ input[type="checkbox"] {
   display: block; /* account for any element using help-block */
   margin-top: 5px;
   margin-bottom: 10px;
-  color: hsl(from var(--text-color) h s calc(l + 25)); /* lighten the text some for contrast */
+  color: var(--text-color-subtle);
 }
 
 /* Inline forms
@@ -714,5 +718,11 @@ input[type="checkbox"] {
         font-size: var(--font-size-small);
       }
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form-control {
+    transition: none;
   }
 }

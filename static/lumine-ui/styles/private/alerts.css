@@ -58,59 +58,32 @@
   }
 }
 
-/* Alternate styles
-
-   Contextual modifier classes for colorizing the alert.
-   (.alert-variant() inlined; Bootstrap state colors computed.) */
-
+/* Shared alert geometry uses theme-owned status colors on a tinted UI surface. */
 .alert-success {
-  background-color: #dff0d8; /* @state-success-bg */
-  border-color: #d6e9c6; /* @state-success-border */
-  color: #3c763d; /* @state-success-text */
-
-  hr {
-    border-top-color: #c9e2b3; /* darken(@state-success-border, 5%) */
-  }
-  .alert-link {
-    color: #2b542c; /* darken(@state-success-text, 10%) */
-  }
+  --alert-tint: var(--background-color-success);
 }
-
 .alert-info {
-  background-color: #d9edf7; /* @state-info-bg */
-  border-color: #bce8f1; /* @state-info-border */
-  color: #31708f; /* @state-info-text */
-
-  hr {
-    border-top-color: #a6e1ec; /* darken(@state-info-border, 5%) */
-  }
-  .alert-link {
-    color: #245269; /* darken(@state-info-text, 10%) */
-  }
+  --alert-tint: var(--background-color-info);
 }
-
 .alert-warning {
-  background-color: #fcf8e3; /* @state-warning-bg */
-  border-color: #faebcc; /* @state-warning-border */
-  color: #8a6d3b; /* @state-warning-text */
-
-  hr {
-    border-top-color: #f7e1b5; /* darken(@state-warning-border, 5%) */
-  }
-  .alert-link {
-    color: #66512c; /* darken(@state-warning-text, 10%) */
-  }
+  --alert-tint: var(--background-color-warning);
+}
+.alert-danger {
+  --alert-tint: var(--background-color-error);
 }
 
+.alert-success,
+.alert-info,
+.alert-warning,
 .alert-danger {
-  background-color: #f2dede; /* @state-danger-bg */
-  border-color: #ebccd1; /* @state-danger-border */
-  color: #a94442; /* @state-danger-text */
-
+  color: var(--text-color-highlight);
+  background-color: color-mix(in srgb, var(--alert-tint) 12%, var(--base-background-color));
+  border-color: color-mix(in srgb, var(--alert-tint) 35%, var(--base-background-color));
   hr {
-    border-top-color: #e4b9c0; /* darken(@state-danger-border, 5%) */
+    border-top-color: inherit;
   }
   .alert-link {
-    color: #843534; /* darken(@state-danger-text, 10%) */
+    color: inherit;
+    text-decoration: underline;
   }
 }
