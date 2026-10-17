@@ -296,7 +296,9 @@ module.exports = class Project extends Model {
           if (buffer.isRetained()) {
             const isUnloading = options.isUnloading === true;
             return buffer.serialize({
-              markerLayers: isUnloading,
+              // Session documents refer to persistent layers by ID, including
+              // in autosaves used after an unexpected shutdown.
+              markerLayers: true,
               history: isUnloading,
             });
           }

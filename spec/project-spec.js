@@ -481,12 +481,14 @@ describe("Project", () => {
       }
     });
 
-    it("serializes marker layers and history only if Lumine is quitting", async () => {
+    it("preserves persistent markers in every snapshot and history only when unloading", async () => {
       await lumine.workspace.open("a");
 
       let bufferA = lumine.project.getBuffers()[0];
       let layerA = bufferA.addMarkerLayer({ persistent: true });
       let markerA = layerA.markPosition([0, 3]);
+      const ephemeral = bufferA.addMarkerLayer({ persistent: false });
+      ephemeral.markPosition([0, 1]);
 
       bufferA.append("!");
       notQuittingProject = buildProject({
@@ -496,11 +498,17 @@ describe("Project", () => {
         grammarRegistry: lumine.grammars,
       });
 
-      await notQuittingProject.deserialize(lumine.project.serialize({ isUnloading: false }));
+      const autosave = lumine.project.serialize({ isUnloading: false });
+      expect(autosave.buffers[0].markerLayers[ephemeral.id]).toBeUndefined();
+      await notQuittingProject.deserialize(autosave);
 
-      expect(notQuittingProject.getBuffers()[0].getMarkerLayer(layerA.id), (x) =>
-        x.getMarker(markerA.id),
-      ).toBeUndefined();
+      expect(
+        notQuittingProject
+          .getBuffers()[0]
+          .getMarkerLayer(layerA.id)
+          ?.getMarker(markerA.id)
+          ?.getStartPosition(),
+      ).toEqual(markerA.getStartPosition());
       expect(notQuittingProject.getBuffers()[0].undo()).toBe(false);
       quittingProject = buildProject({
         notificationManager: lumine.notifications,
@@ -509,11 +517,17 @@ describe("Project", () => {
         grammarRegistry: lumine.grammars,
       });
 
-      await quittingProject.deserialize(lumine.project.serialize({ isUnloading: true }));
+      const shutdown = lumine.project.serialize({ isUnloading: true });
+      expect(shutdown.buffers[0].markerLayers[ephemeral.id]).toBeUndefined();
+      await quittingProject.deserialize(shutdown);
 
-      expect(quittingProject.getBuffers()[0].getMarkerLayer(layerA.id), (x) =>
-        x.getMarker(markerA.id),
-      ).not.toBeUndefined();
+      expect(
+        quittingProject
+          .getBuffers()[0]
+          .getMarkerLayer(layerA.id)
+          ?.getMarker(markerA.id)
+          ?.getStartPosition(),
+      ).toEqual(markerA.getStartPosition());
       expect(quittingProject.getBuffers()[0].undo()).toBe(true);
     });
   });
