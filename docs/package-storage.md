@@ -47,6 +47,8 @@ Use `mutate()` for read-modify-write operations such as an MRU list. Its updater
 
 Core publishes committed changes to other windows, which refresh their caches and notify observers. Package code does not open the SQLite database, construct storage paths or publish cross-window messages itself.
 
+Both observation callbacks receive readonly `{scopeChanged}` metadata as their second argument. It is `false` for the initial `observe()` delivery and ordinary commits, and `true` when the workspace handle follows different project roots. `observe()` delivers a scope transition even when the stored values are equal; `onDidChange()` continues to report only value changes. A package that keeps optimistic edits while writes are pending must still apply a scope transition immediately, and must reconcile committed values when its current scope's pending writes finish.
+
 Project changes rebind the project store and notify its observers while retaining the package instance. Outgoing pane teardown finishes before rebinding. A write captures its target project when submitted, so a queued operation cannot drift into a subsequently opened project. For asynchronous work that has not submitted a write yet, capture the intended project and respect the operation's cancellation signal before writing through the current project handle.
 
 ## Session recovery

@@ -6,6 +6,8 @@ const { getProjectStateKey } = require("./project-state-keys");
 
 const GLOBAL_SCOPE = "global";
 const DELETE = Symbol("delete");
+const VALUE_CHANGE = Object.freeze({ scopeChanged: false });
+const SCOPE_CHANGE = Object.freeze({ scopeChanged: true });
 
 /** Package-owned JSON values, shared by profile or project rather than workspace snapshots. */
 module.exports = class PackageStorage {
@@ -377,13 +379,13 @@ class StorageScope {
    * absent key supplies `undefined`. A workspace observer also runs when its
    * handle follows different project roots, even when the value is unchanged.
    * @param {String} key - Package-owned key.
-   * @param {Function} callback - Receives a detached current value.
+   * @param {Function} callback - Receives a detached current value and readonly `{scopeChanged}` metadata. The flag is true only when an existing workspace handle follows different project roots.
    * @returns {Disposable} Stops observing when disposed.
    */
   observe(key, callback) {
     const subscription = this.subscribe(key, callback, true);
     try {
-      callback(this.get(key));
+      callback(this.get(key), VALUE_CHANGE);
     } catch (error) {
       subscription.dispose();
       throw error;
@@ -398,7 +400,7 @@ class StorageScope {
    * Observe value changes without an immediate callback. Workspace scope changes
    * emit only when the old and new values differ.
    * @param {String} key - Package-owned key.
-   * @param {Function} callback - Receives `{oldValue, newValue}` with detached values.
+   * @param {Function} callback - Receives `{oldValue, newValue}` with detached values and readonly `{scopeChanged}` metadata.
    * @returns {Disposable} Stops observing when disposed.
    */
   onDidChange(key, callback) {
@@ -435,6 +437,7 @@ class StorageScope {
             listener.observe
               ? copyOptional(newValue)
               : { oldValue: copyOptional(oldValue), newValue: copyOptional(newValue) },
+            rebound ? SCOPE_CHANGE : VALUE_CHANGE,
           );
         } catch (error) {
           console.error("Package storage observer failed", error);

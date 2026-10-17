@@ -242,6 +242,56 @@ test("project observers follow stable facades across scope changes", async () =>
   await manager.close();
 });
 
+test("observer metadata distinguishes scope transitions from committed value changes", async () => {
+  const manager = new PackageStorage();
+  await manager.initialize({ enabled: false, projectPaths: ["a"], windowStateId: "one" });
+  const { workspaceState, globalState } = manager.forPackage("example");
+  await workspaceState.update("value", "same");
+  await manager.switchProject(["b"]);
+  await workspaceState.update("value", "same");
+  await manager.switchProject(["a"]);
+  const observed = [];
+  const changes = [];
+  workspaceState.observe("value", (value, metadata) => {
+    observed.push({ value, metadata });
+  });
+  workspaceState.onDidChange("value", (value, metadata) => changes.push({ ...value, metadata }));
+  const pending = workspaceState.update("value", "new-a");
+  const switching = manager.switchProject(["b"]);
+  assert.deepEqual(observed, [
+    { value: "same", metadata: { scopeChanged: false } },
+    { value: "same", metadata: { scopeChanged: true } },
+  ]);
+  assert.deepEqual(changes, []);
+  await Promise.all([pending, switching]);
+  await workspaceState.update("value", "new-b");
+  await manager.switchProject(["a"]);
+  await manager.switchProject(["a"]);
+  assert.deepEqual(
+    observed.map(({ value, metadata }) => [value, metadata.scopeChanged]),
+    [
+      ["same", false],
+      ["same", true],
+      ["new-b", false],
+      ["new-a", true],
+    ],
+  );
+  assert.deepEqual(changes, [
+    { oldValue: "same", newValue: "new-b", metadata: { scopeChanged: false } },
+    { oldValue: "new-b", newValue: "new-a", metadata: { scopeChanged: true } },
+  ]);
+  assert.ok(observed.every(({ metadata }) => Object.isFrozen(metadata)));
+  const global = [];
+  globalState.observe("value", (value, metadata) => global.push({ value, metadata }));
+  await manager.switchProject(["c"]);
+  await globalState.update("value", "global");
+  assert.deepEqual(global, [
+    { value: undefined, metadata: { scopeChanged: false } },
+    { value: "global", metadata: { scopeChanged: false } },
+  ]);
+  await manager.close();
+});
+
 test("a pending write retains its original project scope after a synchronous switch", async () => {
   const manager = new PackageStorage();
   await manager.initialize({ enabled: false, projectPaths: ["a"], windowStateId: "one" });
