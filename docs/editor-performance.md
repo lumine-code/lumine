@@ -6,7 +6,7 @@ The later [text change boundary comparison](text-change-performance.md) records 
 
 The [shared native edit ownership experiment](shared-edit-performance.md) separates immutable patch sharing from a prepared mutation path and compares their editing, renderer and memory costs.
 
-The production ownership and notification boundary is specified by the [document edit contract](document-edit-contract.md).
+The production ownership and notification boundary is specified by the [document edit contract](document-edit-contract.md), with measured costs and limitations in [production document edit measurements](document-edit-performance.md).
 
 ## Display performance benchmarks
 
