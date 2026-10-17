@@ -96,6 +96,47 @@ function runtimeFiles(directory) {
   return result;
 }
 
+function packageSourceResolver(repoRoot) {
+  let sources;
+  const visited = new Set();
+  function manifestAt(directory) {
+    const file = path.join(directory, "package.json");
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
+  }
+  function samePackage(source, shipped) {
+    return source?.name === shipped.name && source?.version === shipped.version;
+  }
+  function collect(directory) {
+    if (!fs.existsSync(directory)) return;
+    const realDirectory = fs.realpathSync(directory);
+    if (visited.has(realDirectory)) return;
+    visited.add(realDirectory);
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || (!entry.isDirectory() && !entry.isSymbolicLink())) continue;
+      const packageDirectory = path.join(directory, entry.name);
+      if (entry.name.startsWith("@")) {
+        collect(packageDirectory);
+        continue;
+      }
+      const manifest = manifestAt(packageDirectory);
+      if (manifest) sources.push({ directory: packageDirectory, manifest });
+      collect(path.join(packageDirectory, "node_modules"));
+    }
+  }
+  return (packageRoot, shipped) => {
+    const direct = path.join(repoRoot, packageRoot);
+    if (samePackage(manifestAt(direct), shipped)) return direct;
+    // electron-builder rehoists the production graph. A root dependency in the
+    // archive can therefore come from a nested source copy while the source
+    // root still contains a different version needed only by build tooling.
+    if (!sources) {
+      sources = [];
+      collect(path.join(repoRoot, "node_modules"));
+    }
+    return sources.find((source) => samePackage(source.manifest, shipped))?.directory;
+  };
+}
+
 function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(file) } = {}) {
   assert.ok(PLATFORMS.includes(platform), `Unsupported packaged platform: ${platform}`);
   // ASAR caches headers by filename; revalidation after a rebuild must read the
@@ -104,6 +145,7 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
   const errors = [];
   const entries = asar.listPackage(file).map(archivePath);
   const sourceManifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  const resolvePackageSource = packageSourceResolver(repoRoot);
   const readManifest = (entry) =>
     JSON.parse(asar.extractFile(file, path.normalize(entry)).toString("utf8"));
   const manifest = readManifest("package.json");
@@ -146,8 +188,13 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
   for (const entry of entries) {
     if (!/(?:^|\/)node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/.test(entry)) continue;
     const packageRoot = path.posix.dirname(entry);
-    const sourceDirectory = path.join(repoRoot, packageRoot);
-    if (!fs.existsSync(sourceDirectory)) continue;
+    const shipped = readManifest(entry);
+    const sourceDirectory = resolvePackageSource(packageRoot, shipped);
+    expect(
+      sourceDirectory != null,
+      `No installed source for packaged dependency: ${packageRoot} (${shipped.name}@${shipped.version})`,
+    );
+    if (!sourceDirectory) continue;
     for (const legal of fs.readdirSync(sourceDirectory, { withFileTypes: true })) {
       if (!legal.isFile() || !LEGAL_FILE.test(legal.name)) continue;
       const legalEntry = `${packageRoot}/${legal.name}`;

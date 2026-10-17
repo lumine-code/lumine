@@ -23,7 +23,14 @@ function write(root, file, value) {
 
 async function fixture(
   t,
-  { platform = "linux", changeManifest, omit = [], packNative = false, add = {} } = {},
+  {
+    platform = "linux",
+    changeManifest,
+    omit = [],
+    packNative = false,
+    add = {},
+    installed = {},
+  } = {},
 ) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-built-app-"));
   t.after(() => {
@@ -113,6 +120,7 @@ async function fixture(
   write(source, "package.json", packedManifest);
   write(source, "src/main.js", "module.exports = {};");
   for (const asset of RUNTIME_ASSETS) write(source, asset, "asset");
+  for (const [entry, value] of Object.entries(installed)) write(repoRoot, entry, value);
   fs.cpSync(path.join(repoRoot, "node_modules"), path.join(source, "node_modules"), {
     recursive: true,
   });
@@ -223,6 +231,63 @@ test("rejects missing or altered dependency licenses and third-party notices", a
       /Dependency legal file differs from its source: node_modules\/@lumine-code\/native\/LICENSE.md/.test(
         error.message,
       ),
+  );
+});
+
+function rehoistedDependency({ alterLicense = false, omitNotices = false } = {}) {
+  const sourceRoot = "node_modules/sample/node_modules/rehoisted";
+  const packagedRoot = "node_modules/rehoisted";
+  const manifest = { name: "rehoisted", version: "2.0.0" };
+  const license = "Production dependency license\n";
+  const notices = "Inherited production notices\n";
+  return {
+    installed: {
+      [`${packagedRoot}/package.json`]: { name: "rehoisted", version: "1.0.0" },
+      [`${packagedRoot}/LICENSE`]: "Build tooling dependency license\n",
+      [`${sourceRoot}/package.json`]: manifest,
+      [`${sourceRoot}/LICENSE.md`]: license,
+      [`${sourceRoot}/THIRD_PARTY_NOTICES`]: notices,
+    },
+    add: {
+      [`${packagedRoot}/package.json`]: manifest,
+      [`${packagedRoot}/LICENSE.md`]: alterLicense ? "Wrong license\n" : license,
+      ...(!omitNotices ? { [`${packagedRoot}/THIRD_PARTY_NOTICES`]: notices } : {}),
+    },
+    omit: [
+      `${packagedRoot}/LICENSE`,
+      `${sourceRoot}/package.json`,
+      `${sourceRoot}/LICENSE.md`,
+      `${sourceRoot}/THIRD_PARTY_NOTICES`,
+    ],
+  };
+}
+
+test("validates legal files from the production source after dependency rehoisting", async (t) => {
+  const app = await fixture(t, rehoistedDependency());
+  assert.doesNotThrow(() => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }));
+});
+
+test("rejects missing or altered legal files after dependency rehoisting", async (t) => {
+  const app = await fixture(t, rehoistedDependency({ alterLicense: true, omitNotices: true }));
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    (error) =>
+      /Dependency legal file differs from its source: node_modules\/rehoisted\/LICENSE.md/.test(
+        error.message,
+      ) &&
+      /Missing runtime file in app.asar: node_modules\/rehoisted\/THIRD_PARTY_NOTICES/.test(
+        error.message,
+      ),
+  );
+});
+
+test("rejects a packaged dependency whose installed source version is unavailable", async (t) => {
+  const app = await fixture(t, {
+    add: { "node_modules/unknown/package.json": { name: "unknown", version: "1.0.0" } },
+  });
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /No installed source for packaged dependency: node_modules\/unknown \(unknown@1.0.0\)/,
   );
 });
 
