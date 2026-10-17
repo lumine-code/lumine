@@ -45,7 +45,7 @@ module.exports = {
     });
   },
   deactivate() {
-    this.sub.dispose();
+    this.sub?.dispose();
   },
 };
 ```
