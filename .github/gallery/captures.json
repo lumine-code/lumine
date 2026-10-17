@@ -1,5 +1,5 @@
 {
-  "capturedOn": "2026-10-13",
+  "capturedOn": "2026-10-17",
   "context": "Authentic rectangular captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
@@ -9,197 +9,29 @@
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
       "dark": "01-dark.png",
-      "capturedOn": "2026-10-14",
-      "sourceRevision": "ca7198ebc05410bb29a14259434e77c94a714b24",
+      "capturedOn": "2026-10-17",
+      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
       "packageSourceRevisions": {
-        "language-gfm": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
-        "language-python": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
-        "markdown-preview": "82a0722f36caa44c088971b7b443af53fb43a525",
-        "tree-view": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4"
+        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
+        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
       },
-      "themeSourceRevision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
+      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "bb681b4e5ba5f2b2b12657d698e6899ea981c7b79114a5f72982c7da49406621",
+        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.7.0",
-          "chrome": "152.0.7977.130",
-          "devicePixelRatio": 1,
-          "locale": "en-GB",
-          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
-          "fontSize": 14,
-          "themes": ["one-day-syntax", "one-day-ui"]
-        },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
-        "cornerRadius": 10,
-        "sources": {
-          "editor": {
-            "revision": "ca7198ebc05410bb29a14259434e77c94a714b24",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "language-gfm": {
-            "revision": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "language-python": {
-            "revision": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "markdown-preview": {
-            "revision": "82a0722f36caa44c088971b7b443af53fb43a525",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "one-theme": {
-            "revision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "tree-view": {
-            "revision": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          }
-        },
-        "fixtures": [
-          {
-            "file": "Signal Lab/notes.md",
-            "sha256": "552c589be83868b397bbe624e5e194cc43dfe15e4bb3b37ac34196cab60fdb6c"
-          },
-          {
-            "file": "Signal Lab/README.md",
-            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
-          },
-          {
-            "file": "Signal Lab/signal.py",
-            "sha256": "daaf10ddedcb758795e5ff5dff9c624552195c1d41551fb5862ae04542755f3f"
-          }
-        ],
-        "sha256": "917905a216d412905f27a3e9852957bc312c1e97a247b8e8acdc65b56bb791a6"
-      }
-    },
-    {
-      "file": "view-2.png",
-      "label": "02 / DOCUMENT",
-      "title": "Source and preview, side by side",
-      "description": "A live Markdown preview beside its source in a split pane.",
-      "light": "02-light.png",
-      "dark": "02-dark.png",
-      "capturedOn": "2026-10-14",
-      "packageSourceRevisions": {
-        "language-gfm": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
-        "language-python": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
-        "markdown-preview": "82a0722f36caa44c088971b7b443af53fb43a525",
-        "tree-view": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4"
-      },
-      "themeSourceRevision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
-      "sourceRevision": "ca7198ebc05410bb29a14259434e77c94a714b24",
-      "capture": {
-        "runner": "script/demo.js",
-        "recipeHash": "bb681b4e5ba5f2b2b12657d698e6899ea981c7b79114a5f72982c7da49406621",
-        "mode": "normal",
-        "fontSettings": "default",
-        "environment": {
-          "platform": "win32",
-          "arch": "x64",
-          "electron": "44.7.0",
-          "chrome": "152.0.7977.130",
-          "devicePixelRatio": 1,
-          "locale": "en-GB",
-          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
-          "fontSize": 14,
-          "themes": ["one-day-syntax", "one-day-ui"]
-        },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
-        "cornerRadius": 10,
-        "sources": {
-          "editor": {
-            "revision": "ca7198ebc05410bb29a14259434e77c94a714b24",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "language-gfm": {
-            "revision": "be723ccf806fdd4a2a06638f6e881c09a53b4409",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "language-python": {
-            "revision": "0ff5b68a22a196804b0ad2451f0c05ff419cf784",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "markdown-preview": {
-            "revision": "82a0722f36caa44c088971b7b443af53fb43a525",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "one-theme": {
-            "revision": "1b3de06565f5e59ae500a64c96a18265cd3b0b9c",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "tree-view": {
-            "revision": "fe6f35de06f036837aa9c2d3b138b3d72557bcc4",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          }
-        },
-        "fixtures": [
-          {
-            "file": "Signal Lab/notes.md",
-            "sha256": "552c589be83868b397bbe624e5e194cc43dfe15e4bb3b37ac34196cab60fdb6c"
-          },
-          {
-            "file": "Signal Lab/README.md",
-            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
-          },
-          {
-            "file": "Signal Lab/signal.py",
-            "sha256": "daaf10ddedcb758795e5ff5dff9c624552195c1d41551fb5862ae04542755f3f"
-          }
-        ],
-        "sha256": "9889e3e77def788d8c264d46d09aeaf11d48c62c4280016239c581e2d270e83e"
-      }
-    },
-    {
-      "file": "view-3.png",
-      "label": "03 / EXTEND",
-      "title": "Packages and settings",
-      "description": "Manage installed and bundled packages from the editor.",
-      "light": "03-light.png",
-      "dark": "03-dark.png",
-      "themeSourceRevision": "828c35ac1816466699effa6f7cf7eedccc930ff9",
-      "capturedOn": "2026-10-16",
-      "sourceRevision": "f8d8badf72a1a2e010c2c5d76306bade6c5fefd0",
-      "packageSourceRevisions": {
-        "linter": "21341130b995028e80d912c625a7efec5157f8c0",
-        "linter-panel": "8429c011240fa648cd88a3911cdaead2dc16b381",
-        "settings-view": "28ae9cdb478e153c0e74d11c35f142ab25ed62b0",
-        "tree-view": "c94a3fd6465481fc2a2ec090ced0c60fe46018f2"
-      },
-      "capture": {
-        "runner": "script/demo.js",
-        "recipeHash": "44d0b29a5b7ef09a3f103b2677233d2373df51d6698f13cf6906f57c270d76d7",
-        "mode": "normal",
-        "fontSettings": "default",
-        "environment": {
-          "platform": "win32",
-          "arch": "x64",
-          "electron": "44.7.1",
-          "chrome": "152.0.7977.149",
+          "electron": "44.8.0",
+          "chrome": "152.0.7977.167",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
@@ -218,32 +50,52 @@
         },
         "sources": {
           "editor": {
-            "revision": "f8d8badf72a1a2e010c2c5d76306bade6c5fefd0",
+            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
             "dirty": true,
-            "workingTreeHash": "c20cd43d5c666eabe04f96b80f9a67779d5602cd70e096a7b8e3ee6627ad90e2"
+            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+          },
+          "about": {
+            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter": {
-            "revision": "21341130b995028e80d912c625a7efec5157f8c0",
+            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "8429c011240fa648cd88a3911cdaead2dc16b381",
+            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
             "dirty": true,
-            "workingTreeHash": "cfd317319c1ec7ae6f1fb78b6fb92195aca8c1361322b0f2e6e38f7637f2002e"
+            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+          },
+          "markdown-preview": {
+            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "828c35ac1816466699effa6f7cf7eedccc930ff9",
+            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "28ae9cdb478e153c0e74d11c35f142ab25ed62b0",
+            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "c94a3fd6465481fc2a2ec090ced0c60fe46018f2",
+            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -278,7 +130,269 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "befae78bf2c649e8ec9a83f968a6d2d209521918bea5bca886d636b73fe41a00"
+        "sha256": "0523b91b4c3903e167deb835ffb99d9a7253d5dded7a02eb2d390f5c4bf0c66a"
+      }
+    },
+    {
+      "file": "view-2.png",
+      "label": "02 / DOCUMENT",
+      "title": "Source and preview, side by side",
+      "description": "A live Markdown preview beside its source in a split pane.",
+      "light": "02-light.png",
+      "dark": "02-dark.png",
+      "capturedOn": "2026-10-17",
+      "packageSourceRevisions": {
+        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
+        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+      },
+      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.8.0",
+          "chrome": "152.0.7977.167",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
+        "sources": {
+          "editor": {
+            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+            "dirty": true,
+            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+          },
+          "about": {
+            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter": {
+            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter-panel": {
+            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+            "dirty": true,
+            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+          },
+          "markdown-preview": {
+            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "one-theme": {
+            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "settings-view": {
+            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/data/samples.csv",
+            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+          },
+          {
+            "file": "Signal Lab/docs/experiments.md",
+            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+          },
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+          },
+          {
+            "file": "Signal Lab/package.json",
+            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+          },
+          {
+            "file": "Signal Lab/src/signal.js",
+            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+          }
+        ],
+        "sha256": "9ab5c304f8b371ec36390f3bfa65f389e19f929a6b287455e7bd7383e395aa20"
+      }
+    },
+    {
+      "file": "view-3.png",
+      "label": "03 / EXTEND",
+      "title": "Packages and settings",
+      "description": "Manage installed and bundled packages from the editor.",
+      "light": "03-light.png",
+      "dark": "03-dark.png",
+      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "capturedOn": "2026-10-17",
+      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "packageSourceRevisions": {
+        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
+        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+      },
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.8.0",
+          "chrome": "152.0.7977.167",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
+        "sources": {
+          "editor": {
+            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+            "dirty": true,
+            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+          },
+          "about": {
+            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter": {
+            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter-panel": {
+            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+            "dirty": true,
+            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+          },
+          "markdown-preview": {
+            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "one-theme": {
+            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "settings-view": {
+            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/data/samples.csv",
+            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+          },
+          {
+            "file": "Signal Lab/docs/experiments.md",
+            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+          },
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+          },
+          {
+            "file": "Signal Lab/package.json",
+            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+          },
+          {
+            "file": "Signal Lab/src/signal.js",
+            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+          }
+        ],
+        "sha256": "5622cfabbc0043e376d82f824a111e53bb85bb87384ef933891d96dbbb649404"
       }
     },
     {
@@ -287,7 +401,130 @@
       "title": "Know your installation",
       "description": "Versions, documentation and updates in the redesigned About pane.",
       "light": "04-light.png",
-      "dark": "04-dark.png"
+      "dark": "04-dark.png",
+      "capturedOn": "2026-10-17",
+      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "packageSourceRevisions": {
+        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
+        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+      },
+      "capture": {
+        "runner": "script/demo.js",
+        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "mode": "normal",
+        "fontSettings": "default",
+        "environment": {
+          "platform": "win32",
+          "arch": "x64",
+          "electron": "44.8.0",
+          "chrome": "152.0.7977.167",
+          "devicePixelRatio": 1,
+          "locale": "en-GB",
+          "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+          "fontSize": 14,
+          "themes": ["one-day-syntax", "one-day-ui"]
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "cornerRadius": 10,
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
+        "sources": {
+          "editor": {
+            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+            "dirty": true,
+            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+          },
+          "about": {
+            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-gfm": {
+            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-python": {
+            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter": {
+            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "linter-panel": {
+            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+            "dirty": true,
+            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+          },
+          "markdown-preview": {
+            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "one-theme": {
+            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "settings-view": {
+            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "tree-view": {
+            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          }
+        },
+        "fixtures": [
+          {
+            "file": "Signal Lab/data/samples.csv",
+            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+          },
+          {
+            "file": "Signal Lab/docs/experiments.md",
+            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+          },
+          {
+            "file": "Signal Lab/notes.md",
+            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+          },
+          {
+            "file": "Signal Lab/package.json",
+            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+          },
+          {
+            "file": "Signal Lab/README.md",
+            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+          },
+          {
+            "file": "Signal Lab/signal.py",
+            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+          },
+          {
+            "file": "Signal Lab/src/signal.js",
+            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+          }
+        ],
+        "sha256": "b7578b89ae12f99903939dcafe436a238881a359f6d486aa7d63603abb3c7b25"
+      }
     }
   ],
   "mode": "normal",
