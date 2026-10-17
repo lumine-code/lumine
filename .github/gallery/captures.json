@@ -10,13 +10,13 @@
       "light": "01-light.png",
       "dark": "01-dark.png",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
       "packageSourceRevisions": {
         "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
         "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
         "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
         "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
@@ -50,9 +50,9 @@
         },
         "sources": {
           "editor": {
-            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
-            "dirty": true,
-            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
             "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
@@ -75,9 +75,9 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
-            "dirty": true,
-            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
             "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
@@ -130,7 +130,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "0523b91b4c3903e167deb835ffb99d9a7253d5dded7a02eb2d390f5c4bf0c66a"
+        "sha256": "4a343e374411471af0cfc8539b49738186e69f5f891651882589de66829c02fb"
       }
     },
     {
@@ -146,13 +146,13 @@
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
         "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
         "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
         "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
       },
       "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
-      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
       "capture": {
         "runner": "script/demo.js",
         "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
@@ -181,9 +181,9 @@
         },
         "sources": {
           "editor": {
-            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
-            "dirty": true,
-            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
             "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
@@ -206,9 +206,9 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
-            "dirty": true,
-            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
             "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
@@ -261,7 +261,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "9ab5c304f8b371ec36390f3bfa65f389e19f929a6b287455e7bd7383e395aa20"
+        "sha256": "e8484cfdc5ef11a9be5f0235797f5c2b84d56eceec99cee9ed63c018dd1e9ea6"
       }
     },
     {
@@ -273,13 +273,13 @@
       "dark": "03-dark.png",
       "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
       "packageSourceRevisions": {
         "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
         "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
         "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
         "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
@@ -312,9 +312,9 @@
         },
         "sources": {
           "editor": {
-            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
-            "dirty": true,
-            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
             "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
@@ -337,9 +337,9 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
-            "dirty": true,
-            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
             "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
@@ -392,7 +392,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "5622cfabbc0043e376d82f824a111e53bb85bb87384ef933891d96dbbb649404"
+        "sha256": "51ee3ddebcf65a1bf5ddb13e8105fe10c3cf6bc9263a75148c607c234f2c5ae9"
       }
     },
     {
@@ -403,14 +403,14 @@
       "light": "04-light.png",
       "dark": "04-dark.png",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
+      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
       "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
       "packageSourceRevisions": {
         "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "386e034a69c17902fb5cb2da321a913c2e455c3e",
+        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
         "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
         "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
         "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
@@ -443,9 +443,9 @@
         },
         "sources": {
           "editor": {
-            "revision": "d41f5089719d2368b7c07efb4dfa1224f41a7144",
-            "dirty": true,
-            "workingTreeHash": "aa65c5235bbf2323156ba808240561d13a0f6bb098250f9df132031b72c4e1b8"
+            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
             "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
@@ -468,9 +468,9 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "386e034a69c17902fb5cb2da321a913c2e455c3e",
-            "dirty": true,
-            "workingTreeHash": "af394edd1e88dd5bd93836ebfec97b5efb69967787c10f7ed4984c16d6603cbd"
+            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
             "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
