@@ -42,6 +42,9 @@ let nextSelectListId = 1;
  * the latest stored IDs with {@link updateRecentItemIds} inside a scoped
  * state's `mutate()` callback. Returning the committed IDs synchronizes a
  * successful no-op too; returning nothing remains valid for other adapters.
+ * Set `adapter.serializesWrites: true` when the adapter owns write ordering.
+ * Core then invokes save immediately, letting scoped state capture the current
+ * project before a rebind. Other adapters retain core's serial save queue.
  * Project adapters notify `onDidChange` on a project rebind even when the IDs
  * are equal. Use the scoped state's `observe()` subscription, skipping its
  * initial callback, so a pending save cannot project into a different project.
@@ -177,6 +180,9 @@ class SelectList extends InputDialog {
     if (adapter.onDidChange != null && typeof adapter.onDidChange !== "function") {
       throw new TypeError("recents.adapter.onDidChange must be a function.");
     }
+    if (adapter.serializesWrites != null && typeof adapter.serializesWrites !== "boolean") {
+      throw new TypeError("recents.adapter.serializesWrites must be a boolean.");
+    }
     const limit = recents.limit ?? Infinity;
     if (limit !== Infinity && (!Number.isInteger(limit) || limit < 0)) {
       throw new RangeError("recents.limit must be a non-negative integer.");
@@ -292,9 +298,10 @@ class SelectList extends InputDialog {
         return Promise.reject(error);
       }
     };
-    const operation = this.recentSaveQueue
-      ? this.recentSaveQueue.catch(() => {}).then(save)
-      : save();
+    const operation =
+      this.recentSaveQueue && !this.recentConfiguration.adapter.serializesWrites
+        ? this.recentSaveQueue.catch(() => {}).then(save)
+        : save();
     this.recentSaveQueue = operation;
     const clear = () => {
       if (this.recentSaveQueue === operation) this.recentSaveQueue = null;

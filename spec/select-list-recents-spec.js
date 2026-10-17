@@ -60,6 +60,7 @@ describe("select-list recent intents across independent windows", () => {
           recents: {
             limit: 10,
             adapter: {
+              serializesWrites: true,
               load: () => state.get("recent", []),
               save: (ids, change) =>
                 state.mutate("recent", (current = []) => updateRecentItemIds(current, ids, change)),
@@ -151,4 +152,34 @@ describe("select-list recent intents across independent windows", () => {
     await manager.switchProject(["recent-project"]);
     expect(a.getRecentItemIds()).toEqual(["a", "old"]);
   });
+
+  for (const dispose of [false, true]) {
+    it(`captures the project for a second pending clear${dispose ? " even after disposal" : ""}`, async () => {
+      const {
+        states,
+        models: [a],
+      } = await lists({ synchronize: false, scope: "workspaceState" });
+      const manager = managers[0];
+      await manager.switchProject(["next-project"]);
+      await states[0].update("recent", ["keep-next"]);
+      await manager.switchProject(["recent-project"]);
+      let release;
+      const blocking = manager.enqueue(() => new Promise((resolve) => (release = resolve)));
+      await conditionPromise(() => Boolean(release));
+      const recording = a.recordRecentItem("a");
+      const clearing = a.clearRecentItems();
+      let switching;
+      try {
+        if (dispose) await a.destroy();
+        switching = manager.switchProject(["next-project"]);
+      } finally {
+        release();
+      }
+      await Promise.all([blocking, recording, clearing, switching]);
+      expect(states[0].get("recent")).toEqual(["keep-next"]);
+      await manager.switchProject(["recent-project"]);
+      expect(states[0].get("recent")).toEqual([]);
+      if (!dispose) expect(a.getRecentItemIds()).toEqual([]);
+    });
+  }
 });

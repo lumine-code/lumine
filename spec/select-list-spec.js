@@ -440,6 +440,14 @@ describe("SelectList", () => {
       expect(view.getRecentItemIds()).toEqual(["one", "two"]);
     });
 
+    it("rejects a non-boolean adapter write-ordering capability", () => {
+      expect(() =>
+        textItemView({
+          recents: { adapter: { load: () => [], save: () => {}, serializesWrites: "yes" } },
+        }),
+      ).toThrowError("recents.adapter.serializesWrites must be a boolean.");
+    });
+
     it("does not let a completed save overwrite newer recent state", async () => {
       let finishSave;
       view = textItemView({
