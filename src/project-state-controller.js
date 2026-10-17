@@ -181,6 +181,8 @@ module.exports = class ProjectStateController {
         throwProjectErrors: true,
       };
       try {
+        this.project.emitWillChangeState(folders);
+        this.assertCurrent(generation);
         await this.workspace.clear({ locations: PROJECT_STATE_LOCATIONS }, assertCurrent);
         this.assertCurrent(generation);
         this.project.destroyUnretainedBuffers();

@@ -31,6 +31,7 @@ describe("ProjectStateController", () => {
       getDirectoryForProjectPath: (projectPath) => ({ getPath: () => projectPath }),
       defaultDirectoryProvider: { normalizePath: (projectPath) => projectPath },
       destroyUnretainedBuffers: jasmine.createSpy("destroyUnretainedBuffers"),
+      emitWillChangeState: jasmine.createSpy("emitWillChangeState"),
       restoredBufferAliases: new Map(),
     };
     project.setPaths = jasmine.createSpy("setPaths").and.callFake((paths) => {
@@ -116,6 +117,15 @@ describe("ProjectStateController", () => {
     expect(config.projectSettings).toEqual({ editor: { tabLength: 7 } });
     expect(config.scopedSettings).toEqual({ ".source.js": { editor: { tabLength: 5 } } });
   }
+
+  it("stops before teardown when a transition observer retires the generation", async () => {
+    const fixture = buildController();
+    fixture.project.emitWillChangeState.and.callFake(() => fixture.controller.reset());
+    expect((await rejectionOf(fixture.controller.setState(["project-b"]))).code).toBe("ABORT_ERR");
+    expect(fixture.workspace.clear).not.toHaveBeenCalled();
+    expect(fixture.project.getPaths()).toEqual(["project-a"]);
+    expect(fixture.releaseReservation).toHaveBeenCalledWith("reservation", ["project-b"]);
+  });
 
   it("defers automatic saves until the incoming session is fully restored", async () => {
     const fixture = buildController();

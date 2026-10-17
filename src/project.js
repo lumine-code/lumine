@@ -313,6 +313,30 @@ module.exports = class Project extends Model {
 
   /**
    * @public
+   * @status extended
+   *
+   * Invoke the callback before a confirmed project session replacement tears
+   * down its outgoing center or rebinds package workspace storage.
+   * Cancel project-bound asynchronous work here while outgoing paths and
+   * storage still agree. The callback runs synchronously and cannot veto the
+   * transition. A later failure may restore the outgoing project.
+   * Direct root edits through {@link #setPaths} emit only {@link #onDidChangePaths}.
+   *
+   * @param {Function} callback - Called before replacing the project session.
+   * @param {Array<String>} callback.projectPaths - Readonly incoming project paths.
+   * @returns {Disposable} The event subscription.
+   */
+  onWillChangeState(callback) {
+    return this.emitter.on("will-change-state", callback);
+  }
+
+  /** @private */
+  emitWillChangeState(projectPaths) {
+    this.emitter.emit("will-change-state", Object.freeze(projectPaths.slice()));
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Invoke the given callback when the project paths change.

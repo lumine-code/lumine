@@ -51,6 +51,8 @@ Both observation callbacks receive readonly `{scopeChanged}` metadata as their s
 
 Project changes rebind the project store and notify its observers while retaining the package instance. Outgoing pane teardown finishes before rebinding. A write captures its target project when submitted, so a queued operation cannot drift into a subsequently opened project. For asynchronous work that has not submitted a write yet, capture the intended project and respect the operation's cancellation signal before writing through the current project handle.
 
+Use `lumine.project.onWillChangeState(callback)` to cancel project-bound asynchronous work before a confirmed session replacement tears down the outgoing center or rebinds workspace storage. Its synchronous callback receives readonly incoming paths while the outgoing paths and storage still agree; it cannot veto the transition, and a later failure may restore the outgoing project. Keep `onDidChangePaths()` subscriptions for refreshing against committed roots and handling direct root edits through `setPaths()`. Own both subscriptions through `context.subscriptions` or the package's disposable aggregate.
+
 ## Session recovery
 
 Stores are independent of window snapshots and are never restored from an old snapshot. User-facing settings remain in `lumine.config`; sensitive strings remain in `lumine.secrets`. Unsaved document contents, shared document identities and view layouts use the session recovery contract in [Session state](session-state.md), not these preference stores.
