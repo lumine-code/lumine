@@ -2024,6 +2024,22 @@ describe("SelectList", () => {
   });
 
   describe("hosted actions", () => {
+    it("binds F12 to the shared model rather than unrelated controls using its CSS class", () => {
+      view = textItemView();
+      const command = "select-list:toggle-keep-open";
+      const actual = lumine.keymaps.findKeyBindings({
+        command,
+        target: view.getQueryEditor().getElement(),
+      });
+      expect(actual.map(({ keystrokes }) => keystrokes)).toEqual(["f12"]);
+      const styled = document.createElement("div");
+      styled.className = "select-list";
+      const input = document.createElement("lumine-text-editor");
+      input.setAttribute("mini", "");
+      styled.appendChild(input);
+      expect(lumine.keymaps.findKeyBindings({ command, target: input })).toEqual([]);
+    });
+
     function repeatableList(disposition = "close", didDispatch = () => {}) {
       view = textItemView({
         commands: { "spec:use-item": { didDispatch } },
