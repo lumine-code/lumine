@@ -98,6 +98,11 @@ module.exports = class WindowEventHandler {
       this.applicationDelegate.onDidLeaveFullScreen(this.handleLeaveFullScreen),
     );
     this.subscriptions.add(
+      this.applicationDelegate.onWillReloadWindow(() => {
+        this.reloadRequested = true;
+      }),
+    );
+    this.subscriptions.add(
       this.applicationDelegate.onDidMouseDownInWindow(({ windowId, position }) => {
         const editorWindow = this.lumineEnvironment.workspace
           .getWindows()
@@ -322,7 +327,6 @@ module.exports = class WindowEventHandler {
   }
 
   handleWindowReload() {
-    this.reloadRequested = true;
     void this.lumineEnvironment.window.reload();
   }
 

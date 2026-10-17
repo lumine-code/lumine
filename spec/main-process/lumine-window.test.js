@@ -217,6 +217,29 @@ describe("LumineWindow", function () {
       );
     });
 
+    it("does not hide the focused renderer during a main-process reload", async function () {
+      const w = new LumineWindow(app, service, {
+        resourcePath,
+        windowInitializationScript,
+        devMode: true,
+        headless: true,
+      });
+      ({ browserWindow } = w);
+      await w.getLoadedPromise();
+      sinon.spy(browserWindow, "hide");
+      // Exercise the focused beforeunload branch without taking native focus
+      // from another application or changing the runner's hidden-window policy.
+      await browserWindow.webContents.executeJavaScript(`
+        document.hasFocus = () => true;
+        void 0;
+      `);
+
+      await w.reload();
+
+      assert.isFalse(browserWindow.hide.called);
+      assert.isFalse(browserWindow.isDestroyed());
+    });
+
     it("moves an unsaved editor through new-window startup and real commit acknowledgement", async function () {
       const source = new LumineWindow(app, service, {
         resourcePath,
@@ -723,11 +746,34 @@ describe("LumineWindow", function () {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.prepareToUnload = sinon.stub().resolves(true);
+      const reload = sinon.spy(w.browserWindow, "reload");
+      const send = sinon.spy(w.browserWindow.webContents, "send");
 
       w.reload();
       await Promise.resolve();
 
       assert.isTrue(w.prepareToUnload.calledOnceWithExactly());
+      assert.isTrue(w.browserWindow.behavior.reloaded);
+      assert.isTrue(send.calledOnceWithExactly("will-reload-window"));
+      assert.isTrue(send.calledBefore(reload));
+    });
+
+    it("does not mark a reload while the renderer is still deciding whether to unload", async function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      let resolveUnload;
+      w.prepareToUnload = () => new Promise((resolve) => (resolveUnload = resolve));
+
+      w.reload();
+      await Promise.resolve();
+
+      assert.deepEqual(w.browserWindow.sent, []);
+      assert.isFalse(w.browserWindow.behavior.reloaded);
+
+      resolveUnload(true);
+      await Promise.resolve();
+      assert.deepEqual(w.browserWindow.sent, [["will-reload-window"]]);
       assert.isTrue(w.browserWindow.behavior.reloaded);
     });
 
@@ -742,6 +788,7 @@ describe("LumineWindow", function () {
 
       assert.isFalse(w.prepareToUnload.called);
       assert.isTrue(w.browserWindow.behavior.reloaded);
+      assert.deepEqual(w.browserWindow.sent, [["will-reload-window"]]);
     });
 
     it("leaves paths openable when the renderer refuses to unload", async function () {
@@ -753,6 +800,7 @@ describe("LumineWindow", function () {
 
       await w.reload();
       assert.isFalse(w.browserWindow.behavior.reloaded);
+      assert.isFalse(w.browserWindow.sent.some(([channel]) => channel === "will-reload-window"));
 
       // A refused reload must not swap in a fresh loaded promise: nothing but a
       // `window:loaded` event can settle one, so leaving it pending wedges every

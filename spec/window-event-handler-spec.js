@@ -290,6 +290,54 @@ describe("WindowEventHandler", () => {
       expect(lumine.window.close).toHaveBeenCalled();
     }));
 
+  describe("window reload lifecycle", () => {
+    const { ipcRenderer } = require("electron");
+
+    beforeEach(() => {
+      spyOn(lumine.window, "isSpecMode").and.returnValue(false);
+      spyOn(lumine, "storeWindowDimensions");
+      spyOn(lumine, "unloadEditorWindow");
+      spyOn(lumine, "destroy");
+    });
+
+    it("keeps a focused window visible when the main process commits a reload", () => {
+      ipcRenderer.emit("will-reload-window", {});
+
+      windowEventHandler.handleWindowBeforeunload();
+
+      expect(lumine.window.hide).not.toHaveBeenCalled();
+      expect(lumine.unloadEditorWindow).toHaveBeenCalled();
+      expect(lumine.destroy).toHaveBeenCalled();
+      expect(windowEventHandler.reloadRequested).toBe(false);
+    });
+
+    it("still hides a focused window when it closes", () => {
+      windowEventHandler.handleWindowBeforeunload();
+
+      expect(lumine.window.hide).toHaveBeenCalled();
+    });
+
+    it("does not mark a requested reload before the main process accepts it", async () => {
+      spyOn(lumine.window, "reload").and.returnValue(Promise.resolve());
+
+      window.dispatchEvent(new CustomEvent("window:reload"));
+      await Promise.resolve();
+
+      expect(lumine.window.reload).toHaveBeenCalled();
+      expect(windowEventHandler.reloadRequested).toBe(false);
+      windowEventHandler.handleWindowBeforeunload();
+      expect(lumine.window.hide).toHaveBeenCalled();
+    });
+
+    it("stops observing reloads when disposed", () => {
+      windowEventHandler.unsubscribe();
+
+      ipcRenderer.emit("will-reload-window", {});
+
+      expect(windowEventHandler.reloadRequested).toBe(false);
+    });
+  });
+
   describe("when a link is clicked", () => {
     it("opens the http, https, and mailto links in an external application", () => {
       spyOn(lumine.shell, "openExternal").and.returnValue(Promise.resolve());

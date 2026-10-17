@@ -606,6 +606,9 @@ module.exports = class LumineWindow extends EventEmitter {
     this.loadedPromise = new Promise((resolve) => {
       this.resolveLoadedPromise = resolve;
     });
+    // Mark every reload, including main-process requests, before beforeunload
+    // can mistake it for a close and hide the focused window from the taskbar.
+    this.sendToRenderer("will-reload-window");
     this.browserWindow.reload();
     return this.loadedPromise;
   }

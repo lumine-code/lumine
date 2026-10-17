@@ -53,6 +53,10 @@ module.exports = class ApplicationDelegate {
     return ipcHelpers.on(ipcRenderer, "did-blur-window", callback);
   }
 
+  onWillReloadWindow(callback) {
+    return ipcHelpers.on(ipcRenderer, "will-reload-window", callback);
+  }
+
   onDidMouseDownInWindow(callback) {
     return ipcHelpers.on(ipcRenderer, "did-mouse-down-in-window", (_event, detail) =>
       callback(detail),
