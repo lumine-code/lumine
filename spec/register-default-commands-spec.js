@@ -1,3 +1,4 @@
+const { ipcRenderer } = require("electron");
 const registerDefaultCommands = require("../src/register-default-commands");
 const { SaveConflictedError } = require("../src/pane");
 const Config = require("../src/config");
@@ -112,6 +113,23 @@ describe("registerDefaultCommands", () => {
       expect(macOSCommands.has(commandName)).toBe(true);
       expect(windowsCommands.has(commandName)).toBe(false);
       expect(linuxCommands.has(commandName)).toBe(false);
+    }
+  });
+
+  it("registers Reload All Windows exactly once on every platform and forwards it to the main process", () => {
+    const send = spyOn(ipcRenderer, "send");
+
+    for (const platform of ["win32", "linux", "darwin"]) {
+      const commands = commandsRegisteredOn(platform);
+      const listeners = commands.get("application:reload-all-windows");
+      expect(listeners.length).toBe(1);
+      const [listener] = listeners;
+      const didDispatch = typeof listener === "function" ? listener : listener.didDispatch;
+
+      didDispatch();
+
+      expect(send).toHaveBeenCalledOnceWith("command", "application:reload-all-windows");
+      send.calls.reset();
     }
   });
 

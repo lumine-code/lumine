@@ -122,6 +122,20 @@ describe("platform menus", function () {
     }
   });
 
+  it("places Reload All Windows beside Reload Window in Developer on every platform", function () {
+    for (const platform of PLATFORMS) {
+      const items = menus[platform].menu.find((item) => strip(item.label) === "Developer").submenu;
+      const index = items.findIndex((item) => item.command === "window:reload");
+      const item = items[index + 1];
+
+      expect(item.command).toBe("application:reload-all-windows");
+      expect(strip(item.label)).toBe("Reload All Windows");
+      expect(item.group).toBe("tools");
+      expect(item.order).toBe(30);
+      expect(items.filter((entry) => entry.command === item.command).length).toBe(1);
+    }
+  });
+
   it("offers Launcher New and Open with a direct New Text File action on every platform", function () {
     for (const platform of PLATFORMS) {
       const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;

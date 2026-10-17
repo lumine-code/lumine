@@ -1892,6 +1892,98 @@ describe("LumineApplication", function () {
     });
   });
 
+  describe("reloading all windows", function () {
+    let app, getAllWindows;
+
+    beforeEach(function () {
+      app = scenario.addApplication();
+      getAllWindows = null;
+    });
+
+    afterEach(function () {
+      if (getAllWindows) getAllWindows.restore();
+    });
+
+    it("starts every reload without waiting for another window and waits for them all", async function () {
+      let resolveFirst, resolveSecond;
+      const first = {
+        browserWindow: { isDestroyed: () => false },
+        reload: sinon.stub().returns(new Promise((resolve) => (resolveFirst = resolve))),
+      };
+      const second = {
+        browserWindow: { isDestroyed: () => false },
+        reload: sinon.stub().returns(new Promise((resolve) => (resolveSecond = resolve))),
+      };
+      getAllWindows = sinon.stub(app, "getAllWindows").returns([first, second]);
+
+      let completed = false;
+      const reloading = app.reloadAllWindows().then(() => {
+        completed = true;
+      });
+
+      assert.isTrue(first.reload.calledOnceWithExactly());
+      assert.isTrue(second.reload.calledOnceWithExactly());
+      resolveSecond();
+      await new Promise(process.nextTick);
+      assert.isFalse(completed);
+
+      resolveFirst();
+      await reloading;
+      assert.isTrue(completed);
+    });
+
+    it("skips windows that have already been destroyed", async function () {
+      const closedWindow = {
+        browserWindow: { isDestroyed: () => true },
+        reload: sinon.stub().resolves(),
+      };
+      const liveWindow = {
+        browserWindow: { isDestroyed: () => false },
+        reload: sinon.stub().resolves(),
+      };
+      getAllWindows = sinon.stub(app, "getAllWindows").returns([closedWindow, liveWindow]);
+
+      await app.reloadAllWindows();
+
+      assert.isFalse(closedWindow.reload.called);
+      assert.isTrue(liveWindow.reload.calledOnceWithExactly());
+    });
+
+    it("reports failed reloads while letting the remaining windows reload", async function () {
+      const failure = new Error("reload failed");
+      const failedWindow = {
+        browserWindow: { isDestroyed: () => false },
+        reload: sinon.stub().rejects(failure),
+      };
+      const liveWindow = {
+        browserWindow: { isDestroyed: () => false },
+        reload: sinon.stub().resolves(),
+      };
+      getAllWindows = sinon.stub(app, "getAllWindows").returns([failedWindow, liveWindow]);
+      sinon.stub(console, "error");
+
+      await app.reloadAllWindows();
+
+      assert.isTrue(liveWindow.reload.calledOnceWithExactly());
+      assert.isTrue(console.error.calledWithExactly("Failed to reload window", failure));
+    });
+
+    it("does nothing when there are no windows", async function () {
+      getAllWindows = sinon.stub(app, "getAllWindows").returns([]);
+
+      await app.reloadAllWindows();
+    });
+
+    it("exposes the operation as an application command", async function () {
+      sinon.stub(app, "reloadAllWindows").resolves();
+
+      app.emit("application:reload-all-windows");
+      await new Promise(process.nextTick);
+
+      assert.isTrue(app.reloadAllWindows.calledOnceWithExactly());
+    });
+  });
+
   describe("when closing the last window", function () {
     if (process.platform === "linux" || process.platform === "win32") {
       it("quits the application", async function () {

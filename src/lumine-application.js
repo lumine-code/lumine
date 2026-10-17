@@ -1295,6 +1295,7 @@ module.exports = class LumineApplication extends EventEmitter {
     this.on("application:new-file", () => (this.focusedWindow() || this).openPath());
     this.on("application:open-dev", () => this.promptForPathToOpen("all", { devMode: true }));
     this.on("application:reopen-window-in-dev-mode", () => this.reopenWindowInDevMode());
+    this.on("application:reload-all-windows", () => this.reloadAllWindows());
     this.on("application:open-safe", () => this.promptForPathToOpen("all", { safeMode: true }));
 
     this.on("application:open-documentation", () =>
@@ -1827,6 +1828,19 @@ module.exports = class LumineApplication extends EventEmitter {
    */
   focusedWindow() {
     return this.getAllWindows().find((window) => window.isFocused());
+  }
+
+  async reloadAllWindows() {
+    await Promise.all(
+      this.getAllWindows().map(async (window) => {
+        if (window.browserWindow.isDestroyed()) return;
+        try {
+          await window.reload();
+        } catch (error) {
+          console.error("Failed to reload window", error);
+        }
+      }),
+    );
   }
 
   // Replaces the focused window with a development-mode window after its

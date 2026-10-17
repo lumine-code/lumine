@@ -905,6 +905,12 @@
           "order": 20
         },
         {
+          "label": "Reload &All Windows",
+          "command": "application:reload-all-windows",
+          "group": "tools",
+          "order": 30
+        },
+        {
           "label": "Run Package &Specs",
           "command": "window:run-package-specs",
           "group": "testing",

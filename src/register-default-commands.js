@@ -305,6 +305,9 @@ module.exports = function ({
       "application:reopen-window-in-dev-mode": function () {
         return ipcRenderer.send("command", "application:reopen-window-in-dev-mode");
       },
+      "application:reload-all-windows": function () {
+        return ipcRenderer.send("command", "application:reload-all-windows");
+      },
       "application:open-safe": {
         description: "Choose a file or folder and open it without your packages.",
         didDispatch: function () {
