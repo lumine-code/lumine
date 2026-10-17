@@ -11,6 +11,26 @@ const InputDialogHost = require("./input-dialog-host");
  * {@link InputDialogHost} while narrowing {@link #getModel} to SelectList.
  */
 module.exports = class SelectListHost extends InputDialogHost {
+  constructor(model, services, options, lifecycle) {
+    super(model, services, options, lifecycle);
+    this.disposables.add(model.onDidChangeKeepOpen(() => this.updateKeepOpenPresentation()));
+  }
+
+  getPanel() {
+    const panel = super.getPanel();
+    this.updateKeepOpenPresentation();
+    return panel;
+  }
+
+  updateKeepOpenPresentation() {
+    this.panel?.getElement().toggleAttribute("keep-open", this.model.isKeepOpen());
+  }
+
+  resumeFocusTrap() {
+    super.resumeFocusTrap();
+    if (this.isVisible() && this.model.isKeepOpen() && !this.model.isActionPending()) this.focus();
+  }
+
   /**
    * @public
    * @status experimental

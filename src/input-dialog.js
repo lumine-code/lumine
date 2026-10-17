@@ -59,6 +59,7 @@ class InputDialog {
     this.actionCommandNames = new Set();
     this.host = null;
     this.hostVisible = false;
+    this.sessionId = 0;
     this.dialogActions = new DialogActions({
       dispatch: (request) => this.dispatchAction(request),
       confirm: (request) => this.confirmDialogAction(request),
@@ -67,6 +68,7 @@ class InputDialog {
       resolveItemById: (id) => this.resolveActionItemById(id),
       hooks: {
         close: (payload) => this.requestDisposition("close", payload),
+        complete: (payload) => this.requestDisposition("complete", payload),
         stay: (payload) => this.requestDisposition("stay", payload),
         push: (payload) => this.requestDisposition("push", payload),
         recordRecent: ({ context }) => this.recordActionRecent(context),
@@ -239,8 +241,35 @@ class InputDialog {
     this.emitter.emit("did-request-restore-query", { dialog: this });
   }
 
-  requestDisposition(disposition, payload) {
-    this.emitter.emit("did-request-disposition", { dialog: this, disposition, payload });
+  /**
+   * @public
+   * @status experimental
+   *
+   * Request the host's disposition after a conditionally accepted action.
+   * Prefer an action descriptor's disposition when completion follows its handler.
+   * Pass the captured action context when acceptance precedes asynchronous work.
+   * @param {String} disposition - close, complete, stay or push.
+   * @param {Object} [payload] - Action metadata.
+   * @param {Object} [payload.context] - The context captured when the action began.
+   * @returns {void}
+   * @category Actions
+   */
+  requestDisposition(disposition, payload = {}) {
+    if (!["close", "complete", "stay", "push"].includes(disposition)) {
+      throw new TypeError(`Unknown dialog disposition '${disposition}'.`);
+    }
+    if (payload.context?.sessionId != null && payload.context.sessionId !== this.sessionId) return;
+    const effective = this.resolveDisposition(disposition, payload.context);
+    this.emitter.emit("did-request-disposition", {
+      dialog: this,
+      disposition: effective,
+      payload: { ...payload, disposition: effective },
+    });
+  }
+
+  /** @private Subclasses may adapt ordinary closing to their session policy. */
+  resolveDisposition(disposition) {
+    return disposition;
   }
 
   didChangeHostVisible(visible) {
@@ -323,7 +352,13 @@ class InputDialog {
 
   /** @private */
   resetForNewSession({ resetQuery = true } = {}) {
+    this.sessionId++;
     if (resetQuery) this.reset();
+  }
+
+  /** @private Invalidate unfinished UI work when the host ends this session. */
+  endSession() {
+    this.sessionId++;
   }
 
   /**
@@ -572,6 +607,7 @@ class InputDialog {
       parsedQuery: this.getParsedQuery(),
       opener: this.host?.getOpenerElement() ?? null,
       source,
+      sessionId: this.sessionId,
     };
   }
 
@@ -626,7 +662,7 @@ class InputDialog {
    * @param {Array|Object} action - One descriptor, an array of descriptors/pairs, or a command-keyed map.
    * @param {String} action.command - Command name when passing one descriptor.
    * @param {String} action.context - item or dialog; item actions require a current item.
-   * @param {String} action.disposition - close, stay or push after successful execution.
+   * @param {String} action.disposition - close, complete, stay or push after success. SelectList's keep-open mode adapts close; complete always ends the choice.
    * @param {String} [action.dispatch="local"] - Dispatch on local, workspace or opener.
    * @param {Boolean|Function} [action.when=true] - Synchronous predicate controlling applicability.
    * @param {Boolean|Function} [action.enabled=true] - Synchronous predicate controlling execution.
@@ -661,6 +697,8 @@ class InputDialog {
    * @param {Object} [context.parsedQuery] - Parsed {text, data} query.
    * @param {Element|null} [context.opener] - The element that opened the modal host.
    * @param {String} [context.source] - The action invocation source.
+   * @param {Number} [context.sessionId] - Captured modal session identity.
+   * @param {Boolean} [context.keepOpen] - SelectList's captured completion mode.
    * @param {Array<*>} [context.items] - Source items supplied by SelectList.
    * @returns {Boolean}
    */
@@ -798,6 +836,9 @@ class InputDialog {
   }
 
   async dispatchAction({ action, context, signal }) {
+    if (context.sessionId != null && context.sessionId !== this.sessionId) {
+      return DialogActions.DECLINED;
+    }
     const target = this.commandTargetForAction(action, context);
 
     const previousDispatchedActionCommand = this.dispatchedActionCommand;
@@ -847,10 +888,12 @@ class InputDialog {
    * @returns {Promise<Object>} An action completion record with command, action, context, signal and status; optional reason/value/error describe the outcome. Unknown commands throw synchronously; action failures reject.
    */
   runAction(command, { source = "api", context = null } = {}) {
+    const actionContext = context ?? this.getActionContext(source);
+    const sessionId = actionContext.sessionId ?? this.sessionId;
     return this.dialogActions
-      .run(command, context ?? this.getActionContext(source))
+      .run(command, actionContext)
       .then((result) => {
-        if (this.destroyed) return result;
+        if (this.destroyed || sessionId !== this.sessionId) return result;
         if (result.status === "disabled" && result.reason != null) {
           this.setStatus({
             type: "warning",
@@ -865,7 +908,7 @@ class InputDialog {
         return result;
       })
       .catch((error) => {
-        if (error?.name !== "AbortError") {
+        if (!this.destroyed && sessionId === this.sessionId && error?.name !== "AbortError") {
           this.setStatus({ type: "error", message: error?.message ?? String(error) });
         }
         throw error;

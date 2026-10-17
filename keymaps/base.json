@@ -161,6 +161,7 @@
     // shadows win32/linux `f11` (window:toggle-full-screen) while a modal is
     // open, which is the one moment nobody is reaching for full screen.
     "f11": "select-list:restore-query",
+    "f12": "select-list:toggle-keep-open",
     // Opens the item-actions list: the dialog's own commands with their
     // descriptions and keybindings, command-palette style. Package keymaps
     // add actions in their own namespace and leave the chrome keys alone.

@@ -5,6 +5,11 @@
 
 .overlay, /* deprecated .overlay */
 lumine-panel.modal {
+  &[keep-open] {
+    outline: 2px solid var(--accent-indicator-color);
+    outline-offset: -2px;
+  }
+
   /* A modal is anchored to the top of the window, so its first rows land inside
      the title bar's `app-region: drag` strip. A drag region is an OS-level
      caption hit test, not something a `cursor` or a z-index can override: over

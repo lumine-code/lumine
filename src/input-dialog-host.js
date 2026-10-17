@@ -73,7 +73,7 @@ class InputDialogHost {
       model.onDidRequestActions(() => this.consumeUiAction(this.showActions())),
       model.onDidRequestRestoreQuery(() => this.restoreQuery()),
       model.onDidRequestDisposition(({ disposition }) => {
-        if (disposition === "close") this.hide();
+        if (disposition === "close" || disposition === "complete") this.hide();
       }),
       model.onDidStartAction(() => this.pauseFocusTrap()),
       model.onDidFinishAction(() => this.resumeFocusTrap()),
@@ -562,6 +562,7 @@ class InputDialogHost {
   }
 
   didHidePanel({ visibilityChanged = true, generation = this.panelLifecycleGeneration } = {}) {
+    this.model.endSession();
     this.lastQuery = this.model.getQuery();
     this.model.cancelSource("dialog-hidden");
     this.model.didChangeHostVisible(false);
@@ -574,6 +575,7 @@ class InputDialogHost {
 
   finalizeSession(reason) {
     if (!this.model) return;
+    this.model.endSession();
     this.lastQuery = this.model.getQuery();
     this.model.cancelSource(reason);
     this.model.didChangeHostVisible(false);
@@ -662,6 +664,7 @@ class InputDialogHost {
       queryElement.focus();
       return;
     }
+    if (this.model.isActionPending()) return;
     const generation = this.panelLifecycleGeneration;
     this.document.defaultView.requestAnimationFrame(() => {
       if (!this.document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;

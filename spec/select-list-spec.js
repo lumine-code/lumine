@@ -1,6 +1,7 @@
 const etch = require("@lumine-code/etch");
 const { Disposable } = require("@lumine-code/event-kit");
 const SelectList = require("../src/select-list");
+const { buildKeydownEvent } = require("./keymap-spec-helpers/helpers");
 
 describe("SelectList", () => {
   let view, host;
@@ -396,6 +397,7 @@ describe("SelectList", () => {
       expect(view.getRecentItemIds()).toEqual(["three", "one"]);
       expect(view.getFilteredItems()).toEqual(["three", "one", "two"]);
       expect(view.getActions().map(({ command }) => command)).toEqual([
+        "select-list:toggle-keep-open",
         "select-list:remove-recent",
         "select-list:clear-recents",
       ]);
@@ -477,6 +479,7 @@ describe("SelectList", () => {
 
       expect(view.getActions().map(({ command }) => command)).toEqual([
         "spec:open",
+        "select-list:toggle-keep-open",
         "select-list:remove-recent",
         "select-list:clear-recents",
       ]);
@@ -2021,6 +2024,205 @@ describe("SelectList", () => {
   });
 
   describe("hosted actions", () => {
+    function repeatableList(disposition = "close", didDispatch = () => {}) {
+      view = textItemView({
+        commands: { "spec:use-item": { didDispatch } },
+        actions: [{ command: "spec:use-item", context: "item", primary: true, disposition }],
+      });
+      addHost().show();
+      return view;
+    }
+
+    it("executes the same registered toggle action from F12 and the Actions list", async () => {
+      repeatableList();
+      const query = view.getQueryEditor().getElement();
+      expect(view.isKeepOpen()).toBe(false);
+      expect(
+        view
+          .getAvailableActions()
+          .some(({ command }) => command === "select-list:toggle-keep-open"),
+      ).toBe(true);
+      lumine.keymaps.handleKeyboardEvent(buildKeydownEvent({ key: "F12", target: query }));
+      await conditionPromise(() => view.isKeepOpen());
+      expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(true);
+
+      await host.showActions();
+      const picker = lumine.workspace
+        .getElement()
+        .querySelector(".select-list-actions lumine-input-dialog")
+        .getModel();
+      expect(
+        picker.getActions().some(({ command }) => command === "select-list:toggle-keep-open"),
+      ).toBe(false);
+      await picker.selectItemById("select-list:toggle-keep-open");
+      await picker.confirmSelection();
+      expect(view.isKeepOpen()).toBe(false);
+      expect(host.isVisible()).toBe(true);
+      expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(false);
+    });
+
+    it("repeats successful actions without resetting the query, selection or scroll", async () => {
+      const used = [];
+      repeatableList("close", ({ detail }) => used.push(detail.item));
+      view.setQuery("t");
+      await view.selectItem("three");
+      await view.runAction("select-list:toggle-keep-open");
+      const scrollTop = view.getScrollTop();
+      await view.confirmSelection();
+      await view.confirmSelection();
+      expect(used).toEqual(["three", "three"]);
+      expect(host.isVisible()).toBe(true);
+      expect(view.getQuery()).toBe("t");
+      expect(view.getSelectedItem()).toBe("three");
+      expect(view.getScrollTop()).toBe(scrollTop);
+      await view.runAction("select-list:toggle-keep-open");
+      await view.confirmSelection();
+      expect(host.isVisible()).toBe(false);
+    });
+
+    it("always closes a completed one-shot choice even in keep-open mode", async () => {
+      repeatableList("complete");
+      await view.setKeepOpen(true);
+      await view.confirmSelection();
+      expect(host.isVisible()).toBe(false);
+    });
+
+    it("lets a list opt out of the mode, its Action and F12", async () => {
+      repeatableList();
+      await view.update({ supportsKeepOpen: false });
+      expect(view.supportsKeepOpen()).toBe(false);
+      expect(
+        view
+          .getAvailableActions()
+          .some(({ command }) => command === "select-list:toggle-keep-open"),
+      ).toBe(false);
+      expect(lumine.commands.canDispatch(view.getElement(), "select-list:toggle-keep-open")).toBe(
+        false,
+      );
+      lumine.keymaps.handleKeyboardEvent(
+        buildKeydownEvent({ key: "F12", target: view.getQueryEditor().getElement() }),
+      );
+      expect(view.isKeepOpen()).toBe(false);
+      expect(() => view.setKeepOpen(true)).toThrowError(/does not support keep-open/);
+      await view.confirmSelection();
+      expect(host.isVisible()).toBe(false);
+    });
+
+    it("turns the mode off when a list withdraws support and can enable support again", async () => {
+      repeatableList();
+      await view.setKeepOpen(true);
+      await view.update({ supportsKeepOpen: false });
+      expect(view.isKeepOpen()).toBe(false);
+      expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(false);
+      expect(() => view.update({ supportsKeepOpen: "yes" })).toThrowError(/must be a boolean/);
+      expect(view.supportsKeepOpen()).toBe(false);
+      await view.update({ supportsKeepOpen: true });
+      await view.runAction("select-list:toggle-keep-open");
+      expect(view.isKeepOpen()).toBe(true);
+    });
+
+    it("captures the closing policy at invocation while asynchronous work runs", async () => {
+      let finish;
+      repeatableList(
+        "close",
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      await view.setKeepOpen(true);
+      const action = view.confirmSelection();
+      await conditionPromise(() => finish != null);
+      await view.setKeepOpen(false);
+      finish();
+      await action;
+      expect(host.isVisible()).toBe(true);
+    });
+
+    it("preserves mode through Actions and resets it on a fresh opening", async () => {
+      repeatableList();
+      await view.setKeepOpen(true);
+      await host.showActions();
+      lumine.workspace.popModal();
+      expect(host.isVisible()).toBe(true);
+      expect(view.isKeepOpen()).toBe(true);
+      host.hide();
+      await host.show();
+      expect(view.isKeepOpen()).toBe(false);
+    });
+
+    it("ignores late completion belonging to a previous modal session", async () => {
+      let finish;
+      repeatableList(
+        "complete",
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const action = view.confirmSelection();
+      await conditionPromise(() => finish != null);
+      host.hide();
+      await host.show();
+      finish();
+      await action;
+      expect(host.isVisible()).toBe(true);
+    });
+
+    it("does not start an old action after its session has already been replaced", async () => {
+      const used = jasmine.createSpy("used");
+      repeatableList("close", used);
+      const action = view.confirmSelection();
+      host.hide();
+      await host.show();
+      await action;
+      expect(used).not.toHaveBeenCalled();
+      expect(host.isVisible()).toBe(true);
+      expect(view.getStatus()).toBeNull();
+    });
+
+    it("keeps a fresh session's status when a previous action fails late", async () => {
+      let fail;
+      repeatableList(
+        "close",
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      const action = view.confirmSelection();
+      await conditionPromise(() => fail != null);
+      host.hide();
+      await host.show();
+      await view.setStatus({ type: "info", message: "Current session" });
+      fail(new Error("Previous session"));
+      await expectAsync(action).toBeRejectedWithError("Previous session");
+      expect(view.getStatus()).toEqual({ type: "info", message: "Current session" });
+      expect(host.isVisible()).toBe(true);
+    });
+
+    it("returns focus after an action focuses the document without a delayed cancellation", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const editor = await lumine.workspace.open();
+      repeatableList("close", () => editor.getElement().focus());
+      await view.setKeepOpen(true);
+      await view.confirmSelection();
+      await new Promise(requestAnimationFrame);
+      expect(host.isVisible()).toBe(true);
+      expect(view.getQueryEditor().getElement().contains(document.activeElement)).toBe(true);
+    });
+
+    it("applies the same policy to conditional completion requests", async () => {
+      repeatableList();
+      await view.setKeepOpen(true);
+      const context = view.getActionContext();
+      await view.setKeepOpen(false);
+      view.requestDisposition("close", { context });
+      expect(host.isVisible()).toBe(true);
+      view.requestDisposition("complete", { context });
+      expect(host.isVisible()).toBe(false);
+    });
+
     it("keeps a selected danger action in the error colour", async () => {
       view = textItemView({
         commands: {

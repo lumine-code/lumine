@@ -32,6 +32,10 @@ let nextSelectListId = 1;
  * create its unmounted surface, or use {@link Workspace#addSelectList} to give
  * it a modal host.
  *
+ * Hosted lists support keep-open mode by default. Set `supportsKeepOpen: false`
+ * for a surface that must finish after one choice. Individual terminal actions
+ * in a repeatable list declare disposition `complete`.
+ *
  * A flat `items` source may also supply `overflowSections`, an alternative
  * grouping of exactly the same items. It applies only while the unfiltered
  * list actually overflows its viewport; shorter lists retain their natural
@@ -58,6 +62,27 @@ class SelectList extends InputDialog {
   }
 
   initializeState() {
+    this.validateKeepOpenSupport(this.props);
+    this.keepOpen = false;
+    this.listCommandDescriptors = this.props.internalActionPalette
+      ? {}
+      : {
+          "select-list:toggle-keep-open": {
+            description: "Keep the list open after actions, or restore normal closing.",
+            didDispatch: () => this.setKeepOpen(!this.isKeepOpen()),
+          },
+        };
+    this.listActionDescriptors = this.props.internalActionPalette
+      ? []
+      : [
+          {
+            command: "select-list:toggle-keep-open",
+            context: "dialog",
+            disposition: "stay",
+            group: "List",
+            when: () => this.host != null && this.supportsKeepOpen(),
+          },
+        ];
     this.sessionSelectionGeneration = 0;
     this.pendingSourceSelectionGeneration = null;
     this.showMoreSelected = false;
@@ -144,6 +169,7 @@ class SelectList extends InputDialog {
     });
 
     this.props.items = this.model.getItems();
+    this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
     this.validateOverflowSections(this.props);
     this.syncModelState();
   }
@@ -232,11 +258,11 @@ class SelectList extends InputDialog {
         when: () => this.getRecentItemIds().length > 0,
       },
     ];
-    this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
   }
 
   actionsForCatalog(actions) {
-    if (this.recentActionDescriptors.length === 0) return actions;
+    const provided = [...this.listActionDescriptors, ...this.recentActionDescriptors];
+    if (provided.length === 0) return actions;
     let entries;
     if (actions == null) entries = [];
     else if (Array.isArray(actions)) entries = actions.slice();
@@ -247,25 +273,113 @@ class SelectList extends InputDialog {
     } else {
       entries = [actions];
     }
-    const providerCommands = new Set(this.recentActionDescriptors.map(({ command }) => command));
+    const providerCommands = new Set(provided.map(({ command }) => command));
     entries = entries.filter((entry) => {
       const command = Array.isArray(entry) ? entry[0] : entry?.command;
       return !providerCommands.has(command);
     });
-    return [...entries, ...this.recentActionDescriptors];
+    return [...entries, ...provided];
   }
 
   commandsForRegistration(commands) {
-    if (this.recentActionDescriptors.length === 0) return commands;
+    const provided = { ...this.listCommandDescriptors, ...this.recentCommandDescriptors };
+    if (Object.keys(provided).length === 0) return commands;
     if (commands != null && (typeof commands !== "object" || Array.isArray(commands))) {
       return commands;
     }
-    for (const command of Object.keys(this.recentCommandDescriptors)) {
+    for (const command of Object.keys(provided)) {
       if (Object.prototype.hasOwnProperty.call(commands ?? {}, command)) {
-        throw new Error(`Dialog command '${command}' is reserved by the recents provider.`);
+        throw new Error(`Dialog command '${command}' is reserved by the select-list.`);
       }
     }
-    return { ...(commands ?? {}), ...this.recentCommandDescriptors };
+    return { ...(commands ?? {}), ...provided };
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether successful actions keep this list open for another use.
+   * Actions declaring complete still close the list.
+   * @returns {Boolean}
+   * @category Actions
+   */
+  isKeepOpen() {
+    return this.keepOpen;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether this list supports keep-open mode.
+   * @returns {Boolean} False for an explicit supportsKeepOpen opt-out and internal action lists.
+   * @category Actions
+   */
+  supportsKeepOpen() {
+    return this.props.supportsKeepOpen !== false && !this.props.internalActionPalette;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set this session's keep-open mode. Fresh modal sessions start with it off.
+   * @param {Boolean} keepOpen - Whether ordinary close actions leave the list open.
+   * @returns {Promise<void>} Resolves after the view updates.
+   * @category Actions
+   */
+  setKeepOpen(keepOpen) {
+    if (typeof keepOpen !== "boolean") throw new TypeError("keepOpen must be a boolean.");
+    if (keepOpen && !this.supportsKeepOpen()) {
+      throw new Error("This list does not support keep-open mode.");
+    }
+    if (!this.changeKeepOpenState(keepOpen)) return Promise.resolve();
+    return this.updateComponent();
+  }
+
+  /** @private Update state without scheduling a duplicate render during prop/session resets. */
+  changeKeepOpenState(keepOpen) {
+    if (this.keepOpen === keepOpen) return false;
+    this.keepOpen = keepOpen;
+    this.component?.element.toggleAttribute("keep-open", keepOpen);
+    this.emitter.emit("did-change-keep-open", { list: this, keepOpen });
+    return true;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when the session's keep-open mode changes.
+   * @param {Function} callback - Receives an event with list and keepOpen.
+   * @returns {Disposable} Dispose to unsubscribe.
+   * @category Event Subscription
+   */
+  onDidChangeKeepOpen(callback) {
+    return this.emitter.on("did-change-keep-open", callback);
+  }
+
+  /** @private */
+  resolveDisposition(disposition, context) {
+    return disposition === "close" &&
+      this.supportsKeepOpen() &&
+      (context?.keepOpen ?? this.keepOpen)
+      ? "stay"
+      : disposition;
+  }
+
+  /** @private */
+  validateKeepOpenSupport(props) {
+    if ("supportsKeepOpen" in props && typeof props.supportsKeepOpen !== "boolean") {
+      throw new TypeError("supportsKeepOpen must be a boolean.");
+    }
+  }
+
+  /** @private */
+  validateUpdateProps(props) {
+    super.validateUpdateProps(props);
+    this.validateKeepOpenSupport(props);
   }
 
   applyLoadedRecentItemIds(recentIds, revision, generation) {
@@ -321,6 +435,7 @@ class SelectList extends InputDialog {
 
   didInitializeElement() {
     super.didInitializeElement();
+    this.component.element.toggleAttribute("keep-open", this.keepOpen);
     this.queryEditor.getElement().setAttribute("role", "combobox");
     this.queryEditor.getElement().setAttribute("aria-autocomplete", "list");
     this.updateComboboxAttributes();
@@ -413,6 +528,7 @@ class SelectList extends InputDialog {
 
   /** @private */
   resetForNewSession(options) {
+    this.changeKeepOpenState(false);
     const generation = ++this.sessionSelectionGeneration;
     this.pendingSourceSelectionGeneration = this.getSource() ? generation : null;
     super.resetForNewSession(options);
@@ -704,6 +820,7 @@ class SelectList extends InputDialog {
     const item = this.getSelectedItem();
     return {
       ...context,
+      keepOpen: this.keepOpen,
       list: this,
       item,
       itemId: this.getSelectedItemId(),
@@ -810,10 +927,12 @@ class SelectList extends InputDialog {
       "selection",
       "emptyMessage",
       "itemsClassList",
+      "supportsKeepOpen",
     ];
     for (const key of listProps) {
       if (key in props) this.props[key] = props[key];
     }
+    if (!this.supportsKeepOpen()) this.changeKeepOpenState(false);
     if ("items" in props) delete this.props.sections;
     if ("sections" in props) this.props.sections = props.sections;
     if (itemsChanged) this.props.items = this.model.getItems();

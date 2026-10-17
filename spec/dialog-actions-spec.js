@@ -21,6 +21,7 @@ describe("DialogActions", () => {
     dispatch = jasmine.createSpy("dispatch").and.resolveTo("result");
     hooks = {
       close: jasmine.createSpy("close").and.resolveTo(),
+      complete: jasmine.createSpy("complete").and.resolveTo(),
       stay: jasmine.createSpy("stay").and.resolveTo(),
       push: jasmine.createSpy("push").and.resolveTo(),
       recordRecent: jasmine.createSpy("recordRecent").and.resolveTo(),
@@ -234,14 +235,15 @@ describe("DialogActions", () => {
     it("passes every explicit disposition to its matching hook after dispatch", async () => {
       actions.set([
         dialogAction("spec:close", { disposition: "close" }),
+        dialogAction("spec:complete", { disposition: "complete" }),
         dialogAction("spec:stay", { disposition: "stay" }),
         dialogAction("spec:push", { disposition: "push" }),
       ]);
-      for (const disposition of ["close", "stay", "push"]) {
+      for (const disposition of ["close", "complete", "stay", "push"]) {
         await actions.run(`spec:${disposition}`);
         expect(hooks[disposition]).toHaveBeenCalled();
       }
-      expect(dispatch.calls.count()).toBe(3);
+      expect(dispatch.calls.count()).toBe(4);
     });
 
     it("does not dispatch actions that are unavailable or disabled", async () => {

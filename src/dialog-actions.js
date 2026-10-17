@@ -3,7 +3,7 @@
 const { Disposable, Emitter } = require("@lumine-code/event-kit");
 
 const ACTION_CONTEXTS = new Set(["item", "dialog"]);
-const DISPOSITIONS = new Set(["close", "stay", "push"]);
+const DISPOSITIONS = new Set(["close", "complete", "stay", "push"]);
 const DISPATCH_TARGETS = new Set(["local", "workspace", "opener"]);
 const TONES = new Set(["normal", "danger"]);
 const DEFAULT_GROUP = Symbol("default-dialog-action-group");
@@ -314,7 +314,7 @@ class DialogActions {
     }
     if (!DISPOSITIONS.has(descriptor.disposition)) {
       throw new Error(
-        `Dialog action '${command}' must declare disposition 'close', 'stay', or 'push'.`,
+        `Dialog action '${command}' must declare disposition 'close', 'complete', 'stay', or 'push'.`,
       );
     }
     const dispatch = descriptor.dispatch ?? "local";
