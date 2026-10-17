@@ -111,8 +111,8 @@ lumine-pane-container {
     transform: translate(-50%, -50%);
   }
 
-  /* Background tips own the centre line. Lift the mark above the text's top
-     edge, including when a long tip wraps, then restore it when tips leave. */
+  /* Background tips own the centre line. Lift the mark above it while their
+     overlay exists, then let it settle back to centre when the tips disappear. */
   lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane):has(> background-tips)
     > .item-views:empty::after {
     top: calc(50% + var(--empty-pane-content-offset));
@@ -121,10 +121,7 @@ lumine-pane-container {
       transform 0.3s ease-in-out;
     transform: translate(
       -50%,
-      calc(
-        -100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing) -
-          var(--empty-pane-message-height, 0px) / 2
-      )
+      calc(-100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing))
     );
   }
 
@@ -142,10 +139,7 @@ lumine-pane-container {
       transition: transform 0.3s ease-in-out;
       transform: translate(
         -50%,
-        calc(
-          -100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing) + min(8rem, 18cqh) -
-            var(--empty-pane-message-height, 0px) / 2
-        )
+        calc(-100% - var(--ui-spacing) - var(--ui-spacing) - var(--ui-spacing) + min(8rem, 18cqh))
       );
     }
   }
