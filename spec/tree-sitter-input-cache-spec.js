@@ -178,4 +178,35 @@ describe("Tree-sitter live text input", () => {
     expect(externalReader.getTextInputChunk(0, source.length)).toBe(changed);
     expect(buffer.getText()).toBe(changed);
   });
+
+  for (const ending of ["\r", "\n"]) {
+    it(`uses exact edit indices when reloading ${JSON.stringify(ending)} as CRLF`, async () => {
+      const source = `const first = 1;${ending}const second = 2;`;
+      const changed = "const first = 1;\r\nconst second = 2;";
+      const { buffer, mode } = await buildMode(source);
+      const fixture = temp.openSync("tree-sitter-input-crlf");
+      fixturePath = fixture.path;
+      fs.closeSync(fixture.fd);
+      fs.writeFileSync(fixturePath, source);
+      buffer.setPath(fixturePath);
+      buffer.loadSync({ discardChanges: true });
+      await buffer.getFileWatchStartPromise();
+      fs.writeFileSync(fixturePath, changed);
+      await buffer.reload();
+      expect(await editor.whenGrammarSettled()).toBe(true);
+      const second = () =>
+        mode.tree.rootNode.descendantsOfType("identifier").find((node) => node.text === "second");
+      expect(mode.tree.rootNode.endIndex).toBe(changed.length);
+      expect(second().startIndex).toBe(changed.indexOf("second"));
+      expect(second().startPosition.row).toBe(1);
+      buffer.undo();
+      expect(await editor.whenGrammarSettled()).toBe(true);
+      expect(mode.tree.rootNode.endIndex).toBe(source.length);
+      expect(second().startIndex).toBe(source.indexOf("second"));
+      buffer.redo();
+      expect(await editor.whenGrammarSettled()).toBe(true);
+      expect(mode.tree.rootNode.endIndex).toBe(changed.length);
+      expect(second().startIndex).toBe(changed.indexOf("second"));
+    });
+  }
 });

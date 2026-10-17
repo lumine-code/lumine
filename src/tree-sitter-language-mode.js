@@ -646,7 +646,7 @@ class TreeSitterLanguageMode {
     this.foldRangeIndex = null;
     this.scopeDescriptorCache = null;
 
-    const startIndex = this.buffer.characterIndexForPosition(change.newRange.start);
+    const { startIndex } = change;
 
     // Mark edits in the tree, but don't actually reparse until
     // `bufferDidFinishTransaction`.

@@ -164,6 +164,18 @@ describe("The document edit contract", () => {
         buffer.redo();
         expect(buffer.getText()).toBe(after);
         expect(batches).toBe(3);
+        const history = buffer.getHistory();
+        expect(history.baseText).toBe(before);
+        const restored = new TextBuffer(after);
+        try {
+          restored.restoreDefaultHistoryProvider(history);
+          restored.undo();
+          expect(restored.getText()).toBe(before);
+          restored.redo();
+          expect(restored.getText()).toBe(after);
+        } finally {
+          restored.destroy();
+        }
       } finally {
         buffer?.destroy();
         fs.unlinkSync(file);

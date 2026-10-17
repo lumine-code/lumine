@@ -452,7 +452,7 @@ class DefaultHistoryProvider {
 
     return {
       nextCheckpointId: this.nextCheckpointId,
-      undoStackChanges: Patch.compose(undoStackPatches).getChanges(),
+      undoPatch: Patch.compose(undoStackPatches).invert(),
       undoStack,
       redoStack,
     };

@@ -263,6 +263,7 @@ describe("Packed Tree-sitter injection change routing", () => {
         new Point(maximum, maximum),
       );
       state.mode.bufferDidChange({
+        startIndex: state.buffer.getLength(),
         oldRange: new Range(Point.INFINITY, Point.INFINITY),
         newRange: new Range(Point.INFINITY, Point.INFINITY),
         oldText: "x",

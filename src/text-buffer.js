@@ -37,6 +37,23 @@ function textChangesOnlyPatch(patch) {
   return textChanges.length === changes.length ? patch : patchFromChanges(textChanges);
 }
 
+// Patch geometry can address the physical boundary between CR and LF. Editor
+// points clip that boundary, so retain its code unit when reading patch data.
+function indexForPatchPoint(buffer, point) {
+  const clipped = buffer.clipPosition(point);
+  return buffer.characterIndexForPosition(clipped) + point.column - clipped.column;
+}
+
+function textForPatchRange(buffer, range) {
+  const start = buffer.clipPosition(range.start);
+  const end = buffer.clipPosition(range.end);
+  const startOffset = range.start.column - start.column;
+  const endOffset = range.end.column - end.column;
+  const readEnd = endOffset ? new Point(end.row + 1, 0) : end;
+  const text = buffer.getTextInRange(new Range(start, readEnd));
+  return text.slice(startOffset, text.length - (endOffset ? 2 - endOffset : 0));
+}
+
 function fileChangesWithWholeLineEndings(text, changes) {
   const insideCRLF = (offset) => text[offset - 1] === "\r" && text[offset] === "\n";
   if (!changes.some(({ start, end }) => insideCRLF(start) || insideCRLF(end))) return changes;
@@ -1771,10 +1788,13 @@ class TextBuffer {
     const snapshot = this.historyProvider.getSnapshot(maxEntries);
 
     const baseTextBuffer = new NativeTextBuffer(this.getText());
-    for (let i = snapshot.undoStackChanges.length - 1; i >= 0; i--) {
-      const change = snapshot.undoStackChanges[i];
-      const newRange = Range(change.newStart, change.newEnd);
-      baseTextBuffer.setTextInRange(newRange, change.oldText);
+    for (const change of snapshot.undoPatch.getChanges()) {
+      const edit = baseTextBuffer.prepareEditFromChange(change);
+      try {
+        edit.commit();
+      } finally {
+        edit.dispose();
+      }
     }
 
     return {
@@ -3317,11 +3337,7 @@ class TextBuffer {
           }
         }
         const start = Point.fromObject(change.newStart);
-        // Native file patches may address the physical boundary between CR
-        // and LF. Keep that code unit in the offset instead of clipping it.
-        const clippedStart = this.clipPosition(start);
-        const startIndex =
-          this.characterIndexForPosition(clippedStart) + start.column - clippedStart.column;
+        const startIndex = indexForPatchPoint(this, start);
         this.recordAppliedChange({
           startIndex,
           oldEndIndex: startIndex + change.oldText.length,
@@ -4140,6 +4156,9 @@ class ChangeEvent {
     const { oldEnd, newEnd } = changes[changes.length - 1];
     this.oldRange = new Range(start, oldEnd).freeze();
     this.newRange = new Range(start, newEnd).freeze();
+    Object.defineProperty(this, "startIndex", {
+      value: indexForPatchPoint(buffer, this.newRange.start),
+    });
 
     let oldText = null;
     let newText = null;
@@ -4148,15 +4167,15 @@ class ChangeEvent {
       enumerable: false,
       get() {
         if (oldText == null) {
-          const oldBuffer = new NativeTextBuffer(this.newText || "");
+          oldText = this.newText || "";
           for (let i = changes.length - 1; i >= 0; i--) {
             const change = changes[i];
-            oldBuffer.setTextInRange(
-              new Range(traversal(change.newStart, start), traversal(change.newEnd, start)),
-              change.oldText,
-            );
+            const offset = indexForPatchPoint(buffer, change.newStart) - this.startIndex;
+            oldText =
+              oldText.slice(0, offset) +
+              change.oldText +
+              oldText.slice(offset + change.newText.length);
           }
-          oldText = oldBuffer.getText();
         }
         return oldText;
       },
@@ -4166,7 +4185,7 @@ class ChangeEvent {
       enumerable: false,
       get() {
         if (newText == null) {
-          newText = buffer.getTextInRange(this.newRange);
+          newText = textForPatchRange(buffer, this.newRange);
         }
         return newText;
       },
