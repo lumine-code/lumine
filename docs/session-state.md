@@ -8,7 +8,9 @@ Separate snapshots let two windows keep their own pane layout and documents. An 
 
 ## Project changes
 
-`lumine.project.setState(paths)` shares one operation queue with automatic saves. It saves the outgoing session before confirming closure and captures changes made by Save or Save As during that confirmation. The final detached snapshot is both persisted and retained for rollback. Restoring a project replaces the workspace center while keeping docks and their retained buffers alive. Outgoing items finish their teardown before core switches project storage; incoming document recovery is hydrated before buffers and views are restored.
+`lumine.project.setState(paths)` shares one operation queue with automatic saves. It saves the outgoing session before confirming closure and prepares every asynchronous item-close listener before taking the final snapshot. A durable copy is saved while the documents remain alive. A synchronous refresh then captures edits made during that write immediately before the prepared center teardown; any changed snapshot is persisted before switching project storage and is retained for rollback if that write fails. Restoring a project replaces the workspace center while keeping docks and their retained buffers alive. Incoming document recovery is hydrated before buffers and views are restored.
+
+Pending workspace opens are cancelled when the transition commits, and new opens and window transfers are refused until incoming restoration or rollback finishes. A rejected close preparation or precommit write leaves the outgoing documents alive. Retained dock activity does not require the whole window to stop changing before switching projects.
 
 An in-place change restores the current window's own snapshot for the incoming project first. A window without its own history can adopt the most recently saved snapshot only while no other window has that project open.
 

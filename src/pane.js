@@ -1217,8 +1217,15 @@ module.exports = class Pane {
    * @returns {Promise<Boolean>} that resolves with a `Boolean` indicating whether or not the item was destroyed.
    */
   async destroyItem(item, force, { canDestroy } = {}) {
+    const preparing = this.prepareToDestroyItem(item, force, { canDestroy });
+    const prepared = preparing?.then ? await preparing : preparing;
+    return prepared ? prepared.destroy() : false;
+  }
+
+  /** @private Run close listeners without removing the item, then expose a synchronous commit. */
+  prepareToDestroyItem(item, force, { canDestroy } = {}) {
     const index = this.items.indexOf(item);
-    if (index === -1) return false;
+    if (index === -1) return null;
 
     if (
       !force &&
@@ -1226,45 +1233,46 @@ module.exports = class Pane {
       item.isPermanentDockItem() &&
       (!this.container || this.container.getLocation() !== "center")
     ) {
-      return false;
+      return null;
     }
 
-    // In the case where there are no `onWillDestroyPaneItem` listeners, preserve the old behavior
-    // where `Pane.destroyItem` and callers such as `Pane.close` take effect synchronously.
-    if (this.emitter.listenerCountForEventName("will-destroy-item") > 0) {
-      await this.emitter.emitAsync("will-destroy-item", { item, index });
-    }
-    if (
-      this.container &&
-      this.container.emitter.listenerCountForEventName("will-destroy-pane-item") > 0
-    ) {
-      let preventClosing = false;
-      await this.container.willDestroyPaneItem({
-        item,
-        index,
-        pane: this,
-        prevent: () => {
-          preventClosing = true;
-        },
-      });
-      if (preventClosing) return false;
-    }
-
-    if (!force && this.shouldPromptToSaveItem(item)) {
-      if (!(await this.promptToSaveItem(item))) return false;
-    }
-    // Awaited listeners and save prompts can remove or relocate the item.
-    if (
-      this.isDestroyed() ||
-      !this.items.includes(item) ||
-      (typeof item.isDestroyed === "function" && item.isDestroyed())
-    ) {
-      return false;
-    }
-    if (canDestroy && !canDestroy()) return false;
-    this.removeItem(item, false);
-    if (typeof item.destroy === "function") item.destroy();
-    return true;
+    const ready = () =>
+      !this.isDestroyed() &&
+      this.items.includes(item) &&
+      !(typeof item.isDestroyed === "function" && item.isDestroyed()) &&
+      (!canDestroy || canDestroy());
+    const prepared = {
+      canDestroy: ready,
+      destroy: () => {
+        if (!ready()) return false;
+        this.removeItem(item, false);
+        if (typeof item.destroy === "function") item.destroy();
+        return true;
+      },
+    };
+    const hasItemListeners = this.emitter.listenerCountForEventName("will-destroy-item") > 0;
+    const hasContainerListeners =
+      this.container?.emitter.listenerCountForEventName("will-destroy-pane-item") > 0;
+    const prompts = !force && this.shouldPromptToSaveItem(item);
+    // Ordinary closes without listeners must still take effect synchronously.
+    if (!hasItemListeners && !hasContainerListeners && !prompts) return prepared;
+    return (async () => {
+      if (hasItemListeners) await this.emitter.emitAsync("will-destroy-item", { item, index });
+      if (this.container?.emitter.listenerCountForEventName("will-destroy-pane-item") > 0) {
+        let prevented = false;
+        await this.container.willDestroyPaneItem({
+          item,
+          index,
+          pane: this,
+          prevent: () => (prevented = true),
+        });
+        if (prevented) return null;
+      }
+      if (!force && this.shouldPromptToSaveItem(item)) {
+        if (!(await this.promptToSaveItem(item))) return null;
+      }
+      return prepared;
+    })();
   }
 
   /**

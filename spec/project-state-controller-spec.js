@@ -45,6 +45,12 @@ describe("ProjectStateController", () => {
     workspace.clear = jasmine.createSpy("clear").and.callFake(async () => {
       workspace.items = [];
     });
+    workspace.prepareToClear = jasmine.createSpy("prepareToClear").and.callFake(async () => ({
+      assertReady() {},
+      clear: () => workspace.clear(),
+    }));
+    workspace.beginProjectStateChange = () => ({ dispose() {} });
+    workspace.whenWindowOperationsIdle = async () => {};
     const config = {
       projectFile: "project-a/project.json",
       projectSettings: { editor: { tabLength: 7 } },
@@ -92,6 +98,11 @@ describe("ProjectStateController", () => {
         workspace: { items: workspace.items.slice() },
         documentStates: {},
       })),
+      serializeCurrent: jasmine.createSpy("serializeCurrent").and.callFake(() => ({
+        project: { paths: project.getPaths() },
+        workspace: { items: workspace.items.slice() },
+        documentStates: {},
+      })),
       loadProjectState: jasmine.createSpy("loadProjectState").and.callFake(async (paths) => ({
         state: stateFor(paths),
         reservationId: "reservation",
@@ -127,6 +138,39 @@ describe("ProjectStateController", () => {
     expect(fixture.releaseReservation).toHaveBeenCalledWith("reservation", ["project-b"]);
   });
 
+  it("drains existing window operations before refreshing and destroying the outgoing documents", async () => {
+    const fixture = buildController();
+    const started = deferred(),
+      finish = deferred();
+    fixture.workspace.whenWindowOperationsIdle = async () => {
+      started.resolve();
+      await finish.promise;
+    };
+    const transition = fixture.controller.setState(["project-b"]);
+    await started.promise;
+    expect(fixture.workspace.clear).not.toHaveBeenCalled();
+    fixture.workspace.items.push("edit completed during window operation");
+    finish.resolve();
+    expect(await transition).toBe(true);
+    expect(fixture.saveState.calls.mostRecent().args[1].workspace.items).toEqual([
+      "outgoing-editor",
+      "edit completed during window operation",
+    ]);
+  });
+
+  it("releases the transition gate without tearing down when the synchronous refresh fails", async () => {
+    const fixture = buildController();
+    const dispose = jasmine.createSpy("releaseTransitionGate");
+    fixture.workspace.beginProjectStateChange = () => ({ dispose });
+    const failure = new Error("Document changed during snapshot preparation");
+    fixture.serializeCurrent.and.throwError(failure);
+    await expectAsync(fixture.controller.setState(["project-b"])).toBeRejectedWith(failure);
+    expect(fixture.workspace.clear).not.toHaveBeenCalled();
+    expect(fixture.restoreState).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(fixture.releaseReservation).toHaveBeenCalledWith("reservation", ["project-b"]);
+  });
+
   it("defers automatic saves until the incoming session is fully restored", async () => {
     const fixture = buildController();
     const restoring = deferred();
@@ -155,6 +199,7 @@ describe("ProjectStateController", () => {
     const fixture = buildController();
     const outgoing = fixture.serialize();
     fixture.serialize.and.returnValue(outgoing);
+    fixture.serializeCurrent.and.returnValue(outgoing);
     fixture.restoreState.and.callFake(async (state) => {
       if (state.project.paths[0] === "project-b") throw new Error("Incoming failed");
       fixture.applyState(state);

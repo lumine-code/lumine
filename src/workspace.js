@@ -373,6 +373,7 @@ const DOCK_LOCATIONS = ["left", "right", "bottom"];
  */
 module.exports = class Workspace extends Model {
   #itemOpenRequests;
+  #projectStateChanges = new Set();
   #resettingItemOpens = 0;
   #layoutGeneration = 0;
   #paneItemRegistry = new ItemRegistry();
@@ -380,6 +381,7 @@ module.exports = class Workspace extends Model {
   #windowCleanupDepth = 0;
   #pendingWindowOpens = new Set();
   #windowOperationOpenOptions = new WeakSet();
+  #windowRestoreOpenOptions = new WeakSet();
   #pathOpenerResolutionListeners = new Set();
   #defaultDockItems = new Set();
   #defaultDockItemsPrepared = false;
@@ -451,7 +453,8 @@ module.exports = class Workspace extends Model {
       },
     };
     this.#itemOpenRequests = new ItemOpenRequestManager({
-      isAvailable: () => this.isAlive() && this.#resettingItemOpens === 0,
+      isAvailable: () =>
+        this.isAlive() && this.#resettingItemOpens === 0 && !this.projectStateChanging,
     });
     this.paneItemURIs = new WeakMap();
     this.destroyedItemURIs = [];
@@ -587,7 +590,12 @@ module.exports = class Workspace extends Model {
    */
   openEditorWindow(options = {}) {
     const completingOperation = this.#windowOperationOpenOptions.delete(options);
-    if (this.#windowCleanupDepth > 0 || (this.windowLifecycleChanging && !completingOperation))
+    const restoring = this.#windowRestoreOpenOptions.delete(options);
+    if (
+      this.#windowCleanupDepth > 0 ||
+      (this.#windowLifecycleChanging && !completingOperation) ||
+      (this.projectStateChanging && !completingOperation && !restoring)
+    )
       return Promise.reject(new Error("The workspace windows are preparing to unload."));
     if (!this.editorWindowHost || !this.isAlive())
       return Promise.reject(new Error("This workspace cannot open an editor window."));
@@ -613,7 +621,9 @@ module.exports = class Workspace extends Model {
 
   /** @private Keep reset/discard barriers independent of an orderly-unload gate. */
   get windowLifecycleChanging() {
-    return this.#windowLifecycleChanging || this.#windowCleanupDepth > 0;
+    return (
+      this.#windowLifecycleChanging || this.#windowCleanupDepth > 0 || this.projectStateChanging
+    );
   }
 
   set windowLifecycleChanging(value) {
@@ -624,6 +634,27 @@ module.exports = class Workspace extends Model {
   beginWindowCleanup() {
     this.#windowCleanupDepth++;
     return new Disposable(() => this.#windowCleanupDepth--);
+  }
+
+  /** @private Exclude unrelated opens and window transfers while replacing the center. */
+  beginProjectStateChange() {
+    const token = { generation: this.#layoutGeneration };
+    this.#projectStateChanges.add(token);
+    const release = new Disposable(() => this.#projectStateChanges.delete(token));
+    try {
+      this.#itemOpenRequests.reset();
+      return release;
+    } catch (error) {
+      release.dispose();
+      throw error;
+    }
+  }
+
+  /** @private A reset's replacement layout does not inherit an obsolete transition gate. */
+  get projectStateChanging() {
+    return [...this.#projectStateChanges].some(
+      (token) => token.generation === this.#layoutGeneration,
+    );
   }
 
   /** @private A synchronous mutation phase excludes external layout changes during transfer. */
@@ -1489,14 +1520,21 @@ module.exports = class Workspace extends Model {
     try {
       for (const saved of original?.windows ?? []) {
         try {
-          const window = await this.openEditorWindow({
+          const openOptions = {
             show: false,
             bounds: saved.bounds,
             persistentId: saved.id,
             replacesWindowId: prepared.retiring
               .find((window) => window.persistentId === saved.id)
               ?.getId(),
-          });
+          };
+          this.#windowRestoreOpenOptions.add(openOptions);
+          let window;
+          try {
+            window = await this.openEditorWindow(openOptions);
+          } finally {
+            this.#windowRestoreOpenOptions.delete(openOptions);
+          }
           prepared.windows.push({ saved, window });
           guard();
         } catch (error) {
@@ -1597,6 +1635,71 @@ module.exports = class Workspace extends Model {
     } catch (error) {
       this.#recoverPersistentItems(persistentItems, assertLayoutCurrent, error);
     }
+  }
+
+  /** @private Prepare every close before a project snapshot, without changing its layout. */
+  async prepareToClear(options = {}, assertCurrent = () => {}) {
+    const guard = this.#layoutGuard(assertCurrent);
+    guard();
+    const locations = options.locations || ALL_LOCATIONS;
+    const panes = this.getPanesIn(locations);
+    const entries = panes.map((pane) => ({ pane, items: pane.getItems() }));
+    const results = await Promise.allSettled(
+      entries.flatMap(({ pane, items }) =>
+        items
+          .filter(
+            (item) =>
+              !(typeof item.isPersistentDockItem === "function" && item.isPersistentDockItem()),
+          )
+          .map((item) => pane.prepareToDestroyItem(item, true)),
+      ),
+    );
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Unable to prepare the workspace for closing");
+    const prepared = results.map((result) => result.value);
+    const validate = () => {
+      guard();
+      const current = this.getPanesIn(locations);
+      if (
+        current.length !== panes.length ||
+        current.some((pane, index) => pane !== panes[index]) ||
+        entries.some(({ pane, items }) => {
+          const present = pane.getItems();
+          return (
+            present.length !== items.length || present.some((item, index) => item !== items[index])
+          );
+        }) ||
+        prepared.some((item) => !item?.canDestroy())
+      ) {
+        throw new Error("The workspace changed or an item prevented the project from closing.");
+      }
+    };
+    validate();
+    const clear = () => {
+      validate();
+      const persistentItems = [];
+      try {
+        this.detachPersistentDockItems(locations, persistentItems, guard);
+        for (const item of prepared) {
+          guard();
+          item.destroy();
+        }
+        guard();
+        this.destroyPanes(locations);
+        this.attachPersistentDockItems(persistentItems, guard);
+        guard();
+        this.destroyedItemURIs = [];
+        this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+        this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
+      } catch (error) {
+        this.#recoverPersistentItems(persistentItems, guard, error);
+      }
+    };
+    return { assertReady: validate, clear };
   }
 
   #layoutGuard(assertCurrent) {
@@ -2569,6 +2672,8 @@ module.exports = class Workspace extends Model {
    * the URI, a new empty {@link TextEditor} will be created.
    * The destination pane is captured before asynchronous opening begins, so
    * later focus changes do not redirect the result into another window.
+   * Replacing the project session cancels pending opens and refuses new ones
+   * until restoration or rollback completes.
    * Resetting or destroying the workspace, or closing the chosen destination
    * pane, cancels an unfinished open and resolves it to `undefined`. A late
    * opener-owned item is disposed if it remains unattached; an item supplied

@@ -1,4 +1,5 @@
 const fs = require("@lumine-code/fs-plus");
+const { isDeepStrictEqual } = require("node:util");
 const { getProjectStateKey } = require("./project-state-keys");
 
 // Docks belong to the window. A project transition replaces only its center.
@@ -14,6 +15,7 @@ module.exports = class ProjectStateController {
     packages,
     saveState,
     serialize,
+    serializeCurrent,
     loadProjectState,
     restoreState,
     switchProjectStorage = async () => {},
@@ -26,6 +28,7 @@ module.exports = class ProjectStateController {
     this.packages = packages;
     this.persistState = saveState;
     this.serialize = serialize;
+    this.serializeCurrent = serializeCurrent;
     this.loadProjectState = loadProjectState;
     this.restoreState = restoreState;
     this.switchProjectStorage = switchProjectStorage;
@@ -155,20 +158,12 @@ module.exports = class ProjectStateController {
     // Save/Save As can change both contents and paths. Preserve that result
     // rather than the snapshot taken before confirmation.
     this.resolveFolders(folders);
-    const outgoingState = await this.serialize({ isUnloading: true });
-    this.assertCurrent(generation);
-    await this.persistState({ isUnloading: true }, outgoingState, assertCurrent);
-    this.assertCurrent(generation);
-    const outgoingProjectFile = this.config.projectFile;
-    const outgoingProjectSettings = {
-      "*": this.config.projectSettings,
-      ...(outgoingProjectFile
-        ? this.config.scopedSettingsStore.propertiesForSource(outgoingProjectFile)
-        : {}),
-    };
+    let outgoingState;
+    let outgoingProjectFile, outgoingProjectSettings;
 
     const loaded = await this.loadProjectState(folders);
     const failures = [];
+    let openEmptyEditor = false;
     try {
       this.assertCurrent(generation);
       // State reads yield to filesystem work. Refuse a disappeared root while
@@ -180,11 +175,43 @@ module.exports = class ProjectStateController {
         preserveRetainedBuffers: true,
         throwProjectErrors: true,
       };
+      let teardownStarted = false;
+      let transitionLock;
       try {
         this.project.emitWillChangeState(folders);
         this.assertCurrent(generation);
-        await this.workspace.clear({ locations: PROJECT_STATE_LOCATIONS }, assertCurrent);
+        const prepared = await this.workspace.prepareToClear(
+          { locations: PROJECT_STATE_LOCATIONS },
+          assertCurrent,
+        );
+        // Keep a durable copy before destruction. A synchronous refresh captures
+        // edits made during that write immediately before the prepared closes.
+        // Persist any refresh before binding the incoming scope; a failed write
+        // recovers the latest contents through the ordinary rollback path.
+        const savedState = await this.serialize({ isUnloading: true });
         this.assertCurrent(generation);
+        await this.persistState({ isUnloading: true }, savedState, assertCurrent);
+        this.assertCurrent(generation);
+        transitionLock = this.workspace.beginProjectStateChange();
+        await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
+        this.assertCurrent(generation);
+        outgoingState = this.serializeCurrent({ isUnloading: true });
+        const needsFinalWrite = !isDeepStrictEqual(savedState, outgoingState);
+        outgoingProjectFile = this.config.projectFile;
+        outgoingProjectSettings = {
+          "*": this.config.projectSettings,
+          ...(outgoingProjectFile
+            ? this.config.scopedSettingsStore.propertiesForSource(outgoingProjectFile)
+            : {}),
+        };
+        prepared.assertReady();
+        teardownStarted = true;
+        prepared.clear();
+        this.assertCurrent(generation);
+        if (needsFinalWrite) {
+          await this.persistState({ isUnloading: true }, outgoingState, assertCurrent);
+          this.assertCurrent(generation);
+        }
         this.project.destroyUnretainedBuffers();
         this.assertCurrent(generation);
         this.config.clearProjectSettings();
@@ -201,14 +228,11 @@ module.exports = class ProjectStateController {
           this.assertCurrent(generation);
           this.project.setPaths(folders, { mustExist: true, exact: true });
           this.assertCurrent(generation);
-          if (this.config.get("core.openEmptyEditorOnStart")) {
-            await this.workspace.open(null, { pending: true });
-            this.assertCurrent(generation);
-          }
+          openEmptyEditor = this.config.get("core.openEmptyEditorOnStart");
         }
       } catch (error) {
         failures.push(error);
-        if (this.isCurrent(generation)) {
+        if (teardownStarted && this.isCurrent(generation)) {
           await this.rollback(
             outgoingState,
             outgoingProjectSettings,
@@ -219,6 +243,7 @@ module.exports = class ProjectStateController {
           );
         }
       } finally {
+        transitionLock?.dispose();
         // Aliases belong to this restoration, not a new generation established
         // by reset or teardown while an asynchronous operation was pending.
         if (this.isCurrent(generation)) {
@@ -247,6 +272,10 @@ module.exports = class ProjectStateController {
       throw new AggregateError(failures, "Project state change failed to complete cleanly", {
         cause: failures[0],
       });
+    }
+    if (openEmptyEditor) {
+      await this.workspace.open(null, { pending: true });
+      this.assertCurrent(generation);
     }
     return true;
   }

@@ -506,6 +506,7 @@ class Environment {
       saveState: (options, snapshot, assertCurrent) =>
         this.persistState(options, snapshot, assertCurrent),
       serialize: (options) => this.captureState(options),
+      serializeCurrent: (options) => cloneSessionSnapshot(this.serialize(options)),
       loadProjectState: (projectPaths) => this.loadProjectState(projectPaths),
       restoreState: (state, options, assertCurrent) =>
         this.restoreStateIntoThisEnvironment(state, options, assertCurrent),
