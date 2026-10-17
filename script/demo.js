@@ -350,21 +350,14 @@ async function capture(repository, options = {}) {
   // enclosing repository and showing every line as newly added.
   const gitOptions = { cwd: project, windowsHide: true };
   await exec("git", ["-c", "init.templateDir=", "init", "--initial-branch=master"], gitOptions);
+  // Both the fixture commit and the running Git UI must use the demo identity.
+  // A command-only override leaves the UI reading the maintainer's global identity.
+  await exec("git", ["config", "--local", "user.name", "Lumine Demo"], gitOptions);
+  await exec("git", ["config", "--local", "user.email", "demo@example.invalid"], gitOptions);
   await exec("git", ["-c", "core.autocrlf=false", "add", "."], gitOptions);
   await exec(
     "git",
-    [
-      "-c",
-      "user.name=Lumine Demo",
-      "-c",
-      "user.email=demo@example.invalid",
-      "-c",
-      "commit.gpgSign=false",
-      "commit",
-      "--allow-empty",
-      "-m",
-      "Prepare demo fixtures",
-    ],
+    ["-c", "commit.gpgSign=false", "commit", "--allow-empty", "-m", "Prepare demo fixtures"],
     gitOptions,
   );
   const sources = { editor: await revision(ROOT), package: await revision(repo) };
