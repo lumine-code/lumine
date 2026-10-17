@@ -10,18 +10,18 @@
       "light": "01-light.png",
       "dark": "01-dark.png",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
       "packageSourceRevisions": {
-        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
-        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
-        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
-        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+        "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
+        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
       },
-      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
       "capture": {
         "runner": "script/demo.js",
         "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
@@ -30,7 +30,7 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.8.0",
+          "electron": "44.9.0",
           "chrome": "152.0.7977.167",
           "devicePixelRatio": 1,
           "locale": "en-GB",
@@ -50,12 +50,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+            "dirty": true,
+            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
           },
           "about": {
-            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -75,27 +75,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "revision": "49eb7742b992eb0a3aa89be840740309d324b0ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -130,7 +130,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "4a343e374411471af0cfc8539b49738186e69f5f891651882589de66829c02fb"
+        "sha256": "dc657f1ea4811247d03d0f338f81883bc8bcd50b366d917c3b3e36c7f5ed910e"
       }
     },
     {
@@ -142,17 +142,17 @@
       "dark": "02-dark.png",
       "capturedOn": "2026-10-17",
       "packageSourceRevisions": {
-        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
-        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
-        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
-        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+        "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
+        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
       },
-      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
-      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
       "capture": {
         "runner": "script/demo.js",
         "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
@@ -161,7 +161,7 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.8.0",
+          "electron": "44.9.0",
           "chrome": "152.0.7977.167",
           "devicePixelRatio": 1,
           "locale": "en-GB",
@@ -181,12 +181,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+            "dirty": true,
+            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
           },
           "about": {
-            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -206,27 +206,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "revision": "49eb7742b992eb0a3aa89be840740309d324b0ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -261,7 +261,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "e8484cfdc5ef11a9be5f0235797f5c2b84d56eceec99cee9ed63c018dd1e9ea6"
+        "sha256": "166e66fe8b91ad70eb0a4ecc1e423cc767e2f6616d241147e38647dded98c28b"
       }
     },
     {
@@ -271,18 +271,18 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
+      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
       "packageSourceRevisions": {
-        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
-        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
-        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
-        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+        "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
+        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -292,7 +292,7 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.8.0",
+          "electron": "44.9.0",
           "chrome": "152.0.7977.167",
           "devicePixelRatio": 1,
           "locale": "en-GB",
@@ -312,12 +312,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+            "dirty": true,
+            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
           },
           "about": {
-            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -337,27 +337,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "revision": "49eb7742b992eb0a3aa89be840740309d324b0ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -392,7 +392,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "51ee3ddebcf65a1bf5ddb13e8105fe10c3cf6bc9263a75148c607c234f2c5ae9"
+        "sha256": "832a013dcb8dfee0dc207e0d4f20998c777568a48b87fcd6884fcc8f200d81e6"
       }
     },
     {
@@ -403,17 +403,17 @@
       "light": "04-light.png",
       "dark": "04-dark.png",
       "capturedOn": "2026-10-17",
-      "sourceRevision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
-      "themeSourceRevision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
       "packageSourceRevisions": {
-        "about": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
         "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
         "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
-        "linter-panel": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
-        "markdown-preview": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
-        "settings-view": "550ea392143be19693dda34e8a0649018d8ee9ff",
-        "tree-view": "9c2061cd89333f849c3a630cee706888ffc31755"
+        "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
+        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -423,7 +423,7 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.8.0",
+          "electron": "44.9.0",
           "chrome": "152.0.7977.167",
           "devicePixelRatio": 1,
           "locale": "en-GB",
@@ -443,12 +443,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "a7416aa6cd9b98dc95387bf55b6c79ab1ad4425b",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+            "dirty": true,
+            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
           },
           "about": {
-            "revision": "ceaf82aee4b00772d1e73979732550c4bbb5215c",
+            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -468,27 +468,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter-panel": {
-            "revision": "8dd8bea8f68e8fbcaeb13f3912fad9f5fbfd6dc6",
+            "revision": "49eb7742b992eb0a3aa89be840740309d324b0ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "141c34e25e6d2f97ad7ca9b008381ba2b2c3a2eb",
+            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "cc43d68c8f1d44cd089848302ab58b657eee4a18",
+            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "550ea392143be19693dda34e8a0649018d8ee9ff",
+            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "9c2061cd89333f849c3a630cee706888ffc31755",
+            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -523,7 +523,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "b7578b89ae12f99903939dcafe436a238881a359f6d486aa7d63603abb3c7b25"
+        "sha256": "5abb3f5571f4b35426f3378b10d390709d663aa50f0efa1cac3ad479a7996218"
       }
     }
   ],
