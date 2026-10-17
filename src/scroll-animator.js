@@ -8,7 +8,7 @@ const X_B = 3 * (CURVE_X2 - 2 * CURVE_X1);
 const X_C = 3 * CURVE_X1;
 
 // Chromium-style cubic retargeting and inverse-distance duration selection.
-// The upstream notices and reference revision are retained in LICENSE. Each
+// The upstream notices and reference revision are retained in THIRD_PARTY_NOTICES. Each
 // axis has its own segment and a stricter duration bound to prevent overshoot.
 function createCurve(position, velocity, target, maxDuration, timingDistance = target - position) {
   const distance = target - position;

@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const asar = require("@electron/asar");
+const { getNodeModuleFileMatcher } = require("app-builder-lib/out/fileMatcher");
 const { whatToBuild } = require("./electron-builder");
 const {
   checkBuiltApp,
@@ -71,7 +72,11 @@ async function fixture(
     },
   };
   write(repoRoot, "package.json", manifest);
+  write(repoRoot, "LICENSE", "MIT License\nCopyright the editor authors\n");
+  write(repoRoot, "THIRD_PARTY_NOTICES", "Inherited editor license\r\n");
   write(repoRoot, "node_modules/sample/package.json", packageManifest);
+  write(repoRoot, "node_modules/sample/LICENSE", "MIT License\nPackage authors\n");
+  write(repoRoot, "node_modules/sample/THIRD_PARTY_NOTICES", "Parser license\r\n");
   write(repoRoot, "node_modules/sample/grammars/sample.wasm", "parser");
   write(repoRoot, "node_modules/sample/grammars/sample.scm", "(identifier) @name");
   write(repoRoot, "node_modules/sample/grammars/sample.json", { type: "tree-sitter" });
@@ -80,6 +85,7 @@ async function fixture(
   write(repoRoot, "node_modules/sample/lib/main.js", "module.exports = {};");
   const nativeManifest = { name: "@lumine-code/native", version: "1.0.0", main: "lib/main.js" };
   write(repoRoot, "node_modules/@lumine-code/native/package.json", nativeManifest);
+  write(repoRoot, "node_modules/@lumine-code/native/LICENSE.md", "Native library terms\r\n");
   for (const targetPlatform of ["linux", "win32", "darwin"]) {
     write(repoRoot, `menus/${targetPlatform}.json`, {
       menu: [{ label: `File ${targetPlatform}` }],
@@ -115,6 +121,9 @@ async function fixture(
   for (const [entry, value] of Object.entries(add)) write(source, entry, value);
   for (const entry of omit) fs.unlinkSync(path.join(source, entry));
   fs.mkdirSync(resources, { recursive: true });
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES"]) {
+    fs.copyFileSync(path.join(repoRoot, name), path.join(resources, name));
+  }
   await asar.createPackageWithOptions(source, archive, packNative ? {} : { unpack: "**/*.node" });
   write(
     resources,
@@ -164,6 +173,70 @@ test("packages the same shared launcher for every target platform", () => {
     );
     assert.deepEqual(helpers, [helper]);
   }
+});
+
+test("preserves legal Markdown and notices in the actual dependency filter", () => {
+  const root = path.resolve(__dirname, "..");
+  const config = whatToBuild();
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES"]) {
+    assert.ok(config.extraResources.some((entry) => entry.from === name && entry.to === name));
+  }
+  const matcher = getNodeModuleFileMatcher(
+    root,
+    root,
+    (value) => value,
+    {},
+    {
+      config,
+      debugLogger: { isEnabled: false },
+    },
+  );
+  const include = matcher.createFilter();
+  const stat = { isDirectory: () => false };
+  for (const name of [
+    "LICENSE",
+    "LICENSE.md",
+    "LICENCE.markdown",
+    "license.md",
+    "COPYING.md",
+    "NOTICE.md",
+    "Copyright.md",
+    "ThirdPartyNotices.md",
+    "THIRD_PARTY_NOTICES",
+  ]) {
+    assert.equal(include(path.join(root, "node_modules", "sample", name), stat), true, name);
+  }
+  assert.equal(include(path.join(root, "node_modules/sample/README.md"), stat), false);
+});
+
+test("rejects missing or altered dependency licenses and third-party notices", async (t) => {
+  const app = await fixture(t, {
+    omit: ["node_modules/sample/THIRD_PARTY_NOTICES"],
+    add: { "node_modules/@lumine-code/native/LICENSE.md": "Replaced terms\n" },
+  });
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    (error) =>
+      /Missing runtime file in app.asar: node_modules\/sample\/THIRD_PARTY_NOTICES/.test(
+        error.message,
+      ) &&
+      /Dependency legal file differs from its source: node_modules\/@lumine-code\/native\/LICENSE.md/.test(
+        error.message,
+      ),
+  );
+});
+
+test("rejects missing or altered editor legal resources", async (t) => {
+  const app = await fixture(t);
+  const resources = path.dirname(app.archive);
+  fs.unlinkSync(path.join(resources, "LICENSE"));
+  fs.writeFileSync(path.join(resources, "THIRD_PARTY_NOTICES"), "Incomplete notices\n");
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    (error) =>
+      /Missing legal resource: LICENSE/.test(error.message) &&
+      /Legal resource differs from its source: THIRD_PARTY_NOTICES/.test(error.message),
+  );
 });
 
 for (const platform of ["linux", "win32", "darwin"]) {

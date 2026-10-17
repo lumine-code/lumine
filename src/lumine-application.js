@@ -1383,7 +1383,12 @@ module.exports = class LumineApplication extends EventEmitter {
     this.openPathOnEvent("application:open-your-keymap", "lumine://.lumine/keymap");
     this.openPathOnEvent("application:open-your-snippets", "lumine://.lumine/snippets");
     this.openPathOnEvent("application:open-your-stylesheet", "lumine://.lumine/stylesheet");
-    this.openPathOnEvent("application:open-license", path.join(process.resourcesPath, "LICENSE"));
+    const legalPath = (name) => {
+      const source = path.join(__dirname, "..", name);
+      return fs.existsSync(source) ? source : path.join(process.resourcesPath, name);
+    };
+    this.openPathOnEvent("application:open-license", legalPath("LICENSE"));
+    this.openPathOnEvent("application:open-third-party-notices", legalPath("THIRD_PARTY_NOTICES"));
 
     this.configFile.onDidChange((settings) => {
       for (let window of this.getAllWindows()) {

@@ -3137,14 +3137,19 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Open Lumine's license in the active pane.
+  // Open Lumine's own license in the active pane.
   openLicense() {
-    const resPath = path.join(process.resourcesPath, "LICENSE");
-    if (fs.existsSync(resPath)) {
-      return this.open(resPath);
-    } else {
-      return this.open(path.join(__dirname, "..", "LICENSE"));
-    }
+    return this.openLegalFile("LICENSE");
+  }
+
+  openThirdPartyNotices() {
+    return this.openLegalFile("THIRD_PARTY_NOTICES");
+  }
+
+  openLegalFile(name) {
+    const source = path.join(__dirname, "..", name);
+    const resource = path.join(process.resourcesPath, name);
+    return this.open(fs.existsSync(source) ? source : resource);
   }
 
   // Synchronously open the given URI in the active pane. **Only use this method

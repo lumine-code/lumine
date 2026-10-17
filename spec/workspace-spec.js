@@ -2392,6 +2392,16 @@ describe("Workspace", () => {
     });
   });
 
+  describe("::openThirdPartyNotices()", () => {
+    it("opens inherited terms separately from the editor's own license", async () => {
+      const license = await workspace.openLicense();
+      expect(license.getText()).not.toMatch(/BEGIN THIRD-PARTY LICENSE/);
+      const notices = await workspace.openThirdPartyNotices();
+      expect(notices.getText()).toMatch(/BEGIN THIRD-PARTY LICENSE/);
+      expect(notices.getPath()).not.toBe(license.getPath());
+    });
+  });
+
   describe("::isTextEditor(obj)", () => {
     it("returns true when the passed object is an instance of `TextEditor`", () => {
       expect(workspace.isTextEditor(new TextEditor())).toBe(true);

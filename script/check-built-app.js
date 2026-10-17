@@ -16,6 +16,8 @@ const { scanBundledPackageNames, clearCache } = require("../src/bundled-packages
 
 const ROOT = path.resolve(__dirname, "..");
 const PLATFORMS = ["darwin", "linux", "win32"];
+const LEGAL_FILE =
+  /^(?:(?:licen[cs]e|copying|notice|copyright)(?:[._-].*)?|third[-_ ]?party[-_ ]?(?:notices|licenses)(?:[._-].*)?)$/i;
 const RUNTIME_ASSETS = [
   "exports/lumine.js",
   "src/parse-command-line-options.js",
@@ -138,6 +140,36 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
   for (const asset of RUNTIME_ASSETS) requireFile(asset);
   for (const name of Object.keys(sourceManifest.dependencies || {})) {
     requireFile(`node_modules/${name}/package.json`);
+  }
+  // Validate legal files for every shipped dependency, including libraries and
+  // nested dependencies rather than only packages bundled with the editor.
+  for (const entry of entries) {
+    if (!/(?:^|\/)node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/.test(entry)) continue;
+    const packageRoot = path.posix.dirname(entry);
+    const sourceDirectory = path.join(repoRoot, packageRoot);
+    if (!fs.existsSync(sourceDirectory)) continue;
+    for (const legal of fs.readdirSync(sourceDirectory, { withFileTypes: true })) {
+      if (!legal.isFile() || !LEGAL_FILE.test(legal.name)) continue;
+      const legalEntry = `${packageRoot}/${legal.name}`;
+      requireFile(legalEntry);
+      if (!entries.includes(legalEntry)) continue;
+      expect(
+        asar
+          .extractFile(file, path.normalize(legalEntry))
+          .equals(fs.readFileSync(path.join(sourceDirectory, legal.name))),
+        `Dependency legal file differs from its source: ${legalEntry}`,
+      );
+    }
+  }
+  for (const name of ["LICENSE", "THIRD_PARTY_NOTICES"]) {
+    const resource = path.join(path.dirname(file), name);
+    expect(fs.existsSync(resource), `Missing legal resource: ${name}`);
+    if (fs.existsSync(resource)) {
+      expect(
+        fs.readFileSync(resource).equals(fs.readFileSync(path.join(repoRoot, name))),
+        `Legal resource differs from its source: ${name}`,
+      );
+    }
   }
 
   const metadata = {

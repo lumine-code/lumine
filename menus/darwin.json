@@ -12,6 +12,10 @@
           "command": "application:open-license"
         },
         {
+          "label": "View Third-Party Notices",
+          "command": "application:open-third-party-notices"
+        },
+        {
           "label": "VERSION",
           "enabled": false
         },

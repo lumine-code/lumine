@@ -374,6 +374,9 @@ module.exports = function ({
       "application:open-license": function () {
         return this.getModel().openLicense();
       },
+      "application:open-third-party-notices": function () {
+        return this.getModel().openThirdPartyNotices();
+      },
       "application:open-documentation": function () {
         return ipcRenderer.send("command", "application:open-documentation");
       },

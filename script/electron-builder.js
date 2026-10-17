@@ -226,11 +226,16 @@ let options = {
     "!**/.circleci",
     "!**/.github",
     // - Extensions
-    "!**/*.{markdown,md,mkd,ts,jst,tgz,swp}",
+    // Preserve dependency license and notice documents while pruning prose.
+    // The dependency matcher only carries exclusions, so a later inclusion
+    // cannot restore a legal file removed by a blanket Markdown exclusion.
+    "!**/!([Ll][Ii][Cc][Ee][Nn][SsCc][Ee]*|[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*|[Nn][Oo][Tt][Ii][Cc][Ee]*|[Cc][Oo][Pp][Yy][Rr][Ii][Gg][Hh][Tt]*|[Tt][Hh][Ii][Rr][Dd]*).{markdown,md,mkd}",
+    "!**/*.{ts,jst,tgz,swp}",
   ],
 
   extraResources: [
     { from: "LICENSE", to: "LICENSE" },
+    { from: "THIRD_PARTY_NOTICES", to: "THIRD_PARTY_NOTICES" },
     { from: "resources/lumine.js", to: `${baseName}.js` },
   ],
   compression: "normal",

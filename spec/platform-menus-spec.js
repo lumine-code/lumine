@@ -16,6 +16,7 @@ const ALLOWED_DIVERGENCES = [
   // takes About/License/Version and Settings out of Help and File to do it.
   "/Lumine",
   "/Help/View License",
+  "/Help/View Third-Party Notices",
   "/Help/VERSION",
   "/Help/About Lumine",
   "/File/Settings",

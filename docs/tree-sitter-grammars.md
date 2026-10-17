@@ -33,7 +33,7 @@ Several configs can share one wasm (JSON, JSONC, and Jupyter). Configs that pin 
 
 ## Building and updating parsers
 
-Commit the parser Wasm, its immutable `parserSource` and its `wasmBuildTool` provenance together. A source update can change node types, fields and tree shapes; inspect it against the package's queries and fixtures, run query and scope validation, and test highlighting, indentation and folding on real source. Keep the parser's source license and required notices in the package's main `LICENSE`, and include that file in its shipped payload.
+Commit the parser Wasm, its immutable `parserSource` and its `wasmBuildTool` provenance together. A source update can change node types, fields and tree shapes; inspect it against the package's queries and fixtures, run query and scope validation, and test highlighting, indentation and folding on real source. Keep the package's own applicable license in `LICENSE`, and the parser's source license, inherited copyright notices, required NOTICE content, source URL and revision in `THIRD_PARTY_NOTICES`. Include both files in its shipped payload.
 
 In the maintainer's flat source workspace, the local `lem grammar` tool owns parser checkouts, the pinned Tree-sitter CLI and reproducible builds. Its `docs/grammar-building.md` documents building, source updates, external-package checks and dependency repinning. `lem` is local workspace tooling; it is not a public package dependency. Grammar packages remain portable Wasm and query assets.
 

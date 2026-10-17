@@ -959,6 +959,12 @@
           "order": 10
         },
         {
+          "label": "View Third-Party Notices",
+          "command": "application:open-third-party-notices",
+          "group": "about",
+          "order": 15
+        },
+        {
           "label": "VERSION",
           "enabled": false,
           "group": "about",
