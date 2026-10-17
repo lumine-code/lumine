@@ -155,6 +155,31 @@ describe("PaneElement", function () {
       }
     });
 
+    it("keeps the mark above the full height of a wrapped background tip", function () {
+      const styles = document.createElement("style");
+      styles.textContent =
+        "lumine-pane > .item-views:empty::after { transition: none !important; }";
+      jasmine.attachToDOM(styles);
+      containerElement.style.setProperty("--ui-spacing", "8px");
+      paneElement.appendChild(document.createElement("background-tips"));
+
+      for (const offset of ["min(8rem, 18%)", "30px"]) {
+        paneElement.style.setProperty("--empty-pane-content-offset", offset);
+        for (const messageHeight of [32, 160, 224]) {
+          paneElement.style.setProperty("--empty-pane-message-height", `${messageHeight}px`);
+          const style = watermarkStyle();
+          const transform = new DOMMatrixReadOnly(style.transform);
+          const markBottom = parseFloat(style.top) + transform.m42 + parseFloat(style.height);
+          const viewportHeight = paneElement.itemViews.getBoundingClientRect().height;
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+          const anchorOffset = offset === "30px" ? 30 : Math.min(8 * rem, 0.18 * viewportHeight);
+          const messageTop = viewportHeight / 2 + anchorOffset - messageHeight / 2;
+
+          expect(messageTop - markBottom).toBeCloseTo(24, 1);
+        }
+      }
+    });
+
     it("preserves custom offsets and leaves populated viewports outside size containment", function () {
       const backgroundTips = document.createElement("background-tips");
       paneElement.appendChild(backgroundTips);
