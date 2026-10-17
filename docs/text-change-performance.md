@@ -46,6 +46,8 @@ All three renderer median-ratio intervals are below one. The undo p95 increases 
 
 ## Native preparation experiment
 
+The subsequent [shared native edit ownership experiment](shared-edit-performance.md) tests the shared storage hypothesis left open by this preparation-only prototype.
+
 The prototype adds a read-only `TextBuffer.prepareChange(range, text)` method that returns edit metadata and an already-built native Patch. Mutation still happens through the existing buffer operation so the history-before-notification ordering can be preserved. The benchmark integration passes the prepared patch through the editor's change application and history provider. This prototype does not test shared native text ownership between mutation and history, nor a replacement document engine.
 
 Compared with the improved JavaScript variant on the same experimental binary:

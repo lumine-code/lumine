@@ -4,6 +4,8 @@ Benchmark procedures and recorded comparisons for the editor's display, injectio
 
 The later [text change boundary comparison](text-change-performance.md) records transaction-transfer optimizations, a native preparation experiment and paired renderer measurements.
 
+The [shared native edit ownership experiment](shared-edit-performance.md) separates immutable patch sharing from a prepared mutation path and compares their editing, renderer and memory costs.
+
 ## Display performance benchmarks
 
 The editor repository provides `npm run benchmark:display` for display mapping, decoration queries, long-line edits and scrolling. Freeze the baseline before changing production code; the runner copies the source and the exact installed Superstring addon into the output directory. Use the same directory for the subsequent comparison:
