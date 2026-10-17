@@ -1906,19 +1906,23 @@ module.exports = class PackageManager {
   // window going away.
   async deactivatePackages({ timeout } = {}) {
     const abandoned = [];
-    await this.config.transactAsync(() =>
-      Promise.all(
-        this.getLoadedPackages().map(async (pack) => {
-          const deactivation = this.deactivatePackage(pack.name, { serialize: false }).catch(
-            (error) => {
-              console.error(`Error deactivating package '${pack.name}'`, error);
-            },
-          );
-          if (timeout == null) return deactivation;
-          if (!(await settlesWithin(deactivation, timeout))) abandoned.push(pack.name);
-        }),
-      ),
-    );
+    const deactivate = () =>
+      this.config.transactAsync(() =>
+        Promise.all(
+          this.getLoadedPackages().map(async (pack) => {
+            const deactivation = this.deactivatePackage(pack.name, { serialize: false }).catch(
+              (error) => {
+                console.error(`Error deactivating package '${pack.name}'`, error);
+              },
+            );
+            if (timeout == null) return deactivation;
+            if (!(await settlesWithin(deactivation, timeout))) abandoned.push(pack.name);
+          }),
+        ),
+      );
+    // Removing each package's menus and keymaps changes one shared template.
+    // Publish it once after config observers have settled, including failures.
+    await (this.menuManager ? this.menuManager.transactAsync(deactivate) : deactivate());
     if (abandoned.length > 0) {
       console.warn(`Stopped waiting for ${abandoned.join(", ")} to deactivate after ${timeout}ms`);
     }

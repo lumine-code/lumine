@@ -1769,6 +1769,36 @@ describe("PackageManager", () => {
   });
 
   describe("::deactivatePackages()", () => {
+    it("publishes menu removals once after all package teardown finishes", async () => {
+      const first = await lumine.packages.activatePackage("package-with-deactivate");
+      const second = await lumine.packages.activatePackage("package-with-serialization");
+      first.activationDisposables.add(lumine.menu.add([{ label: "Bulk teardown first" }]));
+      second.activationDisposables.add(lumine.menu.add([{ label: "Bulk teardown second" }]));
+      let finish, started;
+      const teardownStarted = new Promise((resolve) => (started = resolve));
+      spyOn(first.mainModule, "deactivate").and.callFake(() => {
+        started();
+        return new Promise((resolve) => (finish = resolve));
+      });
+      const changed = jasmine.createSpy("changed");
+      const subscription = lumine.menu.onDidChange(changed);
+      const deactivation = lumine.packages.deactivatePackages();
+      try {
+        await teardownStarted;
+        expect(changed).not.toHaveBeenCalled();
+        expect(
+          lumine.menu.getTemplate().some((item) => item.label.startsWith("Bulk teardown")),
+        ).toBe(false);
+      } finally {
+        finish();
+        await deactivation;
+        subscription.dispose();
+      }
+      expect(changed).toHaveBeenCalledOnceWith(lumine.menu.getTemplate());
+      expect(lumine.packages.isPackageActive(first.name)).toBe(false);
+      expect(lumine.packages.isPackageActive(second.name)).toBe(false);
+    });
+
     it("deactivates all packages but does not serialize them", async () => {
       const pack1 = await lumine.packages.activatePackage("package-with-deactivate");
       const pack2 = await lumine.packages.activatePackage("package-with-serialization");

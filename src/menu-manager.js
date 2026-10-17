@@ -94,6 +94,8 @@ module.exports = class MenuManager {
     this.platform = platform;
     this.initialized = false;
     this.pendingUpdateOperation = null;
+    this.updateTransactionDepth = 0;
+    this.updateRequested = false;
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
     this.contextViewManager = null;
@@ -535,10 +537,28 @@ module.exports = class MenuManager {
    * Refreshes the currently visible menu.
    */
   update() {
+    if (this.updateTransactionDepth > 0) {
+      this.updateRequested = true;
+      return;
+    }
     if (this.emitter.listenerCountForEventName("did-change") > 0) {
       this.emitter.emit("did-change", this.getTemplate());
     }
     this.scheduleNativeUpdate();
+  }
+
+  /** @private Coalesce bulk lifecycle notifications while keeping template reads current. */
+  async transactAsync(callback) {
+    this.updateTransactionDepth++;
+    try {
+      return await callback();
+    } finally {
+      this.updateTransactionDepth--;
+      if (this.updateTransactionDepth === 0 && this.updateRequested) {
+        this.updateRequested = false;
+        this.update();
+      }
+    }
   }
 
   scheduleNativeUpdate() {

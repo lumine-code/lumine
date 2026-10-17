@@ -18,6 +18,91 @@ describe("MenuManager", function () {
 
   afterEach(() => menu.destroy());
 
+  describe("::transactAsync(callback)", () => {
+    let changed, scheduleNativeUpdate;
+
+    beforeEach(() => {
+      menu.destroy();
+      menu = new MenuManager({
+        keymapManager: lumine.keymaps,
+        packageManager: lumine.packages,
+      });
+      changed = jasmine.createSpy("changed");
+      menu.onDidChange(changed);
+      scheduleNativeUpdate = spyOn(menu, "scheduleNativeUpdate");
+    });
+
+    it("keeps menu changes synchronous outside a transaction", () => {
+      const registration = menu.add([{ label: "First" }]);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(changed.calls.mostRecent().args[0]).toEqual(menu.getTemplate());
+      registration.dispose();
+      expect(changed).toHaveBeenCalledTimes(2);
+      expect(scheduleNativeUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it("publishes one final snapshot while template reads include every pending change", async () => {
+      const result = await menu.transactAsync(async () => {
+        const registration = menu.add([{ label: "First" }]);
+        expect(menu.getTemplate().map((item) => item.label)).toEqual(["First"]);
+        expect(changed).not.toHaveBeenCalled();
+        await Promise.resolve();
+        menu.add([{ label: "Second" }]);
+        registration.dispose();
+        expect(menu.getTemplate().map((item) => item.label)).toEqual(["Second"]);
+        expect(changed).not.toHaveBeenCalled();
+        expect(scheduleNativeUpdate).not.toHaveBeenCalled();
+        return "finished";
+      });
+
+      expect(result).toBe("finished");
+      expect(changed).toHaveBeenCalledOnceWith(menu.getTemplate());
+      expect(scheduleNativeUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    for (const asynchronous of [false, true]) {
+      it(`publishes changes when the callback ${asynchronous ? "rejects" : "throws"}`, async () => {
+        const failure = new Error("Menu transaction failed");
+        const transaction = menu.transactAsync(() => {
+          menu.add([{ label: "Retained" }]);
+          if (asynchronous) return Promise.reject(failure);
+          throw failure;
+        });
+
+        await expectAsync(transaction).toBeRejectedWith(failure);
+        expect(changed).toHaveBeenCalledOnceWith(menu.getTemplate());
+        expect(scheduleNativeUpdate).toHaveBeenCalledTimes(1);
+        menu.add([{ label: "Afterwards" }]);
+        expect(changed).toHaveBeenCalledTimes(2);
+      });
+    }
+
+    it("waits for the outermost transaction after a nested rejection", async () => {
+      await menu.transactAsync(async () => {
+        menu.add([{ label: "Outer" }]);
+        const failure = new Error("Nested transaction failed");
+        await expectAsync(
+          menu.transactAsync(async () => {
+            menu.add([{ label: "Inner" }]);
+            throw failure;
+          }),
+        ).toBeRejectedWith(failure);
+        expect(changed).not.toHaveBeenCalled();
+        expect(scheduleNativeUpdate).not.toHaveBeenCalled();
+        menu.add([{ label: "After inner" }]);
+      });
+
+      expect(changed).toHaveBeenCalledOnceWith(menu.getTemplate());
+      expect(scheduleNativeUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not publish when the transaction did not change the menu", async () => {
+      await menu.transactAsync(async () => {});
+      expect(changed).not.toHaveBeenCalled();
+      expect(scheduleNativeUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe("::add(items)", function () {
     it("shares package configuration files in the platform's configuration submenu", function () {
       for (const platform of ["win32", "linux", "darwin"]) {
