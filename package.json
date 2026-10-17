@@ -47,7 +47,7 @@
     "async": "3.2.6",
     "background-tips": "github:lumine-code/background-tips#49bc24924fff3b2817cf73bab1c59a1a2eb33468",
     "color": "5.0.3",
-    "command-palette": "github:lumine-code/command-palette#6cb69eee523f6e24a9eac437f3e941d158bf4ea3",
+    "command-palette": "github:lumine-code/command-palette#fc7909dac5f9c7a7d9533d4450116cfbc5350f58",
     "dedent": "^1.7.2",
     "deprecation-cop": "github:lumine-code/deprecation-cop#08286d436ed401ab974c475baf72f51f931a062f",
     "dev-live-reload": "github:lumine-code/dev-live-reload#d6c1ac0fbdf1144eb01ebfb1d8fa0a0aec783ce3",
