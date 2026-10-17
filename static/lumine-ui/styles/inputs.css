@@ -52,7 +52,11 @@ input.input-toggle {
     transition: background-color 0.16s cubic-bezier(0.5, 0.15, 0.2, 1);
 
     &&:focus {
-      outline: 0; /* TODO: Add it back */
+      outline: none;
+    }
+    &:focus-visible {
+      /* A theme may replace this ring; custom controls need a fallback too. */
+      box-shadow: 0 0 0 2px var(--accent-indicator-color);
     }
     &:active {
       background-color: var(--accent-indicator-color);
@@ -488,4 +492,20 @@ lumine-text-editor[mini] {
    boxes that are meant to grow with their content. */
 lumine-text-editor[input]:where(:not([mini])) {
   padding: calc(var(--ui-spacing) / 2);
+}
+
+/* Keep the settled UI appearance when the system requests reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .input-checkbox.input-checkbox,
+  .input-checkbox.input-checkbox::before,
+  .input-checkbox.input-checkbox::after,
+  .input-radio.input-radio,
+  .input-radio.input-radio::before,
+  .input-toggle.input-toggle,
+  .input-toggle.input-toggle::before,
+  .input-range.input-range::-webkit-slider-thumb,
+  .input-color.input-color::-webkit-color-swatch,
+  .input-number.input-number::-webkit-inner-spin-button {
+    transition: none;
+  }
 }

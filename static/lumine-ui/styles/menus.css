@@ -261,3 +261,11 @@ lumine-context-view :is(.menu-box, .select-box-list)::-webkit-scrollbar-thumb:ho
     text-decoration: underline;
   }
 }
+
+/* Keep the settled UI appearance when the system requests reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --menu-transition-fast: 0s;
+    --menu-transition-normal: 0s;
+  }
+}
