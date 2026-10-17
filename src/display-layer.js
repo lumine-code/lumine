@@ -91,13 +91,9 @@ class DisplayLayer {
         // layer's back, which is why it also calls `foldsDidRestore` — see
         // that method.
         //
-        // What this opts into: every transaction snapshots the layer, twice.
-        // The layer's history shadow keeps that off the native index — measured
-        // on 20k lines with one-line edits, the marginal cost is noise at 100
-        // folds, ~0.3ms per transaction at 1000 and ~2ms at 5000 (down from
-        // ~25ms when each snapshot paid `index.dump()`). It scales with fold
-        // count, not file size; making it O(changes) instead would need marker
-        // history to record deltas rather than snapshots.
+        // Every transaction snapshots the layer twice. Those snapshots share
+        // unchanged history blocks; edits that move folds still update the
+        // affected ranges. See benchmark/marker-history-benchmark.js.
         maintainHistory: true,
         persistent: true,
         destroyInvalidatedMarkers: true,

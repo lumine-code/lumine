@@ -715,13 +715,24 @@ class Marker {
   }
 
   // The marker's non-positional state, pre-frozen for history snapshots. A
-  // layer that maintains history snapshots every marker on every transaction;
-  // keeping this object current on the rare mutations makes each snapshot a
-  // reference copy instead of an allocation per marker. Range is deliberately
-  // absent — positions come from the layer's shadow ranges.
+  // layer shares this object across snapshots until a property changes. Range
+  // is deliberately absent — positions come from the layer's shadow ranges,
+  // so moving a marker alone does not copy its property block.
   refreshHistoryProps() {
     if (this.layer.historyShadow) {
-      this.historyProps = this.getSnapshot(null);
+      const previous = this.historyProps;
+      if (
+        !previous ||
+        previous.properties !== this.properties ||
+        previous.reversed !== this.reversed ||
+        previous.tailed !== this.tailed ||
+        previous.valid !== this.valid ||
+        previous.invalidate !== this.invalidate ||
+        previous.exclusive !== this.exclusive
+      ) {
+        this.historyProps = this.getSnapshot(null);
+      }
+      this.layer.historyProperties.set(this.id, this.historyProps);
     }
   }
 

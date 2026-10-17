@@ -249,6 +249,93 @@ describe("MarkerLayer", function () {
         expect(layer.maintainHistory).toBe(true);
         expectShadowAgreesWithIndex(layer);
       });
+
+      it("keeps retained snapshots unchanged through range, property and lifetime changes", () => {
+        buffer.setText("abcd\n".repeat(320));
+        const markers = Array.from({ length: 300 }, (_, row) =>
+          layer3.markRange(
+            [
+              [row, 0],
+              [row, 2],
+            ],
+            { label: `marker-${row}` },
+          ),
+        );
+        const before = layer3.createSnapshot();
+        const expected = MarkerLayer.materializeSnapshot(before);
+        markers[0].setRange([
+          [0, 1],
+          [0, 3],
+        ]);
+        markers[128].setProperties({ label: "changed" });
+        markers[256].destroy();
+        buffer.insert([0, 0], "new\n");
+        expectShadowAgreesWithIndex(layer3);
+        layer3.clear();
+        layer3.markPosition([1, 1]);
+        expectShadowAgreesWithIndex(layer3);
+        const retained = MarkerLayer.materializeSnapshot(before);
+        expect(Object.keys(retained)).toEqual(Object.keys(expected));
+        for (const id of Object.keys(expected)) {
+          expect(retained[id].range).toEqual(expected[id].range);
+          expect(retained[id].properties).toEqual(expected[id].properties);
+          expect(retained[id].marker).toBe(expected[id].marker);
+        }
+        layer3.restoreFromSnapshot(before);
+        expectShadowAgreesWithIndex(layer3);
+        for (const marker of markers) {
+          expect(layer3.getMarker(marker.id)).toBe(marker);
+          expect(marker.getRange()).toEqual(expected[marker.id].range);
+          expect(marker.getProperties()).toEqual(expected[marker.id].properties);
+        }
+      });
+
+      it("preserves earlier snapshots across deterministic edits, undo, redo and nested aborts", () => {
+        buffer.setText("abcd\n".repeat(320));
+        for (let row = 0; row < 300; row++) {
+          layer3.markRange(
+            [
+              [row, 0],
+              [row, 2],
+            ],
+            { invalidate: "never" },
+          );
+        }
+        let seed = 19;
+        const random = (limit) => {
+          seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+          return seed % limit;
+        };
+        const retained = [];
+        for (let step = 0; step < 80; step++) {
+          if (step % 10 === 0) {
+            const snapshot = layer3.createSnapshot();
+            retained.push([snapshot, MarkerLayer.materializeSnapshot(snapshot)]);
+          }
+          const row = random(buffer.getLineCount() - 1);
+          buffer.transact(() => {
+            buffer.insert([row, 1], step % 3 === 0 ? "x\ny" : "x");
+            buffer.transact(() => {
+              buffer.insert([0, 0], "discarded\n");
+              buffer.abortTransaction();
+            });
+          });
+          expectShadowAgreesWithIndex(layer3);
+          if (step % 4 === 0) {
+            buffer.undo();
+            expectShadowAgreesWithIndex(layer3);
+            buffer.redo();
+            expectShadowAgreesWithIndex(layer3);
+          }
+        }
+        for (const [snapshot, expected] of retained) {
+          const actual = MarkerLayer.materializeSnapshot(snapshot);
+          for (const id of Object.keys(expected)) {
+            expect(actual[id].range).toEqual(expected[id].range);
+            expect(actual[id].marker).toBe(expected[id].marker);
+          }
+        }
+      });
     });
 
     it("restores the state of all markers in the layer on undo and redo", function () {

@@ -2,6 +2,7 @@ const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");
 const Marker = require("./marker");
+const MarkerHistoryMap = require("./marker-history-map");
 const { MarkerIndex } = require("@lumine-code/superstring");
 const { intersectSet } = require("./set-helpers");
 const { traverse } = require("./point-helpers");
@@ -61,11 +62,11 @@ class MarkerLayer {
     this.delegate = delegate;
     this.id = id;
     this.maintainHistory = maintainHistory;
-    // Mirror of the index's ranges, `id -> {sr, sc, er, ec}`, kept only for
-    // history-maintaining layers. Snapshots read this instead of paying the
-    // native `index.dump()` — the dominant cost of snapshotting a layer with
-    // many markers — so every index mutation below keeps it exact.
-    this.historyShadow = maintainHistory ? new Map() : null;
+    // Mirror of the index's ranges, kept only for history-maintaining layers.
+    // Snapshots share unchanged blocks instead of dumping the native index or
+    // copying every marker. Entries must be replaced, never mutated in place.
+    this.historyShadow = maintainHistory ? new MarkerHistoryMap() : null;
+    this.historyProperties = maintainHistory ? new MarkerHistoryMap() : null;
     this.destroyInvalidatedMarkers = destroyInvalidatedMarkers;
     this.role = role;
     if (this.role === "selections") {
@@ -147,7 +148,10 @@ class MarkerLayer {
     this.markersWithDestroyListeners.clear();
     this.markersById = new Map();
     this.index = new MarkerIndex();
-    if (this.historyShadow) this.historyShadow = new Map();
+    if (this.historyShadow) {
+      this.historyShadow = new MarkerHistoryMap();
+      this.historyProperties = new MarkerHistoryMap();
+    }
     this.displayMarkerLayers.forEach(function (layer) {
       return layer.didClearBufferMarkerLayer();
     });
@@ -603,18 +607,13 @@ class MarkerLayer {
         if (entry.er < startRow || (entry.er === startRow && entry.ec < startColumn)) continue;
         // Entirely after it: both endpoints translate by the extent change. An
         // endpoint on the old end row also shifts in column.
-        if (entry.sr === oldEndRow) {
-          entry.sr = newEndRow;
-          entry.sc = newEndColumn + (entry.sc - oldEndColumn);
-        } else {
-          entry.sr += rowDelta;
-        }
-        if (entry.er === oldEndRow) {
-          entry.er = newEndRow;
-          entry.ec = newEndColumn + (entry.ec - oldEndColumn);
-        } else {
-          entry.er += rowDelta;
-        }
+        if (rowDelta === 0 && entry.sr !== oldEndRow && entry.er !== oldEndRow) continue;
+        this.historyShadow.set(id, {
+          sr: entry.sr === oldEndRow ? newEndRow : entry.sr + rowDelta,
+          sc: entry.sr === oldEndRow ? newEndColumn + (entry.sc - oldEndColumn) : entry.sc,
+          er: entry.er === oldEndRow ? newEndRow : entry.er + rowDelta,
+          ec: entry.er === oldEndRow ? newEndColumn + (entry.ec - oldEndColumn) : entry.ec,
+        });
       }
     }
 
@@ -622,10 +621,19 @@ class MarkerLayer {
       if (!this.markersById.has(id)) continue; // destroyed by invalidation
       const range = this.index.getRange(id);
       const entry = this.historyShadow.get(id);
-      entry.sr = range.start.row;
-      entry.sc = range.start.column;
-      entry.er = range.end.row;
-      entry.ec = range.end.column;
+      if (
+        entry.sr !== range.start.row ||
+        entry.sc !== range.start.column ||
+        entry.er !== range.end.row ||
+        entry.ec !== range.end.column
+      ) {
+        this.historyShadow.set(id, {
+          sr: range.start.row,
+          sc: range.start.column,
+          er: range.end.row,
+          ec: range.end.column,
+        });
+      }
     }
   }
 
@@ -680,14 +688,8 @@ class MarkerLayer {
 
   createSnapshot() {
     if (this.historyShadow) {
-      const ranges = new Map();
-      for (const [id, entry] of this.historyShadow) {
-        ranges.set(id, { sr: entry.sr, sc: entry.sc, er: entry.er, ec: entry.ec });
-      }
-      const props = new Map();
-      for (const [id, marker] of this.markersById) {
-        props.set(id, marker.historyProps);
-      }
+      const ranges = this.historyShadow.snapshot();
+      const props = this.historyProperties.snapshot();
       const snapshot = { __lazyMarkerSnapshot: true, ranges, props };
       if (VERIFY_HISTORY_SNAPSHOTS) this.verifyHistorySnapshot(snapshot);
       return snapshot;
@@ -711,7 +713,7 @@ class MarkerLayer {
   // A lazy snapshot in the shape `restoreFromSnapshot` and history
   // serialization consume: `{id: {range, ...props, marker}}`. Built only when
   // an undo, redo, revert or serialization actually reads the snapshot —
-  // taking one stays allocation-cheap however many times it happens.
+  // taking one shares the range/property blocks without visiting the markers.
   static materializeSnapshot(snapshot) {
     if (!snapshot?.__lazyMarkerSnapshot) return snapshot;
     const result = {};
@@ -767,7 +769,8 @@ class MarkerLayer {
   enableHistorySnapshots() {
     this.maintainHistory = true;
     if (this.historyShadow) return;
-    this.historyShadow = new Map();
+    this.historyShadow = new MarkerHistoryMap();
+    this.historyProperties = new MarkerHistoryMap();
     const ranges = this.index.dump();
     for (const id of Object.keys(ranges)) {
       const range = ranges[id];
@@ -864,6 +867,7 @@ class MarkerLayer {
       this.markersById.delete(marker.id);
       this.index.remove(marker.id);
       this.historyShadow?.delete(marker.id);
+      this.historyProperties?.delete(marker.id);
       this.markersWithChangeListeners.delete(marker);
       this.markersWithDestroyListeners.delete(marker);
       this.displayMarkerLayers.forEach(function (displayMarkerLayer) {
