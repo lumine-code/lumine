@@ -2,6 +2,33 @@ const GitHost = require("../src/git-host");
 const GitHostClient = require("../src/git-host-client");
 
 describe("GitHostClient", () => {
+  it("preserves line-diff missing-baseline policy across the worker boundary", async () => {
+    const host = { request: jasmine.createSpy("request").and.resolveTo([]) };
+    const client = new GitHostClient(host);
+    const descriptor = { gitDirectory: "repo/.git", workingDirectory: "repo" };
+    const signal = new AbortController().signal;
+
+    await client.getLineDiffs(descriptor, {
+      relativePosixPath: "new.txt",
+      base: "head",
+      skipMissingBaseline: true,
+      text: "unsaved\n",
+      signal,
+    });
+
+    expect(host.request).toHaveBeenCalledWith(
+      "lineDiff",
+      {
+        descriptor,
+        relativePosixPath: "new.txt",
+        base: "head",
+        skipMissingBaseline: true,
+        text: "unsaved\n",
+      },
+      { signal },
+    );
+  });
+
   it("resolves the current GitHost singleton for every request", async () => {
     const firstHost = { request: jasmine.createSpy("first request").and.resolveTo("first") };
     const secondHost = { request: jasmine.createSpy("second request").and.resolveTo("second") };

@@ -133,6 +133,28 @@ describe("git-host system Git contract", () => {
     expect(execution.exitCode).toBe(0);
   });
 
+  it("can omit missing baselines while retaining additions to a committed empty file", async () => {
+    const { stdout } = await ops.execRepository(
+      { descriptor, args: ["rev-parse", "HEAD"], options: {} },
+      {},
+    );
+    const payload = { descriptor, headOid: stdout.trim(), text: "new\n" };
+    const addition = { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1 };
+
+    expect(
+      await ops.lineDiff(
+        { ...payload, relativePosixPath: "missing.txt", skipMissingBaseline: true },
+        {},
+      ),
+    ).toEqual([]);
+    expect(await ops.lineDiff({ ...payload, relativePosixPath: "missing.txt" }, {})).toEqual([
+      addition,
+    ]);
+    expect(
+      await ops.lineDiff({ ...payload, relativePosixPath: "a.txt", skipMissingBaseline: true }, {}),
+    ).toEqual([addition]);
+  });
+
   it("reads refs and an empty status from a bare repository", async () => {
     const gitDirectory = temp.mkdirSync("git-host-bare-");
     const runner = new GitRunner({ trustAllRepositories: true });

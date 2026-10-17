@@ -225,6 +225,36 @@ describe("git-host ops", () => {
     expect(service.lineDiff.calls.argsFor(0).slice(0, 2)).toEqual(["", "new\n"]);
   });
 
+  it("omits a known missing baseline when requested without reading Git", async () => {
+    expect(
+      await ops.lineDiff(
+        { descriptor, baselineKnownMissing: true, skipMissingBaseline: true, text: "new\n" },
+        {},
+      ),
+    ).toEqual([]);
+
+    expect(service.readObjects).not.toHaveBeenCalled();
+    expect(service.lineDiff).not.toHaveBeenCalled();
+  });
+
+  it("can skip a discovered missing baseline without changing the cached default result", async () => {
+    service.readObjects.and.resolveTo([null]);
+    const addition = { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1 };
+    service.lineDiff.and.resolveTo([addition]);
+    const payload = {
+      descriptor,
+      relativePosixPath: "missing.txt",
+      headOid: "commit",
+      text: "new\n",
+    };
+
+    expect(await ops.lineDiff({ ...payload, skipMissingBaseline: true }, {})).toEqual([]);
+    expect(service.lineDiff).not.toHaveBeenCalled();
+    expect(await ops.lineDiff(payload, {})).toEqual([addition]);
+    expect(service.readObjects).toHaveBeenCalledTimes(1);
+    expect(service.lineDiff.calls.argsFor(0).slice(0, 2)).toEqual(["", "new\n"]);
+  });
+
   it("checks cancellation even for a known missing baseline", async () => {
     const controller = new AbortController();
     controller.abort();

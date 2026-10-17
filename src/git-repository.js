@@ -1973,16 +1973,18 @@ module.exports = class GitRepository {
    *
    * Computes gutter line diffs off the renderer thread via the git-host worker,
    * fetching and caching the selected baseline blob before comparing it with
-   * the buffer. A path absent from that baseline is compared as empty text.
+   * the buffer. A path absent from that baseline is compared as empty text
+   * unless `skipMissingBaseline` is enabled.
    *
    * @param {String} filePath - The `String` path relative to the repository.
    * @param {String} text - The `String` buffer contents to compare.
    * @param {Object} [options] - Diff options.
    * @param {"head"|"index"} [options.base="head"] - The comparison baseline.
+   * @param {Boolean} [options.skipMissingBaseline=false] - Return no hunks when the baseline path is absent, while retaining additions to an existing empty file.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise<Array<Object>>} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
    */
-  getLineDiffsAsync(filePath, text, { base = "head", signal } = {}) {
+  getLineDiffsAsync(filePath, text, { base = "head", skipMissingBaseline = false, signal } = {}) {
     if (base !== "head" && base !== "index") {
       throw new TypeError(`Unsupported line diff baseline: ${base}`);
     }
@@ -2014,6 +2016,7 @@ module.exports = class GitRepository {
           baselineOid,
           baselinePath,
           baselineKnownMissing,
+          skipMissingBaseline,
           text,
           ignoreEolWhitespace: process.platform === "win32",
           signal: requestSignal,

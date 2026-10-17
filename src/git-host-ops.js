@@ -91,6 +91,7 @@ module.exports = function createGitHostOps(
         baselineOid,
         baselinePath = relativePosixPath,
         baselineKnownMissing = false,
+        skipMissingBaseline = false,
         text,
         ignoreEolWhitespace,
       } = payload;
@@ -128,6 +129,7 @@ module.exports = function createGitHostOps(
         );
       }
       signal?.throwIfAborted();
+      if (skipMissingBaseline && blob == null) return [];
       return invoke("lineDiff", (service) =>
         service.lineDiff(blob?.content ?? "", text, {
           ignoreEolWhitespace,

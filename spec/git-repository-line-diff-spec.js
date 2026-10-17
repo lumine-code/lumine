@@ -42,6 +42,7 @@ describe("GitRepository buffer line-diff baselines", () => {
         base: "head",
         baselineOid: headBlob,
         baselineKnownMissing: false,
+        skipMissingBaseline: false,
       }),
     );
 
@@ -52,6 +53,18 @@ describe("GitRepository buffer line-diff baselines", () => {
         baselineOid: indexBlob,
         baselineKnownMissing: false,
       }),
+    );
+  });
+
+  it("passes the opt-in missing-baseline policy to the worker", async () => {
+    await setStatus();
+    await repository.getLineDiffsAsync("new.txt", "unsaved\n", {
+      base: "index",
+      skipMissingBaseline: true,
+    });
+
+    expect(requestedBaseline()).toEqual(
+      jasmine.objectContaining({ base: "head", skipMissingBaseline: true }),
     );
   });
 
