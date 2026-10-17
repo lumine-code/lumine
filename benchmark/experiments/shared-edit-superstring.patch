@@ -1,0 +1,919 @@
+diff --git a/binding.gyp b/binding.gyp
+index cd1b424..6140667 100644
+--- a/binding.gyp
++++ b/binding.gyp
+@@ -161,6 +161,7 @@
+                     "test/native/encoding-conversion-test.cc",
+                     "test/native/marker-index-test.cc",
+                     "test/native/patch-test.cc",
++                    "test/native/shared-edit-test.cc",
+                     "test/native/text-buffer-test.cc",
+                     "test/native/text-test.cc",
+                     "test/native/text-diff-test.cc",
+diff --git a/src/core/patch.h b/src/core/patch.h
+index c59021e..7690430 100644
+--- a/src/core/patch.h
++++ b/src/core/patch.h
+@@ -22,13 +22,15 @@ class Patch {
+   bool merges_adjacent_changes;
+ 
+ public:
++  using SharedText = std::shared_ptr<const Text>;
++
+   struct Change {
+     Point old_start;
+     Point old_end;
+     Point new_start;
+     Point new_end;
+-    Text *old_text;
+-    Text *new_text;
++    SharedText old_text;
++    SharedText new_text;
+     uint32_t preceding_old_text_size;
+     uint32_t preceding_new_text_size;
+     uint32_t old_text_size;
+@@ -51,6 +53,7 @@ public:
+               optional<Text> &&deleted_text = optional<Text>{},
+               optional<Text> &&inserted_text = optional<Text>{},
+               uint32_t deleted_text_size = 0);
++  bool splice_shared(Point, Point, Point, SharedText, SharedText, uint32_t = 0);
+   void splice_old(Point start, Point deletion_extent, Point insertion_extent);
+   bool combine(const Patch &other, bool left_to_right = true);
+   void clear();
+@@ -112,7 +115,7 @@ private:
+ 
+   Change change_for_root_node();
+ 
+-  std::pair<optional<Text>, bool> compute_old_text(optional<Text> &&, Point, Point);
++  std::pair<SharedText, bool> compute_old_text(SharedText, Point, Point);
+   uint32_t compute_old_text_size(uint32_t, Point, Point);
+ 
+   void splay_node(Node *);
+@@ -121,7 +124,7 @@ private:
+   void delete_root();
+   void perform_rebalancing_rotations(uint32_t);
+   Node *build_node(Node *, Node *, Point, Point, Point, Point,
+-                  optional<Text> &&, optional<Text> &&, uint32_t old_text_size);
++                  SharedText, SharedText, uint32_t old_text_size);
+   void delete_node(Node **);
+   void remove_noop_change();
+ };
+diff --git a/src/core/patch.cc b/src/core/patch.cc
+index 9aebcd8..57f24b2 100644
+--- a/src/core/patch.cc
++++ b/src/core/patch.cc
+@@ -12,7 +12,8 @@
+ using std::function;
+ using std::move;
+ using std::vector;
+-using std::unique_ptr;
++using SharedText = Patch::SharedText;
++using std::make_shared;
+ using std::ostream;
+ using std::endl;
+ using Change = Patch::Change;
+@@ -29,8 +30,8 @@ struct Patch::Node {
+   Point old_distance_from_left_ancestor;
+   Point new_distance_from_left_ancestor;
+ 
+-  unique_ptr<Text> old_text;
+-  unique_ptr<Text> new_text;
++  SharedText old_text;
++  SharedText new_text;
+   uint32_t old_text_size_;
+ 
+   uint32_t old_subtree_text_size;
+@@ -43,8 +44,8 @@ struct Patch::Node {
+     Point new_extent,
+     Point old_distance_from_left_ancestor,
+     Point new_distance_from_left_ancestor,
+-    unique_ptr<Text> &&old_text,
+-    unique_ptr<Text> &&new_text,
++    SharedText old_text,
++    SharedText new_text,
+     uint32_t old_text_size
+   ) :
+     left{left},
+@@ -68,7 +69,7 @@ struct Patch::Node {
+     new_distance_from_left_ancestor{input} {
+ 
+     if (input.read<uint32_t>()) {
+-      old_text = unique_ptr<Text>{new Text{input}};
++      old_text = SharedText{new Text{input}};
+       old_text_size_ = 0;
+     } else {
+       old_text = nullptr;
+@@ -76,7 +77,7 @@ struct Patch::Node {
+     }
+ 
+     if (input.read<uint32_t>()) {
+-      new_text = unique_ptr<Text>{new Text{input}};
++      new_text = SharedText{new Text{input}};
+     } else {
+       new_text = nullptr;
+     }
+@@ -89,9 +90,9 @@ struct Patch::Node {
+       new_text_size() + left_subtree_new_text_size() + right_subtree_new_text_size();
+   }
+ 
+-  void set_old_text(optional<Text> &&text, uint32_t old_text_size) {
++  void set_old_text(SharedText text, uint32_t old_text_size) {
+     if (text) {
+-      old_text = unique_ptr<Text>{new Text{move(*text)}};
++      old_text = move(text);
+       old_text_size_ = 0;
+     } else {
+       old_text = nullptr;
+@@ -111,9 +112,9 @@ struct Patch::Node {
+     return right ? right->old_subtree_text_size : 0;
+   }
+ 
+-  void set_new_text(optional<Text> &&text) {
++  void set_new_text(SharedText text) {
+     if (text) {
+-      new_text = unique_ptr<Text>{new Text{move(*text)}};
++      new_text = move(text);
+     } else {
+       new_text = nullptr;
+     }
+@@ -152,8 +153,8 @@ struct Patch::Node {
+       new_extent,
+       old_distance_from_left_ancestor,
+       new_distance_from_left_ancestor,
+-      old_text ? unique_ptr<Text>(new Text(*old_text)) : nullptr,
+-      new_text ? unique_ptr<Text>(new Text(*new_text)) : nullptr,
++      old_text,
++      new_text,
+       old_text_size_,
+     };
+     result->old_subtree_text_size = old_subtree_text_size;
+@@ -169,8 +170,8 @@ struct Patch::Node {
+       old_extent,
+       new_distance_from_left_ancestor,
+       old_distance_from_left_ancestor,
+-      new_text ? unique_ptr<Text>(new Text(*new_text)) : nullptr,
+-      old_text ? unique_ptr<Text>(new Text(*old_text)) : nullptr,
++      new_text,
++      old_text,
+       new_text ? new_text->size() : 0
+     };
+     result->old_subtree_text_size = new_subtree_text_size;
+@@ -480,6 +481,16 @@ bool Patch::splice(Point new_splice_start,
+                    Point new_deletion_extent, Point new_insertion_extent,
+                    optional<Text> &&deleted_text, optional<Text> &&inserted_text,
+                    uint32_t deleted_text_size) {
++  return splice_shared(new_splice_start, new_deletion_extent, new_insertion_extent,
++    deleted_text ? make_shared<const Text>(move(*deleted_text)) : nullptr,
++    inserted_text ? make_shared<const Text>(move(*inserted_text)) : nullptr,
++    deleted_text_size);
++}
++
++bool Patch::splice_shared(Point new_splice_start,
++                   Point new_deletion_extent, Point new_insertion_extent,
++                   SharedText deleted_text, SharedText inserted_text,
++                   uint32_t deleted_text_size) {
+   if (new_deletion_extent.is_zero() && new_insertion_extent.is_zero()) return true;
+ 
+   if (!root) {
+@@ -497,7 +508,7 @@ bool Patch::splice(Point new_splice_start,
+ 
+   auto old_text_result = compute_old_text(move(deleted_text), new_splice_start, new_deletion_end);
+   if (!old_text_result.second) return false;
+-  optional<Text> old_text = move(old_text_result.first);
++  SharedText old_text = move(old_text_result.first);
+ 
+   uint32_t old_text_size = 0;
+   if (!old_text) {
+@@ -543,10 +554,10 @@ bool Patch::splice(Point new_splice_start,
+         );
+         if (!new_text_prefix.is_valid() || !new_text_suffix.is_valid()) return false;
+         upper_bound->set_new_text(
+-          Text::concat(new_text_prefix, *inserted_text, new_text_suffix)
++          make_shared<const Text>(Text::concat(new_text_prefix, *inserted_text, new_text_suffix))
+         );
+       } else {
+-        upper_bound->set_new_text(optional<Text>{});
++        upper_bound->set_new_text(nullptr);
+       }
+ 
+       upper_bound->set_old_text(move(old_text), old_text_size);
+@@ -578,9 +589,9 @@ bool Patch::splice(Point new_splice_start,
+           new_deletion_end.traversal(upper_bound_new_start)
+         );
+         if (!new_text_suffix.is_valid()) return false;
+-        upper_bound->set_new_text(Text::concat(*inserted_text, new_text_suffix));
++        upper_bound->set_new_text(make_shared<const Text>(Text::concat(*inserted_text, new_text_suffix)));
+       } else {
+-        upper_bound->set_new_text(optional<Text>{});
++        upper_bound->set_new_text(nullptr);
+       }
+ 
+       upper_bound->set_old_text(move(old_text), old_text_size);
+@@ -604,9 +615,9 @@ bool Patch::splice(Point new_splice_start,
+       if (inserted_text && lower_bound->new_text) {
+         TextSlice new_text_prefix = TextSlice(*lower_bound->new_text).prefix(new_extent_prefix);
+         if (!new_text_prefix.is_valid()) return false;
+-        lower_bound->set_new_text(Text::concat(new_text_prefix, *inserted_text));
++        lower_bound->set_new_text(make_shared<const Text>(Text::concat(new_text_prefix, *inserted_text)));
+       } else {
+-        lower_bound->set_new_text(optional<Text>{});
++        lower_bound->set_new_text(nullptr);
+       }
+ 
+       upper_bound->new_distance_from_left_ancestor =
+@@ -680,9 +691,9 @@ bool Patch::splice(Point new_splice_start,
+           new_splice_start.traversal(lower_bound_new_start)
+         );
+         if (!new_text_prefix.is_valid()) return false;
+-        lower_bound->set_new_text(Text::concat(new_text_prefix, *inserted_text));
++        lower_bound->set_new_text(make_shared<const Text>(Text::concat(new_text_prefix, *inserted_text)));
+       } else {
+-        lower_bound->set_new_text(optional<Text>{});
++        lower_bound->set_new_text(nullptr);
+       }
+ 
+       lower_bound->set_old_text(move(old_text), old_text_size);
+@@ -727,9 +738,9 @@ bool Patch::splice(Point new_splice_start,
+           new_deletion_end.traversal(upper_bound_new_start)
+         );
+         if (!new_text_suffix.is_valid()) return false;
+-        upper_bound->set_new_text(Text::concat(*inserted_text, new_text_suffix));
++        upper_bound->set_new_text(make_shared<const Text>(Text::concat(*inserted_text, new_text_suffix)));
+       } else {
+-        upper_bound->set_new_text(optional<Text>{});
++        upper_bound->set_new_text(nullptr);
+       }
+ 
+       upper_bound->set_old_text(move(old_text), old_text_size);
+@@ -849,8 +860,7 @@ void Patch::splice_old(Point old_splice_start, Point old_deletion_extent,
+         upper_bound->old_extent =
+             lower_bound->old_extent.traverse(upper_bound->old_extent);
+         if (lower_bound->old_text && upper_bound->old_text) {
+-          lower_bound->old_text->append(*upper_bound->old_text);
+-          std::swap(upper_bound->old_text, lower_bound->old_text);
++          upper_bound->old_text = make_shared<const Text>(Text::concat(*lower_bound->old_text, *upper_bound->old_text));
+         } else {
+           upper_bound->old_text = nullptr;
+           upper_bound->old_text_size_ += lower_bound->old_text_size_;
+@@ -859,8 +869,7 @@ void Patch::splice_old(Point old_splice_start, Point old_deletion_extent,
+         upper_bound->new_extent =
+             lower_bound->new_extent.traverse(upper_bound->new_extent);
+         if (lower_bound->new_text && upper_bound->new_text) {
+-          lower_bound->new_text->append(*upper_bound->new_text);
+-          std::swap(upper_bound->new_text, lower_bound->new_text);
++          upper_bound->new_text = make_shared<const Text>(Text::concat(*lower_bound->new_text, *upper_bound->new_text));
+         } else {
+           upper_bound->new_text = nullptr;
+         }
+@@ -883,20 +892,20 @@ bool Patch::combine(const Patch &other, bool left_to_right) {
+   auto changes = other.get_changes();
+   if (left_to_right) {
+     for (auto iter = changes.begin(), end = changes.end(); iter != end; ++iter) {
+-      if (!splice(iter->new_start, iter->old_end.traversal(iter->old_start),
++      if (!splice_shared(iter->new_start, iter->old_end.traversal(iter->old_start),
+                   iter->new_end.traversal(iter->new_start),
+-                  iter->old_text ? *iter->old_text : optional<Text>{},
+-                  iter->new_text ? *iter->new_text : optional<Text>{},
++                  iter->old_text,
++                  iter->new_text,
+                   iter->old_text_size)) return false;
+       remove_noop_change();
+     }
+   } else {
+     for (auto iter = changes.rbegin(), end = changes.rend(); iter != end;
+          ++iter) {
+-      if (!splice(iter->old_start, iter->old_end.traversal(iter->old_start),
++      if (!splice_shared(iter->old_start, iter->old_end.traversal(iter->old_start),
+                   iter->new_end.traversal(iter->new_start),
+-                  iter->old_text ? *iter->old_text : optional<Text>{},
+-                  iter->new_text ? *iter->new_text : optional<Text>{},
++                  iter->old_text,
++                  iter->new_text,
+                   iter->old_text_size)) return false;
+       remove_noop_change();
+     }
+@@ -1229,10 +1238,10 @@ void Patch::perform_rebalancing_rotations(uint32_t count) {
+   }
+ }
+ 
+-std::pair<optional<Text>, bool> Patch::compute_old_text(
+-  optional<Text> &&deleted_text, Point new_splice_start, Point new_deletion_end
++std::pair<SharedText, bool> Patch::compute_old_text(
++  SharedText deleted_text, Point new_splice_start, Point new_deletion_end
+ ) {
+-  if (!deleted_text) return {optional<Text>{}, true};
++  if (!deleted_text) return {nullptr, true};
+ 
+   Text result;
+ 
+@@ -1242,17 +1251,19 @@ std::pair<optional<Text>, bool> Patch::compute_old_text(
+     merges_adjacent_changes
+   );
+ 
++  if (overlapping_changes.empty()) return {move(deleted_text), true};
++
+   TextSlice deleted_text_slice = TextSlice(*deleted_text);
+   Point deleted_text_slice_start = new_splice_start;
+ 
+   for (const Change &change : overlapping_changes) {
+-    if (!change.old_text) return {optional<Text>{}, true};
++    if (!change.old_text) return {nullptr, true};
+ 
+     if (change.new_start > deleted_text_slice_start) {
+       auto split_result = deleted_text_slice.split(
+         change.new_start.traversal(deleted_text_slice_start)
+       );
+-      if (!split_result.first.is_valid()) return {optional<Text>{}, false};
++      if (!split_result.first.is_valid()) return {nullptr, false};
+       deleted_text_slice_start = change.new_start;
+       deleted_text_slice = split_result.second;
+       result.append(split_result.first);
+@@ -1265,11 +1276,11 @@ std::pair<optional<Text>, bool> Patch::compute_old_text(
+     ));
+     deleted_text_slice_start = change.new_end;
+ 
+-    if (!deleted_text_slice.is_valid()) return {optional<Text>{}, false};
++    if (!deleted_text_slice.is_valid()) return {nullptr, false};
+   }
+ 
+   result.append(deleted_text_slice);
+-  return {result, true};
++  return {make_shared<const Text>(move(result)), true};
+ }
+ 
+ uint32_t Patch::compute_old_text_size(uint32_t deleted_text_size,
+@@ -1304,7 +1315,7 @@ Patch::Node *Patch::build_node(Node *left, Node *right,
+                        Point old_distance_from_left_ancestor,
+                        Point new_distance_from_left_ancestor,
+                        Point old_extent, Point new_extent,
+-                       optional<Text> &&old_text, optional<Text> &&new_text,
++                       SharedText old_text, SharedText new_text,
+                        uint32_t old_text_size) {
+   change_count++;
+   return new Node{
+@@ -1314,8 +1325,8 @@ Patch::Node *Patch::build_node(Node *left, Node *right,
+     new_extent,
+     old_distance_from_left_ancestor,
+     new_distance_from_left_ancestor,
+-    old_text ? unique_ptr<Text>{new Text(move(*old_text))} : nullptr,
+-    new_text ? unique_ptr<Text>{new Text(move(*new_text))} : nullptr,
++    move(old_text),
++    move(new_text),
+     old_text_size
+   };
+ }
+@@ -1489,8 +1500,8 @@ vector<Patch::Change> Patch::get_changes_in_range(Point start, Point end, bool i
+ 
+     Point old_end = old_start.traverse(node->old_extent);
+     Point new_end = new_start.traverse(node->new_extent);
+-    Text *old_text = node->old_text.get();
+-    Text *new_text = node->new_text.get();
++    auto old_text = node->old_text;
++    auto new_text = node->new_text;
+     uint32_t old_text_size = node->old_text_size();
+     uint32_t preceding_old_text_size =
+       left_ancestor_info.total_old_text_size + node->left_subtree_old_text_size();
+@@ -1580,8 +1591,8 @@ optional<Patch::Change> Patch::get_change_starting_before_position(Point target)
+     return Change{
+       old_start, old_start.traverse(found_node->old_extent),
+       new_start, new_start.traverse(found_node->new_extent),
+-      found_node->old_text.get(),
+-      found_node->new_text.get(),
++      found_node->old_text,
++      found_node->new_text,
+       found_node_left_ancestor_info.total_old_text_size + found_node->left_subtree_old_text_size(),
+       found_node_left_ancestor_info.total_new_text_size + found_node->left_subtree_new_text_size(),
+       found_node->old_text_size()
+@@ -1630,8 +1641,8 @@ optional<Patch::Change> Patch::get_change_ending_after_position(Point target) co
+     return Change{
+       old_start, old_start.traverse(found_node->old_extent),
+       new_start, new_start.traverse(found_node->new_extent),
+-      found_node->old_text.get(),
+-      found_node->new_text.get(),
++      found_node->old_text,
++      found_node->new_text,
+       found_node_left_ancestor_info.total_old_text_size + found_node->left_subtree_old_text_size(),
+       found_node_left_ancestor_info.total_new_text_size + found_node->left_subtree_new_text_size(),
+       found_node->old_text_size()
+@@ -1673,8 +1684,8 @@ vector<Change> Patch::grab_changes_in_range(Point start, Point end, bool inclusi
+ 
+     Point old_end = old_start.traverse(node->old_extent);
+     Point new_end = new_start.traverse(node->new_extent);
+-    Text *old_text = node->old_text.get();
+-    Text *new_text = node->new_text.get();
++    auto old_text = node->old_text;
++    auto new_text = node->new_text;
+     uint32_t old_text_size = node->old_text_size();
+     uint32_t preceding_old_text_size =
+       left_ancestor_info.total_old_text_size + node->left_subtree_old_text_size();
+@@ -1837,8 +1848,8 @@ Change Patch::change_for_root_node() {
+   Point new_start = root->new_distance_from_left_ancestor;
+   Point old_end = old_start.traverse(root->old_extent);
+   Point new_end = new_start.traverse(root->new_extent);
+-  Text *old_text = root->old_text.get();
+-  Text *new_text = root->new_text.get();
++  auto old_text = root->old_text;
++  auto new_text = root->new_text;
+   uint32_t old_text_size = root->old_text_size();
+   uint32_t preceding_old_text_size = root->left_subtree_old_text_size();
+   uint32_t preceding_new_text_size = root->left_subtree_new_text_size();
+diff --git a/src/core/text-buffer.h b/src/core/text-buffer.h
+index 5b2800c..b0faa04 100644
+--- a/src/core/text-buffer.h
++++ b/src/core/text-buffer.h
+@@ -12,6 +12,7 @@
+ 
+ class TextBuffer {
+   struct Layer;
++  uint64_t revision_ = 0;
+   Layer *base_layer;
+   Layer *top_layer;
+   void squash_layers(const std::vector<Layer *> &);
+@@ -41,6 +42,9 @@ public:
+   void set_text(const std::u16string &);
+   void set_text_in_range(Range old_range, std::u16string &&);
+   void set_text_in_range(Range old_range, const std::u16string &);
++  uint64_t revision() const { return revision_; }
++  void set_shared_text_in_range(Range, Patch::SharedText);
++  void set_shared_text(Patch::SharedText);
+   bool is_modified() const;
+   bool has_astral();
+   std::vector<TextSlice> chunks() const;
+diff --git a/src/core/text-buffer.cc b/src/core/text-buffer.cc
+index 034d13b..5b1fa31 100644
+--- a/src/core/text-buffer.cc
++++ b/src/core/text-buffer.cc
+@@ -731,6 +731,7 @@ TextBuffer::TextBuffer(const std::u16string &text) :
+   TextBuffer{u16string{text.begin(), text.end()}} {}
+ 
+ void TextBuffer::reset(Text &&new_base_text) {
++  revision_++;
+   bool has_snapshot = false;
+   auto layer = top_layer;
+   while (layer) {
+@@ -823,6 +824,7 @@ void TextBuffer::serialize_changes(Serializer &serializer) {
+ }
+ 
+ bool TextBuffer::deserialize_changes(Deserializer &deserializer) {
++  revision_++;
+   if (top_layer != base_layer || base_layer->previous_layer) return false;
+   top_layer = new Layer(base_layer);
+   top_layer->size_ = deserializer.read<uint32_t>();
+@@ -922,7 +924,11 @@ vector<TextSlice> TextBuffer::chunks() const {
+ }
+ 
+ void TextBuffer::set_text(u16string &&new_text) {
+-  set_text_in_range(Range{Point(0, 0), extent()}, move(new_text));
++  set_shared_text(std::make_shared<const Text>(move(new_text)));
++}
++
++void TextBuffer::set_shared_text(Patch::SharedText new_text) {
++  set_shared_text_in_range(Range{Point(0, 0), extent()}, move(new_text));
+ 
+   // Replacing the whole buffer leaves the entire new text inside a single
+   // change in `top_layer`'s patch. If it stayed there, every subsequent edit
+@@ -945,6 +951,11 @@ void TextBuffer::set_text(const u16string &new_text) {
+ }
+ 
+ void TextBuffer::set_text_in_range(Range old_range, u16string &&string) {
++  set_shared_text_in_range(old_range, std::make_shared<const Text>(move(string)));
++}
++
++void TextBuffer::set_shared_text_in_range(Range old_range, Patch::SharedText new_text) {
++  revision_++;
+   // A flat layer (`!uses_patch`) serves reads from its materialized `text` and
+   // ignores its patch, so we can't splice edits into it directly. This covers
+   // both the base layer and a layer materialized by `set_text`; in either case
+@@ -956,17 +967,16 @@ void TextBuffer::set_text_in_range(Range old_range, u16string &&string) {
+   auto start = clip_position(old_range.start);
+   auto end = old_range.end == old_range.start ? start : clip_position(old_range.end);
+   Point deleted_extent = end.position.traversal(start.position);
+-  Text new_text{move(string)};
+-  Point inserted_extent = new_text.extent();
+-  Point new_range_end = start.position.traverse(new_text.extent());
++  Point inserted_extent = new_text->extent();
++  Point new_range_end = start.position.traverse(new_text->extent());
+   uint32_t deleted_text_size = end.offset - start.offset;
+   top_layer->extent_ = new_range_end.traverse(top_layer->extent_.traversal(end.position));
+-  top_layer->size_ += new_text.size() - deleted_text_size;
+-  top_layer->patch.splice(
++  top_layer->size_ += new_text->size() - deleted_text_size;
++  top_layer->patch.splice_shared(
+     start.position,
+     deleted_extent,
+     inserted_extent,
+-    optional<Text>{},
++    nullptr,
+     move(new_text),
+     deleted_text_size
+   );
+diff --git a/src/bindings/text-buffer-wrapper.h b/src/bindings/text-buffer-wrapper.h
+index 3c2e174..4899521 100644
+--- a/src/bindings/text-buffer-wrapper.h
++++ b/src/bindings/text-buffer-wrapper.h
+@@ -30,6 +30,7 @@ private:
+   Napi::Value get_text_in_range(const Napi::CallbackInfo &info);
+   void set_text(const Napi::CallbackInfo &info);
+   void set_text_in_range(const Napi::CallbackInfo &info);
++  Napi::Value prepare_change(const Napi::CallbackInfo &info);
+   Napi::Value diff(const Napi::CallbackInfo &info);
+   Napi::Value line_for_row(const Napi::CallbackInfo &info);
+   Napi::Value line_length_for_row(const Napi::CallbackInfo &info);
+diff --git a/src/bindings/text-buffer-wrapper.cc b/src/bindings/text-buffer-wrapper.cc
+index 82579bf..7cde979 100644
+--- a/src/bindings/text-buffer-wrapper.cc
++++ b/src/bindings/text-buffer-wrapper.cc
+@@ -229,6 +229,7 @@ void TextBufferWrapper::init(Napi::Env env, Object exports) {
+     InstanceMethod<&TextBufferWrapper::has_astral>("hasAstral", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::get_character_at_position>("getCharacterAtPosition", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::get_text_in_range>("getTextInRange", napi_default_method),
++    InstanceMethod<&TextBufferWrapper::prepare_change>("prepareChange", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::set_text_in_range>("setTextInRange", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::get_text>("getText", napi_default_method),
+     InstanceMethod<&TextBufferWrapper::set_text>("setText", napi_default_method),
+@@ -343,6 +344,65 @@ void TextBufferWrapper::set_text(const CallbackInfo &info) {
+   }
+ }
+ 
++
++Napi::Value TextBufferWrapper::prepare_change(const CallbackInfo &info) {
++  auto env = info.Env();
++  auto range = RangeWrapper::range_from_js(info[0]);
++  if (!range) return env.Undefined();
++  auto string = string_conversion::string_from_js(info[1]);
++  if (!string) return env.Undefined();
++  Point start = text_buffer.clip_position(range->start).position;
++  Point end = text_buffer.clip_position(range->end).position;
++  if (end < start) {
++    RangeError::New(env, "prepareChange expects an ordered range").ThrowAsJavaScriptException();
++    return env.Undefined();
++  }
++  auto old_text = std::make_shared<const Text>(text_buffer.text_in_range({start, end}));
++  auto new_text = std::make_shared<const Text>(move(*string));
++  Object result = Object::New(env);
++  result.Set("oldStart", PointWrapper::from_point(env, start));
++  result.Set("oldEnd", PointWrapper::from_point(env, end));
++  result.Set("newStart", PointWrapper::from_point(env, start));
++  result.Set("newEnd", PointWrapper::from_point(env, start.traverse(new_text->extent())));
++  result.Set("oldText", string_conversion::string_to_js(env, old_text->content));
++  result.Set("newText", info[1]);
++  if (env.IsExceptionPending()) return env.Undefined();
++  Patch patch;
++  if (!patch.splice_shared(start, end.traversal(start), new_text->extent(), old_text, new_text)) {
++    Error::New(env, "Prepared patch does not apply").ThrowAsJavaScriptException();
++    return env.Undefined();
++  }
++  result.Set("patch", PatchWrapper::from_patch(env, move(patch)));
++  // A callable owns the buffer and the immutable input until commit or GC.
++  // A stale/consumed edit returns false without mutating anything.
++  struct Prepared {
++    ObjectReference owner;
++    Patch::SharedText text;
++    uint64_t revision;
++  };
++  auto prepared = std::make_shared<Prepared>();
++  prepared->owner = Persistent(info.This().As<Object>());
++  prepared->text = move(new_text);
++  prepared->revision = text_buffer.revision();
++  result.Set("apply", Function::New(env, [this, prepared, start, end](const CallbackInfo &call) {
++    if (!prepared->text || prepared->revision != text_buffer.revision()) {
++      prepared->text.reset();
++      prepared->owner.Reset();
++      return Boolean::New(call.Env(), false);
++    }
++    cancel_queued_workers();
++    auto text = move(prepared->text);
++    if (start == Point() && end == text_buffer.extent()) {
++      text_buffer.set_shared_text(move(text));
++    } else {
++      text_buffer.set_shared_text_in_range({start, end}, move(text));
++    }
++    prepared->owner.Reset();
++    return Boolean::New(call.Env(), true);
++  }));
++  return result;
++}
++
+ Napi::Value TextBufferWrapper::diff(const CallbackInfo &info) {
+   auto env = info.Env();
+   auto &text_buffer = this->text_buffer;
+diff --git a/test/native/test-helpers.cc b/test/native/test-helpers.cc
+index 0fde3c9..3c7bfe1 100644
+--- a/test/native/test-helpers.cc
++++ b/test/native/test-helpers.cc
+@@ -25,8 +25,8 @@ bool operator==(const Patch::Change &left, const Patch::Change &right) {
+   return left.old_start == right.old_start &&
+          left.new_start == right.new_start && left.old_end == right.old_end &&
+          left.new_end == right.new_end &&
+-         text_eq(left.old_text, right.old_text) &&
+-         text_eq(left.new_text, right.new_text);
++         text_eq(left.old_text.get(), right.old_text.get()) &&
++         text_eq(left.new_text.get(), right.new_text.get());
+ }
+ 
+ std::unique_ptr<Text> get_text(const u16string content) {
+diff --git a/test/native/patch-test.cc b/test/native/patch-test.cc
+index 30996ab..de915fe 100644
+--- a/test/native/patch-test.cc
++++ b/test/native/patch-test.cc
+@@ -185,8 +185,8 @@ TEST_CASE("Patch::splice - overlapping with text") {
+     Change {
+       Point {0, 5}, Point {0, 8},
+       Point {0, 5}, Point {0, 9},
+-      get_text(u"abc").get(),
+-      get_text(u"1234").get(),
++      std::make_shared<const Text>(u"abc"),
++      std::make_shared<const Text>(u"1234"),
+       0, 0, 0
+     },
+   }));
+@@ -203,8 +203,8 @@ TEST_CASE("Patch::splice - overlapping with text") {
+     Change {
+       Point {0, 5}, Point {0, 9},
+       Point {0, 5}, Point {0, 11},
+-      get_text(u"abcd").get(),
+-      get_text(u"125678").get(),
++      std::make_shared<const Text>(u"abcd"),
++      std::make_shared<const Text>(u"125678"),
+       0, 0, 0
+     },
+   }));
+@@ -221,8 +221,8 @@ TEST_CASE("Patch::splice - overlapping with text") {
+     {
+       Point {0, 3}, Point {0, 9},
+       Point {0, 3}, Point {0, 12},
+-      get_text(u"efabcd").get(),
+-      get_text(u"123425678").get(),
++      std::make_shared<const Text>(u"efabcd"),
++      std::make_shared<const Text>(u"123425678"),
+       0, 0, 0
+     },
+   }));
+@@ -239,15 +239,15 @@ TEST_CASE("Patch::splice - overlapping with text") {
+     Change {
+       Point {0, 3}, Point {0, 9},
+       Point {0, 3}, Point {0, 12},
+-      get_text(u"efabcd").get(),
+-      get_text(u"123425678").get(),
++      std::make_shared<const Text>(u"efabcd"),
++      std::make_shared<const Text>(u"123425678"),
+       0, 0, 0
+     },
+     Change {
+       Point {0, 12}, Point {0, 15},
+       Point {0, 15}, Point {0, 19},
+-      get_text(u"ghi").get(),
+-      get_text(u"5678").get(),
++      std::make_shared<const Text>(u"ghi"),
++      std::make_shared<const Text>(u"5678"),
+       6, 9, 0
+     },
+   }));
+@@ -264,8 +264,8 @@ TEST_CASE("Patch::splice - overlapping with text") {
+     Change {
+       Point {0, 1}, Point {0, 18},
+       Point {0, 1}, Point {0, 6},
+-      get_text(u"xxefabcdyyyghizzz").get(),
+-      get_text(u"99999").get(),
++      std::make_shared<const Text>(u"xxefabcdyyyghizzz"),
++      std::make_shared<const Text>(u"99999"),
+       0, 0, 0
+     }
+   }));
+@@ -302,8 +302,8 @@ TEST_CASE("Patch::splice - inconsistent old text") {
+     Change{
+       Point{0, 0}, Point{0, 0},
+       Point{0, 0}, Point{1, 4},
+-      get_text(u"").get(),
+-      get_text(u"\n    ").get(),
++      std::make_shared<const Text>(u""),
++      std::make_shared<const Text>(u"\n    "),
+       0, 0, 0
+     },
+   }));
+diff --git a/test/native/text-buffer-test.cc b/test/native/text-buffer-test.cc
+index e81574b..aa922b4 100644
+--- a/test/native/text-buffer-test.cc
++++ b/test/native/text-buffer-test.cc
+@@ -161,8 +161,8 @@ TEST_CASE("TextBuffer::get_inverted_changes") {
+     Patch::Change{
+       Point {0, 2}, Point {0, 3},
+       Point {0, 2}, Point {0, 2},
+-      get_text(u"c").get(),
+-      get_text(u"").get(),
++      std::make_shared<const Text>(u"c"),
++      std::make_shared<const Text>(u""),
+       0, 0, 0
+     },
+   }));
+diff --git a/test/native/text-diff-test.cc b/test/native/text-diff-test.cc
+index ac6f7c6..d09937b 100644
+--- a/test/native/text-diff-test.cc
++++ b/test/native/text-diff-test.cc
+@@ -16,13 +16,13 @@ TEST_CASE("text_diff - multiple lines") {
+     Change{
+       Point{1, 0}, Point{1, 0},
+       Point{1, 0}, Point{2, 0},
+-      get_text(u"").get(), get_text(u"def\n").get(),
++      std::make_shared<const Text>(u""), std::make_shared<const Text>(u"def\n"),
+       0, 0, 0
+     },
+     Change{
+       Point{2, 2}, Point{2, 2},
+       Point{3, 2}, Point{3, 3},
+-      get_text(u"").get(), get_text(u"l").get(),
++      std::make_shared<const Text>(u""), std::make_shared<const Text>(u"l"),
+       0, 3, 0
+     }
+   }));
+@@ -43,14 +43,14 @@ TEST_CASE("text_diff - single line") {
+     Change{
+       Point{0, 3}, Point{0, 4},
+       Point{0, 3}, Point{0, 5},
+-      get_text(u"d").get(), get_text(u"xy").get(),
++      std::make_shared<const Text>(u"d"), std::make_shared<const Text>(u"xy"),
+       0, 0, 0
+ 
+     },
+     Change{
+       Point{0, 6}, Point{0, 8},
+       Point{0, 7}, Point{0, 7},
+-      get_text(u"gh").get(), get_text(u"").get(),
++      std::make_shared<const Text>(u"gh"), std::make_shared<const Text>(u""),
+       1, 2, 0
+     },
+   }));
+@@ -66,7 +66,7 @@ TEST_CASE("text_diff - old text is empty") {
+     Change{
+       Point{0, 0}, Point{0, 0},
+       Point{0, 0}, Point{4, 0},
+-      get_text(u"").get(), get_text(u"abc\ndef\nghi\njkl\n").get(),
++      std::make_shared<const Text>(u""), std::make_shared<const Text>(u"abc\ndef\nghi\njkl\n"),
+       0, 0, 0
+     },
+   }));
+@@ -82,7 +82,7 @@ TEST_CASE("text_diff - old text is a prefix of new text") {
+     Change{
+       Point{2, 0}, Point{2, 0},
+       Point{2, 0}, Point{4, 0},
+-      get_text(u"").get(), get_text(u"ghi\njkl\n").get(),
++      std::make_shared<const Text>(u""), std::make_shared<const Text>(u"ghi\njkl\n"),
+       0, 0, 0
+     },
+   }));
+@@ -98,7 +98,7 @@ TEST_CASE("text_diff - old text is a suffix of new text") {
+     Change{
+       Point{0, 0}, Point{0, 0},
+       Point{0, 0}, Point{2, 0},
+-      get_text(u"").get(), get_text(u"abc\ndef\n").get(),
++      std::make_shared<const Text>(u""), std::make_shared<const Text>(u"abc\ndef\n"),
+       0, 0, 0
+     },
+   }));
+diff --git a/test/native/shared-edit-test.cc b/test/native/shared-edit-test.cc
+new file mode 100644
+index 0000000..3db9721
+--- /dev/null
++++ b/test/native/shared-edit-test.cc
+@@ -0,0 +1,47 @@
++#include "test-helpers.h"
++#include "text-buffer.h"
++#include "text-slice.h"
++
++TEST_CASE("Shared edits reuse immutable text through buffer and history") {
++  auto old_text = std::make_shared<const Text>(u"");
++  auto new_text = std::make_shared<const Text>(u"inserted\ntext");
++  std::weak_ptr<const Text> lifetime = new_text;
++  {
++    TextBuffer buffer{u"prefix\nsuffix"};
++    std::unique_ptr<TextBuffer::Snapshot> snapshot{buffer.create_snapshot()};
++    Patch history;
++    REQUIRE(history.splice_shared(Point(1, 0), Point(), new_text->extent(), old_text, new_text));
++    buffer.set_shared_text_in_range({Point(1, 0), Point(1, 0)}, new_text);
++    auto copied = history.copy();
++    auto inverted = history.invert();
++    Patch composed;
++    REQUIRE(composed.combine(history));
++    REQUIRE(history.get_changes()[0].new_text.get() == new_text.get());
++    REQUIRE(copied.get_changes()[0].new_text.get() == new_text.get());
++    REQUIRE(inverted.get_changes()[0].old_text.get() == new_text.get());
++    REQUIRE(composed.get_changes()[0].new_text.get() == new_text.get());
++    bool buffer_shares_input = false;
++    for (auto chunk : buffer.chunks()) {
++      if (chunk.text == new_text.get()) buffer_shares_input = true;
++    }
++    REQUIRE(buffer_shares_input);
++    buffer.set_text_in_range({Point(1, 0), Point(1, 1)}, u"X");
++    REQUIRE(snapshot->text() == u"prefix\nsuffix");
++    REQUIRE(copied.get_changes()[0].new_text->content == u"inserted\ntext");
++    REQUIRE(new_text->content == u"inserted\ntext");
++    new_text.reset();
++    REQUIRE_FALSE(lifetime.expired());
++  }
++  REQUIRE(lifetime.expired());
++}
++
++TEST_CASE("Shared patch splice_old creates independent concatenated text") {
++  Patch patch;
++  REQUIRE(patch.splice(Point(0, 1), Point(0, 1), Point(0, 1), Text{u"b"}, Text{u"B"}));
++  REQUIRE(patch.splice(Point(0, 3), Point(0, 1), Point(0, 1), Text{u"d"}, Text{u"D"}));
++  auto copied = patch.copy();
++  patch.splice_old(Point(0, 2), Point(0, 1), Point());
++  REQUIRE(copied.get_changes().size() == 2);
++  REQUIRE(copied.get_changes()[0].new_text->content == u"B");
++  REQUIRE(copied.get_changes()[1].new_text->content == u"D");
++}
+diff --git a/test/js/prepared-change.test.js b/test/js/prepared-change.test.js
+new file mode 100644
+index 0000000..163d6e1
+--- /dev/null
++++ b/test/js/prepared-change.test.js
+@@ -0,0 +1,88 @@
++const assert = require('node:assert/strict')
++const {TextBuffer, Patch} = require('../..')
++const range = (start, end = start) => ({start, end})
++const point = (row, column) => ({row, column})
++
++describe('Shared prepared edits (experiment)', () => {
++  it('prepares without mutation and applies only once', () => {
++    const buffer = new TextBuffer('before\nlast')
++    const edit = buffer.prepareChange(range(point(0, 1), point(0, 4)), 'Ω🚀\r\nx')
++    assert.equal(buffer.getText(), 'before\nlast')
++    assert.equal(edit.oldText, 'efo')
++    assert.equal(edit.newText, 'Ω🚀\r\nx')
++    assert.equal(edit.apply(), true)
++    assert.equal(edit.apply(), false)
++    assert.equal(buffer.getText(), 'bΩ🚀\r\nxre\nlast')
++    assert.equal(edit.patch.getChanges()[0].oldText, 'efo')
++    assert.equal(edit.patch.invert().getChanges()[0].oldText, 'Ω🚀\r\nx')
++  })
++
++  for (const mutation of ['setText', 'setTextInRange', 'reset']) {
++    it(`rejects a prepared edit invalidated by ${mutation}`, () => {
++      const buffer = new TextBuffer('old')
++      const edit = buffer.prepareChange(range(point(0, 0)), 'new')
++      if (mutation === 'setTextInRange') buffer[mutation](range(point(0, 0)), 'changed')
++      else buffer[mutation]('changed')
++      const expected = buffer.getText()
++      assert.equal(edit.apply(), false)
++      assert.equal(edit.apply(), false)
++      assert.equal(buffer.getText(), expected)
++    })
++  }
++
++  it('keeps snapshots, copied history and serialization independent of later edits', () => {
++    const buffer = new TextBuffer('first\nlast')
++    const snapshot = buffer.getSnapshot()
++    const edit = buffer.prepareChange(range(point(0, 0), point(1, 4)), 'replacement\nend')
++    const copied = edit.patch.copy()
++    const inverted = copied.invert()
++    const encoded = copied.serialize()
++    assert.equal(edit.apply(), true)
++    buffer.setTextInRange(range(point(0, 2)), '!')
++    edit.patch.splice(point(0, 0), point(0, 1), point(0, 1), 'r', 'R')
++    snapshot.destroy()
++    assert.equal(copied.getChanges()[0].newText, 'replacement\nend')
++    assert.equal(inverted.getChanges()[0].oldText, 'replacement\nend')
++    assert.deepEqual(Patch.deserialize(encoded).getChanges(), copied.getChanges())
++  })
++
++  it('does not permit mutation of the history patch to alter prepared text', () => {
++    const buffer = new TextBuffer('abc')
++    const edit = buffer.prepareChange(range(point(0, 1)), 'xyz')
++    edit.patch.splice(point(0, 1), point(0, 3), point(0, 1), 'xyz', 'Q')
++    assert.equal(edit.apply(), true)
++    assert.equal(buffer.getText(), 'axyzbc')
++    assert.equal(edit.patch.getChanges()[0].newText, 'Q')
++  })
++
++  it('clips ranges and retains normalized native coordinates', () => {
++    const buffer = new TextBuffer('a\r\nb')
++    const edit = buffer.prepareChange(range(point(0, 999), point(999, 999)), '\ud800\n')
++    assert.deepEqual(edit.oldStart, point(0, 1))
++    assert.deepEqual(edit.oldEnd, point(1, 1))
++    assert.equal(edit.apply(), true)
++    assert.equal(buffer.getText(), 'a\ud800\n')
++  })
++
++  it('preserves no-op behavior', () => {
++    const buffer = new TextBuffer('abc')
++    const edit = buffer.prepareChange(range(point(0, 1)), '')
++    assert.equal(edit.patch.getChangeCount(), 0)
++    assert.equal(edit.apply(), true)
++    assert.equal(buffer.getText(), 'abc')
++  })
++
++  it('owns its input across collection and releases a consumed closure safely', () => {
++    let buffer = new TextBuffer('abc')
++    let edit = buffer.prepareChange(range(point(0, 1)), 'X'.repeat(100000))
++    const apply = edit.apply
++    const history = edit.patch.copy()
++    buffer = null
++    edit = null
++    if (global.gc) global.gc()
++    assert.equal(apply(), true)
++    if (global.gc) global.gc()
++    assert.equal(apply(), false)
++    assert.equal(history.getChanges()[0].newText.length, 100000)
++  })
++})
