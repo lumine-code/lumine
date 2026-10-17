@@ -653,14 +653,19 @@ describe("custom marker range tracking", () => {
     ]);
     const batches = [];
     fileBuffer.onDidApplyChanges((event) => batches.push(event));
+    const beforeRevision = fileBuffer.getTextRevision();
     fs.writeFileSync(filePath, changed);
     await fileBuffer.reload();
     expect(fileBuffer.getText()).toBe(changed);
     expect(batches.length).toBe(1);
+    expect(batches[0].beforeRevision).toBe(beforeRevision);
+    expect(batches[0].afterRevision).toBe(fileBuffer.getTextRevision());
     expect(batches[0].changes.length).toBeGreaterThan(1);
     const replay = new TextBuffer(original);
     buffers.push(replay);
     for (const change of batches[0].changes) {
+      expect(replay.getText().slice(change.startIndex, change.oldEndIndex)).toBe(change.oldText);
+      expect(change.newEndIndex).toBe(change.startIndex + change.newText.length);
       expect(replay.getTextInRange(change.oldRange)).toBe(change.oldText);
       expect(replay.setTextInRange(change.oldRange, change.newText)).toEqual(change.newRange);
     }

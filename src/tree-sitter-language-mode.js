@@ -1311,7 +1311,7 @@ class TreeSitterLanguageMode {
     // 32K-code-unit suffix for every token. The callback may return a shorter suffix;
     // web-tree-sitter composes successive chunks for nodes spanning its end.
     const cached = this.textInputChunk;
-    const revision = this.buffer.textRevision;
+    const revision = this.buffer.getTextRevision();
     if (
       cached &&
       cached.revision === revision &&

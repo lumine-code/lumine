@@ -213,12 +213,6 @@ class DefaultHistoryProvider {
     }
   }
 
-  pushChange({ newStart, oldExtent, newExtent, oldText, newText }) {
-    const patch = new Patch();
-    patch.splice(newStart, oldExtent, newExtent, oldText, newText);
-    this.pushPatch(patch);
-  }
-
   pushPatch(patch) {
     this.undoStack.push(patch);
     this.clearRedoStack();

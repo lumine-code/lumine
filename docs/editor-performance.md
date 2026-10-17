@@ -6,6 +6,8 @@ The later [text change boundary comparison](text-change-performance.md) records 
 
 The [shared native edit ownership experiment](shared-edit-performance.md) separates immutable patch sharing from a prepared mutation path and compares their editing, renderer and memory costs.
 
+The production ownership and notification boundary is specified by the [document edit contract](document-edit-contract.md).
+
 ## Display performance benchmarks
 
 The editor repository provides `npm run benchmark:display` for display mapping, decoration queries, long-line edits and scrolling. Freeze the baseline before changing production code; the runner copies the source and the exact installed Superstring addon into the output directory. Use the same directory for the subsequent comparison:

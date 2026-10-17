@@ -394,29 +394,33 @@ describe("DisplayLayer geometry-preserving replacements", () => {
     expectEquivalentLayouts(pair.actual, pair.expected);
   });
 
-  for (const phase of ["will-change", "language mode"]) {
-    it(`discards an outer preparation after a reentrant edit in ${phase}`, () => {
+  for (const phase of ["will-change", "language mode", "applied"]) {
+    it(`keeps layout coherent with the ${phase} edit contract`, () => {
       const pair = buildPair("abcdefghijklmnopqrstuvwxyz\nsecond", { softWrapColumn: 5 });
       for (const buffer of [pair.buffer, pair.expectedBuffer]) {
         let nested = false;
         const edit = () => {
           if (nested) return;
           nested = true;
-          buffer.setTextInRange(
-            [
-              [1, 1],
-              [1, 3],
-            ],
-            "ZZ",
-          );
+          const mutate = () =>
+            buffer.setTextInRange(
+              [
+                [1, 1],
+                [1, 3],
+              ],
+              "ZZ",
+            );
+          if (phase === "applied") mutate();
+          else expect(mutate).toThrowError(/Document edits are not allowed/);
         };
         if (phase === "will-change") {
           buffer.onWillChange(edit);
+        } else if (phase === "applied") {
+          buffer.onDidApplyChanges(edit);
         } else {
           buffer.languageMode.bufferDidChange = edit;
         }
       }
-      const update = spyOn(pair.actual, "updateSpatialIndex").and.callThrough();
       pair.buffer.setTextInRange(
         [
           [0, 2],
@@ -431,7 +435,7 @@ describe("DisplayLayer geometry-preserving replacements", () => {
         ],
         "YY",
       );
-      expect(update).toHaveBeenCalled();
+      expect(pair.buffer.lineForRow(1)).toBe(phase === "applied" ? "sZZond" : "second");
       expectEquivalentLayouts(pair.actual, pair.expected);
     });
   }

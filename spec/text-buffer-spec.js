@@ -211,6 +211,9 @@ describe("TextBuffer", function () {
 
         const changeEvent1 = {
           origin: "edit",
+          startIndex: 2,
+          oldEndIndex: 16,
+          newEndIndex: 19,
           oldRange: [
             [0, 2],
             [2, 3],
@@ -224,6 +227,9 @@ describe("TextBuffer", function () {
         };
         const changeEvent2 = {
           origin: "edit",
+          startIndex: 12,
+          oldEndIndex: 13,
+          newEndIndex: 15,
           oldRange: [
             [1, 1],
             [1, 2],

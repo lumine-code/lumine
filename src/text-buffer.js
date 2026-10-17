@@ -20,7 +20,6 @@ const {
   patchFromChanges,
   compactPatchChanges,
   normalizePatchChanges,
-  extentForText,
   debounce,
 } = require("./helpers");
 const { traverse, traversal } = require("./point-helpers");
@@ -182,7 +181,7 @@ class TextBuffer {
     this.transactionsSinceLastStoppedChangingEvent = [];
     this.id = crypto.randomBytes(16).toString("hex");
     this.buffer = new NativeTextBuffer(typeof params === "string" ? params : params.text || "");
-    this.textRevision = 0;
+    this._textRevision = 0;
     this.debouncedEmitDidStopChangingEvent = debounce(
       this.emitDidStopChangingEvent.bind(this),
       this.stoppedChangingDelay,
@@ -327,13 +326,13 @@ class TextBuffer {
 
       if (persistedBaseMatchesDisk && serializedState === "modified") {
         buffer.buffer.deserializeChanges(params.outstandingChanges);
-        buffer.textRevision++;
+        buffer._textRevision++;
       }
 
       if (!fileExists) {
         if (serializedDirty && params.text != null) {
           buffer.buffer.setText(params.text);
-          buffer.textRevision++;
+          buffer._textRevision++;
         }
         fileContentsChanged = hadBackingFile;
         if (hadBackingFile) {
@@ -348,12 +347,12 @@ class TextBuffer {
           params.text != null
         ) {
           buffer.buffer.setText(params.text);
-          buffer.textRevision++;
+          buffer._textRevision++;
         }
         buffer.setFileState(buffer.deriveFileStateFromBuffer());
       } else if (serializedDirty && params.text != null) {
         buffer.buffer.setText(params.text);
-        buffer.textRevision++;
+        buffer._textRevision++;
         fileContentsChanged = true;
         buffer.setFileState("conflicted");
       } else {
@@ -492,6 +491,8 @@ class TextBuffer {
    *
    * Because observers are invoked synchronously, it's important not to perform
    * any expensive operations via this method.
+   * Observers may read the document but must not edit it, undo, or redo.
+   * Reentrant edits belong in post-transaction notifications instead.
    *
    * @param {Function} callback - to be called when the buffer changes.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
@@ -531,12 +532,15 @@ class TextBuffer {
    * individual edits in application order, before the consolidated change event.
    * Each edit uses the coordinates of the buffer immediately before and after
    * that edit. Edits that cancel each other still appear, allowing external
-   * external range snapshots to follow every applied edit.
+   * range snapshots to follow every applied edit.
    *
    * @param {Function} callback - Receives an object containing a `changes` array
-   * of edits with `oldRange`, `newRange`, `oldText`, and `newText`, plus
-   * `isCurrent()` which returns false if an earlier observer has already applied
-   * another edit. `origin` identifies the batch as `edit`, `reload`, or `mixed`;
+   * of immutable edits with `oldRange`, `newRange`, `oldText`, `newText`,
+   * `startIndex`, `oldEndIndex`, and `newEndIndex`. Indices and columns count
+   * UTF-16 code units. `beforeRevision` and `afterRevision` identify the text
+   * states surrounding the batch; compare them with {@link #getTextRevision}.
+   * `isCurrent()` returns false after the buffer advances beyond this batch.
+   * `origin` identifies the batch as `edit`, `reload`, or `mixed`;
    * each individual edit also carries its own `origin`.
    * @returns {Disposable} Subscription to the applied edit batches.
    */
@@ -1006,6 +1010,20 @@ class TextBuffer {
     return this.cachedText;
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Get the revision of the current text state. Revisions increase before
+   * change observers read the new text, including undo, redo and file loads.
+   * A revision identifies a state of this buffer, not an undo entry or byte offset.
+   *
+   * @returns {Number} Monotonically increasing text revision for this buffer.
+   */
+  getTextRevision() {
+    return this._textRevision;
+  }
+
   getCharacterAtPosition(position) {
     return this.buffer.getCharacterAtPosition(Point.fromObject(position));
   }
@@ -1288,6 +1306,7 @@ class TextBuffer {
    * @returns {Range} of the inserted text.
    */
   setTextInRange(range, newText, options) {
+    this.assertCanEdit();
     let normalizeLineEndings, undo;
     if (options) ({ normalizeLineEndings, undo } = options);
     if (normalizeLineEndings == null) normalizeLineEndings = true;
@@ -1306,7 +1325,6 @@ class TextBuffer {
     }
 
     const oldRange = this.clipRange(range);
-    const oldText = this.getTextInRange(oldRange);
 
     if (normalizeLineEndings) {
       const normalizedEnding =
@@ -1318,15 +1336,9 @@ class TextBuffer {
       }
     }
 
-    const change = {
-      oldStart: oldRange.start,
-      oldEnd: oldRange.end,
-      newStart: oldRange.start,
-      newEnd: traverse(oldRange.start, extentForText(newText)),
-      oldText,
-      newText,
-    };
-    const newRange = this.applyChange(change, true);
+    this.emitWillChangeEvent();
+    const edit = this.buffer.prepareEdit(oldRange, newText);
+    const newRange = this.applyChange(edit, { recordHistory: true });
     if (undo === "skip") this.groupLastChanges();
     return newRange;
   }
@@ -1364,65 +1376,67 @@ class TextBuffer {
     return this.insert(this.getEndPosition(), text, options);
   }
 
-  // Applies a change to the buffer based on its old range and new text.
-  applyChange(change, pushToHistory = false, origin = "edit") {
-    const { newStart, newEnd, oldStart, oldEnd, oldText, newText } = change;
+  // All synchronous mutations commit a native prepared edit. History receives
+  // the same immutable text blocks; notifications receive only value snapshots.
+  applyChange(edit, { recordHistory = false, origin = "edit" } = {}) {
+    const wasApplying = this.applyingEdit;
+    try {
+      this.assertCanEdit();
+      this.applyingEdit = true;
+      const change = edit.getChange();
+      const {
+        oldStart,
+        oldEnd,
+        newStart,
+        newEnd,
+        oldText,
+        newText,
+        startIndex,
+        oldEndIndex,
+        newEndIndex,
+      } = change;
+      const oldRange = new Range(oldStart, oldEnd).freeze();
+      const newRange = new Range(newStart, newEnd).freeze();
+      const oldExtent = oldRange.getExtent();
+      const newExtent = newRange.getExtent();
+      const changeEvent = Object.freeze({
+        oldRange,
+        newRange,
+        oldText,
+        newText,
+        origin,
+        startIndex,
+        oldEndIndex,
+        newEndIndex,
+      });
 
-    const oldExtent = traversal(oldEnd, oldStart);
-    const oldRange = Range(newStart, traverse(newStart, oldExtent));
-    oldRange.freeze();
+      this.prepareDisplayLayersForChange(changeEvent);
+      const patch = recordHistory ? edit.createPatch() : null;
+      edit.commit();
+      // The public text revision advances before any observer reads parser input.
+      this._textRevision++;
+      this.cachedText = null;
+      if (recordHistory) this.historyProvider.pushPatch(patch);
 
-    const newExtent = traversal(newEnd, newStart);
-    const newRange = Range(newStart, traverse(newStart, newExtent));
-    newRange.freeze();
+      this.changesSinceLastDidChangeTextEvent.push(change);
+      this.changesSinceLastStoppedChangingEvent.push(change);
+      this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
+      this.recordAppliedChange(changeEvent);
 
-    if (pushToHistory) {
-      if (!change.oldExtent) change.oldExtent = oldExtent;
-      if (!change.newExtent) change.newExtent = newExtent;
-      if (this.historyProvider) {
-        this.historyProvider.pushChange(change);
+      if (this.markerLayers) {
+        for (const id in this.markerLayers) {
+          const markerLayer = this.markerLayers[id];
+          markerLayer.splice(oldRange.start, oldExtent, newExtent, newText);
+          this.markerLayersWithPendingUpdateEvents.add(markerLayer);
+        }
       }
-    }
 
-    const changeEvent = { oldRange, newRange, oldText, newText, origin };
-    this.prepareDisplayLayersForChange(changeEvent);
-
-    this.emitWillChangeEvent();
-    let replacesEntireBuffer = false;
-    if (oldRange.start.row === 0 && oldRange.start.column === 0) {
-      const extent = this.buffer.getExtent();
-      replacesEntireBuffer =
-        oldRange.end.row === extent.row && oldRange.end.column === extent.column;
+      this.emitDidChangeEvent(changeEvent);
+      return newRange;
+    } finally {
+      edit.dispose();
+      this.applyingEdit = wasApplying;
     }
-    if (replacesEntireBuffer) {
-      // Route whole-buffer replacements (setText, select-all edits, formatter
-      // passes) through the native setText entry, which materializes the
-      // resulting text. The generic setTextInRange path records the
-      // replacement as one whole-buffer patch node, and every subsequent
-      // keystroke re-concatenates that node's text — O(buffer) per edit.
-      this.buffer.setText(newText);
-    } else {
-      this.buffer.setTextInRange(oldRange, newText);
-    }
-    // Live parser input caches must observe the mutation before marker or
-    // language-mode callbacks inspect the changed text.
-    this.textRevision++;
-
-    if (this.markerLayers) {
-      for (const id in this.markerLayers) {
-        const markerLayer = this.markerLayers[id];
-        markerLayer.splice(oldRange.start, oldExtent, newExtent, newText);
-        this.markerLayersWithPendingUpdateEvents.add(markerLayer);
-      }
-    }
-
-    this.cachedText = null;
-    this.changesSinceLastDidChangeTextEvent.push(change);
-    this.changesSinceLastStoppedChangingEvent.push(change);
-    this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
-    this.recordAppliedChange(changeEvent);
-    this.emitDidChangeEvent(changeEvent);
-    return newRange;
   }
 
   emitDidChangeEvent(changeEvent) {
@@ -1434,18 +1448,20 @@ class TextBuffer {
 
   recordAppliedChange(change) {
     if (this.emitter.listenerCountForEventName("did-apply-changes") > 0) {
-      this.appliedChangeRevision = (this.appliedChangeRevision || 0) + 1;
+      if (!this.appliedChanges?.length) this.appliedChangesBeforeRevision = this._textRevision - 1;
       (this.appliedChanges ||= []).push(Object.freeze({ ...change }));
     }
   }
 
-  emitAppliedChanges(changes, origin) {
-    const revision = this.appliedChangeRevision;
+  emitAppliedChanges(changes, origin, beforeRevision) {
+    const afterRevision = this._textRevision;
     (this.appliedChangeBatches ||= []).push(
       Object.freeze({
         changes: Object.freeze(changes),
         origin,
-        isCurrent: () => revision === this.appliedChangeRevision,
+        beforeRevision,
+        afterRevision,
+        isCurrent: () => !this.isDestroyed() && afterRevision === this._textRevision,
       }),
     );
     // An observer can make another edit. Finish delivering the current batch
@@ -1769,11 +1785,6 @@ class TextBuffer {
     };
   }
 
-  // Provide fallback in case people are using this renamed private field in packages.
-  get history() {
-    return this.historyProvider;
-  }
-
   /**
    * @public
    * @status public
@@ -1785,6 +1796,7 @@ class TextBuffer {
    * @returns {Boolean} of whether or not a change was made.
    */
   undo(options) {
+    this.assertCanEdit();
     const pop = this.historyProvider.undo();
     if (!pop) return false;
 
@@ -1792,7 +1804,7 @@ class TextBuffer {
     this.transactCallDepth++;
     try {
       for (const change of pop.textUpdates) {
-        this.applyChange(change);
+        this.applyChange(this.buffer.prepareEditFromChange(change));
       }
     } finally {
       this.transactCallDepth--;
@@ -1814,6 +1826,7 @@ class TextBuffer {
    * @returns {Boolean} of whether or not a change was made.
    */
   redo(options) {
+    this.assertCanEdit();
     const pop = this.historyProvider.redo();
     if (!pop) return false;
 
@@ -1821,7 +1834,7 @@ class TextBuffer {
     this.transactCallDepth++;
     try {
       for (const change of pop.textUpdates) {
-        this.applyChange(change);
+        this.applyChange(this.buffer.prepareEditFromChange(change));
       }
     } finally {
       this.transactCallDepth--;
@@ -1858,6 +1871,7 @@ class TextBuffer {
    */
   transact(options, fn) {
     let groupingInterval, result, selectionsMarkerLayer;
+    let aborted = false;
     if (typeof options === "function") {
       fn = options;
       groupingInterval = 0;
@@ -1879,11 +1893,16 @@ class TextBuffer {
       this.transactCallDepth++;
       result = fn();
     } catch (exception) {
+      aborted = true;
       this.revertToCheckpoint(checkpointBefore, { deleteCheckpoint: true });
       if (!(exception instanceof TransactionAbortedError)) throw exception;
       return;
     } finally {
       this.transactCallDepth--;
+      if (aborted && this.transactCallDepth === 0 && !this.isDestroyed()) {
+        const origin = this.emitDidChangeTextEvent();
+        this.emitMarkerChangeEvents(null, origin);
+      }
     }
 
     if (this.isDestroyed()) return result;
@@ -1970,13 +1989,14 @@ class TextBuffer {
    * @returns {Boolean} Whether the operation succeeded.
    */
   revertToCheckpoint(checkpoint, options) {
+    this.assertCanEdit();
     const truncated = this.historyProvider.revertToCheckpoint(checkpoint);
     if (!truncated) return false;
-    this.emitWillChangeEvent();
+    if (truncated.textUpdates.length > 0) this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
       for (const change of truncated.textUpdates) {
-        this.applyChange(change);
+        this.applyChange(this.buffer.prepareEditFromChange(change));
       }
     } finally {
       this.transactCallDepth--;
@@ -3093,10 +3113,12 @@ class TextBuffer {
     this.updateDidHaveFileOnDisk();
     let patch;
     let checkpoint = null;
+    let changesText = false;
     try {
       try {
         patch = this.buffer.loadSync(this.getPath(), this.getEncoding(), (percentDone, patch) => {
           if (textChangesOnlyPatch(patch)?.getChangeCount() > 0) {
+            changesText = true;
             checkpoint = this.historyProvider.createCheckpoint({
               markers: this.createMarkerSnapshot(),
               isBarrier: true,
@@ -3108,7 +3130,7 @@ class TextBuffer {
       } finally {
         // Native loading can commit text even when a reload observer throws.
         // Invalidate before either finishLoading or the outer error handler.
-        this.textRevision++;
+        if (changesText) this._textRevision++;
         this.cachedText = null;
       }
       patch = textChangesOnlyPatch(patch);
@@ -3138,6 +3160,7 @@ class TextBuffer {
 
     let checkpoint = null;
     let patch;
+    let guardedPatch;
     try {
       const source = file instanceof File ? file.getPath() : file.createReadStream();
       patch = await this.buffer.load(
@@ -3159,7 +3182,10 @@ class TextBuffer {
             !this.isDestroyed();
           // The final guard receives the patch and returns straight into the
           // native reset; progress-only callbacks do not change the text.
-          if (current && patch !== undefined) this.textRevision++;
+          if (current && patch !== undefined) {
+            guardedPatch = textChangesOnlyPatch(patch);
+            if (patch === null || guardedPatch.getChangeCount() > 0) this._textRevision++;
+          }
           return current;
         },
       );
@@ -3174,7 +3200,7 @@ class TextBuffer {
         return;
       }
 
-      patch = textChangesOnlyPatch(patch);
+      patch = guardedPatch ?? textChangesOnlyPatch(patch);
 
       // A non-forced reload can begin while the buffer is clean, then finish
       // after the user has edited it. The native buffer returns `null` in that
@@ -3231,22 +3257,14 @@ class TextBuffer {
   }
 
   clearTextForReload() {
-    const oldText = this.getText();
-    if (oldText.length === 0) return;
-    this.transact(() =>
-      this.applyChange(
-        {
-          oldStart: Point.ZERO,
-          oldEnd: this.getEndPosition(),
-          oldText,
-          newStart: Point.ZERO,
-          newEnd: Point.ZERO,
-          newText: "",
-        },
-        true,
-        "reload",
-      ),
-    );
+    if (this.isEmpty()) return;
+    this.transact(() => {
+      this.emitWillChangeEvent();
+      this.applyChange(this.buffer.prepareEdit(this.getRange(), ""), {
+        recordHistory: true,
+        origin: "reload",
+      });
+    });
   }
 
   finishLoading(checkpoint, patch, options) {
@@ -3277,11 +3295,7 @@ class TextBuffer {
       if (options && options.clearHistory) {
         this.historyProvider.clearUndoStack();
       } else {
-        if (this.historyProvider.pushPatch) {
-          this.historyProvider.pushPatch(patch);
-        } else {
-          this.historyProvider.pushChanges(changes);
-        }
+        this.historyProvider.pushPatch(patch);
       }
 
       if (changes) {
@@ -3303,7 +3317,15 @@ class TextBuffer {
           }
         }
         const start = Point.fromObject(change.newStart);
+        // Native file patches may address the physical boundary between CR
+        // and LF. Keep that code unit in the offset instead of clipping it.
+        const clippedStart = this.clipPosition(start);
+        const startIndex =
+          this.characterIndexForPosition(clippedStart) + start.column - clippedStart.column;
         this.recordAppliedChange({
+          startIndex,
+          oldEndIndex: startIndex + change.oldText.length,
+          newEndIndex: startIndex + change.newText.length,
           oldRange: Range(
             start,
             traverse(start, traversal(change.oldEnd, change.oldStart)),
@@ -3398,12 +3420,12 @@ class TextBuffer {
     }
     if (this.outstandingSaveCount === 0) {
       this.buffer.reset("");
-      this.textRevision++;
+      this._textRevision++;
     } else {
       var subscription = this.onDidSave(() => {
         if (this.outstandingSaveCount === 0) {
           this.buffer.reset("");
-          this.textRevision++;
+          this._textRevision++;
           subscription.dispose();
         }
       });
@@ -3588,19 +3610,17 @@ class TextBuffer {
         conflicted = true;
         continue;
       }
-      mappedChanges.push({
-        oldStart: mappedStart,
-        oldEnd: mappedEnd,
-        newStart: mappedStart,
-        newEnd: traverse(mappedStart, extentForText(replacement)),
-        oldText: this.getTextInRange(mappedRange),
-        newText: replacement,
-      });
+      mappedChanges.push({ range: mappedRange, text: replacement });
     }
 
     this.transact(() => {
       for (let i = mappedChanges.length - 1; i >= 0; i--) {
-        this.applyChange(mappedChanges[i], true, "reload");
+        this.emitWillChangeEvent();
+        const { range, text } = mappedChanges[i];
+        this.applyChange(this.buffer.prepareEdit(range, text), {
+          recordHistory: true,
+          origin: "reload",
+        });
       }
       if (conflicted) {
         // Keep the old baseline so file observation continues to report the
@@ -3930,8 +3950,25 @@ class TextBuffer {
 
   emitWillChangeEvent() {
     if (!this._emittedWillChangeEvent) {
-      this.emitter.emit("will-change");
       this._emittedWillChangeEvent = true;
+      this.emittingWillChange = true;
+      try {
+        this.emitter.emit("will-change");
+      } catch (error) {
+        this._emittedWillChangeEvent = false;
+        throw error;
+      } finally {
+        this.emittingWillChange = false;
+      }
+    }
+  }
+
+  assertCanEdit() {
+    if (this.emittingWillChange) {
+      throw new Error("Document edits are not allowed from onWillChange observers");
+    }
+    if (this.applyingEdit) {
+      throw new Error("Document edits are not allowed during synchronous edit notifications");
     }
   }
 
@@ -3939,10 +3976,13 @@ class TextBuffer {
     this.cachedHasAstral = null;
     const origin = changeOrigin(this.changeOriginsSinceLastDidChangeTextEvent);
     if (this.transactCallDepth === 0) {
+      this._emittedWillChangeEvent = false;
       if (this.changesSinceLastDidChangeTextEvent.length > 0) {
         this.changeOriginsSinceLastDidChangeTextEvent.clear();
         const appliedChanges = this.appliedChanges;
+        const beforeRevision = this.appliedChangesBeforeRevision;
         this.appliedChanges = null;
+        this.appliedChangesBeforeRevision = null;
         const compactedChanges = compactPatchChanges(this.changesSinceLastDidChangeTextEvent);
         this.changesSinceLastDidChangeTextEvent.length = 0;
         this.transactionsSinceLastStoppedChangingEvent.push(
@@ -3957,14 +3997,13 @@ class TextBuffer {
             ),
           }),
         );
-        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges, origin);
+        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges, origin, beforeRevision);
         if (compactedChanges.length > 0) {
           const changeEvent = new ChangeEvent(this, compactedChanges, origin);
           this.languageMode.bufferDidFinishTransaction(changeEvent);
           this.emitter.emit("did-change-text", changeEvent);
         }
         this.debouncedEmitDidStopChangingEvent();
-        this._emittedWillChangeEvent = false;
       }
       for (const id in this.displayLayers) {
         const displayLayer = this.displayLayers[id];

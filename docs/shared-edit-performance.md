@@ -1,6 +1,6 @@
 # Shared native edit ownership experiment
 
-This experiment tests immutable native text shared by buffer mutation and undo history. It is preserved as patches and is not enabled in the shipped editor or installed Superstring dependency.
+This report records the October 17 experiment with immutable native text shared by buffer mutation and undo history. Its patches preserve the measured prototype. The production implementation follows the [document edit contract](document-edit-contract.md), with explicit prepared-edit lifetimes, a patch-only history interface and a revisioned change stream.
 
 ## Boundary and variants
 
