@@ -20,6 +20,66 @@ describe("Tree-sitter update budgets", () => {
   const screen = () =>
     editor.displayLayer.getScreenLines(0, Math.min(10, editor.getScreenLineCount()));
 
+  it("repaints a stationary viewport after bulk comments yield while measuring an offscreen line", async () => {
+    const mode = await start('value = "text"\n'.repeat(2000));
+    const draw = () => {
+      editor.displayLayer.getScreenLines(800, 820);
+      const tokens = editor.tokensForScreenRow(800);
+      // The component measures its longest line after requesting the view.
+      editor.screenLineForScreenRow(0);
+      return tokens;
+    };
+    draw();
+    await editor.whenGrammarSettled();
+    let painted = draw();
+    mode.syncTimeoutMicros = 0;
+    let paintTask = null;
+    const subscription = editor.onDidChange(() => {
+      if (paintTask) return;
+      paintTask = setImmediate(() => {
+        paintTask = null;
+        painted = draw();
+      });
+    });
+    try {
+      editor.selectAll();
+      for (const commented of [true, false]) {
+        editor.toggleLineCommentsInSelection();
+        // No settlement API or extra screen read: only regular change events
+        // can refresh the recorded paint. Bound a scheduling loop on failure.
+        for (let i = 0; i < 200; i++) {
+          await new Promise((resolve) => setImmediate(resolve));
+          if (
+            !mode.publicationPending &&
+            !mode.presentation.promise &&
+            !mode.presentation.timer &&
+            !paintTask
+          )
+            break;
+        }
+        expect(mode.publicationPending).toBe(false);
+        expect(mode.presentation.promise).toBeNull();
+        expect(mode.presentation.timer).toBeNull();
+        expect([...mode.presentation.tiles.values()].every((tile) => !tile.dirty)).toBe(true);
+        expect(
+          painted
+            .map((token) => token.text)
+            .join("")
+            .startsWith("#"),
+        ).toBe(commented);
+        expect(
+          painted.some((token) => token.scopes.some((scope) => scope.includes("syntax--comment"))),
+        ).toBe(commented);
+        expect(
+          painted.some((token) => token.scopes.some((scope) => scope.includes("syntax--string"))),
+        ).toBe(!commented);
+      }
+    } finally {
+      subscription.dispose();
+      clearImmediate(paintTask);
+    }
+  });
+
   it("retains painted scopes until a budgeted update can publish current syntax", async () => {
     const mode = await start('def work():\n    return "value"\n');
     const painted = screen();

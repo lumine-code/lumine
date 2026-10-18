@@ -53,6 +53,7 @@ class DisplayLayer {
         : createEmptyLayoutState());
     this.emitter = new Emitter();
     this.screenLineBuilder = new ScreenLineBuilder(this);
+    this.singleLineHighlightingOwner = {};
     this.cachedScreenLines = [];
     this.builtInScopeIdsByFlags = new Map();
     this.builtInClassNamesByScopeId = new Map();
@@ -211,6 +212,7 @@ class DisplayLayer {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.singleLineHighlightingOwner.destroyed = true;
     this.cachedScreenLines.length = 0;
     this.foldsMarkerLayer.destroy();
     this.displayMarkerLayersById.forEach((layer) => layer.destroy());
@@ -883,7 +885,16 @@ class DisplayLayer {
   }
 
   getScreenLine(screenRow) {
-    return this.cachedScreenLines[screenRow] || this.getScreenLines(screenRow, screenRow + 1)[0];
+    // Width measurements and token consumers must not replace the viewport's
+    // pending highlighting request while its preparation is yielding.
+    return (
+      this.cachedScreenLines[screenRow] ||
+      this.screenLineBuilder.buildScreenLines(
+        screenRow,
+        screenRow + 1,
+        this.singleLineHighlightingOwner,
+      )[0]
+    );
   }
 
   getScreenLines(screenStartRow = 0, screenEndRow = this.getScreenLineCount()) {

@@ -15,7 +15,7 @@ module.exports = class ScreenLineBuilder {
     this.displayLayer = displayLayer;
   }
 
-  buildScreenLines(startScreenRow, endScreenRow) {
+  buildScreenLines(startScreenRow, endScreenRow, highlightingOwner = this.displayLayer) {
     this.requestedStartScreenRow = startScreenRow;
     this.requestedEndScreenRow = endScreenRow;
     this.bufferLine = null;
@@ -52,7 +52,7 @@ module.exports = class ScreenLineBuilder {
 
     const languageMode = this.displayLayer.buffer.languageMode;
     const decorationIterator = languageMode.buildPresentationHighlightIterator
-      ? languageMode.buildPresentationHighlightIterator(this.displayLayer)
+      ? languageMode.buildPresentationHighlightIterator(highlightingOwner)
       : languageMode.buildHighlightIterator();
     const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
       this.screenRow,
@@ -87,7 +87,7 @@ module.exports = class ScreenLineBuilder {
           row = Math.max(row, hunk.oldEnd.row);
         }
         if (row <= endBufferRow) ranges.push([row, endBufferRow]);
-        languageMode.requestHighlighting(this.displayLayer, ranges);
+        languageMode.requestHighlighting(highlightingOwner, ranges);
       }
     }
     let hunkIndex = 0;
