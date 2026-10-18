@@ -152,6 +152,7 @@ class DefaultHistoryProvider {
   groupLastChanges() {
     let markerSnapshotAfter = null;
     let markerSnapshotBefore = null;
+    let previousTransaction = null;
     const patchesSinceCheckpoint = [];
 
     for (let i = this.undoStack.length - 1; i >= 0; i--) {
@@ -167,6 +168,7 @@ class DefaultHistoryProvider {
             ({ markerSnapshotAfter } = entry);
           } else if (patchesSinceCheckpoint.length === 1) {
             ({ markerSnapshotBefore } = entry);
+            previousTransaction = entry;
           }
           patchesSinceCheckpoint.unshift(entry.patch);
           break;
@@ -180,9 +182,16 @@ class DefaultHistoryProvider {
       if (patchesSinceCheckpoint.length === 2) {
         const composedPatch = Patch.compose(patchesSinceCheckpoint);
         this.undoStack.splice(i);
-        this.undoStack.push(
-          new Transaction(markerSnapshotBefore, composedPatch, markerSnapshotAfter),
+        const grouped = new Transaction(
+          markerSnapshotBefore,
+          composedPatch,
+          markerSnapshotAfter,
+          previousTransaction?.groupingInterval ?? 0,
         );
+        // A follow-up adjustment belongs to the triggering edit's undo window;
+        // its completion time must neither close nor extend that window.
+        if (previousTransaction) grouped.timestamp = previousTransaction.timestamp;
+        this.undoStack.push(grouped);
         return true;
       }
     }

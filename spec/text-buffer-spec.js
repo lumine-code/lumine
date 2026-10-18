@@ -1160,6 +1160,41 @@ describe("TextBuffer", function () {
     });
 
     describe("::transact(groupingInterval, fn)", function () {
+      it("keeps an empty transaction from resetting the preceding undo grouping window", function () {
+        buffer = new TextBuffer();
+        buffer.transact(100, () => buffer.append("a"));
+        now += 10;
+        buffer.transact(() => {});
+        buffer.transact(100, () => buffer.append("b"));
+        buffer.undo();
+        expect(buffer.getText()).toBe("");
+      });
+
+      it("retains the triggering edit's grouping window after a follow-up adjustment", function () {
+        buffer = new TextBuffer();
+        buffer.transact(100, () => buffer.append("a"));
+        now += 10;
+        buffer.append(" ");
+        buffer.groupLastChanges();
+        now += 10;
+        buffer.transact(100, () => buffer.append("b"));
+        buffer.undo();
+        expect(buffer.getText()).toBe("");
+      });
+
+      it("does not extend the triggering edit's undo window to a delayed adjustment", function () {
+        buffer = new TextBuffer();
+        buffer.transact(100, () => buffer.append("a"));
+        now += 150;
+        buffer.append(" ");
+        buffer.groupLastChanges();
+        buffer.transact(100, () => buffer.append("b"));
+        buffer.undo();
+        expect(buffer.getText()).toBe("a ");
+        buffer.undo();
+        expect(buffer.getText()).toBe("");
+      });
+
       it("groups all operations in the given function in a single transaction", function () {
         buffer.transact(function () {
           buffer.setTextInRange(

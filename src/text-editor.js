@@ -7310,8 +7310,9 @@ module.exports = class TextEditor {
         Promise.resolve(indentLevel).then((indentLevel) => {
           if (!isCurrent()) return;
           if (typeof indentLevel === "number") {
+            const revision = buffer.getTextRevision();
             const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
-            if (isCurrent()) buffer.groupLastChanges();
+            if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
             return range;
           } else if (indentLevel === undefined) {
             this.scheduleIndentAdjustment(true);
@@ -7396,8 +7397,9 @@ module.exports = class TextEditor {
           // should ignore it. Otherwise we run the risk of dedenting something
           // that the user doesn't want dedented.
           if (typeof indentLevel === "number") {
+            const revision = buffer.getTextRevision();
             const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
-            if (isCurrent()) buffer.groupLastChanges();
+            if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
             return range;
           }
         }),
@@ -7438,9 +7440,10 @@ module.exports = class TextEditor {
         // suggested-indent methods was called during the transaction.
         if (autoIndentRequests === 0 && !force) return;
 
+        const revision = buffer.getTextRevision();
         this.transact(() => this.autoIndentBufferRows(range.start.row, range.end.row));
         if (!isCurrent()) return;
-        buffer.groupLastChanges();
+        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
         if (isCurrent()) this.didAdjustIndent = true;
       }),
       isCurrent,

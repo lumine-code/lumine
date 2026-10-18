@@ -1891,6 +1891,7 @@ class TextBuffer {
    */
   transact(options, fn) {
     let groupingInterval, result, selectionsMarkerLayer;
+    const revisionBefore = this.getTextRevision();
     let aborted = false;
     if (typeof options === "function") {
       fn = options;
@@ -1932,7 +1933,9 @@ class TextBuffer {
       deleteCheckpoint: true,
       returnChanges: false,
     });
-    this.historyProvider.applyGroupingInterval(groupingInterval);
+    if (this.getTextRevision() !== revisionBefore) {
+      this.historyProvider.applyGroupingInterval(groupingInterval);
+    }
     this.historyProvider.enforceUndoStackSizeLimit();
     const origin = this.emitDidChangeTextEvent();
     this.emitMarkerChangeEvents(endMarkerSnapshot, origin);

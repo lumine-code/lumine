@@ -1108,7 +1108,7 @@ module.exports = function ({
         return this.outdentSelectedRows();
       },
       "editor:newline": function () {
-        return this.insertNewline();
+        return this.insertNewline({ groupUndo: true });
       },
       "editor:newline-below": function () {
         return this.insertNewlineBelow();
