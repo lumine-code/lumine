@@ -60,8 +60,25 @@ function invalidatedLanguageError() {
 module.exports = class TreeSitterGrammar {
   // Cache each loaded language — or its in-flight load — at the WASM path.
   static LANGUAGE_CACHE = new Map();
+  static LANGUAGE_LOADS = new Map();
 
-  static async loadLanguage(grammarPath) {
+  static loadLanguage(grammarPath) {
+    const pending = this.LANGUAGE_LOADS.get(grammarPath);
+    if (pending) return pending;
+    // Coalesce the file read too: thousands of injection layers can request
+    // one grammar before any of them has finished reading its WASM bytes.
+    const request = {};
+    const promise = this._loadLanguage(grammarPath, request);
+    request.promise = promise;
+    this.LANGUAGE_LOADS.set(grammarPath, promise);
+    const clear = () => {
+      if (this.LANGUAGE_LOADS.get(grammarPath) === promise) this.LANGUAGE_LOADS.delete(grammarPath);
+    };
+    promise.then(clear, clear);
+    return promise;
+  }
+
+  static async _loadLanguage(grammarPath, request) {
     await initializeParser();
     const input =
       typeof grammarPath === "string" ? await fs.promises.readFile(grammarPath) : grammarPath;
@@ -72,7 +89,8 @@ module.exports = class TreeSitterGrammar {
       digest,
       promise: Language.load(input),
     };
-    this.LANGUAGE_CACHE.set(grammarPath, entry);
+    if (this.LANGUAGE_LOADS.get(grammarPath) === request.promise)
+      this.LANGUAGE_CACHE.set(grammarPath, entry);
     try {
       return await entry.promise;
     } catch (error) {
@@ -874,6 +892,9 @@ module.exports = class TreeSitterGrammar {
     this.registration = null;
     this.subscriptions = null;
     this.queryLoadGeneration++;
+    // A replacement package may already contain different WASM bytes while
+    // an old generation's read is still outstanding.
+    TreeSitterGrammar.LANGUAGE_LOADS.delete(this.treeSitterGrammarPath);
     this._queryFilesLoaded = false;
     this._loadQueryFilesPromise = null;
     this.promisesForQueryFiles.clear();

@@ -229,6 +229,61 @@ describe("TreeSitterGrammar", () => {
       expect(load).toHaveBeenCalledTimes(1);
     });
 
+    it("coalesces the WASM file read before a large injection population loads it", async () => {
+      const read = spyOn(fs.promises, "readFile").and.callThrough();
+      const results = await Promise.all(
+        Array.from({ length: 2000 }, () => TreeSitterGrammar.loadLanguage(wasmPath)),
+      );
+      expect(read.calls.allArgs().filter(([file]) => file === wasmPath).length).toBe(1);
+      expect(results.every((language) => language === results[0])).toBe(true);
+      expect(TreeSitterGrammar.LANGUAGE_LOADS.has(wasmPath)).toBe(false);
+    });
+
+    it("allows retrying a failed shared WASM file read", async () => {
+      const file = path.join(tempDir, "later.wasm");
+      await expectAsync(
+        Promise.all(Array.from({ length: 20 }, () => TreeSitterGrammar.loadLanguage(file))),
+      ).toBeRejected();
+      fs.copyFileSync(wasmPath, file);
+      await expectAsync(TreeSitterGrammar.loadLanguage(file)).toBeResolved();
+    });
+
+    it("does not give a replacement grammar the bytes of an outstanding old read", async () => {
+      const oldBytes = fs.readFileSync(wasmPath);
+      const readFile = fs.promises.readFile;
+      let release,
+        reads = 0;
+      spyOn(fs.promises, "readFile").and.callFake((file, ...args) => {
+        if (file === wasmPath && reads++ === 0)
+          return new Promise((resolve) => {
+            release = () => resolve(oldBytes);
+          });
+        return readFile.call(fs.promises, file, ...args);
+      });
+      const grammar = makeGrammar();
+      grammar.activate();
+      const old = grammar.getLanguage();
+      const rejected = expectAsync(old).toBeRejectedWithError(/invalidated/);
+      await conditionPromise(() => Boolean(release));
+      grammar.deactivate();
+      const pythonPath = require.resolve("language-python/grammars/python.json");
+      const config = CSON.readFileSync(pythonPath);
+      fs.copyFileSync(path.join(path.dirname(pythonPath), config.treeSitter.grammar), wasmPath);
+      grammar.activate();
+      const loading = grammar.getLanguage();
+      await wait(10);
+      release();
+      const language = await loading;
+      await rejected;
+      const parser = new WebTreeSitter.Parser().setLanguage(language);
+      const tree = parser.parse("value = 1\n");
+      expect(tree.rootNode.type).toBe("module");
+      expect(await TreeSitterGrammar.loadLanguage(wasmPath)).toBe(language);
+      tree.delete();
+      parser.delete();
+      grammar.deactivate();
+    });
+
     it("does not revive a grammar disabled during its language load", async () => {
       let resolveLanguage;
       const pending = new Promise((resolve) => (resolveLanguage = resolve));
