@@ -4600,6 +4600,9 @@ describe("TreeSitterLanguageMode", () => {
       ).and.callThrough();
       buffer.setText(`${prefix}\nconst ready = false;\nrun();\n// done\n`);
       await languageMode.atTransactionEnd();
+      // Eager warming may yield its budget to visible highlighting. A gutter
+      // request still resolves a bounded local fold window immediately.
+      languageMode.isFoldableAtRowForRendering(0);
       expect(captures).toHaveBeenCalled();
       for (const [, options] of captures.calls.allArgs()) {
         expect(options.endPosition.row - options.startPosition.row).toBeLessThanOrEqual(400);

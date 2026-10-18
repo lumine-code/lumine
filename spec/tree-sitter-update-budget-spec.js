@@ -158,6 +158,28 @@ describe("Tree-sitter update budgets", () => {
     ).toBe(true);
   });
 
+  it("prepares both visible sides of a large fold without querying its hidden middle", async () => {
+    const mode = await start('value = "text"\n'.repeat(3000));
+    editor.displayLayer.foldBufferRange([
+      [2, 0],
+      [2990, 0],
+    ]);
+    const boundaries = spyOn(mode.rootLanguageLayer, "getSyntaxBoundaries").and.callThrough();
+    const read = () => editor.displayLayer.getScreenLines(0, 10);
+    read();
+    expect(boundaries).not.toHaveBeenCalled();
+    await mode.atGrammarSettlement();
+    expect(boundaries.calls.count()).toBeGreaterThan(0);
+    expect(boundaries.calls.allArgs().every(([start]) => start.row < 64 || start.row >= 2944)).toBe(
+      true,
+    );
+    boundaries.calls.reset();
+    const lines = read();
+    expect(boundaries).not.toHaveBeenCalled();
+    expect(lines[0].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+    expect(lines.at(-1).tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+  });
+
   it("rejects staged scopes when an edit supersedes presentation preparation", async () => {
     const mode = await start('value = "text"\n'.repeat(1000));
     mode.syncTimeoutMicros = 0;
@@ -181,7 +203,9 @@ describe("Tree-sitter update budgets", () => {
 
   it("does not recompute distant prepared fragments for a local equal-height edit", async () => {
     const mode = await start("value = 1\n".repeat(1000));
-    mode.presentation.request(500, 600, false);
+    const secondView = {};
+    mode.presentation.requestRanges(editor.displayLayer, [[0, 63]], false);
+    mode.presentation.requestRanges(secondView, [[500, 600]], false);
     await mode.atGrammarSettlement();
     mode.useAsyncParsing = false;
     const boundaries = spyOn(mode.rootLanguageLayer, "getSyntaxBoundaries").and.callThrough();
@@ -195,6 +219,7 @@ describe("Tree-sitter update budgets", () => {
     await mode.atGrammarSettlement();
     expect(boundaries.calls.count()).toBeGreaterThan(0);
     expect(boundaries.calls.allArgs().every(([start]) => start.row < 128)).toBe(true);
+    expect(mode.presentation.requestsByOwner.has(secondView)).toBe(true);
   });
 
   it("waits for current syntax before folding and cancels an obsolete fold command", async () => {

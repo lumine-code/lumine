@@ -11,6 +11,9 @@ class TreeSitterPresentation {
   constructor({ buffer, cache, capture, isCurrent, iterator, hasBudget, publish }) {
     Object.assign(this, { buffer, cache, capture, isCurrent, iterator, hasBudget, publish });
     this.tiles = new Map();
+    this.requests = new Set();
+    this.requestsByOwner = new WeakMap();
+    this.defaultOwner = {};
     this.generation = 0;
     this.closed = false;
     this.promise = null;
@@ -19,22 +22,58 @@ class TreeSitterPresentation {
   }
 
   request(startRow, endRow, schedule = true) {
-    const lastRow = this.buffer.getLastRow();
-    startRow = Math.max(0, startRow - 16);
-    endRow = Math.min(lastRow, endRow + 16);
-    // A render request can span a large folded region. Bound retained work;
-    // subsequent requests for its other visible fragments take priority.
-    const first = Math.floor(startRow / TILE_ROWS) * TILE_ROWS;
-    for (let row = first; row <= endRow && row < first + MAX_TILES * TILE_ROWS; row += TILE_ROWS) {
-      const tile = this.tiles.get(row) ?? { row, dirty: true };
-      if (
-        !tile.dirty &&
-        !this.cache.covers(new Point(row, 0), this.buffer.clipPosition([row + TILE_ROWS, 0]))
-      )
-        tile.dirty = true;
-      this.tiles.delete(row);
-      this.tiles.set(row, tile);
+    this.requestRanges(this.defaultOwner, [[startRow, endRow]], schedule);
+  }
+
+  requestRanges(owner, ranges, schedule = true) {
+    if (this.closed) return;
+    if (owner !== this.defaultOwner) {
+      const initial = this.requestsByOwner.get(this.defaultOwner);
+      if (initial) {
+        this.requests.delete(initial);
+        this.requestsByOwner.delete(this.defaultOwner);
+      }
     }
+    let request = this.requestsByOwner.get(owner);
+    if (!request) {
+      request = { owner: new WeakRef(owner), rows: new Set() };
+      this.requestsByOwner.set(owner, request);
+      this.requests.add(request);
+    }
+    request.rows.clear();
+    const lastRow = this.buffer.getLastRow();
+    for (let [startRow, endRow] of ranges) {
+      startRow = Math.max(0, startRow - 16);
+      endRow = Math.min(lastRow, endRow + 16);
+      // A render request can span a large folded region. Bound retained work;
+      // subsequent requests for its other visible fragments take priority.
+      const first = Math.floor(startRow / TILE_ROWS) * TILE_ROWS;
+      for (
+        let row = first;
+        row <= endRow && row < first + MAX_TILES * TILE_ROWS;
+        row += TILE_ROWS
+      ) {
+        request.rows.add(row);
+        const tile = this.tiles.get(row) ?? { row, dirty: true };
+        if (
+          !tile.dirty &&
+          !this.cache.covers(new Point(row, 0), this.buffer.clipPosition([row + TILE_ROWS, 0]))
+        )
+          tile.dirty = true;
+        this.tiles.delete(row);
+        this.tiles.set(row, tile);
+      }
+    }
+    const wanted = new Set();
+    for (const request of this.requests) {
+      const owner = request.owner.deref();
+      if (!owner || owner.destroyed) {
+        this.requests.delete(request);
+        continue;
+      }
+      for (const row of request.rows) wanted.add(row);
+    }
+    for (const row of this.tiles.keys()) if (!wanted.has(row)) this.tiles.delete(row);
     while (this.tiles.size > MAX_TILES) this.tiles.delete(this.tiles.keys().next().value);
     if (schedule && [...this.tiles.values()].some((tile) => tile.dirty)) this.schedule();
   }
@@ -80,7 +119,13 @@ class TreeSitterPresentation {
     const staged = new HighlightCache({ maxEvents: this.cache.maxEvents });
     const ranges = [];
     let index = 0;
-    const current = () => !this.closed && generation === this.generation && this.isCurrent(stamp);
+    const requested = new Set(this.tiles.keys());
+    const current = () =>
+      !this.closed &&
+      generation === this.generation &&
+      this.isCurrent(stamp) &&
+      requested.size === this.tiles.size &&
+      [...requested].every((row) => this.tiles.has(row));
     const run = (resumed = false) => {
       while (current() && index < tiles.length) {
         // Permit one tile after yielding even when the configured sync budget
@@ -104,7 +149,10 @@ class TreeSitterPresentation {
         revision: stamp.revision,
         generation: stamp.generation,
       });
-      for (const tile of tiles) tile.dirty = false;
+      for (const tile of tiles) {
+        const currentTile = this.tiles.get(tile.row);
+        if (currentTile) currentTile.dirty = false;
+      }
       for (const range of ranges) this.publish(range);
     };
     let result;
@@ -139,6 +187,8 @@ class TreeSitterPresentation {
     this.closed = true;
     clearImmediate(this.timer);
     this.tiles.clear();
+    this.requests.clear();
+    this.requestsByOwner = new WeakMap();
   }
 }
 

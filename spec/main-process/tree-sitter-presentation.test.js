@@ -67,7 +67,35 @@ test("superseded preparation neither publishes nor replaces the retained present
     await pending;
     assert.deepEqual(f.cache.snapshots, old);
     await f.presentation.flush();
-    assert.ok(f.cache.snapshots.every((snapshot) => snapshot.stamp.revision === 2));
+    assert.ok(
+      f.cache.snapshots
+        .filter((snapshot) => snapshot.start.row >= 448)
+        .every((snapshot) => snapshot.stamp.revision === 2),
+    );
+  } finally {
+    f.presentation.destroy();
+  }
+});
+
+test("prepares current views while retaining older paints only as a cache", async () => {
+  const f = fixture();
+  const firstView = {},
+    secondView = {};
+  try {
+    f.presentation.requestRanges(firstView, [[0, 10]]);
+    f.presentation.requestRanges(secondView, [[500, 510]]);
+    await f.presentation.flush();
+    const previous = f.preparations();
+    f.presentation.requestRanges(firstView, [[700, 710]]);
+    f.advance();
+    await f.presentation.flush();
+    assert.equal(f.preparations() - previous, 4);
+    assert.equal(f.cache.snapshots.find((snapshot) => snapshot.start.row === 0).stamp.revision, 1);
+    assert.ok(f.cache.covers(new Point(500, 0), new Point(510, 0)));
+    assert.ok(f.cache.covers(new Point(700, 0), new Point(710, 0)));
+    secondView.destroyed = true;
+    f.presentation.requestRanges(firstView, [[700, 710]]);
+    assert.ok([...f.presentation.tiles.keys()].every((row) => row >= 640));
   } finally {
     f.presentation.destroy();
   }

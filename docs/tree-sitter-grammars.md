@@ -179,6 +179,8 @@ Screen-line construction consumes prepared scope IDs and positions without execu
 
 New revisions cancel queued and already started parser work at its next yield. Visible scope preparation takes priority over eager fold-cache warming. Fold queries return no current ranges while syntax is pending; folding commands wait for grammar settlement and discard their action if another edit, grammar change, fold or unfold command supersedes it.
 
+Each display view registers its requested buffer fragments, excluding the interiors of folds. Scrolling replaces that view's urgent work while preserving other views of the same buffer. Cached fragments outside those requests remain available as old presentation but are not recomputed on every edit. Display views are weakly referenced and destroyed views are removed from subsequent plans.
+
 Published trees retain their original UTF-16 text and revision. Consumers await `atGrammarSettlement()` to acquire current syntax; they must not edit or delete a published tree. Temporary private copies are released explicitly, while retained trees and queries follow their JavaScript lifetimes through the runtime's finalizers.
 
 The pinned 0.27.1 runtime has unsafe automatic cursor cleanup and interleaved cursor copying. A small ownership layer in the editor uses the public `delete()` and `resetTo()` methods to preserve cursor lifetime and state; it does not modify the dependency or its Wasm binary. A subprocess regression forces garbage collection while cursors from different trees are used and copied.

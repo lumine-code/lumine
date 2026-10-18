@@ -1159,8 +1159,12 @@ class TreeSitterLanguageMode {
     return new HighlightIterator(this);
   }
 
-  buildPresentationHighlightIterator() {
-    return new PendingHighlightIterator(this, true);
+  buildPresentationHighlightIterator(owner) {
+    return new PendingHighlightIterator(this, true, owner);
+  }
+
+  requestHighlighting(owner, ranges) {
+    this.presentation.requestRanges(owner, ranges);
   }
 
   capturePresentationVersion() {
@@ -6012,10 +6016,11 @@ class LanguageLayer {
 }
 
 class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
-  constructor(languageMode, presentation = false) {
+  constructor(languageMode, presentation = false, owner = null) {
     super();
     this.languageMode = languageMode;
     this.presentation = presentation;
+    this.owner = owner;
   }
 
   seek(position, endRow) {
@@ -6027,7 +6032,7 @@ class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
       new Range([position.row, 0], [endRow == null ? Infinity : endRow + 1, 0]),
     );
     if (mode.publicationPending) mode.publicationRanges.add(range);
-    if (this.presentation) mode.presentation.request(position.row, range.end.row);
+    if (this.presentation && !this.owner) mode.presentation.request(position.row, range.end.row);
     const cached = mode.highlightCache.read(position, range.end, [
       mode.idForScope(mode.grammar.scopeName),
     ]);
