@@ -1355,7 +1355,7 @@ module.exports = class TextEditorComponent {
         scrollLeft = this.getScrollLeft();
         canScrollHorizontally = this.canScrollHorizontally();
         canScrollVertically = this.canScrollVertically();
-        horizontalScrollbarHeight = this.getHorizontalScrollbarHeight();
+        horizontalScrollbarHeight = canScrollHorizontally ? this.getHorizontalScrollbarHeight() : 0;
         verticalScrollbarWidth = this.getVerticalScrollbarWidth();
         forceScrollbarVisible = this.remeasureScrollbars;
       } else {
@@ -4747,7 +4747,8 @@ module.exports = class TextEditorComponent {
       // or not a horizontal scrollbar happens to be shown below it.
       return this.getScrollHeight();
     }
-    return this.getScrollContainerHeight() - this.getHorizontalScrollbarHeight();
+    const scrollbarHeight = this.canScrollHorizontally() ? this.getHorizontalScrollbarHeight() : 0;
+    return this.getScrollContainerHeight() - scrollbarHeight;
   }
 
   canScrollVertically() {

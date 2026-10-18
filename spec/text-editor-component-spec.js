@@ -490,8 +490,23 @@ describe("TextEditorComponent", () => {
       expect(getVerticalScrollbarWidth(component)).toBeGreaterThan(0);
       expect(getHorizontalScrollbarHeight(component)).toBe(0);
       expect(verticalScrollbar.style.visibility).toBe("");
+      expect(verticalScrollbar.style.bottom).toBe("0px");
+      expect(verticalScrollbar.getBoundingClientRect().bottom).toBeNear(
+        component.refs.scrollContainer.getBoundingClientRect().bottom,
+      );
+      expect(component.getScrollContainerClientHeight()).toBeNear(100);
       expect(horizontalScrollbar.style.visibility).toBe("hidden");
       expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
+
+      await setScrollTop(component, component.getMaxScrollTop());
+      expect(verticalScrollbar.scrollTop).toBeNear(component.getMaxScrollTop());
+      expect(component.getScrollBottom()).toBeNear(component.getContentHeight());
+
+      editor.setText(SAMPLE_TEXT);
+      await component.getNextUpdatePromise();
+      expect(verticalScrollbar.style.bottom).toBe(getHorizontalScrollbarHeight(component) + "px");
+      expect(horizontalScrollbar.style.visibility).toBe("");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("");
 
       editor.setText("a".repeat(100));
       await component.getNextUpdatePromise();
@@ -1699,8 +1714,7 @@ describe("TextEditorComponent", () => {
       // Size the editor in line-height units so the visible row count does not
       // depend on the platform's font metrics.
       const { component, element, editor } = buildComponent({ autoHeight: false });
-      element.style.height =
-        7.5 * component.measurements.lineHeight + horizontalScrollbarHeight + "px";
+      element.style.height = 7.5 * component.measurements.lineHeight + "px";
       await component.getNextUpdatePromise();
       expect(component.getLastVisibleRow()).toBe(7);
 
@@ -1734,8 +1748,7 @@ describe("TextEditorComponent", () => {
       const { component, element, editor } = buildComponent({
         autoHeight: false,
       });
-      element.style.height =
-        5.5 * component.measurements.lineHeight + horizontalScrollbarHeight + "px";
+      element.style.height = 5.5 * component.measurements.lineHeight + "px";
       await component.getNextUpdatePromise();
       expect(component.getLastVisibleRow()).toBe(5);
       const scrollMarginInLines = 2;
@@ -1780,7 +1793,7 @@ describe("TextEditorComponent", () => {
       const { component, element, editor } = buildComponent({ autoHeight: false });
       element.style.height = 3.125 * component.measurements.lineHeight + "px";
       await component.getNextUpdatePromise();
-      expect(component.getLastVisibleRow()).toBe(2);
+      expect(component.getLastVisibleRow()).toBe(3);
 
       editor.scrollToScreenRange(
         [
@@ -9868,8 +9881,7 @@ describe("TextEditorComponent", () => {
       });
       element.style.lineHeight = "20px";
       component.measureCharacterDimensions();
-      element.style.height =
-        4 * component.measurements.lineHeight + horizontalScrollbarHeight + "px";
+      element.style.height = 4 * component.measurements.lineHeight + "px";
       await component.getNextUpdatePromise();
 
       expect(component.getMaxScrollTop() / component.getLineHeight()).toBeNear(9);
