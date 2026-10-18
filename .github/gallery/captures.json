@@ -1,5 +1,5 @@
 {
-  "capturedOn": "2026-10-17",
+  "capturedOn": "2026-10-18",
   "context": "Authentic rectangular captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
@@ -9,22 +9,23 @@
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
       "dark": "01-dark.png",
-      "capturedOn": "2026-10-17",
-      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+      "capturedOn": "2026-10-18",
+      "sourceRevision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
       "packageSourceRevisions": {
-        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+        "about": "b601b4dfe07049821b82f8745498356f8e631f29",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
-        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
+        "linter": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
         "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
-        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
-        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
-        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
+        "markdown-preview": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
+        "settings-view": "66c5958735a719410da010ffabd8d4fd7b68b299",
+        "title-bar": "c079942260495873f73fc9a8f98de41a698fd096",
+        "tree-view": "c1781b2f9680b1079e9c583431aed03e5b0992a3"
       },
-      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+      "themeSourceRevision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
@@ -50,12 +51,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
-            "dirty": true,
-            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
+            "revision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
-            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+            "revision": "b601b4dfe07049821b82f8745498356f8e631f29",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -65,12 +66,12 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter": {
-            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "revision": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -80,22 +81,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+            "revision": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+            "revision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+            "revision": "66c5958735a719410da010ffabd8d4fd7b68b299",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "title-bar": {
+            "revision": "c079942260495873f73fc9a8f98de41a698fd096",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
+            "revision": "c1781b2f9680b1079e9c583431aed03e5b0992a3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -130,7 +136,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "dc657f1ea4811247d03d0f338f81883bc8bcd50b366d917c3b3e36c7f5ed910e"
+        "sha256": "0bb49ccc32b5c5b7e30d37f564b9f98bd67cf99b5893da72941a49b5236a3bb4"
       }
     },
     {
@@ -140,22 +146,23 @@
       "description": "A live Markdown preview beside its source in a split pane.",
       "light": "02-light.png",
       "dark": "02-dark.png",
-      "capturedOn": "2026-10-17",
+      "capturedOn": "2026-10-18",
       "packageSourceRevisions": {
-        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+        "about": "b601b4dfe07049821b82f8745498356f8e631f29",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
-        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
+        "linter": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
         "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
-        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
-        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
-        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
+        "markdown-preview": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
+        "settings-view": "66c5958735a719410da010ffabd8d4fd7b68b299",
+        "title-bar": "c079942260495873f73fc9a8f98de41a698fd096",
+        "tree-view": "c1781b2f9680b1079e9c583431aed03e5b0992a3"
       },
-      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
-      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+      "themeSourceRevision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
+      "sourceRevision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
@@ -181,12 +188,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
-            "dirty": true,
-            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
+            "revision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
-            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+            "revision": "b601b4dfe07049821b82f8745498356f8e631f29",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -196,12 +203,12 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter": {
-            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "revision": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -211,22 +218,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+            "revision": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+            "revision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+            "revision": "66c5958735a719410da010ffabd8d4fd7b68b299",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "title-bar": {
+            "revision": "c079942260495873f73fc9a8f98de41a698fd096",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
+            "revision": "c1781b2f9680b1079e9c583431aed03e5b0992a3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -261,7 +273,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "166e66fe8b91ad70eb0a4ecc1e423cc767e2f6616d241147e38647dded98c28b"
+        "sha256": "7b7828a10ba3b829315387da9df6195c0394f12474cbd80df3a0fe6c31597053"
       }
     },
     {
@@ -271,22 +283,23 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
-      "capturedOn": "2026-10-17",
-      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
+      "themeSourceRevision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
+      "capturedOn": "2026-10-18",
+      "sourceRevision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
       "packageSourceRevisions": {
-        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+        "about": "b601b4dfe07049821b82f8745498356f8e631f29",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
-        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
+        "linter": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
         "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
-        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
-        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
-        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
+        "markdown-preview": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
+        "settings-view": "66c5958735a719410da010ffabd8d4fd7b68b299",
+        "title-bar": "c079942260495873f73fc9a8f98de41a698fd096",
+        "tree-view": "c1781b2f9680b1079e9c583431aed03e5b0992a3"
       },
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
@@ -312,12 +325,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
-            "dirty": true,
-            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
+            "revision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
-            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+            "revision": "b601b4dfe07049821b82f8745498356f8e631f29",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -327,12 +340,12 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter": {
-            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "revision": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -342,22 +355,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+            "revision": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+            "revision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+            "revision": "66c5958735a719410da010ffabd8d4fd7b68b299",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "title-bar": {
+            "revision": "c079942260495873f73fc9a8f98de41a698fd096",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
+            "revision": "c1781b2f9680b1079e9c583431aed03e5b0992a3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -392,7 +410,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "832a013dcb8dfee0dc207e0d4f20998c777568a48b87fcd6884fcc8f200d81e6"
+        "sha256": "8510addb21cce2580a14200e54ca51760da39f41e5f835fa0f8cb5c5d31d3928"
       }
     },
     {
@@ -402,22 +420,23 @@
       "description": "Versions, documentation and updates in the redesigned About pane.",
       "light": "04-light.png",
       "dark": "04-dark.png",
-      "capturedOn": "2026-10-17",
-      "sourceRevision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
-      "themeSourceRevision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+      "capturedOn": "2026-10-18",
+      "sourceRevision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
+      "themeSourceRevision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
       "packageSourceRevisions": {
-        "about": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+        "about": "b601b4dfe07049821b82f8745498356f8e631f29",
         "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
-        "linter": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
+        "linter": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
         "linter-panel": "49eb7742b992eb0a3aa89be840740309d324b0ad",
-        "markdown-preview": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
-        "settings-view": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
-        "tree-view": "b53b08b57b04b05d66810c555a4bc35b18fafe76"
+        "markdown-preview": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
+        "settings-view": "66c5958735a719410da010ffabd8d4fd7b68b299",
+        "title-bar": "c079942260495873f73fc9a8f98de41a698fd096",
+        "tree-view": "c1781b2f9680b1079e9c583431aed03e5b0992a3"
       },
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "1fef44efe4dde12f7a295cff423e1df02910fcb11a5f8eb720dfd42df6cda32d",
+        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
@@ -443,12 +462,12 @@
         },
         "sources": {
           "editor": {
-            "revision": "81fa9d3c43231cc3180721b15023ccb4312eb47b",
-            "dirty": true,
-            "workingTreeHash": "e6f0cf671c71a7e2cfc43ad2e5ba2cc19f09bd7ccb8f381ed209d4ae64fbbe66"
+            "revision": "c952f46dd8fef2d456441a52fc77352d5dc247d2",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "about": {
-            "revision": "47add6bdd198dd07030fb8ce6185ee2aa4a28b22",
+            "revision": "b601b4dfe07049821b82f8745498356f8e631f29",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -458,12 +477,12 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "cad3cc51c11fc557f2c7b2100c54a29730378c63",
+            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "linter": {
-            "revision": "73355d0a8caaebe43904fdb1dbf0dd03f02a2994",
+            "revision": "5030b5a3981cf9f5f04bdbc4e0d2d3fa7dbb2e1f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -473,22 +492,27 @@
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "229e5df3b069f34c76e025a99e84b4da62f30ea7",
+            "revision": "7ab1a261d89dd453d6af111e81ae26f9744cc325",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "80e8864a2e9a891ef1f911d78ab8f03fb3911f58",
+            "revision": "45b22049e87256e9327beb0b350e67fe81d7fc81",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "cf4395d9463a86c6be878bcbdf9720ea8c337a77",
+            "revision": "66c5958735a719410da010ffabd8d4fd7b68b299",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "title-bar": {
+            "revision": "c079942260495873f73fc9a8f98de41a698fd096",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "b53b08b57b04b05d66810c555a4bc35b18fafe76",
+            "revision": "c1781b2f9680b1079e9c583431aed03e5b0992a3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -523,7 +547,7 @@
             "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
           }
         ],
-        "sha256": "5abb3f5571f4b35426f3378b10d390709d663aa50f0efa1cac3ad479a7996218"
+        "sha256": "c1297284fe43279ec39b99067e784dfeb669a789abda77f8965894f528aa741a"
       }
     }
   ],
