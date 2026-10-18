@@ -107,7 +107,12 @@ class TreeSitterPresentation {
       for (const tile of tiles) tile.dirty = false;
       for (const range of ranges) this.publish(range);
     };
-    const result = run();
+    let result;
+    try {
+      result = run();
+    } catch (error) {
+      result = Promise.reject(error);
+    }
     if (!result?.then) return null;
     const promise = result
       .catch((error) => {

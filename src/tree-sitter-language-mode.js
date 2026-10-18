@@ -252,7 +252,7 @@ class TreeSitterLanguageMode {
       buffer.onDidApplyChanges(() => {
         if (this.destroyed) return;
         for (const layer of this.getAllLanguageLayers()) {
-          if (layer && !layer.parseStarted) layer.parseAbort?.abort();
+          layer?.parseAbort?.abort();
         }
         queueMicrotask(() => {
           if (
@@ -801,13 +801,14 @@ class TreeSitterLanguageMode {
   // Invalidating syntax highlighting also invalidates fold caches for the same
   // range, but this method allows us to invalidate parts of the fold cache
   // without affecting syntax highlighting.
-  emitFoldUpdate(range) {
+  emitFoldUpdate(range, { prefill = true } = {}) {
     this.foldRangeIndex = null;
     const startRow = range.start.row;
     const endRow = range.end.row;
     for (let row = startRow; row <= endRow; row++) {
       this.isFoldableCache[row] = undefined;
     }
+    if (!prefill) return;
     // Invalidation must cover the whole range, but eager re-computation must
     // not: prefilling a whole large buffer after its initial parse costs more
     // than the parse did. Rows past the cap resolve on demand the first time
@@ -826,7 +827,7 @@ class TreeSitterLanguageMode {
       return;
     }
     this.scopeDescriptorCache = null;
-    this.emitFoldUpdate(range);
+    this.emitFoldUpdate(range, { prefill: false });
     this.emitter.emit("did-change-highlighting", range);
     this.presentation.flush();
   }
@@ -852,7 +853,7 @@ class TreeSitterLanguageMode {
     this.publicationRanges.clear();
     for (const range of ranges) {
       this.scopeDescriptorCache = null;
-      this.emitFoldUpdate(range);
+      this.emitFoldUpdate(range, { prefill: false });
       this.emitter.emit("did-change-highlighting", range);
     }
     this.presentation.flush();
@@ -4446,7 +4447,6 @@ class LanguageLayer {
     if (this.languageMode.shouldParseSynchronously()) {
       const controller = new AbortController();
       this.parseAbort = controller;
-      this.parseStarted = true;
       const tree = this.languageMode.parse(language, this.backgroundTree, parseRanges, {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
@@ -4464,16 +4464,12 @@ class LanguageLayer {
     }
     const controller = new AbortController();
     this.parseAbort = controller;
-    this.parseStarted = false;
     return this.languageMode
       .parseAsync(language, this.backgroundTree, parseRanges, {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
         signal: controller.signal,
         depth: this.depth,
-        onStart: () => {
-          this.parseStarted = true;
-        },
       })
       .then((tree) => this._applyParsedTree(tree, context))
       .finally(() => {

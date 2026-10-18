@@ -82,3 +82,28 @@ test("destruction cancels yielded presentation work without publishing", async (
   assert.deepEqual(f.published, []);
   assert.deepEqual(f.cache.snapshots, []);
 });
+
+test("a synchronous preparation error retains presentation and does not spin retries", async (t) => {
+  const f = fixture();
+  try {
+    await f.presentation.flush();
+    const old = [...f.cache.snapshots];
+    const iterator = f.presentation.iterator;
+    f.presentation.hasBudget = () => true;
+    f.presentation.iterator = () => {
+      throw new Error("query failed");
+    };
+    const report = t.mock.method(console, "error", () => {});
+    f.advance();
+    await assert.rejects(f.presentation.flush(), /query failed/);
+    assert.deepEqual(f.cache.snapshots, old);
+    assert.equal(f.presentation.flush(), null);
+    assert.equal(report.mock.callCount(), 1);
+    f.presentation.iterator = iterator;
+    f.advance();
+    await f.presentation.flush();
+    assert.ok(f.cache.snapshots.every((snapshot) => snapshot.stamp.revision === 3));
+  } finally {
+    f.presentation.destroy();
+  }
+});

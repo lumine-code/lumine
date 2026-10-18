@@ -107,6 +107,36 @@ describe("Tree-sitter update budgets", () => {
     expect(parse.calls.count()).toBe(1);
   });
 
+  it("cancels an already started parse when a newer revision supersedes it", async () => {
+    const mode = await start("value = 1\n".repeat(1000));
+    mode.syncTimeoutMicros = 0;
+    let started, firstSignal;
+    const entered = new Promise((resolve) => {
+      started = resolve;
+    });
+    const parse = mode.parseAsync.bind(mode);
+    spyOn(mode, "parseAsync").and.callFake((language, previous, ranges, options) =>
+      parse(language, previous, ranges, {
+        ...options,
+        onStart() {
+          if (!firstSignal) {
+            firstSignal = options.signal;
+            started();
+          }
+          options.onStart?.();
+        },
+      }),
+    );
+    editor.getBuffer().append("first = 2\n");
+    await entered;
+    expect(firstSignal.aborted).toBe(false);
+    editor.getBuffer().append("second = 3\n");
+    expect(firstSignal.aborted).toBe(true);
+    await mode.atGrammarSettlement();
+    expect(mode.tree.input).toBe(editor.getText());
+    expect(mode.parseAsync.calls.count()).toBe(2);
+  });
+
   it("renders prepared scopes without querying and schedules newly visible fragments", async () => {
     const mode = await start('value = "text"\n'.repeat(1000));
     const layer = mode.rootLanguageLayer;
