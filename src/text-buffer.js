@@ -1360,6 +1360,135 @@ class TextBuffer {
     return newRange;
   }
 
+  // Apply a planned collection of independent line edits. Text and display
+  // geometry commit once; history, syntax and marker positions retain the
+  // individual splices. Range trackers and destruction observers can inspect
+  // intermediate text, so those layers keep the ordinary mutation path.
+  setTextInIndependentRanges(edits) {
+    this.assertCanEdit();
+    if (this.transactCallDepth === 0)
+      return this.transact(() => this.setTextInIndependentRanges(edits));
+    const fallback = () => {
+      for (const { range, text } of edits) this.setTextInRange(range, text);
+    };
+    const requiresIntermediateText = () =>
+      Object.values(this.markerLayers).some(
+        (layer) =>
+          layer.getMarkerCount() > 0 && (layer.trackRanges || layer.destroyInvalidatedMarkers),
+      );
+    if (edits.length < 64 || requiresIntermediateText()) return fallback();
+
+    const source = this.getText();
+    const changes = [];
+    const parts = [];
+    let previousRow = -1;
+    let offset = 0;
+    let endIndex = 0;
+    for (const { range, text } of edits) {
+      const oldRange = this.clipRange(range);
+      if (
+        typeof text !== "string" ||
+        /[\r\n]/.test(text) ||
+        !Number.isInteger(oldRange.start.row) ||
+        !Number.isInteger(oldRange.start.column) ||
+        !Number.isInteger(oldRange.end.column) ||
+        oldRange.start.row !== oldRange.end.row ||
+        oldRange.start.row <= previousRow
+      )
+        return fallback();
+      previousRow = oldRange.start.row;
+      const index = this.characterIndexForPosition(oldRange.start);
+      const oldEndIndex = index + oldRange.end.column - oldRange.start.column;
+      const oldText = source.slice(index, oldEndIndex);
+      if (/[\r\n]/.test(oldText)) return fallback();
+      if (changes.length === 0) endIndex = index;
+      parts.push(source.slice(endIndex, index), text);
+      endIndex = oldEndIndex;
+      const newEnd = new Point(oldRange.start.row, oldRange.start.column + text.length);
+      changes.push({
+        oldStart: oldRange.start,
+        oldEnd: oldRange.end,
+        newStart: oldRange.start,
+        newEnd,
+        oldText,
+        newText: text,
+        startIndex: index + offset,
+        oldEndIndex: oldEndIndex + offset,
+        newEndIndex: index + offset + text.length,
+      });
+      offset += text.length - oldText.length;
+    }
+
+    this.emitWillChangeEvent();
+    if (requiresIntermediateText()) return fallback();
+    const range = new Range(changes[0].oldStart, changes.at(-1).oldEnd);
+    const edit = this.buffer.prepareEdit(range, parts.join(""));
+    const wasApplying = this.applyingEdit;
+    try {
+      this.applyingEdit = true;
+      const whole = edit.getChange();
+      const displayChange = {
+        oldRange: new Range(whole.oldStart, whole.oldEnd),
+        newRange: new Range(whole.newStart, whole.newEnd),
+        oldText: whole.oldText,
+        newText: whole.newText,
+        origin: "edit",
+      };
+      this.prepareDisplayLayersForChange(displayChange);
+      const patch = patchFromChanges(changes);
+      edit.commit();
+      this.cachedText = null;
+      this.historyProvider.pushPatch(patch);
+      const updateErrors = [];
+      for (const change of changes) {
+        this._textRevision++;
+        const oldRange = new Range(change.oldStart, change.oldEnd).freeze();
+        const newRange = new Range(change.newStart, change.newEnd).freeze();
+        const event = Object.freeze({
+          oldRange,
+          newRange,
+          oldText: change.oldText,
+          newText: change.newText,
+          startIndex: change.startIndex,
+          oldEndIndex: change.oldEndIndex,
+          newEndIndex: change.newEndIndex,
+          origin: "edit",
+        });
+        this.changesSinceLastDidChangeTextEvent.push(change);
+        this.changesSinceLastStoppedChangingEvent.push(change);
+        this.changeOriginsSinceLastDidChangeTextEvent.add("edit");
+        this.recordAppliedChange(event);
+        const oldExtent = oldRange.getExtent();
+        const newExtent = newRange.getExtent();
+        for (const layer of Object.values(this.markerLayers)) {
+          try {
+            layer.splice(oldRange.start, oldExtent, newExtent, change.newText);
+          } catch (error) {
+            updateErrors.push(error);
+          }
+          this.markerLayersWithPendingUpdateEvents.add(layer);
+        }
+        try {
+          if (!oldRange.isEmpty() || !newRange.isEmpty()) this.languageMode.bufferDidChange(event);
+        } catch (error) {
+          updateErrors.push(error);
+        }
+      }
+      // Text already committed in full. Finish recording and delivering its
+      // splices before surfacing an observer error so rollback can invert the
+      // same complete batch rather than an unreported suffix.
+      try {
+        this.updateDisplayLayersForChange(displayChange);
+      } catch (error) {
+        updateErrors.push(error);
+      }
+      if (updateErrors.length) throw updateErrors[0];
+    } finally {
+      edit.dispose();
+      this.applyingEdit = wasApplying;
+    }
+  }
+
   /**
    * @public
    * @status public

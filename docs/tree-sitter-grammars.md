@@ -181,6 +181,8 @@ New revisions cancel queued and already started parser work at its next yield. V
 
 Transaction completion warms fold windows only for the requested views, rather than visiting each edited row. Independent single-line edits on distinct rows already form a compact transaction summary and avoid a temporary native Patch round-trip. Overlapping edits, row shifts and nonstandard coordinates retain native composition; mutation notifications, markers and undo history keep their existing semantics.
 
+Bulk line-comment commands plan their edits from one read of each line. At 64 or more independent line edits, the buffer commits text and updates display geometry once while preserving granular history, applied-change events, syntax edits and marker splices. Nonempty marker layers with range-tracking or destruction callbacks retain sequential mutation so callbacks can inspect intermediate text. Empty marker layers skip native index updates but retain transaction-level update notifications.
+
 Each display view registers its requested buffer fragments, excluding the interiors of folds. Scrolling replaces that view's urgent work while preserving other views of the same buffer. Cached fragments outside those requests remain available as old presentation but are not recomputed on every edit. Display views are weakly referenced and destroyed views are removed from subsequent plans.
 
 Published trees retain their original UTF-16 text and revision. Consumers await `atGrammarSettlement()` to acquire current syntax; they must not edit or delete a published tree. Temporary private copies are released explicitly, while retained trees and queries follow their JavaScript lifetimes through the runtime's finalizers.

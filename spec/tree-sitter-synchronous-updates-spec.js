@@ -82,6 +82,30 @@ describe("Synchronous warm Tree-sitter updates", () => {
     editor.undo();
     current(mode);
   });
+
+  it("finishes bulk comment, uncomment and undo with current visible scopes despite a zero load budget", async () => {
+    const mode = await start('value = "text"\r\n'.repeat(2000));
+    editor.displayLayer.getScreenLines(800, 820);
+    await editor.whenGrammarSettled();
+    editor.selectAll();
+    for (const commented of [true, false]) {
+      editor.toggleLineCommentsInSelection();
+      current(mode);
+      expect(mode.presentation.promise).toBeNull();
+      expect(
+        editor
+          .tokensForScreenRow(800)
+          .some((token) => token.scopes.some((scope) => scope.includes("syntax--comment"))),
+      ).toBe(commented);
+    }
+    editor.undo();
+    current(mode);
+    expect(
+      editor
+        .tokensForScreenRow(800)
+        .some((token) => token.scopes.some((scope) => scope.includes("syntax--comment"))),
+    ).toBe(true);
+  });
   it("creates newly needed layers synchronously when their grammar is already loaded", async () => {
     const mode = await start(
       "# %% [markdown]\n# Heading\n# %% [raw]\n# Another\n# %%\nvalue = 1\n",

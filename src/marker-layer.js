@@ -495,6 +495,9 @@ class MarkerLayer {
    * @category Private TextBuffer Interface
    */
   splice(start, oldExtent, newExtent, newText) {
+    // Empty layers have no coordinates or invalidation state to update. The
+    // buffer still schedules their transaction-level did-update notification.
+    if (this.markersById.size === 0) return;
     // Markers the splice touches (closed interval, so boundary contact counts)
     // move in ways plain arithmetic cannot reproduce — a deletion collapses
     // their boundaries — so they are re-read from the index afterwards. Every

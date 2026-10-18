@@ -7681,10 +7681,15 @@ module.exports = class TextEditor {
     } else {
       let hasCommentedLines = false;
       let hasUncommentedLines = false;
+      const lines = [];
+      const commentColumns = [];
       for (let row = start; row <= end; row++) {
         const line = this.buffer.lineForRow(row);
+        lines.push(line);
+        const columns = columnRangeForStartDelimiter(line, commentStartString);
+        commentColumns.push(columns);
         if (NON_WHITESPACE_REGEXP.test(line)) {
-          if (columnRangeForStartDelimiter(line, commentStartString)) {
+          if (columns) {
             hasCommentedLines = true;
           } else {
             hasUncommentedLines = true;
@@ -7693,24 +7698,25 @@ module.exports = class TextEditor {
       }
 
       const shouldUncomment = hasCommentedLines && !hasUncommentedLines;
+      const edits = [];
 
       if (shouldUncomment) {
         for (let row = start; row <= end; row++) {
-          const columnRange = columnRangeForStartDelimiter(
-            this.buffer.lineForRow(row),
-            commentStartString,
-          );
+          const columnRange = commentColumns[row - start];
           if (columnRange)
-            this.buffer.delete([
-              [row, columnRange[0]],
-              [row, columnRange[1]],
-            ]);
+            edits.push({
+              range: [
+                [row, columnRange[0]],
+                [row, columnRange[1]],
+              ],
+              text: "",
+            });
         }
       } else {
         let minIndentLevel = Infinity;
         let minBlankIndentLevel = Infinity;
         for (let row = start; row <= end; row++) {
-          const line = this.buffer.lineForRow(row);
+          const line = lines[row - start];
           const indentLevel = this.indentLevelForLine(line);
           if (NON_WHITESPACE_REGEXP.test(line)) {
             if (indentLevel < minIndentLevel) minIndentLevel = indentLevel;
@@ -7726,18 +7732,22 @@ module.exports = class TextEditor {
 
         const indentString = this.buildIndentString(minIndentLevel);
         for (let row = start; row <= end; row++) {
-          const line = this.buffer.lineForRow(row);
+          const line = lines[row - start];
           if (NON_WHITESPACE_REGEXP.test(line)) {
             const indentColumn = columnForIndentLevel(line, minIndentLevel, this.getTabLength());
-            this.buffer.insert(Point(row, indentColumn), commentStartString + " ");
+            edits.push({
+              range: new Range(Point(row, indentColumn), Point(row, indentColumn)),
+              text: commentStartString + " ",
+            });
           } else {
-            this.buffer.setTextInRange(
-              new Range(new Point(row, 0), new Point(row, Infinity)),
-              indentString + commentStartString + " ",
-            );
+            edits.push({
+              range: new Range(new Point(row, 0), new Point(row, Infinity)),
+              text: indentString + commentStartString + " ",
+            });
           }
         }
       }
+      this.buffer.setTextInIndependentRanges(edits);
     }
   }
 

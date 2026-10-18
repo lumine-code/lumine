@@ -36,6 +36,39 @@ describe("MarkerLayer", function () {
     expect(uniq(ids).length).toEqual(ids.length);
   });
 
+  it("skips empty native indexes while retaining update events and later marker movement", function () {
+    const splice = spyOn(layer1.index, "splicePacked").and.callThrough();
+    const updated = jasmine.createSpy("updated");
+    layer1.onDidUpdate(updated);
+    buffer.transact(() => {
+      for (let i = 0; i < 100; i++) buffer.insert([0, 0], " ");
+    });
+    expect(splice).not.toHaveBeenCalled();
+    expect(updated.calls.count()).toBe(1);
+    const marker = layer1.markRange(
+      [
+        [0, 102],
+        [0, 105],
+      ],
+      { invalidate: "never" },
+    );
+    buffer.insert([0, 0], "abc");
+    expect(splice.calls.count()).toBe(1);
+    expect(marker.getRange()).toEqual([
+      [0, 105],
+      [0, 108],
+    ]);
+    buffer.undo();
+    expect(marker.getRange()).toEqual([
+      [0, 102],
+      [0, 105],
+    ]);
+    marker.destroy();
+    splice.calls.reset();
+    buffer.insert([0, 0], "next");
+    expect(splice).not.toHaveBeenCalled();
+  });
+
   it("updates each layer's markers when the text changes", function () {
     const defaultMarker = buffer.markRange([
       [0, 3],
