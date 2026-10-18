@@ -81,6 +81,38 @@ describe("Tree-sitter complete child-row exclusions", () => {
     ).toEqual(["before", "after"]);
   });
 
+  for (const endings of [
+    ["\n", "\n"],
+    ["\r\n", "\r\n"],
+    ["\n", "\r\n"],
+    ["\r\n", "\n"],
+  ]) {
+    it(`preserves newline geometry between disjoint ranges with ${JSON.stringify(endings)}`, async () => {
+      const text = `before = "🦉"${endings[0]}# skipped 🦉${endings[1]}after = 2\n`;
+      const mode = await start(text, () => [new Range([1, 0], [1, 12])], null, {
+        newlinesBetween: true,
+      });
+      const layer = mode.getAllInjectionLayers()[0];
+      expect(contents(layer)).toEqual([`before = "🦉"${endings[0]}`, `${endings[1]}after = 2\n`]);
+      for (const range of layer.tree.getIncludedRanges()) {
+        for (const endpoint of ["start", "end"]) {
+          const prefix = text.slice(0, range[`${endpoint}Index`]);
+          const rows = prefix.split("\n");
+          expect(range[`${endpoint}Position`]).toEqual({
+            row: rows.length - 1,
+            column: rows.at(-1).length,
+          });
+        }
+      }
+      expect(layer.tree.rootNode.hasError).toBe(false);
+      expect(
+        layer.tree.rootNode
+          .descendantsOfType("assignment")
+          .map((node) => node.childForFieldName("left").text),
+      ).toEqual(["before", "after"]);
+    });
+  }
+
   it("clips exclusions to the content body and EOF without consuming the next row", async () => {
     const mode = await start(
       "prefix keep\nfirst\nsecond\nlast",

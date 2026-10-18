@@ -6257,13 +6257,15 @@ class NodeRangeSet {
   _ensureNewline(buffer, newRanges, startIndex, startPosition) {
     const lastRange = last(newRanges);
     if (lastRange && lastRange.endPosition.row < startPosition.row) {
+      const newlineStart = new Point(
+        startPosition.row - 1,
+        buffer.lineLengthForRow(startPosition.row - 1),
+      );
       newRanges.push({
-        startPosition: new Point(
-          startPosition.row - 1,
-          buffer.lineLengthForRow(startPosition.row - 1),
-        ),
+        startPosition: newlineStart,
         endPosition: new Point(startPosition.row, 0),
-        startIndex: startIndex - startPosition.column - 1,
+        // Include the complete line ending: buffer columns omit CR in CRLF.
+        startIndex: buffer.characterIndexForPosition(newlineStart),
         endIndex: startIndex - startPosition.column,
       });
     }

@@ -83,6 +83,7 @@ class FoldResolver {
     let end = Point.fromObject({ row: row + 1, column: 0 });
 
     let tree = this.layer.getOrParseTree({ force: false });
+    if (!tree) return null;
     // Search for folds that begin somewhere on the given row.
     let iterator = this.getOrCreateBoundariesIterator(tree.rootNode, start, end);
 
