@@ -4364,7 +4364,23 @@ class LanguageLayer {
     this.rangeList.clear();
 
     if (nodeRangeSet) {
-      includedRanges = nodeRangeSet.getRanges(this.languageMode.buffer);
+      const plannedRanges = nodeRangeSet.getRanges(this.languageMode.buffer);
+      includedRanges = plannedRanges;
+      for (let i = 0; i < plannedRanges.length; i++) {
+        const range = plannedRanges[i];
+        // Mutable-tree range plans can retain offsets from before a burst of
+        // edits and undo. Reconcile them with their current buffer positions.
+        // Add columns to row starts to preserve boundaries inside CRLF.
+        const startIndex =
+          this.buffer.characterIndexForPosition([range.startPosition.row, 0]) +
+          range.startPosition.column;
+        const endIndex =
+          this.buffer.characterIndexForPosition([range.endPosition.row, 0]) +
+          range.endPosition.column;
+        if (startIndex === range.startIndex && endIndex === range.endIndex) continue;
+        if (includedRanges === plannedRanges) includedRanges = plannedRanges.slice();
+        includedRanges[i] = { ...range, startIndex, endIndex };
+      }
       if (includedRanges.length === 0) {
         // We have no ranges to inject into. This layer should no longer exist.
         const range = this.marker.getRange();
