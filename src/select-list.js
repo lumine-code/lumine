@@ -1185,6 +1185,9 @@ class SelectList extends InputDialog {
   renderItems() {
     if (this.items && this.items.length > 0) {
       const className = ["list-group"].concat(this.props.itemsClassList || []).join(" ");
+      // Result changes reveal the selection; action and status renders preserve
+      // the viewport the user may have scrolled away from it.
+      const revealSelection = this.listItems == null;
 
       this.listItems = this.items.map((item, index) => {
         const record = this.displayedRecords[index];
@@ -1204,6 +1207,7 @@ class SelectList extends InputDialog {
           key: this.domIdForIndex(index),
           element: this.prepareItemElement(this.resolveElement(item, opts), index, selected),
           selected: selected,
+          revealSelection,
           onclick: (event) => this.didClickItem(index, event),
           onmiddleclick: () => this.selectIndex(index),
           oncontextmenu: () => this.didContextMenuItem(index),
@@ -1536,6 +1540,7 @@ class SelectList extends InputDialog {
     component.update({
       element: this.prepareItemElement(this.resolveElement(item, opts), index, selected),
       selected: selected,
+      revealSelection: true,
       onclick: (event) => this.didClickItem(index, event),
       onmiddleclick: () => this.selectIndex(index),
       oncontextmenu: () => this.didContextMenuItem(index),
@@ -2119,7 +2124,9 @@ class ListItemView {
     this.onclick = props.onclick;
     this.onmiddleclick = props.onmiddleclick;
     this.oncontextmenu = props.oncontextmenu;
-    etch.getScheduler().updateDocument(this.scrollIntoViewIfNeeded.bind(this));
+    if (props.revealSelection) {
+      etch.getScheduler().updateDocument(this.scrollIntoViewIfNeeded.bind(this));
+    }
   }
 
   scrollIntoViewIfNeeded() {

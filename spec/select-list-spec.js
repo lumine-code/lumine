@@ -765,6 +765,33 @@ describe("SelectList", () => {
       return scroller;
     }
 
+    it("preserves the viewport on status updates and reveals an explicitly selected item", async () => {
+      const scroller = await showNaturalRows(
+        Array.from({ length: 40 }, (_, index) => `row-${index}`),
+      );
+      await view.selectIndex(20);
+      scroller.scrollTop = 0;
+
+      await view.setStatus({ message: "Ready" });
+      expect(scroller.scrollTop).toBe(0);
+
+      expect(view.scrollToItem("row-20")).toBe(true);
+      await nextUpdate();
+      expect(view.getSelectedItem()).toBe("row-20");
+      expect(scroller.scrollTop).toBeGreaterThan(0);
+    });
+
+    it("reveals a retained selection after its row moves in updated results", async () => {
+      const items = Array.from({ length: 40 }, (_, index) => `row-${index}`);
+      const scroller = await showNaturalRows(items);
+      expect(view.getSelectedItem()).toBe("row-0");
+
+      await view.setItems(items.toReversed());
+
+      expect(view.getSelectedItem()).toBe("row-0");
+      expect(scroller.scrollTop).toBeGreaterThan(0);
+    });
+
     it("keeps the label at a stable position while stepping past either viewport edge", async () => {
       const scroller = await showNaturalRows(
         Array.from({ length: 40 }, (_, index) => `row-${index}`),
@@ -2221,10 +2248,11 @@ describe("SelectList", () => {
       expect(lumine.keymaps.findKeyBindings({ command, target: input })).toEqual([]);
     });
 
-    function repeatableList(disposition = "close", didDispatch = () => {}) {
+    function repeatableList(disposition = "close", didDispatch = () => {}, props = {}) {
       view = textItemView({
         commands: { "spec:use-item": { didDispatch } },
         actions: [{ command: "spec:use-item", context: "item", primary: true, disposition }],
+        ...props,
       });
       addHost().show();
       return view;
@@ -2258,19 +2286,57 @@ describe("SelectList", () => {
       expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(false);
     });
 
+    it("keeps the viewport when F12 toggles with the selection scrolled out of view", async () => {
+      repeatableList("close", () => {}, {
+        items: Array.from({ length: 40 }, (_, index) => `item-${index}`),
+      });
+      const scroller = find("ol.list-group");
+      scroller.style.cssText = "max-height: 100px; overflow-y: auto";
+      await nextUpdate();
+      scroller.scrollTop = scroller.scrollHeight;
+      const scrollTop = view.getScrollTop();
+      expect(scrollTop).toBeGreaterThan(0);
+
+      for (const keepOpen of [true, false]) {
+        const finished = new Promise((resolve) => {
+          const subscription = view.onDidFinishAction((event) => {
+            subscription.dispose();
+            resolve(event);
+          });
+        });
+        lumine.keymaps.handleKeyboardEvent(
+          buildKeydownEvent({ key: "F12", target: view.getQueryEditor().getElement() }),
+        );
+        expect((await finished).status).toBe("success");
+        await nextUpdate();
+        expect(view.isKeepOpen()).toBe(keepOpen);
+        expect(view.getSelectedItem()).toBe("item-0");
+        expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(keepOpen);
+        expect(view.getScrollTop()).toBe(scrollTop);
+      }
+    });
+
     it("repeats successful actions without resetting the query, selection or scroll", async () => {
       const used = [];
-      repeatableList("close", ({ detail }) => used.push(detail.item));
-      view.setQuery("t");
-      await view.selectItem("three");
+      repeatableList("close", ({ detail }) => used.push(detail.item), {
+        items: Array.from({ length: 40 }, (_, index) => `item-${index}`),
+      });
+      const scroller = find("ol.list-group");
+      scroller.style.cssText = "max-height: 100px; overflow-y: auto";
+      view.setQuery("item");
+      await view.selectItem("item-20");
       await view.runAction("select-list:toggle-keep-open");
+      scroller.scrollTop = 0;
       const scrollTop = view.getScrollTop();
       await view.confirmSelection();
+      await nextUpdate();
+      expect(view.getScrollTop()).toBe(scrollTop);
       await view.confirmSelection();
-      expect(used).toEqual(["three", "three"]);
+      await nextUpdate();
+      expect(used).toEqual(["item-20", "item-20"]);
       expect(host.isVisible()).toBe(true);
-      expect(view.getQuery()).toBe("t");
-      expect(view.getSelectedItem()).toBe("three");
+      expect(view.getQuery()).toBe("item");
+      expect(view.getSelectedItem()).toBe("item-20");
       expect(view.getScrollTop()).toBe(scrollTop);
       await view.runAction("select-list:toggle-keep-open");
       await view.confirmSelection();
