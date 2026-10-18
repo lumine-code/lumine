@@ -1865,14 +1865,14 @@ describe("TreeSitterLanguageMode", () => {
         return mode;
       }
 
-      it("passes an owned string snapshot and retains text for large nodes", async () => {
+      it("passes an immutable piece snapshot and retains text for large nodes", async () => {
         const contents = "x".repeat(20000);
         const source = "const value = \u0060" + contents + "\u0060;";
         const mode = await buildMode(source);
         const parser = mode.getRootParser();
         spyOn(parser, "parseSync").and.callThrough();
         const tree = mode.parse(mode.rootLanguage, null, null);
-        expect(parser.parseSync.calls.mostRecent().args[0]).toBe(source);
+        expect(parser.parseSync.calls.mostRecent().args[0]).toBe(buffer.getTextSnapshot());
         const template = tree.rootNode.descendantsOfType("template_string")[0];
         spyOn(buffer, "getText").and.callThrough();
         expect(template.text).toBe("\u0060" + contents + "\u0060");

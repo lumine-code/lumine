@@ -1,4 +1,4 @@
-const { Patch } = require("@lumine-code/superstring");
+const Patch = require("./text-patch");
 const Range = require("./range");
 const { traverse, traversal } = require("./point-helpers");
 
@@ -59,9 +59,9 @@ exports.patchFromChanges = function patchFromChanges(changes) {
 };
 
 // A single splice is already compact. Keep its existing JS strings instead of
-// copying them into a native Patch and immediately copying them back out. Undo
+// copying them into a Patch and immediately copying them back out. Undo
 // updates may have different old/new starts, so anchor both ranges at newStart
-// just as patchFromChanges does. Fresh points preserve the native result's
+// just as patchFromChanges does. Fresh points preserve the patch result's
 // independence when event consumers freeze or retain their ranges.
 exports.compactPatchChanges = function compactPatchChanges(changes) {
   if (changes.length !== 1) {
@@ -69,8 +69,8 @@ exports.compactPatchChanges = function compactPatchChanges(changes) {
     return independent ?? exports.patchFromChanges(changes).getChanges();
   }
   const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = changes[0];
-  // Keep native coercion and saturation for nonstandard coordinates. In
-  // particular, clipPosition permits fractions even though native edits use
+  // Keep coordinate coercion and saturation for nonstandard coordinates. In
+  // particular, clipPosition permits fractions even though patch edits use
   // integer coordinates. The common path only handles ordinary text splices.
   if (
     typeof oldText !== "string" ||

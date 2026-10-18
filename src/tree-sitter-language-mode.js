@@ -1613,6 +1613,7 @@ class TreeSitterLanguageMode {
     if (!this.rootLanguageLayer || this.publicationPending) {
       return null;
     }
+    position = this.buffer.clipPosition(position);
     let allLayers = this.languageLayersAtPoint(position);
     const index = this.buffer.characterIndexForPosition(position);
 

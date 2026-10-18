@@ -6,10 +6,16 @@ const BULK_EDIT_LIMIT = 128;
 const ASYNC_SLICE_MS = 4;
 const PARSE_INPUT_UNITS = 4096;
 const NODE_TEXT_UNITS = 32768;
-const nodeTextInput = (text) => (index) => text.slice(index, index + NODE_TEXT_UNITS);
+const textInput = (text, units) =>
+  typeof text.reader === "function"
+    ? text.reader(units)
+    : (index) => text.slice(index, index + units);
+const nodeTextInput = (text) => textInput(text, NODE_TEXT_UNITS);
+const sourceOf = (tree) => metadata.get(tree)?.text ?? tree.input;
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
 function positionAt(text, index) {
+  if (typeof text.positionAt === "function") return text.positionAt(index);
   let row = 0,
     start = 0;
   for (
@@ -28,7 +34,7 @@ function isBulkChange(previous, edits) {
   if (edits.length >= BULK_EDIT_LIMIT) return true;
   let changed = 0;
   for (const edit of edits) changed += edit.oldEndIndex - edit.startIndex + edit.newText.length;
-  return changed >= 8192 && changed >= previous.input.length / 2;
+  return changed >= 8192 && changed >= sourceOf(previous).length / 2;
 }
 
 function rangeCoverage(ranges, text) {
@@ -56,7 +62,7 @@ function rangeCoverage(ranges, text) {
 }
 
 function applyEdits(tree, previous, text, edits) {
-  let source = previous.input;
+  let source = sourceOf(previous);
   const replay = edits.some((edit) => !edit.startPosition);
   for (const edit of edits) {
     const { startIndex, oldEndIndex, newText } = edit;
@@ -77,7 +83,11 @@ function applyEdits(tree, previous, text, edits) {
     });
     // Document journals already carry coordinates. Synthetic boundary edits
     // are coordinate-neutral; only callers without coordinates need replay.
-    if (replay) source = source.slice(0, startIndex) + newText + source.slice(oldEndIndex);
+    if (replay)
+      source =
+        typeof source.replace === "function" && typeof source !== "string"
+          ? source.replace(startIndex, oldEndIndex, newText)
+          : source.slice(0, startIndex) + newText + source.slice(oldEndIndex);
   }
   tree.textCallback = nodeTextInput(text);
   return tree;
@@ -87,7 +97,10 @@ function publish(tree, text, revision, incremental, changedRanges = []) {
   tree.textCallback = nodeTextInput(text);
   metadata.set(tree, { text, revision });
   Object.defineProperties(tree, {
-    input: { value: text },
+    // Legacy consumers explicitly requesting the complete input still receive
+    // a string. Parsing, node text and incremental preparation use the source
+    // snapshot directly and never invoke this materialization getter.
+    input: { get: () => (typeof text === "string" ? text : text.toString()) },
     revision: { value: revision },
     incremental: { value: incremental },
     changedRanges: {
@@ -140,23 +153,24 @@ class TreeSitterParser {
     if (!metadata.has(previous) || !includedRanges?.length || isBulkChange(previous, edits))
       return null;
     const before = previous.getIncludedRanges();
+    const previousText = sourceOf(previous);
     if (before.length !== includedRanges.length) return null;
     const shift = includedRanges[0].startPosition.row - before[0].startPosition.row;
     for (let i = 0; i < before.length; i++) {
       const a = before[i],
         b = includedRanges[i];
       if (
-        a.endIndex > previous.input.length ||
+        a.endIndex > previousText.length ||
         b.endIndex > text.length ||
         b.startPosition.row - a.startPosition.row !== shift ||
         b.endPosition.row - a.endPosition.row !== shift ||
         a.startPosition.column !== b.startPosition.column ||
         a.endPosition.column !== b.endPosition.column ||
-        previous.input.slice(a.startIndex, a.endIndex) !== text.slice(b.startIndex, b.endIndex)
+        previousText.slice(a.startIndex, a.endIndex) !== text.slice(b.startIndex, b.endIndex)
       )
         return null;
-      const first = previous.input.charCodeAt(a.startIndex),
-        last = previous.input.charCodeAt(a.endIndex - 1);
+      const first = previousText.charCodeAt(a.startIndex),
+        last = previousText.charCodeAt(a.endIndex - 1);
       if (
         (first >= 0xdc00 && first <= 0xdfff) ||
         (last >= 0xd800 && last <= 0xdbff) ||
@@ -208,7 +222,7 @@ class TreeSitterParser {
     const oldTree = incremental ? TreeSitterParser.prepareTree(previous, text, { edits }) : null;
     return (this.pending = {
       text,
-      input: (index) => text.slice(index, index + PARSE_INPUT_UNITS),
+      input: textInput(text, PARSE_INPUT_UNITS),
       previous,
       edits,
       revision,

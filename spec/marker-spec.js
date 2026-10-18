@@ -13,6 +13,29 @@ describe("Marker", function () {
     buffer.onDidUpdateMarkers(() => markersUpdatedCount++);
   });
 
+  it("orders overlapping decorations from different marker layers by their actual ranges", () => {
+    const first = buffer.addMarkerLayer();
+    const second = buffer.addMarkerLayer();
+    const short = first.markRange([
+      [0, 2],
+      [0, 6],
+    ]);
+    const long = second.markRange([
+      [0, 2],
+      [0, 12],
+    ]);
+    expect(() => [short, long].sort((a, b) => a.compare(b))).not.toThrow();
+    expect(long.compare(short)).toBeLessThan(0);
+    expect(short.compare(long)).toBeGreaterThan(0);
+    const removed = first.markRange([
+      [0, 1],
+      [0, 3],
+    ]);
+    removed.destroy();
+    expect(() => removed.compare(short)).not.toThrow();
+    expect(() => short.compare(removed)).not.toThrow();
+  });
+
   describe("creation", function () {
     describe("TextBuffer::markRange(range, properties)", function () {
       it("creates a marker for the given range with the given properties", function () {

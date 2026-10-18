@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const TextBuffer = require("../src/text-buffer");
 const temp = require("./text-buffer-helpers/temp");
-const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
+const TextStore = require("../src/text-store");
 
 describe("TextBuffer known file changes", () => {
   let buffer, filePath;
@@ -62,9 +62,7 @@ describe("TextBuffer known file changes", () => {
 
     expect(buffer.getText()).toBe(change.newText);
     expect(buffer.getFileState()).toBe("unmodified");
-    expect(buffer.buffer.baseTextDigest()).toBe(
-      new NativeTextBuffer(change.newText).baseTextDigest(),
-    );
+    expect(buffer.buffer.baseTextDigest()).toBe(new TextStore(change.newText).baseTextDigest());
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed.calls.mostRecent().args[0].origin).toBe("reload");
     expect(applied).toHaveBeenCalledTimes(1);

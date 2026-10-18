@@ -1,4 +1,4 @@
-const { MarkerIndex } = require("@lumine-code/superstring");
+const MarkerIndex = require("../../src/marker-index");
 const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("../../src/point");
 const Range = require("../../src/range");

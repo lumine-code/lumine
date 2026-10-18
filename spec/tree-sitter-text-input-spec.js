@@ -60,9 +60,9 @@ describe("Tree-sitter snapshot text input", () => {
     const reader = document();
     const before = reader.capture();
     buffer.append("\ude00", { normalizeLineEndings: false });
-    expect(before.text).toBe(source);
-    expect(reader.capture().text).toBe(source + "\ude00");
-    expect(reader.capture().text.endsWith("😀")).toBe(true);
+    expect(before.text.toString()).toBe(source);
+    expect(reader.capture().text.toString()).toBe(source + "\ude00");
+    expect(reader.capture().text.slice(-2)).toBe("😀");
   });
 
   it("replays exact indices when CRLF is split between native patch layers", () => {
@@ -72,7 +72,7 @@ describe("Tree-sitter snapshot text input", () => {
     buffer.insert([0, 5], "\r", { normalizeLineEndings: false });
     buffer.insert([1, 6], "\r", { normalizeLineEndings: false });
     const snapshot = reader.capture(previous);
-    expect(snapshot.text).toBe("first\r\nsecond\r\n");
+    expect(snapshot.text.toString()).toBe("first\r\nsecond\r\n");
     expect(snapshot.edits.map((edit) => [edit.startIndex, edit.oldEndIndex, edit.newText])).toEqual(
       [
         [5, 6, "\r\n"],
@@ -81,18 +81,21 @@ describe("Tree-sitter snapshot text input", () => {
     );
   });
 
-  it("materializes one shared input string per committed revision", async () => {
+  it("shares one immutable input root per committed revision without flattening", async () => {
     const mode = await buildLanguageMode("const alpha = 1;\r\n");
     const getText = spyOn(buffer, "getText").and.callThrough();
+    const getSnapshot = spyOn(buffer, "getTextSnapshot").and.callThrough();
     buffer.append("const beta = 2;\r\n");
     expect(mode.tree.rootNode.hasError).toBe(false);
     expect(mode.tree.rootNode.descendantsOfType("identifier").map((node) => node.text)).toEqual([
       "alpha",
       "beta",
     ]);
-    expect(getText).toHaveBeenCalledTimes(1);
+    expect(getText).not.toHaveBeenCalled();
+    expect(getSnapshot).toHaveBeenCalledTimes(1);
     mode.parse(mode.rootLanguage, null, null);
-    expect(getText).toHaveBeenCalledTimes(1);
+    expect(getText).not.toHaveBeenCalled();
+    expect(getSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("captures exact pending UTF-16 edits without delivering or mutating the transaction event", () => {
@@ -113,7 +116,7 @@ describe("Tree-sitter snapshot text input", () => {
       expect(latest.previous).toBe(previous);
       expect(latest.edits.length).toBe(2);
       expect(first.edits.length).toBe(1);
-      expect(first.text).toBe("first\r\n😀second\n");
+      expect(first.text.toString()).toBe("first\r\n😀second\n");
       expect(events.length).toBe(0);
     });
     expect(events.length).toBe(1);
@@ -147,20 +150,20 @@ describe("Tree-sitter snapshot text input", () => {
     const getText = spyOn(buffer, "getText").and.callThrough();
     const result = mode.parseAsync({}, null, null);
     await started;
-    expect(getText).toHaveBeenCalledTimes(1);
+    expect(getText).not.toHaveBeenCalled();
     buffer.setText("const later = 2;");
     finish();
     const tree = await result;
-    expect(submitted).toBe(source);
-    expect(tree.input).toBe(source);
-    expect(tree.parsedText).toBe(source);
+    expect(submitted.toString()).toBe(source);
+    expect(tree.input.toString()).toBe(source);
+    expect(tree.parsedText.toString()).toBe(source);
     expect(mode.releaseParserForLanguage).toHaveBeenCalledTimes(1);
   });
 
   it("does not acquire a parser when capturing the input fails", async () => {
     buffer.setText("const value = 1;");
     const mode = modeWithParser({ parse: () => null });
-    spyOn(buffer, "getText").and.throwError("Cannot freeze text");
+    spyOn(buffer, "getTextSnapshot").and.throwError("Cannot freeze text");
     await expectAsync(mode.parseAsync({}, null, null)).toBeRejectedWithError(/Cannot freeze text/);
     expect(mode.acquireParserForLanguage).not.toHaveBeenCalled();
     expect(mode.releaseParserForLanguage).not.toHaveBeenCalled();
@@ -193,6 +196,6 @@ describe("Tree-sitter snapshot text input", () => {
     expect(template.text).toBe("`old text`");
     expect(tree.rootNode.hasChanges).toBe(false);
     expect(mode.tree.rootNode.descendantsOfType("template_string")[0].text).toBe("`new text`");
-    expect(getText).toHaveBeenCalledTimes(1);
+    expect(getText).not.toHaveBeenCalled();
   });
 });

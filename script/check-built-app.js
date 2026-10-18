@@ -330,7 +330,12 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
       }
     }
   }
-  for (const name of ["electron", "electron-builder", "app-builder-lib"]) {
+  for (const name of [
+    "electron",
+    "electron-builder",
+    "app-builder-lib",
+    "@lumine-code/superstring",
+  ]) {
     expect(
       !entries.includes(`node_modules/${name}/package.json`),
       `Build dependency shipped in app.asar: ${name}`,

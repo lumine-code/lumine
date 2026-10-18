@@ -4,6 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Parser, Language } = require("web-tree-sitter");
 const DocumentParser = require("../../src/tree-sitter-parser");
+const PieceTree = require("../../src/piece-tree");
+const { DocumentCore } = require("../../src/document-core");
+const TreeSitterDocument = require("../../src/tree-sitter-document");
 let language;
 before(async () => {
   await Parser.init();
@@ -12,6 +15,63 @@ before(async () => {
   language = await Language.load(
     fs.readFileSync(path.join(path.dirname(grammarPath), grammar.treeSitter.grammar)),
   );
+});
+
+test("JS document snapshots parse incrementally without flattening and preserve old nodes", () => {
+  const parser = new DocumentParser(language);
+  const document = new DocumentCore('const café = "😀";\r\n'.repeat(2000));
+  const reader = new TreeSitterDocument(document);
+  const flatten = PieceTree.prototype.toString;
+  PieceTree.prototype.toString = () => {
+    throw new Error("Unexpected full materialization");
+  };
+  try {
+    const first = reader.capture();
+    const before = parser.parseSync(first.text, first);
+    const oldNode = before.rootNode.namedChild(0);
+    document.transact((draft) => draft.replace(6, 10, "longName"));
+    const snapshot = reader.capture(before);
+    const after = parser.parseSync(snapshot.text, snapshot);
+    assert.equal(after.incremental, true);
+    assert.equal(after.revision, 1);
+    assert.equal(after.rootNode.namedChild(0).text, 'const longName = "😀";');
+    assert.equal(oldNode.text, 'const café = "😀";');
+    assert.equal(after.rootNode.hasError, false);
+    document.undo();
+    const undone = reader.capture(after);
+    assert.equal(parser.parseSync(undone.text, undone).rootNode.namedChild(0).text, oldNode.text);
+    document.redo();
+    // Exercise the fallback for edit descriptions that lack point coordinates.
+    const replayed = parser.parseSync(document.getTextSnapshot(), {
+      previous: before,
+      edits: [{ startIndex: 6, oldEndIndex: 10, newText: "longName" }],
+      revision: document.getTextRevision(),
+    });
+    assert.equal(replayed.rootNode.namedChild(0).text, 'const longName = "😀";');
+  } finally {
+    PieceTree.prototype.toString = flatten;
+    reader.close();
+    parser.close();
+  }
+});
+
+test("piece input parses astral characters split between pieces and retains suspended input", async () => {
+  const parser = new DocumentParser(language);
+  const source = " ".repeat(32767) + "𐐀 = `" + "line\r\n😀".repeat(12000) + "`;";
+  const document = new DocumentCore(source);
+  try {
+    const snapshot = document.snapshot();
+    const pending = parser.parse(snapshot.text, { revision: snapshot.revision });
+    document.transact((draft) => draft.replace(0, document.getTextSnapshot().length, "changed"));
+    const tree = await pending;
+    assert.equal(tree.rootNode.hasError, false);
+    assert.equal(tree.rootNode.descendantsOfType("identifier")[0].text, "𐐀");
+    assert.equal(tree.rootNode.text, source.slice(tree.rootNode.startIndex));
+    assert.equal(tree.input, source);
+    assert.equal(document.getText(), "changed");
+  } finally {
+    parser.close();
+  }
 });
 
 test("published WASM trees preserve old nodes and cursors across edits", () => {

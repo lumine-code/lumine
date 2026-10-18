@@ -88,7 +88,7 @@ describe("Tree-sitter revisioned text snapshots", () => {
   it("releases the document cache on destruction while retained snapshots stay valid", async () => {
     const { mode } = await buildMode("const value = 1;");
     const tree = mode.tree;
-    expect(mode.document.textSnapshot.text).toBe(tree.input);
+    expect(mode.document.textSnapshot.text.toString()).toBe(tree.input);
     editor.destroy();
     expect(mode.document.closed).toBe(true);
     expect(mode.document.textSnapshot).toBeNull();
@@ -100,14 +100,14 @@ describe("Tree-sitter revisioned text snapshots", () => {
     const changed = `// changed\n${source}`;
     const { buffer, mode } = await buildMode(source);
     const externalReader = readerFor(buffer);
-    expect(externalReader.capture().text).toBe(source);
+    expect(externalReader.capture().text.toString()).toBe(source);
     const reads = [];
     const marker = buffer.markRange([
       [0, 6],
       [0, 11],
     ]);
-    marker.onDidChange(() => reads.push(externalReader.capture().text));
-    buffer.onDidChange(() => reads.push(externalReader.capture().text));
+    marker.onDidChange(() => reads.push(externalReader.capture().text.toString()));
+    buffer.onDidChange(() => reads.push(externalReader.capture().text.toString()));
 
     buffer.insert([0, 0], "// changed\n");
 
@@ -127,20 +127,20 @@ describe("Tree-sitter revisioned text snapshots", () => {
     buffer.loadSync({ discardChanges: true });
     await buffer.getFileWatchStartPromise();
     const externalReader = readerFor(buffer);
-    expect(externalReader.capture().text).toBe(source);
+    expect(externalReader.capture().text.toString()).toBe(source);
 
     const syncSource = "const bravo = 2;";
     fs.writeFileSync(fixturePath, syncSource);
     buffer.loadSync({ discardChanges: true });
-    expect(externalReader.capture().text).toBe(syncSource);
+    expect(externalReader.capture().text.toString()).toBe(syncSource);
 
     const asyncSource = "const gamma = 3;";
     fs.writeFileSync(fixturePath, asyncSource);
     const reload = buffer.reload();
-    expect(externalReader.capture().text).toBe(syncSource);
+    expect(externalReader.capture().text.toString()).toBe(syncSource);
     await reload;
     expect(buffer.getText()).toBe(asyncSource);
-    expect(externalReader.capture().text).toBe(asyncSource);
+    expect(externalReader.capture().text.toString()).toBe(asyncSource);
     expect(await editor.whenGrammarSettled()).toBe(true);
   });
 
@@ -154,7 +154,7 @@ describe("Tree-sitter revisioned text snapshots", () => {
     fs.writeFileSync(fixturePath, changed);
     buffer.setPath(fixturePath);
     const externalReader = readerFor(buffer);
-    expect(externalReader.capture().text).toBe(source);
+    expect(externalReader.capture().text.toString()).toBe(source);
     expect(buffer.getText()).toBe(source);
     const subscription = buffer.onWillReload(() => {
       throw new Error("Reload observer failed");
@@ -169,7 +169,7 @@ describe("Tree-sitter revisioned text snapshots", () => {
     }
 
     expect(buffer.getTextInRange(buffer.getRange())).toBe(changed);
-    expect(externalReader.capture().text).toBe(changed);
+    expect(externalReader.capture().text.toString()).toBe(changed);
     expect(buffer.getText()).toBe(changed);
   });
 

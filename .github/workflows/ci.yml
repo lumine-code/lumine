@@ -156,6 +156,8 @@ jobs:
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
+      - name: Test JavaScript document core
+        run: npm run test:document-core
       - name: Test Tree-sitter runtime
         run: npm run test:tree-sitter-runtime
       - name: Test command-line launchers

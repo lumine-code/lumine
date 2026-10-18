@@ -556,6 +556,7 @@ class Marker {
    * @returns {Number} The range ordering: earlier starts sort first, then longer ranges.
    */
   compare(other) {
+    if (other.layer !== this.layer) return this.getRange().compare(other.getRange());
     return this.layer.compareMarkers(this.id, other.id);
   }
 

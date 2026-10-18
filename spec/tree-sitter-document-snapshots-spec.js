@@ -34,6 +34,16 @@ describe("WASM Tree-sitter document snapshots", () => {
     return mode.tree;
   }
 
+  it("clips tag-matching probes before an empty line without mutating the position", async () => {
+    await start("const value = 1;\n\n");
+    const position = Object.freeze({ row: 1, column: -1 });
+    expect(() => mode.getSyntaxNodeAtPosition(position)).not.toThrow();
+    expect(mode.getSyntaxNodeAtPosition(position)?.id).toBe(
+      mode.getSyntaxNodeAtPosition({ row: 1, column: 0 })?.id,
+    );
+    expect(position.column).toBe(-1);
+  });
+
   it("loads the WASM backend and preserves old nodes and cursors", async () => {
     const tree = await start('const café = "🦉";\r\n');
     expect(tree instanceof WebTreeSitter.Tree).toBe(true);

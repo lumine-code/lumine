@@ -7,7 +7,7 @@ const Point = require("../src/point");
 const Range = require("../src/range");
 const TextBuffer = require("../src/text-buffer");
 const TextBufferFile = require("../src/text-buffer-file");
-const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
+const TextStore = require("../src/text-store");
 const fsAdmin = require("@lumine-code/fs-admin");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
@@ -65,7 +65,7 @@ describe("TextBuffer IO", () => {
       try {
         await TextBuffer.load(dirPath);
       } catch (error) {
-        expect(error.code).toBe(process.platform === "win32" ? "EACCES" : "EISDIR");
+        expect(error.code).toBe("EISDIR");
         done();
       }
     });
@@ -114,7 +114,7 @@ describe("TextBuffer IO", () => {
         TextBuffer.loadSync(dirPath);
         expect("Did not fail with EISDIR").toBeUndefined();
       } catch (e) {
-        expect(e.code).toBe(process.platform === "win32" ? "EACCES" : "EISDIR");
+        expect(e.code).toBe("EISDIR");
       }
     });
 
@@ -496,9 +496,9 @@ describe("TextBuffer IO", () => {
     if (process.platform !== "win32")
       describe("when a permission error occurs (not Windows)", () => {
         beforeEach(() => {
-          const save = NativeTextBuffer.prototype.save;
+          const save = TextStore.prototype.save;
 
-          spyOn(NativeTextBuffer.prototype, "save").and.callFake(function (destination, encoding) {
+          spyOn(TextStore.prototype, "save").and.callFake(function (destination, encoding) {
             if (destination === filePath) {
               return Promise.reject(
                 Object.assign(new Error("Permission denied"), { code: "EACCES" }),
@@ -547,7 +547,7 @@ describe("TextBuffer IO", () => {
           winattr.setAttributesSync(filePath, { hidden: true });
           const permissionError = Object.assign(new Error("Permission denied"), { code: "EACCES" });
           let saveAttempts = 0;
-          spyOn(NativeTextBuffer.prototype, "save").and.callFake(() => {
+          spyOn(TextStore.prototype, "save").and.callFake(() => {
             saveAttempts++;
             if (saveAttempts === 1) return Promise.reject(permissionError);
 
@@ -1320,7 +1320,7 @@ describe("TextBuffer IO", () => {
       const originalLoad = buffer.buffer.load;
       const pendingLoads = [];
       let resolveLoadStarted;
-      spyOn(NativeTextBuffer.prototype, "load").and.callFake(function (pathToLoad, ...args) {
+      spyOn(TextStore.prototype, "load").and.callFake(function (pathToLoad, ...args) {
         const pathToLoadCopy = temp.openSync("lumine").path;
         fs.writeFileSync(pathToLoadCopy, fs.readFileSync(pathToLoad));
         const loadStarted = resolveLoadStarted;
@@ -1566,7 +1566,7 @@ function pauseNextNativeLoad(buffer) {
     resolveLoadStarted = resolve;
   });
 
-  spyOn(NativeTextBuffer.prototype, "load").and.callFake(function (pathToLoad, ...args) {
+  spyOn(TextStore.prototype, "load").and.callFake(function (pathToLoad, ...args) {
     const pathToLoadCopy = temp.openSync("lumine").path;
     fs.writeFileSync(pathToLoadCopy, fs.readFileSync(pathToLoad));
 

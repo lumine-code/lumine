@@ -1,4 +1,4 @@
-const { Patch } = require("@lumine-code/superstring");
+const Patch = require("./text-patch");
 const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");
@@ -454,7 +454,7 @@ class DisplayLayer {
 
   translateBufferPositionWithSpatialIndex(bufferPosition, clipDirection) {
     // Most buffers have no folds or soft wraps, and hard tabs do not add
-    // row/column mappings to this patch. Avoid a native tree lookup when the
+    // row/column mappings to this patch. Avoid a patch tree lookup when the
     // mapping is the identity; cursor movement calls this thousands of times
     // in a large multi-selection.
     if (this.spatialIndex.getChangeCount() === 0) return bufferPosition;
@@ -807,7 +807,7 @@ class DisplayLayer {
 
     // The common case is a position in text, not inside leading spaces. We
     // already fetched its character for the paired-character check above, so
-    // do not cross the native buffer boundary a second time just to reject it.
+    // do not cross the text store boundary a second time just to reject it.
     if (character !== " ") return 0;
 
     const previousTabStop = column - (column % this.tabLength);
@@ -1131,7 +1131,14 @@ class DisplayLayer {
 
     if (this.pendingGeometryStableChange !== change) return;
     this.pendingGeometryStableChange = null;
-    const { oldRange, newRange, oldText, newText } = change;
+    const { oldRange, newRange } = change;
+    if (
+      oldRange.start.row !== oldRange.end.row ||
+      !isEqual(oldRange.start, newRange.start) ||
+      !isEqual(oldRange.end, newRange.end)
+    )
+      return;
+    const { oldText, newText } = change;
     if (
       ratioForCharacter !== this.ratioForCharacter ||
       isWrapBoundary !== this.isWrapBoundary ||
@@ -1324,11 +1331,22 @@ class DisplayLayer {
     let unexpandedScreenColumn = 0;
     let expandedScreenColumn = 0;
 
+    let source = this.buffer.getTextSnapshot();
+    let reader = source.lineReader();
+    const readLine = (row) => {
+      const current = this.buffer.getTextSnapshot();
+      if (current !== source) {
+        source = current;
+        reader = source.lineReader();
+      }
+      return reader(row);
+    };
+
     while (true) {
       if (bufferRow >= newEndBufferRow) break;
       if (screenRow >= endScreenRow && bufferColumn === 0) break;
       if (deadline.timeRemaining() < 2) break;
-      let bufferLine = this.buffer.lineForRow(bufferRow);
+      let bufferLine = readLine(bufferRow);
       if (bufferLine == null) break;
       let bufferLineLength = bufferLine.length;
       let screenLineBuilderInLeadingWhitespace = true;
@@ -1638,7 +1656,7 @@ class DisplayLayer {
           screenLineWidth += characterWidth;
           bufferRow = foldEnd.row;
           bufferColumn = foldEnd.column;
-          bufferLine = this.buffer.lineForRow(bufferRow);
+          bufferLine = readLine(bufferRow);
           bufferLineLength = bufferLine.length;
           if (foldCrossesRows) {
             // A cross-row fold can land in a line with a different alphabet.
@@ -2335,9 +2353,9 @@ function applyGeometrySplices(patch, splices) {
     return;
   }
 
-  // Older superstring pins retain the exact behavior through a sequential
+  // Test doubles without the packed API retain the same behavior through a sequential
   // fallback. Reuse the point objects so the fallback pays only the unavoidable
-  // native call per hunk, not three allocations as well.
+  // splice call per hunk, not three allocations as well.
   const start = { row: 0, column: 0 };
   const deletedExtent = { row: 0, column: 0 };
   const insertedExtent = { row: 0, column: 0 };

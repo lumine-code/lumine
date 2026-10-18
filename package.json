@@ -39,7 +39,6 @@
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#6340cfffae12f089e4407cc12204b12041643f54",
     "@lumine-code/season": "github:lumine-code/season#b0212a0b99cdece50552c5ea8e30919402bb1b3f",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#b893d50bb02e801ba794c6954c5dddb7766ec489",
-    "@lumine-code/superstring": "github:lumine-code/superstring#809c57b536eca226a6cb9433bc75e07a39462574",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#649efa71eda93df22e2e5cb61a22d65fb17654b1",
     "@lumine-code/watcher": "github:lumine-code/watcher#648bc45ae35ae31cd7d226be5ab1882da37229c7",
     "@vscode/ripgrep": "1.18.0",
@@ -59,6 +58,7 @@
     "git-diff": "github:lumine-code/git-diff#327c6baf832eb41376b9287ca00dc91f70d6f2de",
     "go-to-line": "github:lumine-code/go-to-line#5aac94bf9e19eca45b56eb5deefc9021505f90cd",
     "grammar-selector": "github:lumine-code/grammar-selector#02ce0da67d882f72eca7410a7b4e4055d21b1e4c",
+    "iconv-lite": "^0.7.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#d99522ce12041a144cb4bd3b5656dccbf6af774f",
     "jasmine": "7.0.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#67a3142fa9d78d9b30d524d681dc93f0aadfbd56",
@@ -152,7 +152,8 @@
     "check:branding": "electron --no-sandbox script/generate-branding.js --check",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "test": "npm run test:tree-sitter-runtime && npm run test:editor && npm run test:main && npm run test:launchers",
+    "test": "npm run test:document-core && npm run test:tree-sitter-runtime && npm run test:editor && npm run test:main && npm run test:launchers",
+    "test:document-core": "node --test spec/main-process/document-core.test.js spec/main-process/text-store.test.js spec/main-process/text-patch.test.js spec/main-process/marker-index.test.js",
     "test:tree-sitter-runtime": "node --test spec/main-process/tree-sitter-*.test.js",
     "test:editor": "npm run test:only -- spec",
     "test:main": "npm run test:only -- --main-process spec/main-process",
@@ -165,6 +166,7 @@
     "benchmark:tree-sitter-editing": "npm run test:only -- benchmark/tree-sitter-editing-spec.js"
   },
   "devDependencies": {
+    "@lumine-code/superstring": "github:lumine-code/superstring#809c57b536eca226a6cb9433bc75e07a39462574",
     "@babel/parser": "^8.0.7",
     "@electron/asar": "4.3.1",
     "@electron/notarize": "^3.1.1",

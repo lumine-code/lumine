@@ -6,7 +6,7 @@ const _ = require("@lumine-code/underscore-plus");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
+const TextStore = require("./text-store");
 const Point = require("./point");
 const Range = require("./range");
 const DefaultHistoryProvider = require("./default-history-provider");
@@ -30,7 +30,7 @@ const { confirmSave, sameSavePath } = require("./save-confirmation");
 
 function textChangesOnlyPatch(patch) {
   if (!patch || patch.getChangeCount() === 0) return patch;
-  // A native load can invert an edit and rollback into an identical replacement.
+  // A file load can invert an edit and rollback into an identical replacement.
   // Applying that replacement to marker layers would still move their ranges.
   const changes = patch.getChanges();
   const textChanges = changes.filter((change) => change.oldText !== change.newText);
@@ -197,7 +197,7 @@ class TextBuffer {
     this.changeOriginsSinceLastDidChangeTextEvent = new Set();
     this.transactionsSinceLastStoppedChangingEvent = [];
     this.id = crypto.randomBytes(16).toString("hex");
-    this.buffer = new NativeTextBuffer(typeof params === "string" ? params : params.text || "");
+    this.buffer = new TextStore(typeof params === "string" ? params : params.text || "");
     this._textRevision = 0;
     this.debouncedEmitDidStopChangingEvent = debounce(
       this.emitDidStopChangingEvent.bind(this),
@@ -223,7 +223,7 @@ class TextBuffer {
     this.cachedHasAstral = null;
     this._emittedWillChangeEvent = false;
 
-    // File state is deliberately independent of the native buffer's dirty bit.
+    // File state is deliberately independent of the text store's dirty bit.
     // Conflict and removal remain visible until a disk operation reconciles
     // them, even if undo happens to return the text to its saved base.
     this.fileState = this.buffer.getLength() > 0 ? "modified" : "unmodified";
@@ -1029,6 +1029,27 @@ class TextBuffer {
 
   /**
    * @public
+   * @status extended
+   *
+   * Capture immutable text without copying the document. The snapshot remains
+   * valid after edits, undo and buffer destruction. Its read interface exposes
+   * `length`, `lineCount`, `slice(start, end)`, `charCodeAt(index)`, `chunks()`,
+   * `lines(startRow, endRow)`, `lineReader()`, `positionAt(index)` and `offsetAt(point)`.
+   * A line reader returns a row-to-text function with efficient sequential reads
+   * and indexed jumps; requests outside the snapshot return `undefined`.
+   * Offsets count UTF-16 units; line iteration strips LF/CRLF and uses an
+   * exclusive end row. Explicit string reads materialize only their range.
+   * Read {@link #getTextRevision} alongside the snapshot when preparing an
+   * asynchronous edit plan, then pass that revision when applying the plan.
+   * @returns {Object} An immutable text snapshot with indexed and sequential readers.
+   * @category Reading Text
+   */
+  getTextSnapshot() {
+    return this.buffer.getTextSnapshot();
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Get the revision of the current text state. Revisions increase before
@@ -1212,7 +1233,7 @@ class TextBuffer {
    * @public
    * @status extended
    *
-   * Compute native diff changes to target text without modifying this buffer,
+   * Compute diff changes to target text without modifying this buffer,
    * its history, markers or observers. Ranges use UTF-16 buffer coordinates.
    *
    * @param {String} text - Target text.
@@ -1243,7 +1264,7 @@ class TextBuffer {
     const changes = this.buffer.diff(text).getChanges();
     if (changes.length === 0) return;
 
-    // The native differ bounds its edit distance and degrades to a single
+    // The text differ bounds its edit distance and degrades to a single
     // change replacing the whole buffer when the texts differ too much. Use
     // the line-wise JavaScript diff in that case so markers outside the
     // changed lines are still preserved.
@@ -1360,17 +1381,53 @@ class TextBuffer {
     return newRange;
   }
 
-  // Apply a planned collection of independent line edits. Text and display
-  // geometry commit once; history, syntax and marker positions retain the
-  // individual splices. Range trackers and destruction observers can inspect
-  // intermediate text, so those layers keep the ordinary mutation path.
-  setTextInIndependentRanges(edits) {
+  /**
+   * @public
+   * @status extended
+   *
+   * Apply disjoint single-line edits against the current revision as one undo
+   * operation. Each range must address a different row, and replacement text
+   * cannot contain line endings. Input order does not matter. All edits are
+   * validated before changing text; stale revisions and repeated rows reject.
+   *
+   * Large batches share unchanged text and update display geometry once.
+   * Custom range trackers retain intermediate-text callbacks.
+   * @param {Array<Object>} edits - Objects with a buffer `range` and replacement `text`.
+   * @param {Object} [options] - Batch options.
+   * @param {Number} [options.expectedRevision] - Required current revision for an asynchronous plan.
+   * @returns {Boolean} Whether the batch changed text.
+   * @category Mutating Text
+   */
+  setTextInIndependentRanges(edits, { expectedRevision = this.getTextRevision() } = {}) {
     this.assertCanEdit();
-    if (this.transactCallDepth === 0)
-      return this.transact(() => this.setTextInIndependentRanges(edits));
-    if (!this.tryApplyIndependentLineEdits(edits, true)) {
-      for (const { range, text } of edits) this.setTextInRange(range, text);
-    }
+    if (expectedRevision !== this.getTextRevision())
+      throw Object.assign(new Error("Edit plan no longer matches the buffer revision"), {
+        code: "ERR_STALE_EDIT",
+      });
+    const rows = new Set();
+    const planned = edits
+      .map(({ range, text }) => {
+        range = this.clipRange(range);
+        if (
+          typeof text !== "string" ||
+          /[\r\n]/.test(text) ||
+          range.start.row !== range.end.row ||
+          rows.has(range.start.row)
+        )
+          throw new RangeError("Independent edits require distinct single-line ranges and text");
+        rows.add(range.start.row);
+        return { range, text };
+      })
+      .sort((a, b) => a.range.start.row - b.range.start.row);
+    const changes = planned.filter(({ range, text }) => this.getTextInRange(range) !== text);
+    if (!changes.length) return false;
+    return this.transact(() => {
+      if (!this.tryApplyIndependentLineEdits(changes, true)) {
+        for (const { range, text } of changes)
+          this.setTextInRange(range, text, { normalizeLineEndings: false });
+      }
+      return true;
+    });
   }
 
   tryApplyIndependentLineEdits(edits, recordHistory) {
@@ -1381,9 +1438,9 @@ class TextBuffer {
       );
     if (edits.length < 64 || requiresIntermediateText()) return false;
 
-    const source = this.getText();
+    const source = this.getTextSnapshot();
     const changes = [];
-    const parts = [];
+    const storageEdits = [];
     let previousRow = -1;
     let offset = 0;
     let endIndex = 0;
@@ -1408,7 +1465,7 @@ class TextBuffer {
       if (/[\r\n]/.test(oldText)) return false;
       if (Object.hasOwn(planned, "oldText") && planned.oldText !== oldText) return false;
       if (changes.length === 0) firstIndex = endIndex = index;
-      parts.push(source.slice(endIndex, index), text);
+      storageEdits.push({ start: index, end: oldEndIndex, text });
       endIndex = oldEndIndex;
       const newEnd = new Point(oldRange.start.row, oldRange.start.column + text.length);
       changes.push({
@@ -1425,26 +1482,22 @@ class TextBuffer {
       offset += text.length - oldText.length;
     }
 
-    // Sparse edits must not copy a much larger document. A whole-buffer native
-    // commit materializes a flat text layer; a large partial replacement would
-    // instead make every subsequent edit (including undo) copy its remainder.
-    if (source.length > (endIndex - firstIndex) * 8) return false;
     this.emitWillChangeEvent();
     if (requiresIntermediateText()) return false;
     const range = new Range(changes[0].oldStart, changes.at(-1).oldEnd);
-    const replacement = parts.join("");
-    const edit = this.buffer.prepareEdit(
-      this.getRange(),
-      source.slice(0, firstIndex) + replacement + source.slice(endIndex),
-    );
+    const edit = this.buffer.prepareEdits(storageEdits);
     const wasApplying = this.applyingEdit;
     try {
       this.applyingEdit = true;
       const displayChange = {
         oldRange: range,
         newRange: new Range(range.start, changes.at(-1).newEnd),
-        oldText: source.slice(firstIndex, endIndex),
-        newText: replacement,
+        get oldText() {
+          return source.slice(firstIndex, endIndex);
+        },
+        get newText() {
+          return edit.snapshot.slice(firstIndex, endIndex + offset);
+        },
         origin: "edit",
       };
       this.prepareDisplayLayersForChange(displayChange);
@@ -1557,7 +1610,7 @@ class TextBuffer {
     return this.insert(this.getEndPosition(), text, options);
   }
 
-  // All synchronous mutations commit a native prepared edit. History receives
+  // All synchronous mutations commit a prepared text edit. History receives
   // the same immutable text blocks; notifications receive only value snapshots.
   applyChange(edit, { recordHistory = false, origin = "edit" } = {}) {
     const wasApplying = this.applyingEdit;
@@ -1963,7 +2016,7 @@ class TextBuffer {
 
     const snapshot = this.historyProvider.getSnapshot(maxEntries);
 
-    const baseTextBuffer = new NativeTextBuffer(this.getText());
+    const baseTextBuffer = new TextStore(this.getTextSnapshot());
     for (const change of snapshot.undoPatch.getChanges()) {
       const edit = baseTextBuffer.prepareEditFromChange(change);
       try {
@@ -2627,13 +2680,11 @@ class TextBuffer {
     const startId = this.nextMarkerId;
     const exclusive =
       options.exclusive ?? (options.invalidate === "inside" || options.tailed === false);
-    this.nextMarkerId += this.buffer.findAndMarkAllSync(
-      markerLayer.index,
-      startId,
-      exclusive,
-      regex,
-      Range.fromObject(range),
-    );
+    for (const match of this.buffer.findAllInRangeSync(regex, Range.fromObject(range))) {
+      const id = this.nextMarkerId++;
+      markerLayer.index.insert(id, match.start, match.end);
+      markerLayer.index.setExclusive(id, exclusive);
+    }
     const markers = [];
     for (let id = startId; id < this.nextMarkerId; id++) {
       const marker = new Marker(id, markerLayer, null, options, true);
@@ -2652,7 +2703,7 @@ class TextBuffer {
    * @param {String} query - A `String` to search for.
    * @param {String} extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
    * @param {Number} maxCount - A `Number` that limits the number of matches returned
-   * @returns {Promise<Array<Object>|null>} Resolves to subsequence matches containing plain row/column positions, or null when the native search provides no result.
+   * @returns {Promise<Array<Object>|null>} Resolves to subsequence matches containing plain row/column positions, or null when the search provides no result.
    */
   findWordsWithSubsequence(query, extraWordCharacters, maxCount) {
     return this.buffer.findWordsWithSubsequence(query, extraWordCharacters, maxCount);
@@ -2668,7 +2719,7 @@ class TextBuffer {
    * @param {String} extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
    * @param {Number} maxCount - A `Number` that limits the number of matches returned
    * @param {Range|Array|Object} range - A {@link Range} that specifies the portion of the buffer to search
-   * @returns {Promise<Array<Object>|null>} Resolves to subsequence matches containing plain row/column positions, or null when the native search provides no result.
+   * @returns {Promise<Array<Object>|null>} Resolves to subsequence matches containing plain row/column positions, or null when the search provides no result.
    */
   findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range) {
     return this.buffer.findWordsWithSubsequenceInRange(
@@ -2839,7 +2890,7 @@ class TextBuffer {
       const row = range.start.row;
       if (row >= 0 && row <= this.getLastRow()) {
         // Both endpoints share the same bounds. A single-row edit should not
-        // repeat the native line count and line length lookups for each point.
+        // repeat the line count and line length lookups for each point.
         const lineLength = this.lineLengthForRow(row);
         const start =
           range.start.column < 0
@@ -3112,7 +3163,7 @@ class TextBuffer {
         await this.buffer.save(destination, this.getEncoding());
         this.didHaveFileOnDisk = true;
       } catch (error) {
-        if (error.code !== "EACCES" || destination !== filePath) throw error;
+        if (!["EACCES", "EPERM"].includes(error.code) || destination !== filePath) throw error;
 
         const isWindows = process.platform === "win32";
         if (isWindows) {
@@ -3363,7 +3414,7 @@ class TextBuffer {
           force: options && options.discardChanges,
           patch: this.loaded,
         },
-        // The native loader calls this once more before applying its patch.
+        // The text loader calls this once more before applying its patch.
         // Ignoring an obsolete result only after it resolves is too late: it
         // would already have changed the base text and invalidated undo and
         // the diff returned by the next load.
@@ -3374,7 +3425,7 @@ class TextBuffer {
             this.file === file &&
             !this.isDestroyed();
           // The final guard receives the patch and returns straight into the
-          // native reset; progress-only callbacks do not change the text.
+          // text reset; progress-only callbacks do not change the text.
           if (current && patch !== undefined) {
             guardedPatch = textChangesOnlyPatch(patch);
             if (patch === null || guardedPatch.getChangeCount() > 0) this._textRevision++;
@@ -3396,7 +3447,7 @@ class TextBuffer {
       patch = guardedPatch ?? textChangesOnlyPatch(patch);
 
       // A non-forced reload can begin while the buffer is clean, then finish
-      // after the user has edited it. The native buffer returns `null` in that
+      // after the user has edited it. The text store returns `null` in that
       // case so it does not overwrite the edit. Every caller, including an
       // encoding change, must compare the unchanged base text with the file
       // instead of treating the cancelled load as a successful reload.
@@ -3662,12 +3713,12 @@ class TextBuffer {
   // The caller suspends file observation until this synchronous merge finishes.
   applyFileChanges({ oldText, newText, changes }) {
     if (this.isDestroyed() || oldText === newText) return;
-    const previous = new NativeTextBuffer(oldText);
+    const previous = new TextStore(oldText);
     const baseDigest = this.buffer.baseTextDigest();
     if (baseDigest !== previous.baseTextDigest()) {
       // A reload may already have consumed the write. Any other baseline is an
       // unrelated external change and cannot safely be merged with these edits.
-      if (baseDigest !== new NativeTextBuffer(newText).baseTextDigest()) {
+      if (baseDigest !== new TextStore(newText).baseTextDigest()) {
         this.setFileState("conflicted");
       }
       return;

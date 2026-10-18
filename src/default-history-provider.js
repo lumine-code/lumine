@@ -1,8 +1,8 @@
-const { Patch } = require("@lumine-code/superstring");
+const Patch = require("./text-patch");
 const MarkerLayer = require("./marker-layer");
 const { patchFromChanges } = require("./helpers");
 
-const SerializationVersion = 6;
+const SerializationVersion = 7;
 
 class Checkpoint {
   constructor(id, snapshot, isBarrier) {

@@ -3,7 +3,7 @@ const Point = require("./point");
 const Range = require("./range");
 const Marker = require("./marker");
 const MarkerHistoryMap = require("./marker-history-map");
-const { MarkerIndex } = require("@lumine-code/superstring");
+const MarkerIndex = require("./marker-index");
 const { intersectSet } = require("./set-helpers");
 const { traverse } = require("./point-helpers");
 const SerializationVersion = 2;
@@ -63,7 +63,7 @@ class MarkerLayer {
     this.id = id;
     this.maintainHistory = maintainHistory;
     // Mirror of the index's ranges, kept only for history-maintaining layers.
-    // Snapshots share unchanged blocks instead of dumping the native index or
+    // Snapshots share unchanged blocks instead of dumping the marker index or
     // copying every marker. Entries must be replaced, never mutated in place.
     this.historyShadow = maintainHistory ? new MarkerHistoryMap() : null;
     this.historyProperties = maintainHistory ? new MarkerHistoryMap() : null;
@@ -346,7 +346,7 @@ class MarkerLayer {
    * @public
    * @status experimental
    *
-   * Set custom range tracking for this layer, or pass `null` to restore native
+   * Set custom range tracking for this layer, or pass `null` to restore default
    * tracking. The callback receives sorted `{id, range}` entries for markers
    * touching an edit, with their pre-edit ranges, and `{oldRange, newRange,
    * newText}` describing the edit. It returns `{id, range}` entries in the new
@@ -358,7 +358,7 @@ class MarkerLayer {
    * they do not interrupt the buffer edit. Ranges are not clipped, because a
    * reload can apply intermediate edits after installing the final buffer text.
    * The callback is retained by {@link #copy}, but is not serialized: reattach
-   * it after deserialization. Untouched markers continue to use the native index.
+   * it after deserialization. Untouched markers continue to use the marker index.
    *
    * @param {Function|null} [callback] - A range tracker, or `null` to disable it.
    */
@@ -376,7 +376,7 @@ class MarkerLayer {
    *
    * Get the custom tracker used for buffer-coordinate ranges.
    *
-   * @returns {Function|null} The custom range tracker, or `null` when native tracking is used.
+   * @returns {Function|null} The custom range tracker, or `null` when default tracking is used.
    */
   getRangeTracker() {
     return this.trackRanges;
@@ -527,7 +527,7 @@ class MarkerLayer {
         );
         trackedRanges = validateTrackedRanges(result, touched);
       } catch (error) {
-        // The text has already changed. Finish the native splice rather than
+        // The text has already changed. Finish the index splice rather than
         // leaving other marker/display layers in the previous coordinate space.
         console.error("Error tracking marker ranges", error);
         trackedRanges = new Map();
@@ -701,7 +701,7 @@ class MarkerLayer {
     return this.createEagerSnapshot();
   }
 
-  // The pre-shadow snapshot: one native dump plus an object per marker. Kept as
+  // The pre-shadow snapshot: one index dump plus an object per marker. Kept as
   // the fallback for layers without a shadow, and as the referee the shadow is
   // verified against.
   createEagerSnapshot() {
@@ -887,18 +887,22 @@ class MarkerLayer {
   }
 
   getMarkerRange(id) {
-    return Range.fromObject(this.index.getRange(id));
+    return this.index.has(id)
+      ? Range.fromObject(this.index.getRange(id))
+      : Range(Point.ZERO, Point.ZERO);
   }
 
   getMarkerStartPosition(id) {
-    return Point.fromObject(this.index.getStart(id));
+    return this.index.has(id) ? Point.fromObject(this.index.getStart(id)) : Point.ZERO;
   }
 
   getMarkerEndPosition(id) {
-    return Point.fromObject(this.index.getEnd(id));
+    return this.index.has(id) ? Point.fromObject(this.index.getEnd(id)) : Point.ZERO;
   }
 
   compareMarkers(id1, id2) {
+    if (!this.index.has(id1) || !this.index.has(id2))
+      return this.getMarkerRange(id1).compare(this.getMarkerRange(id2));
     return this.index.compare(id1, id2);
   }
 
@@ -909,6 +913,7 @@ class MarkerLayer {
     end = this.delegate.clipPosition(end);
     this.index.remove(id);
     const inserted = this.index.insert(id, start, end);
+    this.index.setExclusive(id, this.markersById.get(id)?.isExclusive() ?? false);
     this.historyShadow?.set(id, {
       sr: start.row,
       sc: start.column,

@@ -1,3 +1,33 @@
+----- BEGIN THIRD-PARTY LICENSE: adapted:superstring_document_algorithms -----
+Source: https://github.com/lumine-code/superstring
+Revision: 809c57b536eca226a6cb9433bc75e07a39462574
+Upstream: https://github.com/pulsar-edit/superstring
+Upstream revision: bcdd63874dcd243291c8e83615bcb1647e31c876
+Components: src/text-store-search.js (subsequence scoring), src/marker-index.js (marker affinity and invalidation), src/text-patch.js (change composition semantics). These JavaScript implementations adapt the behavior of the corresponding Superstring core algorithms; the native binding, PCRE and vendored C++ runtime are not incorporated into them.
+
+The MIT License (MIT)
+
+Copyright (c) 2016 GitHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+----- END THIRD-PARTY LICENSE: adapted:superstring_document_algorithms -----
+
 ----- BEGIN THIRD-PARTY LICENSE: upstream:pulsar-edit_pulsar -----
 Source: https://github.com/pulsar-edit/pulsar
 Revision: 857b0d17a64145205f4db636ff8971a4115c25f6

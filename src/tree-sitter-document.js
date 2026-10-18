@@ -21,13 +21,11 @@ class TreeSitterDocument {
     this.revision = batch.afterRevision;
     this.batches.push(batch);
     this.changeCount += batch.changes.length;
-    for (const change of batch.changes)
-      this.textUnits += change.oldText.length + change.newText.length;
+    for (const change of batch.changes) this.textUnits += changeTextUnits(change);
     while (this.changeCount > this.maxChanges || this.textUnits > this.maxTextUnits) {
       const removed = this.batches.shift();
       this.changeCount -= removed.changes.length;
-      for (const change of removed.changes)
-        this.textUnits -= change.oldText.length + change.newText.length;
+      for (const change of removed.changes) this.textUnits -= changeTextUnits(change);
     }
     if (this.textSnapshot?.revision !== this.buffer.getTextRevision()) this.textSnapshot = null;
   }
@@ -43,7 +41,10 @@ class TreeSitterDocument {
     if (this.closed) throw new Error("Parser document is closed");
     const revision = this.buffer.getTextRevision();
     if (this.textSnapshot?.revision !== revision) {
-      this.textSnapshot = Object.freeze({ revision, text: this.buffer.getText() });
+      this.textSnapshot = Object.freeze({
+        revision,
+        text: this.buffer.getTextSnapshot?.() ?? this.buffer.getText(),
+      });
     }
     const { text } = this.textSnapshot;
     const cached = previous && this.editLists.get(previous.revision);
@@ -52,15 +53,10 @@ class TreeSitterDocument {
     let next = previous?.revision;
     let textUnits = 0;
     const append = (batch) => {
-      for (const {
-        startIndex,
-        oldEndIndex,
-        oldText,
-        newText,
-        oldRange,
-        newRange,
-      } of batch.changes) {
-        textUnits += oldText.length + newText.length;
+      for (const change of batch.changes) {
+        const { startIndex, oldEndIndex, oldRange, newRange } = change;
+        const newText = change.inserted ?? change.newText;
+        textUnits += changeTextUnits(change);
         edits.push(
           Object.freeze({
             startIndex,
@@ -112,3 +108,10 @@ class TreeSitterDocument {
 }
 
 module.exports = TreeSitterDocument;
+
+function changeTextUnits(change) {
+  return (
+    (change.removed?.length ?? change.oldText.length) +
+    (change.inserted?.length ?? change.newText.length)
+  );
+}
