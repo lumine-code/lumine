@@ -441,6 +441,125 @@ describe("Auxiliary editor windows", () => {
     expect(extra.getEditorContainer().getPaneItems()).toEqual([]);
   });
 
+  it("waits for a dragged tab's presentation preparation before inserting and releasing its session", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("Retain the exact dragged document");
+    const remaining = await workspace.open(undefined, { forceNew: true });
+    const sourcePane = workspace.paneForItem(editor);
+    sourcePane.activateItem(editor, { activatePane: true });
+    const element = editor.getElement();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const targetPane = extra.getEditorContainer().getActivePane();
+    const first = workspace.buildTextEditor();
+    const last = workspace.buildTextEditor();
+    targetPane.addItem(first, { index: 0 });
+    targetPane.addItem(last, { index: 1 });
+    targetPane.activateItem(last);
+    const scope = lumine.paneItemTransfers.createScope();
+    const descriptor = scope.createTransfer(sourcePane, editor);
+    const record = lumine.workspaceDrops.getSession(descriptor.token);
+    let enterPrepare, releasePrepare;
+    const entered = new Promise((resolve) => (enterPrepare = resolve));
+    const gate = new Promise((resolve) => (releasePrepare = resolve));
+    editor.prepareWindowChange = () => {
+      enterPrepare();
+      return gate;
+    };
+    let settled = false;
+    const operation = scope.performDrop(
+      { pane: targetPane, surface: "tab-bar", index: 1, resolvePane: () => targetPane },
+      scope.prepareDrop(descriptor, targetPane),
+    );
+    const completion = operation.then(
+      (result) => {
+        settled = true;
+        return { result };
+      },
+      (error) => {
+        settled = true;
+        return { error };
+      },
+    );
+    try {
+      await entered;
+      expect(settled).toBeFalse();
+      expect(workspace.paneForItem(editor)).toBe(sourcePane);
+      expect(sourcePane.getItems()).toEqual([editor, remaining]);
+      expect(targetPane.getItems()).toEqual([first, last]);
+      expect(element.ownerDocument).toBe(document);
+      expect(lumine.workspaceDrops.getSession(descriptor.token)).toBe(record);
+      expect(workspace.windowOperations.has(workspace.getMainWindow())).toBeTrue();
+      expect(workspace.windowOperations.has(extra)).toBeTrue();
+      releasePrepare();
+      expect(await completion).toEqual({ result: { pane: targetPane, item: editor } });
+      expect(sourcePane.getItems()).toEqual([remaining]);
+      expect(targetPane.getItems()).toEqual([first, editor, last]);
+      expect(targetPane.getActiveItem()).toBe(editor);
+      expect(workspace.getActivePane()).toBe(targetPane);
+      expect(editor.getElement()).toBe(element);
+      expect(element.ownerDocument).toBe(extra.getDocument());
+      expect(editor.getText()).toBe("Retain the exact dragged document");
+      expect(lumine.workspaceDrops.getSession(descriptor.token)).toBeUndefined();
+      expect(workspace.windowOperations.size).toBe(0);
+    } finally {
+      releasePrepare();
+      await completion;
+      await workspace.whenWindowOperationsIdle({ prepareToUnload: false });
+      delete editor.prepareWindowChange;
+      scope.dispose();
+    }
+  });
+
+  it("rejects a dragged tab's failed presentation and settles its session after restoring the source", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("Keep the source after a failed drop");
+    const sourcePane = workspace.paneForItem(editor);
+    const element = editor.getElement();
+    const extra = await workspace.openEditorWindow({ show: false });
+    const targetPane = extra.getEditorContainer().getActivePane();
+    const targetEditor = workspace.buildTextEditor();
+    targetPane.activateItem(targetEditor);
+    const scope = lumine.paneItemTransfers.createScope();
+    const descriptor = scope.createTransfer(sourcePane, editor);
+    const record = lumine.workspaceDrops.getSession(descriptor.token);
+    const failure = new Error("The dragged view could not attach");
+    editor.prepareWindowChange = () => ({ scroll: 23 });
+    editor.didChangeWindow = jasmine.createSpy("didChangeWindow").and.callFake(({ rollback }) => {
+      if (!rollback) throw failure;
+    });
+    try {
+      await expectAsync(
+        scope.performDrop(
+          { pane: targetPane, surface: "tab-bar", index: 0, resolvePane: () => targetPane },
+          scope.prepareDrop(descriptor, targetPane),
+        ),
+      ).toBeRejectedWith(failure);
+      expect(await record.completion).toBeFalse();
+      expect(editor.isDestroyed()).toBeFalse();
+      expect(workspace.paneForItem(editor)).toBe(sourcePane);
+      expect(sourcePane.getItems()).toEqual([editor]);
+      expect(sourcePane.getActiveItem()).toBe(editor);
+      expect(targetPane.getItems()).toEqual([targetEditor]);
+      expect(targetPane.getActiveItem()).toBe(targetEditor);
+      expect(editor.getElement()).toBe(element);
+      expect(element.ownerDocument).toBe(document);
+      expect(editor.getText()).toBe("Keep the source after a failed drop");
+      expect(editor.didChangeWindow).toHaveBeenCalledTimes(2);
+      expect(editor.didChangeWindow.calls.mostRecent().args[0]).toEqual(
+        jasmine.objectContaining({ rollback: true, state: { scroll: 23 } }),
+      );
+      expect(lumine.workspaceDrops.getSession(descriptor.token)).toBeUndefined();
+      expect(scope.sessions.has(descriptor.token)).toBeFalse();
+      expect(workspace.windowOperations.size).toBe(0);
+    } finally {
+      delete editor.prepareWindowChange;
+      delete editor.didChangeWindow;
+      scope.dispose();
+    }
+  });
+
   it("asks once for a document when every one of its views is closing", async () => {
     lumine.config.set("core.promptOnCloseDirtyBuffer", true);
     const workspace = lumine.workspace;

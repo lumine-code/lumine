@@ -598,7 +598,7 @@ class PaneItemTransferScope {
   async performDrop(context, prepared) {
     this.assertAvailable();
     try {
-      if (prepared.sameWindow) return this.moveLocalItem(context, prepared);
+      if (prepared.sameWindow) return await this.moveLocalItem(context, prepared);
       return await this.openRemoteItem(context, prepared);
     } catch (error) {
       await this.service.workspaceDrops.rollback(prepared.descriptor.token, error.message, {
@@ -626,14 +626,20 @@ class PaneItemTransferScope {
       session.scope.release(descriptor.token, "item dropped on its current pane");
       return { pane: sourcePane, item };
     }
-    return sourcePane.transactActiveState(() => {
+    let result;
+    sourcePane.transactActiveState(() => {
       const targetPane = context.resolvePane({ allowSplit: prepared.allowSplit });
       this.assertLocation(targetPane, descriptor);
-      this.moveItem(sourcePane, targetPane, item, context.index);
-      targetPane.activateItem(item, { activatePane: true });
-      session.scope.release(descriptor.token, "item moved within its source window");
-      return { pane: targetPane, item };
+      result = this.moveItem(sourcePane, targetPane, item, context.index, { activatePane: true });
     });
+    const finish = (result) => {
+      session.scope.release(descriptor.token, "item moved within its source window");
+      return result;
+    };
+    // Presentation changes complete asynchronously. Keep their Promise outside
+    // the synchronous active-state transaction and retain the drag session
+    // until the transfer service has committed the move and its activation.
+    return result && typeof result.then === "function" ? result.then(finish) : finish(result);
   }
 
   assertNoCollision(uri, items) {
@@ -823,7 +829,7 @@ class PaneItemTransferScope {
     for (const entry of viewStates) entry.item.restoreViewState(entry.state);
   }
 
-  moveItem(sourcePane, targetPane, item, index) {
+  moveItem(sourcePane, targetPane, item, index, { activatePane = false } = {}) {
     const sourceIndex = sourcePane.getItems().indexOf(item);
     if (sourceIndex < 0) throw new Error("The dragged pane item is no longer available");
     let targetIndex = Number.isInteger(index)
@@ -833,13 +839,15 @@ class PaneItemTransferScope {
       if (sourceIndex < targetIndex) targetIndex--;
       targetIndex = Math.max(0, Math.min(targetIndex, targetPane.getItems().length - 1));
       if (sourceIndex !== targetIndex) targetPane.moveItem(item, targetIndex);
+      if (activatePane) targetPane.activateItem(item, { activatePane: true });
+      return { pane: targetPane, item };
     } else {
       targetIndex = Math.max(0, Math.min(targetIndex, targetPane.getItems().length));
-      this.service.movePaneItem(item, {
+      return this.service.movePaneItem(item, {
         sourcePane,
         targetPane,
         index: targetIndex,
-        activatePane: false,
+        activatePane,
       });
     }
   }
