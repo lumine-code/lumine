@@ -815,6 +815,25 @@ describe("SelectList", () => {
       expect(rows[0].getBoundingClientRect().height).toBe(27);
     });
 
+    it("keeps separators thin and their vertical spacing on the pixel grid", async () => {
+      view = createSelectList({
+        sections: [
+          { id: "first", items: ["one", "two"] },
+          { id: "second", items: ["three"] },
+        ],
+        renderItem: naturalRow,
+      });
+      view.getElement().style.setProperty("--ui-spacing", "10.4px");
+      await addHost().show();
+      await nextUpdate();
+      const separator = find('[role="separator"]');
+      const style = getComputedStyle(separator);
+      expect(separator.getBoundingClientRect().height).toBe(1);
+      expect(parseFloat(style.marginTop)).toBe(5);
+      expect(parseFloat(style.marginBottom)).toBe(5);
+      expect(style.padding).toBe("0px");
+    });
+
     it("lets a consumer override the default with an explicit row height", async () => {
       const stylesheet = lumine.styles.addStyleSheet(
         ".spec-select-list-fixed-height { height: 35.5px; }",

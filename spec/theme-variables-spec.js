@@ -326,7 +326,8 @@ describe("the theme variable contract", () => {
     expect(selectListSource).not.toContain(".character-match");
     expect(selectListSource).toContain("&:hover:not(.selected)");
     expect(selectListSource).toContain('> li.select-list-separator[role="separator"]');
-    expect(selectListSource).toContain("height: 1px");
+    // SelectList's geometry specs verify the separator's visible weight and
+    // spacing; their CSS values follow the owning display's pixel grid.
     expect(selectListSource).toContain("width: auto");
     // The horizontal inset is the part themes set; the vertical spacing next
     // to it is presentation this layer owns and is free to retune.
