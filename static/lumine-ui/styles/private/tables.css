@@ -187,12 +187,8 @@ table {
   > th.success,
   &.success > td,
   &.success > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-success) 12%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-success) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-success) h s calc(l + 25));
   }
 }
 .table-hover > tbody > tr {
@@ -201,12 +197,8 @@ table {
   &.success:hover > td,
   &:hover > .success,
   &.success:hover > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-success) 18%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-success) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-success) h s calc(l + 20));
   }
 }
 
@@ -218,12 +210,8 @@ table {
   > th.info,
   &.info > td,
   &.info > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-info) 12%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-info) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-info) h s calc(l + 25));
   }
 }
 .table-hover > tbody > tr {
@@ -232,12 +220,8 @@ table {
   &.info:hover > td,
   &:hover > .info,
   &.info:hover > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-info) 18%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-info) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-info) h s calc(l + 20));
   }
 }
 
@@ -249,12 +233,8 @@ table {
   > th.warning,
   &.warning > td,
   &.warning > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-warning) 12%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-warning) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-warning) h s calc(l + 25));
   }
 }
 .table-hover > tbody > tr {
@@ -263,12 +243,8 @@ table {
   &.warning:hover > td,
   &:hover > .warning,
   &.warning:hover > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-warning) 18%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-warning) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-warning) h s calc(l + 20));
   }
 }
 
@@ -280,12 +256,8 @@ table {
   > th.danger,
   &.danger > td,
   &.danger > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-error) 12%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-error) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-error) h s calc(l + 25));
   }
 }
 .table-hover > tbody > tr {
@@ -294,11 +266,7 @@ table {
   &.danger:hover > td,
   &:hover > .danger,
   &.danger:hover > th {
-    color: var(--text-color-highlight);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-error) 18%,
-      var(--base-background-color)
-    );
+    color: hsl(from var(--text-color-error) h s calc(l - 40));
+    background-color: hsl(from var(--background-color-error) h s calc(l + 20));
   }
 }

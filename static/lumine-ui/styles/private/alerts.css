@@ -58,27 +58,32 @@
   }
 }
 
-/* Shared alert geometry uses theme-owned status colors on a tinted UI surface. */
+/* Use the same distinct severity pair as notifications, rather than washing
+   every status into the surrounding UI surface. */
 .alert-success {
   --alert-tint: var(--background-color-success);
+  --alert-text: var(--text-color-success);
 }
 .alert-info {
   --alert-tint: var(--background-color-info);
+  --alert-text: var(--text-color-info);
 }
 .alert-warning {
   --alert-tint: var(--background-color-warning);
+  --alert-text: var(--text-color-warning);
 }
 .alert-danger {
   --alert-tint: var(--background-color-error);
+  --alert-text: var(--text-color-error);
 }
 
 .alert-success,
 .alert-info,
 .alert-warning,
 .alert-danger {
-  color: var(--text-color-highlight);
-  background-color: color-mix(in srgb, var(--alert-tint) 12%, var(--base-background-color));
-  border-color: color-mix(in srgb, var(--alert-tint) 35%, var(--base-background-color));
+  color: hsl(from var(--alert-text) h s calc(l - 40));
+  background-color: hsl(from var(--alert-tint) h s calc(l + 25));
+  border-color: hsl(from var(--alert-tint) h s calc(l + 15));
   hr {
     border-top-color: inherit;
   }

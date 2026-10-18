@@ -459,13 +459,9 @@ input[type="checkbox"] {
   }
   /* Set validation states also for addons */
   .input-group-addon {
-    color: var(--text-color-success);
-    border-color: var(--text-color-success);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-success) 12%,
-      var(--input-background-color)
-    );
+    color: hsl(from var(--text-color-success) h s calc(l - 40));
+    border-color: hsl(from var(--background-color-success) h s calc(l + 15));
+    background-color: hsl(from var(--background-color-success) h s calc(l + 25));
   }
   /* Optional feedback icon */
   .form-control-feedback {
@@ -494,13 +490,9 @@ input[type="checkbox"] {
     }
   }
   .input-group-addon {
-    color: var(--text-color-warning);
-    border-color: var(--text-color-warning);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-warning) 12%,
-      var(--input-background-color)
-    );
+    color: hsl(from var(--text-color-warning) h s calc(l - 40));
+    border-color: hsl(from var(--background-color-warning) h s calc(l + 15));
+    background-color: hsl(from var(--background-color-warning) h s calc(l + 25));
   }
   .form-control-feedback {
     color: var(--text-color-warning);
@@ -528,13 +520,9 @@ input[type="checkbox"] {
     }
   }
   .input-group-addon {
-    color: var(--text-color-error);
-    border-color: var(--text-color-error);
-    background-color: color-mix(
-      in srgb,
-      var(--background-color-error) 12%,
-      var(--input-background-color)
-    );
+    color: hsl(from var(--text-color-error) h s calc(l - 40));
+    border-color: hsl(from var(--background-color-error) h s calc(l + 15));
+    background-color: hsl(from var(--background-color-error) h s calc(l + 25));
   }
   .form-control-feedback {
     color: var(--text-color-error);
