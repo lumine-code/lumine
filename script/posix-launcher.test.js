@@ -72,14 +72,17 @@ class Probe {
     info.UseShellExecute = false;
     info.CreateNoWindow = true;
     bool readInput = Environment.GetEnvironmentVariable("LUMINE_TEST_READ_STDIN") == "1";
-    info.RedirectStandardInput = readInput;
+    // One redirected handle makes .NET explicitly inherit stdout and stderr.
+    // Without it, CreateNoWindow can discard the MSYS output handles.
+    info.RedirectStandardInput = true;
     // Framework Process.Start uses Console.InputEncoding for its stdin writer
     // and flushes the preamble before the raw byte pump can access BaseStream.
     if (readInput && Console.InputEncoding.CodePage == 65001 && Console.InputEncoding.GetPreamble().Length > 0)
       Console.InputEncoding = new System.Text.UTF8Encoding(false);
     using (var child = Process.Start(info)) {
       if (nodeMode) File.WriteAllText(Environment.GetEnvironmentVariable("LUMINE_TEST_BOOTSTRAP"), "{\"pid\":" + child.Id + ",\"parentPid\":" + Process.GetCurrentProcess().Id + "}");
-      if (readInput) { Console.OpenStandardInput().CopyTo(child.StandardInput.BaseStream); child.StandardInput.Close(); }
+      if (readInput) Console.OpenStandardInput().CopyTo(child.StandardInput.BaseStream);
+      child.StandardInput.Close();
       child.WaitForExit(); return child.ExitCode;
     }
   }
