@@ -1753,6 +1753,7 @@ describe("TreeSitterLanguageMode", () => {
         });
         try {
           buffer.append("\nconst beta = 1;");
+          await mode.atGrammarSettlement();
           expect(mode.tree.revision).toBe(buffer.getTextRevision());
           expect(mode.tree.rootNode.hasError).toBe(false);
           expect(
@@ -1764,7 +1765,7 @@ describe("TreeSitterLanguageMode", () => {
         }
       });
 
-      it("allows a zero initial sync budget while keeping subsequent edits synchronous", async () => {
+      it("uses asynchronous slices for initial and subsequent updates with a zero sync budget", async () => {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         buffer.setText("function f(a, b) { return a + b; }\n".repeat(100));
@@ -1782,8 +1783,9 @@ describe("TreeSitterLanguageMode", () => {
         mode.parseAsync.calls.reset();
         spyOn(mode, "parse").and.callThrough();
         buffer.insert([0, 0], ";");
-        expect(mode.parseAsync).not.toHaveBeenCalled();
-        expect(mode.parse).toHaveBeenCalled();
+        await mode.atGrammarSettlement();
+        expect(mode.parseAsync).toHaveBeenCalled();
+        expect(mode.parse).not.toHaveBeenCalled();
         expect(mode.tree.revision).toBe(buffer.getTextRevision());
         expect(mode.tree.rootNode.hasError).toBe(false);
       });

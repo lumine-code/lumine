@@ -52,6 +52,7 @@ describe("Packed Tree-sitter injection change routing", () => {
     }
     const mode = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
       buffer,
+      highlightCache: new (require("../src/tree-sitter-highlight-cache"))(),
       injectionsMarkerLayer: markerLayer,
       rootLanguageLayer: { handleTextChange: jasmine.createSpy("root change") },
       isFoldableCache: [true],

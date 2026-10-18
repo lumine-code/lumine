@@ -88,7 +88,7 @@ describe("Static Tree-sitter injection query contract", () => {
     );
     expect(() =>
       compile(regex('(#set! injection.language "regex") (#offset! @injection.content 0 1 0 -1)')),
-    ).toThrowError(/Unknown query predicate `#offset!`/);
+    ).toThrowError(/unsupported predicate #offset!/);
     expect(() => compile(regex('(#set! injection.language "regex") (#is? local)'))).toThrowError(
       /unsupported predicate #is\?/,
     );

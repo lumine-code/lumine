@@ -1,5 +1,6 @@
 const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
+const captureQuery = require("./tree-sitter-query-cache");
 const { comparePoints, resolveNodePosition } = require("./tree-sitter-node-helpers");
 
 function clamp(value, min, max) {
@@ -207,8 +208,12 @@ class IndentResolver {
         // `get` path) or that we're willing to spend the time to do a
         // synchronous reparse (the `parse` path). Either way, we'll be able to
         // deliver a synchronous answer to the question.
-        indentTree = controllingLayer.getOrParseTree();
-      } else {
+        indentTree = controllingLayer.getOrParseTree({
+          bounded:
+            !options.forceTreeParse && languageMode.useAsyncParsing && languageMode.useAsyncIndent,
+        });
+      }
+      if (!indentTree) {
         // We can't answer this yet because we don't yet have a new syntax
         // tree, and are unwilling to spend time doing a synchronous re-parse.
         // Return a promise that will fulfill once the transaction is over.
@@ -270,7 +275,7 @@ class IndentResolver {
     let positionSet = new Set();
 
     // Perform the Phase 1 capture.
-    let indentCaptures = indentsQuery.captures(indentTree.rootNode, {
+    let indentCaptures = captureQuery(controllingLayer, indentsQuery, indentTree, {
       startPosition: { row: comparisonRow, column: 0 },
       endPosition: { row: row, column: 0 },
     });
@@ -504,14 +509,28 @@ class IndentResolver {
         // `controllingLayer` so that it can be considered when making the
         // initial decision between sync/async hinting.
         indentsQuery = dedentControllingLayer.queries.indentsQuery;
-        indentTree = dedentControllingLayer.getOrParseTree();
+        indentTree = dedentControllingLayer.getOrParseTree({
+          bounded:
+            !options.forceTreeParse && languageMode.useAsyncParsing && languageMode.useAsyncIndent,
+        });
+        if (!indentTree)
+          return this.suggestedIndentForBufferRow(row, tabLength, {
+            ...options,
+            tree: null,
+            controllingLayer: null,
+          });
       }
 
       // Perform the Phase 2 capture.
-      let dedentCaptures = indentsQuery.captures(indentTree.rootNode, {
-        startPosition: { row: row - 1, column: Infinity },
-        endPosition: { row: row + 1, column: 0 },
-      });
+      let dedentCaptures = captureQuery(
+        dedentControllingLayer ?? controllingLayer,
+        indentsQuery,
+        indentTree,
+        {
+          startPosition: { row: row - 1, column: Infinity },
+          endPosition: { row: row + 1, column: 0 },
+        },
+      );
 
       let currentRowText = lineText.trim();
       // We can reuse the position set we created for Phase 1.
@@ -766,11 +785,19 @@ class IndentResolver {
   }
 
   suggestedIndentForBufferRows(startRow, endRow, tabLength, options = {}) {
+    const rows =
+      options.rows ??
+      Array.from({ length: Math.max(0, endRow - startRow + 1) }, (_, index) => startRow + index);
+    const trees = new Map();
+    const treeForLayer = (layer) => {
+      if (!trees.has(layer)) trees.set(layer, layer.getOrParseTree());
+      return trees.get(layer);
+    };
     let { languageMode } = this;
     let root = languageMode.rootLanguageLayer;
     if (!root || !root.tree) {
       let results = new Map();
-      for (let row = startRow; row <= endRow; row++) {
+      for (const row of rows) {
         results.set(row, null);
       }
       return results;
@@ -783,7 +810,11 @@ class IndentResolver {
     let { isPastedText = false } = options;
     let indentDelta;
 
-    for (let row = startRow; row <= endRow; row++) {
+    for (const row of rows) {
+      if (comparisonRow !== null && row > comparisonRow + 1) {
+        comparisonRow = null;
+        comparisonRowIndent = null;
+      }
       // If this row were being indented by `suggestedIndentForBufferRow`, it'd
       // look at the end of the previous row to find the controlling layer,
       // because we start at the previous row to find the suggested indent for
@@ -810,7 +841,7 @@ class IndentResolver {
           if (!controllingLayer) {
             return null;
           }
-          let tree = controllingLayer.getOrParseTree();
+          let tree = treeForLayer(controllingLayer);
 
           let firstLineCurrentIndent = this.indentLevelForLine(
             this.buffer.lineForRow(row),
@@ -857,10 +888,11 @@ class IndentResolver {
       // rows' indentations yet.
       let indent;
       if (controllingLayer) {
-        let tree = controllingLayer.getOrParseTree();
+        let tree = treeForLayer(controllingLayer);
         let rowOptions = {
           ...options,
           tree,
+          controllingLayer,
           comparisonRow: comparisonRow ?? undefined,
           comparisonRowIndent: comparisonRowIndent ?? undefined,
           indentationLevels: results,
@@ -990,7 +1022,7 @@ class IndentResolver {
       return undefined;
     }
 
-    const indents = indentsQuery.captures(indentTree.rootNode, {
+    const indents = captureQuery(controllingLayer, indentsQuery, indentTree, {
       startPosition: { row: row - 1, column: Infinity },
       endPosition: { row: row + 1, column: 0 },
     });

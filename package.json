@@ -37,7 +37,6 @@
     "@lumine-code/fuzzy-native": "github:lumine-code/fuzzy-native#4d3c3d4d0f302a634e48a2494cbfcbf232210f12",
     "@lumine-code/grim": "github:lumine-code/grim#76f5e3969bc0f5d6ab6c836b449dfa01ec68da3c",
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#6340cfffae12f089e4407cc12204b12041643f54",
-    "@lumine-code/node-tree-sitter": "github:lumine-code/node-tree-sitter#fba60a6c2ff7a64eaa43d91b1dc227c1090eb682",
     "@lumine-code/season": "github:lumine-code/season#b0212a0b99cdece50552c5ea8e30919402bb1b3f",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#b893d50bb02e801ba794c6954c5dddb7766ec489",
     "@lumine-code/superstring": "github:lumine-code/superstring#809c57b536eca226a6cb9433bc75e07a39462574",
@@ -114,6 +113,7 @@
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#c6757e5a3c1cde61b70086b927ce4d9f4b257621",
     "tree-view": "github:lumine-code/tree-view#c1781b2f9680b1079e9c583431aed03e5b0992a3",
+    "web-tree-sitter": "0.27.1",
     "whitespace": "github:lumine-code/whitespace#9ffac1ee231b7761ef7b1544ad3b645d5cd5d576",
     "winattr": "^4.0.0",
     "window-title": "github:lumine-code/window-title#027ab6e4b42c4238c8a854407c58c0fe2d1be5a3",
@@ -121,7 +121,7 @@
   },
   "private": true,
   "scripts": {
-    "build": "node script/prepare-tree-sitter.js && electron-rebuild",
+    "build": "electron-rebuild",
     "benchmark:display": "node script/benchmark-display.js",
     "benchmark:injection-routing": "node script/benchmark-injection-routing.js",
     "benchmark:presentation": "node script/benchmark-presentation.js",
@@ -177,7 +177,6 @@
     "mock-spawn": "^0.2.6",
     "prettier": "^3.9.9",
     "sinon": "22.1.0",
-    "web-tree-sitter": "0.27.0",
     "yargs": "18.2.0"
   },
   "allowScripts": {

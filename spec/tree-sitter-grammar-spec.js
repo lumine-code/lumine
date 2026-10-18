@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const CSON = require("@lumine-code/season");
-const NativeTreeSitter = require("@lumine-code/node-tree-sitter");
+const WebTreeSitter = require("web-tree-sitter");
 const { Disposable } = require("@lumine-code/event-kit");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
@@ -72,7 +72,7 @@ describe("TreeSitterGrammar", () => {
       grammar.activate();
       const query = await grammar.getQuery("highlightsQuery");
       const internalQuery = grammar._getOrCreateInternalQuerySync("(identifier) @internal");
-      const retainedTree = new NativeTreeSitter()
+      const retainedTree = new WebTreeSitter.Parser()
         .setLanguage(grammar.getLanguageSync())
         .parse("value;");
       const subscriptions = grammar.subscriptions;
@@ -118,7 +118,7 @@ describe("TreeSitterGrammar", () => {
       const primary = new Error("Grammar removal observer failed");
       const subscriptionError = new Error("Grammar subscription cleanup failed");
       const laterError = new Error("Later subscription cleanup failed");
-      const retainedTree = new NativeTreeSitter()
+      const retainedTree = new WebTreeSitter.Parser()
         .setLanguage(grammar.getLanguageSync())
         .parse("value;");
       const laterCleanup = jasmine.createSpy("laterCleanup").and.callFake(() => {
@@ -158,7 +158,7 @@ describe("TreeSitterGrammar", () => {
       grammar.activate();
       await grammar.getLanguage();
       const oldQuery = grammar._getOrCreateInternalQuerySync("(identifier) @old");
-      const retainedTree = new NativeTreeSitter()
+      const retainedTree = new WebTreeSitter.Parser()
         .setLanguage(grammar.getLanguageSync())
         .parse("value;");
       const oldSubscriptions = grammar.subscriptions;
@@ -204,7 +204,7 @@ describe("TreeSitterGrammar", () => {
     });
 
     it("keeps a registered grammar lazy until its language is requested", async () => {
-      const load = spyOn(NativeTreeSitter, "loadLanguage").and.callThrough();
+      const load = spyOn(WebTreeSitter.Language, "load").and.callThrough();
       const grammar = makeGrammar();
 
       await Promise.resolve();
@@ -216,8 +216,8 @@ describe("TreeSitterGrammar", () => {
     });
 
     it("shares one in-flight language load between grammars using the same Wasm", async () => {
-      const originalLoad = NativeTreeSitter.loadLanguage;
-      const load = spyOn(NativeTreeSitter, "loadLanguage").and.callFake(async (...args) => {
+      const originalLoad = WebTreeSitter.Language.load;
+      const load = spyOn(WebTreeSitter.Language, "load").and.callFake(async (...args) => {
         await wait(10);
         return originalLoad(...args);
       });
@@ -337,7 +337,7 @@ describe("TreeSitterGrammar", () => {
       await grammar.getLanguage();
       spyOn(grammar, "createQuerySync").and.callThrough();
       const query = grammar._getOrCreateInternalQuerySync("(identifier) @candidate");
-      const retainedTree = new NativeTreeSitter()
+      const retainedTree = new WebTreeSitter.Parser()
         .setLanguage(grammar.getLanguageSync())
         .parse("value;");
 
@@ -365,10 +365,10 @@ describe("TreeSitterGrammar", () => {
       grammar.activate();
       const current = await grammar.getLanguage();
       expect(current).not.toBe(previous);
-      expect(new NativeTreeSitter().setLanguage(current).parse("value = 1\n").rootNode.type).toBe(
-        "module",
-      );
-      expect(new NativeTreeSitter().setLanguage(previous).parse("value;\n").rootNode.type).toBe(
+      expect(
+        new WebTreeSitter.Parser().setLanguage(current).parse("value = 1\n").rootNode.type,
+      ).toBe("module");
+      expect(new WebTreeSitter.Parser().setLanguage(previous).parse("value;\n").rootNode.type).toBe(
         "program",
       );
       grammar.deactivate();
@@ -412,7 +412,7 @@ describe("TreeSitterGrammar", () => {
       expect(error).not.toBe(null);
       // The original error object is rethrown, not wrapped.
       expect(error instanceof Error).toBe(true);
-      expect(Number.isInteger(error.offset)).toBe(true);
+      expect(Number.isInteger(error.index)).toBe(true);
       let descriptor = error.queryDescriptor;
       expect(descriptor).toBeDefined();
       expect(descriptor.scopeName).toBe("source.test-js");
@@ -489,7 +489,7 @@ describe("TreeSitterGrammar", () => {
 
       expect(error).not.toBe(null);
       expect(error instanceof Error).toBe(true);
-      expect(Number.isInteger(error.offset)).toBe(true);
+      expect(Number.isInteger(error.index)).toBe(true);
       expect(error.queryDescriptor.word).toBe("mystery_node");
       expect(path.basename(error.queryDescriptor.filePath)).toBe("sync.scm");
     });

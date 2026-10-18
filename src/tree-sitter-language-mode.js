@@ -1,4 +1,7 @@
-const { SyntaxNode: Node, BackgroundParser } = require("@lumine-code/node-tree-sitter");
+const { Node } = require("web-tree-sitter");
+const TreeSitterParser = require("./tree-sitter-parser");
+const HighlightCache = require("./tree-sitter-highlight-cache");
+const captureQuery = require("./tree-sitter-query-cache");
 const TreeSitterDocument = require("./tree-sitter-document");
 const parserScheduler = require("./tree-sitter-scheduler");
 const { Point, Range, spliceArray } = require("./text-buffer");
@@ -31,8 +34,8 @@ const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
-// Only the first parse has a synchronous budget; unfinished initial work runs
-// on a worker. All updates after coherent publication complete synchronously.
+// Small updates publish synchronously; all layers share the task budget.
+// Larger updates resume in bounded WASM slices without exposing partial trees.
 const PARSE_JOB_LIMIT_MICROS = 5000;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
@@ -193,6 +196,7 @@ class TreeSitterLanguageMode {
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
+    this.highlightCache = new HighlightCache();
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
     this.synchronousUpdates = false;
@@ -338,6 +342,7 @@ class TreeSitterLanguageMode {
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
     this.document.close();
+    this.highlightCache.clear();
 
     let layers = this.getAllLanguageLayers();
     for (let layer of layers) {
@@ -567,6 +572,7 @@ class TreeSitterLanguageMode {
   }
 
   bufferDidChange(change) {
+    this.highlightCache.edit(change);
     this.publicationPending = true;
     if (!this.rootLanguageLayer) {
       return;
@@ -753,6 +759,7 @@ class TreeSitterLanguageMode {
             new Point(range.start.row + FOLD_PREFILL_MAX_ROWS, 0),
           );
         }
+        if (!parserScheduler.hasBudget(this.syncTimeoutMicros)) break;
         this.prefillFoldCache(prefillRange);
       }
 
@@ -789,7 +796,7 @@ class TreeSitterLanguageMode {
     if (endRow - startRow > FOLD_PREFILL_MAX_ROWS) {
       prefillRange = new Range(range.start, new Point(startRow + FOLD_PREFILL_MAX_ROWS, 0));
     }
-    this.prefillFoldCache(prefillRange);
+    if (parserScheduler.hasBudget(this.syncTimeoutMicros)) this.prefillFoldCache(prefillRange);
   }
 
   emitRangeUpdate(range) {
@@ -840,7 +847,7 @@ class TreeSitterLanguageMode {
         );
         const reused =
           capture.previous &&
-          BackgroundParser.reuseSnapshot(capture.previous, capture.text, {
+          TreeSitterParser.reuseSnapshot(capture.previous, capture.text, {
             edits: capture.edits,
             revision: capture.revision,
             includedRanges: ranges,
@@ -1113,7 +1120,7 @@ class TreeSitterLanguageMode {
       return new NullLanguageModeHighlightIterator();
     }
     if (this.publicationPending) return new PendingHighlightIterator(this);
-    return new HighlightIterator(this);
+    return this.highlightCache.record(new HighlightIterator(this), this.buffer);
   }
 
   classNameForScopeId(scopeId) {
@@ -1332,6 +1339,7 @@ class TreeSitterLanguageMode {
           try {
             signal?.throwIfAborted();
             const options = {
+              deadlineForSlice: () => parserScheduler.deadline(4000),
               previous: capture.previous,
               edits: extraEdits.length
                 ? Object.freeze([...capture.edits, ...extraEdits])
@@ -1343,12 +1351,13 @@ class TreeSitterLanguageMode {
               this.syncTimeoutMicros > 0
                 ? parser.tryParseSync(capture.text, {
                     ...options,
-                    timeoutMicros: this.syncTimeoutMicros,
+                    deadline: parserScheduler.deadline(this.syncTimeoutMicros),
                   })
                 : null;
             if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
+            if (!tree) return null;
             this.backgroundSnapshots.add(tree);
-            this.parseDetails.set(tree, { incremental: Boolean(capture.previous) });
+            this.parseDetails.set(tree, { incremental: tree.incremental });
             return tree;
           } catch (error) {
             if (error.name === "AbortError" || this.destroyed) return null;
@@ -1370,26 +1379,60 @@ class TreeSitterLanguageMode {
       });
   }
 
-  parse(language, oldTree, includedRanges, { scopeName = null, extraEdits = [] } = {}) {
+  parse(
+    language,
+    oldTree,
+    includedRanges,
+    { scopeName = null, extraEdits = [], allowAsync = false, budgetOnly = false, signal } = {},
+  ) {
     if (this.destroyed) return null;
     const previous =
-      oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
+      oldTree?.language === language && TreeSitterParser.isSnapshot(oldTree) ? oldTree : null;
     const capture = this.document.capture(previous);
     const parser = this.acquireParserForLanguage(language);
-    try {
-      const tree = parser.parseSync(capture.text, {
-        previous: capture.previous,
-        edits: extraEdits.length ? Object.freeze([...capture.edits, ...extraEdits]) : capture.edits,
-        revision: capture.revision,
-        includedRanges: includedRanges ?? undefined,
-      });
+    const options = {
+      signal,
+      deadlineForSlice: () => parserScheduler.deadline(4000),
+      previous: capture.previous,
+      edits: extraEdits.length ? Object.freeze([...capture.edits, ...extraEdits]) : capture.edits,
+      revision: capture.revision,
+      includedRanges: includedRanges ?? undefined,
+    };
+    const finish = (tree) => {
+      if (!tree) return null;
       this.backgroundSnapshots.add(tree);
-      this.parseDetails.set(tree, { incremental: Boolean(capture.previous) });
+      this.parseDetails.set(tree, { incremental: tree.incremental });
       return tree;
+    };
+    let deferred = false;
+    try {
+      const tree =
+        (allowAsync || budgetOnly) && this.useAsyncParsing
+          ? parser.tryParseSync(capture.text, {
+              ...options,
+              deadline: parserScheduler.deadline(this.syncTimeoutMicros),
+            })
+          : parser.parseSync(capture.text, options);
+      if (tree) return finish(tree);
+      if (budgetOnly) {
+        parser.reset();
+        return null;
+      }
+      deferred = true;
+      return parser
+        .parse(capture.text, options)
+        .then(finish)
+        .catch((error) => {
+          if (!this.destroyed && error.name !== "AbortError")
+            throw this.describeParseFailure(error, { scopeName, includedRanges });
+          return null;
+        })
+        .finally(() => this.releaseParserForLanguage(language, parser));
     } catch (error) {
+      if (error.name === "AbortError") return null;
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     } finally {
-      this.releaseParserForLanguage(language, parser);
+      if (!deferred) this.releaseParserForLanguage(language, parser);
     }
   }
 
@@ -1946,7 +1989,10 @@ class TreeSitterLanguageMode {
   //   transaction.
   //
   shouldParseSynchronously() {
-    return this.synchronousUpdates || !this.useAsyncParsing;
+    return (
+      !this.useAsyncParsing ||
+      (this.synchronousUpdates && parserScheduler.hasBudget(this.syncTimeoutMicros))
+    );
   }
 
   shouldUseAsyncIndent() {
@@ -2021,6 +2067,16 @@ class TreeSitterLanguageMode {
   suggestedIndentForBufferRows(...args) {
     this.ensureQueriesForLayersSync("indentsQuery");
     return this.indentResolver.suggestedIndentForBufferRows(...args);
+  }
+
+  suggestedIndentForBufferRowsAtRows(rows, tabLength, options = {}) {
+    this.ensureQueriesForLayersSync("indentsQuery");
+    return this.indentResolver.suggestedIndentForBufferRows(
+      rows[0],
+      rows[rows.length - 1],
+      tabLength,
+      { ...options, rows },
+    );
   }
 
   // Get the suggested indentation level for a line in the buffer on which the
@@ -3566,7 +3622,7 @@ class LanguageLayer {
     let extent = this.getExtent();
 
     let captures =
-      this.queries.highlightsQuery?.captures(this.tree.rootNode, {
+      captureQuery(this, this.queries.highlightsQuery, this.tree, {
         startPosition: from,
         endPosition: to,
       }) ?? [];
@@ -4097,69 +4153,74 @@ class LanguageLayer {
       return includedRanges;
     if (this.backgroundTree.language !== this.grammar.getLanguageSync()) return includedRanges;
     const capture = this.languageMode.document.capture(this.backgroundTree);
-    if (!capture.previous) return includedRanges;
-    const tree = BackgroundParser.prepareTree(capture.previous, capture.text, {
+    if (!capture.previous || TreeSitterParser.isBulkChange(capture.previous, capture.edits))
+      return includedRanges;
+    const tree = TreeSitterParser.prepareTree(capture.previous, capture.text, {
       edits: capture.edits,
     });
-    const length = this.buffer.getLength();
-    let captures = this.getParseBoundaryCaptures(tree);
-    const fragments = [];
-    for (const { name, node } of captures) {
-      if (name !== "parse.boundary") continue;
-      const startIndex = node.startIndex;
-      const endIndex = node.endIndex;
-      if (endIndex - startIndex >= MINIMUM_BOUNDARY_DISTANCE) continue;
-      fragments.push({
-        startIndex,
-        endIndex,
-        startPosition: node.startPosition,
-        endPosition: node.endPosition,
-      });
-    }
-    // Repeated edits can accumulate reused tiny leaves. Mark only a bounded
-    // contiguous region dirty without changing any byte or coordinate, so the
-    // scanner can consolidate it during this parse. Reacquire nodes afterward.
-    let compacted = false;
-    for (const edit of smallFragmentRegions(fragments)) {
-      if (
-        includedRanges &&
-        !includedRanges.some(
-          (range) => edit.startIndex >= range.startIndex && edit.oldEndIndex <= range.endIndex,
+    try {
+      const length = this.buffer.getLength();
+      let captures = this.getParseBoundaryCaptures(tree);
+      const fragments = [];
+      for (const { name, node } of captures) {
+        if (name !== "parse.boundary") continue;
+        const startIndex = node.startIndex;
+        const endIndex = node.endIndex;
+        if (endIndex - startIndex >= MINIMUM_BOUNDARY_DISTANCE) continue;
+        fragments.push({
+          startIndex,
+          endIndex,
+          startPosition: node.startPosition,
+          endPosition: node.endPosition,
+        });
+      }
+      // Repeated edits can accumulate reused tiny leaves. Mark only a bounded
+      // contiguous region dirty without changing any byte or coordinate, so the
+      // scanner can consolidate it during this parse. Reacquire nodes afterward.
+      let compacted = false;
+      for (const edit of smallFragmentRegions(fragments)) {
+        if (
+          includedRanges &&
+          !includedRanges.some(
+            (range) => edit.startIndex >= range.startIndex && edit.oldEndIndex <= range.endIndex,
+          )
         )
-      )
-        continue;
-      if (
-        !this.isSafeParseBoundary(edit.startIndex, edit.startPosition) ||
-        !this.isSafeParseBoundary(edit.oldEndIndex, edit.oldEndPosition)
-      )
-        continue;
-      tree.edit(edit);
-      this.parseCompactionEdits.push(
-        Object.freeze({
-          startIndex: edit.startIndex,
-          oldEndIndex: edit.oldEndIndex,
-          newText: capture.text.slice(edit.startIndex, edit.oldEndIndex),
-        }),
+          continue;
+        if (
+          !this.isSafeParseBoundary(edit.startIndex, edit.startPosition) ||
+          !this.isSafeParseBoundary(edit.oldEndIndex, edit.oldEndPosition)
+        )
+          continue;
+        tree.edit(edit);
+        this.parseCompactionEdits.push(
+          Object.freeze({
+            startIndex: edit.startIndex,
+            oldEndIndex: edit.oldEndIndex,
+            newText: capture.text.slice(edit.startIndex, edit.oldEndIndex),
+          }),
+        );
+        compacted = true;
+      }
+      if (compacted) {
+        this.treeIsDirty = true;
+        captures = this.getParseBoundaryCaptures(tree);
+      }
+      const boundaries = [];
+      for (const { name, node } of captures) {
+        if (name !== "parse.boundary") continue;
+        const index = node.endIndex;
+        if (index <= 0 || index >= length) continue;
+        const position = node.endPosition;
+        if (!this.isSafeParseBoundary(index, position)) continue;
+        boundaries.push({ index, position });
+      }
+      return splitIncludedRanges(
+        includedRanges ?? [rangeToTreeSitterRangeSpec(this.buffer.getRange(), this.buffer)],
+        boundaries,
       );
-      compacted = true;
+    } finally {
+      tree.delete();
     }
-    if (compacted) {
-      this.treeIsDirty = true;
-      captures = this.getParseBoundaryCaptures(tree);
-    }
-    const boundaries = [];
-    for (const { name, node } of captures) {
-      if (name !== "parse.boundary") continue;
-      const index = node.endIndex;
-      if (index <= 0 || index >= length) continue;
-      const position = node.endPosition;
-      if (!this.isSafeParseBoundary(index, position)) continue;
-      boundaries.push({ index, position });
-    }
-    return splitIncludedRanges(
-      includedRanges ?? [rangeToTreeSitterRangeSpec(this.buffer.getRange(), this.buffer)],
-      boundaries,
-    );
   }
 
   _performUpdate(nodeRangeSet, params = {}) {
@@ -4282,7 +4343,7 @@ class LanguageLayer {
       const capture = this.languageMode.document.capture(this.backgroundTree);
       const reused =
         capture.previous &&
-        BackgroundParser.reuseSnapshot(capture.previous, capture.text, {
+        TreeSitterParser.reuseSnapshot(capture.previous, capture.text, {
           edits: capture.edits,
           revision,
           includedRanges,
@@ -4295,10 +4356,22 @@ class LanguageLayer {
     }
     const parseRanges = this.getParseRanges(includedRanges);
     if (this.languageMode.shouldParseSynchronously()) {
+      const controller = new AbortController();
+      this.parseAbort = controller;
+      this.parseStarted = true;
       const tree = this.languageMode.parse(language, this.backgroundTree, parseRanges, {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
+        allowAsync: true,
+        signal: controller.signal,
       });
+      if (tree?.then)
+        return tree
+          .then((result) => this._applyParsedTree(result, context))
+          .finally(() => {
+            if (this.parseAbort === controller) this.parseAbort = null;
+          });
+      this.parseAbort = null;
       return this._applyParsedTree(tree, context);
     }
     const controller = new AbortController();
@@ -4564,7 +4637,7 @@ class LanguageLayer {
   // in-transaction indentation request. Private snapshots never replace the
   // committed tree; retained nodes remain valid. force:false returns null when
   // the committed snapshot is stale.
-  getOrParseTree({ force = true } = {}) {
+  getOrParseTree({ force = true, bounded = false } = {}) {
     if (this.tree?.revision === this.buffer.getTextRevision() && !this.treeIsDirty) {
       return this.tree;
     }
@@ -4582,6 +4655,7 @@ class LanguageLayer {
     return this.languageMode.parse(this.language, this.tree, this.getParseRanges(ranges), {
       scopeName: this.grammar.scopeName,
       extraEdits: this.parseCompactionEdits,
+      budgetOnly: bounded,
     });
   }
 
@@ -4597,7 +4671,7 @@ class LanguageLayer {
     // If the cursor is resting before column X, we want all scopes that cover
     // the character in column X.
     let captures =
-      this.queries.highlightsQuery?.captures(this.tree.rootNode, {
+      captureQuery(this, this.queries.highlightsQuery, this.tree, {
         startPosition: point,
         endPosition: point.translate(ONE_CHAR_FORWARD_TRAVERSAL),
       }) ?? [];
@@ -5867,7 +5941,23 @@ class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
       new Range([position.row, 0], [endRow == null ? Infinity : endRow + 1, 0]),
     );
     mode.publicationRanges.add(range);
-    return super.seek(position);
+    const cached = mode.highlightCache.read(position, range.end, [
+      mode.idForScope(mode.grammar.scopeName),
+    ]);
+    this.iterator = cached.iterator;
+    return cached.scopes;
+  }
+  getPosition() {
+    return this.iterator?.getPosition() ?? Point.INFINITY;
+  }
+  getOpenScopeIds() {
+    return this.iterator?.getOpenScopeIds() ?? [];
+  }
+  getCloseScopeIds() {
+    return this.iterator?.getCloseScopeIds() ?? [];
+  }
+  moveToSuccessor() {
+    return this.iterator?.moveToSuccessor();
   }
 }
 

@@ -110,6 +110,7 @@ describe("parse failure diagnostics", () => {
   });
 
   it("settles a failed edit transaction and allows the next one to recover", async () => {
+    languageMode.useAsyncParsing = false;
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
     const parse = spyOn(parser, "parseSync").and.throwError(new Error("broken incremental parse"));

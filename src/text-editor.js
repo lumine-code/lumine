@@ -2317,18 +2317,92 @@ module.exports = class TextEditor {
     const groupingInterval = options.groupUndo ? this.undoGroupingInterval : 0;
     if (options.autoIndentNewline == null) options.autoIndentNewline = this.shouldAutoIndent();
     if (options.autoDecreaseIndent == null) options.autoDecreaseIndent = this.shouldAutoIndent();
-    const result = this.mutateSelectedText((selection) => {
-      const range = selection.insertText(text, options);
-      const didInsertEvent = { text, range };
-      this.emitter.emit("did-insert-text", didInsertEvent);
-      return range;
-    }, groupingInterval);
+    const languageMode = this.buffer.getLanguageMode();
+    const batchNewlineIndent =
+      text === "\n" &&
+      options.autoIndentNewline &&
+      this.getSelections().length > 1 &&
+      languageMode.suggestedIndentForBufferRowsAtRows;
+    const insertionOptions = batchNewlineIndent
+      ? { ...options, autoIndent: false, autoIndentNewline: false }
+      : options;
+    const indentMarkers = [];
+    let result;
+    try {
+      result = this.mutateSelectedText((selection) => {
+        const range = selection.insertText(text, insertionOptions);
+        if (batchNewlineIndent) indentMarkers.push(this.markBufferPosition(range.end));
+        const didInsertEvent = { text, range };
+        this.emitter.emit("did-insert-text", didInsertEvent);
+        return range;
+      }, groupingInterval);
+    } catch (error) {
+      for (const marker of indentMarkers) marker.destroy();
+      throw error;
+    }
     if (groupLastChanges) this.buffer.groupLastChanges();
 
-    if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
+    if (batchNewlineIndent) {
+      this.adjustNewlineIndentation(indentMarkers, languageMode);
+    } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
       this.scheduleIndentAdjustment();
     }
     return result;
+  }
+
+  adjustNewlineIndentation(markers, languageMode) {
+    const buffer = this.buffer;
+    const revision = buffer.getTextRevision();
+    const options = { preserveLeadingWhitespace: true, skipBlankLines: false };
+    const isCurrent = () =>
+      canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+    const cleanup = () => {
+      for (const marker of markers) marker.destroy();
+    };
+    const apply = () => {
+      if (!isCurrent()) return;
+      const rows = [
+        ...new Set(
+          markers
+            .filter((marker) => marker.isValid())
+            .map((marker) => marker.getHeadBufferPosition().row),
+        ),
+      ].sort((a, b) => a - b);
+      if (!rows.length) return;
+      // Plan every cursor against the same committed trees, then edit once.
+      const indents = languageMode.suggestedIndentForBufferRowsAtRows(
+        rows,
+        this.getTabLength(),
+        options,
+      );
+      if (!indents) return;
+      this.transact(() => {
+        for (const [row, indent] of indents)
+          if (typeof indent === "number") this.setIndentationForBufferRow(row, indent, options);
+      });
+      if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+    };
+    if (!languageMode.publicationPending) {
+      try {
+        apply();
+      } finally {
+        cleanup();
+      }
+      return;
+    }
+    let pending;
+    const adjustment = handleIndentationErrors(
+      Promise.resolve(languageMode.atGrammarSettlement()).then(apply),
+      isCurrent,
+    );
+    pending = adjustment.finally(() => {
+      cleanup();
+      if (this.autoIndentAtTransactionEndPromise === pending)
+        this.autoIndentAtTransactionEndPromise = null;
+    });
+    this.autoIndentAtTransactionEndPromise = pending;
+    pending.catch(() => {});
+    return pending;
   }
 
   /**
@@ -7321,6 +7395,7 @@ module.exports = class TextEditor {
   // * options - An `Object` of options to pass through to {@link TextEditor#setIndentationForBufferRow}.
   autoIndentBufferRow(bufferRow, options) {
     const buffer = this.buffer;
+    const requestedRevision = buffer.getTextRevision();
     const languageMode = buffer.getLanguageMode();
     const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
     const indentLevel = this.suggestedIndentForBufferRow(bufferRow, options);
@@ -7333,7 +7408,7 @@ module.exports = class TextEditor {
       // transaction.
       return handleIndentationErrors(
         Promise.resolve(indentLevel).then((indentLevel) => {
-          if (!isCurrent()) return;
+          if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
           if (typeof indentLevel === "number") {
             const revision = buffer.getTextRevision();
             const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
@@ -7404,6 +7479,7 @@ module.exports = class TextEditor {
 
   autoDecreaseIndentForBufferRow(bufferRow) {
     const buffer = this.buffer;
+    const requestedRevision = buffer.getTextRevision();
     const languageMode = buffer.getLanguageMode();
     const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
     if (!languageMode.suggestedIndentForEditedBufferRow) {
@@ -7416,7 +7492,7 @@ module.exports = class TextEditor {
     if (indentLevel?.then) {
       return handleIndentationErrors(
         Promise.resolve(indentLevel).then((indentLevel) => {
-          if (!isCurrent()) return;
+          if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
           // We have a stricter contract than `autoIndentBufferRow`: if
           // `suggestedIndentForEditedBufferRow` doesn't return a number, we
           // should ignore it. Otherwise we run the risk of dedenting something
@@ -7451,7 +7527,7 @@ module.exports = class TextEditor {
     const buffer = this.buffer;
     const languageMode = buffer.getLanguageMode();
     if (!languageMode.atTransactionEnd) return;
-    if (languageMode.shouldParseSynchronously?.()) return;
+    if (!force && languageMode.shouldParseSynchronously?.()) return;
     if (!languageMode.useAsyncParsing || !languageMode.useAsyncIndent) return;
 
     let pending;

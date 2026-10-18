@@ -2,11 +2,11 @@ const TextBuffer = require("../src/text-buffer");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 const CSON = require("@lumine-code/season");
-const Native = require("@lumine-code/node-tree-sitter");
+const WebTreeSitter = require("web-tree-sitter");
 const scheduler = require("../src/tree-sitter-scheduler");
 const grammarPath = require.resolve("language-javascript/grammars/javascript.json");
 
-describe("Native Tree-sitter document snapshots", () => {
+describe("WASM Tree-sitter document snapshots", () => {
   let buffer, grammar, mode;
   beforeEach(() => {
     jasmine.useRealClock();
@@ -34,9 +34,9 @@ describe("Native Tree-sitter document snapshots", () => {
     return mode.tree;
   }
 
-  it("loads the pinned native backend and preserves old nodes and cursors", async () => {
+  it("loads the WASM backend and preserves old nodes and cursors", async () => {
     const tree = await start('const café = "🦉";\r\n');
-    expect(tree instanceof Native.Tree).toBe(true);
+    expect(tree instanceof WebTreeSitter.Tree).toBe(true);
     const node = tree.rootNode,
       cursor = node.walk(),
       revision = tree.revision;
@@ -129,7 +129,7 @@ describe("Native Tree-sitter document snapshots", () => {
     ).toBe(true);
   });
 
-  it("closing the buffer settles pending native work without publication", async () => {
+  it("closing the buffer settles pending WASM work without publication", async () => {
     begin("const value = 1;\n".repeat(20000));
     const changed = jasmine.createSpy("changed");
     mode.onDidChangeHighlighting(changed);

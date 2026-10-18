@@ -53,8 +53,21 @@ class TreeSitterDocument {
     if (previous && next !== revision && this.revision === revision) {
       for (const batch of this.batches) {
         if (batch.beforeRevision !== next) continue;
-        for (const { startIndex, oldEndIndex, newText } of batch.changes) {
-          edits.push(Object.freeze({ startIndex, oldEndIndex, newText }));
+        for (const { startIndex, oldEndIndex, newText, oldRange, newRange } of batch.changes) {
+          edits.push(
+            Object.freeze({
+              startIndex,
+              oldEndIndex,
+              newText,
+              ...(oldRange && newRange
+                ? {
+                    startPosition: oldRange.start,
+                    oldEndPosition: oldRange.end,
+                    newEndPosition: newRange.end,
+                  }
+                : {}),
+            }),
+          );
         }
         next = batch.afterRevision;
         if (next === revision) break;

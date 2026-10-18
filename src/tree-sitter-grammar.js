@@ -1,9 +1,8 @@
 const fs = require("fs");
 const path = require("path");
-const NativeTreeSitter = require("@lumine-code/node-tree-sitter");
-const { Query, BackgroundParser } = NativeTreeSitter;
+const { Language, Parser, Query } = require("web-tree-sitter");
+const TreeSitterParser = require("./tree-sitter-parser");
 const { createHash } = require("node:crypto");
-const { grammarExportName } = require("./tree-sitter-wasm");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
@@ -14,7 +13,22 @@ const {
   throwLifecycleErrors,
 } = require("./package-lifecycle-errors");
 
-// Native query compilation reports UTF-8 byte offsets.
+// Read runtime bytes with Node: Electron cannot fetch file:// Wasm on every OS.
+let parserInitPromise;
+function initializeParser() {
+  if (!parserInitPromise) {
+    parserInitPromise = fs.promises
+      .readFile(require.resolve("web-tree-sitter/web-tree-sitter.wasm"))
+      .then((wasmBinary) => Parser.init({ wasmBinary }))
+      .catch((error) => {
+        parserInitPromise = null;
+        throw error;
+      });
+  }
+  return parserInitPromise;
+}
+
+// QueryError kinds supplied by web-tree-sitter.
 const QUERY_ERROR_KIND_LABELS = {
   1: "syntax error",
   2: "unknown node type",
@@ -48,6 +62,7 @@ module.exports = class TreeSitterGrammar {
   static LANGUAGE_CACHE = new Map();
 
   static async loadLanguage(grammarPath) {
+    await initializeParser();
     const input =
       typeof grammarPath === "string" ? await fs.promises.readFile(grammarPath) : grammarPath;
     const digest = createHash("sha256").update(input).digest("hex");
@@ -55,7 +70,7 @@ module.exports = class TreeSitterGrammar {
     if (cached?.digest === digest) return cached.promise;
     const entry = {
       digest,
-      promise: NativeTreeSitter.loadLanguage(grammarExportName(input), input),
+      promise: Language.load(input),
     };
     this.LANGUAGE_CACHE.set(grammarPath, entry);
     try {
@@ -218,7 +233,7 @@ module.exports = class TreeSitterGrammar {
   }
 
   createParser(language = this._language) {
-    return new BackgroundParser(language);
+    return new TreeSitterParser(language);
   }
 
   _createQuery(language, queryContents) {
@@ -445,13 +460,7 @@ module.exports = class TreeSitterGrammar {
     try {
       let source = this[queryType];
       let sourceMap = this.querySourceMaps.get(queryType);
-      // Native query diagnostics use UTF-8 byte offsets, while source maps
-      // and JavaScript slices use UTF-16 code units.
-      const byteOffset = error.offset;
-      const index =
-        typeof byteOffset === "number" && typeof source === "string"
-          ? Buffer.from(source).subarray(0, byteOffset).toString("utf8").length
-          : error.index;
+      const index = error.index;
       let isQueryError = typeof index === "number";
       if (isQueryError && typeof source === "string") {
         descriptor.kindLabel = QUERY_ERROR_KIND_LABELS[error.kind] ?? null;
@@ -629,7 +638,7 @@ module.exports = class TreeSitterGrammar {
    * and end users can use queries for whatever purposes they like.
    *
    * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Promise<Query>} A query whose native resources follow its JavaScript lifetime.
+   * @returns {Promise<Query>} A query whose parser resources follow its JavaScript lifetime.
    */
   async createQuery(queryContents) {
     let language = await this.getLanguage();
@@ -647,7 +656,7 @@ module.exports = class TreeSitterGrammar {
    * language has already loaded.
    *
    * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Query} A query whose native resources follow its JavaScript lifetime.
+   * @returns {Query} A query whose parser resources follow its JavaScript lifetime.
    * @throws {Error} When the language has not been loaded, or the query cannot be compiled.
    */
   createQuerySync(queryContents) {
@@ -669,7 +678,7 @@ module.exports = class TreeSitterGrammar {
 
   // Internal queries are derived from runtime state rather than query files.
   // They are immutable and shared by every language layer using this grammar,
-  // so compiling a given source more than once only wastes time and native
+  // so compiling a given source more than once only wastes time and parser
   // memory. Retained queries stay usable until their last reference is released.
   _getOrCreateInternalQuerySync(queryContents) {
     let query = this.internalQueryCache.get(queryContents);

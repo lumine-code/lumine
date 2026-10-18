@@ -137,10 +137,7 @@ jobs:
           # install below stays strict, so a missing package still stops us.
           sudo apt-get update || true
           sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
-      # Install sources without lifecycle builds. Git dependency preparation
-      # can otherwise compile Tree-sitter before Wasmtime has been provisioned.
-      # The explicit build step prepares its dependencies and rebuilds all
-      # native modules for Electron.
+      # Install sources before rebuilding native modules for Electron.
       #
       # npm records the @lumine-code git forks with ssh URLs, but the runners
       # have no ssh key. Rewrite them to anonymous HTTPS (the forks are public).

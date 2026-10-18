@@ -4,8 +4,8 @@ function aborted() {
   return error;
 }
 
-// One renderer-wide budget leaves capacity in libuv for filesystem work.
-// A caller supplies a lazily evaluated priority and owns its cancellation.
+// All documents and injection layers share one synchronous allowance per
+// renderer task. Resumable WASM work yields between bounded slices.
 class TreeSitterScheduler {
   constructor(concurrency = 2) {
     if (!Number.isSafeInteger(concurrency) || concurrency < 1)
@@ -13,6 +13,24 @@ class TreeSitterScheduler {
     this.concurrency = concurrency;
     this.active = 0;
     this.queue = [];
+    this.turnDeadline = null;
+  }
+
+  deadline(timeoutMicros) {
+    const deadline = performance.now() + timeoutMicros / 1000;
+    if (this.turnDeadline === null) {
+      this.turnDeadline = deadline;
+      setImmediate(() => {
+        this.turnDeadline = null;
+      });
+    } else {
+      this.turnDeadline = Math.min(this.turnDeadline, deadline);
+    }
+    return this.turnDeadline;
+  }
+
+  hasBudget(timeoutMicros) {
+    return performance.now() < this.deadline(timeoutMicros);
   }
 
   run(operation, { signal, priority = () => 0 } = {}) {

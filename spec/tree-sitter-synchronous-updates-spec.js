@@ -14,6 +14,8 @@ describe("Synchronous warm Tree-sitter updates", () => {
     lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.python.ipy");
     await editor.whenGrammarSettled();
     const mode = editor.getBuffer().getLanguageMode();
+    mode.syncTimeoutMicros = 1000000;
+    await new Promise((resolve) => setImmediate(resolve));
     spyOn(mode, "parseAsync").and.callThrough();
     return mode;
   }

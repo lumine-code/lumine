@@ -167,15 +167,19 @@ Repeated edits can create short fragments between surviving boundaries. The edit
 
 ### Runtime snapshots and updates
 
-The editor loads portable grammar `.wasm` files through `@lumine-code/node-tree-sitter` and Wasmtime. Grammar packages do not ship platform-specific addons. The editor pins its native runtime by Git commit, and the upstream Tree-sitter vendor sources remain unmodified.
+The editor loads portable grammar `.wasm` files through `web-tree-sitter`. Grammar packages remain platform-independent. The native Node-API and Wasmtime experiment is archived; it is not an editor dependency.
 
-To build the editor from source, install dependencies with `npm ci --ignore-scripts`, download Electron with `node script/install-electron.js`, then run `npm run build`. The build prepares the pinned Tree-sitter and Wasmtime sources before rebuilding native modules for Electron. This avoids an npm Git-dependency preparation build running before those prerequisites exist.
+To build the editor from source, install dependencies with `npm ci --ignore-scripts`, download Electron with `node script/install-electron.js`, then run `npm run build` to rebuild the editor's remaining native modules for Electron.
 
-Initial loading may be asynchronous. Once the language and required queries are ready, the first parse attempts a 5 ms native parsing budget before falling back to a bounded worker queue. This budget covers parsing, not language compilation, query construction, input validation or publication. Highlighting is published only when the root and every active injection layer describe the same current document revision.
+Initial loading may be asynchronous. Every update shares a 5 ms synchronous parsing allowance across documents and injection layers in the renderer task. Work that exceeds the allowance resumes in bounded WASM slices after yielding to the event loop. This is cooperative scheduling on the renderer thread, not a worker. Query construction, an individual query and buffer mutation remain synchronous operations, so the allowance is not a hard bound on total command latency.
 
-After that first coherent publication, edits, undo, redo and injection reconciliation complete synchronously at the transaction boundary. The editor does not defer warm parsing or publish an intermediate highlighting state. A newly encountered language may still need asynchronous loading before its first tree is available.
+Highlighting is published only when the root and every active injection layer describe the same current document revision. During a deferred update, previously painted scope boundaries are shifted with text edits and reused for presentation. Semantic APIs never return those cached scopes as a current syntax tree. Cancellation, grammar reload and new document revisions prevent an obsolete parse from being published.
 
-Published trees are immutable snapshots with their own UTF-16 input. Nodes, cursors and queries are garbage-collected; clients neither call `delete()` nor mutate a published tree with `edit()`. Retained nodes keep their original text and coordinates after later edits. Consumers needing current syntax await `atGrammarSettlement()` and reacquire the mode's tree. Temporary parses used for indentation inside a transaction never replace the committed snapshot.
+Published trees retain their original UTF-16 text and revision. Consumers await `atGrammarSettlement()` to acquire current syntax; they must not edit a published tree. Temporary private copies are released explicitly, while retained trees and queries follow their JavaScript lifetimes through the runtime's finalizers.
+
+Large batches use a fresh parse and conservative syntax invalidation instead of applying thousands of edits to an old tree. The current policy switches at 128 edits, or when changed input spans at least half the previous text and 8192 code units. This affects parsing only: buffer transactions, selections and undo history retain the original edits.
+
+Multicursor newline insertion plans indentation after all cursors have inserted text. It queries only the affected rows against the same committed trees, applies the resulting indents together and groups them with the insertion for undo. Deferred indentation is discarded when a later text revision makes its plan obsolete. Raw highlight and indentation captures are cached in bounded windows for the exact tree, query and range; scope predicates are evaluated again for every consumer.
 
 ### Parser and query costs
 

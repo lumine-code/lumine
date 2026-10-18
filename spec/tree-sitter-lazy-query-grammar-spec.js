@@ -120,7 +120,7 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
     Object.assign(error, {
       name: "QueryError",
       kind: 2,
-      offset: Buffer.byteLength(source.slice(0, source.indexOf("unknown_node"))),
+      index: source.indexOf("unknown_node"),
       info: { word: "unknown_node" },
     });
     return error;

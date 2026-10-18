@@ -55,10 +55,12 @@ describe("Tree-sitter revisioned text snapshots", () => {
     const { buffer, mode } = await buildMode(source);
     const previous = mode.tree;
     buffer.insert([1, 0], "// \ud800\r\n", { normalizeLineEndings: false });
+    await mode.atGrammarSettlement();
     expect(mode.tree.input).toBe(buffer.getText());
     expect(mode.tree.rootNode.text).toBe(buffer.getText());
     expect(previous.input).toBe(source);
     buffer.undo();
+    await mode.atGrammarSettlement();
     expect(mode.tree.input).toBe(source);
     expect(mode.tree.rootNode.text).toBe(source);
   });

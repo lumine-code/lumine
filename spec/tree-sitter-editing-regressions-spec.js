@@ -164,6 +164,8 @@ describe("Tree-sitter editing and history", () => {
     await start(original);
     screen();
     const mode = editor.getBuffer().getLanguageMode();
+    mode.syncTimeoutMicros = 1000000;
+    await new Promise((resolve) => setImmediate(resolve));
     spyOn(mode, "parseAsync").and.callThrough();
     editor.selectAll();
     editor.toggleLineCommentsInSelection();

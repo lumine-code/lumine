@@ -346,7 +346,7 @@ describe("Tree-sitter optional query loading", () => {
     expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
     expect(report).toHaveBeenCalledTimes(1);
     expect(report.calls.mostRecent().args[0]).toEqual(jasmine.any(Error));
-    expect(report.calls.mostRecent().args[0].offset).toEqual(jasmine.any(Number));
+    expect(report.calls.mostRecent().args[0].index).toEqual(jasmine.any(Number));
     expect(report.calls.mostRecent().args[1]).toBe("tagsQuery");
     expect(compile).toHaveBeenCalledTimes(1);
     grammar.tagsQuery = "(identifier) @name";

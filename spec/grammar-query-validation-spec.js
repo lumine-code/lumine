@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const CSON = require("@lumine-code/season");
-const TreeSitter = require("@lumine-code/node-tree-sitter");
+const TreeSitter = require("web-tree-sitter");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 
 // Compiles every query of every bundled Tree-sitter grammar against its
@@ -116,8 +116,8 @@ describe("bundled Tree-sitter grammars", () => {
       try {
         let language = await grammar.getLanguage();
 
-        expect(language.wasm).toBe(true);
-        expect(() => new TreeSitter().setLanguage(language)).not.toThrow();
+        expect(language instanceof TreeSitter.Language).toBe(true);
+        expect(() => new TreeSitter.Parser().setLanguage(language)).not.toThrow();
 
         let failures = [];
         for (let key of Object.keys(config.treeSitter)) {
