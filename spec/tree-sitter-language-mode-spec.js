@@ -7,6 +7,7 @@ const CSON = require("@lumine-code/season");
 const TextEditor = require("../src/text-editor");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
+const GrammarRegistry = require("../src/grammar-registry");
 const ScopeResolver = require("../src/scope-resolver");
 const Random = require("random-seed");
 const { getRandomBufferRange, buildRandomLines } = require("./helpers/random");
@@ -620,6 +621,127 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("grammar removal lifecycle", () => {
+    it("abandons yielded and queued injection discovery when window unload begins", async () => {
+      jasmine.useRealClock();
+      const registry = new GrammarRegistry({ config: lumine.config });
+      grammar = new TreeSitterGrammar(registry, jsGrammarPath, jsConfig);
+      const rootRegistration = registry.addGrammar(grammar);
+      const injectedGrammar = new TreeSitterGrammar(registry, jsRegexGrammarPath, jsRegexConfig);
+      const injectedRegistration = registry.addGrammar(injectedGrammar);
+      const injection = registry.addInjectionPoint(grammar.scopeName, {
+        type: "regex_pattern",
+        language: () => "js-regex",
+        content: (node) => node,
+      });
+      buffer.setText("const first = /a/;\nconst second = /b/;\n");
+      registry.assignLanguageMode(buffer, grammar.scopeName);
+      const mode = buffer.getLanguageMode();
+      let resume;
+
+      try {
+        await mode.ready;
+        await mode.atGrammarSettlement();
+        mode.synchronousUpdates = false;
+        mode.injectionCandidateChunkRows = 1;
+        let yielded;
+        const waiting = new Promise((resolve) => (yielded = resolve));
+        spyOn(mode, "_yieldForInjectionCandidateScan").and.callFake(
+          () =>
+            new Promise((resolve) => {
+              resume = resolve;
+              yielded();
+            }),
+        );
+        const layer = mode.rootLanguageLayer;
+        const reconcile = spyOn(layer, "_reconcileInjections").and.callThrough();
+        const parse = spyOn(mode, "parse").and.callThrough();
+        const population = layer._populateInjections(buffer.getRange(), null);
+        await waiting;
+        layer._populateInjections(buffer.getRange(), null);
+
+        registry.beginWindowUnload();
+        resume();
+        await population;
+
+        expect(reconcile).not.toHaveBeenCalled();
+        expect(parse).not.toHaveBeenCalled();
+        expect(layer.pendingInjectionPopulationRequests).toEqual([]);
+        expect(layer.injectionPopulationDrainPromise).toBeNull();
+      } finally {
+        resume?.();
+        buffer.setLanguageMode(null);
+        injection.dispose();
+        injectedRegistration.dispose();
+        rootRegistration.dispose();
+        injectedGrammar.deactivate();
+        registry.clear();
+      }
+    });
+
+    it("releases injection and root-range registrations during window unload without parsing", async () => {
+      const registry = new GrammarRegistry({ config: lumine.config });
+      grammar = new TreeSitterGrammar(registry, jsGrammarPath, jsConfig);
+      const rootRegistration = registry.addGrammar(grammar);
+      const injectedGrammar = new TreeSitterGrammar(registry, jsRegexGrammarPath, jsRegexConfig);
+      const injectedRegistration = registry.addGrammar(injectedGrammar);
+      const injectionPoint = {
+        type: "regex_pattern",
+        language: () => "js-regex",
+        content: (node) => node,
+      };
+      const injection = registry.addInjectionPoint(grammar.scopeName, injectionPoint);
+      buffer.setText("const expression = /ab+/;");
+      const rootRanges = registry.setRootLanguageRanges(buffer, () => [buffer.getRange()]);
+      registry.assignLanguageMode(buffer, grammar.scopeName);
+      const mode = buffer.getLanguageMode();
+
+      try {
+        await mode.ready;
+        await mode.atGrammarSettlement();
+        const [child] = mode.getAllInjectionLayers();
+        expect(child.grammar).toBe(injectedGrammar);
+        const rootTree = mode.tree;
+        const childTree = child.tree;
+        const populate = spyOn(
+          mode.rootLanguageLayer,
+          "_performPopulateInjections",
+        ).and.callThrough();
+        const parse = spyOn(mode, "parse").and.callThrough();
+        const updateChild = spyOn(child, "update").and.callThrough();
+        const removed = jasmine.createSpy("removed injection");
+        const subscription = grammar.onDidRemoveInjectionPoint(removed);
+
+        registry.beginWindowUnload();
+        injection.dispose();
+        rootRanges.dispose();
+        injectedRegistration.dispose();
+        grammar.addInjectionPoint(injectionPoint);
+        grammar.removeInjectionPoint(injectionPoint);
+
+        expect(grammar.injectionPointsByType.regex_pattern).toBeUndefined();
+        expect(registry.rootLanguageRangesByBuffer.has(buffer)).toBe(false);
+        expect(registry.grammarForId(injectedGrammar.scopeName)).toBeUndefined();
+        expect(removed).toHaveBeenCalledTimes(2);
+        expect(mode.tree).toBe(rootTree);
+        expect(child.tree).toBe(childTree);
+        expect(populate).not.toHaveBeenCalled();
+        expect(parse).not.toHaveBeenCalled();
+        expect(updateChild).not.toHaveBeenCalled();
+        buffer.setLanguageMode(null);
+        expect(child.destroyed).toBe(true);
+        expect(mode.rootLanguageLayer).toBeNull();
+        subscription.dispose();
+      } finally {
+        buffer.setLanguageMode(null);
+        injection.dispose();
+        rootRanges.dispose();
+        injectedRegistration.dispose();
+        rootRegistration.dispose();
+        injectedGrammar.deactivate();
+        registry.clear();
+      }
+    });
+
     function registerInjectionGrammar() {
       const injectedGrammar = new TreeSitterGrammar(lumine.grammars, jsRegexGrammarPath, {
         ...jsRegexConfig,

@@ -960,8 +960,11 @@ describe("Environment", () => {
       });
 
       spyOn(lumineEnv, "saveState");
+      const beginGrammarUnload = spyOn(lumineEnv.grammars, "beginWindowUnload").and.callThrough();
       let unloadingClassWasSetBeforeDeactivation = false;
       spyOn(lumineEnv.packages, "deactivatePackages").and.callFake(() => {
+        expect(beginGrammarUnload).toHaveBeenCalledTimes(1);
+        expect(lumineEnv.unloading).toBe(true);
         unloadingClassWasSetBeforeDeactivation =
           lumineEnv.document.body.classList.contains("is-unloading");
         return Promise.resolve();
@@ -994,23 +997,73 @@ describe("Environment", () => {
           document: document.implementation.createHTMLDocument(),
         });
         const snapshots = [];
+        const operations = [];
         let documentPath = "before-save-as";
         spyOn(environment, "saveState").and.callFake(async () => {
+          operations.push("save");
           snapshots.push(documentPath);
           if (failFinalSave && snapshots.length === 2) throw new Error("Final capture failed");
         });
         spyOn(environment.workspace, "confirmClose").and.callFake(async () => {
+          operations.push("confirm");
           documentPath = "after-save-as";
           return true;
         });
-        const deactivate = spyOn(environment.packages, "deactivatePackages").and.resolveTo();
+        const originalBeginGrammarUnload = environment.grammars.beginWindowUnload;
+        const beginGrammarUnload = spyOn(environment.grammars, "beginWindowUnload").and.callFake(
+          () => {
+            expect(environment.unloading).toBe(true);
+            operations.push("grammar-unload");
+            originalBeginGrammarUnload.call(environment.grammars);
+          },
+        );
+        const deactivate = spyOn(environment.packages, "deactivatePackages").and.callFake(() => {
+          operations.push("deactivate");
+          return Promise.resolve();
+        });
         spyOn(environment.notifications, "addError");
         spyOn(console, "error");
         try {
           expect(await environment.prepareToUnloadEditorWindow()).toBe(!failFinalSave);
           expect(snapshots).toEqual(["before-save-as", "after-save-as"]);
+          expect(operations).toEqual([
+            "save",
+            "confirm",
+            "save",
+            ...(failFinalSave ? [] : ["grammar-unload", "deactivate"]),
+          ]);
+          expect(beginGrammarUnload.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(deactivate.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(environment.unloading).toBe(!failFinalSave);
+        } finally {
+          environment.destroy();
+        }
+      });
+    }
+
+    for (const initialSaveFails of [false, true]) {
+      it(`keeps grammar maintenance active when ${initialSaveFails ? "the initial save fails" : "closing is cancelled"}`, async () => {
+        const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+        environment.initialize({
+          window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+          document: document.implementation.createHTMLDocument(),
+        });
+        const save = spyOn(environment, "saveState").and.resolveTo();
+        if (initialSaveFails) save.and.rejectWith(new Error("Initial capture failed"));
+        spyOn(environment.workspace, "confirmClose").and.resolveTo(false);
+        const beginGrammarUnload = spyOn(
+          environment.grammars,
+          "beginWindowUnload",
+        ).and.callThrough();
+        const deactivate = spyOn(environment.packages, "deactivatePackages").and.resolveTo();
+        spyOn(environment.notifications, "addError");
+        spyOn(console, "error");
+        try {
+          expect(await environment.prepareToUnloadEditorWindow()).toBe(false);
+          expect(beginGrammarUnload).not.toHaveBeenCalled();
+          expect(deactivate).not.toHaveBeenCalled();
+          expect(environment.unloading).toBe(false);
+          expect(environment.workspace.windowLifecycleChanging).toBe(false);
         } finally {
           environment.destroy();
         }

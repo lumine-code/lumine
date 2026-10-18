@@ -24,6 +24,58 @@ describe("GrammarRegistry", () => {
     expect(subscriptionCount(grammarRegistry)).toBe(0);
   });
 
+  describe("window unload maintenance", () => {
+    it("releases grammar registrations without replacing or rebuilding existing language modes", async () => {
+      const buffer = createBuffer();
+      buffer.setPath("unloading.js");
+      const grammarPath = require.resolve("language-javascript/grammars/javascript.json");
+      const grammar = grammarRegistry.loadGrammarSync(grammarPath);
+      const other = grammarRegistry.loadGrammarSync(
+        require.resolve("language-python/grammars/python.json"),
+      );
+      grammarRegistry.maintainLanguageMode(buffer);
+      const mode = buffer.getLanguageMode();
+      await mode.ready;
+      const rebuild = spyOn(mode, "repopulateInjections").and.callThrough();
+      const replace = spyOn(buffer, "setLanguageMode").and.callThrough();
+      const removed = jasmine.createSpy("removed grammar");
+      const added = jasmine.createSpy("added grammar");
+      grammarRegistry.onDidRemoveGrammar(removed);
+      grammarRegistry.onDidAddGrammar(added);
+
+      grammarRegistry.beginWindowUnload();
+      grammarRegistry.removeGrammar(other);
+      grammarRegistry.removeGrammar(grammar);
+      expect(grammarRegistry.grammarForId(other.scopeName)).toBeUndefined();
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBeUndefined();
+      for (const name of grammar.injectionNames)
+        expect(grammarRegistry.treeSitterGrammarForLanguageString(name)).toBeNull();
+      const replacement = grammarRegistry.loadGrammarSync(grammarPath);
+
+      expect(grammarRegistry.grammarForId(grammar.scopeName)).toBe(replacement);
+      expect(removed.calls.allArgs()).toEqual([[other], [grammar]]);
+      expect(added).toHaveBeenCalledOnceWith(replacement);
+      expect(buffer.getLanguageMode()).toBe(mode);
+      expect(replace).not.toHaveBeenCalled();
+      expect(rebuild).not.toHaveBeenCalled();
+    });
+
+    it("restores normal language mode maintenance after the registry is cleared", () => {
+      grammarRegistry.beginWindowUnload();
+      grammarRegistry.clear();
+      const buffer = createBuffer();
+      buffer.setPath("restored.js");
+      grammarRegistry.maintainLanguageMode(buffer);
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("language-javascript/grammars/javascript.json"),
+      );
+
+      expect(buffer.getLanguageMode().grammar).toBe(grammar);
+      grammarRegistry.removeGrammar(grammar);
+      expect(buffer.getLanguageMode().grammar).toBe(grammarRegistry.nullGrammar);
+    });
+  });
+
   describe(".readGrammar(grammarPath, callback)", () => {
     let finishRead;
 

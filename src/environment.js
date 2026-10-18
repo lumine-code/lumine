@@ -1430,6 +1430,7 @@ class Environment {
         // before deactivation can release their shared recovery payloads.
         if (!(await save())) return false;
         this.unloading = true;
+        this.grammars.beginWindowUnload();
         // Package deactivation runs while the window is still visible. Mark the
         // document first so package-owned empty-workspace UI can disappear
         // without briefly leaving core's empty-pane mark behind on its own.

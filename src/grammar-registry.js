@@ -35,6 +35,7 @@ module.exports = class GrammarRegistry {
   }
 
   clear() {
+    this.windowUnloading = false;
     this.grammarSelectionRevision = (this.grammarSelectionRevision ?? 0) + 1;
     this.treeSitterGrammarsById = {};
     this.treeSitterGrammarsByInjectionName = new Map();
@@ -50,6 +51,11 @@ module.exports = class GrammarRegistry {
     // Buffers already wired to release themselves, so a repeated assignment
     // does not stack subscriptions.
     this.releasedBuffers = new WeakSet();
+  }
+
+  /** @private Keep existing language modes while a confirmed window unload releases packages. */
+  beginWindowUnload() {
+    this.windowUnloading = true;
   }
 
   serialize() {
@@ -629,6 +635,7 @@ module.exports = class GrammarRegistry {
   grammarAddedOrUpdated(grammar, isCurrent = () => true) {
     this.grammarSelectionRevision++;
     if (grammar.scopeName && !grammar.id) grammar.id = grammar.scopeName;
+    if (this.windowUnloading) return;
 
     this.grammarScoresByBuffer.forEach((score, buffer) => {
       if (!isCurrent()) return;
@@ -986,6 +993,7 @@ module.exports = class GrammarRegistry {
   }
 
   updateBuffersAfterGrammarRemoval(grammar, failures, restoreOverrides = false) {
+    if (this.windowUnloading) return;
     this.grammarScoresByBuffer.forEach((_score, buffer) => {
       const update = () => {
         const languageMode = buffer.getLanguageMode();

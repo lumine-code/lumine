@@ -725,7 +725,7 @@ class TreeSitterLanguageMode {
 
   rootLanguageRangesChanged() {
     const layer = this.rootLanguageLayer;
-    if (this.destroyed || !layer) return;
+    if (this.destroyed || !layer || this.grammarRegistry?.windowUnloading) return;
     if (!layer.tree) {
       layer.rootRangePolicyNeedsUpdate = true;
       return;
@@ -4792,7 +4792,7 @@ class LanguageLayer {
   // to be created and where to create them, ideally reusing as many layers as
   // possible from previous updates.
   _populateInjections(range, nodeRangeSet) {
-    if (!this.tree || this.destroyed) {
+    if (!this.tree || this.destroyed || this.languageMode.grammarRegistry?.windowUnloading) {
       return;
     }
     if (!this.hasInjectionDescendants()) {
@@ -4898,7 +4898,7 @@ class LanguageLayer {
   }
 
   _performPopulateInjections(range, nodeRangeSet) {
-    if (!this.tree) {
+    if (!this.tree || this.destroyed || this.languageMode.grammarRegistry?.windowUnloading) {
       return;
     }
 
@@ -5059,6 +5059,7 @@ class LanguageLayer {
   _injectionCandidateScanIsCurrent(tree, injectionPointVersion) {
     return (
       !this.destroyed &&
+      !this.languageMode.grammarRegistry?.windowUnloading &&
       this.tree === tree &&
       this.injectionPointVersion === injectionPointVersion &&
       tree.revision === this.buffer.getTextRevision()
