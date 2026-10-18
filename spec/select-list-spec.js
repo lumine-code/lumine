@@ -736,6 +736,168 @@ describe("SelectList", () => {
     });
   });
 
+  describe("row geometry", () => {
+    let pixelRatio;
+
+    beforeEach(() => {
+      pixelRatio = spyOnProperty(window, "devicePixelRatio", "get").and.returnValue(1);
+    });
+
+    function naturalRow(text) {
+      const row = document.createElement("li");
+      row.style.cssText =
+        "display: block; line-height: 20.25px; padding: 3.2px 0; margin: 0; border: 0; min-height: 0; box-sizing: border-box";
+      const label = document.createElement("div");
+      label.className = "primary-line";
+      label.style.whiteSpace = "pre";
+      label.textContent = text;
+      row.appendChild(label);
+      return row;
+    }
+
+    async function showNaturalRows(items, renderItem = naturalRow) {
+      view = createSelectList({ items, renderItem });
+      const scroller = find('ol[role="listbox"]');
+      scroller.style.cssText =
+        "height: 103px; max-height: 103px; overflow-y: auto; padding: 0; margin: 0; border: 0";
+      await addHost().show();
+      await nextUpdate();
+      return scroller;
+    }
+
+    it("keeps the label at a stable position while stepping past either viewport edge", async () => {
+      const scroller = await showNaturalRows(
+        Array.from({ length: 40 }, (_, index) => `row-${index}`),
+      );
+      const downPositions = [];
+      const upPositions = [];
+
+      function selectedLabelPosition() {
+        const viewport = scroller.getBoundingClientRect();
+        const selected = find('li[aria-selected="true"]');
+        const row = selected.getBoundingClientRect();
+        expect(row.height).toBe(27);
+        expect(row.top).not.toBeLessThan(viewport.top - 0.02);
+        expect(row.bottom).not.toBeGreaterThan(viewport.bottom + 0.02);
+        return selected.querySelector(".primary-line").getBoundingClientRect().top - viewport.top;
+      }
+
+      await view.selectIndex(9);
+      for (let index = 10; index < 20; index++) {
+        await view.selectNext();
+        expect(view.getSelectedItem()).toBe(`row-${index}`);
+        downPositions.push(selectedLabelPosition());
+      }
+      expect(scroller.scrollTop).toBeGreaterThan(0);
+      expect(Math.max(...downPositions) - Math.min(...downPositions)).toBeLessThan(0.02);
+
+      // Bring the leading edge into view before sampling repeated upward moves.
+      await view.selectIndex(16);
+      for (let index = 15; index > 5; index--) {
+        await view.selectPrevious();
+        expect(view.getSelectedItem()).toBe(`row-${index}`);
+        upPositions.push(selectedLabelPosition());
+      }
+      expect(Math.max(...upPositions) - Math.min(...upPositions)).toBeLessThan(0.02);
+    });
+
+    it("preserves different natural heights and follows content changes without a rerender", async () => {
+      await showNaturalRows(["one", "two\nlines"]);
+      const rows = Array.from(listElement().querySelectorAll('li[role="option"]'));
+      expect(rows[0].getBoundingClientRect().height).toBe(27);
+      expect(rows[1].getBoundingClientRect().height).toBe(47);
+
+      rows[0].querySelector(".primary-line").textContent = "one\ntwo\nthree";
+      expect(rows[0].getBoundingClientRect().height).toBe(68);
+      expect(rows[1].getBoundingClientRect().height).toBe(47);
+
+      rows[0].querySelector(".primary-line").textContent = "one";
+      expect(rows[0].getBoundingClientRect().height).toBe(27);
+    });
+
+    it("lets a consumer override the default with an explicit row height", async () => {
+      const stylesheet = lumine.styles.addStyleSheet(
+        ".spec-select-list-fixed-height { height: 35.5px; }",
+      );
+      try {
+        await showNaturalRows(["fixed"], (text) => {
+          const row = naturalRow(text);
+          row.className = "spec-select-list-fixed-height";
+          return row;
+        });
+        expect(find('li[role="option"]').getBoundingClientRect().height).toBe(35.5);
+      } finally {
+        stylesheet.dispose();
+      }
+    });
+
+    it("leaves legacy select-list markup without a listbox role at its natural size", () => {
+      // Autocomplete also uses these classes, but owns its row measurements.
+      const container = document.createElement("div");
+      container.className = "select-list";
+      const scroller = document.createElement("ol");
+      scroller.className = "list-group";
+      const row = naturalRow("completion");
+      row.setAttribute("role", "option");
+      scroller.appendChild(row);
+      container.appendChild(scroller);
+      jasmine.attachToDOM(container);
+
+      const height = row.getBoundingClientRect().height;
+      expect(height).toBeGreaterThan(26);
+      expect(height).toBeLessThan(27);
+    });
+
+    it("updates its pixel size on resolution changes and releases listeners while detached", async () => {
+      view = textItemView();
+      const element = view.getElement();
+      const container = document.createElement("div");
+      jasmine.attachToDOM(container);
+      const queries = [];
+      const matchMedia = window.matchMedia.bind(window);
+      spyOn(window, "matchMedia").and.callFake((queryText) => {
+        const query = matchMedia(queryText);
+        if (queryText.startsWith("(resolution:")) {
+          spyOn(query, "addEventListener").and.callThrough();
+          spyOn(query, "removeEventListener").and.callThrough();
+          queries.push(query);
+        }
+        return query;
+      });
+
+      expect(queries.length).toBe(0);
+      container.appendChild(element);
+      expect(queries.length).toBe(1);
+      expect(element.style.getPropertyValue("--select-list-pixel-size")).toBe("1px");
+
+      pixelRatio.and.returnValue(2);
+      queries[0].dispatchEvent(new Event("change"));
+      expect(queries[0].removeEventListener).toHaveBeenCalledWith(
+        "change",
+        queries[0].addEventListener.calls.mostRecent().args[1],
+      );
+      expect(queries.length).toBe(2);
+      expect(element.style.getPropertyValue("--select-list-pixel-size")).toBe("0.5px");
+
+      element.remove();
+      expect(queries[1].removeEventListener).toHaveBeenCalledWith(
+        "change",
+        queries[1].addEventListener.calls.mostRecent().args[1],
+      );
+      pixelRatio.and.returnValue(1.25);
+      container.appendChild(element);
+      expect(queries.length).toBe(3);
+      expect(element.style.getPropertyValue("--select-list-pixel-size")).toBe("0.8px");
+
+      await view.destroy();
+      view = null;
+      expect(queries[2].removeEventListener).toHaveBeenCalledWith(
+        "change",
+        queries[2].addEventListener.calls.mostRecent().args[1],
+      );
+    });
+  });
+
   describe("rendering and filtering", () => {
     it("distinguishes the automatic result icon from the mode checkmark without indenting rows", async () => {
       view = createSelectList({

@@ -1,4 +1,13 @@
+/* Native scrolling snaps to device pixels. Keep each row's intrinsic border
+   box on the same grid so equal rows do not move their text between steps.
+   Explicit consumer heights still win; autocomplete owns a separate list
+   without the listbox role and its own measured geometry. */
+:where(.select-list ol.list-group[role="listbox"] > li[role="option"]) {
+  height: calc-size(auto, round(up, size, var(--select-list-pixel-size)));
+}
+
 .select-list {
+  --select-list-pixel-size: 1px;
   --select-list-hover-tint: color-mix(in srgb, var(--text-color) 8%, transparent);
   /* The separator stands in for the row border it suppresses, so it has to be
      at least as visible as one. A tint of the subtle text colour was not: at
@@ -95,9 +104,10 @@
       display: block;
       box-sizing: border-box;
       width: auto;
-      height: 1px;
+      height: max(var(--select-list-pixel-size), round(down, 1px, var(--select-list-pixel-size)));
       min-height: 0;
-      margin: calc(var(--ui-spacing) / 2) var(--select-list-separator-inset, 0);
+      margin: round(var(--ui-spacing) / 2, var(--select-list-pixel-size))
+        var(--select-list-separator-inset, 0);
       padding: 0;
       border: 0;
       border-radius: 0;

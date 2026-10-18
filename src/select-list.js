@@ -90,6 +90,7 @@ class SelectList extends InputDialog {
     this.overflowUpdatePromise = null;
     this.overflowResizeObserver = null;
     this.overflowViewport = null;
+    this.pixelSizeSubscription = null;
     this.listBoxId = `select-list-${nextSelectListId++}`;
     this.itemDomIds = new Map();
     this.recentBoundaryIndex = -1;
@@ -444,7 +445,31 @@ class SelectList extends InputDialog {
 
   didAttachElement() {
     super.didAttachElement();
+    this.observePixelSize();
     if (this.props.overflowSections != null) void this.updateComponent();
+  }
+
+  didDetachElement() {
+    super.didDetachElement();
+    this.pixelSizeSubscription?.dispose();
+    this.pixelSizeSubscription = null;
+  }
+
+  /** @private */
+  observePixelSize() {
+    this.pixelSizeSubscription?.dispose();
+    const element = this.component.element;
+    const window = element.ownerDocument.defaultView;
+    const ratio = window.devicePixelRatio;
+    element.style.setProperty("--select-list-pixel-size", `${1 / ratio}px`);
+    // Zooming or moving to another display changes the native scroll step.
+    // Rearm the query at the new resolution, and release it while detached.
+    const query = window.matchMedia(`(resolution: ${ratio}dppx)`);
+    const didChange = () => this.observePixelSize();
+    query.addEventListener("change", didChange);
+    this.pixelSizeSubscription = new Disposable(() =>
+      query.removeEventListener("change", didChange),
+    );
   }
 
   didChangeHostVisible(visible) {
