@@ -20,6 +20,10 @@ async function main() {
     const text = cursor.nodeText;
     let other = tree.walk();
     other.gotoLastChild();
+    if (run % 3 === 0) {
+      Object.defineProperty(other, "delete", { value: undefined });
+      assert.equal(other.delete, undefined);
+    }
     // Another cursor and a query overwrite the shared transfer buffer.
     query.captures(tree.rootNode);
     let copy = cursor.copy();

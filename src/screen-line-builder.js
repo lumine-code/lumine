@@ -50,7 +50,10 @@ module.exports = class ScreenLineBuilder {
     };
     this.screenRow = startScreenRow;
 
-    const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator();
+    const languageMode = this.displayLayer.buffer.languageMode;
+    const decorationIterator = languageMode.buildPresentationHighlightIterator
+      ? languageMode.buildPresentationHighlightIterator()
+      : languageMode.buildHighlightIterator();
     const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
       this.screenRow,
       endScreenRow,

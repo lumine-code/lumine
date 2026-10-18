@@ -1,3 +1,7 @@
+const CSON = require("@lumine-code/season");
+const TreeSitterGrammar = require("../src/tree-sitter-grammar");
+const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
+
 describe("Tree-sitter update budgets", () => {
   let editor;
   beforeEach(async () => {
@@ -94,6 +98,75 @@ describe("Tree-sitter update budgets", () => {
     expect(calls).toBe(1);
   });
 
+  it("does not parse a transaction again from the post-edit microtask", async () => {
+    const mode = await start("value = 1\n".repeat(1000));
+    mode.syncTimeoutMicros = 0;
+    const parse = spyOn(mode, "parseAsync").and.callThrough();
+    editor.getBuffer().insert([0, 0], "# ");
+    await editor.whenGrammarSettled();
+    expect(parse.calls.count()).toBe(1);
+  });
+
+  it("renders prepared scopes without querying and schedules newly visible fragments", async () => {
+    const mode = await start('value = "text"\n'.repeat(1000));
+    const layer = mode.rootLanguageLayer;
+    const boundaries = spyOn(layer, "getSyntaxBoundaries").and.callThrough();
+    screen();
+    expect(boundaries).not.toHaveBeenCalled();
+    editor.displayLayer.getScreenLines(800, 820);
+    expect(boundaries).not.toHaveBeenCalled();
+    await editor.whenGrammarSettled();
+    expect(boundaries.calls.count()).toBeGreaterThan(0);
+    boundaries.calls.reset();
+    const lines = editor.displayLayer.getScreenLines(800, 820);
+    expect(boundaries).not.toHaveBeenCalled();
+    expect(lines[0].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+    expect(
+      mode.highlightCache.snapshots.every(
+        (snapshot) => snapshot.stamp.revision === mode.tree.revision,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects staged scopes when an edit supersedes presentation preparation", async () => {
+    const mode = await start('value = "text"\n'.repeat(1000));
+    mode.syncTimeoutMicros = 0;
+    mode.presentation.request(500, 600, false);
+    const pending = mode.presentation.flush();
+    editor.getBuffer().insert([500, 0], "# ");
+    await pending;
+    await editor.whenGrammarSettled();
+    const matching = mode.highlightCache.snapshots.filter(
+      (snapshot) => snapshot.start.row <= 500 && snapshot.end.row > 500,
+    );
+    expect(matching.length).toBeGreaterThan(0);
+    expect(matching.at(-1).stamp.revision).toBe(mode.tree.revision);
+    expect(
+      editor
+        .scopeDescriptorForBufferPosition([500, 3])
+        .getScopesArray()
+        .some((scope) => scope.startsWith("comment.")),
+    ).toBe(true);
+  });
+
+  it("does not recompute distant prepared fragments for a local equal-height edit", async () => {
+    const mode = await start("value = 1\n".repeat(1000));
+    mode.presentation.request(500, 600, false);
+    await mode.atGrammarSettlement();
+    mode.useAsyncParsing = false;
+    const boundaries = spyOn(mode.rootLanguageLayer, "getSyntaxBoundaries").and.callThrough();
+    editor.setTextInBufferRange(
+      [
+        [0, 8],
+        [0, 9],
+      ],
+      "2",
+    );
+    await mode.atGrammarSettlement();
+    expect(boundaries.calls.count()).toBeGreaterThan(0);
+    expect(boundaries.calls.allArgs().every(([start]) => start.row < 128)).toBe(true);
+  });
+
   it("discards an asynchronous indentation hint after another text revision", async () => {
     await start("value = 1\nnext = 2\n");
     let resolve;
@@ -110,5 +183,47 @@ describe("Tree-sitter update budgets", () => {
     expect(editor.lineTextForBufferRow(1)).toBe("next = 2");
     editor.undo();
     expect(editor.getText()).toBe("value = 1\nnext = 2\n");
+  });
+
+  it("preserves multicursor indentation when the grammar has no indentation query", async () => {
+    const source = "    first\n    second\n";
+    editor.setText(source);
+    const file = require.resolve("language-python/grammars/python.json");
+    const config = CSON.readFileSync(file);
+    const treeSitter = { ...config.treeSitter };
+    delete treeSitter.indentsQuery;
+    const grammar = new TreeSitterGrammar(lumine.grammars, file, {
+      ...config,
+      scopeName: "source.indentless-test",
+      treeSitter,
+    });
+    const mode = new TreeSitterLanguageMode({
+      buffer: editor.getBuffer(),
+      grammar,
+      grammars: lumine.grammars,
+    });
+    editor.getBuffer().setLanguageMode(mode);
+    try {
+      await editor.whenGrammarSettled();
+      mode.useAsyncParsing = false;
+      editor.setSelectedBufferRanges([
+        [
+          [0, 9],
+          [0, 9],
+        ],
+        [
+          [1, 10],
+          [1, 10],
+        ],
+      ]);
+      editor.insertNewline();
+      expect(editor.lineTextForBufferRow(1)).toBe("    ");
+      expect(editor.lineTextForBufferRow(3)).toBe("    ");
+      editor.undo();
+      expect(editor.getText()).toBe(source);
+    } finally {
+      editor.getBuffer().setLanguageMode(null);
+      grammar.deactivate();
+    }
   });
 });

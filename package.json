@@ -160,7 +160,8 @@
     "test:api-extractor": "node --test script/api-extractor.test.js script/api-doc-examples.test.js script/api-doc-contracts.test.js",
     "test:eslint-jsx": "node --test script/eslint-jsx.test.js",
     "test:storage": "node --test script/package-storage.test.js script/select-list-recents.test.js",
-    "benchmark:file-watch": "node benchmark/file-watch-benchmark.js"
+    "benchmark:file-watch": "node benchmark/file-watch-benchmark.js",
+    "benchmark:tree-sitter-editing": "npm run test:only -- benchmark/tree-sitter-editing-spec.js"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",

@@ -105,6 +105,44 @@ test("closing a suspended parse settles without publishing a tree", async () => 
   parser.close();
 });
 
+test("concurrent calls cannot reset the private tree of a suspended parse", async () => {
+  const parser = new DocumentParser(language);
+  const controller = new AbortController();
+  try {
+    const pending = parser.parse("const value = 1;\n".repeat(1000), { signal: controller.signal });
+    assert.throws(() => parser.parseSync("let other = 2;"), /active parse/);
+    assert.throws(() => parser.tryParseSync("let other = 2;"), /active parse/);
+    assert.throws(() => parser.reset(), /active parse/);
+    await assert.rejects(parser.parse("let other = 2;"), /active parse/);
+    controller.abort();
+    await assert.rejects(pending, { name: "AbortError" });
+    assert.equal(parser.parseSync("let recovered = 3;").rootNode.hasError, false);
+  } finally {
+    parser.close();
+  }
+});
+
+test("logger callbacks cannot reenter parsing or free an executing parser", () => {
+  const parser = new DocumentParser(language);
+  let called = false;
+  const logger = () => {
+    if (called) return;
+    called = true;
+    assert.throws(() => parser.parseSync("other;"), /active parse/);
+    assert.throws(() => parser.reset(), /active parse/);
+    parser.close();
+  };
+  parser.setLogger(logger);
+  assert.equal(parser.getLogger(), logger);
+  assert.equal(parser.parseSync("const value = 1;"), null);
+  assert.equal(called, true);
+  assert.equal(parser.disposed, true);
+  parser.close();
+  const next = new DocumentParser(language);
+  assert.equal(next.parseSync("const intact = 2;").rootNode.hasError, false);
+  next.close();
+});
+
 test("mixed document and synthetic edits preserve UTF-16 coordinates", () => {
   const parser = new DocumentParser(language);
   try {

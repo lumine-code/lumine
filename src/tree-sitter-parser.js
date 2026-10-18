@@ -95,10 +95,9 @@ class TreeSitterParser {
     this.parser = new Parser().setLanguage(language);
     this.pending = null;
     this.closed = false;
-  }
-
-  static isSnapshot(tree) {
-    return metadata.has(tree);
+    this.running = false;
+    this.executing = false;
+    this.disposed = false;
   }
 
   static isBulkChange(previous, edits) {
@@ -172,7 +171,7 @@ class TreeSitterParser {
         job.includedRanges === includedRanges
       )
         return job;
-      this.reset();
+      this.resetPending();
     }
     const incremental =
       previous?.language === this.language &&
@@ -192,10 +191,21 @@ class TreeSitterParser {
 
   step(job, deadline, signal) {
     signal?.throwIfAborted();
-    const tree = this.parser.parse(job.text, job.oldTree, {
-      includedRanges: job.includedRanges,
-      progressCallback: () => signal?.aborted || performance.now() >= deadline,
-    });
+    let tree;
+    this.executing = true;
+    try {
+      tree = this.parser.parse(job.text, job.oldTree, {
+        includedRanges: job.includedRanges,
+        progressCallback: () => this.closed || signal?.aborted || performance.now() >= deadline,
+      });
+    } finally {
+      this.executing = false;
+      if (this.closed) {
+        tree?.delete();
+        this.dispose();
+      }
+    }
+    if (this.closed) return null;
     if (signal?.aborted) {
       tree?.delete();
       signal.throwIfAborted();
@@ -214,26 +224,36 @@ class TreeSitterParser {
   }
 
   parseSync(text, options = {}) {
+    if (this.running) throw new Error("Parser already has an active parse");
+    this.running = true;
     try {
       return this.step(this.begin(text, options), Infinity, options.signal);
     } catch (error) {
-      this.reset();
+      this.resetPending();
       throw error;
+    } finally {
+      this.running = false;
     }
   }
 
   tryParseSync(text, options = {}) {
+    if (this.running) throw new Error("Parser already has an active parse");
+    this.running = true;
     const deadline = options.deadline ?? performance.now() + (options.timeoutMicros ?? 5000) / 1000;
     try {
       if (performance.now() >= deadline) return null;
       return this.step(this.begin(text, options), deadline, options.signal);
     } catch (error) {
-      this.reset();
+      this.resetPending();
       throw error;
+    } finally {
+      this.running = false;
     }
   }
 
   async parse(text, options = {}) {
+    if (this.running) throw new Error("Parser already has an active parse");
+    this.running = true;
     try {
       const job = this.begin(text, options);
       for (;;) {
@@ -243,25 +263,51 @@ class TreeSitterParser {
         const deadline = options.deadlineForSlice?.() ?? performance.now() + ASYNC_SLICE_MS;
         if (performance.now() >= deadline) continue;
         const tree = this.step(job, deadline, options.signal);
+        if (this.closed) return null;
         if (tree) return tree;
       }
     } catch (error) {
-      this.reset();
+      this.resetPending();
       throw error;
+    } finally {
+      this.running = false;
     }
   }
 
   reset() {
-    if (!this.closed) this.parser.reset();
+    if (this.running)
+      throw new Error("Cannot reset an active parse; cancel it or close the parser");
+    this.resetPending();
+  }
+
+  resetPending() {
+    if (!this.disposed) this.parser.reset();
     this.pending?.oldTree?.delete();
     this.pending = null;
   }
 
+  getLogger() {
+    return this.closed ? null : this.parser.getLogger();
+  }
+
+  setLogger(logger) {
+    if (this.running || this.closed)
+      throw new Error("Cannot change the logger of an active or closed parser");
+    this.parser.setLogger(logger);
+    return this;
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.resetPending();
+    this.parser.delete();
+    this.disposed = true;
+  }
+
   close() {
     if (this.closed) return;
-    this.reset();
-    this.parser.delete();
     this.closed = true;
+    if (!this.executing) this.dispose();
   }
 }
 

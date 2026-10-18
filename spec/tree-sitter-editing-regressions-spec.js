@@ -141,6 +141,9 @@ describe("Tree-sitter editing and history", () => {
       editor.selectAll();
       editor.toggleLineCommentsInSelection();
       await settle();
+      // Off-screen fold warming is optional under the shared budget. Ask for
+      // the viewport's folds before checking reuse of their query windows.
+      for (let row = 0; row < 80; row++) mode.isFoldableAtRowForRendering(row);
       expect(query.captures.calls.count()).toBeGreaterThan(0);
       expect(query.captures.calls.count()).toBeLessThan(20);
     }

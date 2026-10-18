@@ -27,6 +27,11 @@ if (!Node.prototype[installed]) {
     };
     const wrapper = new Proxy(cursor, {
       get(target, key) {
+        const descriptor = Object.getOwnPropertyDescriptor(target, key);
+        if (descriptor && !descriptor.configurable) {
+          if ("value" in descriptor && !descriptor.writable) return descriptor.value;
+          if (!("value" in descriptor) && descriptor.get === undefined) return undefined;
+        }
         if (key === "delete") return close;
         if (state.closed) throw new Error("Tree-sitter cursor is disposed");
         const value = Reflect.get(target, key, target);

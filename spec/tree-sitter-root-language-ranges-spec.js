@@ -99,7 +99,11 @@ describe("Root language ranges", () => {
     const marker = layer.currentRangesLayer.getMarkers()[0];
     const parse = spyOn(languageMode, "parseAsync").and.callThrough();
     const invalidations = [];
-    languageMode.onDidChangeHighlighting((range) => invalidations.push(range));
+    const emitRangeUpdate = languageMode.emitRangeUpdate.bind(languageMode);
+    spyOn(languageMode, "emitRangeUpdate").and.callFake((range) => {
+      invalidations.push(range);
+      emitRangeUpdate(range);
+    });
     buffer.setTextInRange(
       [
         [1, 14],

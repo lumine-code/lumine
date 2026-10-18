@@ -105,6 +105,7 @@ describe("Tree-sitter configuration-dependent highlighting", () => {
 
   it("updates cached descriptors, iterators and rendered lines synchronously without parsing", async () => {
     const { editor, buffer, mode } = await setUp();
+    mode.useAsyncParsing = false;
     const tree = mode.rootLanguageLayer.tree;
     const firstDescriptor = mode.scopeDescriptorForPosition([0, 2]);
     const firstLine = editor.displayLayer.getScreenLines(0, 1)[0];
@@ -139,6 +140,24 @@ describe("Tree-sitter configuration-dependent highlighting", () => {
     expect(mode.rootLanguageLayer.update).not.toHaveBeenCalled();
     expect(mode.emitFoldUpdate).not.toHaveBeenCalled();
     subscription.dispose();
+  });
+
+  it("discards prepared scopes from a superseded configuration without reparsing", async () => {
+    const { editor, mode } = await setUp();
+    const original = editor.displayLayer.getScreenLines(0, 1)[0].tags;
+    const tree = mode.tree;
+    mode.syncTimeoutMicros = 0;
+    config.set("syntax.enabled", false);
+    const pending = mode.presentation.promise;
+    expect(pending).not.toBeNull();
+    config.set("syntax.enabled", true);
+    await pending;
+    await mode.atGrammarSettlement();
+    expect(mode.tree).toBe(tree);
+    expect(editor.displayLayer.getScreenLines(0, 1)[0].tags).toEqual(original);
+    expect(mode.highlightCache.snapshots.at(-1).stamp.generation).toBe(
+      mode.presentation.generation,
+    );
   });
 
   for (const [description, predicate, initiallyEnabled] of [

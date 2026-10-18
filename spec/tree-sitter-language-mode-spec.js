@@ -587,6 +587,8 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       expect(languageMode.hasQuery("tagsQuery")).toBe(false);
+      languageMode.syncTimeoutMicros = 1000000;
+      await new Promise((resolve) => setImmediate(resolve));
 
       const registration = lumine.grammars.addGrammar(injectedGrammar);
 
@@ -1054,9 +1056,10 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
-      const buildHighlightIterator = languageMode.buildHighlightIterator.bind(languageMode);
+      const buildHighlightIterator =
+        languageMode.buildPresentationHighlightIterator.bind(languageMode);
       const seekCalls = [];
-      spyOn(languageMode, "buildHighlightIterator").and.callFake(() => {
+      spyOn(languageMode, "buildPresentationHighlightIterator").and.callFake(() => {
         const iterator = buildHighlightIterator();
         const seek = iterator.seek.bind(iterator);
         iterator.seek = (start, endRow) => {
@@ -3387,9 +3390,10 @@ describe("TreeSitterLanguageMode", () => {
         const expectedTags = initialScreenLines[1].tags;
         editor.displayLayer.cachedScreenLines[1] = undefined;
 
-        const buildHighlightIterator = languageMode.buildHighlightIterator.bind(languageMode);
+        const buildHighlightIterator =
+          languageMode.buildPresentationHighlightIterator.bind(languageMode);
         const seekCalls = [];
-        spyOn(languageMode, "buildHighlightIterator").and.callFake(() => {
+        spyOn(languageMode, "buildPresentationHighlightIterator").and.callFake(() => {
           const iterator = buildHighlightIterator();
           const seek = iterator.seek.bind(iterator);
           iterator.seek = (start, endRow) => {

@@ -1,6 +1,7 @@
 const { Node } = require("web-tree-sitter");
 const TreeSitterParser = require("./tree-sitter-parser");
 const HighlightCache = require("./tree-sitter-highlight-cache");
+const TreeSitterPresentation = require("./tree-sitter-presentation");
 const captureQuery = require("./tree-sitter-query-cache");
 const TreeSitterDocument = require("./tree-sitter-document");
 const parserScheduler = require("./tree-sitter-scheduler");
@@ -196,7 +197,7 @@ class TreeSitterLanguageMode {
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
-    this.highlightCache = new HighlightCache();
+    this.highlightCache = new HighlightCache({ maxEvents: 128000 });
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
     this.synchronousUpdates = false;
@@ -238,6 +239,15 @@ class TreeSitterLanguageMode {
     this.tokenized = false;
 
     this.subscriptions = new CompositeDisposable();
+    this.presentation = new TreeSitterPresentation({
+      buffer,
+      cache: this.highlightCache,
+      capture: () => this.capturePresentationVersion(),
+      isCurrent: (stamp) => this.presentationVersionIsCurrent(stamp),
+      iterator: () => new HighlightIterator(this),
+      hasBudget: () => !this.useAsyncParsing || parserScheduler.hasBudget(this.syncTimeoutMicros),
+      publish: (range) => this.emitter.emit("did-change-highlighting", range),
+    });
     this.subscriptions.add(
       buffer.onDidApplyChanges(() => {
         if (this.destroyed) return;
@@ -248,6 +258,7 @@ class TreeSitterLanguageMode {
           if (
             !this.destroyed &&
             this.rootLanguageLayer &&
+            !this.rootLanguageLayer.updating &&
             this.rootLanguageLayer.tree?.revision !== buffer.getTextRevision()
           )
             this.requestDocumentUpdate();
@@ -327,6 +338,7 @@ class TreeSitterLanguageMode {
         }
         this.publishCurrentLayers();
         this.emitter.emit("did-tokenize");
+        return this.presentation.flush();
       })
       .catch((error) => {
         if (!this.destroyed) {
@@ -342,6 +354,7 @@ class TreeSitterLanguageMode {
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
     this.document.close();
+    this.presentation.destroy();
     this.highlightCache.clear();
 
     let layers = this.getAllLanguageLayers();
@@ -573,6 +586,7 @@ class TreeSitterLanguageMode {
 
   bufferDidChange(change) {
     this.highlightCache.edit(change);
+    this.presentation.edit(change);
     this.publicationPending = true;
     if (!this.rootLanguageLayer) {
       return;
@@ -771,9 +785,15 @@ class TreeSitterLanguageMode {
       }
     }
 
-    this.resolveNextTransactionPromise();
-    this.transactionChangeCount = 0;
-    this.autoIndentRequests = 0;
+    const finish = () => {
+      if (revision !== this.buffer.getTextRevision()) return;
+      this.resolveNextTransactionPromise();
+      this.transactionChangeCount = 0;
+      this.autoIndentRequests = 0;
+    };
+    const presentation = !error && this.presentation.flush();
+    if (presentation?.then) presentation.then(finish, finish);
+    else finish();
   }
 
   // Invalidate fold caches for the rows touched by the given range.
@@ -800,6 +820,7 @@ class TreeSitterLanguageMode {
   }
 
   emitRangeUpdate(range) {
+    this.presentation.invalidate(range);
     if (this.publicationPending) {
       this.publicationRanges.add(this.buffer.clipRange(range));
       return;
@@ -807,6 +828,7 @@ class TreeSitterLanguageMode {
     this.scopeDescriptorCache = null;
     this.emitFoldUpdate(range);
     this.emitter.emit("did-change-highlighting", range);
+    this.presentation.flush();
   }
 
   publishCurrentLayers() {
@@ -828,7 +850,12 @@ class TreeSitterLanguageMode {
     this.synchronousUpdates = true;
     const ranges = [...this.publicationRanges];
     this.publicationRanges.clear();
-    for (const range of ranges) this.emitRangeUpdate(range);
+    for (const range of ranges) {
+      this.scopeDescriptorCache = null;
+      this.emitFoldUpdate(range);
+      this.emitter.emit("did-change-highlighting", range);
+    }
+    this.presentation.flush();
     return true;
   }
 
@@ -889,9 +916,10 @@ class TreeSitterLanguageMode {
       }
     }
     for (const range of ranges) {
+      this.presentation.invalidate(range);
       this.scopeDescriptorCache = null;
-      this.emitter.emit("did-change-highlighting", range);
     }
+    this.presentation.flush();
   }
 
   scheduleDirtyHighlightUpdate(range) {
@@ -1022,7 +1050,14 @@ class TreeSitterLanguageMode {
       transaction = await this.atTransactionEnd();
     }
 
-    if (!this.destroyed && !transaction.parseError) this.publishCurrentLayers();
+    if (!this.destroyed && !transaction.parseError) {
+      this.publishCurrentLayers();
+      while (!this.destroyed) {
+        const pending = this.presentation.flush();
+        if (!pending) break;
+        await pending;
+      }
+    }
     return transaction;
   }
 
@@ -1120,7 +1155,52 @@ class TreeSitterLanguageMode {
       return new NullLanguageModeHighlightIterator();
     }
     if (this.publicationPending) return new PendingHighlightIterator(this);
-    return this.highlightCache.record(new HighlightIterator(this), this.buffer);
+    return new HighlightIterator(this);
+  }
+
+  buildPresentationHighlightIterator() {
+    return new PendingHighlightIterator(this, true);
+  }
+
+  capturePresentationVersion() {
+    if (this.destroyed || this.publicationPending) return null;
+    return {
+      revision: this.buffer.getTextRevision(),
+      generation: this.presentation.generation,
+      layers: this.getAllLanguageLayers()
+        .filter(Boolean)
+        .map((layer) => ({
+          layer,
+          tree: layer.tree,
+          grammar: layer.grammar,
+          query: layer.queries?.highlightsQuery,
+          queryGeneration: layer.grammar.queryLoadGeneration,
+          topology: layer.injectionPointVersion,
+        })),
+    };
+  }
+
+  presentationVersionIsCurrent(stamp) {
+    const layers = this.getAllLanguageLayers().filter(Boolean);
+    return (
+      !this.destroyed &&
+      !this.publicationPending &&
+      stamp.revision === this.buffer.getTextRevision() &&
+      stamp.generation === this.presentation.generation &&
+      layers.length === stamp.layers.length &&
+      stamp.layers.every((entry, index) => {
+        const layer = layers[index];
+        return (
+          entry.layer === layer &&
+          !layer.destroyed &&
+          entry.tree === layer.tree &&
+          entry.grammar === layer.grammar &&
+          entry.query === layer.queries?.highlightsQuery &&
+          entry.queryGeneration === layer.grammar.queryLoadGeneration &&
+          entry.topology === layer.injectionPointVersion
+        );
+      })
+    );
   }
 
   classNameForScopeId(scopeId) {
@@ -1387,7 +1467,7 @@ class TreeSitterLanguageMode {
   ) {
     if (this.destroyed) return null;
     const previous =
-      oldTree?.language === language && TreeSitterParser.isSnapshot(oldTree) ? oldTree : null;
+      oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
     const capture = this.document.capture(previous);
     const parser = this.acquireParserForLanguage(language);
     const options = {
@@ -2071,12 +2151,19 @@ class TreeSitterLanguageMode {
 
   suggestedIndentForBufferRowsAtRows(rows, tabLength, options = {}) {
     this.ensureQueriesForLayersSync("indentsQuery");
-    return this.indentResolver.suggestedIndentForBufferRows(
+    const results = this.indentResolver.suggestedIndentForBufferRows(
       rows[0],
       rows[rows.length - 1],
       tabLength,
       { ...options, rows },
     );
+    if (!results) return results;
+    for (const row of rows) {
+      if (results.has(row)) continue;
+      const indent = this.indentResolver.suggestedIndentForBufferRow(row, tabLength, options);
+      if (typeof indent === "number") results.set(row, indent);
+    }
+    return results;
   }
 
   // Get the suggested indentation level for a line in the buffer on which the
@@ -5928,19 +6015,22 @@ class LanguageLayer {
 }
 
 class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
-  constructor(languageMode) {
+  constructor(languageMode, presentation = false) {
     super();
     this.languageMode = languageMode;
+    this.presentation = presentation;
   }
 
   seek(position, endRow) {
     const mode = this.languageMode;
+    position = Point.fromObject(position);
     // Screen lines built without a current snapshot must be rebuilt when it
     // arrives, including unchanged lines queried beside the edited rows.
     const range = mode.buffer.clipRange(
       new Range([position.row, 0], [endRow == null ? Infinity : endRow + 1, 0]),
     );
-    mode.publicationRanges.add(range);
+    if (mode.publicationPending) mode.publicationRanges.add(range);
+    if (this.presentation) mode.presentation.request(position.row, range.end.row);
     const cached = mode.highlightCache.read(position, range.end, [
       mode.idForScope(mode.grammar.scopeName),
     ]);

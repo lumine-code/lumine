@@ -15,7 +15,11 @@ const stats = (values) => {
 
 describe("Tree-sitter editing performance", () => {
   let editor;
-  afterEach(() => editor?.destroy());
+  let restore = [];
+  afterEach(() => {
+    for (const callback of restore.splice(0)) callback();
+    editor?.destroy();
+  });
   it("measures command blocking and complete highlighting separately", async () => {
     jasmine.useRealClock();
     await lumine.packages.activatePackage("language-python");
@@ -61,6 +65,30 @@ describe("Tree-sitter editing performance", () => {
         Math.min(middle + 80, editor.getScreenLineCount()),
       );
     screen();
+    await settle();
+    screen();
+    let parses = 0,
+      queries = 0;
+    function instrument(object, name, count) {
+      const original = object[name];
+      object[name] = function (...args) {
+        count();
+        return original.apply(this, args);
+      };
+      restore.push(() => {
+        object[name] = original;
+      });
+    }
+    for (const name of ["parse", "parseAsync"]) instrument(mode, name, () => parses++);
+    const prototypes = new Set();
+    for (const layer of mode.getAllLanguageLayers()) {
+      for (const query of Object.values(layer.queries)) {
+        if (query?.captures) prototypes.add(Object.getPrototypeOf(query));
+      }
+    }
+    for (const prototype of prototypes)
+      for (const name of ["captures", "matches"])
+        if (typeof prototype[name] === "function") instrument(prototype, name, () => queries++);
     const report = {
       createdAt: new Date().toISOString(),
       variant: process.env.TREE_SITTER_EDIT_VARIANT || "current",
@@ -75,11 +103,21 @@ describe("Tree-sitter editing performance", () => {
       notes: [
         "Real TextEditor operations and grammar settlement; visible screen-line construction included. GPU frame presentation is not measured.",
         "Event-loop delay includes the synchronous command and interim screen-line construction.",
+        "Task-delay probes sample the renderer event loop every 4 ms; they approximate scheduling latency, not hardware keyboard-to-photon latency.",
+        "Parse requests and uncached query executions are counts, not milliseconds. Native snapshots and WASM may have different query implementations.",
       ],
     };
     async function measure(action) {
       await tick();
+      parses = queries = 0;
       const start = performance.now();
+      const delays = [];
+      let lastProbe = start;
+      const interval = setInterval(() => {
+        const now = performance.now();
+        delays.push(Math.max(0, now - lastProbe - 4));
+        lastProbe = now;
+      }, 4);
       const probe = new Promise((resolve) =>
         setImmediate(() => resolve(performance.now() - start)),
       );
@@ -91,6 +129,8 @@ describe("Tree-sitter editing performance", () => {
       const ready = performance.now();
       screen();
       const end = performance.now();
+      clearInterval(interval);
+      delays.push(Math.max(0, end - lastProbe - 4));
       const eventLoop = await probe;
       expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
       expect(mode.tree.input).toBe(editor.getText());
@@ -101,6 +141,10 @@ describe("Tree-sitter editing performance", () => {
         finalPaint: end - ready,
         total: end - start,
         eventLoop,
+        taskDelayP95: stats(delays).p95,
+        maxTaskDelay: Math.max(...delays),
+        parseRequests: parses,
+        queryExecutions: queries,
       };
     }
     const scenarios = [
