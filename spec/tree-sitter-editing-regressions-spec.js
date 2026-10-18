@@ -147,7 +147,7 @@ describe("Tree-sitter editing and history", () => {
     expect(editor.getText()).toBe(original);
   });
 
-  it("keeps painted Python scopes while a commented block awaits its parse", async () => {
+  it("publishes commented Python scopes before the editing command returns", async () => {
     const original = [
       "@cdb.limit",
       "def get(ls):",
@@ -164,27 +164,15 @@ describe("Tree-sitter editing and history", () => {
     await start(original);
     screen();
     const mode = editor.getBuffer().getLanguageMode();
-    const parse = mode.parseAsync.bind(mode);
-    let release;
-    const gate = new Promise((resolve) => {
-      release = resolve;
-    });
-    spyOn(mode, "parseAsync").and.callFake(async (...args) => {
-      const tree = await parse(...args);
-      await gate;
-      return tree;
-    });
-    try {
-      editor.selectAll();
-      editor.toggleLineCommentsInSelection();
-      const interim = screen().filter((line) => line.text.trim());
-      expect(interim.length).toBe(10);
-      for (const line of interim)
-        expect(line.tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
-    } finally {
-      release();
-    }
-    await settle();
+    spyOn(mode, "parseAsync").and.callThrough();
+    editor.selectAll();
+    editor.toggleLineCommentsInSelection();
+    expect(mode.parseAsync).not.toHaveBeenCalled();
+    expect(mode.publicationPending).toBe(false);
+    const painted = screen().filter((line) => line.text.trim());
+    expect(painted.length).toBe(10);
+    for (const line of painted)
+      expect(line.tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
     for (let row = 0; row < 10; row++) {
       const column = editor.lineTextForBufferRow(row).indexOf("#");
       const scopes = editor.scopeDescriptorForBufferPosition([row, column]).getScopesArray();

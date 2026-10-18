@@ -134,15 +134,15 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = await setUp(source);
       const layer = languageMode.rootLanguageLayer;
       expect(layer.queries.parseBoundariesQuery).toBeDefined();
-      spyOn(languageMode, "parseAsync").and.callThrough();
+      spyOn(languageMode, "parse").and.callThrough();
       buffer.insert([0, 0], "\n");
       await languageMode.atTransactionEnd();
-      const calls = languageMode.parseAsync.calls.allArgs();
+      const calls = languageMode.parse.calls.allArgs();
       const ranges = calls.find((args) => args[2]?.length > 1)?.[2];
       expect(ranges).toBeDefined();
       expect(ranges[0].startIndex).toBe(0);
       expect(ranges[0].endIndex).toBe(ranges[1].startIndex);
-      expect(ranges.at(-1).endIndex).toBeGreaterThan(buffer.getLength());
+      expect(ranges.at(-1).endIndex).toBe(buffer.getLength());
       expect(layer.getCurrentRanges()).toBeNull();
       expect(layer.tree.rootNode.hasError).toBe(false);
       expect(layer.tree.rootNode.endIndex).toBe(buffer.getLength());
@@ -163,7 +163,8 @@ describe("TreeSitterLanguageMode", () => {
       };
       try {
         expect(layer.getParseRanges(null).map(({ endIndex }) => endIndex)).toEqual([
-          1024, 0x7fffffff,
+          1024,
+          source.length,
         ]);
         const originalDepth = layer.depth;
         layer.depth = 1;
@@ -241,10 +242,12 @@ describe("TreeSitterLanguageMode", () => {
         startPosition: buffer.positionForCharacterIndex(startIndex),
         endPosition: buffer.positionForCharacterIndex(endIndex),
       }));
-      spyOn(layer.tree, "edit").and.callThrough();
+      const previousTree = layer.tree;
       try {
         expect(layer.getParseRanges(included)).toBe(included);
-        expect(layer.tree.edit).not.toHaveBeenCalled();
+        expect(layer.tree).toBe(previousTree);
+        expect(previousTree.rootNode.hasChanges).toBe(false);
+        expect(layer.parseCompactionEdits).toEqual([]);
         expect(layer.treeIsDirty).toBe(false);
       } finally {
         layer.depth = originalDepth;
@@ -306,7 +309,7 @@ describe("TreeSitterLanguageMode", () => {
         true,
       );
       expect(layer.treeIsDirty).toBe(true);
-      expect(oldTree.rootNode.hasChanges).toBe(true);
+      expect(oldTree.rootNode.hasChanges).toBe(false);
       spyOn(languageMode, "parse").and.callThrough();
       const tree = layer.getOrParseTree();
       expect(languageMode.parse).toHaveBeenCalled();
@@ -552,7 +555,7 @@ describe("TreeSitterLanguageMode", () => {
       expect(languageMode.hasQuery("tagsQuery")).toBe(true);
     });
 
-    it("waits for a chunked late grammar injection before exposing its query", async () => {
+    it("publishes late injections synchronously when their grammar is already loaded", async () => {
       jasmine.useRealClock();
       const rootConfig = {
         ...jsConfig,
@@ -585,28 +588,11 @@ describe("TreeSitterLanguageMode", () => {
       await languageMode.ready;
       expect(languageMode.hasQuery("tagsQuery")).toBe(false);
 
-      let releaseChunk;
-      const chunk = new Promise((resolve) => (releaseChunk = resolve));
-      const yieldForChunk = spyOn(languageMode, "_yieldForInjectionCandidateScan").and.returnValue(
-        chunk,
-      );
       const registration = lumine.grammars.addGrammar(injectedGrammar);
 
       try {
-        await waitForCondition(() => yieldForChunk.calls.count() > 0);
-        let settled = false;
-        const settlement = editor.whenGrammarSettled().then((value) => {
-          settled = true;
-          return value;
-        });
-        await Promise.resolve();
-        expect(settled).toBe(false);
-        expect(languageMode.hasQuery("tagsQuery")).toBe(false);
-
-        releaseChunk();
-        expect(await settlement).toBe(true);
+        expect(languageMode.publicationPending).toBe(false);
         expect(languageMode.hasQuery("tagsQuery")).toBe(true);
-
         const groups = await editor.getGrammarQueryCaptureGroups("tagsQuery");
         expect(groups.some(({ grammar: groupGrammar }) => groupGrammar === injectedGrammar)).toBe(
           true,
@@ -746,16 +732,17 @@ describe("TreeSitterLanguageMode", () => {
       expect(layer.queries.foldsQuery).toBeDefined();
     });
 
-    it("deletes a replaced Wasm query after the layer releases it", async () => {
+    it("replaces the cached query while retained native query handles stay usable", async () => {
       const layer = await buildLanguageLayer();
       const oldQuery = layer.queries.highlightsQuery;
-      spyOn(oldQuery, "delete").and.callThrough();
+      const root = layer.tree.rootNode;
+      const captures = oldQuery.captures(root).map((capture) => capture.name);
 
       await grammar.setQueryForTest("highlightsQuery", "(identifier) @constant");
       await layer.queryReloadPromise;
 
       expect(layer.queries.highlightsQuery).not.toBe(oldQuery);
-      expect(oldQuery.delete).toHaveBeenCalledTimes(1);
+      expect(oldQuery.captures(root).map((capture) => capture.name)).toEqual(captures);
     });
   });
 
@@ -1711,169 +1698,94 @@ describe("TreeSitterLanguageMode", () => {
       });
     });
 
-    describe("asynchronous parsing (progress-callback time slicing)", () => {
-      it("feeds parsers bounded chunks while preserving text for large nodes", async () => {
+    describe("initial parsing budgets and immutable snapshots", () => {
+      async function buildMode(source, options = {}) {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-        const contents = "x".repeat(20000);
-        buffer.setText(`const value = \`${contents}\`;`);
-        const languageMode = new TreeSitterLanguageMode({
-          grammars: lumine.grammars,
-          grammar,
-          buffer,
-        });
-        buffer.setLanguageMode(languageMode);
-        await languageMode.ready;
-
-        const parser = languageMode.getRootParser();
-        const parse = parser.parse.bind(parser);
-        let largestChunk = 0;
-        let parsing = false;
-        spyOn(parser, "parse").and.callFake((callback, ...args) => {
-          parsing = true;
-          try {
-            return parse(
-              (...callbackArgs) => {
-                const chunk = callback(...callbackArgs);
-                if (parsing) largestChunk = Math.max(largestChunk, chunk.length);
-                return chunk;
-              },
-              ...args,
-            );
-          } finally {
-            parsing = false;
-          }
-        });
-
-        const tree = languageMode.parse(languageMode.rootLanguage, null, null);
-        const template = tree.rootNode.descendantsOfType("template_string")[0];
-
-        expect(largestChunk).toBeLessThanOrEqual(4096);
-        expect(template.text).toBe(`\`${contents}\``);
-        tree.delete();
-      });
-
-      it("deletes the previous canonical tree only once after an incremental parse", async () => {
-        jasmine.useRealClock();
-        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-        buffer.setText("const value = 1;");
-        const languageMode = new TreeSitterLanguageMode({
-          grammars: lumine.grammars,
-          grammar,
-          buffer,
-        });
-        buffer.setLanguageMode(languageMode);
-        await languageMode.ready;
-
-        const previousTree = languageMode.tree;
-        spyOn(previousTree, "delete").and.callThrough();
-
-        buffer.append("\nvalue++;");
-        await languageMode.atTransactionEnd();
-
-        expect(previousTree.delete).toHaveBeenCalledTimes(1);
-      });
-
-      it("defers large-buffer tree comparisons and adopts edits made while completion is paused", async () => {
-        jasmine.useRealClock();
-        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-        const source = `const payload = \`${"x".repeat(1024 * 1024)}\`;`;
         buffer.setText(source);
-        const languageMode = new TreeSitterLanguageMode({
+        const mode = new TreeSitterLanguageMode({
           grammars: lumine.grammars,
           grammar,
           buffer,
+          ...options,
         });
-        buffer.setLanguageMode(languageMode);
-        await languageMode.ready;
+        buffer.setLanguageMode(mode);
+        await mode.ready;
+        return mode;
+      }
 
-        const compareTrees = spyOn(languageMode.tree, "getChangedRanges").and.callThrough();
-        let resumeCompletion;
-        let paused = false;
-        spyOn(languageMode, "_yieldForPostParseWork").and.callFake(() => {
-          if (paused) return Promise.resolve();
-          paused = true;
-          return new Promise((resolve) => {
-            resumeCompletion = resolve;
-          });
-        });
-
-        buffer.append("\nconst beta = 1;");
-        await waitForCondition(() => paused);
-        expect(compareTrees).not.toHaveBeenCalled();
-        buffer.append("\nconst gamma = 2;");
-        resumeCompletion();
-        await languageMode.atTransactionEnd();
-
-        expect(compareTrees).toHaveBeenCalled();
-        expect(languageMode.tree.rootNode.hasChanges).toBe(false);
-        expect(languageMode.tree.rootNode.hasError).toBe(false);
-        expect(
-          languageMode.tree.rootNode.descendantsOfType("identifier").map((node) => node.text),
-        ).toEqual(["payload", "beta", "gamma"]);
-        expect(buffer.getText()).toBe(`${source}\nconst beta = 1;\nconst gamma = 2;`);
+      it("passes an owned string snapshot and retains text for large nodes", async () => {
+        const contents = "x".repeat(20000);
+        const source = "const value = \u0060" + contents + "\u0060;";
+        const mode = await buildMode(source);
+        const parser = mode.getRootParser();
+        spyOn(parser, "parseSync").and.callThrough();
+        const tree = mode.parse(mode.rootLanguage, null, null);
+        expect(parser.parseSync.calls.mostRecent().args[0]).toBe(source);
+        const template = tree.rootNode.descendantsOfType("template_string")[0];
+        spyOn(buffer, "getText").and.callThrough();
+        expect(template.text).toBe("\u0060" + contents + "\u0060");
+        expect(buffer.getText).not.toHaveBeenCalled();
       });
 
-      it("yields to the event loop when the sync budget is exhausted, then resolves to a complete tree", async () => {
+      it("keeps the preceding tree, nodes and cursors valid after incremental parsing", async () => {
+        const mode = await buildMode("const value = 1;");
+        const before = mode.tree;
+        const root = before.rootNode;
+        const cursor = root.walk();
+        buffer.append("\nvalue++;");
+        expect(mode.tree).not.toBe(before);
+        expect(root.text).toBe("const value = 1;");
+        expect(cursor.nodeText).toBe(root.text);
+        expect(before.rootNode.hasChanges).toBe(false);
+        expect(mode.tree.rootNode.text).toBe("const value = 1;\nvalue++;");
+      });
+
+      it("publishes the newest revision after a reentrant edit during highlighting publication", async () => {
+        const source = "const payload = \u0060" + "x".repeat(1024 * 1024) + "\u0060;";
+        const mode = await buildMode(source);
+        const before = mode.tree;
+        let inserted = false;
+        const subscription = mode.onDidChangeHighlighting(() => {
+          if (inserted) return;
+          inserted = true;
+          buffer.append("\nconst gamma = 2;");
+        });
+        try {
+          buffer.append("\nconst beta = 1;");
+          expect(mode.tree.revision).toBe(buffer.getTextRevision());
+          expect(mode.tree.rootNode.hasError).toBe(false);
+          expect(
+            mode.tree.rootNode.descendantsOfType("identifier").map((node) => node.text),
+          ).toEqual(["payload", "beta", "gamma"]);
+          expect(before.rootNode.text).toBe(source);
+        } finally {
+          subscription.dispose();
+        }
+      });
+
+      it("allows a zero initial sync budget while keeping subsequent edits synchronous", async () => {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-        await grammar.setQueryForTest(
-          "highlightsQuery",
-          scm`
-          (identifier) @variable
-        `,
-        );
-
-        // A modest buffer is enough: with a zero-length sync budget, the very
-        // first progress-callback tick cancels each synchronous burst, so any
-        // non-trivial incremental reparse is forced onto the async path,
-        // regardless of how fast the machine is.
         buffer.setText("function f(a, b) { return a + b; }\n".repeat(100));
-
-        const languageMode = new TreeSitterLanguageMode({
+        const mode = new TreeSitterLanguageMode({
           grammars: lumine.grammars,
           grammar,
           buffer,
           syncTimeoutMicros: 0,
         });
-        buffer.setLanguageMode(languageMode);
-        await languageMode.ready;
-        await languageMode.atTransactionEnd();
-
-        // Capture what each incremental reparse returns so we can prove it went
-        // async (a thenable) instead of blocking to completion synchronously.
-        const returnValues = [];
-        const parseAsync = languageMode.parseAsync.bind(languageMode);
-        spyOn(languageMode, "parseAsync").and.callFake((...args) => {
-          const result = parseAsync(...args);
-          returnValues.push(result);
-          return result;
-        });
-
-        // A single keystroke-sized edit (a leading empty statement keeps the
-        // program valid). Under the zero budget this cannot be re-parsed within
-        // the synchronous attempt.
-        buffer.setTextInRange(
-          [
-            [0, 0],
-            [0, 0],
-          ],
-          ";",
-        );
-        await languageMode.atTransactionEnd();
-
-        expect(returnValues.length).toBeGreaterThan(0);
-        expect(returnValues.some((r) => r && typeof r.then === "function")).toBe(true);
-
-        // The deferred parse still produced a complete, error-free tree that is
-        // structurally identical to an unbudgeted synchronous parse of the same
-        // buffer.
-        const tree = languageMode.tree;
-        expect(tree).not.toBe(null);
-        expect(tree.rootNode.hasError).toBe(false);
-
-        const fullTree = languageMode.parse(languageMode.rootLanguage, null, null);
-        expect(tree.rootNode.childCount).toBe(fullTree.rootNode.childCount);
+        spyOn(mode, "parseAsync").and.callThrough();
+        buffer.setLanguageMode(mode);
+        await mode.ready;
+        expect(mode.parseAsync).toHaveBeenCalled();
+        expect(typeof mode.parseAsync.calls.mostRecent().returnValue.then).toBe("function");
+        mode.parseAsync.calls.reset();
+        spyOn(mode, "parse").and.callThrough();
+        buffer.insert([0, 0], ";");
+        expect(mode.parseAsync).not.toHaveBeenCalled();
+        expect(mode.parse).toHaveBeenCalled();
+        expect(mode.tree.revision).toBe(buffer.getTextRevision());
+        expect(mode.tree.rootNode.hasError).toBe(false);
       });
     });
 
@@ -2253,10 +2165,10 @@ describe("TreeSitterLanguageMode", () => {
               return performUpdate(...args);
             });
           }
-          const initialTimeouts = [];
+          const initialDepths = [];
           const parseAsync = languageMode.parseAsync.bind(languageMode);
           spyOn(languageMode, "parseAsync").and.callFake((...args) => {
-            initialTimeouts.push(args[3]?.initialTimeoutMicros);
+            initialDepths.push(args[3]?.depth);
             return parseAsync(...args);
           });
 
@@ -2272,7 +2184,7 @@ describe("TreeSitterLanguageMode", () => {
           await languageMode.ready;
 
           expect(updateStarts.length).toBe(3);
-          expect(initialTimeouts).toEqual([0, 0, 0]);
+          expect(initialDepths).toEqual([1, 1, 1]);
           expect(layers.every((layer) => layer.tree !== null)).toBe(true);
           expect(languageMode.pendingInitialInjectionUpdates.length).toBe(0);
           expect(languageMode.initialInjectionUpdateDrainPromise).toBeNull();
@@ -2439,7 +2351,8 @@ describe("TreeSitterLanguageMode", () => {
           buffer.setText("final;");
           const rootLayer = languageMode.rootLanguageLayer;
           const replacementTree = rootLayer.getOrParseTree();
-          expect(rootLayer.tree).toBe(replacementTree);
+          expect(rootLayer.tree).not.toBe(replacementTree);
+          expect(replacementTree.revision).toBe(buffer.getTextRevision());
           expect(replacementTree.rootNode.hasChanges).toBe(false);
 
           resumeFirstYield();
@@ -2482,7 +2395,7 @@ describe("TreeSitterLanguageMode", () => {
               (tree) =>
                 new Promise((resolve) => {
                   staleChildTree = tree;
-                  spyOn(staleChildTree, "delete").and.callThrough();
+                  expect(staleChildTree.rootNode.text).toBe("first");
                   finishParsedChild = () => resolve(tree);
                 }),
             );
@@ -2508,7 +2421,8 @@ describe("TreeSitterLanguageMode", () => {
 
           buffer.setText("final;");
           const replacementTree = rootLayer.getOrParseTree();
-          expect(rootLayer.tree).toBe(replacementTree);
+          expect(rootLayer.tree).not.toBe(replacementTree);
+          expect(replacementTree.revision).toBe(buffer.getTextRevision());
           expect(replacementTree.rootNode.hasChanges).toBe(false);
 
           finishParsedChild();
@@ -2517,7 +2431,8 @@ describe("TreeSitterLanguageMode", () => {
           yieldResolvers.shift()();
           await waitForCondition(() => Boolean(resumeParentRetry));
 
-          expect(staleChildTree.delete).toHaveBeenCalledTimes(1);
+          expect(staleChildTree.rootNode.text).toBe("first");
+          expect(staleChildTree.rootNode.hasChanges).toBe(false);
           expect(firstLayer.tree).toBeNull();
           expect(firstLayer.currentRangesLayer.getMarkerCount()).toBe(0);
           expect(firstLayer.setCurrentRanges).not.toHaveBeenCalled();
@@ -2628,6 +2543,26 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       describe("routing buffer changes to injection layers", () => {
+        function retainTree(tree) {
+          const node = tree.rootNode;
+          const expected = [
+            node.text,
+            node.startIndex,
+            node.endIndex,
+            node.startPosition,
+            node.endPosition,
+          ];
+          return () => {
+            expect([
+              node.text,
+              node.startIndex,
+              node.endIndex,
+              node.startPosition,
+              node.endPosition,
+            ]).toEqual(expected);
+            expect(node.hasChanges).toBe(false);
+          };
+        }
         async function startTemplateLanguageMode(text) {
           jasmine.useRealClock();
           lumine.grammars.addGrammar(jsGrammar);
@@ -2679,16 +2614,16 @@ describe("TreeSitterLanguageMode", () => {
           htmlLayer.foldResolver.dividedFoldEndsByStartNodeId.set(7, [new Point(0, 0)]);
 
           spyOn(htmlLayer, "handleTextChange").and.callThrough();
-          spyOn(originalTree, "edit").and.callThrough();
+          const originalTreeRetained = retainTree(originalTree);
           spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
 
           buffer.setTextInRange(buffer.findSync("tailValue"), "tailValues");
           await languageMode.atTransactionEnd();
 
           expect(htmlLayer.handleTextChange).not.toHaveBeenCalled();
-          expect(originalTree.edit).not.toHaveBeenCalled();
+          originalTreeRetained();
           expect(htmlLayer.foldResolver.reset).toHaveBeenCalledTimes(1);
-          expect(htmlLayer.tree).toBe(originalTree);
+          expect(htmlLayer.tree).not.toBe(originalTree);
           expect(htmlLayer.getCurrentRanges()).toBe(originalRanges);
           expect(htmlLayer.foldResolver.boundaries).toBeNull();
           expect(htmlLayer.foldResolver.boundariesRange).toBeNull();
@@ -2711,22 +2646,22 @@ describe("TreeSitterLanguageMode", () => {
 
           spyOn(firstLayer, "handleTextChange").and.callThrough();
           spyOn(secondLayer, "handleTextChange").and.callThrough();
-          spyOn(firstTree, "edit").and.callThrough();
-          spyOn(secondTree, "edit").and.callThrough();
+          const firstTreeRetained = retainTree(firstTree);
+          const secondTreeRetained = retainTree(secondTree);
 
           buffer.setTextInRange(buffer.findSync("between"), replacement);
           await languageMode.atTransactionEnd();
 
           expect(firstLayer.handleTextChange).not.toHaveBeenCalled();
-          expect(firstTree.edit).not.toHaveBeenCalled();
-          expect(firstLayer.tree).toBe(firstTree);
+          firstTreeRetained();
+          expect(firstLayer.tree).not.toBe(firstTree);
           expect(firstTree.rootNode.startIndex).toBe(firstRootStartIndex);
           expect(firstLayer.getCurrentRanges()).toBe(firstRanges);
 
           expect(secondLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(secondTree.edit).toHaveBeenCalledTimes(1);
-          expect(secondLayer.tree).toBe(secondTree);
-          expect(secondTree.rootNode.startIndex).toBe(secondRootStartIndex + delta);
+          secondTreeRetained();
+          expect(secondLayer.tree).not.toBe(secondTree);
+          expect(secondLayer.tree.rootNode.startIndex).toBe(secondRootStartIndex + delta);
           expect(rangeSnapshot(secondLayer)).toEqual(
             secondRangesBefore.map((range) => ({
               start: [range.start[0], range.start[1] + delta],
@@ -2744,16 +2679,16 @@ describe("TreeSitterLanguageMode", () => {
           const rangesBefore = rangeSnapshot(htmlLayer);
 
           spyOn(htmlLayer, "handleTextChange").and.callThrough();
-          spyOn(originalTree, "edit").and.callThrough();
+          const originalTreeRetained = retainTree(originalTree);
 
           buffer.insert([0, 0], "\n");
           await languageMode.atTransactionEnd();
 
           expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(originalTree.edit).toHaveBeenCalledTimes(1);
-          expect(htmlLayer.tree).toBe(originalTree);
-          expect(originalTree.rootNode.startIndex).toBe(rootStartIndex + 1);
-          expect(originalTree.rootNode.startPosition).toEqual({
+          originalTreeRetained();
+          expect(htmlLayer.tree).not.toBe(originalTree);
+          expect(htmlLayer.tree.rootNode.startIndex).toBe(rootStartIndex + 1);
+          expect(htmlLayer.tree.rootNode.startPosition).toEqual({
             row: rootStartPosition.row + 1,
             column: rootStartPosition.column,
           });
@@ -2771,7 +2706,7 @@ describe("TreeSitterLanguageMode", () => {
           const originalTree = htmlLayer.tree;
 
           spyOn(htmlLayer, "handleTextChange").and.callThrough();
-          spyOn(originalTree, "edit").and.callThrough();
+          const originalTreeRetained = retainTree(originalTree);
           spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
           spyOn(htmlLayer, "update").and.callThrough();
 
@@ -2779,7 +2714,7 @@ describe("TreeSitterLanguageMode", () => {
           await languageMode.atTransactionEnd();
 
           expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          originalTreeRetained();
           expect(htmlLayer.foldResolver.reset).toHaveBeenCalled();
           expect(htmlLayer.update).toHaveBeenCalledTimes(1);
           expect(htmlLayers(languageMode)).toContain(htmlLayer);
@@ -2804,14 +2739,14 @@ describe("TreeSitterLanguageMode", () => {
           expect(originalMarkers.length).toBe(2);
 
           spyOn(htmlLayer, "handleTextChange").and.callThrough();
-          spyOn(originalTree, "edit").and.callThrough();
+          const originalTreeRetained = retainTree(originalTree);
           spyOn(htmlLayer, "update").and.callThrough();
 
           buffer.setTextInRange(buffer.findSync("name"), replacement);
           await languageMode.atTransactionEnd();
 
           expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          originalTreeRetained();
           expect(htmlLayer.update).toHaveBeenCalledTimes(1);
           expect(sortedRangeMarkers(htmlLayer)).toEqual(originalMarkers);
           expect(rangeSnapshot(htmlLayer)).toEqual([
@@ -2833,8 +2768,8 @@ describe("TreeSitterLanguageMode", () => {
 
           spyOn(firstLayer, "handleTextChange").and.callThrough();
           spyOn(secondLayer, "handleTextChange").and.callThrough();
-          spyOn(firstTree, "edit").and.callThrough();
-          spyOn(secondTree, "edit").and.callThrough();
+          const firstTreeRetained = retainTree(firstTree);
+          const secondTreeRetained = retainTree(secondTree);
 
           buffer.transact(() => {
             buffer.insert(firstLayer.getExtent().start, " ");
@@ -2842,9 +2777,9 @@ describe("TreeSitterLanguageMode", () => {
           });
 
           expect(firstLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(firstTree.edit).toHaveBeenCalledTimes(1);
+          firstTreeRetained();
           expect(secondLayer.handleTextChange).toHaveBeenCalledTimes(2);
-          expect(secondTree.edit).toHaveBeenCalledTimes(2);
+          secondTreeRetained();
           await languageMode.atTransactionEnd();
         });
 
@@ -2856,7 +2791,7 @@ describe("TreeSitterLanguageMode", () => {
           const originalTree = htmlLayer.tree;
 
           spyOn(htmlLayer, "handleTextChange").and.callThrough();
-          spyOn(originalTree, "edit").and.callThrough();
+          const originalTreeRetained = retainTree(originalTree);
           spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
           spyOn(htmlLayer, "update").and.callThrough();
 
@@ -2866,7 +2801,7 @@ describe("TreeSitterLanguageMode", () => {
           });
 
           expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
-          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          originalTreeRetained();
           expect(htmlLayer.foldResolver.reset).toHaveBeenCalled();
           await languageMode.atTransactionEnd();
 
@@ -3077,7 +3012,7 @@ describe("TreeSitterLanguageMode", () => {
           injectionReconcileChunkSize: 1,
         });
         buffer.setLanguageMode(languageMode);
-        while (!resumePlan) await Promise.resolve();
+        await waitForCondition(() => resumePlan);
         const rootLayer = languageMode.rootLanguageLayer;
         spyOn(rootLayer, "_commitInjectionPlan").and.callThrough();
 
@@ -3217,7 +3152,7 @@ describe("TreeSitterLanguageMode", () => {
           injectionCandidateChunkRows: 1,
         });
         buffer.setLanguageMode(languageMode);
-        while (!resumeFirstScan) await Promise.resolve();
+        await waitForCondition(() => resumeFirstScan);
 
         buffer.setText("w;\nx;\ny;\nz;");
         resumeFirstScan();
@@ -3254,7 +3189,7 @@ describe("TreeSitterLanguageMode", () => {
           injectionCandidateChunkRows: 1,
         });
         buffer.setLanguageMode(languageMode);
-        while (!resumeScan) await Promise.resolve();
+        await waitForCondition(() => resumeScan);
 
         const rootLanguageLayer = languageMode.rootLanguageLayer;
         languageMode.destroy();
@@ -4710,7 +4645,7 @@ describe("TreeSitterLanguageMode", () => {
       } finally {
         foldResolver.reset();
         layer.tree = originalTree;
-        replacementTree.delete();
+        expect(replacementTree.rootNode.text).toBe(originalTree.rootNode.text);
       }
     });
 
@@ -7551,34 +7486,15 @@ describe("TreeSitterLanguageMode", () => {
         grammar,
         buffer,
       });
-      // Force this test to use async indent in all cases.
-      languageMode.transactionReparseBudgetMs = 0;
-      languageMode.currentTransactionReparseBudgetMs = 0;
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       await wait(0);
 
-      spyOn(languageMode, "suggestedIndentForBufferRows").and.callThrough();
+      spyOn(languageMode, "suggestedIndentForBufferRow").and.callThrough();
 
       editor.setCursorBufferPosition([0, 15]);
       editor.transact(() => {
-        // This is a transaction in which each indentation decision is
-        // contingent on the previous indentation decisions that have been
-        // made. But in async indent mode, we cannot make any indentation
-        // suggestions until the end of the transaction.
-        //
-        // Still, in some scenarios, this will be OK. Either we can make each
-        // of these indentation decisions in order once the transaction is
-        // done, or we can give up and auto-indent the whole range covered by
-        // the transaction when we're done.
-        //
-        // This is an imperfect heuristic and won't produce good results in
-        // many cases, which is why we flip to async indent reluctantly and
-        // only in certain scenarios. But it's better than committing to N
-        // re-parses (where N equals the number of indentation suggestions
-        // we're asked to make during a given transaction) no matter how high N
-        // may be. And it's also better than performing no indentation at all
-        // in these cases.
+        // Each insertion sees the synchronous indentation produced before it.
         editor.insertNewline();
         editor.insertText("// this is a comment", { autoIndent: true, autoDecreaseIndent: true });
         editor.insertNewline();
@@ -7586,9 +7502,8 @@ describe("TreeSitterLanguageMode", () => {
         editor.insertNewline();
       });
 
-      await wait(0);
-
-      expect(languageMode.suggestedIndentForBufferRows).toHaveBeenCalled();
+      expect(languageMode.publicationPending).toBe(false);
+      expect(languageMode.suggestedIndentForBufferRow).toHaveBeenCalled();
 
       expect(editor.lineTextForBufferRow(1)).toEqual(`  // this is a comment`);
 
@@ -7872,9 +7787,6 @@ describe("TreeSitterLanguageMode", () => {
         grammar,
         buffer,
       });
-      // Force this test to use async indent in all cases.
-      languageMode.transactionReparseBudgetMs = 0;
-      languageMode.currentTransactionReparseBudgetMs = 0;
       spyOn(languageMode, "suggestedIndentForBufferRows").and.callThrough();
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;

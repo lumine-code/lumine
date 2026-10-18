@@ -4,7 +4,6 @@ const { compileInjectionQuery, collectInjectionMatches } = require("../src/tree-
 
 describe("Static Tree-sitter injection query contract", () => {
   let grammar;
-  let queries;
 
   beforeAll(async () => {
     const file = require.resolve("language-javascript/grammars/javascript.json");
@@ -12,19 +11,10 @@ describe("Static Tree-sitter injection query contract", () => {
     await grammar.getLanguage();
   });
 
-  beforeEach(() => {
-    queries = [];
-  });
-
-  afterEach(() => {
-    for (const query of queries) query.delete();
-  });
-
   afterAll(() => grammar.deactivate());
 
   function compile(source) {
     const query = grammar.createQuerySync(source);
-    queries.push(query);
     return compileInjectionQuery(query, source);
   }
 
@@ -98,7 +88,7 @@ describe("Static Tree-sitter injection query contract", () => {
     );
     expect(() =>
       compile(regex('(#set! injection.language "regex") (#offset! @injection.content 0 1 0 -1)')),
-    ).toThrowError(/unsupported predicate #offset!/);
+    ).toThrowError(/Unknown query predicate `#offset!`/);
     expect(() => compile(regex('(#set! injection.language "regex") (#is? local)'))).toThrowError(
       /unsupported predicate #is\?/,
     );

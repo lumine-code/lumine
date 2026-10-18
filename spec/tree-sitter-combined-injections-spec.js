@@ -423,9 +423,9 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
       if (++calls === 2) throw new Error("broken combined content");
       return node;
     });
-    await expectAsync(
-      mode.rootLanguageLayer._populateInjections(buffer.getRange(), null),
-    ).toBeRejectedWithError("broken combined content");
+    expect(() => mode.rootLanguageLayer._populateInjections(buffer.getRange(), null)).toThrowError(
+      "broken combined content",
+    );
     expect(layers()[0]).toBe(layer);
     expect(mode.rootLanguageLayer.combinedInjectionMembersLayer.getMarkerCount()).toBe(members);
   });

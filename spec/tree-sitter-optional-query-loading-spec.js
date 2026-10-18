@@ -240,7 +240,7 @@ describe("Tree-sitter optional query loading", () => {
     pending.resolve(query);
     await load;
     expect(layer.queries).toEqual({});
-    expect(grammar.queryReferenceCounts.get(query)).toBe(1);
+    expect([...grammar.queryCache.values()]).toContain(query);
   });
 
   it("stops deferred compilation when the grammar generation is discarded", async () => {
@@ -283,10 +283,10 @@ describe("Tree-sitter optional query loading", () => {
     expect(first.rootLanguageLayer.queries.tagsQuery).toBe(query);
     expect(second.rootLanguageLayer.queries.tagsQuery).toBe(query);
     expect(await grammar.getQuery("tagsQuery")).toBe(query);
-    expect(grammar.queryReferenceCounts.get(query)).toBe(3);
+    expect(grammar.queryCache.get("tagsQuery")).toBe(query);
     first.destroy();
     second.destroy();
-    expect(grammar.queryReferenceCounts.get(query)).toBe(1);
+    expect([...grammar.queryCache.values()]).toContain(query);
   });
 
   it("does not eagerly compile a cold optional query after its source changes", async () => {
@@ -334,7 +334,7 @@ describe("Tree-sitter optional query loading", () => {
     pending.resolve(query);
     expect(await request).toEqual([]);
     expect(layer.queries).toEqual({});
-    expect(grammar.queryReferenceCounts.get(query)).toBe(1);
+    expect([...grammar.queryCache.values()]).toContain(query);
   });
 
   it("reports a broken optional query once on demand and retries after a source fix", async () => {
@@ -345,7 +345,8 @@ describe("Tree-sitter optional query loading", () => {
     expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
     expect(await languageMode.getQueryCaptureGroups("tagsQuery")).toEqual([]);
     expect(report).toHaveBeenCalledTimes(1);
-    expect(report.calls.mostRecent().args[0].name).toBe("QueryError");
+    expect(report.calls.mostRecent().args[0]).toEqual(jasmine.any(Error));
+    expect(report.calls.mostRecent().args[0].offset).toEqual(jasmine.any(Number));
     expect(report.calls.mostRecent().args[1]).toBe("tagsQuery");
     expect(compile).toHaveBeenCalledTimes(1);
     grammar.tagsQuery = "(identifier) @name";
@@ -390,7 +391,10 @@ describe("Tree-sitter optional query loading", () => {
     expect(languageMode.rootLanguageLayer.queries.tagsQuery).toBe(
       grammar.queryCache.get("tagsQuery"),
     );
-    stale.delete();
+    expect(stale.captures(languageMode.tree.rootNode).map((capture) => capture.name)).toEqual([
+      "stale",
+      "stale",
+    ]);
   });
 
   it("loads an optional query declared only by a nested language layer", async () => {
@@ -435,6 +439,6 @@ describe("Tree-sitter optional query loading", () => {
     controller.abort();
     pending.resolve(query);
     expect(await request).toEqual([]);
-    expect(grammar.queryReferenceCounts.get(query)).toBe(2);
+    expect(languageMode.rootLanguageLayer.queries.tagsQuery).toBe(query);
   });
 });

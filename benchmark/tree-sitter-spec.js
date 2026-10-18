@@ -660,7 +660,7 @@ describe("Tree-sitter benchmark", () => {
         runtime: {
           electron: process.versions.electron,
           node: process.versions.node,
-          webTreeSitter: luminePackage.dependencies["web-tree-sitter"],
+          nodeTreeSitter: luminePackage.dependencies["@lumine-code/node-tree-sitter"],
         },
         input: {
           lines: LINES,

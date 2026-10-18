@@ -1,10 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const CSON = require("@lumine-code/season");
-// `LANGUAGE_VERSION` / `MIN_COMPATIBLE_VERSION` are assigned during
-// `Parser.init()`, so they must be read lazily — not destructured at require
-// time, when they are still undefined.
-const TreeSitter = require("web-tree-sitter");
+const TreeSitter = require("@lumine-code/node-tree-sitter");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 
 // Compiles every query of every bundled Tree-sitter grammar against its
@@ -119,8 +116,8 @@ describe("bundled Tree-sitter grammars", () => {
       try {
         let language = await grammar.getLanguage();
 
-        expect(language.abiVersion).toBeGreaterThanOrEqual(TreeSitter.MIN_COMPATIBLE_VERSION);
-        expect(language.abiVersion).toBeLessThanOrEqual(TreeSitter.LANGUAGE_VERSION);
+        expect(language.wasm).toBe(true);
+        expect(() => new TreeSitter().setLanguage(language)).not.toThrow();
 
         let failures = [];
         for (let key of Object.keys(config.treeSitter)) {

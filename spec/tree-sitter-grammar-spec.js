@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const CSON = require("@lumine-code/season");
-const { Language: WebLanguage } = require("web-tree-sitter");
+const NativeTreeSitter = require("@lumine-code/node-tree-sitter");
 const { Disposable } = require("@lumine-code/event-kit");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
@@ -72,8 +72,9 @@ describe("TreeSitterGrammar", () => {
       grammar.activate();
       const query = await grammar.getQuery("highlightsQuery");
       const internalQuery = grammar._getOrCreateInternalQuerySync("(identifier) @internal");
-      const queryDeleted = spyOn(query, "delete").and.callThrough();
-      const internalDeleted = spyOn(internalQuery, "delete").and.callThrough();
+      const retainedTree = new NativeTreeSitter()
+        .setLanguage(grammar.getLanguageSync())
+        .parse("value;");
       const subscriptions = grammar.subscriptions;
       const subscriptionCleanup = jasmine.createSpy("subscriptionCleanup");
       subscriptions.add(new Disposable(subscriptionCleanup));
@@ -99,16 +100,16 @@ describe("TreeSitterGrammar", () => {
       expect(failure).toBe(primary);
       expect(subscriptionCleanup).toHaveBeenCalledTimes(1);
       expect(subscriptions.disposed).toBe(true);
-      expect(queryDeleted).toHaveBeenCalledTimes(1);
-      expect(internalDeleted).toHaveBeenCalledTimes(1);
-      expect(grammar.queryReferenceCounts.size).toBe(0);
+      expect(query.captures(retainedTree.rootNode)[0].name).toBe("variable");
+      expect(internalQuery.captures(retainedTree.rootNode)[0].name).toBe("internal");
+      expect(grammar.queryCache.size).toBe(0);
       expect(grammar.getLanguageSync()).toBeNull();
       expect(lumine.grammars.grammarForId(grammar.scopeName)).toBeUndefined();
       observer.dispose();
       expect(() => grammar.deactivate()).not.toThrow();
     });
 
-    it("keeps cleanup errors in order and attempts later query deletion", async () => {
+    it("keeps cleanup errors in order and releases cached query references", async () => {
       const grammar = makeGrammar();
       grammar.activate();
       await grammar.getLanguage();
@@ -116,17 +117,18 @@ describe("TreeSitterGrammar", () => {
       const later = grammar._getOrCreateInternalQuerySync("(identifier) @later");
       const primary = new Error("Grammar removal observer failed");
       const subscriptionError = new Error("Grammar subscription cleanup failed");
-      const queryError = new Error("Grammar query cleanup failed");
-      const originalDelete = first.delete.bind(first);
-      spyOn(first, "delete").and.callFake(() => {
-        originalDelete();
-        throw queryError;
+      const laterError = new Error("Later subscription cleanup failed");
+      const retainedTree = new NativeTreeSitter()
+        .setLanguage(grammar.getLanguageSync())
+        .parse("value;");
+      const laterCleanup = jasmine.createSpy("laterCleanup").and.callFake(() => {
+        throw laterError;
       });
-      const laterDeleted = spyOn(later, "delete").and.callThrough();
       grammar.subscriptions.add(
         new Disposable(() => {
           throw subscriptionError;
         }),
+        new Disposable(laterCleanup),
       );
       const observer = lumine.grammars.onDidRemoveGrammar((removed) => {
         if (removed === grammar) throw primary;
@@ -139,9 +141,12 @@ describe("TreeSitterGrammar", () => {
         failure = error;
       }
 
-      expect(failure.errors).toEqual([primary, subscriptionError, queryError]);
+      expect(failure.errors[0]).toBe(primary);
+      expect(failure.errors[1].errors).toEqual([subscriptionError, laterError]);
       expect(failure.cause).toBe(primary);
-      expect(laterDeleted).toHaveBeenCalledTimes(1);
+      expect(laterCleanup).toHaveBeenCalledTimes(1);
+      expect(first.captures(retainedTree.rootNode)[0].name).toBe("first");
+      expect(later.captures(retainedTree.rootNode)[0].name).toBe("later");
       expect(grammar.internalQueryCache.size).toBe(0);
       expect(grammar.subscriptions).toBeNull();
       observer.dispose();
@@ -153,7 +158,9 @@ describe("TreeSitterGrammar", () => {
       grammar.activate();
       await grammar.getLanguage();
       const oldQuery = grammar._getOrCreateInternalQuerySync("(identifier) @old");
-      const oldDeleted = spyOn(oldQuery, "delete").and.callThrough();
+      const retainedTree = new NativeTreeSitter()
+        .setLanguage(grammar.getLanguageSync())
+        .parse("value;");
       const oldSubscriptions = grammar.subscriptions;
       const oldCleanup = jasmine.createSpy("oldCleanup");
       const currentCleanup = jasmine.createSpy("currentCleanup");
@@ -180,15 +187,15 @@ describe("TreeSitterGrammar", () => {
       expect(grammar.subscriptions.disposed).toBe(false);
       expect(oldCleanup).toHaveBeenCalledTimes(1);
       expect(currentCleanup).not.toHaveBeenCalled();
-      expect(oldDeleted).toHaveBeenCalledTimes(1);
+      expect(oldQuery.captures(retainedTree.rootNode)[0].name).toBe("old");
       await grammar.getLanguage();
       const current = grammar._getOrCreateInternalQuerySync("(identifier) @current");
-      const currentDeleted = spyOn(current, "delete").and.callThrough();
 
       observer.dispose();
       grammar.deactivate();
       expect(currentCleanup).toHaveBeenCalledTimes(1);
-      expect(currentDeleted).toHaveBeenCalledTimes(1);
+      expect(current.captures(retainedTree.rootNode)[0].name).toBe("current");
+      expect(grammar.internalQueryCache.size).toBe(0);
       expect(lumine.grammars.grammarForId(grammar.scopeName)).toBeUndefined();
     });
 
@@ -197,7 +204,7 @@ describe("TreeSitterGrammar", () => {
     });
 
     it("keeps a registered grammar lazy until its language is requested", async () => {
-      const load = spyOn(WebLanguage, "load").and.callThrough();
+      const load = spyOn(NativeTreeSitter, "loadLanguage").and.callThrough();
       const grammar = makeGrammar();
 
       await Promise.resolve();
@@ -209,10 +216,10 @@ describe("TreeSitterGrammar", () => {
     });
 
     it("shares one in-flight language load between grammars using the same Wasm", async () => {
-      const originalLoad = WebLanguage.load;
-      const load = spyOn(WebLanguage, "load").and.callFake(async (input) => {
+      const originalLoad = NativeTreeSitter.loadLanguage;
+      const load = spyOn(NativeTreeSitter, "loadLanguage").and.callFake(async (...args) => {
         await wait(10);
-        return originalLoad(input);
+        return originalLoad(...args);
       });
       const first = makeGrammar();
       const second = makeGrammar();
@@ -325,11 +332,14 @@ describe("TreeSitterGrammar", () => {
       grammar.deactivate();
     });
 
-    it("shares internal queries and deletes them when the grammar deactivates", async () => {
+    it("shares internal queries and releases its references when deactivated", async () => {
       const grammar = makeGrammar();
       await grammar.getLanguage();
-      const query = { delete: jasmine.createSpy("delete") };
-      spyOn(grammar, "createQuerySync").and.returnValue(query);
+      spyOn(grammar, "createQuerySync").and.callThrough();
+      const query = grammar._getOrCreateInternalQuerySync("(identifier) @candidate");
+      const retainedTree = new NativeTreeSitter()
+        .setLanguage(grammar.getLanguageSync())
+        .parse("value;");
 
       expect(grammar._getOrCreateInternalQuerySync("(identifier) @candidate")).toBe(query);
       expect(grammar._getOrCreateInternalQuerySync("(identifier) @candidate")).toBe(query);
@@ -337,8 +347,31 @@ describe("TreeSitterGrammar", () => {
 
       grammar.deactivate();
 
-      expect(query.delete).toHaveBeenCalledTimes(1);
+      expect(query.captures(retainedTree.rootNode)[0].name).toBe("candidate");
       expect(grammar.internalQueryCache.size).toBe(0);
+    });
+
+    it("reloads replaced Wasm content while retaining the preceding language", async () => {
+      const grammar = makeGrammar();
+      grammar.activate();
+      const previous = await grammar.getLanguage();
+      grammar.deactivate();
+      const pythonPath = require.resolve("language-python/grammars/python.json");
+      const pythonConfig = CSON.readFileSync(pythonPath);
+      fs.copyFileSync(
+        path.join(path.dirname(pythonPath), pythonConfig.treeSitter.grammar),
+        wasmPath,
+      );
+      grammar.activate();
+      const current = await grammar.getLanguage();
+      expect(current).not.toBe(previous);
+      expect(new NativeTreeSitter().setLanguage(current).parse("value = 1\n").rootNode.type).toBe(
+        "module",
+      );
+      expect(new NativeTreeSitter().setLanguage(previous).parse("value;\n").rootNode.type).toBe(
+        "program",
+      );
+      grammar.deactivate();
     });
 
     it("re-reads query files after the same grammar object is reactivated", async () => {
@@ -378,7 +411,8 @@ describe("TreeSitterGrammar", () => {
 
       expect(error).not.toBe(null);
       // The original error object is rethrown, not wrapped.
-      expect(error.name).toBe("QueryError");
+      expect(error instanceof Error).toBe(true);
+      expect(Number.isInteger(error.offset)).toBe(true);
       let descriptor = error.queryDescriptor;
       expect(descriptor).toBeDefined();
       expect(descriptor.scopeName).toBe("source.test-js");
@@ -454,7 +488,8 @@ describe("TreeSitterGrammar", () => {
       }
 
       expect(error).not.toBe(null);
-      expect(error.name).toBe("QueryError");
+      expect(error instanceof Error).toBe(true);
+      expect(Number.isInteger(error.offset)).toBe(true);
       expect(error.queryDescriptor.word).toBe("mystery_node");
       expect(path.basename(error.queryDescriptor.filePath)).toBe("sync.scm");
     });

@@ -178,7 +178,9 @@ describe("ScopeResolver", () => {
     // Build a fake capture whose `startPosition` is equal to its `endPosition`.
     let fakeCapture = { ...captures[0] };
     fakeCapture.node = {
-      ...fakeCapture.node,
+      startIndex: fakeCapture.node.startIndex,
+      endIndex: fakeCapture.node.startIndex,
+      startPosition: fakeCapture.node.startPosition,
       endPosition: fakeCapture.node.startPosition,
     };
 

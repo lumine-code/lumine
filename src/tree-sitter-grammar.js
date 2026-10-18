@@ -1,6 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const { Language, Parser, Query } = require("web-tree-sitter");
+const NativeTreeSitter = require("@lumine-code/node-tree-sitter");
+const { Query, BackgroundParser } = NativeTreeSitter;
+const { createHash } = require("node:crypto");
+const { grammarExportName } = require("./tree-sitter-wasm");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
@@ -11,31 +14,7 @@ const {
   throwLifecycleErrors,
 } = require("./package-lifecycle-errors");
 
-// Load the runtime Wasm through Node's `fs` rather than letting the emscripten
-// module `fetch` it. In Electron's renderer, `web-tree-sitter` takes its
-// browser code path (process.type === "renderer"), and `fetch` of a `file://`
-// URL is blocked on macOS and Linux, so the parser would never initialize.
-const webTreeSitterWasmPath = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
-let parserInitPromise = null;
-
-function initializeParser() {
-  if (!parserInitPromise) {
-    const pendingInitialization = fs.promises
-      .readFile(webTreeSitterWasmPath)
-      .then((wasmBinary) => Parser.init({ wasmBinary }));
-    const guardedInitialization = pendingInitialization.catch((error) => {
-      if (parserInitPromise === guardedInitialization) {
-        parserInitPromise = null;
-      }
-      throw error;
-    });
-    parserInitPromise = guardedInitialization;
-  }
-  return parserInitPromise;
-}
-
-// `QueryError.kind` values from `web-tree-sitter`. (The `QueryError` class
-// itself is not exported, so we duck-type it and translate its `kind` here.)
+// Native query compilation reports UTF-8 byte offsets.
 const QUERY_ERROR_KIND_LABELS = {
   1: "syntax error",
   2: "unknown node type",
@@ -69,48 +48,22 @@ module.exports = class TreeSitterGrammar {
   static LANGUAGE_CACHE = new Map();
 
   static async loadLanguage(grammarPath) {
-    // We should load each language a maximum of once.
-    //
-    // This cache makes certain trade-offs. Without it, two different grammars
-    // within the same package can point to the same WASM file and each have
-    // its own distinct “copy” of the language. Using the cache avoids this
-    // waste, but makes it unsafe for us to assume we can delete a language
-    // from this cache if its grammar is deactivated.
-    //
-    // So that's the main downside: out of an abundance of caution, we don't
-    // ever prune this cache, even if the grammar that originally loaded a
-    // language is deactivated. But deactivation of a grammar after
-    // instantiation is an uncommon occurrence outside of the test suite, so we
-    // can live with this for now.
-    if (this.LANGUAGE_CACHE.has(grammarPath)) {
-      return this.LANGUAGE_CACHE.get(grammarPath);
+    const input =
+      typeof grammarPath === "string" ? await fs.promises.readFile(grammarPath) : grammarPath;
+    const digest = createHash("sha256").update(input).digest("hex");
+    const cached = this.LANGUAGE_CACHE.get(grammarPath);
+    if (cached?.digest === digest) return cached.promise;
+    const entry = {
+      digest,
+      promise: NativeTreeSitter.loadLanguage(grammarExportName(input), input),
+    };
+    this.LANGUAGE_CACHE.set(grammarPath, entry);
+    try {
+      return await entry.promise;
+    } catch (error) {
+      if (this.LANGUAGE_CACHE.get(grammarPath) === entry) this.LANGUAGE_CACHE.delete(grammarPath);
+      throw error;
     }
-    // Read the grammar Wasm ourselves and hand `Language.load` the bytes; a bare
-    // path would make it `fetch` a `file://` URL, which fails in Electron's
-    // renderer on macOS and Linux. Include the read in the shared promise so
-    // simultaneous consumers neither block the renderer nor duplicate I/O.
-    let loadPromise = Promise.resolve()
-      .then(() =>
-        typeof grammarPath === "string" ? fs.promises.readFile(grammarPath) : grammarPath,
-      )
-      .then((input) => Language.load(input))
-      .then(
-        (language) => {
-          this.LANGUAGE_CACHE.set(grammarPath, language);
-          return language;
-        },
-        (error) => {
-          // A transient load failure must not poison every later attempt.
-          if (this.LANGUAGE_CACHE.get(grammarPath) === loadPromise) {
-            this.LANGUAGE_CACHE.delete(grammarPath);
-          }
-          throw error;
-        },
-      );
-    // Cache before awaiting so constructors created in the same turn share the
-    // in-flight WebAssembly compilation rather than racing duplicate loads.
-    this.LANGUAGE_CACHE.set(grammarPath, loadPromise);
-    return loadPromise;
   }
 
   constructor(registry, grammarPath, params) {
@@ -145,7 +98,6 @@ module.exports = class TreeSitterGrammar {
 
     this.queryCache = new Map();
     this.internalQueryCache = new Map();
-    this.queryReferenceCounts = new Map();
     this.querySourceMaps = new Map();
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
@@ -266,9 +218,7 @@ module.exports = class TreeSitterGrammar {
   }
 
   createParser(language = this._language) {
-    let parser = new Parser();
-    parser.setLanguage(language);
-    return parser;
+    return new BackgroundParser(language);
   }
 
   _createQuery(language, queryContents) {
@@ -286,15 +236,10 @@ module.exports = class TreeSitterGrammar {
 
   _createGrammarQuery(language, queryType) {
     const query = this._createQuery(language, this[queryType]);
-    try {
-      if (queryType === "injectionsQuery") {
-        query.injectionDescriptors = compileInjectionQuery(query, this[queryType]);
-      }
-      return query;
-    } catch (error) {
-      query.delete();
-      throw error;
+    if (queryType === "injectionsQuery") {
+      query.injectionDescriptors = compileInjectionQuery(query, this[queryType]);
     }
+    return query;
   }
 
   /**
@@ -309,7 +254,6 @@ module.exports = class TreeSitterGrammar {
   async getLanguage() {
     const generation = this.queryLoadGeneration;
     if (!this.subscriptions) throw invalidatedLanguageError();
-    await initializeParser();
     if (generation !== this.queryLoadGeneration) throw invalidatedLanguageError();
     if (!this._language) {
       try {
@@ -501,17 +445,22 @@ module.exports = class TreeSitterGrammar {
     try {
       let source = this[queryType];
       let sourceMap = this.querySourceMaps.get(queryType);
-      // `web-tree-sitter` does not export its `QueryError` class, so
-      // duck-type it. `index` is a character offset into the compiled source.
-      let isQueryError = error.name === "QueryError" && typeof error.index === "number";
+      // Native query diagnostics use UTF-8 byte offsets, while source maps
+      // and JavaScript slices use UTF-16 code units.
+      const byteOffset = error.offset;
+      const index =
+        typeof byteOffset === "number" && typeof source === "string"
+          ? Buffer.from(source).subarray(0, byteOffset).toString("utf8").length
+          : error.index;
+      let isQueryError = typeof index === "number";
       if (isQueryError && typeof source === "string") {
         descriptor.kindLabel = QUERY_ERROR_KIND_LABELS[error.kind] ?? null;
-        descriptor.word = error.info?.word || null;
+        descriptor.word = error.info?.word || (/^[\w.-]+/.exec(source.slice(index))?.[0] ?? null);
 
         let entry = null;
         if (sourceMap) {
           for (let candidate of sourceMap) {
-            if (candidate.start <= error.index) entry = candidate;
+            if (candidate.start <= index) entry = candidate;
           }
         }
         let fileStart = 0;
@@ -520,13 +469,13 @@ module.exports = class TreeSitterGrammar {
           fileStart = entry.start;
         }
         let line = 1;
-        for (let i = fileStart; i < error.index; i++) {
+        for (let i = fileStart; i < index; i++) {
           if (source.charCodeAt(i) === 10) line++;
         }
         descriptor.line = line;
 
-        let lineStart = source.lastIndexOf("\n", Math.max(0, error.index - 1)) + 1;
-        let lineEnd = source.indexOf("\n", error.index);
+        let lineStart = source.lastIndexOf("\n", Math.max(0, index - 1)) + 1;
+        let lineEnd = source.indexOf("\n", index);
         if (lineEnd === -1) lineEnd = source.length;
         descriptor.lineText = source.slice(lineStart, lineEnd).trim() || null;
       } else if (sourceMap) {
@@ -636,7 +585,7 @@ module.exports = class TreeSitterGrammar {
             query = this._createGrammarQuery(language, queryType);
 
             if (generation !== this.queryLoadGeneration) {
-              query.delete();
+              // Native queries are released when the final JavaScript owner disappears.
               reject(invalidatedQueryError(queryType));
               return;
             }
@@ -680,7 +629,7 @@ module.exports = class TreeSitterGrammar {
    * and end users can use queries for whatever purposes they like.
    *
    * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Promise<Query>} A caller-owned query; call `delete()` on it when no longer needed.
+   * @returns {Promise<Query>} A query whose native resources follow its JavaScript lifetime.
    */
   async createQuery(queryContents) {
     let language = await this.getLanguage();
@@ -698,7 +647,7 @@ module.exports = class TreeSitterGrammar {
    * language has already loaded.
    *
    * @param {String} queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
-   * @returns {Query} A caller-owned query; call `delete()` on it when no longer needed.
+   * @returns {Query} A query whose native resources follow its JavaScript lifetime.
    * @throws {Error} When the language has not been loaded, or the query cannot be compiled.
    */
   createQuerySync(queryContents) {
@@ -708,39 +657,20 @@ module.exports = class TreeSitterGrammar {
     return this._createQuery(this._language, queryContents);
   }
 
-  retainQuery(query) {
-    if (!query) return;
-    this.queryReferenceCounts.set(query, (this.queryReferenceCounts.get(query) ?? 0) + 1);
-  }
-
-  releaseQuery(query) {
-    if (!query) return;
-    const count = this.queryReferenceCounts.get(query);
-    if (!count) return;
-    if (count === 1) {
-      this.queryReferenceCounts.delete(query);
-      query.delete();
-    } else {
-      this.queryReferenceCounts.set(query, count - 1);
-    }
-  }
-
   cacheQuery(queryType, query) {
     this.queryCache.set(queryType, query);
-    this.retainQuery(query);
   }
 
   uncacheQuery(queryType) {
     const query = this.queryCache.get(queryType);
     if (!query) return;
     this.queryCache.delete(queryType);
-    this.releaseQuery(query);
   }
 
   // Internal queries are derived from runtime state rather than query files.
   // They are immutable and shared by every language layer using this grammar,
-  // so compiling a given source more than once only wastes time and Wasm
-  // memory. Callers must not delete the returned query; the grammar owns it.
+  // so compiling a given source more than once only wastes time and native
+  // memory. Retained queries stay usable until their last reference is released.
   _getOrCreateInternalQuerySync(queryContents) {
     let query = this.internalQueryCache.get(queryContents);
     if (!query) {
@@ -931,8 +861,6 @@ module.exports = class TreeSitterGrammar {
   deactivate() {
     const registration = this.registration;
     const subscriptions = this.subscriptions;
-    const cachedQueries = [...this.queryCache.values()];
-    const internalQueries = [...this.internalQueryCache.values()];
     this.activationToken = null;
     this.registration = null;
     this.subscriptions = null;
@@ -948,14 +876,6 @@ module.exports = class TreeSitterGrammar {
     const failures = [];
     captureLifecycleError(failures, () => registration?.dispose());
     captureLifecycleError(failures, () => subscriptions?.dispose());
-    // A new query object gets instantiated for each kind of query every time a
-    // grammar activates. WASM queries need explicit cleanup.
-    for (const query of cachedQueries) {
-      captureLifecycleError(failures, () => this.releaseQuery(query));
-    }
-    for (const query of internalQueries) {
-      captureLifecycleError(failures, () => query.delete());
-    }
     throwLifecycleErrors(failures, "Grammar failed to deactivate cleanly");
   }
 

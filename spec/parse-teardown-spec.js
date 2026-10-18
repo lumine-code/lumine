@@ -3,14 +3,8 @@ const TextBuffer = require("../src/text-buffer");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
-// A parse long enough to go async resumes on `setImmediate`, so a batch can
-// still be queued when the buffer is destroyed. `destroy` used to delete every
-// parser it owned, including that one, and the next batch then read wasm memory
-// that had just been freed — `RuntimeError: memory access out of bounds`, with a
-// stack that stops at `Parser.parse` and names nothing useful.
-//
-// It shows up constantly in spec runs, which open and tear down windows in
-// quick succession, and for a user on closing a large file mid-parse.
+// Initial worker work may outlive the buffer. Closing a parser cancels work
+// while the binding retains native resources until that work has settled.
 
 const jsGrammarPath = require.resolve("language-javascript/grammars/javascript.json");
 
@@ -35,7 +29,9 @@ describe("destroying a buffer during an async parse", () => {
   });
 
   afterEach(() => {
+    buffer?.destroy();
     languageMode?.destroy();
+    grammar.deactivate();
   });
 
   async function startLongParse() {
@@ -83,34 +79,43 @@ describe("destroying a buffer during an async parse", () => {
     expect(didTokenize).not.toHaveBeenCalled();
   });
 
-  it("leaves a parser that is still mid-parse for the loop to delete", async () => {
-    await startLongParse();
-
+  it("cancels active native work and releases the pool after settlement", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+    languageMode.syncTimeoutMicros = 0;
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
-    spyOn(parser, "delete").and.callThrough();
-
+    const close = spyOn(parser, "close").and.callThrough();
+    let started;
+    const entered = new Promise((resolve) => {
+      started = resolve;
+    });
+    const parse = parser.parse.bind(parser);
+    spyOn(parser, "parse").and.callFake((...args) => {
+      const result = parse(...args);
+      started();
+      return result;
+    });
     const result = languageMode.parseAsync(language, null, undefined, { scopeName: "source.js" });
-    expect(typeof result.then).toBe("function");
-
+    await entered;
     languageMode.destroy();
-    // Deleting here is what freed the memory the next batch read.
-    expect(parser.delete).not.toHaveBeenCalled();
-
-    await result;
-    expect(parser.delete).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+    await expectAsync(result).toBeResolvedTo(null);
+    expect(languageMode.parsersByLanguage.size).toBe(0);
   });
 
-  it("still deletes parsers that are not in use", async () => {
+  it("closes idle parsers immediately", async () => {
     await startLongParse();
 
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
-    spyOn(parser, "delete").and.callThrough();
+    spyOn(parser, "close").and.callThrough();
 
     languageMode.destroy();
 
-    expect(parser.delete).toHaveBeenCalled();
+    expect(parser.close).toHaveBeenCalled();
   });
 
   it("keeps only a bounded number of idle parsers after a burst", async () => {
@@ -127,7 +132,7 @@ describe("destroying a buffer during an async parse", () => {
     const parsers = Array.from({ length: 6 }, () =>
       languageMode.acquireParserForLanguage(language),
     );
-    for (const parser of parsers) spyOn(parser, "delete").and.callThrough();
+    for (const parser of parsers) spyOn(parser, "close").and.callThrough();
     const pool = languageMode.getParserPoolForLanguage(language);
     expect(pool.active.size).toBe(6);
     expect(pool.idle.length).toBe(0);
@@ -138,100 +143,63 @@ describe("destroying a buffer during an async parse", () => {
 
     expect(pool.active.size).toBe(0);
     expect(pool.idle.length).toBe(2);
-    expect(parsers.filter((parser) => parser.delete.calls.count() === 1).length).toBe(4);
+    expect(parsers.filter((parser) => parser.close.calls.count() === 1).length).toBe(4);
   });
 
-  it("lets an active parser release itself after the language mode is destroyed", async () => {
+  it("lets an acquired parser release itself after the mode is destroyed", async () => {
     buffer = new TextBuffer("const value = 1;");
     languageMode = new TreeSitterLanguageMode({ buffer, grammar });
     buffer.setLanguageMode(languageMode);
     await languageMode.ready;
-
     const language = grammar.getLanguageSync();
     const parser = languageMode.acquireParserForLanguage(language);
-    spyOn(parser, "delete").and.callThrough();
-
+    spyOn(parser, "close").and.callThrough();
     languageMode.destroy();
-    expect(parser.delete).not.toHaveBeenCalled();
-
+    expect(parser.close).toHaveBeenCalled();
     languageMode.releaseParserForLanguage(language, parser);
-    expect(parser.delete).toHaveBeenCalledTimes(1);
+    languageMode.releaseParserForLanguage(language, parser);
     expect(languageMode.parsersByLanguage.size).toBe(0);
   });
 
-  it("replaces a parser whose Wasm handle faults during reset", async () => {
-    buffer = new TextBuffer("const value = 1;");
-    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
-    buffer.setLanguageMode(languageMode);
-    await languageMode.ready;
-
-    const language = grammar.getLanguageSync();
-    const staleParser = languageMode.getOrCreateParserForLanguage(language);
-    spyOn(staleParser, "delete").and.callThrough();
-    spyOn(staleParser, "reset").and.throwError(
-      new WebAssembly.RuntimeError("memory access out of bounds"),
-    );
-
-    const tree = await languageMode.parseAsync(language, null, undefined, {
-      scopeName: "source.js",
+  for (const asynchronous of [false, true]) {
+    it(`reuses the parser after a failed ${asynchronous ? "background" : "synchronous"} parse`, async () => {
+      buffer = new TextBuffer("const value = 1;");
+      languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      languageMode.syncTimeoutMicros = 0;
+      const language = grammar.getLanguageSync();
+      const parser = languageMode.getOrCreateParserForLanguage(language);
+      const method = asynchronous ? "parse" : "parseSync";
+      const parse = spyOn(parser, method).and.throwError(new Error("parse failed"));
+      const attempt = () =>
+        languageMode[asynchronous ? "parseAsync" : "parse"](language, null, undefined, {
+          scopeName: "source.js",
+        });
+      if (asynchronous) await expectAsync(attempt()).toBeRejectedWithError(/parse failed/);
+      else expect(attempt).toThrowError(/parse failed/);
+      expect(languageMode.getOrCreateParserForLanguage(language)).toBe(parser);
+      parse.and.callThrough();
+      const tree = await attempt();
+      expect(tree.rootNode.type).toBe("program");
+      expect(tree.input).toBe(buffer.getText());
     });
+  }
 
-    expect(tree.rootNode.type).toBe("program");
-    expect(staleParser.delete).not.toHaveBeenCalled();
-    const replacement = languageMode.getOrCreateParserForLanguage(language);
-    expect(replacement).not.toBe(staleParser);
-    tree.delete();
-
-    const secondTree = await languageMode.parseAsync(language, null, undefined, {
-      scopeName: "source.js",
-    });
-    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(replacement);
-    secondTree.delete();
-  });
-
-  it("also replaces a stale parser before a synchronous parse", async () => {
+  it("retains published node and cursor text after the owning mode closes", async () => {
     buffer = new TextBuffer("const value = 1;");
     languageMode = new TreeSitterLanguageMode({ buffer, grammar });
     buffer.setLanguageMode(languageMode);
     await languageMode.ready;
-
-    const language = grammar.getLanguageSync();
-    const staleParser = languageMode.getOrCreateParserForLanguage(language);
-    spyOn(staleParser, "delete").and.callThrough();
-    spyOn(staleParser, "reset").and.throwError(
-      new WebAssembly.RuntimeError("memory access out of bounds"),
-    );
-
-    const tree = languageMode.parse(language, null, undefined, { scopeName: "source.js" });
-
-    expect(tree.rootNode.type).toBe("program");
-    expect(staleParser.delete).not.toHaveBeenCalled();
-    const replacement = languageMode.getOrCreateParserForLanguage(language);
-    expect(replacement).not.toBe(staleParser);
-    tree.delete();
-
-    const secondTree = languageMode.parse(language, null, undefined, { scopeName: "source.js" });
-    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(replacement);
-    secondTree.delete();
+    const node = languageMode.tree.rootNode;
+    const cursor = node.walk();
+    languageMode.destroy();
+    expect(node.text).toBe("const value = 1;");
+    expect(cursor.nodeText).toBe(node.text);
+    expect(languageMode.parsersByLanguage.size).toBe(0);
   });
 
-  it("does not hide ordinary parser reset failures", async () => {
-    buffer = new TextBuffer("const value = 1;");
-    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
-    buffer.setLanguageMode(languageMode);
-    await languageMode.ready;
-
-    const language = grammar.getLanguageSync();
-    const parser = languageMode.getOrCreateParserForLanguage(language);
-    spyOn(parser, "reset").and.throwError(new Error("unexpected reset failure"));
-
-    expect(() =>
-      languageMode.parse(language, null, undefined, { scopeName: "source.js" }),
-    ).toThrowError(/unexpected reset failure/);
-    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(parser);
-  });
-
-  it("drops an old Wasm tree from another language instance", async () => {
+  it("ignores an old tree from another language instance", async () => {
     buffer = new TextBuffer("const value = 1;");
     languageMode = new TreeSitterLanguageMode({ buffer, grammar });
     buffer.setLanguageMode(languageMode);
@@ -243,7 +211,6 @@ describe("destroying a buffer during an async parse", () => {
       scopeName: "source.js",
     });
     expect(synchronousTree.rootNode.type).toBe("program");
-    synchronousTree.delete();
 
     const asynchronousTree = await languageMode.parseAsync(
       language,
@@ -252,6 +219,5 @@ describe("destroying a buffer during an async parse", () => {
       { scopeName: "source.js" },
     );
     expect(asynchronousTree.rootNode.type).toBe("program");
-    asynchronousTree.delete();
   });
 });

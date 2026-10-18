@@ -230,14 +230,15 @@ function passesFieldTests(capture) {
 }
 
 async function auditConfig(configPath) {
-  const TreeSitter = require("web-tree-sitter");
-  await TreeSitter.Parser.init();
+  const TreeSitter = require("@lumine-code/node-tree-sitter");
+  const { grammarExportName } = require("../src/tree-sitter-wasm");
 
   const config = CSON.readFileSync(configPath);
   const grammarsDir = path.dirname(configPath);
   const wasmPath = path.join(grammarsDir, config.treeSitter.grammar);
-  const language = await TreeSitter.Language.load(fs.readFileSync(wasmPath));
-  const parser = new TreeSitter.Parser();
+  const bytes = fs.readFileSync(wasmPath);
+  const language = await TreeSitter.loadLanguage(grammarExportName(bytes), bytes);
+  const parser = new TreeSitter();
   parser.setLanguage(language);
 
   let queryFiles = config.treeSitter.highlightsQuery;
@@ -277,11 +278,8 @@ async function auditConfig(configPath) {
         properties: capture.setProperties ?? {},
       });
     }
-    tree.delete();
   }
 
-  query.delete();
-  parser.delete();
   return {
     configPath,
     rawCaptureCount,

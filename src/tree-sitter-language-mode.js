@@ -1,7 +1,7 @@
-const { Node } = require("web-tree-sitter");
-const HighlightCache = require("./tree-sitter-highlight-cache");
+const { SyntaxNode: Node, BackgroundParser } = require("@lumine-code/node-tree-sitter");
+const TreeSitterDocument = require("./tree-sitter-document");
+const parserScheduler = require("./tree-sitter-scheduler");
 const { Point, Range, spliceArray } = require("./text-buffer");
-const { Patch } = require("@lumine-code/superstring");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const ScopeDescriptor = require("./scope-descriptor");
 const ScopeResolver = require("./scope-resolver");
@@ -31,31 +31,9 @@ const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
-// Tree-sitter calls input callbacks with an index and a position, not an end
-// index. Returning the entire remaining suffix makes every callback
-// allocate O(file size), while web-tree-sitter copies at most 10 KiB of UTF-16
-// data into Wasm anyway. A bounded chunk is composed transparently for parsing
-// and Node#text.
-const WASM_PARSE_INPUT_CHUNK_CODE_UNITS = 4096;
-const NODE_TEXT_INPUT_CHUNK_CODE_UNITS = 32768;
-
-// How many milliseconds we can spend on synchronous re-parses (for indentation
-// purposes) in a given transaction before we fall back to asynchronous
-// indentation instead. Only comes into play when async indentation is enabled.
-const REPARSE_BUDGET_PER_TRANSACTION_MILLIS = 10;
-
+// Only the first parse has a synchronous budget; unfinished initial work runs
+// on a worker. All updates after coherent publication complete synchronously.
 const PARSE_JOB_LIMIT_MICROS = 5000;
-// The first slice of an opened file's initial parse runs inside the task that
-// opens the editor, so together with the editor mount around it it has to fit
-// under Chromium's 50 ms long-task threshold. 25 ms parses roughly the first
-// 60 KB in one go — nearly every source file — so those still paint
-// highlighted; anything larger colorizes progressively instead of blocking
-// the open.
-const INITIAL_PARSE_JOB_LIMIT_MICROS = 25000;
-// What the first slice cannot finish continues in `setImmediate` batches.
-// Each batch is its own task, sized well under the long-task threshold so a
-// large file's background parse never registers as jank.
-const BATCH_PARSE_JOB_LIMIT_MICROS = 15000;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
 // dwarf the parse itself — a whole-buffer prefill of a 15k-line file costs
@@ -76,10 +54,6 @@ const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
 // refreshes let typing and painting continue between batches.
 const QUERY_CAPTURE_CHUNK_ROWS = 200;
 const QUERY_CAPTURE_CHUNK_CODE_UNITS = 8192;
-// A quick incremental parse does not imply a quick tree diff: comparing large
-// flat syntax nodes and reconciling their injections can still take tens of
-// milliseconds. Run that completion work outside the input event's task.
-const POST_PARSE_DEFER_CODE_UNITS = 1024 * 1024;
 // Newly-created injection layers often become ready together because they
 // share a grammar's cached language and queries. Without a shared budget,
 // their first parses all begin in the same microtask checkpoint and each may
@@ -89,29 +63,7 @@ const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
 const OPTIONAL_QUERY_TYPES = new Set(["localsQuery", "tagsQuery", "parseBoundariesQuery"]);
 const ANCILLARY_QUERY_TYPES = ["foldsQuery", "indentsQuery"];
 const HIGHLIGHT_CONFIG_KEYS = new WeakMap();
-// web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
-// whose Wasm handle already faults cannot be deleted or finalized safely, so
-// keep that rare object alive for the renderer's remaining lifetime. This is a
-// controlled leak in the exceptional recovery path, chosen over a later unhandled
-// call into the same invalid pointer from FinalizationRegistry.
-const QUARANTINED_WASM_PARSERS = new Set();
-
 const FUNCTION_TRUE = () => true;
-
-// Parse with a time budget. Returns `null` when the budget is exhausted
-// before the parse completes; the parser retains its progress, so calling
-// this again with the same arguments resumes where it left off.
-function parseWithProgressTimeout(parser, callback, oldTree, includedRanges, timeoutMicros) {
-  let options = { includedRanges };
-
-  if (timeoutMicros != null) {
-    let now = globalThis.performance?.now?.bind(globalThis.performance) ?? Date.now;
-    let deadline = now() + timeoutMicros / 1000;
-    options.progressCallback = () => now() >= deadline;
-  }
-
-  return parser.parse(callback, oldTree, options);
-}
 
 function last(array) {
   return array[array.length - 1];
@@ -152,8 +104,10 @@ function nodeBreadth(node) {
 }
 
 function rangeToTreeSitterRangeSpec(range, buffer) {
-  let startIndex = buffer.characterIndexForPosition(range.start);
-  let endIndex = buffer.characterIndexForPosition(range.end);
+  // Tree-sitter positions can end between CR and LF. Buffer point clipping
+  // would drop that CR, so preserve raw UTF-16 columns relative to row starts.
+  let startIndex = buffer.characterIndexForPosition([range.start.row, 0]) + range.start.column;
+  let endIndex = buffer.characterIndexForPosition([range.end.row, 0]) + range.end.column;
   let startPosition = { row: range.start.row, column: range.start.column };
   let endPosition = { row: range.end.row, column: range.end.column };
 
@@ -238,8 +192,12 @@ class TreeSitterLanguageMode {
     maxIdleParsersPerLanguage,
   }) {
     this.buffer = buffer;
-    this.highlightCache = new HighlightCache();
-    this.textInputChunk = null;
+    this.document = new TreeSitterDocument(buffer);
+    this.backgroundSnapshots = new WeakSet();
+    this.parseDetails = new WeakMap();
+    this.synchronousUpdates = false;
+    this.publicationPending = true;
+    this.publicationRanges = new TreeSitterRangeList();
     this.grammar = grammar;
     this.config = config ?? lumine.config;
     this.grammarRegistry = grammars;
@@ -247,8 +205,6 @@ class TreeSitterLanguageMode {
     this.syncTimeoutMicros = syncTimeoutMicros ?? PARSE_JOB_LIMIT_MICROS;
     this.useAsyncParsing = FEATURE_ASYNC_PARSE;
     this.useAsyncIndent = FEATURE_ASYNC_INDENT;
-    this.transactionReparseBudgetMs = REPARSE_BUDGET_PER_TRANSACTION_MILLIS;
-    this.currentTransactionReparseBudgetMs = undefined;
     this.injectionCandidateChunkRows =
       injectionCandidateChunkRows ?? INJECTION_CANDIDATE_CHUNK_ROWS;
     this.injectionCandidateChunkCodeUnits =
@@ -278,6 +234,22 @@ class TreeSitterLanguageMode {
     this.tokenized = false;
 
     this.subscriptions = new CompositeDisposable();
+    this.subscriptions.add(
+      buffer.onDidApplyChanges(() => {
+        if (this.destroyed) return;
+        for (const layer of this.getAllLanguageLayers()) {
+          if (layer && !layer.parseStarted) layer.parseAbort?.abort();
+        }
+        queueMicrotask(() => {
+          if (
+            !this.destroyed &&
+            this.rootLanguageLayer &&
+            this.rootLanguageLayer.tree?.revision !== buffer.getTextRevision()
+          )
+            this.requestDocumentUpdate();
+        });
+      }),
+    );
     this.subscriptions.add(this.onDidTokenize(() => (this.tokenized = true)));
 
     this.rootLanguage = null;
@@ -336,7 +308,9 @@ class TreeSitterLanguageMode {
       })
       .then((parser) => {
         if (this.destroyed || !parser) return null;
-        return this.rootLanguageLayer.update(null);
+        // An edit queued before language loading can start the root update
+        // first. Readiness must join it rather than treating reentry as done.
+        return this.rootLanguageLayer.currentParsePromise ?? this.rootLanguageLayer.update(null);
       })
       .then((shouldEndTransaction) => {
         if (this.destroyed) return;
@@ -347,6 +321,7 @@ class TreeSitterLanguageMode {
           // pending transaction here after the initial update adopts it.
           this.finishTransactionUpdate();
         }
+        this.publishCurrentLayers();
         this.emitter.emit("did-tokenize");
       })
       .catch((error) => {
@@ -360,11 +335,9 @@ class TreeSitterLanguageMode {
   }
 
   destroy() {
-    // Read by the async parse loop, which runs across `setImmediate` and so can
-    // still have a batch queued when this returns.
+    // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
-    this.highlightCache.clear();
-    this.textInputChunk = null;
+    this.document.close();
 
     let layers = this.getAllLanguageLayers();
     for (let layer of layers) {
@@ -375,18 +348,17 @@ class TreeSitterLanguageMode {
     this.resolveNextTransactionPromise();
     this.transactionChangeCount = 0;
     this.autoIndentRequests = 0;
-    this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
     this.injectionsMarkerLayer?.destroy();
     this.rootLanguageLayer = null;
     this.pendingDirtyHighlightRanges.clear();
     this.subscriptions?.dispose();
 
-    // Active parsers release themselves when their current batch observes the
-    // destroyed flag. Deleting one here would free memory that batch is about
-    // to read; idle parsers are safe to release immediately.
+    // close() cancels active work; the binding keeps its resources alive until
+    // completion. The active pool entry is removed by the parse finalizer.
     for (const [language, pool] of this.parsersByLanguage) {
+      for (const parser of pool.active) parser.close();
       for (const parser of pool.idle) {
-        parser.delete();
+        parser.close();
       }
       pool.idle.length = 0;
       if (pool.active.size === 0) this.parsersByLanguage.delete(language);
@@ -451,54 +423,13 @@ class TreeSitterLanguageMode {
     if (!pool?.active.delete(parser)) return;
 
     if (this.destroyed || pool.idle.length >= this.maxIdleParsersPerLanguage) {
-      parser.delete();
+      parser.close();
     } else {
       pool.idle.push(parser);
     }
 
     if (pool.idle.length === 0 && pool.active.size === 0) {
       this.parsersByLanguage.delete(language);
-    }
-  }
-
-  quarantineParserForLanguage(language, parser) {
-    const pool = this.parsersByLanguage.get(language);
-    const wasActive = pool?.active.delete(parser) ?? false;
-    const idleIndex = pool?.idle.indexOf(parser) ?? -1;
-    if (idleIndex !== -1) pool.idle.splice(idleIndex, 1);
-    if (pool && pool.idle.length === 0 && pool.active.size === 0) {
-      this.parsersByLanguage.delete(language);
-    }
-    QUARANTINED_WASM_PARSERS.add(parser);
-    return wasActive;
-  }
-
-  resetParserForLanguage(language, parser, scopeName) {
-    try {
-      parser.reset();
-      return parser;
-    } catch (error) {
-      const grammar = this.grammarsByLanguage.get(language);
-      const recoverable =
-        error instanceof WebAssembly.RuntimeError &&
-        /memory access out of bounds/i.test(error.message);
-      if (!recoverable) throw error;
-
-      // A parser can outlive the Wasm state behind it during a live grammar
-      // reload. Calling into that stale handle faults before parsing starts,
-      // so quarantine it and retry with a fresh parser for the cached language.
-      const wasActive = this.quarantineParserForLanguage(language, parser);
-      if (lumine.window.isDevMode()) {
-        console.warn(`Replacing a stale Tree-sitter parser for '${scopeName ?? "unknown"}'`, error);
-      }
-      const replacement = grammar.createParser(language);
-      const pool = this.getParserPoolForLanguage(language);
-      if (wasActive) {
-        pool.active.add(replacement);
-      } else {
-        pool.idle.push(replacement);
-      }
-      return replacement;
     }
   }
 
@@ -511,10 +442,6 @@ class TreeSitterLanguageMode {
   }
 
   _yieldForQueryCaptureScan() {
-    return new Promise((resolve) => setImmediate(resolve));
-  }
-
-  _yieldForPostParseWork() {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
@@ -640,8 +567,7 @@ class TreeSitterLanguageMode {
   }
 
   bufferDidChange(change) {
-    this.highlightCache.edit(change);
-    this.textInputChunk = null;
+    this.publicationPending = true;
     if (!this.rootLanguageLayer) {
       return;
     }
@@ -763,12 +689,14 @@ class TreeSitterLanguageMode {
     }
     this.pendingTransactionRanges.addAll(changes.map(({ newRange }) => newRange));
 
-    this.rootLanguageLayer.update(null).then(
-      (shouldEndTransaction) => {
-        if (shouldEndTransaction) this.finishTransactionUpdate();
-      },
-      (error) => this.finishTransactionUpdate(error),
-    );
+    this.requestDocumentUpdate();
+  }
+
+  requestDocumentUpdate() {
+    if (this.destroyed || !this.rootLanguageLayer) return;
+    this.publicationPending = true;
+    if (!this.resolveNextTransaction) this.refreshNextTransactionPromise();
+    this.updateRootLayer();
   }
 
   rootLanguageRangesChanged() {
@@ -784,15 +712,26 @@ class TreeSitterLanguageMode {
     layer.treeIsDirty = true;
     this.scopeDescriptorCache = null;
     if (!this.resolveNextTransaction) this.refreshNextTransactionPromise();
-    layer.update(null).then(
-      (shouldEndTransaction) => {
+    this.updateRootLayer();
+  }
+
+  updateRootLayer() {
+    try {
+      const result = this.rootLanguageLayer.update(null);
+      const finish = (shouldEndTransaction) => {
         if (shouldEndTransaction) this.finishTransactionUpdate();
-      },
-      (error) => this.finishTransactionUpdate(error),
-    );
+      };
+      if (result?.then) result.then(finish, (error) => this.finishTransactionUpdate(error));
+      else finish(result);
+    } catch (error) {
+      this.finishTransactionUpdate(error);
+    }
   }
 
   finishTransactionUpdate(error = null) {
+    const revision = this.buffer.getTextRevision();
+    if (!error) this.publishCurrentLayers();
+    if (revision !== this.buffer.getTextRevision()) return;
     this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
     this.lastTransactionChangeCount = this.transactionChangeCount;
     this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
@@ -828,7 +767,6 @@ class TreeSitterLanguageMode {
     this.resolveNextTransactionPromise();
     this.transactionChangeCount = 0;
     this.autoIndentRequests = 0;
-    this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
   }
 
   // Invalidate fold caches for the rows touched by the given range.
@@ -855,9 +793,79 @@ class TreeSitterLanguageMode {
   }
 
   emitRangeUpdate(range) {
+    if (this.publicationPending) {
+      this.publicationRanges.add(this.buffer.clipRange(range));
+      return;
+    }
     this.scopeDescriptorCache = null;
     this.emitFoldUpdate(range);
     this.emitter.emit("did-change-highlighting", range);
+  }
+
+  publishCurrentLayers() {
+    if (this.destroyed) return false;
+    const revision = this.buffer.getTextRevision();
+    if (
+      this.getAllLanguageLayers().some(
+        (layer) =>
+          layer &&
+          !layer.destroyed &&
+          (layer.tree?.revision !== revision ||
+            layer.updating ||
+            layer.injectionPopulationDrainPromise ||
+            layer.queryReloadPromise),
+      )
+    )
+      return false;
+    this.publicationPending = false;
+    this.synchronousUpdates = true;
+    const ranges = [...this.publicationRanges];
+    this.publicationRanges.clear();
+    for (const range of ranges) this.emitRangeUpdate(range);
+    return true;
+  }
+
+  advanceUnchangedLayers() {
+    const revision = this.buffer.getTextRevision();
+    const layers = this.getAllInjectionLayers().sort((a, b) => a.depth - b.depth);
+    const advance = (index) => {
+      for (; index < layers.length; index++) {
+        if (this.destroyed || revision !== this.buffer.getTextRevision()) return;
+        const layer = layers[index];
+        if (layer.destroyed || layer.tree?.revision === revision) continue;
+        if (layer.currentParsePromise) return layer.currentParsePromise.then(() => advance(index));
+        const capture = this.document.capture(layer.backgroundTree);
+        const ranges = (layer.getCurrentRanges() ?? []).map((range) =>
+          rangeToTreeSitterRangeSpec(range, this.buffer),
+        );
+        const reused =
+          capture.previous &&
+          BackgroundParser.reuseSnapshot(capture.previous, capture.text, {
+            edits: capture.edits,
+            revision: capture.revision,
+            includedRanges: ranges,
+          });
+        if (reused) {
+          this.backgroundSnapshots.add(reused);
+          layer.tree = layer.lastSyntaxTree = layer.backgroundTree = reused;
+          layer.treeIsDirty = false;
+          layer.includedRangesAreCurrent = true;
+          layer.lastIncludedRanges = ranges;
+          layer.nodesToInvalidateOnChange.clear();
+          layer.foldNodesToInvalidateOnChange.clear();
+          layer.scopeResolver.reset();
+          const children = layer.hasInjectionDescendants()
+            ? layer._populateInjections(layer.editedRange ?? layer.getExtent(), null)
+            : null;
+          layer.editedRange = null;
+          if (children?.then) return children.then(() => advance(index + 1));
+          continue;
+        }
+        const result = layer.update({ getRanges: () => ranges, rangesUnchanged: true });
+        if (result?.then) return result.then(() => advance(index + 1));
+      }
+    };
+    return advance(0);
   }
 
   highlightConfigurationChanged(event) {
@@ -991,6 +999,7 @@ class TreeSitterLanguageMode {
         for (const promise of [
           layer?.queryReloadPromise,
           layer?.injectionPopulationDrainPromise,
+          layer?.currentParsePromise,
           ...(layer?.queryLoadPromises?.values?.() ?? []),
         ]) {
           if (typeof promise?.then === "function" && !awaitedPromises.has(promise)) {
@@ -1006,6 +1015,7 @@ class TreeSitterLanguageMode {
       transaction = await this.atTransactionEnd();
     }
 
+    if (!this.destroyed && !transaction.parseError) this.publishCurrentLayers();
     return transaction;
   }
 
@@ -1061,6 +1071,7 @@ class TreeSitterLanguageMode {
     // need only start the process.
     this.rootLanguageLayer.updateInjectionsForGrammar(grammar, cache);
     cache.clear();
+    this.publishCurrentLayers();
   }
 
   repopulateInjections() {
@@ -1102,7 +1113,7 @@ class TreeSitterLanguageMode {
       return new NullLanguageModeHighlightIterator();
     }
     if (this.publicationPending) return new PendingHighlightIterator(this);
-    return this.highlightCache.record(new HighlightIterator(this), this.buffer);
+    return new HighlightIterator(this);
   }
 
   classNameForScopeId(scopeId) {
@@ -1219,7 +1230,7 @@ class TreeSitterLanguageMode {
 
   // Given a point, return all scopes active at that point.
   scopeDescriptorForPosition(point) {
-    if (!this.rootLanguageLayer) {
+    if (!this.rootLanguageLayer || this.publicationPending) {
       return new ScopeDescriptor({ scopes: [this.grammar.scopeName, "text"] });
     }
     point = this.normalizePointForPositionQuery(point);
@@ -1229,7 +1240,7 @@ class TreeSitterLanguageMode {
 
     // The most accurate way to do this is to reconstruct the results from the
     // highlight iterator itself.
-    const iterator = new HighlightIterator(this);
+    const iterator = this.buildHighlightIterator();
     const scopes = [];
 
     // Add scopes that were open already at this point.
@@ -1300,223 +1311,90 @@ class TreeSitterLanguageMode {
     return wrapped;
   }
 
-  compatibleOldTreeForLanguage(language, oldTree) {
-    if (!oldTree) return null;
-    if (oldTree.language !== language) return null;
-    return oldTree;
-  }
-
-  getTextInputChunk(index, chunkSize) {
-    const length = this.buffer.getLength();
-    if (index >= length) return "";
-
-    // Query predicates read Node#text repeatedly for neighboring captures.
-    // Keep one bounded live-buffer window instead of copying an overlapping
-    // 32K-code-unit suffix for every token. The callback may return a shorter suffix;
-    // web-tree-sitter composes successive chunks for nodes spanning its end.
-    const cached = this.textInputChunk;
-    const revision = this.buffer.getTextRevision();
-    if (
-      cached &&
-      cached.revision === revision &&
-      index >= cached.startIndex &&
-      index < cached.startIndex + cached.text.length
-    ) {
-      const offset = index - cached.startIndex;
-      return cached.text.slice(offset, offset + chunkSize);
-    }
-
-    const start = this.buffer.positionForCharacterIndex(index);
-    const startIndex = this.buffer.characterIndexForPosition(start);
-    // Buffer positions cannot point between CR and LF. Either endpoint can
-    // therefore clip back one code unit: include one extra unit at the end,
-    // then trim by the actual start offset to preserve the parser's indices.
-    const end = this.buffer.positionForCharacterIndex(
-      Math.min(index + NODE_TEXT_INPUT_CHUNK_CODE_UNITS + 1, length),
-    );
-    const text = this.buffer
-      .getTextInRange(new Range(start, end))
-      .slice(index - startIndex, index - startIndex + NODE_TEXT_INPUT_CHUNK_CODE_UNITS);
-    this.textInputChunk = { startIndex: index, text, revision };
-    return text.slice(0, chunkSize);
-  }
-
-  parseAsync(
+  async parseAsync(
     language,
     oldTree,
     includedRanges,
-    { tag = null, scopeName = null, initialTimeoutMicros = null } = {},
+    { scopeName = null, signal, depth = 0, onStart, extraEdits = [] } = {},
   ) {
-    let devMode = lumine.window.isDevMode();
-    let parser = this.acquireParserForLanguage(language);
-    oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
-    let timeoutMicros = oldTree
-      ? this.syncTimeoutMicros
-      : (initialTimeoutMicros ?? INITIAL_PARSE_JOB_LIMIT_MICROS);
-    // Async batches of an initial parse get their own, smaller budget; an
-    // incremental parse keeps its configured slice so a zero-budget test
-    // parser still advances one progress tick per batch.
-    let batchTimeoutMicros = oldTree ? this.syncTimeoutMicros : BATCH_PARSE_JOB_LIMIT_MICROS;
-    try {
-      parser = this.resetParserForLanguage(language, parser, scopeName);
-    } catch (error) {
-      this.releaseParserForLanguage(language, parser);
-      throw this.describeParseFailure(error, { scopeName, includedRanges });
-    }
-
-    // When you edit a tree, the positions of nodes in the tree are adjusted
-    // accordingly. But if you had passed a string into `parse`, all those
-    // nodes' `text` properties will now fail to reflect reality, because
-    // they're doing those lookups on a stale string. This makes it unsafe to
-    // perform captures on a dirty tree, because lots of `#match?` predicates
-    // will fail incorrectly.
-    //
-    // Instead, we can pass a callback that will look up the relevant ranges of
-    // text as needed. This updates the text as the buffer changes, so captures
-    // against dirty trees stay safe.
-    //
-    // In practice, captures against dirty trees will only happen on injection
-    // layers, and only when the edits that have been made since the last clean
-    // parse _could not possibly_ have affected the tree because they happened
-    // nowhere near the injection layer's extent. This lets us get away with
-    // deferring the re-parsing of such layers until much later.
-    //
-    // A synchronous parser slice runs without yielding, so bounded reads of
-    // the live buffer stay consistent. Only a parse that actually goes async
-    // needs a frozen full-buffer copy, taken before its first yield. Small
-    // incremental parses otherwise paid for copying the entire file on every
-    // keystroke even when Tree-sitter read only a few characters near the edit.
-    let parseDone = false;
-    let text = null;
-    let callback = (index) => {
-      const chunkSize = parseDone
-        ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
-        : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
-      return text === null
-        ? this.getTextInputChunk(index, chunkSize)
-        : text.slice(index, index + chunkSize);
-    };
-
-    let tree;
-
-    let batchCount = 0;
-    let cleanedUp = false;
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      parseDone = true;
-      text = null;
-      if (devMode && tag) {
-        console.timeEnd(tag);
-        if (batchCount > 0) {
-          console.log(`(async: ${batchCount} batches)`);
-        }
-      }
-      this.releaseParserForLanguage(language, parser);
-    };
-
-    if (devMode && tag) {
-      console.time(tag);
-    }
-
-    // Attempt a synchronous parse.
-    try {
-      tree = parseWithProgressTimeout(parser, callback, oldTree, includedRanges, timeoutMicros);
-    } catch (error) {
-      cleanup();
-      throw this.describeParseFailure(error, { scopeName, includedRanges });
-    }
-
-    if (tree === null) {
-      // The parse couldn't be completed in the allotted time, so we'll go
-      // async and return a promise. Each batch resumes the previous partial
-      // parse rather than starting over.
-      try {
-        text = this.buffer.getText();
-      } catch (error) {
-        cleanup();
-        throw this.describeParseFailure(error, { scopeName, includedRanges });
-      }
-      return new Promise((resolve, reject) => {
-        const parseJob = () => {
-          // The buffer can be destroyed between batches — closing a window
-          // during a long first parse, which is most of what a spec run does.
-          // `destroy` leaves a parser that is still in use alone precisely so
-          // that this check gets to run first.
-          if (this.destroyed) {
-            cleanup();
-            return resolve(null);
-          }
+    if (this.destroyed || signal?.aborted) return null;
+    // Ranges and compaction edits describe the revision at submission. Capture
+    // its input before queuing so a later edit cannot pair them with new text.
+    const previous =
+      oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
+    const capture = this.document.capture(previous);
+    return parserScheduler
+      .run(
+        async () => {
+          if (this.destroyed) return null;
+          onStart?.();
+          const parser = this.acquireParserForLanguage(language);
           try {
-            batchCount++;
-            tree = parseWithProgressTimeout(
-              parser,
-              callback,
-              oldTree,
-              includedRanges,
-              batchTimeoutMicros,
-            );
-          } catch (err) {
-            cleanup();
-            return reject(this.describeParseFailure(err, { scopeName, includedRanges }));
+            signal?.throwIfAborted();
+            const options = {
+              previous: capture.previous,
+              edits: extraEdits.length
+                ? Object.freeze([...capture.edits, ...extraEdits])
+                : capture.edits,
+              revision: capture.revision,
+              includedRanges: includedRanges ?? undefined,
+            };
+            let tree =
+              this.syncTimeoutMicros > 0
+                ? parser.tryParseSync(capture.text, {
+                    ...options,
+                    timeoutMicros: this.syncTimeoutMicros,
+                  })
+                : null;
+            if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
+            this.backgroundSnapshots.add(tree);
+            this.parseDetails.set(tree, { incremental: Boolean(capture.previous) });
+            return tree;
+          } catch (error) {
+            if (error.name === "AbortError" || this.destroyed) return null;
+            throw this.describeParseFailure(error, { scopeName, includedRanges });
+          } finally {
+            this.releaseParserForLanguage(language, parser);
           }
-          if (tree === null) {
-            setImmediate(parseJob);
-            return;
-          }
-          cleanup();
-          resolve(tree);
-        };
-        setImmediate(parseJob);
+        },
+        {
+          signal,
+          priority: () =>
+            (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100) +
+            depth,
+        },
+      )
+      .catch((error) => {
+        if (error.name === "AbortError" || this.destroyed) return null;
+        throw error;
       });
-    }
-
-    // If we get this far, the synchronous parse was a success.
-    cleanup();
-    return tree;
   }
 
-  parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
-    let devMode = lumine.window.isDevMode();
-    let parser = this.acquireParserForLanguage(language);
-    oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
+  parse(language, oldTree, includedRanges, { scopeName = null, extraEdits = [] } = {}) {
+    if (this.destroyed) return null;
+    const previous =
+      oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
+    const capture = this.document.capture(previous);
+    const parser = this.acquireParserForLanguage(language);
     try {
-      parser = this.resetParserForLanguage(language, parser, scopeName);
-    } catch (error) {
-      this.releaseParserForLanguage(language, parser);
-      throw this.describeParseFailure(error, { scopeName, includedRanges });
-    }
-
-    let parseDone = false;
-    let callback = (index) => {
-      const chunkSize = parseDone
-        ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS
-        : WASM_PARSE_INPUT_CHUNK_CODE_UNITS;
-      return this.getTextInputChunk(index, chunkSize);
-    };
-
-    if (devMode && tag) {
-      console.time(tag);
-    }
-    let result;
-    try {
-      result = parser.parse(callback, oldTree, { includedRanges });
+      const tree = parser.parseSync(capture.text, {
+        previous: capture.previous,
+        edits: extraEdits.length ? Object.freeze([...capture.edits, ...extraEdits]) : capture.edits,
+        revision: capture.revision,
+        includedRanges: includedRanges ?? undefined,
+      });
+      this.backgroundSnapshots.add(tree);
+      this.parseDetails.set(tree, { incremental: Boolean(capture.previous) });
+      return tree;
     } catch (error) {
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     } finally {
-      parseDone = true;
       this.releaseParserForLanguage(language, parser);
-      if (devMode && tag) {
-        console.timeEnd(tag);
-      }
     }
-
-    return result;
   }
 
   get tree() {
-    return this.rootLanguageLayer?.tree;
+    return this.publicationPending ? null : this.rootLanguageLayer?.tree;
   }
 
   /*
@@ -1531,7 +1409,7 @@ class TreeSitterLanguageMode {
   }
 
   getSyntaxNodeAndGrammarContainingRange(range, where = FUNCTION_TRUE) {
-    if (!this.rootLanguageLayer) {
+    if (!this.rootLanguageLayer || this.publicationPending) {
       return { node: null, grammar: null };
     }
 
@@ -1610,7 +1488,7 @@ class TreeSitterLanguageMode {
   // node that matches the optional `where` predicate. The `where` predicate is
   // given the node and the associated grammar as arguments.
   getSyntaxNodeAtPosition(position, where = FUNCTION_TRUE) {
-    if (!this.rootLanguageLayer) {
+    if (!this.rootLanguageLayer || this.publicationPending) {
       return null;
     }
     let allLayers = this.languageLayersAtPoint(position);
@@ -1851,6 +1729,8 @@ class TreeSitterLanguageMode {
   }
 
   isFoldableAtRowForRendering(row) {
+    // A read inside an open transaction must not cache an incomplete result.
+    if (this.publicationPending) return false;
     if (this.isFoldableCache[row] != null) {
       return !!this.isFoldableCache[row];
     }
@@ -2065,16 +1945,12 @@ class TreeSitterLanguageMode {
   // * switch to async indentation if our time budget is exceeded in any one
   //   transaction.
   //
+  shouldParseSynchronously() {
+    return this.synchronousUpdates || !this.useAsyncParsing;
+  }
+
   shouldUseAsyncIndent() {
-    let result = true;
-    if (!this.useAsyncParsing || !this.useAsyncIndent) result = false;
-    // If `currentTransactionReparseBudgetMs` somehow isn’t initialized yet, we
-    // can initialize it here for this transaction.
-    this.currentTransactionReparseBudgetMs ??= this.transactionReparseBudgetMs;
-    if (this.currentTransactionReparseBudgetMs > 0) {
-      result = false;
-    }
-    return result;
+    return !this.shouldParseSynchronously() && this.useAsyncIndent;
   }
 
   /**
@@ -2318,7 +2194,7 @@ class TreeSitterLanguageMode {
         layer?.injectionPointVersion !== injectionPointVersion ||
         layer?.queryReloadPromise ||
         layer?.injectionPopulationDrainPromise ||
-        tree?.rootNode.hasChanges
+        tree?.revision !== this.buffer.getTextRevision()
       ) {
         return false;
       }
@@ -2367,8 +2243,8 @@ class TreeSitterLanguageMode {
         let source = grammar[queryType];
         if (typeof source !== "string") continue;
         try {
-          let query = grammar._createGrammarQuery(grammar.getLanguageSync(), queryType);
-          query.delete();
+          grammar._createGrammarQuery(grammar.getLanguageSync(), queryType);
+          // Native query ownership follows JavaScript references.
           validatedCount++;
         } catch (error) {
           let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, queryType);
@@ -3174,8 +3050,6 @@ class LanguageLayer {
 
     this.tree = null;
     this.lastSyntaxTree = null;
-    this.temporaryTrees = [];
-    this.patchSinceCurrentParseStarted = null;
 
     this.subscriptions = new CompositeDisposable();
 
@@ -3228,6 +3102,80 @@ class LanguageLayer {
 
     // A constructor can't go async, so all our async administrative tasks hang
     // off this promise. We can `await this.languageLoaded` later on.
+    const finishInitialization = (loaded) => {
+      if (!loaded || this.destroyed) return;
+      // This used to be called only in dev mode. But there are other use cases
+      // for dynamically reloading queries, so now we observer for changes in a
+      // grammar's queries in all cases.
+      //
+      // The grammar itself, however, will still only watch the query files
+      // themselves for changes if we're in dev mode.
+      this.observeQueryChanges();
+
+      this.tree = null;
+      this.scopeResolver = new ScopeResolver(this, (name) => this.languageMode.idForScope(name));
+      this.foldResolver = new FoldResolver(this.buffer, this);
+      // Reusing a grammar must keep the warm path synchronous. Only a cold
+      // compile is deferred; attaching the grammar's cached handle is cheap.
+      for (const queryType of ANCILLARY_QUERY_TYPES) {
+        const query = this.grammar.queryCache.get(queryType);
+        if (query) this.adoptQuery(queryType, query);
+      }
+
+      // What should our language scope name be? Should we even have one?
+      let languageScope;
+      if (depth === 0) {
+        languageScope = this.grammar.scopeName;
+      } else {
+        // Injections can control the base scope name of the grammar being
+        // injected.
+        languageScope = injectionPoint.languageScope;
+
+        // The `languageScope` parameter can be a function. That means we won't
+        // decide now; we'll decide later on a range-by-range basis.
+
+        // Honor an explicit `null`, but fall back to the default scope name
+        // otherwise.
+        if (languageScope === undefined) {
+          languageScope = this.grammar.scopeName;
+        }
+      }
+
+      this.languageScope = languageScope;
+      if (languageScope === null || typeof languageScope === "function") {
+        // If `languageScope` is a function, we'll still often end up with a
+        // `languageScopeId` (or several); we just won't be able to compute it
+        // ahead of time.
+        this.languageScopeId = null;
+      } else {
+        this.languageScopeId = this.languageMode.idForScope(languageScope);
+      }
+      this.ready = true;
+    };
+    const warmLanguage = this.grammar.getLanguageSync();
+    if (
+      this.languageMode.shouldParseSynchronously() &&
+      warmLanguage &&
+      this.grammar._queryFilesLoaded
+    ) {
+      this.language = warmLanguage;
+      this.languageMode.registerGrammarForLanguage(warmLanguage, this.grammar);
+      const queries = ["highlightsQuery", "injectionsQuery"];
+      if (this.depth === 0 || this.grammar.queryPaths?.parseBoundariesInjections === true)
+        queries.push("parseBoundariesQuery");
+      for (const queryType of queries) {
+        if (!grammar[queryType]) continue;
+        this.requestedQueryTypes.add(queryType);
+        try {
+          this.queries[queryType] = grammar.getQuerySync(queryType);
+        } catch (error) {
+          grammar.reportQueryError(error, queryType);
+        }
+      }
+      finishInitialization(true);
+      this.languageLoaded = Promise.resolve(true);
+      return;
+    }
     this.languageLoaded = this.grammar
       .getLanguage()
       .then((language) => {
@@ -3252,7 +3200,6 @@ class LanguageLayer {
               .then((query) => {
                 if (this.destroyed) return;
                 this.queries[queryType] = query;
-                this.grammar.retainQuery(query);
               })
               .catch((error) => {
                 if (this.destroyed) return;
@@ -3281,56 +3228,7 @@ class LanguageLayer {
           return true;
         });
       })
-      .then((loaded) => {
-        if (!loaded || this.destroyed) return;
-        // This used to be called only in dev mode. But there are other use cases
-        // for dynamically reloading queries, so now we observer for changes in a
-        // grammar's queries in all cases.
-        //
-        // The grammar itself, however, will still only watch the query files
-        // themselves for changes if we're in dev mode.
-        this.observeQueryChanges();
-
-        this.tree = null;
-        this.scopeResolver = new ScopeResolver(this, (name) => this.languageMode.idForScope(name));
-        this.foldResolver = new FoldResolver(this.buffer, this);
-        // Reusing a grammar must keep the warm path synchronous. Only a cold
-        // compile is deferred; attaching the grammar's cached handle is cheap.
-        for (const queryType of ANCILLARY_QUERY_TYPES) {
-          const query = this.grammar.queryCache.get(queryType);
-          if (query) this.adoptQuery(queryType, query);
-        }
-
-        // What should our language scope name be? Should we even have one?
-        let languageScope;
-        if (depth === 0) {
-          languageScope = this.grammar.scopeName;
-        } else {
-          // Injections can control the base scope name of the grammar being
-          // injected.
-          languageScope = injectionPoint.languageScope;
-
-          // The `languageScope` parameter can be a function. That means we won't
-          // decide now; we'll decide later on a range-by-range basis.
-
-          // Honor an explicit `null`, but fall back to the default scope name
-          // otherwise.
-          if (languageScope === undefined) {
-            languageScope = this.grammar.scopeName;
-          }
-        }
-
-        this.languageScope = languageScope;
-        if (languageScope === null || typeof languageScope === "function") {
-          // If `languageScope` is a function, we'll still often end up with a
-          // `languageScopeId` (or several); we just won't be able to compute it
-          // ahead of time.
-          this.languageScopeId = null;
-        } else {
-          this.languageScopeId = this.languageMode.idForScope(languageScope);
-        }
-        this.ready = true;
-      })
+      .then(finishInitialization)
       .catch((error) => {
         if (error.name === "AbortError") {
           this.destroy();
@@ -3350,6 +3248,8 @@ class LanguageLayer {
       return;
     }
     this.destroyed = true;
+    this.parseAbort?.abort();
+    this.backgroundTree = null;
     this.cancelAncillaryQueryLoad?.();
     this.cancelAncillaryQueryLoad = null;
     this.injectionPointVersion++;
@@ -3361,22 +3261,8 @@ class LanguageLayer {
     this.lastIncludedRanges = null;
     this.includedRangesAreCurrent = false;
 
-    // Clean up all Tree-sitter trees.
-    let temporaryTrees = this.temporaryTrees ?? [];
-    let trees = new Set([this.tree, this.lastSyntaxTree, ...temporaryTrees]);
-    trees = [...trees];
-
     this.tree = null;
     this.lastSyntaxTree = null;
-    this.temporaryTrees = [];
-
-    while (trees.length > 0) {
-      let tree = trees.pop();
-      if (!tree) {
-        continue;
-      }
-      tree.delete();
-    }
 
     this.marker?.parentLanguageLayer?.childLayerMarkers.delete(this.marker);
     this.marker?.destroy();
@@ -3386,9 +3272,6 @@ class LanguageLayer {
     this.foldResolver?.reset();
     this.scopeResolver?.destroy();
     this.subscriptions.dispose();
-    for (const query of new Set(Object.values(this.queries))) {
-      this.grammar.releaseQuery(query);
-    }
     this.queries = {};
 
     const childLayerMarkers = [...this.childLayerMarkers];
@@ -3457,9 +3340,7 @@ class LanguageLayer {
   adoptQuery(queryType, query) {
     const previous = this.queries[queryType];
     if (!query || query === previous) return;
-    this.grammar.retainQuery(query);
     this.queries[queryType] = query;
-    this.grammar.releaseQuery(previous);
     if (queryType === "foldsQuery" && this.tree) {
       this.foldResolver.reset();
       this.languageMode.emitRangeUpdate(this.getExtent());
@@ -3597,6 +3478,7 @@ class LanguageLayer {
     if (!this.destroyed && this.pendingQueryReloadTypes.size > 0) {
       this.scheduleQueryReload(this.pendingQueryReloadTypes.values().next().value);
     }
+    if (!this.destroyed) this.languageMode.publishCurrentLayers();
   }
 
   getExtent() {
@@ -3673,7 +3555,7 @@ class LanguageLayer {
   // through a `ScopeResolver`.
   getSyntaxBoundaries(from, to) {
     let { buffer } = this.languageMode;
-    if (!(this.language && this.tree)) {
+    if (!(this.language && this.tree) || this.tree.revision !== buffer.getTextRevision()) {
       return [[], new OpenScopeMap()];
     }
 
@@ -3881,7 +3763,7 @@ class LanguageLayer {
     }
   }
 
-  handleTextChange(edit, oldText, newText) {
+  handleTextChange(edit, _oldText, _newText) {
     // Any text change within the layer invalidates our cached fold boundary
     // tree. This usually isn't a big deal because the language mode's own cache
     // is able to adjust when content shifts up and down, so typically only the
@@ -3899,7 +3781,6 @@ class LanguageLayer {
       sameExtent &&
       this.currentRangesCache?.length &&
       !this.currentParsePromise &&
-      !this.patchSinceCurrentParseStarted &&
       this.currentRangesLayer.findMarkers({ intersectsRange: editedRange }).length === 0
     ) {
       // A combined owner spans holes between its actual parser ranges. An
@@ -3930,14 +3811,6 @@ class LanguageLayer {
     const { startPosition, oldEndPosition, newEndPosition } = edit;
 
     if (this.tree) {
-      this.tree.edit(edit);
-      if (this.lastSyntaxTree && this.tree !== this.lastSyntaxTree) {
-        // This happens after an off-schedule parse that we've decided we can
-        // re-use at the end of the current transaction. But when that happens,
-        // we'll call `getChangedRanges` between `lastSyntaxTree` and the new
-        // tree, so `lastSyntaxTree` needs to receive the same tree edits.
-        this.lastSyntaxTree.edit(edit);
-      }
       // We're tentatively marking this tree as dirty; we won't know if it
       // needs to be reparsed until the transaction is done. If it doesn't,
       // that means that the edits didn't encroach on the contents of the
@@ -3959,72 +3832,72 @@ class LanguageLayer {
         this.editedRange = new Range(startPosition, newEndPosition);
       }
     }
-
-    if (this.patchSinceCurrentParseStarted) {
-      this.patchSinceCurrentParseStarted.splice(
-        startPosition,
-        oldEndPosition.traversalFrom(startPosition),
-        newEndPosition.traversalFrom(startPosition),
-        oldText,
-        newText,
-      );
-    }
   }
 
-  async update(nodeRangeSet, params = {}) {
-    if (!this.languageMode.useAsyncParsing) {
-      // Practically speaking, updates that affect _only this layer_ will happen
-      // synchronously, because we've made sure not to call this method until the
-      // root grammar's Tree-sitter parser has been loaded. But we can't load any
-      // potential injection layers' languages because we don't know which ones
-      // we'll need _until_ we parse this layer's tree for the first time.
-      //
-      // Thus the first call to `_populateInjections` will probably go async
-      // while we wait for the injections' parsers to load, and the user might
-      // notice the delay. But once that happens, all subsequent updates _should_
-      // be synchronous, except for a case where a change in the buffer causes us
-      // to need a new kind of injection whose parser hasn't yet been loaded.
-      if (!this.ready) {
-        await this.languageLoaded;
-      }
-      await this._performUpdate(nodeRangeSet);
-      return true;
-    }
-
-    if (!this.currentParsePromise) {
-      try {
-        do {
-          params = { ...params, async: false };
-          if (!this.ready) {
-            params.async = true;
-            await this.languageLoaded;
-            // While we were waiting for this language to load, another update may
-            // have been scheduled.
-            if (this.currentParsePromise) return false;
-          }
-          this.currentParsePromise = this._performUpdate(nodeRangeSet, params);
-          if (!params.async) {
-            return this.currentParsePromise.then(() => true);
-          }
-          await this.currentParsePromise;
-        } while (
-          !params.initialInjectionUpdateAborted &&
-          !this.destroyed &&
-          (this.injectionPopulationNeedsRetry ||
-            this.rootRangePolicyNeedsUpdate ||
-            !this.tree ||
-            this.tree.rootNode.hasChanges)
-        );
-
-        // `true` means that this update occurs in its own distinct transaction.
-        return true;
-      } finally {
-        this.currentParsePromise = null;
-      }
-    } else {
-      // `false` means that the previous transaction isn't done, so this
-      // transaction's work will be subsumed into it.
+  update(nodeRangeSet, params = {}) {
+    if (this.destroyed) return false;
+    if (this.updating) {
+      this.updateRequested = true;
+      this.pendingNodeRangeSet = nodeRangeSet;
       return false;
+    }
+    this.updating = true;
+    this.languageMode.publicationPending = true;
+    const needsRetry = () =>
+      !params.initialInjectionUpdateAborted &&
+      !this.destroyed &&
+      (this.updateRequested ||
+        this.injectionPopulationNeedsRetry ||
+        this.rootRangePolicyNeedsUpdate ||
+        !this.tree ||
+        this.treeIsDirty ||
+        this.tree.revision !== this.buffer.getTextRevision());
+    const next = () => (needsRetry() ? run() : true);
+    const afterParse = () => {
+      if (this.depth === 0 && this.tree?.revision === this.buffer.getTextRevision()) {
+        const advanced = this.languageMode.advanceUnchangedLayers();
+        if (advanced?.then) return advanced.then(next);
+      }
+      return next();
+    };
+    const run = () => {
+      if (this.destroyed) return false;
+      if (!this.ready) return this.languageLoaded.then(run);
+      if (
+        this.depth > 0 &&
+        this.marker?.parentLanguageLayer?.tree?.revision !== this.buffer.getTextRevision()
+      ) {
+        this.requestInjectionParentRetry({ layer: this.marker?.parentLanguageLayer });
+        return false;
+      }
+      this.updateRequested = false;
+      if (this.pendingNodeRangeSet) {
+        nodeRangeSet = this.pendingNodeRangeSet;
+        this.pendingNodeRangeSet = null;
+      }
+      params = {
+        ...params,
+        async: !this.languageMode.shouldParseSynchronously(),
+        initialInjectionUpdateAborted: false,
+      };
+      const result = this._performUpdate(nodeRangeSet, params);
+      return result?.then ? result.then(afterParse) : afterParse();
+    };
+    try {
+      const result = run();
+      if (result?.then) {
+        const pending = result.finally(() => {
+          if (this.currentParsePromise === pending) this.currentParsePromise = null;
+          this.updating = false;
+        });
+        this.currentParsePromise = pending;
+        return pending;
+      }
+      this.updating = false;
+      return result;
+    } catch (error) {
+      this.updating = false;
+      throw error;
     }
   }
 
@@ -4120,7 +3993,7 @@ class LanguageLayer {
       !layer.destroyed &&
       layer.tree === tree &&
       layer.injectionPointVersion === injectionPointVersion &&
-      !tree.rootNode.hasChanges,
+      tree.revision === this.buffer.getTextRevision(),
     );
   }
 
@@ -4156,9 +4029,9 @@ class LanguageLayer {
     );
   }
 
-  getParseBoundaryCaptures() {
+  getParseBoundaryCaptures(tree = this.tree) {
     const query = this.queries.parseBoundariesQuery;
-    const root = this.tree.rootNode;
+    const root = tree.rootNode;
     const maxStartDepth = this.grammar.queryPaths?.parseBoundariesMaxStartDepth;
     if (!Number.isSafeInteger(maxStartDepth) || maxStartDepth < 0 || maxStartDepth > 32)
       return query.captures(root);
@@ -4214,16 +4087,22 @@ class LanguageLayer {
   getParseRanges(includedRanges) {
     // These are parser hints, never new ownership boundaries for injections.
     // A scanner must explicitly opt in and tolerate adjacent included ranges.
+    this.parseCompactionEdits = [];
     const query = this.queries.parseBoundariesQuery;
     if (
       (this.depth !== 0 && this.grammar.queryPaths?.parseBoundariesInjections !== true) ||
-      !this.tree ||
+      !this.backgroundTree ||
       !query
     )
       return includedRanges;
-    if (this.tree.language !== this.grammar.getLanguageSync()) return includedRanges;
+    if (this.backgroundTree.language !== this.grammar.getLanguageSync()) return includedRanges;
+    const capture = this.languageMode.document.capture(this.backgroundTree);
+    if (!capture.previous) return includedRanges;
+    const tree = BackgroundParser.prepareTree(capture.previous, capture.text, {
+      edits: capture.edits,
+    });
     const length = this.buffer.getLength();
-    let captures = this.getParseBoundaryCaptures();
+    let captures = this.getParseBoundaryCaptures(tree);
     const fragments = [];
     for (const { name, node } of captures) {
       if (name !== "parse.boundary") continue;
@@ -4254,12 +4133,19 @@ class LanguageLayer {
         !this.isSafeParseBoundary(edit.oldEndIndex, edit.oldEndPosition)
       )
         continue;
-      this.tree.edit(edit);
+      tree.edit(edit);
+      this.parseCompactionEdits.push(
+        Object.freeze({
+          startIndex: edit.startIndex,
+          oldEndIndex: edit.oldEndIndex,
+          newText: capture.text.slice(edit.startIndex, edit.oldEndIndex),
+        }),
+      );
       compacted = true;
     }
     if (compacted) {
       this.treeIsDirty = true;
-      captures = this.getParseBoundaryCaptures();
+      captures = this.getParseBoundaryCaptures(tree);
     }
     const boundaries = [];
     for (const { name, node } of captures) {
@@ -4270,10 +4156,14 @@ class LanguageLayer {
       if (!this.isSafeParseBoundary(index, position)) continue;
       boundaries.push({ index, position });
     }
-    return splitIncludedRanges(includedRanges, boundaries);
+    return splitIncludedRanges(
+      includedRanges ?? [rangeToTreeSitterRangeSpec(this.buffer.getRange(), this.buffer)],
+      boundaries,
+    );
   }
 
-  async _performUpdate(nodeRangeSet, params = {}) {
+  _performUpdate(nodeRangeSet, params = {}) {
+    params.async = !this.languageMode.shouldParseSynchronously();
     // It's much more common in specs than in real life, but it's always
     // possible for a layer to get destroyed during the async period between
     // layer updates.
@@ -4292,11 +4182,9 @@ class LanguageLayer {
       this.tree &&
       this.tree === this.lastSyntaxTree &&
       !this.treeIsDirty &&
-      !this.tree.rootNode.hasChanges &&
-      !this.patchSinceCurrentParseStarted &&
+      this.tree.revision === this.buffer.getTextRevision() &&
       !this.injectionPopulationNeedsRetry &&
       !this.rootRangePolicyNeedsUpdate &&
-      this.temporaryTrees.length === 0 &&
       nodeRangeSet.getRanges(this.buffer) === this.lastIncludedRanges
     ) {
       const affectedRange = this.editedRange;
@@ -4308,21 +4196,19 @@ class LanguageLayer {
       // This is the existing discovery extent with no syntax changes. Keep
       // update's async/retry lifecycle, without parsing, publishing or freeing
       // the unchanged tree. No broader scan of external callback state is added.
-      const injectionPromise = this._populateInjections(range, nodeRangeSet);
-      if (injectionPromise) {
-        params.async = true;
-        await injectionPromise;
-      }
-      if (this.destroyed) return;
-      if (injectionOnlyParent && !this.injectionParentSnapshotIsCurrent(injectionOnlyParent)) {
-        this.requestInjectionParentRetry(injectionOnlyParent);
-        params.initialInjectionUpdateAborted = true;
-      }
-      return;
+      const finish = () => {
+        if (this.destroyed) return;
+        if (injectionOnlyParent && !this.injectionParentSnapshotIsCurrent(injectionOnlyParent)) {
+          this.requestInjectionParentRetry(injectionOnlyParent);
+          params.initialInjectionUpdateAborted = true;
+        }
+      };
+      const result = this._populateInjections(range, nodeRangeSet);
+      return result?.then ? result.then(finish) : finish();
     }
 
     if (
-      this.languageMode.useAsyncParsing &&
+      !this.languageMode.shouldParseSynchronously() &&
       this.depth > 0 &&
       !this.tree &&
       !params.initialInjectionUpdateStarted
@@ -4368,23 +4254,7 @@ class LanguageLayer {
     this.rangeList.clear();
 
     if (nodeRangeSet) {
-      const plannedRanges = nodeRangeSet.getRanges(this.languageMode.buffer);
-      includedRanges = plannedRanges;
-      for (let i = 0; i < plannedRanges.length; i++) {
-        const range = plannedRanges[i];
-        // Mutable-tree range plans can retain offsets from before a burst of
-        // edits and undo. Reconcile them with their current buffer positions.
-        // Add columns to row starts to preserve boundaries inside CRLF.
-        const startIndex =
-          this.buffer.characterIndexForPosition([range.startPosition.row, 0]) +
-          range.startPosition.column;
-        const endIndex =
-          this.buffer.characterIndexForPosition([range.endPosition.row, 0]) +
-          range.endPosition.column;
-        if (startIndex === range.startIndex && endIndex === range.endIndex) continue;
-        if (includedRanges === plannedRanges) includedRanges = plannedRanges.slice();
-        includedRanges[i] = { ...range, startIndex, endIndex };
-      }
+      includedRanges = nodeRangeSet.getRanges(this.languageMode.buffer);
       if (includedRanges.length === 0) {
         // We have no ranges to inject into. This layer should no longer exist.
         const range = this.marker.getRange();
@@ -4394,88 +4264,67 @@ class LanguageLayer {
       }
     }
 
-    this.patchSinceCurrentParseStarted = new Patch();
-    let language = this.grammar.getLanguageSync();
-    let tree;
-    try {
-      const parseRanges = this.getParseRanges(includedRanges);
-      if (this.languageMode.useAsyncParsing) {
-        tree = this.languageMode.parseAsync(language, this.tree, parseRanges, {
-          scopeName: this.grammar.scopeName,
-          initialTimeoutMicros: params.initialInjectionUpdateStarted
-            ? this.languageMode.syncTimeoutMicros
-            : null,
-        });
-        if (tree.then) {
-          params.async = true;
-          tree = await tree;
-          // An async parse abandoned because the buffer went away resolves with
-          // no tree. The entry guard above cannot cover this: the layer was alive
-          // when the parse started.
-          if (!tree) return;
-        }
-      } else {
-        tree = this.languageMode.parse(language, this.tree, parseRanges, {
-          scopeName: this.grammar.scopeName,
-        });
-      }
-      if (
-        this.languageMode.useAsyncParsing &&
-        this.tree &&
-        this.buffer.getLength() >= POST_PARSE_DEFER_CODE_UNITS
-      ) {
-        params.async = true;
-        // Keep recording edits in patchSinceCurrentParseStarted while yielding,
-        // just as when parsing itself exceeds its synchronous budget. The
-        // completed tree receives those edits below and the owning update's
-        // retry loop reparses it before settling the transaction.
-        await this.languageMode._yieldForPostParseWork();
-        if (this.destroyed) {
-          this.patchSinceCurrentParseStarted = null;
-          tree.delete();
-          return;
-        }
-      }
-    } catch (error) {
-      this.patchSinceCurrentParseStarted = null;
-      throw error;
+    const language = this.grammar.getLanguageSync();
+    const generation = this.grammar.queryLoadGeneration;
+    const revision = this.buffer.getTextRevision();
+    const parseRanges = this.getParseRanges(includedRanges);
+    const context = {
+      params,
+      nodeRangeSet,
+      includedRanges,
+      rootRangeVersion,
+      generation,
+      revision,
+    };
+    if (this.languageMode.shouldParseSynchronously()) {
+      const tree = this.languageMode.parse(language, this.backgroundTree, parseRanges, {
+        scopeName: this.grammar.scopeName,
+        extraEdits: this.parseCompactionEdits,
+      });
+      return this._applyParsedTree(tree, context);
     }
+    const controller = new AbortController();
+    this.parseAbort = controller;
+    this.parseStarted = false;
+    return this.languageMode
+      .parseAsync(language, this.backgroundTree, parseRanges, {
+        scopeName: this.grammar.scopeName,
+        extraEdits: this.parseCompactionEdits,
+        signal: controller.signal,
+        depth: this.depth,
+        onStart: () => {
+          this.parseStarted = true;
+        },
+      })
+      .then((tree) => this._applyParsedTree(tree, context))
+      .finally(() => {
+        if (this.parseAbort === controller) this.parseAbort = null;
+      });
+  }
 
-    let changes = this.patchSinceCurrentParseStarted.getChanges();
-    this.patchSinceCurrentParseStarted = null;
+  _applyParsedTree(
+    tree,
+    { params, nodeRangeSet, includedRanges, rootRangeVersion, generation, revision },
+  ) {
+    if (!tree || this.destroyed) return;
+    if (
+      tree.revision !== this.buffer.getTextRevision() ||
+      revision !== tree.revision ||
+      generation !== this.grammar.queryLoadGeneration
+    )
+      return;
     if (this.depth === 0 && rootRangeVersion !== this.rootRangeSet?.version) {
-      // A policy replacement can happen without a text edit while parsing is
-      // suspended. Do not publish a tree built for the superseded source mask.
-      tree.delete();
       this.rootRangePolicyNeedsUpdate = true;
       return;
     }
-
     if (
       params.initialInjectionParentSnapshot &&
       !this.injectionParentSnapshotIsCurrent(params.initialInjectionParentSnapshot)
     ) {
-      // The parse used included ranges planned from a superseded parent tree.
-      // Do not publish it even briefly: current-range markers, canonical trees
-      // and invalidation events must all continue to describe the last
-      // committed parent topology until its owner retries reconciliation.
-      tree.delete();
       this.requestInjectionParentRetry(params.initialInjectionParentSnapshot);
       return;
     }
-
-    for (let change of changes) {
-      let newExtent = Point.fromObject(change.newEnd).traversalFrom(change.newStart);
-      tree.edit(
-        this._treeEditForBufferChange(
-          change.newStart,
-          change.oldEnd,
-          Point.fromObject(change.oldStart).traverse(newExtent),
-          change.oldText,
-          change.newText,
-        ),
-      );
-    }
+    this.backgroundTree = tree;
 
     if (includedRanges && !nodeRangeSet.rangesUnchanged) {
       this.setCurrentRanges(includedRanges);
@@ -4517,24 +4366,13 @@ class LanguageLayer {
     this.foldNodesToInvalidateOnChange.clear();
 
     if (this.lastSyntaxTree) {
-      const rangesWithSyntaxChanges = this.lastSyntaxTree.getChangedRanges(tree);
+      const rangesWithSyntaxChanges = this.languageMode.parseDetails.get(tree)?.incremental
+        ? tree.changedRanges
+        : [tree.rootNode];
 
-      let oldSyntaxTree = this.lastSyntaxTree;
       this.lastSyntaxTree = tree;
-
-      let oldTree = this.tree;
       this.tree = tree;
       this.treeIsDirty = false;
-
-      oldTree?.delete();
-      if (oldSyntaxTree !== oldTree) {
-        oldSyntaxTree?.delete();
-      }
-
-      while (this.temporaryTrees.length > 0) {
-        let tree = this.temporaryTrees.pop();
-        tree.delete();
-      }
 
       if (rangesWithSyntaxChanges.length > 0) {
         const syntaxRanges = rangesWithSyntaxChanges.map((range) => {
@@ -4704,27 +4542,15 @@ class LanguageLayer {
     return candidate?.containsPoint(point, exclusive) ? candidate : null;
   }
 
-  // Returns a syntax tree for the current buffer.
-  //
-  // By default, this method will either return the current tree (if it's up to
-  // date) or synchronously parse the buffer into a new tree (if it isn't).
-  //
-  // If you don't want to force a re-parse and don't mind that the current tree
-  // might be stale, pass `force: false` as an option.
-  //
-  // In certain circumstances, the new tree might be promoted to the canonical
-  // tree for this layer. To prevent this, pass `anonymous: true` as an option.
-  //
-  // All trees returned by this method are managed by this language layer and
-  // will be deleted when the next transaction is complete. Retaining a
-  // reference to the returned tree will not prevent this from happening. To
-  // opt into managing the life cycle of the returned tree, copy it immediately
-  // when you receive it.
-  //
-  getOrParseTree({ force = true, anonymous = false } = {}) {
-    if (this.tree && (!this.treeIsDirty || !force)) {
+  // Return the current immutable snapshot, or parse a private snapshot for an
+  // in-transaction indentation request. Private snapshots never replace the
+  // committed tree; retained nodes remain valid. force:false returns null when
+  // the committed snapshot is stale.
+  getOrParseTree({ force = true } = {}) {
+    if (this.tree?.revision === this.buffer.getTextRevision() && !this.treeIsDirty) {
       return this.tree;
     }
+    if (!force) return null;
 
     let ranges;
     if (this.depth === 0) {
@@ -4735,65 +4561,16 @@ class LanguageLayer {
       });
     }
 
-    // The goal here is that, if a re-parse is needed in between transactions,
-    // we assign the result back to `this.tree` so that we can at least cut
-    // down on the incremental amount of work that the end-of-transaction parse
-    // has to do — it can pick up where we left off. So for the root language
-    // layer, this represents more of a shifting of work than a duplication.
-    //
-    // But this isn't safe to do for injection layers because `ranges` may be
-    // stale, despite our efforts to keep them fresh through markers. The
-    // stakes are low enough for indents that we can attempt a tree parse and
-    // act on the results even if we're not certain they're accurate — but when
-    // we do another scheduled incremental parse, we have to be 100% sure that
-    // we're working from an accurate tree.
-    //
-    // Re-parsing of an injection layer can only safely happen when we know its
-    // true ranges, and that cannot be determined except through the process
-    // that an injection layer's parent goes through during the
-    // end-of-transaction update, unless we're willing to do an off-schedule
-    // parse of _all_ language layers in this layer's ancestry. That's not
-    // completely out of the question for the future — but, failing that, there
-    // probably isn't a way to “fix” this for injection layers except through
-    // cutting down on off-schedule parses.
-    //
-    let then = performance.now();
-    let tree = this.languageMode.parse(
-      this.language,
-      this.tree,
-      this.getParseRanges(ranges),
-      // { tag: `Re-parsing ${this.inspect()}` }
-    );
-    let now = performance.now();
-
-    let parseTime = now - then;
-
-    // Since we can't look into the future, we don't know how many times during
-    // this transaction we'll be asked to make indentation sugestions. If we
-    // knew ahead of time, we'd be able to decide at the beginning of a
-    // transaction whether we could afford to do synchronous indentation.
-    //
-    // Instead, we do the next best thing: we start out doing synchronous
-    // indentation, then fall back to asynchronous indentation once we've
-    // exceeded our time budget. So we keep track of how long each reparse
-    // takes and subtract it from our budget.
-    this.languageMode.currentTransactionReparseBudgetMs -= parseTime;
-
-    if (this.depth === 0 && !anonymous) {
-      this.tree = tree;
-      this.treeIsDirty = false;
-    } else {
-      // Keep track of any off-schedule trees we generate so that we can GC them
-      // when the next transaction is done.
-      this.temporaryTrees.push(tree);
-    }
-    return tree;
+    return this.languageMode.parse(this.language, this.tree, this.getParseRanges(ranges), {
+      scopeName: this.grammar.scopeName,
+      extraEdits: this.parseCompactionEdits,
+    });
   }
 
   // Given a point, return all syntax captures that are active at that point.
   // Used by `bufferRangeForScopeAtPosition`.
   scopeMapAtPosition(point) {
-    if (!this.language || !this.tree) {
+    if (!this.language || !this.tree || this.tree.revision !== this.buffer.getTextRevision()) {
       return [];
     }
     let { scopeResolver } = this;
@@ -4909,6 +4686,21 @@ class LanguageLayer {
           ),
       };
     }
+    if (this.languageMode.shouldParseSynchronously() && !this.injectionPopulationDrainPromise) {
+      const result = this._performPopulateInjections(range, nodeRangeSet);
+      if (!result?.then) return result;
+      const finish = () => {
+        if (!this.destroyed && this.pendingInjectionPopulationRequests.length > 0)
+          return this._drainInjectionPopulationRequests().then(finish);
+      };
+      const pending = result.then(finish).finally(() => {
+        if (this.injectionPopulationDrainPromise === pending)
+          this.injectionPopulationDrainPromise = null;
+        if (!this.destroyed) this.languageMode.publishCurrentLayers();
+      });
+      this.injectionPopulationDrainPromise = pending;
+      return pending;
+    }
     this.pendingInjectionPopulationRequests.push({ range, nodeRangeSet });
     if (this.injectionPopulationDrainPromise) {
       return this.injectionPopulationDrainPromise;
@@ -4931,6 +4723,7 @@ class LanguageLayer {
         this.injectionPopulationDrainPromise = null;
       }
       resolveDrain();
+      if (!this.destroyed) this.languageMode.publishCurrentLayers();
     };
     const failDrain = (error) => {
       this.pendingInjectionPopulationRequests.length = 0;
@@ -5139,7 +4932,7 @@ class LanguageLayer {
       !this.destroyed &&
       this.tree === tree &&
       this.injectionPointVersion === injectionPointVersion &&
-      !tree.rootNode.hasChanges
+      tree.revision === this.buffer.getTextRevision()
     );
   }
 
@@ -5159,7 +4952,10 @@ class LanguageLayer {
     const chunkCodeUnits = Math.max(1, this.languageMode.injectionCandidateChunkCodeUnits);
     const startIndex = this.buffer.characterIndexForPosition(start);
     const endIndex = this.buffer.characterIndexForPosition(end);
-    if (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits) {
+    if (
+      this.languageMode.shouldParseSynchronously() ||
+      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
+    ) {
       return tree.rootNode.descendantsOfType(types, start, end);
     }
 
@@ -5203,7 +4999,10 @@ class LanguageLayer {
     const chunkCodeUnits = Math.max(1, this.languageMode.injectionCandidateChunkCodeUnits);
     const startIndex = this.buffer.characterIndexForPosition(start);
     const endIndex = this.buffer.characterIndexForPosition(end);
-    if (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits) {
+    if (
+      this.languageMode.shouldParseSynchronously() ||
+      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
+    ) {
       return collectInjectionMatches(
         query.matches(tree.rootNode, { startPosition: start, endPosition: end }),
         query.injectionDescriptors,
@@ -5354,7 +5153,9 @@ class LanguageLayer {
       claimedMarkers: new Set(),
       assignments: [],
     };
-    const chunkSize = Math.max(1, this.languageMode.injectionReconcileChunkSize);
+    const chunkSize = this.languageMode.shouldParseSynchronously()
+      ? Infinity
+      : Math.max(1, this.languageMode.injectionReconcileChunkSize);
 
     const commit = (completedPlan) => {
       if (!completedPlan || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
@@ -5641,7 +5442,8 @@ class LanguageLayer {
 
     const promises = [];
     for (const [marker, ranges] of markersToUpdate) {
-      promises.push(marker.languageLayer.update(ranges));
+      const result = marker.languageLayer.update(ranges);
+      if (result?.then) promises.push(result);
     }
 
     return promises.length > 0 ? Promise.all(promises) : undefined;
@@ -5823,12 +5625,10 @@ class LanguageLayer {
         if (
           layer.tree &&
           !layer.treeIsDirty &&
-          !layer.tree.rootNode.hasChanges &&
+          layer.tree.revision === this.buffer.getTextRevision() &&
           !layer.currentParsePromise &&
-          !layer.patchSinceCurrentParseStarted &&
           !layer.injectionPopulationNeedsRetry &&
           !layer.rootRangePolicyNeedsUpdate &&
-          layer.temporaryTrees.length === 0 &&
           layer.includedRangesAreCurrent
         ) {
           // Discovery can widen across an adjacent owner even when the edit
@@ -6033,17 +5833,6 @@ class LanguageLayer {
       pool.groups = compacted;
     }
   }
-  _treeEditForBufferChange(start, oldEnd, newEnd, oldText, newText) {
-    let startIndex = this.buffer.characterIndexForPosition(start);
-    return {
-      startIndex,
-      oldEndIndex: startIndex + oldText.length,
-      newEndIndex: startIndex + newText.length,
-      startPosition: start,
-      oldEndPosition: oldEnd,
-      newEndPosition: newEnd,
-    };
-  }
 }
 
 class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
@@ -6060,23 +5849,7 @@ class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
       new Range([position.row, 0], [endRow == null ? Infinity : endRow + 1, 0]),
     );
     mode.publicationRanges.add(range);
-    const cached = mode.highlightCache.read(position, range.end, [
-      mode.idForScope(mode.grammar.scopeName),
-    ]);
-    this.iterator = cached.iterator;
-    return cached.scopes;
-  }
-  getPosition() {
-    return this.iterator?.getPosition() ?? Point.INFINITY;
-  }
-  getOpenScopeIds() {
-    return this.iterator?.getOpenScopeIds() ?? [];
-  }
-  getCloseScopeIds() {
-    return this.iterator?.getCloseScopeIds() ?? [];
-  }
-  moveToSuccessor() {
-    return this.iterator?.moveToSuccessor();
+    return super.seek(position);
   }
 }
 

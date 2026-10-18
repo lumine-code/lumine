@@ -385,17 +385,22 @@ describe("Packed Tree-sitter injection change routing", () => {
       const layer = mode
         .getAllInjectionLayers()
         .find((entry) => entry.getExtent().start.row === 32);
+      mode.synchronousUpdates = false;
       const parseAsync = mode.parseAsync.bind(mode);
       let entered, resume;
       const enteredPromise = new Promise((resolve) => (entered = resolve));
       const resumePromise = new Promise((resolve) => (resume = resolve));
       let suspended = false;
+      let parsedSnapshot;
       spyOn(mode, "parseAsync").and.callFake((language, oldTree, ranges, params) => {
         const result = parseAsync(language, oldTree, ranges, params);
         if (params.scopeName !== childGrammar.scopeName || suspended) return result;
         suspended = true;
-        entered();
-        return Promise.resolve(result).then((tree) => resumePromise.then(() => tree));
+        return Promise.resolve(result).then((tree) => {
+          parsedSnapshot = tree;
+          entered();
+          return resumePromise.then(() => tree);
+        });
       });
       spyOn(layer, "handleTextChange").and.callThrough();
       buffer.setTextInRange(
@@ -422,16 +427,16 @@ describe("Packed Tree-sitter injection change routing", () => {
           "5",
         );
         expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
-        expect(
-          layer.patchSinceCurrentParseStarted.getChanges().map((change) => change.newText),
-        ).toEqual(["5"]);
+        expect(mode.document.capture(parsedSnapshot).edits.map((change) => change.newText)).toEqual(
+          ["rename", "5"],
+        );
       } finally {
         resume();
       }
       await mode.atTransactionEnd();
       const fresh = await start(buffer.getText());
       expect(layer.tree.rootNode.text).toBe("5");
-      expect(layer.patchSinceCurrentParseStarted).toBeNull();
+      expect(layer.tree.revision).toBe(buffer.getTextRevision());
       expect(syntax(mode)).toEqual(syntax(fresh.mode));
     });
   });

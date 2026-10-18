@@ -1,21 +1,29 @@
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
-const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
+const TreeSitterDocument = require("../src/tree-sitter-document");
 const fs = require("fs");
 const temp = require("temp");
 
-describe("Tree-sitter live text input", () => {
-  let editor, fixturePath;
+describe("Tree-sitter revisioned text snapshots", () => {
+  let editor, fixturePath, readers;
 
   beforeEach(async () => {
+    readers = [];
     await lumine.packages.activatePackage("language-javascript");
   });
 
   afterEach(() => {
+    for (const reader of readers) reader.close();
     editor?.destroy();
     if (fixturePath) fs.unlinkSync(fixturePath);
     fixturePath = null;
   });
+
+  function readerFor(buffer) {
+    const reader = new TreeSitterDocument(buffer);
+    readers.push(reader);
+    return reader;
+  }
 
   async function buildMode(text) {
     const buffer = new TextBuffer({ text });
@@ -25,49 +33,40 @@ describe("Tree-sitter live text input", () => {
     return { buffer, mode: buffer.getLanguageMode() };
   }
 
-  it("reuses bounded buffer reads across neighboring node text lookups", async () => {
+  it("reads neighboring node text without consulting the live buffer", async () => {
     const { buffer, mode } = await buildMode(
       Array.from({ length: 200 }, (_, row) => `const value_${row} = ${row};`).join("\r\n"),
     );
     const identifiers = mode.tree.rootNode.descendantsOfType("identifier");
-    mode.textInputChunk = null;
-    const reads = spyOn(buffer, "getTextInRange").and.callThrough();
-
+    const ranges = spyOn(buffer, "getTextInRange").and.callThrough();
+    const text = spyOn(buffer, "getText").and.callThrough();
     expect(identifiers.map((node) => node.text)).toEqual(
       Array.from({ length: 200 }, (_, row) => `value_${row}`),
     );
-    expect(reads.calls.count()).toBeLessThan(3);
+    expect(ranges).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
   });
 
-  it("composes UTF-16 and CRLF text across bounded input windows in both directions", async () => {
+  it("preserves long UTF-16 and CRLF input through replacement and undo", async () => {
     const source = Array.from(
       { length: 1800 },
       (_, row) => `const value_${row} = "🐲 ${row}";`,
     ).join("\r\n");
-    const { mode } = await buildMode(source);
-    for (const chunkSize of [4096, 32768]) {
-      for (const start of [0, 32767, 32768, source.indexOf("\r\n") + 1, 17]) {
-        let actual = "";
-        let index = start;
-        while (index < source.length) {
-          const chunk = mode.getTextInputChunk(index, chunkSize);
-          expect(chunk.length).toBeGreaterThan(0);
-          expect(chunk.length).toBeLessThanOrEqual(chunkSize);
-          actual += chunk;
-          index += chunk.length;
-        }
-        expect(actual).toBe(source.slice(start));
-      }
-    }
+    const { buffer, mode } = await buildMode(source);
+    const previous = mode.tree;
+    buffer.insert([1, 0], "// \ud800\r\n", { normalizeLineEndings: false });
+    expect(mode.tree.input).toBe(buffer.getText());
+    expect(mode.tree.rootNode.text).toBe(buffer.getText());
+    expect(previous.input).toBe(source);
+    buffer.undo();
+    expect(mode.tree.input).toBe(source);
     expect(mode.tree.rootNode.text).toBe(source);
   });
 
-  it("reflects edits, undo and redo immediately in the edited tree's live input callback", async () => {
+  it("publishes edits, undo and redo without changing retained node text", async () => {
     const { buffer, mode } = await buildMode("const alpha = 1;\r\nconst beta = 2;");
     const node = mode.tree.rootNode.descendantsOfType("identifier")[0];
-    expect(node.text).toBe("alpha");
-    const readIdentifier = () => node.tree.textCallback(6).slice(0, 5);
-
+    const current = () => mode.tree.rootNode.descendantsOfType("identifier")[0].text;
     buffer.setTextInRange(
       [
         [0, 6],
@@ -75,39 +74,38 @@ describe("Tree-sitter live text input", () => {
       ],
       "bravo",
     );
-    expect(readIdentifier()).toBe("bravo");
+    expect(current()).toBe("bravo");
+    expect(node.text).toBe("alpha");
     buffer.undo();
-    expect(readIdentifier()).toBe("alpha");
+    expect(current()).toBe("alpha");
     buffer.redo();
-    expect(readIdentifier()).toBe("bravo");
-    expect(await editor.whenGrammarSettled()).toBe(true);
-    expect(mode.tree.rootNode.descendantsOfType("identifier")[0].text).toBe("bravo");
+    expect(current()).toBe("bravo");
+    expect(node.text).toBe("alpha");
   });
 
-  it("releases the input window when its language mode is destroyed", async () => {
-    const { mode } = await buildMode("const alpha = 1;");
-    expect(mode.tree.rootNode.text).toBe("const alpha = 1;");
-    expect(mode.textInputChunk).not.toBeNull();
+  it("releases the document cache on destruction while retained snapshots stay valid", async () => {
+    const { mode } = await buildMode("const value = 1;");
+    const tree = mode.tree;
+    expect(mode.document.textSnapshot.text).toBe(tree.input);
     editor.destroy();
-    expect(mode.textInputChunk).toBeNull();
+    expect(mode.document.closed).toBe(true);
+    expect(mode.document.textSnapshot).toBeNull();
+    expect(tree.rootNode.text).toBe("const value = 1;");
   });
 
   it("exposes changed input to marker and buffer observers before reparsing", async () => {
     const source = "const alpha = 1;";
     const changed = `// changed\n${source}`;
     const { buffer, mode } = await buildMode(source);
-    const externalReader = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
-      buffer,
-      textInputChunk: null,
-    });
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(source);
+    const externalReader = readerFor(buffer);
+    expect(externalReader.capture().text).toBe(source);
     const reads = [];
     const marker = buffer.markRange([
       [0, 6],
       [0, 11],
     ]);
-    marker.onDidChange(() => reads.push(externalReader.getTextInputChunk(0, changed.length)));
-    buffer.onDidChange(() => reads.push(externalReader.getTextInputChunk(0, changed.length)));
+    marker.onDidChange(() => reads.push(externalReader.capture().text));
+    buffer.onDidChange(() => reads.push(externalReader.capture().text));
 
     buffer.insert([0, 0], "// changed\n");
 
@@ -116,7 +114,7 @@ describe("Tree-sitter live text input", () => {
     expect(mode.tree.rootNode.text).toBe(changed);
   });
 
-  it("invalidates independent live input windows for sync and async native reloads", async () => {
+  it("invalidates independent snapshots for sync and async native reloads", async () => {
     const source = "const alpha = 1;";
     const { buffer } = await buildMode(source);
     const fixture = temp.openSync("tree-sitter-input-cache");
@@ -126,24 +124,21 @@ describe("Tree-sitter live text input", () => {
     buffer.setPath(fixturePath);
     buffer.loadSync({ discardChanges: true });
     await buffer.getFileWatchStartPromise();
-    const externalReader = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
-      buffer,
-      textInputChunk: null,
-    });
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(source);
+    const externalReader = readerFor(buffer);
+    expect(externalReader.capture().text).toBe(source);
 
     const syncSource = "const bravo = 2;";
     fs.writeFileSync(fixturePath, syncSource);
     buffer.loadSync({ discardChanges: true });
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(syncSource);
+    expect(externalReader.capture().text).toBe(syncSource);
 
     const asyncSource = "const gamma = 3;";
     fs.writeFileSync(fixturePath, asyncSource);
     const reload = buffer.reload();
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(syncSource);
+    expect(externalReader.capture().text).toBe(syncSource);
     await reload;
     expect(buffer.getText()).toBe(asyncSource);
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(asyncSource);
+    expect(externalReader.capture().text).toBe(asyncSource);
     expect(await editor.whenGrammarSettled()).toBe(true);
   });
 
@@ -156,11 +151,8 @@ describe("Tree-sitter live text input", () => {
     fs.closeSync(fixture.fd);
     fs.writeFileSync(fixturePath, changed);
     buffer.setPath(fixturePath);
-    const externalReader = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
-      buffer,
-      textInputChunk: null,
-    });
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(source);
+    const externalReader = readerFor(buffer);
+    expect(externalReader.capture().text).toBe(source);
     expect(buffer.getText()).toBe(source);
     const subscription = buffer.onWillReload(() => {
       throw new Error("Reload observer failed");
@@ -175,7 +167,7 @@ describe("Tree-sitter live text input", () => {
     }
 
     expect(buffer.getTextInRange(buffer.getRange())).toBe(changed);
-    expect(externalReader.getTextInputChunk(0, source.length)).toBe(changed);
+    expect(externalReader.capture().text).toBe(changed);
     expect(buffer.getText()).toBe(changed);
   });
 

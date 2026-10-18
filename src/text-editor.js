@@ -6249,6 +6249,10 @@ module.exports = class TextEditor {
           options.indentBasis = null;
         }
 
+        const pasteStart = selection.getBufferRange().start;
+        const indentPastedText =
+          (fullLine && selection.isEmpty()) ||
+          !/\S/.test(this.buffer.lineForRow(pasteStart.row).slice(0, pasteStart.column));
         let range;
         if (fullLine && selection.isEmpty()) {
           const oldPosition = selection.getBufferRange().start;
@@ -6263,7 +6267,28 @@ module.exports = class TextEditor {
           range = selection.insertText(text, options);
         }
 
-        if (languageMode.atTransactionEnd && options.autoIndent && text.includes("\n")) {
+        if (
+          languageMode.shouldParseSynchronously?.() &&
+          indentPastedText &&
+          options.autoIndent &&
+          text.includes("\n")
+        ) {
+          const marker = this.markBufferRange(range);
+          try {
+            const endRow = range.end.row - (range.end.column === 0 ? 1 : 0);
+            this.autoIndentBufferRows(range.start.row, endRow, { ...options, isPastedText: true });
+            range = marker.getBufferRange();
+            text = this.buffer.getTextInRange(range);
+            this.emitter.emit("did-insert-text", { text, range });
+          } finally {
+            marker.destroy();
+          }
+        } else if (
+          languageMode.atTransactionEnd &&
+          indentPastedText &&
+          options.autoIndent &&
+          text.includes("\n")
+        ) {
           // The `autoIndent` option as passed to `Selection#insertText` has no
           // effect in `TreeSitterLanguageMode` because it asks what the
           // right indent level would be for the given text _before_ inserting
@@ -7426,6 +7451,7 @@ module.exports = class TextEditor {
     const buffer = this.buffer;
     const languageMode = buffer.getLanguageMode();
     if (!languageMode.atTransactionEnd) return;
+    if (languageMode.shouldParseSynchronously?.()) return;
     if (!languageMode.useAsyncParsing || !languageMode.useAsyncIndent) return;
 
     let pending;

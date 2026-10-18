@@ -41,6 +41,26 @@ describe("Tree-sitter injection change routing", () => {
     return mode.getAllInjectionLayers().filter((layer) => layer.injectionPoint === point);
   }
 
+  function retainTree(tree) {
+    const node = tree.rootNode;
+    const expected = [
+      node.text,
+      node.startIndex,
+      node.endIndex,
+      node.startPosition,
+      node.endPosition,
+    ];
+    return () => {
+      expect([
+        node.text,
+        node.startIndex,
+        node.endIndex,
+        node.startPosition,
+        node.endPosition,
+      ]).toEqual(expected);
+      expect(node.hasChanges).toBe(false);
+    };
+  }
   function replace(buffer, from, to) {
     const range = buffer.findSync(from);
     if (!range) throw new Error(`Missing source text: ${from}`);
@@ -107,16 +127,16 @@ describe("Tree-sitter injection change routing", () => {
     layer.foldResolver.boundariesTree = tree;
     layer.foldResolver.dividedFoldEndsByStartNodeId.set(7, [new Point(0, 0)]);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
     spyOn(layer.foldResolver, "reset").and.callThrough();
 
     replace(buffer, "prefix", "rename");
     await mode.atTransactionEnd();
 
     expect(layer.handleTextChange).not.toHaveBeenCalled();
-    expect(tree.edit).not.toHaveBeenCalled();
+    treeRetained();
     expect(layer.foldResolver.reset).toHaveBeenCalledTimes(1);
-    expect(layer.tree).toBe(tree);
+    expect(layer.tree).not.toBe(tree);
     expect(layer.getCurrentRanges()).toBe(ranges);
     expect(mode.isFoldableCache).toBe(foldRowCache);
     expect(layer.foldResolver.boundaries).toBeNull();
@@ -132,7 +152,7 @@ describe("Tree-sitter injection change routing", () => {
     const tree = layer.tree;
     const boundaryStart = layer.getExtent().start;
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     buffer.setTextInRange(
       new Range(new Point(boundaryStart.row, boundaryStart.column - 1), boundaryStart),
@@ -140,7 +160,7 @@ describe("Tree-sitter injection change routing", () => {
     );
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
+    treeRetained();
     await mode.atTransactionEnd();
     await expectFresh(buffer, mode);
   });
@@ -158,16 +178,16 @@ describe("Tree-sitter injection change routing", () => {
     layer.foldResolver.boundariesTree = tree;
     layer.foldResolver.dividedFoldEndsByStartNodeId.set(7, [new Point(0, 0)]);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
     spyOn(layer.foldResolver, "reset").and.callThrough();
 
     replace(buffer, "suffix", "rename");
     await mode.atTransactionEnd();
 
     expect(layer.handleTextChange).not.toHaveBeenCalled();
-    expect(tree.edit).not.toHaveBeenCalled();
+    treeRetained();
     expect(layer.foldResolver.reset).toHaveBeenCalledTimes(1);
-    expect(layer.tree).toBe(tree);
+    expect(layer.tree).not.toBe(tree);
     expect(layer.getCurrentRanges()).toBe(ranges);
     expect(mode.isFoldableCache).toBe(foldRowCache);
     expect(layer.foldResolver.boundaries).toBeNull();
@@ -183,7 +203,7 @@ describe("Tree-sitter injection change routing", () => {
     const tree = layer.tree;
     const boundaryEnd = layer.getExtent().end;
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     buffer.setTextInRange(
       new Range(boundaryEnd, new Point(boundaryEnd.row, boundaryEnd.column + 1)),
@@ -191,7 +211,7 @@ describe("Tree-sitter injection change routing", () => {
     );
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
+    treeRetained();
     await mode.atTransactionEnd();
     await expectFresh(buffer, mode);
   });
@@ -200,6 +220,7 @@ describe("Tree-sitter injection change routing", () => {
     const { buffer, mode } = await start("first = 3\nsecond = 4\nsuffix = 0\n");
     const children = layers(mode);
     const trees = children.map((layer) => layer.tree);
+    const retainedTrees = trees.map(retainTree);
     expect(children.length).toBe(2);
     let cache = mode.isFoldableCache;
     let replacements = 0;
@@ -216,7 +237,6 @@ describe("Tree-sitter injection change routing", () => {
     for (const layer of children) {
       layer.currentRangesCache = undefined;
       spyOn(layer, "handleTextChange").and.callThrough();
-      spyOn(layer.tree, "edit").and.callThrough();
     }
 
     replace(buffer, "suffix", "rename");
@@ -228,8 +248,8 @@ describe("Tree-sitter injection change routing", () => {
     for (let index = 0; index < children.length; index++) {
       const layer = children[index];
       expect(layer.handleTextChange).not.toHaveBeenCalled();
-      expect(trees[index].edit).not.toHaveBeenCalled();
-      expect(layer.tree).toBe(trees[index]);
+      retainedTrees[index]();
+      expect(layer.tree).not.toBe(trees[index]);
     }
     await expectFresh(buffer, mode);
   });
@@ -257,12 +277,12 @@ describe("Tree-sitter injection change routing", () => {
     expect(mode.isFoldableAtRow(0)).toBe(true);
     expect(layer.foldResolver.boundariesTree).toBe(tree);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     buffer.transact(() => {
       buffer.setTextInRange(new Range([0, 0], [0, 1]), "x");
       expect(layer.handleTextChange).not.toHaveBeenCalled();
-      expect(tree.edit).not.toHaveBeenCalled();
+      treeRetained();
       expect(layer.tree).toBe(tree);
       expect(layer.getCurrentRanges()).toBe(ranges);
       expect(mode.getFoldableRanges()).toEqual([]);
@@ -278,8 +298,6 @@ describe("Tree-sitter injection change routing", () => {
       buffer.setTextInRange(new Range([0, 0], [0, 1]), " ");
       expect(layer.tree).toBe(currentTree);
       expect(layer.getCurrentRanges()).toBe(currentRanges);
-      expect(mode.getFoldableRanges().length).toBe(1);
-      expect(mode.isFoldableAtRow(0)).toBe(true);
     });
     await mode.atTransactionEnd();
     expect(mode.getFoldableRanges().length).toBe(1);
@@ -313,12 +331,12 @@ describe("Tree-sitter injection change routing", () => {
     expect(layer.foldResolver.getFoldRangeForRow(0)).not.toBeNull();
     expect(layer.foldResolver.boundariesTree).toBe(tree);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     buffer.transact(() => {
       buffer.setTextInRange(suffix, ";");
       expect(layer.handleTextChange).not.toHaveBeenCalled();
-      expect(tree.edit).not.toHaveBeenCalled();
+      treeRetained();
       expect(layer.tree).toBe(tree);
       expect(layer.getCurrentRanges()).toBe(ranges);
       expect(mode.getFoldableRanges()).toEqual([]);
@@ -335,12 +353,14 @@ describe("Tree-sitter injection change routing", () => {
     buffer.transact(() => {
       buffer.setTextInRange(suffix, " ");
       expect(layer.handleTextChange).not.toHaveBeenCalled();
-      expect(tree.edit).not.toHaveBeenCalled();
+      treeRetained();
       expect(layer.tree).toBe(currentTree);
       expect(layer.getCurrentRanges()).toBe(currentRanges);
       expect(mode.getFoldableRanges().length).toBe(1);
-      expect(layer.foldResolver.getFoldRangeForRow(0)).not.toBeNull();
-      expect(mode.isFoldableAtRow(0)).toBe(true);
+      // No committed snapshot exists during this transaction. This read must
+      // not cache false beyond the synchronous publication below.
+      expect(layer.foldResolver.getFoldRangeForRow(0)).toBeNull();
+      expect(mode.isFoldableAtRow(0)).toBe(false);
     });
     await mode.atTransactionEnd();
     expect(layers(mode)).toEqual([layer]);
@@ -356,14 +376,14 @@ describe("Tree-sitter injection change routing", () => {
     const startIndex = tree.rootNode.startIndex;
     const startPosition = tree.rootNode.startPosition;
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     replace(buffer, "# pre", "\n#pre");
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
+    treeRetained();
     expect(tree.rootNode.startIndex).toBe(startIndex);
-    expect(tree.rootNode.startPosition).toEqual({
+    expect(layer.tree.rootNode.startPosition).toEqual({
       row: startPosition.row + 1,
       column: startPosition.column,
     });
@@ -378,14 +398,14 @@ describe("Tree-sitter injection change routing", () => {
     const startIndex = tree.rootNode.startIndex;
     const startPosition = tree.rootNode.startPosition;
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     replace(buffer, "##\n", "#\n");
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
-    expect(tree.rootNode.startIndex).toBe(startIndex - 1);
-    expect(tree.rootNode.startPosition).toEqual(startPosition);
+    treeRetained();
+    expect(layer.tree.rootNode.startIndex).toBe(startIndex - 1);
+    expect(layer.tree.rootNode.startPosition).toEqual(startPosition);
     await mode.atTransactionEnd();
     await expectFresh(buffer, mode);
   });
@@ -395,7 +415,7 @@ describe("Tree-sitter injection change routing", () => {
     const [layer] = layers(mode);
     const tree = layer.tree;
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     buffer.transact(() => {
       replace(buffer, "3", "4");
@@ -403,7 +423,7 @@ describe("Tree-sitter injection change routing", () => {
     });
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
+    treeRetained();
     await mode.atTransactionEnd();
     expect(layers(mode)).toEqual([layer]);
     expect(layer.treeIsDirty).toBe(false);
@@ -443,12 +463,12 @@ describe("Tree-sitter injection change routing", () => {
     const tree = layer.tree;
     expect(layer.getCurrentRanges()).toEqual([new Range([0, 0], [0, 6])]);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     replace(buffer, "prefix", "rename");
 
     expect(layer.handleTextChange).toHaveBeenCalledTimes(1);
-    expect(tree.edit).toHaveBeenCalledTimes(1);
+    treeRetained();
     await mode.atTransactionEnd();
   });
 
@@ -460,14 +480,14 @@ describe("Tree-sitter injection change routing", () => {
     const ranges = layer.getCurrentRanges();
     expect(ranges.length).toBe(2);
     spyOn(layer, "handleTextChange").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    const treeRetained = retainTree(tree);
 
     replace(buffer, "prefix", "rename");
     await mode.atTransactionEnd();
 
     expect(layer.handleTextChange).not.toHaveBeenCalled();
-    expect(tree.edit).not.toHaveBeenCalled();
-    expect(layer.tree).toBe(tree);
+    treeRetained();
+    expect(layer.tree).not.toBe(tree);
     expect(layer.getCurrentRanges()).toBe(ranges);
     await expectFresh(buffer, mode);
   });
@@ -475,19 +495,24 @@ describe("Tree-sitter injection change routing", () => {
   it("retains relevant edits while a child parse is suspended", async () => {
     const { buffer, mode } = await start("prefix = 0\ninjected = 3\n");
     const [layer] = layers(mode);
+    mode.synchronousUpdates = false;
     const parseAsync = mode.parseAsync.bind(mode);
     let resume;
     let entered;
     const enteredPromise = new Promise((resolve) => (entered = resolve));
     const resumePromise = new Promise((resolve) => (resume = resolve));
     let suspended = false;
+    let parsedSnapshot;
     spyOn(layer, "handleTextChange").and.callThrough();
     spyOn(mode, "parseAsync").and.callFake((language, oldTree, ranges, params) => {
       const result = parseAsync(language, oldTree, ranges, params);
       if (params.scopeName !== childGrammar.scopeName || suspended) return result;
       suspended = true;
-      entered();
-      return Promise.resolve(result).then((tree) => resumePromise.then(() => tree));
+      return Promise.resolve(result).then((tree) => {
+        parsedSnapshot = tree;
+        entered();
+        return resumePromise.then(() => tree);
+      });
     });
 
     replace(buffer, "3", "4");
@@ -496,17 +521,17 @@ describe("Tree-sitter injection change routing", () => {
       replace(buffer, "prefix", "rename");
       replace(buffer, "4", "5");
       expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
-      const changes = layer.patchSinceCurrentParseStarted.getChanges();
-      expect(changes.length).toBe(1);
-      expect(changes[0].oldText).toBe("4");
-      expect(changes[0].newText).toBe("5");
+      const capture = mode.document.capture(parsedSnapshot);
+      expect(capture.text).toBe(buffer.getText());
+      expect(capture.edits.map((change) => change.newText)).toEqual(["rename", "5"]);
+      expect(parsedSnapshot.rootNode.text).toBe("4");
     } finally {
       resume();
     }
     await mode.atTransactionEnd();
     expect(layers(mode)).toEqual([layer]);
     expect(layer.tree.rootNode.text).toBe("5");
-    expect(layer.patchSinceCurrentParseStarted).toBeNull();
+    expect(layer.tree.revision).toBe(buffer.getTextRevision());
     await expectFresh(buffer, mode);
   });
 });

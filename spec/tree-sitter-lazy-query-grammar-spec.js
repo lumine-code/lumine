@@ -42,7 +42,7 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
       { name: "Lazy Test", scopeName: "source.lazy-test", treeSitter: { grammar: "unused.wasm" } },
     );
     spyOn(grammar, "getLanguage").and.returnValue(Promise.resolve({}));
-    spyOn(grammar, "_createQuery").and.callFake(() => ({ delete: jasmine.createSpy("delete") }));
+    spyOn(grammar, "_createQuery").and.callFake((_language, source) => Object.freeze({ source }));
   });
 
   afterEach(() => {
@@ -89,7 +89,7 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
     await event;
     expect(grammar._createQuery).toHaveBeenCalledTimes(2);
     expect(grammar.queryCache.get("tagsQuery")).not.toBe(original);
-    expect(original.delete).toHaveBeenCalledTimes(1);
+    expect(original.source).toBe("(identifier) @old");
   });
 
   it("treats an explicit synchronous optional query as requested", async () => {
@@ -102,7 +102,7 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
     await event;
     expect(grammar._createQuery).toHaveBeenCalledTimes(2);
     expect(grammar.queryCache.get("localsQuery")).not.toBe(original);
-    expect(original.delete).toHaveBeenCalledTimes(1);
+    expect(original.source).toBe("(identifier) @old");
   });
 
   it("preserves eager validation for mandatory query files", async () => {
@@ -120,7 +120,7 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
     Object.assign(error, {
       name: "QueryError",
       kind: 2,
-      index: source.indexOf("unknown_node"),
+      offset: Buffer.byteLength(source.slice(0, source.indexOf("unknown_node"))),
       info: { word: "unknown_node" },
     });
     return error;
@@ -211,11 +211,11 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
     language.resolve({});
     expect(await pending).toBe(synchronous);
     expect(grammar._createQuery).toHaveBeenCalledTimes(1);
-    expect(grammar.queryReferenceCounts.get(synchronous)).toBe(1);
+    expect(grammar.queryCache.get("tagsQuery")).toBe(synchronous);
   });
 
-  it("deletes a newly created query if activation ends during construction", async () => {
-    const created = { delete: jasmine.createSpy("delete") };
+  it("does not cache a query if activation ends during construction", async () => {
+    const created = Object.freeze({ source: "(identifier) @name" });
     grammar._createQuery.and.callFake(() => {
       grammar.deactivate();
       return created;
@@ -228,7 +228,6 @@ describe("TreeSitterGrammar lazy query lifecycle", () => {
       error = rejected;
     }
     expect(error.name).toBe("AbortError");
-    expect(created.delete).toHaveBeenCalledTimes(1);
     expect(grammar.queryCache.size).toBe(0);
   });
 });

@@ -139,6 +139,37 @@ describe("Tree-sitter complete child-row exclusions", () => {
     expect(layer.tree.rootNode.hasError).toBe(false);
   });
 
+  it("advances an untouched injection whose end lies between CR and LF", async () => {
+    const text = "value = 1\r\noutside = 2\r\n";
+    const endIndex = text.indexOf("\n");
+    const mode = await start(text, () => [], null, {
+      type: "assignment",
+      language: (node) => (node.startPosition.row === 0 ? "row-python" : null),
+      includeChildren: true,
+      content: () => ({
+        startIndex: 0,
+        startPosition: { row: 0, column: 0 },
+        endIndex,
+        endPosition: { row: 0, column: endIndex },
+      }),
+    });
+    const layer = mode.getAllInjectionLayers()[0];
+    const previous = layer.tree;
+    buffer.setTextInRange(
+      [
+        [1, 10],
+        [1, 11],
+      ],
+      "3",
+    );
+    await mode.atGrammarSettlement();
+    expect(mode.lastTransactionParseError).toBeNull();
+    expect(layer.tree.revision).toBe(buffer.getTextRevision());
+    expect(layer.tree.getIncludedRanges()[0].endIndex).toBe(endIndex);
+    expect(layer.tree.getIncludedRanges()[0].endPosition.column).toBe(endIndex);
+    expect(previous.rootNode.text).toBe("value = 1\r");
+  });
+
   it("clips exclusions to the content body and EOF without consuming the next row", async () => {
     const mode = await start(
       "prefix keep\nfirst\nsecond\nlast",

@@ -34,6 +34,8 @@ describe("parse failure diagnostics", () => {
   function breakTheParser() {
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
+    languageMode.syncTimeoutMicros = 0;
+    spyOn(parser, "parseSync").and.throwError(new Error("memory access out of bounds"));
     spyOn(parser, "parse").and.throwError(new Error("memory access out of bounds"));
     return language;
   }
@@ -92,12 +94,12 @@ describe("parse failure diagnostics", () => {
     expect(error.message).toContain("1 included range(s)");
   });
 
-  it("releases the parser back to the pool when a parse faults", () => {
+  it("releases the parser back to the pool when a parse faults", async () => {
     const language = breakTheParser();
     const parser = languageMode.getOrCreateParserForLanguage(language);
 
     try {
-      languageMode.parseAsync(language, null, undefined, { scopeName: "source.js" });
+      await languageMode.parseAsync(language, null, undefined, { scopeName: "source.js" });
     } catch {
       // expected
     }
@@ -110,7 +112,7 @@ describe("parse failure diagnostics", () => {
   it("settles a failed edit transaction and allows the next one to recover", async () => {
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
-    const parse = spyOn(parser, "parse").and.throwError(new Error("broken incremental parse"));
+    const parse = spyOn(parser, "parseSync").and.throwError(new Error("broken incremental parse"));
     spyOn(console, "error");
 
     buffer.append("const first = 1;\n");
@@ -118,7 +120,7 @@ describe("parse failure diagnostics", () => {
 
     expect(failedTransaction.parseError.message).toContain("broken incremental parse");
     expect(languageMode.rootLanguageLayer.currentParsePromise).toBeNull();
-    expect(languageMode.rootLanguageLayer.patchSinceCurrentParseStarted).toBeNull();
+    expect(languageMode.rootLanguageLayer.updating).toBe(false);
 
     parse.and.callThrough();
     buffer.append("const second = 2;\n");

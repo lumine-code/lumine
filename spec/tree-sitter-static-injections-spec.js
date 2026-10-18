@@ -300,16 +300,20 @@ describe("Tree-sitter static injections", () => {
     expect(contents(layers(mode)[0])).toEqual(["10", "20", "30", "40", "50", "60"]);
   });
 
-  it("shares the compiled query across buffers and releases layer leases on destruction", async () => {
+  it("shares the compiled query while retained handles outlive destroyed buffers", async () => {
     const query = await root.getQuery("injectionsQuery");
     const compile = spyOn(root, "_createQuery").and.callThrough();
     const first = await start("one(10)");
     const second = await start("one(20)");
     expect(compile).not.toHaveBeenCalled();
-    expect(root.queryReferenceCounts.get(query)).toBe(3);
+    expect(first.mode.rootLanguageLayer.queries.injectionsQuery).toBe(query);
+    expect(second.mode.rootLanguageLayer.queries.injectionsQuery).toBe(query);
+    const retained = first.mode.tree;
+    const captures = query.captures(retained.rootNode).map((capture) => capture.node.text);
     first.buffer.destroy();
     second.buffer.destroy();
-    expect(root.queryReferenceCounts.get(query)).toBe(1);
+    expect(query.captures(retained.rootNode).map((capture) => capture.node.text)).toEqual(captures);
+    expect(root.queryCache.get("injectionsQuery")).toBe(query);
   });
 
   it("cancels a yielded static scan after its buffer is destroyed", async () => {

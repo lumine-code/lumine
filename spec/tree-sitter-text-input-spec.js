@@ -1,24 +1,28 @@
 const TextBuffer = require("../src/text-buffer");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
+const TreeSitterDocument = require("../src/tree-sitter-document");
 const CSON = require("@lumine-code/season");
-
 const grammarPath = require.resolve("language-javascript/grammars/javascript.json");
 
-describe("Tree-sitter bounded text input", () => {
-  let buffer, grammar;
-
+describe("Tree-sitter snapshot text input", () => {
+  let buffer, grammar, readers;
   beforeEach(() => {
     jasmine.useRealClock();
     buffer = new TextBuffer();
     grammar = null;
+    readers = [];
   });
-
   afterEach(() => {
+    for (const reader of readers) reader.close();
     buffer.destroy();
-    grammar?.subscriptions?.dispose();
+    grammar?.deactivate();
   });
-
+  function document() {
+    const reader = new TreeSitterDocument(buffer);
+    readers.push(reader);
+    return reader;
+  }
   async function buildLanguageMode(source) {
     const config = CSON.readFileSync(grammarPath);
     grammar = new TreeSitterGrammar(lumine.grammars, grammarPath, {
@@ -36,148 +40,127 @@ describe("Tree-sitter bounded text input", () => {
     await mode.ready;
     return mode;
   }
-
-  function readChunk(index, size) {
-    return TreeSitterLanguageMode.prototype.getTextInputChunk.call({ buffer }, index, size);
-  }
-
   function modeWithParser(parser) {
     return Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
       buffer,
-      acquireParserForLanguage: () => parser,
-      resetParserForLanguage: () => parser,
+      document: document(),
+      backgroundSnapshots: new WeakSet(),
+      parseDetails: new WeakMap(),
+      syncTimeoutMicros: 0,
+      acquireParserForLanguage: jasmine
+        .createSpy("acquireParserForLanguage")
+        .and.returnValue(parser),
       releaseParserForLanguage: jasmine.createSpy("releaseParserForLanguage"),
     });
   }
 
-  it("preserves exact UTF-16 slices inside CRLF and surrogate pairs", () => {
-    const source = "a\r\n😀\r\nbc\n終\r\n";
+  it("retains exact UTF-16, CRLF and unpaired surrogates in immutable text snapshots", () => {
+    const source = "a\r\n😀\r\nbc\n終\r\n\ud83d";
     buffer.setText(source);
-    const getText = spyOn(buffer, "getText").and.throwError("Unexpected full-buffer copy");
-
-    for (let index = 0; index <= source.length + 1; index++) {
-      for (const size of [1, 2, 3, 4, 4096, 32768]) {
-        expect(readChunk(index, size))
-          .withContext(`index ${index}, size ${size}`)
-          .toBe(source.slice(index, index + size));
-      }
-    }
-    expect(getText).not.toHaveBeenCalled();
+    const reader = document();
+    const before = reader.capture();
+    buffer.append("\ude00", { normalizeLineEndings: false });
+    expect(before.text).toBe(source);
+    expect(reader.capture().text).toBe(source + "\ude00");
+    expect(reader.capture().text.endsWith("😀")).toBe(true);
   });
 
-  it("reads exact chunks across CRLF split between native patch layers", () => {
+  it("replays exact indices when CRLF is split between native patch layers", () => {
     buffer.setText("first\nsecond\n");
+    const reader = document();
+    const previous = reader.capture();
     buffer.insert([0, 5], "\r", { normalizeLineEndings: false });
     buffer.insert([1, 6], "\r", { normalizeLineEndings: false });
-    const source = "first\r\nsecond\r\n";
-
-    for (let index = 0; index <= source.length; index++) {
-      expect(readChunk(index, 1)).toBe(source.slice(index, index + 1));
-      expect(readChunk(index, 6)).toBe(source.slice(index, index + 6));
-    }
+    const snapshot = reader.capture(previous);
+    expect(snapshot.text).toBe("first\r\nsecond\r\n");
+    expect(snapshot.edits.map((edit) => [edit.startIndex, edit.oldEndIndex, edit.newText])).toEqual(
+      [
+        [5, 6, "\r\n"],
+        [13, 14, "\r\n"],
+      ],
+    );
   });
 
-  it("completes incremental parsing without materializing the whole buffer", async () => {
+  it("materializes one shared input string per committed revision", async () => {
     const mode = await buildLanguageMode("const alpha = 1;\r\n");
     const getText = spyOn(buffer, "getText").and.callThrough();
-
     buffer.append("const beta = 2;\r\n");
-    await mode.atTransactionEnd();
-
     expect(mode.tree.rootNode.hasError).toBe(false);
     expect(mode.tree.rootNode.descendantsOfType("identifier").map((node) => node.text)).toEqual([
       "alpha",
       "beta",
     ]);
-    expect(getText).not.toHaveBeenCalled();
+    expect(getText).toHaveBeenCalledTimes(1);
+    mode.parse(mode.rootLanguage, null, null);
+    expect(getText).toHaveBeenCalledTimes(1);
   });
 
-  it("freezes async input before yielding and returns to live reads after completion", async () => {
+  it("keeps submitted background input stable after the buffer changes", async () => {
     const source = "const first = 1;";
     buffer.setText(source);
-    const getText = spyOn(buffer, "getText").and.callThrough();
-    let callback,
-      attempts = 0;
+    let entered, finish, submitted;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
     const parser = {
-      parse(input) {
-        callback = input;
-        attempts++;
-        if (attempts === 1) {
-          expect(input(0)).toBe(source);
-          return null;
-        }
-        return { parsedText: input(0) };
+      parse(text) {
+        submitted = text;
+        entered();
+        return new Promise((resolve) => {
+          finish = () => resolve({ parsedText: text, input: text });
+        });
       },
     };
     const mode = modeWithParser(parser);
-
+    const getText = spyOn(buffer, "getText").and.callThrough();
     const result = mode.parseAsync({}, null, null);
+    await started;
     expect(getText).toHaveBeenCalledTimes(1);
     buffer.setText("const later = 2;");
+    finish();
     const tree = await result;
-
+    expect(submitted).toBe(source);
+    expect(tree.input).toBe(source);
     expect(tree.parsedText).toBe(source);
-    expect(callback(0)).toBe("const later = 2;");
-    expect(getText).toHaveBeenCalledTimes(1);
     expect(mode.releaseParserForLanguage).toHaveBeenCalledTimes(1);
   });
 
-  it("releases the parser if freezing async input fails", () => {
+  it("does not acquire a parser when capturing the input fails", async () => {
     buffer.setText("const value = 1;");
     const mode = modeWithParser({ parse: () => null });
     spyOn(buffer, "getText").and.throwError("Cannot freeze text");
-
-    expect(() => mode.parseAsync({}, null, null)).toThrowError(/Cannot freeze text/);
-    expect(mode.releaseParserForLanguage).toHaveBeenCalledTimes(1);
+    await expectAsync(mode.parseAsync({}, null, null)).toBeRejectedWithError(/Cannot freeze text/);
+    expect(mode.acquireParserForLanguage).not.toHaveBeenCalled();
+    expect(mode.releaseParserForLanguage).not.toHaveBeenCalled();
   });
 
-  it("preserves large node text when parser chunks split CRLF and surrogate pairs", async () => {
-    // Put CR at the last code unit of a parser chunk, and later put the first
-    // half of an astral character at another chunk boundary.
+  it("preserves large node text containing CRLF and supplementary characters", async () => {
     const prefix = "const value = `";
     const contents = `${"a".repeat(4095 - prefix.length)}\r\n${"b".repeat(4094)}😀${"c".repeat(40000)}`;
     const source = `${prefix}${contents}\`;`;
     const mode = await buildLanguageMode(source);
-    const getText = spyOn(buffer, "getText").and.throwError("Unexpected full-buffer copy");
+    const getText = spyOn(buffer, "getText").and.throwError("Unexpected repeated snapshot copy");
     const tree = mode.parse(mode.rootLanguage, null, null);
-
-    try {
-      expect(tree.rootNode.hasError).toBe(false);
-      expect(tree.rootNode.descendantsOfType("template_string")[0].text).toBe(`\`${contents}\``);
-      expect(getText).not.toHaveBeenCalled();
-    } finally {
-      tree.delete();
-    }
+    expect(tree.rootNode.hasError).toBe(false);
+    expect(tree.rootNode.descendantsOfType("template_string")[0].text).toBe(`\`${contents}\``);
+    expect(getText).not.toHaveBeenCalled();
   });
 
-  it("reads current text through a dirty tree without rebuilding the full string", async () => {
+  it("keeps retained node text while a new snapshot adopts the edit", async () => {
     const mode = await buildLanguageMode("const value = `old text`;\r\n");
     const tree = mode.parse(mode.rootLanguage, null, null);
     const template = tree.rootNode.descendantsOfType("template_string")[0];
-    const getText = spyOn(buffer, "getText").and.throwError("Unexpected full-buffer copy");
-
-    try {
-      buffer.setTextInRange(
-        [
-          [0, 15],
-          [0, 23],
-        ],
-        "new text",
-      );
-      tree.edit({
-        startIndex: 15,
-        oldEndIndex: 23,
-        newEndIndex: 23,
-        startPosition: { row: 0, column: 15 },
-        oldEndPosition: { row: 0, column: 23 },
-        newEndPosition: { row: 0, column: 23 },
-      });
-
-      expect(template.text).toBe("`new text`");
-      expect(getText).not.toHaveBeenCalled();
-      await mode.atTransactionEnd();
-    } finally {
-      tree.delete();
-    }
+    const getText = spyOn(buffer, "getText").and.callThrough();
+    buffer.setTextInRange(
+      [
+        [0, 15],
+        [0, 23],
+      ],
+      "new text",
+    );
+    expect(template.text).toBe("`old text`");
+    expect(tree.rootNode.hasChanges).toBe(false);
+    expect(mode.tree.rootNode.descendantsOfType("template_string")[0].text).toBe("`new text`");
+    expect(getText).toHaveBeenCalledTimes(1);
   });
 });

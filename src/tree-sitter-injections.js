@@ -42,11 +42,7 @@ function compileInjectionQuery(query, source) {
       fail("each match must have exactly one @injection.owner");
     if (!(captures.get("injection.content")?.[0] >= 1))
       fail("each match must have at least one @injection.content");
-    // The WASM runtime evaluates text predicates and extracts #set! properties.
-    // Its remaining predicates have no evaluator in the injection contract.
-    for (const { operator } of query.predicatesForPattern(patternIndex)) {
-      fail(`unsupported predicate #${operator}`);
-    }
+    // Unsupported predicates are rejected by the native query constructor.
     if (Object.keys(query.assertedProperties[patternIndex] ?? {}).length) {
       fail("unsupported predicate #is?; properties are not evaluated for injections");
     }

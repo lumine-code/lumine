@@ -160,6 +160,8 @@ describe("Root language ranges", () => {
 
   it("restores full parsing on disposal and ignores disposal of a replaced policy", async () => {
     const { buffer, languageMode } = await mode("// header\nconst alpha = 1;", null);
+    // Exercise the initial/background path; warm document updates are synchronous.
+    languageMode.synchronousUpdates = false;
     const first = registry.setRootLanguageRanges(buffer, (source) => [
       new Range(new Point(1, 0), source.getEndPosition()),
     ]);
@@ -190,6 +192,7 @@ describe("Root language ranges", () => {
 
   it("adopts a policy replacement while an earlier parse is suspended", async () => {
     const { buffer, languageMode } = await mode("// header\nconst alpha = 1;", null);
+    languageMode.synchronousUpdates = false;
     const originalParse = languageMode.parseAsync.bind(languageMode);
     let resume;
     let suspended = false;
