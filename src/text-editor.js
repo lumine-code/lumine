@@ -6499,11 +6499,13 @@ module.exports = class TextEditor {
    */
   foldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
-    const languageMode = this.buffer.getLanguageMode();
-    const range =
-      languageMode.getFoldableRangeContainingPoint &&
-      languageMode.getFoldableRangeContainingPoint(Point(row, Infinity), this.getTabLength());
-    if (range) return this.displayLayer.foldBufferRange(range);
+    return this.withCurrentFoldSyntax((languageMode) => {
+      const range = languageMode.getFoldableRangeContainingPoint?.(
+        Point(row, Infinity),
+        this.getTabLength(),
+      );
+      if (range) return this.displayLayer.foldBufferRange(range);
+    });
   }
 
   /**
@@ -6513,6 +6515,7 @@ module.exports = class TextEditor {
    * Unfold the most recent cursor's row by one level.
    */
   unfoldCurrentRow() {
+    this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
     const { row } = this.getCursorBufferPosition();
     return this.displayLayer.destroyFoldsContainingBufferPositions([Point(row, Infinity)], false);
   }
@@ -6530,28 +6533,47 @@ module.exports = class TextEditor {
    * @param {Number} bufferRow - A `Number`.
    */
   foldBufferRow(bufferRow) {
-    let position = Point(bufferRow, Infinity);
-    const languageMode = this.buffer.getLanguageMode();
-    while (true) {
-      const foldableRange =
-        languageMode.getFoldableRangeContainingPoint &&
-        languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
-      if (foldableRange) {
-        const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
-          Range(foldableRange.start, foldableRange.start),
-        );
-        if (existingFolds.length === 0) {
-          this.displayLayer.foldBufferRange(foldableRange);
-        } else {
-          const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(existingFolds[0]);
-          if (firstExistingFoldRange.start.isLessThan(position)) {
-            position = Point(firstExistingFoldRange.start.row, 0);
-            continue;
+    return this.withCurrentFoldSyntax((languageMode) => {
+      let position = Point(bufferRow, Infinity);
+      while (true) {
+        const foldableRange =
+          languageMode.getFoldableRangeContainingPoint &&
+          languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
+        if (foldableRange) {
+          const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
+            Range(foldableRange.start, foldableRange.start),
+          );
+          if (existingFolds.length === 0) {
+            this.displayLayer.foldBufferRange(foldableRange);
+          } else {
+            const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(existingFolds[0]);
+            if (firstExistingFoldRange.start.isLessThan(position)) {
+              position = Point(firstExistingFoldRange.start.row, 0);
+              continue;
+            }
           }
         }
+        break;
       }
-      break;
-    }
+    });
+  }
+
+  withCurrentFoldSyntax(operation) {
+    const version = (this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1);
+    const mode = this.buffer.getLanguageMode();
+    if (!mode.publicationPending || !mode.atGrammarSettlement) return operation(mode);
+    const revision = this.buffer.getTextRevision();
+    return mode.atGrammarSettlement().then((result) => {
+      if (
+        !this.isDestroyed() &&
+        version === this.foldRequestVersion &&
+        this.buffer.getLanguageMode() === mode &&
+        revision === this.buffer.getTextRevision() &&
+        !mode.publicationPending &&
+        !result?.parseError
+      )
+        return operation(mode);
+    });
   }
 
   /**
@@ -6563,6 +6585,7 @@ module.exports = class TextEditor {
    * @param {Number} bufferRow - A `Number`
    */
   unfoldBufferRow(bufferRow) {
+    this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
     const position = Point(bufferRow, Infinity);
     return this.displayLayer.destroyFoldsContainingBufferPositions([position]);
   }
@@ -6586,13 +6609,14 @@ module.exports = class TextEditor {
    * Fold all foldable lines.
    */
   foldAll() {
-    const languageMode = this.buffer.getLanguageMode();
-    const foldableRanges =
-      languageMode.getFoldableRanges && languageMode.getFoldableRanges(this.getTabLength());
-    this.displayLayer.destroyAllFolds();
-    for (let range of foldableRanges || []) {
-      this.displayLayer.foldBufferRange(range);
-    }
+    return this.withCurrentFoldSyntax((languageMode) => {
+      const foldableRanges =
+        languageMode.getFoldableRanges && languageMode.getFoldableRanges(this.getTabLength());
+      this.displayLayer.destroyAllFolds();
+      for (let range of foldableRanges || []) {
+        this.displayLayer.foldBufferRange(range);
+      }
+    });
   }
 
   /**
@@ -6602,6 +6626,7 @@ module.exports = class TextEditor {
    * Unfold all existing folds.
    */
   unfoldAll() {
+    this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
     const result = this.displayLayer.destroyAllFolds();
     if (result.length > 0) this.scrollToCursorPosition();
     return result;
@@ -6616,14 +6641,15 @@ module.exports = class TextEditor {
    * @param {Number} level - A `Number` starting at 0.
    */
   foldAllAtIndentLevel(level) {
-    const languageMode = this.buffer.getLanguageMode();
-    const foldableRanges =
-      languageMode.getFoldableRangesAtIndentLevel &&
-      languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength());
-    this.displayLayer.destroyAllFolds();
-    for (let range of foldableRanges || []) {
-      this.displayLayer.foldBufferRange(range);
-    }
+    return this.withCurrentFoldSyntax((languageMode) => {
+      const foldableRanges =
+        languageMode.getFoldableRangesAtIndentLevel &&
+        languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength());
+      this.displayLayer.destroyAllFolds();
+      for (let range of foldableRanges || []) {
+        this.displayLayer.foldBufferRange(range);
+      }
+    });
   }
 
   /**

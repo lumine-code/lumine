@@ -131,7 +131,7 @@ class FoldResolver {
   // * resolves to a range that spans more than one line;
   // * starts on a line that hasn't already been promised to an earlier fold.
   getAllFoldRanges() {
-    if (!this.layer.tree || !this.layer.queries.foldsQuery) {
+    if (!this.layer.getOrParseTree({ force: false }) || !this.layer.queries.foldsQuery) {
       return [];
     }
     let range = this.layer.getExtent();
@@ -185,7 +185,7 @@ class FoldResolver {
   }
 
   prefillFoldCache(range) {
-    if (!this.layer.tree || !this.layer.queries.foldsQuery) {
+    if (!this.layer.getOrParseTree({ force: false }) || !this.layer.queries.foldsQuery) {
       return;
     }
     this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, range.start, range.end);

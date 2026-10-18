@@ -219,9 +219,21 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
           const index = buffer.getText().indexOf(needle);
           if (index < 0) continue;
           const position = buffer.positionForCharacterIndex(index + needle.length - 1);
-          expect(mode.scopeDescriptorForPosition(position).getScopesArray()).toEqual(
-            fresh.scopeDescriptorForPosition(position).getScopesArray(),
-          );
+          expect(mode.scopeDescriptorForPosition(position).getScopesArray())
+            .withContext(
+              JSON.stringify({
+                needle,
+                position,
+                revision: buffer.getTextRevision(),
+                pending: mode.publicationPending,
+                layers: layers().map((layer) => ({
+                  revision: layer.tree?.revision,
+                  dirty: layer.treeIsDirty,
+                  node: layer.tree?.rootNode.descendantForPosition(position)?.toString(),
+                })),
+              }),
+            )
+            .toEqual(fresh.scopeDescriptorForPosition(position).getScopesArray());
         }
       } finally {
         freshBuffer.destroy();

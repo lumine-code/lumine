@@ -11967,9 +11967,9 @@ describe("TextEditor advanced behavior", () => {
       });
 
       describe("when the bufferRow is a single-line comment", () => {
-        it("searches upward for the first row that begins a syntactic region containing the folded row (and folds it)", () => {
+        it("searches upward for the first row that begins a syntactic region containing the folded row (and folds it)", async () => {
           editor.buffer.insert([1, 0], "  //this is a single line comment\n");
-          editor.foldBufferRow(1);
+          await editor.foldBufferRow(1);
           const [fold] = editor.unfoldAll();
           expect([fold.start.row, fold.end.row]).toEqual([0, 13]);
         });

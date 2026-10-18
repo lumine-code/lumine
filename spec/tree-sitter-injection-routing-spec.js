@@ -356,7 +356,8 @@ describe("Tree-sitter injection change routing", () => {
       treeRetained();
       expect(layer.tree).toBe(currentTree);
       expect(layer.getCurrentRanges()).toBe(currentRanges);
-      expect(mode.getFoldableRanges().length).toBe(1);
+      // Retained trees are presentation-only until the transaction commits.
+      expect(mode.getFoldableRanges()).toEqual([]);
       // No committed snapshot exists during this transaction. This read must
       // not cache false beyond the synchronous publication below.
       expect(layer.foldResolver.getFoldRangeForRow(0)).toBeNull();

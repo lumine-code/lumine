@@ -4,7 +4,7 @@ const Point = require("../../src/point");
 const HighlightCache = require("../../src/tree-sitter-highlight-cache");
 
 const point = (row, column = 0) => new Point(row, column);
-function record(cache, start, end, scopes, events) {
+function record(cache, start, end, scopes, events, complete = false) {
   let index;
   const iterator = cache.record(
     {
@@ -20,6 +20,7 @@ function record(cache, start, end, scopes, events) {
       },
     },
     { clipPosition: () => end },
+    { complete },
   );
   iterator.seek(start, end.row);
   while (iterator.getPosition() !== Point.INFINITY) iterator.moveToSuccessor();
@@ -94,4 +95,21 @@ test("caps retained events and clears all presentation state on teardown", () =>
   assert.ok(cache.snapshots.reduce((count, item) => count + item.events.length, 0) <= 4);
   cache.clear();
   assert.deepEqual(at(cache, point(19, 1)), [1]);
+});
+
+test("evicts old windows without truncating a dense current presentation batch", () => {
+  const cache = new HighlightCache({ maxEvents: 4 });
+  record(cache, point(0), point(1), [1, 9], []);
+  const staged = new HighlightCache({ maxEvents: 4 });
+  const events = Array.from({ length: 10 }, (_, column) => ({
+    position: point(2, column),
+    open: column % 2 === 0 ? [2] : [],
+    close: column % 2 ? [2] : [],
+  }));
+  record(staged, point(2), point(3), [1], events, true);
+  cache.replace(staged.snapshots, { revision: 2 });
+  assert.equal(cache.snapshots.length, 1);
+  assert.equal(cache.snapshots[0].events.length, 10);
+  assert.deepEqual(at(cache, point(2, 8)), [1, 2]);
+  assert.deepEqual(at(cache, point(2, 9)), [1]);
 });

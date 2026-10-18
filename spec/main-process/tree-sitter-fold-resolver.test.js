@@ -16,6 +16,8 @@ test("fold rendering waits for a current tree without forcing a synchronous pars
     assert.fail("must not query the retained stale tree");
   };
   assert.equal(resolver.getFoldRangeForRow(0), null);
+  assert.deepEqual(resolver.getAllFoldRanges(), []);
+  resolver.prefillFoldCache({ start: { row: 0, column: 0 }, end: { row: 10, column: 0 } });
 
   const currentTree = { rootNode: {} };
   layer.tree = currentTree;

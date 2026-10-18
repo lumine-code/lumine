@@ -1706,6 +1706,7 @@ class TreeSitterLanguageMode {
   Section - Folds
   */
   getFoldableRangeContainingPoint(point) {
+    if (this.publicationPending) return null;
     this.ensureQueriesForLayersSync("foldsQuery");
     point = this.buffer.clipPosition(point);
     if (point.column >= this.buffer.lineLengthForRow(point.row)) {
@@ -1764,7 +1765,7 @@ class TreeSitterLanguageMode {
   }
 
   getFoldableRanges() {
-    if (!this.tokenized) {
+    if (!this.tokenized || this.publicationPending) {
       return [];
     }
     this.ensureQueriesForLayersSync("foldsQuery");
@@ -1790,7 +1791,7 @@ class TreeSitterLanguageMode {
   // their enclosing fold, but it doesn't require it.
   //
   getFoldableRangesAtIndentLevel(goalLevel) {
-    if (!this.tokenized) {
+    if (!this.tokenized || this.publicationPending) {
       return [];
     }
     this.ensureQueriesForLayersSync("foldsQuery");
@@ -1879,7 +1880,7 @@ class TreeSitterLanguageMode {
   }
 
   getFoldRangeForRowInternal(row, demandQuery) {
-    if (!this.tokenized) {
+    if (!this.tokenized || this.publicationPending) {
       return null;
     }
 

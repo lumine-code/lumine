@@ -167,6 +167,26 @@ describe("Tree-sitter update budgets", () => {
     expect(boundaries.calls.allArgs().every(([start]) => start.row < 128)).toBe(true);
   });
 
+  it("waits for current syntax before folding and cancels an obsolete fold command", async () => {
+    const mode = await start("def work():\n    first = 1\n    return first\n");
+    mode.ensureQueriesForLayersSync("foldsQuery");
+    mode.syncTimeoutMicros = 0;
+    editor.getBuffer().insert([1, 0], "    # comment\n");
+    expect(mode.getFoldableRanges()).toEqual([]);
+    expect(mode.getFoldableRangeContainingPoint([2, 0])).toBeNull();
+    const pending = editor.foldBufferRow(2);
+    expect(pending?.then).toBeDefined();
+    await pending;
+    const folds = editor.unfoldAll();
+    expect(folds.length).toBe(1);
+    expect(folds[0].end.row).toBe(3);
+    editor.getBuffer().insert([1, 0], "    # next\n");
+    const obsolete = editor.foldBufferRow(2);
+    editor.unfoldAll();
+    await obsolete;
+    expect(editor.isFoldedAtBufferRow(0)).toBe(false);
+  });
+
   it("discards an asynchronous indentation hint after another text revision", async () => {
     await start("value = 1\nnext = 2\n");
     let resolve;
