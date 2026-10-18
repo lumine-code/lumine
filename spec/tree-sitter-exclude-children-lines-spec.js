@@ -113,6 +113,32 @@ describe("Tree-sitter complete child-row exclusions", () => {
     });
   }
 
+  it("does not duplicate a CR already included by the preceding content node", async () => {
+    const text = "before = 1\r\nafter = 2\r\n";
+    const lfIndex = text.indexOf("\n");
+    const mode = await start(text, () => [], null, {
+      newlinesBetween: true,
+      includeChildren: true,
+      content: () => [
+        {
+          startIndex: 0,
+          startPosition: { row: 0, column: 0 },
+          endIndex: lfIndex,
+          endPosition: { row: 0, column: lfIndex },
+        },
+        {
+          startIndex: lfIndex + 1,
+          startPosition: { row: 1, column: 0 },
+          endIndex: text.length,
+          endPosition: { row: 2, column: 0 },
+        },
+      ],
+    });
+    const layer = mode.getAllInjectionLayers()[0];
+    expect(contents(layer)).toEqual([text]);
+    expect(layer.tree.rootNode.hasError).toBe(false);
+  });
+
   it("clips exclusions to the content body and EOF without consuming the next row", async () => {
     const mode = await start(
       "prefix keep\nfirst\nsecond\nlast",

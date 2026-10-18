@@ -6261,11 +6261,13 @@ class NodeRangeSet {
         startPosition.row - 1,
         buffer.lineLengthForRow(startPosition.row - 1),
       );
+      const newlineIndex = buffer.characterIndexForPosition(newlineStart);
+      const overlapsPrevious = lastRange.endIndex > newlineIndex;
       newRanges.push({
-        startPosition: newlineStart,
+        startPosition: overlapsPrevious ? lastRange.endPosition : newlineStart,
         endPosition: new Point(startPosition.row, 0),
-        // Include the complete line ending: buffer columns omit CR in CRLF.
-        startIndex: buffer.characterIndexForPosition(newlineStart),
+        // Include CRLF exactly once, even when the previous node already owns CR.
+        startIndex: Math.max(lastRange.endIndex, newlineIndex),
         endIndex: startIndex - startPosition.column,
       });
     }
