@@ -27,10 +27,9 @@ function normalizeTreeSitterTextData(editor, commentRegex, trailingCommentRegex)
         }
         // Strip extra space at the end of the line (but not the beginning!)
         row = row.replace(/\s+$/, "");
-        // const scope = editor.scopeDescriptorForBufferPosition([i, m.index])
-        // FIXME: use editor.scopeDescriptorForBufferPosition when it works
-        const scope = editor.tokensForScreenRow(i);
-        const scopes = scope.flatMap((e) => e.scopes);
+        // Fixture positions are buffer positions. Rendered tokens can still be
+        // pending, offscreen, folded or wrapped into different screen rows.
+        const scopes = editor.scopeDescriptorForBufferPosition([i, m.index]).getScopesArray();
         if (scopes.find((s) => s.match(/comment/)) && row.match(checkAssert)) {
           allMatches.push({ row: lastNonComment, text: row, col: m.index, testRow: i });
           return;
@@ -63,7 +62,7 @@ window.normalizeTreeSitterTextData = normalizeTreeSitterTextData;
 
 async function openDocument(fullPath) {
   const editor = await lumine.workspace.open(fullPath);
-  await editor.languageMode.ready;
+  await editor.whenGrammarSettled();
   return editor;
 }
 
