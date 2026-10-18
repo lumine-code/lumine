@@ -137,10 +137,10 @@ jobs:
           # install below stays strict, so a missing package still stops us.
           sudo apt-get update || true
           sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
-      # Most native install scripts are wasted here: those modules are rebuilt
-      # for Electron below regardless. They stay skipped because npm's
-      # allow-scripts gate blocks anything absent from `allowScripts` in
-      # package.json -- so a plain `npm ci` runs only what is approved there.
+      # Install sources without lifecycle builds. Git dependency preparation
+      # can otherwise compile Tree-sitter before Wasmtime has been provisioned.
+      # The explicit build step prepares its dependencies and rebuilds all
+      # native modules for Electron.
       #
       # npm records the @lumine-code git forks with ssh URLs, but the runners
       # have no ssh key. Rewrite them to anonymous HTTPS (the forks are public).
@@ -153,7 +153,7 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          install() { npm ci; }
+          install() { npm ci --ignore-scripts; }
           install || install || install
       - name: Download the Electron binary
         run: node script/install-electron.js

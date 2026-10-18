@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          install() { npm ci; }
+          install() { npm ci --ignore-scripts; }
           install || install || install
       - name: Download Electron
         run: node script/install-electron.js
