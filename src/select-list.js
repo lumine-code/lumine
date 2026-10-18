@@ -336,7 +336,13 @@ class SelectList extends InputDialog {
       throw new Error("This list does not support keep-open mode.");
     }
     if (!this.changeKeepOpenState(keepOpen)) return Promise.resolve();
-    return this.updateComponent();
+    this.refreshItemActionsIndicator();
+    return Promise.resolve();
+  }
+
+  /** @private The built-in toggle only changes attributes synchronously. */
+  shouldShowActionProgress(command) {
+    return command !== "select-list:toggle-keep-open";
   }
 
   /** @private Update state without scheduling a duplicate render during prop/session resets. */

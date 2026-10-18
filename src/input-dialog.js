@@ -103,13 +103,15 @@ class InputDialog {
     this.scheduleStatusExpiry();
     this.disposables.add(
       this.dialogActions.onDidStart((event) => {
-        this.pendingActionCommands.add(event.command);
-        this.updateActionPendingState();
+        if (this.shouldShowActionProgress(event.command)) {
+          this.pendingActionCommands.add(event.command);
+        }
+        this.updateActionPendingState(event.command);
         this.emitter.emit("did-start-action", event);
       }),
       this.dialogActions.onDidFinish((event) => {
         this.pendingActionCommands.delete(event.command);
-        this.updateActionPendingState();
+        this.updateActionPendingState(event.command);
         this.emitter.emit("did-finish-action", event);
       }),
     );
@@ -968,12 +970,18 @@ class InputDialog {
     return result.catch(() => undefined);
   }
 
-  updateActionPendingState() {
+  /** @private Whether an action needs the dialog's progress presentation. */
+  shouldShowActionProgress() {
+    return true;
+  }
+
+  updateActionPendingState(command) {
     if (this.destroyed || !this.component) return;
+    this.services.commandRegistry.invalidateAvailability({ target: this.component.element });
+    if (!this.shouldShowActionProgress(command)) return;
     const pending = this.pendingActionCommands.size > 0;
     if (pending) this.component.element.setAttribute("aria-busy", "true");
     else this.component.element.removeAttribute("aria-busy");
-    this.services.commandRegistry.invalidateAvailability({ target: this.component.element });
     void this.component.update().catch(() => {});
   }
 

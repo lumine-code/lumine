@@ -2286,7 +2286,7 @@ describe("SelectList", () => {
       expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(false);
     });
 
-    it("keeps the viewport when F12 toggles with the selection scrolled out of view", async () => {
+    it("preserves the rows, action control and viewport when F12 toggles", async () => {
       repeatableList("close", () => {}, {
         items: Array.from({ length: 40 }, (_, index) => `item-${index}`),
       });
@@ -2296,23 +2296,35 @@ describe("SelectList", () => {
       scroller.scrollTop = scroller.scrollHeight;
       const scrollTop = view.getScrollTop();
       expect(scrollTop).toBeGreaterThan(0);
+      const rows = Array.from(scroller.children);
+      const indicator = find(".item-actions-indicator");
+      const mutations = [];
+      const observer = new MutationObserver((records) => mutations.push(...records));
+      observer.observe(scroller, { childList: true, subtree: true });
+      observer.observe(indicator, { attributes: true, childList: true, subtree: true });
 
-      for (const keepOpen of [true, false]) {
-        const finished = new Promise((resolve) => {
-          const subscription = view.onDidFinishAction((event) => {
-            subscription.dispose();
-            resolve(event);
+      try {
+        for (const keepOpen of [true, false]) {
+          const finished = new Promise((resolve) => {
+            const subscription = view.onDidFinishAction((event) => {
+              subscription.dispose();
+              resolve(event);
+            });
           });
-        });
-        lumine.keymaps.handleKeyboardEvent(
-          buildKeydownEvent({ key: "F12", target: view.getQueryEditor().getElement() }),
-        );
-        expect((await finished).status).toBe("success");
-        await nextUpdate();
-        expect(view.isKeepOpen()).toBe(keepOpen);
-        expect(view.getSelectedItem()).toBe("item-0");
-        expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(keepOpen);
-        expect(view.getScrollTop()).toBe(scrollTop);
+          lumine.keymaps.handleKeyboardEvent(
+            buildKeydownEvent({ key: "F12", target: view.getQueryEditor().getElement() }),
+          );
+          expect((await finished).status).toBe("success");
+          await new Promise(requestAnimationFrame);
+          expect(view.isKeepOpen()).toBe(keepOpen);
+          expect(view.getSelectedItem()).toBe("item-0");
+          expect(host.getPanel().getElement().hasAttribute("keep-open")).toBe(keepOpen);
+          expect(view.getScrollTop()).toBe(scrollTop);
+          rows.forEach((row, index) => expect(scroller.children[index]).toBe(row));
+          expect(mutations.length).toBe(0);
+        }
+      } finally {
+        observer.disconnect();
       }
     });
 
