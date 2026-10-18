@@ -4340,15 +4340,19 @@ class ChangeEvent {
       enumerable: false,
       get() {
         if (oldText == null) {
-          oldText = this.newText || "";
-          for (let i = changes.length - 1; i >= 0; i--) {
-            const change = changes[i];
+          const currentText = this.newText || "";
+          const parts = [];
+          let end = 0;
+          // Normalized patch changes are ordered and disjoint in the final
+          // text. Reconstruct once instead of copying the whole span for each
+          // splice when a package reads a bulk transaction's oldText.
+          for (const change of changes) {
             const offset = indexForPatchPoint(buffer, change.newStart) - this.startIndex;
-            oldText =
-              oldText.slice(0, offset) +
-              change.oldText +
-              oldText.slice(offset + change.newText.length);
+            parts.push(currentText.slice(end, offset), change.oldText);
+            end = offset + change.newText.length;
           }
+          parts.push(currentText.slice(end));
+          oldText = parts.join("");
         }
         return oldText;
       },
