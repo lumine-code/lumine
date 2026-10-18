@@ -1,4 +1,4 @@
-// Compare saved native builds in separate processes, using the same editor code:
+// Compare frozen editor implementations in separate processes:
 // node --expose-gc benchmark/editor-superstring-benchmark.js --binding FILE.node
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
@@ -35,8 +35,15 @@ assert(
 // to one native build before importing any editor module. Compare builds in
 // separate processes to keep addon initialization and module caches independent.
 const editorRequire = Module.createRequire(path.join(source, "package.json"));
-const superstringEntry = editorRequire.resolve("@lumine-code/superstring");
+const nativeDocument = fs
+  .readFileSync(path.join(source, "src", "text-buffer.js"), "utf8")
+  .includes('require("@lumine-code/superstring")');
+const superstringEntry = nativeDocument ? editorRequire.resolve("@lumine-code/superstring") : null;
 const bindingOption = option("binding", process.env.LUMINE_SUPERSTRING_BENCH_BINDING);
+assert(
+  !bindingOption || nativeDocument,
+  "A binding override requires a native editor source snapshot",
+);
 let bindingPath;
 if (bindingOption) {
   bindingPath = path.resolve(bindingOption);
@@ -69,7 +76,7 @@ if (bindingOption) {
   );
   wrapper.loaded = true;
   require.cache[superstringEntry] = wrapper;
-} else {
+} else if (nativeDocument) {
   editorRequire("@lumine-code/superstring");
   bindingPath = Object.keys(require.cache).find(
     (filename) => filename.startsWith(path.dirname(superstringEntry)) && filename.endsWith(".node"),
@@ -125,6 +132,204 @@ function createState(text, withEditor) {
   };
   return state;
 }
+
+// The same public TextBuffer facade is used on both sides. Only its parser
+// snapshot representation differs: native flattens, JS retains a piece root.
+for (const size of [1000000, 8000000, 32000000, 128000000]) {
+  const line = 'const value = "text 終"; // sample\n';
+  let input;
+  const getInput = () =>
+    (input ??= flattened(line.repeat(Math.ceil(size / line.length)).slice(0, size)));
+  const setup = () => createState(getInput(), false);
+  add(
+    `document/create/${size}`,
+    { utf16Units: size, operations: 1 },
+    () => ({
+      text: getInput(),
+      destroy() {
+        this.buffer?.destroy();
+      },
+    }),
+    (state) => {
+      state.buffer = new TextBuffer({ text: state.text });
+      return state;
+    },
+    (state) => {
+      assert.equal(state.buffer.getLength(), size);
+      assert.equal(state.buffer.getText(), input);
+      return size;
+    },
+  );
+  for (const snapshot of [false, true]) {
+    add(
+      `document/${snapshot ? "edit-snapshot" : "edit"}/${size}`,
+      { utf16Units: size, operations: 1, snapshot },
+      setup,
+      (state) => {
+        state.buffer.setTextInRange(
+          [
+            [0, 0],
+            [0, 1],
+          ],
+          "X",
+        );
+        if (snapshot) state.snapshot = state.buffer.getTextSnapshot?.() ?? state.buffer.getText();
+        return state;
+      },
+      (state) => {
+        assert.equal(
+          state.buffer.getTextInRange([
+            [0, 0],
+            [0, 5],
+          ]),
+          "Xonst",
+        );
+        assert.equal(state.buffer.getLength(), size);
+        assert.equal(state.changes, 1);
+        if (snapshot) assert.equal(state.snapshot.length, size);
+        state.buffer.undo();
+        assert.equal(state.buffer.getText(), input);
+        return size;
+      },
+    );
+  }
+}
+
+add(
+  "document/fragmented-5000-edits",
+  { utf16Units: 8000000, setupEdits: 5000, operations: 100 },
+  () => {
+    const state = createState("0123456789abcdef\n".repeat(470589).slice(0, 8000000), false);
+    for (let i = 0; i < 5000; i++) {
+      const row = (i * 7919) % 470000;
+      state.buffer.setTextInRange(
+        [
+          [row, 0],
+          [row, 1],
+        ],
+        "X",
+      );
+    }
+    state.buffer.clearUndoStack();
+    state.before = state.buffer.getText();
+    state.changes = 0;
+    return state;
+  },
+  (state) => {
+    for (let i = 0; i < 100; i++) {
+      state.buffer.insert([0, 0], " ");
+      state.buffer.undo();
+    }
+    return state;
+  },
+  (state) => {
+    assert.equal(state.buffer.getText(), state.before);
+    assert.equal(state.changes, 200);
+    return state.buffer.getLength();
+  },
+);
+
+{
+  const line = "line value 終\n";
+  const text = line.repeat(Math.ceil(8000000 / line.length)).slice(0, 8000000);
+  add(
+    "document/read-lines/8000000",
+    {
+      utf16Units: text.length,
+      operations: 1,
+      read: "snapshot line iterator, or legacy getLines on the native reference",
+    },
+    () => createState(text, false),
+    (state) => {
+      state.total = 0;
+      const snapshot = state.buffer.getTextSnapshot?.();
+      for (const value of snapshot?.lines?.() ?? state.buffer.getLines())
+        state.total += value.length;
+      return state;
+    },
+    (state) => {
+      assert.equal(state.total, text.length - Math.floor(text.length / line.length));
+      return state.total;
+    },
+  );
+  const edits = Array.from({ length: 1000 }, (_, i) => ({
+    range: [
+      [i * 500, 0],
+      [i * 500, 4],
+    ],
+    text: "changed",
+  }));
+  add(
+    "document/batch-1000/8000000",
+    { utf16Units: text.length, operations: 1000, surface: "indexed editor model" },
+    () => createState(text, true),
+    (state) => {
+      state.buffer.setTextInIndependentRanges(edits);
+      return state;
+    },
+    (state) => {
+      assert.equal(state.changes, 1);
+      assert.equal(state.buffer.lineForRow(0), "changed value 終");
+      assert.equal(state.buffer.lineForRow(499500), "changed value 終");
+      state.editor.undo();
+      assert.equal(state.buffer.getText(), text);
+      return state.buffer.getLength();
+    },
+  );
+}
+
+for (const size of [1000000, 8000000]) {
+  const line = "first needle last\n";
+  const text = line.repeat(Math.ceil(size / line.length)).slice(0, size);
+  add(
+    `search/regex/${size}`,
+    { utf16Units: size, operations: 1 },
+    () => createState(text, false),
+    (state) => state.buffer.findAll(/needle/g),
+    (ranges) => {
+      assert.equal(ranges.length, Math.floor((size - 12) / line.length) + 1);
+      assert.deepEqual(ranges[0], { start: { row: 0, column: 6 }, end: { row: 0, column: 12 } });
+      return ranges.length;
+    },
+  );
+}
+
+add(
+  "document/retain-21-snapshots/8000000",
+  { utf16Units: 8000000, operations: 20, retainedSnapshots: 21 },
+  () => {
+    const state = createState("a終".repeat(4000000), false);
+    state.snapshots = [state.buffer.getTextSnapshot?.() ?? state.buffer.getText()];
+    if (global.gc) global.gc();
+    state.memoryBefore = process.memoryUsage();
+    return state;
+  },
+  (state) => {
+    for (let i = 0; i < 20; i++) {
+      state.buffer.setTextInRange(
+        [
+          [0, i],
+          [0, i + 1],
+        ],
+        "X",
+      );
+      state.snapshots.push(state.buffer.getTextSnapshot?.() ?? state.buffer.getText());
+    }
+    if (global.gc) global.gc();
+    const after = process.memoryUsage();
+    state.retainedMemory = Object.fromEntries(
+      Object.keys(after).map((key) => [key, after[key] - state.memoryBefore[key]]),
+    );
+    return state;
+  },
+  (state) => {
+    for (let i = 0; i <= 20; i++) {
+      assert.equal(state.snapshots[i].length, 8000000);
+      assert.equal(state.snapshots[i].slice(0, i), "X".repeat(i));
+    }
+    return state.snapshots.length;
+  },
+);
 
 const prefix = "prefix\n";
 const suffix = "\nsuffix";
@@ -305,6 +510,7 @@ async function main() {
       arch: process.arch,
       cpu: os.cpus()[0]?.model,
       source,
+      documentBackend: nativeDocument ? "native" : "javascript",
       binding: bindingPath,
       bindingSha256: bindingPath
         ? crypto.createHash("sha256").update(fs.readFileSync(bindingPath)).digest("hex")
@@ -325,7 +531,7 @@ async function main() {
         "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
       excludes:
         "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
-      comparison: "One native build per process; alternate serial process runs to limit drift",
+      comparison: "One editor source snapshot per process; alternate serial runs to limit drift",
       yieldsBetweenSamples: true,
     },
     sourceHashes: Object.fromEntries(
@@ -335,13 +541,22 @@ async function main() {
         "helpers.js",
         "text-editor.js",
         "display-layer.js",
-      ].map((file) => [
-        file,
-        crypto
-          .createHash("sha256")
-          .update(fs.readFileSync(path.join(source, "src", file)))
-          .digest("hex"),
-      ]),
+        "document-core.js",
+        "piece-tree.js",
+        "change-tree.js",
+        "text-store.js",
+        "text-store-search.js",
+        "text-patch.js",
+        "marker-index.js",
+      ]
+        .filter((file) => fs.existsSync(path.join(source, "src", file)))
+        .map((file) => [
+          file,
+          crypto
+            .createHash("sha256")
+            .update(fs.readFileSync(path.join(source, "src", file)))
+            .digest("hex"),
+        ]),
     ),
     benchmarkSha256: crypto.createHash("sha256").update(fs.readFileSync(__filename)).digest("hex"),
     results: [],
@@ -349,17 +564,31 @@ async function main() {
   };
   for (const testCase of cases) {
     const samplesMs = [];
+    const timerDelays = [];
+    const retainedMemory = [];
     for (let sample = -warmups; sample < samples; sample++) {
       if (global.gc) global.gc();
       const state = testCase.setup();
       try {
         if (gcAfterSetup && global.gc) global.gc();
         const started = performance.now();
+        let timerDelay;
+        const timer = new Promise((resolve) =>
+          setTimeout(() => {
+            timerDelay = performance.now() - started;
+            resolve();
+          }, 0),
+        );
         let result = testCase.run(state);
         if (result && typeof result.then === "function") result = await result;
         const elapsedMs = performance.now() - started;
+        await timer;
         report.checksum = (report.checksum + testCase.verify(result)) % 0x100000000;
-        if (sample >= 0) samplesMs.push(elapsedMs);
+        if (sample >= 0) {
+          samplesMs.push(elapsedMs);
+          timerDelays.push(timerDelay);
+          if (state.retainedMemory) retainedMemory.push(state.retainedMemory);
+        }
       } finally {
         state.destroy();
       }
@@ -368,7 +597,19 @@ async function main() {
       // case finishes, even with explicit GC, and can exhaust the baseline heap.
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    report.results.push({ id: testCase.id, workload: testCase.workload, ...summarize(samplesMs) });
+    report.results.push({
+      id: testCase.id,
+      workload: testCase.workload,
+      ...summarize(samplesMs),
+      timerDelay: summarize(timerDelays),
+      ...(retainedMemory.length
+        ? {
+            retainedMemory,
+            memoryNote:
+              "GC-delimited process deltas with 21 source snapshots retained; includes forced GC in this case's elapsed time. RSS is allocator-dependent.",
+          }
+        : {}),
+    });
   }
   const json = JSON.stringify(report, null, 2);
   const output = option("output");

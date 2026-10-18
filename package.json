@@ -131,6 +131,8 @@
     "benchmark:text-editor-long-lines": "npm run test:only -- benchmark/text-editor-long-line-input-spec.js",
     "benchmark:text-editor-scroll": "npm run test:only -- benchmark/text-editor-scroll-spec.js",
     "benchmark:superstring": "node --expose-gc benchmark/editor-superstring-benchmark.js",
+    "benchmark:javascript-document": "node benchmark/javascript-document-benchmark.js",
+    "benchmark:document-integration": "node script/benchmark-document-integration.js",
     "benchmark:superstring-renderer": "npm run test:only -- benchmark/editor-superstring-renderer-spec.js",
     "benchmark:grammar-query-locality": "npm run test:only -- benchmark/tree-sitter-query-locality-spec.js",
     "benchmark:tree-sitter": "npm run test:only -- benchmark/tree-sitter-spec.js",
