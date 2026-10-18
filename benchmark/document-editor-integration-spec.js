@@ -214,6 +214,9 @@ describe("JavaScript document editor integration performance", () => {
           expect(lumine.grammars.assignLanguageMode(buffer, item.scope)).toBe(true);
           await editor.whenGrammarSettled();
         }
+        editor.setSoftWrapped(Boolean(item.wrapped));
+        expect(editor.isSoftWrapped()).toBe(Boolean(item.wrapped));
+        expect(editor.getTabLength()).toBe(4);
         const markerLayer = buffer.addMarkerLayer({ maintainHistory: true });
         const stride = Math.max(1, Math.floor(buffer.getLineCount() / (item.markers || 1)));
         const markers = [];
@@ -391,6 +394,7 @@ describe("JavaScript document editor integration performance", () => {
             ? mode.getAllLanguageLayers().map((layer) => layer.grammar.scopeName)
             : [],
           wrapped: Boolean(item.wrapped),
+          softWrapColumn: editor.displayLayer.softWrapColumn,
           inputHash: originalHash,
           outputHash: editedHash,
           originalSyntax,
