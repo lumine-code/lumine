@@ -171,6 +171,33 @@ describe("Tree-sitter update budgets", () => {
     expect(parse.calls.count()).toBe(1);
   });
 
+  it("defers an unavailable dedent layer instead of recursively retrying unchanged syntax", async () => {
+    const mode = await start("first = 1\nsecond = 2\n");
+    mode.ensureQueriesForLayersSync("indentsQuery");
+    const root = mode.rootLanguageLayer;
+    const child = Object.create(root);
+    let available = false,
+      finish;
+    child.getOrParseTree = jasmine
+      .createSpy("dedent tree")
+      .and.callFake(() => (available ? root.tree : null));
+    spyOn(mode, "controllingLayerAtPoint").and.callFake((point) =>
+      point.row === 0 ? root : child,
+    );
+    spyOn(mode, "atTransactionEnd").and.returnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const result = mode.indentResolver.suggestedIndentForBufferRow(1, 4);
+    expect(typeof result?.then).toBe("function");
+    expect(child.getOrParseTree.calls.count()).toBe(1);
+    available = true;
+    finish({ changeCount: 1, parseError: null });
+    expect(await result).toBe(0);
+    expect(child.getOrParseTree.calls.count()).toBe(2);
+  });
+
   it("warms fold queries for the current viewport rather than every changed row", async () => {
     const mode = await start("value = 1\n".repeat(2000));
     mode.useAsyncParsing = false;
@@ -299,6 +326,25 @@ describe("Tree-sitter update budgets", () => {
       expect(mode.presentation.promise).toBeNull();
       expect(mode.presentation.timer).toBeNull();
     }
+  });
+
+  it("refreshes only changed rows for repeated newline insertion and deletion", async () => {
+    const mode = await start('value = "text"\n'.repeat(2000));
+    mode.ensureQueriesForLayersSync("indentsQuery");
+    mode.ensureQueriesForLayersSync("foldsQuery");
+    editor.setCursorBufferPosition([800, Infinity]);
+    const read = () => editor.displayLayer.getScreenLines(790, 830);
+    read();
+    const queries = spyOn(mode.rootLanguageLayer, "getSyntaxBoundaries").and.callThrough();
+    for (let i = 0; i < 5; i++) {
+      editor.insertNewline();
+      read();
+      editor.backspace();
+      const lines = read();
+      expect(lines.every((line) => line.tags.filter((tag) => tag < 0).length > 2)).toBe(true);
+    }
+    expect(queries.calls.count()).toBeGreaterThan(0);
+    expect(queries.calls.allArgs().every(([start, end]) => end.row - start.row <= 3)).toBe(true);
   });
 
   it("keeps screen-line construction intact when highlight publication triggers another read", async () => {

@@ -1,4 +1,4 @@
-// Owns the parser's view of committed document revisions. It never edits text
+// Owns the parser's view of applied document revisions. It never edits text
 // or trees and never infers offsets from clipped buffer positions.
 class TreeSitterDocument {
   constructor(buffer, { maxChanges = 10000, maxTextUnits = 8 * 1024 * 1024 } = {}) {
@@ -50,34 +50,51 @@ class TreeSitterDocument {
     if (cached && this.revision === revision) return { text, revision, previous, edits: cached };
     const edits = [];
     let next = previous?.revision;
-    if (previous && next !== revision && this.revision === revision) {
+    let textUnits = 0;
+    const append = (batch) => {
+      for (const {
+        startIndex,
+        oldEndIndex,
+        oldText,
+        newText,
+        oldRange,
+        newRange,
+      } of batch.changes) {
+        textUnits += oldText.length + newText.length;
+        edits.push(
+          Object.freeze({
+            startIndex,
+            oldEndIndex,
+            newText,
+            ...(oldRange && newRange
+              ? {
+                  startPosition: oldRange.start,
+                  oldEndPosition: oldRange.end,
+                  newEndPosition: newRange.end,
+                }
+              : {}),
+          }),
+        );
+      }
+      next = batch.afterRevision;
+    };
+    if (previous && next !== revision) {
       for (const batch of this.batches) {
         if (batch.beforeRevision !== next) continue;
-        for (const { startIndex, oldEndIndex, newText, oldRange, newRange } of batch.changes) {
-          edits.push(
-            Object.freeze({
-              startIndex,
-              oldEndIndex,
-              newText,
-              ...(oldRange && newRange
-                ? {
-                    startPosition: oldRange.start,
-                    oldEndPosition: oldRange.end,
-                    newEndPosition: newRange.end,
-                  }
-                : {}),
-            }),
-          );
-        }
-        next = batch.afterRevision;
+        append(batch);
         if (next === revision) break;
       }
+      if (next !== revision) {
+        const pending = this.buffer.getPendingAppliedChanges?.();
+        if (pending?.beforeRevision === next && pending.afterRevision === revision) append(pending);
+      }
     }
-    // A gap or an in-transaction live read requires a fresh parse, not guessed
-    // intermediate coordinates. The original snapshot remains untouched.
-    if (next !== revision) return { text, revision, previous: null, edits: [] };
+    // Never bridge a gap by guessing offsets. Pending edits have the same
+    // exact coordinates as the eventual event, but remain private until then.
+    if (next !== revision || edits.length > this.maxChanges || textUnits > this.maxTextUnits)
+      return { text, revision, previous: null, edits: [] };
     Object.freeze(edits);
-    if (previous) this.editLists.set(previous.revision, edits);
+    if (previous && this.revision === revision) this.editLists.set(previous.revision, edits);
     return { text, revision, previous, edits };
   }
 

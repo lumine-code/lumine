@@ -4,6 +4,9 @@ require("./tree-sitter-cursor");
 const metadata = new WeakMap();
 const BULK_EDIT_LIMIT = 128;
 const ASYNC_SLICE_MS = 4;
+const PARSE_INPUT_UNITS = 4096;
+const NODE_TEXT_UNITS = 32768;
+const nodeTextInput = (text) => (index) => text.slice(index, index + NODE_TEXT_UNITS);
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
 function positionAt(text, index) {
@@ -76,11 +79,12 @@ function applyEdits(tree, previous, text, edits) {
     // are coordinate-neutral; only callers without coordinates need replay.
     if (replay) source = source.slice(0, startIndex) + newText + source.slice(oldEndIndex);
   }
-  tree.textCallback = (index) => text.slice(index);
+  tree.textCallback = nodeTextInput(text);
   return tree;
 }
 
 function publish(tree, text, revision, incremental, changedRanges = []) {
+  tree.textCallback = nodeTextInput(text);
   metadata.set(tree, { text, revision });
   Object.defineProperties(tree, {
     input: { value: text },
@@ -204,6 +208,7 @@ class TreeSitterParser {
     const oldTree = incremental ? TreeSitterParser.prepareTree(previous, text, { edits }) : null;
     return (this.pending = {
       text,
+      input: (index) => text.slice(index, index + PARSE_INPUT_UNITS),
       previous,
       edits,
       revision,
@@ -218,7 +223,7 @@ class TreeSitterParser {
     let tree;
     this.executing = true;
     try {
-      tree = this.parser.parse(job.text, job.oldTree, {
+      tree = this.parser.parse(job.input, job.oldTree, {
         includedRanges: job.includedRanges,
         progressCallback: () => this.closed || signal?.aborted || performance.now() >= deadline,
       });

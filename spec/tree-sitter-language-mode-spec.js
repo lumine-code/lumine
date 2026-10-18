@@ -1415,6 +1415,32 @@ describe("TreeSitterLanguageMode", () => {
       ]);
     });
 
+    it("rebases invalidateOnChange coverage when one transaction moves and edits a captured node", async () => {
+      jasmine.useRealClock();
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest(
+        "highlightsQuery",
+        `
+        ((template_string) @before (#not-match? @before "lorem") (#set! highlight.invalidateOnChange true))
+        ((template_string) @after (#match? @after "lorem") (#set! highlight.invalidateOnChange true))
+      `,
+      );
+      buffer.setText(["`", ...Array(100).fill(""), "lore", ...Array(100).fill(""), "`"].join("\n"));
+      const mode = new TreeSitterLanguageMode({ grammars: lumine.grammars, grammar, buffer });
+      buffer.setLanguageMode(mode);
+      await mode.atGrammarSettlement();
+      editor.displayLayer.getScreenLines(0, 10);
+      const updates = spyOn(mode, "emitRangeUpdate").and.callThrough();
+      buffer.transact(() => {
+        buffer.insert([0, 0], "\n".repeat(80));
+        buffer.insert([181, 4], "m");
+      });
+      await mode.atGrammarSettlement();
+      expect(
+        updates.calls.allArgs().some(([range]) => range.start.row <= 80 && range.end.row >= 282),
+      ).toBe(true);
+    });
+
     it("handles edits after tokens that end between CR and LF characters (regression)", async () => {
       jasmine.useRealClock();
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

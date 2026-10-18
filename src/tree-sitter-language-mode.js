@@ -13,6 +13,7 @@ const FoldResolver = require("./tree-sitter-fold-resolver");
 const IndentResolver = require("./tree-sitter-indent-resolver");
 const { comparePoints } = require("./tree-sitter-node-helpers");
 const TreeSitterRangeList = require("./tree-sitter-range-list");
+const TreeSitterInvalidationRanges = require("./tree-sitter-invalidation-ranges");
 const { collectInjectionMatches } = require("./tree-sitter-injections");
 const {
   MINIMUM_BOUNDARY_DISTANCE,
@@ -887,8 +888,8 @@ class TreeSitterLanguageMode {
           layer.treeIsDirty = false;
           layer.includedRangesAreCurrent = true;
           layer.lastIncludedRanges = ranges;
-          layer.nodesToInvalidateOnChange.clear();
-          layer.foldNodesToInvalidateOnChange.clear();
+          layer.nodesToInvalidateOnChange.rebase();
+          layer.foldNodesToInvalidateOnChange.rebase();
           layer.scopeResolver.reset();
           const children = layer.hasInjectionDescendants()
             ? layer._populateInjections(layer.editedRange ?? layer.getExtent(), null)
@@ -3168,8 +3169,8 @@ class LanguageLayer {
     this.injectionPoint = injectionPoint;
     this.rangeList = new TreeSitterRangeList();
 
-    this.nodesToInvalidateOnChange = new Set();
-    this.foldNodesToInvalidateOnChange = new Set();
+    this.nodesToInvalidateOnChange = new TreeSitterInvalidationRanges();
+    this.foldNodesToInvalidateOnChange = new TreeSitterInvalidationRanges();
 
     this.tree = null;
     this.lastSyntaxTree = null;
@@ -3548,9 +3549,9 @@ class LanguageLayer {
 
     // Force a re-highlight of this layer's entire region.
     let range = this.getExtent();
-    this.languageMode.emitRangeUpdate(range);
     this.nodesToInvalidateOnChange.clear();
     this.foldNodesToInvalidateOnChange.clear();
+    this.languageMode.emitRangeUpdate(range);
   }
 
   // Observe the grammar for changes in queries.
@@ -3708,7 +3709,7 @@ class LanguageLayer {
         // significant of a change it is. If we were able to do so, we'd set
         // this property automatically on any capture that (a) involved a
         // `#match?` predicate, and (b) started and ended on different lines.
-        this.nodesToInvalidateOnChange.add(node.id);
+        this.nodesToInvalidateOnChange.add(node);
       }
       // Phantom nodes invented by the parse tree. Indentation captures can use
       // `allowEmpty` to force these to be considered, but for marking scopes,
@@ -3887,6 +3888,8 @@ class LanguageLayer {
   }
 
   handleTextChange(edit, _oldText, _newText) {
+    this.nodesToInvalidateOnChange.edit(edit);
+    this.foldNodesToInvalidateOnChange.edit(edit);
     // Any text change within the layer invalidates our cached fold boundary
     // tree. This usually isn't a big deal because the language mode's own cache
     // is able to adjust when content shifts up and down, so typically only the
@@ -4022,24 +4025,6 @@ class LanguageLayer {
       this.updating = false;
       throw error;
     }
-  }
-
-  searchForNodesInRange(range, nodeIdSet) {
-    let node = this.getSyntaxNodeContainingRange(range, (n) => nodeIdSet.has(n.id));
-
-    if (node) {
-      // One of this node's ancestors might also be in our list, so we'll
-      // traverse upwards and find out.
-      let ancestor = node.parent;
-      while (ancestor) {
-        if (nodeIdSet.has(ancestor.id)) {
-          node = ancestor;
-        }
-        ancestor = ancestor.parent;
-      }
-      return node;
-    }
-    return null;
   }
 
   resolveRootRangeSet() {
@@ -4494,29 +4479,20 @@ class LanguageLayer {
 
     let foldRangeList = new TreeSitterRangeList();
 
-    // Look for a node that was marked with `invalidateOnChange`. If we find
-    // one, we should invalidate that node's entire buffer region.
-    if (affectedRange) {
-      // First look for nodes that were previously marked with
-      // `highlight.invalidateOnChange`; those will specify ranges for which
-      // we'll need to force a re-highlight.
-      let node = this.searchForNodesInRange(affectedRange, this.nodesToInvalidateOnChange);
-      if (node) {
-        this.rangeList.add(node.range);
+    if (this.languageMode.parseDetails.get(tree)?.incremental) {
+      if (affectedRange) {
+        this.rangeList.addAll(this.nodesToInvalidateOnChange.takeIntersecting(affectedRange));
+        foldRangeList.addAll(this.foldNodesToInvalidateOnChange.takeIntersecting(affectedRange));
+      } else {
+        this.nodesToInvalidateOnChange.rebase();
+        this.foldNodesToInvalidateOnChange.rebase();
       }
-
-      // Now look for nodes that were previously marked with
-      // `fold.invalidateOnChange`; those will specify ranges that need their
-      // fold cache updated even when highlighting is unaffected.
-      let foldNode = this.searchForNodesInRange(affectedRange, this.foldNodesToInvalidateOnChange);
-      if (foldNode) {
-        foldRangeList.add(foldNode.range);
-      }
+    } else {
+      // A fresh parse invalidates the whole layer. Its new queries will record
+      // dependencies again; do not replay a large edit batch through old ones.
+      this.nodesToInvalidateOnChange.clear();
+      this.foldNodesToInvalidateOnChange.clear();
     }
-
-    this.nodesToInvalidateOnChange.clear();
-    this.foldNodesToInvalidateOnChange.clear();
-
     if (this.lastSyntaxTree) {
       const rangesWithSyntaxChanges = this.languageMode.parseDetails.get(tree)?.incremental
         ? tree.changedRanges

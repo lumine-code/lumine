@@ -222,51 +222,10 @@ class IndentResolver {
         // preliminary indent level and then follow up later with a more
         // accurate one. It's a bit disorienting that the editor falls back to
         // an indent level of `0` when a newline is inserted.
-        let comparisonRowText = this.buffer.lineForRow(comparisonRow);
-        let rowText = this.buffer.lineForRow(row);
-        return languageMode.atTransactionEnd().then(({ changeCount }) => {
-          let shouldFallback = false;
-          // If this was the only change in the transaction, then we can
-          // definitely adjust the indentation level after the fact. If not,
-          // then we might still be able to make indentation decisions in cases
-          // where they do not affect one another.
-          //
-          // Hence if neither the comparison row nor the current row has had
-          // its contents change in any way since we were first called, we will
-          // assume it's safe to adjust the indentation level after the fact.
-          // Otherwise we'll fall back to a single transaction-wide indentation
-          // adjustment — fewer tree parses, but more likely to produce unusual
-          // results.
-          if (changeCount > 1) {
-            if (comparisonRowText !== this.buffer.lineForRow(comparisonRow)) {
-              shouldFallback = true;
-            }
-            if (rowText !== this.buffer.lineForRow(row)) {
-              shouldFallback = true;
-            }
-          }
-          if (shouldFallback) {
-            // When we think the buffer has changed too much for our hint to be
-            // relevant, we return `undefined`, signalling to the `TextEditor`
-            // that its only recourse is to auto-indent the whole extent of the
-            // transaction instead.
-            return undefined;
-          }
-
-          // If we get this far, it's safe to auto-indent this line. Either it
-          // was the only change in its transaction or the other changes
-          // happened on different lines. But we've retained the original
-          // values for `comparisonRow` and `comparisonRowIndent` because
-          // that's the proper basis from which to determine the given row's
-          // indent level.
-          let result = this.suggestedIndentForBufferRow(row, tabLength, {
-            ...rawOptions,
-            comparisonRow: comparisonRow,
-            comparisonRowIndent: comparisonRowIndent,
-            tree: controllingLayer.tree,
-            controllingLayer,
-          });
-          return result;
+        return this.deferIndentSuggestion(row, tabLength, rawOptions, {
+          comparisonRow,
+          comparisonRowIndent,
+          controllingLayer,
         });
       }
     }
@@ -494,30 +453,16 @@ class IndentResolver {
         // layers qualify at this position, we won't hit this code path, so
         // we'll reluctantly still use the original layer and tree.)
         //
-        // NOTE: This strange edge case bypasses all of the heuristics we
-        // defined above that govern synchronous vs. asynchronous hinting.
-        //
-        // In our defense, the cost of this reparse is still accounted for in
-        // the reparse budget. Also, it's not clear that such a tree would even
-        // need a re-parse, since the buffer change that leads to this edge
-        // case will often happen outside of this language layer.
-        //
-        // Still, if we find an edge case in which this might be a problem, we
-        // should decide what to do here. It would feel a bit weird to go async
-        // this late in the hinting process, so one option might be to
-        // determine `dedentControllingLayer` at the same time as
-        // `controllingLayer` so that it can be considered when making the
-        // initial decision between sync/async hinting.
         indentsQuery = dedentControllingLayer.queries.indentsQuery;
         indentTree = dedentControllingLayer.getOrParseTree({
           bounded:
             !options.forceTreeParse && languageMode.useAsyncParsing && languageMode.useAsyncIndent,
         });
         if (!indentTree)
-          return this.suggestedIndentForBufferRow(row, tabLength, {
-            ...options,
-            tree: null,
-            controllingLayer: null,
+          return this.deferIndentSuggestion(row, tabLength, rawOptions, {
+            comparisonRow,
+            comparisonRowIndent,
+            controllingLayer,
           });
       }
 
@@ -699,6 +644,36 @@ class IndentResolver {
     }
 
     return adjustedIndent;
+  }
+
+  deferIndentSuggestion(
+    row,
+    tabLength,
+    rawOptions,
+    { comparisonRow, comparisonRowIndent, controllingLayer },
+  ) {
+    const comparisonText = this.buffer.lineForRow(comparisonRow);
+    const rowText = this.buffer.lineForRow(row);
+    return this.languageMode.atTransactionEnd().then(({ parseError }) => {
+      if (parseError || this.languageMode.destroyed || controllingLayer.destroyed) return undefined;
+      // Both phases must wait for current syntax. Retrying a missing dedent
+      // snapshot synchronously would visit the same unavailable layer forever.
+      // A later edit can also make the original comparison no longer relevant.
+      if (
+        comparisonText !== this.buffer.lineForRow(comparisonRow) ||
+        rowText !== this.buffer.lineForRow(row)
+      )
+        return undefined;
+      const tree = controllingLayer.getOrParseTree({ force: false });
+      if (!tree) return undefined;
+      return this.suggestedIndentForBufferRow(row, tabLength, {
+        ...rawOptions,
+        comparisonRow,
+        comparisonRowIndent,
+        tree,
+        controllingLayer,
+      });
+    });
   }
 
   /**

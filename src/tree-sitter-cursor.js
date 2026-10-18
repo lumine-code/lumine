@@ -21,6 +21,7 @@ if (!Node.prototype[installed]) {
 
   function own(cursor) {
     const state = { cursor, closed: false };
+    const methods = new Map();
     const close = () => {
       finalizer.unregister(state);
       dispose(state);
@@ -35,7 +36,18 @@ if (!Node.prototype[installed]) {
         if (key === "delete") return close;
         if (state.closed) throw new Error("Tree-sitter cursor is disposed");
         const value = Reflect.get(target, key, target);
-        return typeof value === "function" && key !== "constructor" ? value.bind(target) : value;
+        if (typeof value !== "function" || key === "constructor") return value;
+        let method = methods.get(value);
+        if (!method) {
+          method = (...args) => {
+            // Retained methods keep their public owner alive, not just its raw
+            // cursor. The finalizer's held state must never reference this map.
+            if (owners.get(wrapper).closed) throw new Error("Tree-sitter cursor is disposed");
+            return Reflect.apply(value, target, args);
+          };
+          methods.set(value, method);
+        }
+        return method;
       },
       set(target, key, value) {
         if (state.closed) throw new Error("Tree-sitter cursor is disposed");

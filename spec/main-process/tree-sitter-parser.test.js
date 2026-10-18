@@ -42,6 +42,31 @@ test("published WASM trees preserve old nodes and cursors across edits", () => {
   }
 });
 
+test("bounded parser and node-text callbacks retain UTF-16 across chunk boundaries", () => {
+  const parser = new DocumentParser(language);
+  const source = " ".repeat(4095) + "𐐀 = `" + "a\r\n😀".repeat(10000) + "`;";
+  const parse = parser.parser.parse.bind(parser.parser);
+  parser.parser.parse = (input, previous, options) => {
+    assert.equal(typeof input, "function");
+    assert.ok(input(0).length <= 4096);
+    return parse(input, previous, options);
+  };
+  try {
+    const tree = parser.parseSync(source);
+    assert.equal(tree.rootNode.hasError, false);
+    assert.equal(
+      tree.rootNode.text,
+      source.slice(tree.rootNode.startIndex, tree.rootNode.endIndex),
+    );
+    assert.equal(tree.rootNode.descendantsOfType("identifier")[0].text, "𐐀");
+    assert.ok(tree.textCallback(0).length <= 32768);
+    const retained = tree.rootNode.descendantsOfType("template_string")[0];
+    assert.equal(retained.text, "`" + "a\r\n😀".repeat(10000) + "`");
+  } finally {
+    parser.close();
+  }
+});
+
 test("large edit batches use a fresh parse without editing the previous tree", () => {
   const parser = new DocumentParser(language);
   try {

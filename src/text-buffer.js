@@ -1634,6 +1634,18 @@ class TextBuffer {
     }
   }
 
+  // A private parser snapshot can be requested between edits of a transaction
+  // (for indentation). Expose the exact already-applied splices without
+  // delivering the public event early or sharing its mutable accumulator.
+  getPendingAppliedChanges() {
+    if (this.applyingEdit || !this.appliedChanges?.length) return null;
+    return Object.freeze({
+      beforeRevision: this.appliedChangesBeforeRevision,
+      afterRevision: this._textRevision,
+      changes: Object.freeze(this.appliedChanges.slice()),
+    });
+  }
+
   emitAppliedChanges(changes, origin, beforeRevision) {
     const afterRevision = this._textRevision;
     (this.appliedChangeBatches ||= []).push(

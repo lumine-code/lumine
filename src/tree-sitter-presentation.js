@@ -41,6 +41,7 @@ class TreeSitterPresentation {
     }
     request.rows.clear();
     const lastRow = this.buffer.getLastRow();
+    let stamp;
     for (let [startRow, endRow] of ranges) {
       startRow = Math.max(0, startRow - 16);
       endRow = Math.min(lastRow, endRow + 16);
@@ -49,12 +50,26 @@ class TreeSitterPresentation {
       const first = Math.floor(startRow / TILE_ROWS) * TILE_ROWS;
       for (let row = first; row <= endRow; row += TILE_ROWS) {
         request.rows.add(row);
-        const tile = this.tiles.get(row) ?? { row, dirty: true };
-        if (
-          !tile.dirty &&
-          !this.cache.covers(new Point(row, 0), this.buffer.clipPosition([row + TILE_ROWS, 0]))
-        )
+        const start = new Point(Math.max(row, startRow), 0);
+        const end = this.buffer.clipPosition([Math.min(row + TILE_ROWS, endRow + 1), 0]);
+        let tile = this.tiles.get(row);
+        if (!tile) {
+          // View ownership changes do not invalidate an existing result. Reuse
+          // only exact current-version coverage, never a retained stale paint.
+          if (stamp === undefined)
+            stamp = this.tiles.size && this.cache.snapshots.length ? this.capture() : null;
+          tile = {
+            row,
+            dirty: !(stamp && this.cache.covers(start, end, stamp)),
+            dirtyStart: row,
+            dirtyEnd: row + TILE_ROWS - 1,
+          };
+        }
+        if (!tile.dirty && !this.cache.covers(start, end)) {
           tile.dirty = true;
+          tile.dirtyStart = row;
+          tile.dirtyEnd = row + TILE_ROWS - 1;
+        }
         this.tiles.delete(row);
         this.tiles.set(row, tile);
       }
@@ -75,8 +90,13 @@ class TreeSitterPresentation {
   invalidate(range = null) {
     this.generation++;
     for (const tile of this.tiles.values()) {
-      if (!range || (tile.row <= range.end.row && tile.row + TILE_ROWS > range.start.row))
+      if (!range || (tile.row <= range.end.row && tile.row + TILE_ROWS > range.start.row)) {
+        const start = Math.max(tile.row, range?.start.row ?? tile.row);
+        const end = Math.min(tile.row + TILE_ROWS - 1, range?.end.row ?? Infinity);
+        tile.dirtyStart = tile.dirty ? Math.min(tile.dirtyStart, start) : start;
+        tile.dirtyEnd = tile.dirty ? Math.max(tile.dirtyEnd, end) : end;
         tile.dirty = true;
+      }
     }
   }
 
@@ -92,14 +112,11 @@ class TreeSitterPresentation {
     return ranges;
   }
 
-  edit({ oldRange, newRange }) {
-    // Equal-height edits leave other tiles' coordinates intact. Parse changes
-    // and invalidateOnChange captures can widen this conservative local range
-    // before publication. Row shifts require rebuilding the requested windows.
+  edit({ newRange }) {
+    // Cached boundaries already follow the buffer splice. Rebuild the changed
+    // rows; parse changes and explicit dependencies can widen this range.
     this.invalidate(
-      oldRange.end.row === newRange.end.row
-        ? new Range([Math.max(0, newRange.start.row - 1), 0], [newRange.end.row + 1, Infinity])
-        : null,
+      new Range([Math.max(0, newRange.start.row - 1), 0], [newRange.end.row + 1, Infinity]),
     );
   }
 
@@ -115,7 +132,10 @@ class TreeSitterPresentation {
     if (this.closed) return null;
     if (this.failedGeneration === this.generation) return null;
     if (this.promise) return this.promise;
-    const tiles = [...this.tiles.values()].filter((tile) => tile.dirty).reverse();
+    const tiles = [...this.tiles.values()]
+      .filter((tile) => tile.dirty)
+      .map((tile) => ({ ...tile }))
+      .reverse();
     if (!tiles.length) return null;
     const stamp = this.capture();
     if (!stamp) return null;
@@ -140,13 +160,13 @@ class TreeSitterPresentation {
           return new Promise((resolve) => setImmediate(resolve)).then(() => run(true));
         resumed = false;
         const tile = tiles[index++];
-        if (tile.row > this.buffer.getLastRow()) continue;
-        const endRow = Math.min(this.buffer.getLastRow(), tile.row + TILE_ROWS - 1);
+        if (tile.dirtyStart > this.buffer.getLastRow()) continue;
+        const endRow = Math.min(this.buffer.getLastRow(), tile.dirtyEnd);
         const iterator = staged.record(this.iterator(), this.buffer, { complete: true });
-        iterator.seek(new Point(tile.row, 0), endRow);
+        iterator.seek(new Point(tile.dirtyStart, 0), endRow);
         const end = this.buffer.clipPosition(new Point(endRow + 1, 0));
         while (iterator.getPosition().compare(end) <= 0) iterator.moveToSuccessor();
-        ranges.push(new Range([tile.row, 0], end));
+        ranges.push(new Range([tile.dirtyStart, 0], end));
       }
       if (!current()) return;
       // Commit the requested fragments together. No partially prepared view
@@ -157,7 +177,12 @@ class TreeSitterPresentation {
           revision: stamp.revision,
           generation: stamp.generation,
         },
-        (snapshot) => this.tiles.has(snapshot.start.row),
+        (snapshot) =>
+          [...this.tiles.keys()].some(
+            (row) =>
+              snapshot.start.row < row + TILE_ROWS &&
+              (snapshot.end.row > row || (snapshot.end.row === row && snapshot.end.column > 0)),
+          ),
       );
       for (const tile of tiles) {
         const currentTile = this.tiles.get(tile.row);

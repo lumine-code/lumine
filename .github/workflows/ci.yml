@@ -156,6 +156,8 @@ jobs:
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
+      - name: Test Tree-sitter runtime
+        run: npm run test:tree-sitter-runtime
       - name: Test command-line launchers
         run: npm run test:launchers
       # The full CI suite uses a visible, focused window so focus-dependent

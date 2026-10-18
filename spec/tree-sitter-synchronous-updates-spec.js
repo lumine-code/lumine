@@ -83,6 +83,28 @@ describe("Synchronous warm Tree-sitter updates", () => {
     current(mode);
   });
 
+  it("keeps in-transaction indentation parses incremental when repeating Enter near row 10000", async () => {
+    const source = 'def work():\n    value = "😀"\n'.repeat(5000);
+    editor.setText(source);
+    lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.python");
+    await editor.whenGrammarSettled();
+    const mode = editor.getBuffer().getLanguageMode();
+    mode.ensureQueriesForLayersSync("indentsQuery");
+    const previous = mode.tree;
+    const parse = spyOn(mode, "parse").and.callThrough();
+    editor.setCursorBufferPosition([9999, Infinity]);
+    for (let index = 0; index < 3; index++) {
+      editor.insertNewline();
+      expect(editor.lineTextForBufferRow(10000 + index)).toBe("    ");
+      expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
+    }
+    const trees = parse.calls.all().map((call) => call.returnValue);
+    expect(trees.length).toBeGreaterThan(3);
+    expect(trees.every((tree) => tree?.incremental === true)).toBe(true);
+    expect(previous.rootNode.text).toBe(source);
+    expect(previous.rootNode.hasChanges).toBe(false);
+  });
+
   it("finishes bulk comment, uncomment and undo with current visible scopes despite a zero load budget", async () => {
     const mode = await start('value = "text"\r\n'.repeat(2000));
     editor.displayLayer.getScreenLines(800, 820);

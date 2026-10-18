@@ -242,7 +242,7 @@ class FoldResolver {
       // starting row. We need to keep track of these nodes so that we can
       // invalidate the fold cache properly when edits happen inside of them.
       if (scopeResolver.shouldInvalidateFoldOnChange(capture)) {
-        this.layer.foldNodesToInvalidateOnChange.add(capture.node.id);
+        this.layer.foldNodesToInvalidateOnChange.add(capture.node);
       }
 
       if (capture.node.startPosition.row < queryStart.row) {

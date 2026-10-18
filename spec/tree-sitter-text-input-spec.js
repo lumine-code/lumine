@@ -95,6 +95,38 @@ describe("Tree-sitter snapshot text input", () => {
     expect(getText).toHaveBeenCalledTimes(1);
   });
 
+  it("captures exact pending UTF-16 edits without delivering or mutating the transaction event", () => {
+    const source = "first\n😀second\n";
+    buffer.setText(source);
+    const reader = document();
+    const previous = reader.capture();
+    const events = [];
+    buffer.onDidApplyChanges((batch) => events.push(batch));
+    let first, latest;
+    buffer.transact(() => {
+      buffer.insert([0, 5], "\r", { normalizeLineEndings: false });
+      first = reader.capture(previous);
+      expect(first.previous).toBe(previous);
+      expect(first.edits.length).toBe(1);
+      buffer.insert([1, 2], "\ud800", { normalizeLineEndings: false });
+      latest = reader.capture(previous);
+      expect(latest.previous).toBe(previous);
+      expect(latest.edits.length).toBe(2);
+      expect(first.edits.length).toBe(1);
+      expect(first.text).toBe("first\r\n😀second\n");
+      expect(events.length).toBe(0);
+    });
+    expect(events.length).toBe(1);
+    expect(buffer.getPendingAppliedChanges()).toBeNull();
+    const published = reader.capture(previous);
+    expect(published.edits).toEqual(latest.edits);
+    let replay = previous.text;
+    for (const edit of latest.edits)
+      replay = replay.slice(0, edit.startIndex) + edit.newText + replay.slice(edit.oldEndIndex);
+    expect(replay).toBe(buffer.getText());
+    expect(Object.isFrozen(latest.edits)).toBe(true);
+  });
+
   it("keeps submitted background input stable after the buffer changes", async () => {
     const source = "const first = 1;";
     buffer.setText(source);

@@ -111,6 +111,28 @@ test("destruction cancels yielded presentation work without publishing", async (
   assert.deepEqual(f.cache.snapshots, []);
 });
 
+test("returning to a cached view reuses current scopes but rejects an older generation", async () => {
+  const f = fixture();
+  try {
+    f.presentation.request(100, 110, false);
+    await f.presentation.flush();
+    f.presentation.request(500, 510, false);
+    await f.presentation.flush();
+    const calls = f.preparations();
+    f.presentation.request(100, 110, false);
+    assert.equal(f.presentation.flush(), null);
+    assert.equal(f.preparations(), calls);
+    f.advance();
+    await f.presentation.flush();
+    f.presentation.request(500, 510, false);
+    await f.presentation.flush();
+    assert.ok(f.preparations() > calls + 1);
+    assert.equal(f.cache.snapshots.at(-1).stamp.revision, 2);
+  } finally {
+    f.presentation.destroy();
+  }
+});
+
 test("keeps every visible fragment when folds spread a view beyond the cold cache allowance", async () => {
   const f = fixture(10000),
     view = {};

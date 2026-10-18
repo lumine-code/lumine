@@ -67,7 +67,7 @@ test("parser document captures live revisions and replays exact sequential offse
   assert.throws(() => document.capture(), /closed/);
 });
 
-test("gaps, unfinished transactions and bounded history choose a fresh parse", () => {
+test("gaps, unavailable pending changes and bounded history choose a fresh parse", () => {
   const buffer = source("a"),
     document = new TreeSitterDocument(buffer, { maxChanges: 1 });
   const first = document.capture();
@@ -82,6 +82,38 @@ test("gaps, unfinished transactions and bounded history choose a fresh parse", (
   buffer.edit(0, 1, "e");
   assert.equal(document.capture(latest).previous, null);
   assert.equal(document.capture().text, "e");
+  document.close();
+});
+
+test("pending changes must connect the complete revision chain and obey history bounds", () => {
+  const buffer = source("a"),
+    document = new TreeSitterDocument(buffer, { maxChanges: 2, maxTextUnits: 10 });
+  const first = document.capture();
+  const a = buffer.edit(0, 1, "ab");
+  const b = buffer.edit(2, 2, "c", false);
+  buffer.getPendingAppliedChanges = () => b;
+  const combined = document.capture(first);
+  assert.equal(combined.previous, first);
+  assert.equal(combined.edits.length, 2);
+  assert.equal(combined.text, "abc");
+  const c = buffer.edit(3, 3, "d", false);
+  buffer.getPendingAppliedChanges = () => c;
+  assert.equal(document.capture(first).previous, null); // Missing b.
+  buffer.getPendingAppliedChanges = () => ({
+    beforeRevision: b.beforeRevision,
+    afterRevision: c.afterRevision,
+    changes: [...b.changes, ...c.changes],
+  });
+  assert.equal(document.capture(first).previous, null); // Three edits exceed the limit.
+  buffer.emit(b);
+  buffer.emit(c);
+  buffer.getPendingAppliedChanges = () => null;
+  const current = document.capture();
+  const large = buffer.edit(4, 4, "x".repeat(11), false);
+  buffer.getPendingAppliedChanges = () => large;
+  assert.equal(document.capture(current).previous, null);
+  assert.equal(combined.text, "abc");
+  assert.equal(a.afterRevision, b.beforeRevision);
   document.close();
 });
 

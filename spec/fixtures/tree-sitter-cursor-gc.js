@@ -11,6 +11,38 @@ async function main() {
   const language = await Language.load(fs.readFileSync(path.join(path.dirname(file), config.treeSitter.grammar)));
   const parser = new Parser().setLanguage(language);
   const query = new Query(language, "(identifier) @name");
+  {
+    const tree = parser.parse("const value = 1;");
+    const cursor = tree.walk();
+    const advance = cursor.gotoFirstChild;
+    cursor.delete();
+    assert.throws(() => advance(), /disposed/);
+  }
+  {
+    const tree = parser.parse("const retained = 1;");
+    function retainMethods() {
+      const cursor = tree.walk();
+      return {move: cursor.gotoFirstChild, copy: cursor.copy, owner: new WeakRef(cursor)};
+    }
+    let retained = retainMethods();
+    const owner = retained.owner;
+    for (let i = 0; i < 4; i++) {
+      global.gc();
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.ok(owner.deref());
+    assert.equal(retained.move(), true);
+    const copy = retained.copy();
+    assert.equal(copy.nodeText, "const retained = 1;");
+    copy.delete();
+    retained = null;
+    // Methods keep the wrapper alive only while retained by their caller.
+    for (let i = 0; i < 4; i++) {
+      await new Promise(resolve => setImmediate(resolve));
+      global.gc();
+    }
+    assert.equal(owner.deref(), undefined);
+  }
   const retained = [];
   for (let run = 0; run < 300; run++) {
     let tree = parser.parse("function first(a) { return a; }\nfunction second(b) { return b; }");

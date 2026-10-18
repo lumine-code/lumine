@@ -93,10 +93,43 @@ class HighlightCache {
     this.rebase();
     const retained = new Set();
     for (const snapshot of snapshots) {
-      this.snapshots = this.snapshots.filter(
-        (previous) =>
-          compare(previous.start, snapshot.start) < 0 || compare(previous.end, snapshot.end) > 0,
-      );
+      const remaining = [];
+      for (const previous of this.snapshots) {
+        if (
+          compare(previous.end, snapshot.start) <= 0 ||
+          compare(previous.start, snapshot.end) >= 0
+        ) {
+          remaining.push(previous);
+          continue;
+        }
+        // Keep only the uncovered prefix/suffix. Overlapping whole windows
+        // would otherwise accumulate for every narrow update or shifted row.
+        const fragments = [];
+        if (compare(previous.start, snapshot.start) < 0)
+          fragments.push({
+            ...previous,
+            end: copy(snapshot.start),
+            events: previous.events.filter((event) => compare(event.position, snapshot.start) < 0),
+          });
+        if (compare(previous.end, snapshot.end) > 0) {
+          const scopes = [...previous.scopes];
+          let index = 0;
+          while (
+            index < previous.events.length &&
+            compare(previous.events[index].position, snapshot.end) < 0
+          )
+            applyScopes(scopes, previous.events[index++]);
+          fragments.push({
+            ...previous,
+            start: copy(snapshot.end),
+            scopes,
+            events: previous.events.slice(index),
+          });
+        }
+        remaining.push(...fragments);
+        if (retained.has(previous)) for (const fragment of fragments) retained.add(fragment);
+      }
+      this.snapshots = remaining;
       const replacement = { ...snapshot, sequence: this.sequence, stamp };
       this.snapshots.push(replacement);
       retained.add(replacement);
@@ -112,10 +145,17 @@ class HighlightCache {
       events -= this.snapshots.splice(index, 1)[0].events.length;
     }
   }
-  covers(start, end) {
+  covers(start, end, stamp = null) {
     this.rebase();
     let position = start;
-    for (const snapshot of [...this.snapshots].sort((a, b) => compare(a.start, b.start))) {
+    const snapshots = stamp
+      ? this.snapshots.filter(
+          (snapshot) =>
+            snapshot.stamp?.revision === stamp.revision &&
+            snapshot.stamp?.generation === stamp.generation,
+        )
+      : this.snapshots;
+    for (const snapshot of [...snapshots].sort((a, b) => compare(a.start, b.start))) {
       if (compare(snapshot.start, position) > 0) break;
       if (compare(snapshot.end, position) > 0) position = snapshot.end;
       if (compare(position, end) >= 0) return true;

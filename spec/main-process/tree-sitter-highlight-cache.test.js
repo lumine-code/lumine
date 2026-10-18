@@ -67,6 +67,36 @@ test("uses the newest overlapping paint and retains neighboring cached scopes", 
   assert.deepEqual(at(cache, point(4)), [1, 3]);
   assert.deepEqual(at(cache, point(6)), [1, 2]);
 });
+
+test("partial replacements preserve surrounding scopes and do not accumulate shadowed windows", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(100),
+    [1, 2],
+    [
+      { position: point(5), open: [3], close: [] },
+      { position: point(20), open: [], close: [3] },
+    ],
+  );
+  const expected = Array.from({ length: 100 }, (_, row) =>
+    row >= 5 && row < 20 ? [1, 2, 3] : [1, 2],
+  );
+  for (let i = 0; i < 100; i++) {
+    const row = 10 + (i % 20);
+    const scopes = [1, 1000 + i];
+    const staged = new HighlightCache();
+    record(staged, point(row), point(row + 2), scopes, [], true);
+    cache.replace(staged.snapshots, { revision: i }, () => true);
+    expected[row] = expected[row + 1] = scopes;
+    const ordered = [...cache.snapshots].sort((a, b) => a.start.compare(b.start));
+    for (let index = 1; index < ordered.length; index++)
+      assert.ok(ordered[index - 1].end.compare(ordered[index].start) <= 0);
+  }
+  assert.ok(cache.snapshots.length <= 23);
+  for (let row = 0; row < 100; row++) assert.deepEqual(at(cache, point(row, 1)), expected[row]);
+});
 test("retains paint across whole-document comment edits with a bounded edit log", () => {
   const cache = new HighlightCache({ maxEdits: 8 });
   record(cache, point(0), point(2000), [1, 2], []);
