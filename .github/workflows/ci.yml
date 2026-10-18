@@ -154,8 +154,9 @@ jobs:
           install || install || install
       - name: Download the Electron binary
         run: node script/install-electron.js
+      # Differential document tests also load the native development baseline.
       - name: Rebuild native modules for Electron
-        run: npm run build
+        run: npm run build -- --types prod,optional,dev
       - name: Test JavaScript document core
         run: npm run test:document-core
       - name: Test Tree-sitter runtime
