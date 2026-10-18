@@ -239,15 +239,23 @@ describe("Tree-sitter update budgets", () => {
     expect(mode.parseAsync.calls.count()).toBe(2);
   });
 
-  it("renders prepared scopes without querying and schedules newly visible fragments", async () => {
+  it("prepares newly visible scopes before their first screen lines are built", async () => {
     const mode = await start('value = "text"\n'.repeat(1000));
     const layer = mode.rootLanguageLayer;
     const boundaries = spyOn(layer, "getSyntaxBoundaries").and.callThrough();
     screen();
     expect(boundaries).not.toHaveBeenCalled();
-    editor.displayLayer.getScreenLines(800, 820);
-    expect(boundaries).not.toHaveBeenCalled();
-    await editor.whenGrammarSettled();
+    const build = editor.displayLayer.screenLineBuilder.buildScreenLines.bind(
+      editor.displayLayer.screenLineBuilder,
+    );
+    spyOn(editor.displayLayer.screenLineBuilder, "buildScreenLines").and.callFake((...args) => {
+      const before = boundaries.calls.count();
+      const lines = build(...args);
+      expect(boundaries.calls.count()).toBe(before);
+      return lines;
+    });
+    const first = editor.displayLayer.getScreenLines(800, 820);
+    expect(first[0].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
     expect(boundaries.calls.count()).toBeGreaterThan(0);
     boundaries.calls.reset();
     const lines = editor.displayLayer.getScreenLines(800, 820);
@@ -268,9 +276,8 @@ describe("Tree-sitter update budgets", () => {
     ]);
     const boundaries = spyOn(mode.rootLanguageLayer, "getSyntaxBoundaries").and.callThrough();
     const read = () => editor.displayLayer.getScreenLines(0, 10);
-    read();
-    expect(boundaries).not.toHaveBeenCalled();
-    await mode.atGrammarSettlement();
+    const first = read();
+    expect(first.at(-1).tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
     expect(boundaries.calls.count()).toBeGreaterThan(0);
     expect(boundaries.calls.allArgs().every(([start]) => start.row < 64 || start.row >= 2944)).toBe(
       true,
@@ -280,6 +287,40 @@ describe("Tree-sitter update budgets", () => {
     expect(boundaries).not.toHaveBeenCalled();
     expect(lines[0].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
     expect(lines.at(-1).tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+  });
+
+  it("paints rapid jumps across uncached fragments immediately with an exhausted load budget", async () => {
+    const mode = await start('value = "text"\n'.repeat(4000));
+    mode.syncTimeoutMicros = 0;
+    for (const row of [800, 1600, 3000, 200, 3900, 1200]) {
+      const lines = editor.displayLayer.getScreenLines(row, row + 25);
+      expect(lines.length).toBe(25);
+      expect(lines.every((line) => line.tags.filter((tag) => tag < 0).length > 2)).toBe(true);
+      expect(mode.presentation.promise).toBeNull();
+      expect(mode.presentation.timer).toBeNull();
+    }
+  });
+
+  it("keeps screen-line construction intact when highlight publication triggers another read", async () => {
+    await start(Array.from({ length: 2000 }, (_, row) => `value_${row} = "text"\n`).join(""));
+    let nested;
+    let reading = false;
+    const subscription = editor.onDidChange(() => {
+      if (reading) return;
+      reading = true;
+      nested = editor.screenLineForScreenRow(1700);
+    });
+    try {
+      const lines = editor.displayLayer.getScreenLines(800, 820);
+      expect(nested.lineText).toBe('value_1700 = "text"');
+      expect(lines.length).toBe(20);
+      for (let index = 0; index < lines.length; index++) {
+        expect(lines[index].lineText).toBe(`value_${800 + index} = "text"`);
+        expect(lines[index].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+      }
+    } finally {
+      subscription.dispose();
+    }
   });
 
   it("rejects staged scopes when an edit supersedes presentation preparation", async () => {

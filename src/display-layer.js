@@ -887,6 +887,12 @@ class DisplayLayer {
   getScreenLine(screenRow) {
     // Width measurements and token consumers must not replace the viewport's
     // pending highlighting request while its preparation is yielding.
+    if (!this.cachedScreenLines[screenRow])
+      this.prepareHighlightingForScreenRows(
+        screenRow,
+        screenRow + 1,
+        this.singleLineHighlightingOwner,
+      );
     return (
       this.cachedScreenLines[screenRow] ||
       this.screenLineBuilder.buildScreenLines(
@@ -898,7 +904,35 @@ class DisplayLayer {
   }
 
   getScreenLines(screenStartRow = 0, screenEndRow = this.getScreenLineCount()) {
+    this.prepareHighlightingForScreenRows(screenStartRow, screenEndRow, this);
     return this.screenLineBuilder.buildScreenLines(screenStartRow, screenEndRow);
+  }
+
+  prepareHighlightingForScreenRows(startRow, endRow, owner) {
+    const languageMode = this.buffer.languageMode;
+    if (!languageMode.requestHighlighting) return;
+    this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), endRow);
+    const lastRow = Math.min(endRow, this.screenLineLengths.length) - 1;
+    if (lastRow < startRow) return;
+    let row = this.translateScreenPositionWithSpatialIndex(Point(startRow, 0), "forward", true).row;
+    const endBufferRow = this.translateScreenPositionWithSpatialIndex(
+      Point(lastRow, this.screenLineLengths[lastRow]),
+      "forward",
+      false,
+    ).row;
+    const ranges = [];
+    const hunks = this.spatialIndex.getChangesInNewRange(Point(startRow, 0), Point(endRow, 0));
+    for (const hunk of hunks) {
+      if (this.isSoftWrapHunk(hunk) || hunk.oldEnd.row < row || hunk.oldStart.row > endBufferRow)
+        continue;
+      if (hunk.oldStart.row >= row) ranges.push([row, hunk.oldStart.row]);
+      row = Math.max(row, hunk.oldEnd.row);
+    }
+    if (row <= endBufferRow) ranges.push([row, endBufferRow]);
+    // Ready scopes can invalidate cached screen lines and notify observers.
+    // Finish that work before ScreenLineBuilder captures its mutable state or
+    // uncached ranges, including when a subscriber reads another screen line.
+    languageMode.requestHighlighting(owner, ranges);
   }
 
   bufferRowsForScreenRows(startRow, endRow) {

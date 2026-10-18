@@ -5,7 +5,7 @@ const HighlightCache = require("./tree-sitter-highlight-cache");
 const TILE_ROWS = 64;
 
 // Only scope IDs and positions cross the presentation boundary. Preparation
-// owns query execution; a paint can only request work and read the last result.
+// owns query execution; screen-line construction only reads prepared results.
 class TreeSitterPresentation {
   constructor({ buffer, cache, capture, isCurrent, iterator, hasBudget, publish }) {
     Object.assign(this, { buffer, cache, capture, isCurrent, iterator, hasBudget, publish });

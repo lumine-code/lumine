@@ -66,30 +66,6 @@ module.exports = class ScreenLineBuilder {
       Point(this.screenRow, 0),
       Point(endScreenRow, 0),
     );
-    if (languageMode.requestHighlighting) {
-      const lastRow = Math.min(endScreenRow, this.displayLayer.screenLineLengths.length) - 1;
-      if (lastRow >= startScreenRow) {
-        const endBufferRow = this.displayLayer.translateScreenPositionWithSpatialIndex(
-          Point(lastRow, this.displayLayer.screenLineLengths[lastRow]),
-          "forward",
-          false,
-        ).row;
-        const ranges = [];
-        let row = startBufferPosition.row;
-        for (const hunk of hunks) {
-          if (
-            this.displayLayer.isSoftWrapHunk(hunk) ||
-            hunk.oldEnd.row < row ||
-            hunk.oldStart.row > endBufferRow
-          )
-            continue;
-          if (hunk.oldStart.row >= row) ranges.push([row, hunk.oldStart.row]);
-          row = Math.max(row, hunk.oldEnd.row);
-        }
-        if (row <= endBufferRow) ranges.push([row, endBufferRow]);
-        languageMode.requestHighlighting(highlightingOwner, ranges);
-      }
-    }
     let hunkIndex = 0;
     // A non-zero continuation indent makes the range query include the hunk
     // that enters the requested row. Its mapping and indent were consumed

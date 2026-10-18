@@ -1165,7 +1165,9 @@ class TreeSitterLanguageMode {
   }
 
   requestHighlighting(owner, ranges) {
-    this.presentation.requestRanges(owner, ranges);
+    const synchronous = this.shouldParseSynchronously();
+    this.presentation.requestRanges(owner, ranges, !synchronous);
+    if (synchronous) this.presentation.flush();
   }
 
   capturePresentationVersion() {
