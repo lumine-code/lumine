@@ -115,23 +115,24 @@ describe("Combined injection equal-extent holes", () => {
     for (const item of grammars) item.deactivate();
     registry.clear();
   });
-  it("keeps the leaf tree and rangeSet when an owner changes outside its included content", async () => {
+  it("reuses leaf syntax and ranges without mutating the preceding snapshot", async () => {
     const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
     const layer = layers(mode)[0],
       tree = layer.tree,
       ranges = layer.getCurrentRanges();
     const rangeSet = layer.marker.combinedInjectionGroup.rangeSet;
-    spyOn(mode, "parseAsync").and.callThrough();
-    spyOn(tree, "edit").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
+    const originalText = tree.rootNode.text;
     await replace(buffer, mode, "alpha", "gamma");
     expect(layers(mode)[0]).toBe(layer);
-    expect(layer.tree === tree).toBe(true);
+    expect(layer.tree).not.toBe(tree);
+    expect(layer.tree.revision).toBe(buffer.getTextRevision());
     expect(layer.marker.combinedInjectionGroup.rangeSet === rangeSet).toBe(true);
     expect(layer.getCurrentRanges() === ranges).toBe(true);
-    expect(tree.edit).not.toHaveBeenCalled();
+    expect(tree.rootNode.text).toBe(originalText);
+    expect(tree.rootNode.hasChanges).toBe(false);
     expect(
-      mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
-        .length,
+      mode.parse.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName).length,
     ).toBe(0);
     await expectFresh(buffer, mode);
   });
@@ -139,9 +140,9 @@ describe("Combined injection equal-extent holes", () => {
     const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
     const layer = layers(mode)[0],
       tree = layer.tree;
-    spyOn(mode, "parseAsync").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
     await replace(buffer, mode, "3", "9");
-    const calls = mode.parseAsync.calls
+    const calls = mode.parse.calls
       .allArgs()
       .filter((args) => args[3]?.scopeName === child.scopeName);
     expect(calls.length).toBe(1);
@@ -193,11 +194,10 @@ describe("Combined injection equal-extent holes", () => {
     expect(
       mode.getAllInjectionLayers().filter((layer) => layer.grammar === grandchild).length,
     ).toBe(2);
-    spyOn(mode, "parseAsync").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
     await replace(buffer, mode, "alpha", "gamma");
     expect(
-      mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
-        .length,
+      mode.parse.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName).length,
     ).toBe(0);
     expect(
       mode.getAllInjectionLayers().filter((layer) => layer.grammar === grandchild).length,
@@ -228,13 +228,14 @@ describe("Combined injection equal-extent holes", () => {
       layer.currentRangesLayer.findMarkers({ intersectsRange: buffer.findSync("eta") }).length,
     ).toBe(0);
     observed.length = 0;
-    spyOn(mode, "parseAsync").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
     await replace(buffer, mode, "eta", "ota");
-    expect(layer.tree === tree).toBe(true);
+    expect(layer.tree).not.toBe(tree);
+    expect(layer.tree.revision).toBe(buffer.getTextRevision());
     expect(
-      mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
-        .length,
+      mode.parse.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName).length,
     ).toBe(0);
+    expect(tree.rootNode.text).toContain("beta");
     expect(observed.length).toBeGreaterThan(0);
     expect(observed.every((text) => text.includes("bota") && !text.includes("beta"))).toBe(true);
     await expectFresh(buffer, mode);
@@ -251,11 +252,10 @@ describe("Combined injection equal-extent holes", () => {
     expect(
       mode.getAllInjectionLayers().filter((layer) => layer.grammar === grandchild).length,
     ).toBe(0);
-    spyOn(mode, "parseAsync").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
     await replace(buffer, mode, "alpha", "gamma");
     expect(
-      mode.parseAsync.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName)
-        .length,
+      mode.parse.calls.allArgs().filter((args) => args[3]?.scopeName === child.scopeName).length,
     ).toBe(0);
     await expectFresh(buffer, mode);
     await replace(buffer, mode, "3", '"abc"');
@@ -270,7 +270,7 @@ describe("Combined injection equal-extent holes", () => {
       const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
       const layer = layers(mode)[0],
         gate = deferPopulation(layer);
-      spyOn(mode, "parseAsync").and.callThrough();
+      spyOn(mode, "parse").and.callThrough();
       buffer.setTextInRange(buffer.findSync("alpha"), "gamma");
       await gate.reached;
       if (change === "source") buffer.setTextInRange(buffer.findSync("3"), "9");
@@ -278,7 +278,7 @@ describe("Combined injection equal-extent holes", () => {
       gate.resume();
       await mode.atGrammarSettlement();
       expect(
-        mode.parseAsync.calls.allArgs().some((args) => args[3]?.scopeName === child.scopeName),
+        mode.parse.calls.allArgs().some((args) => args[3]?.scopeName === child.scopeName),
       ).toBe(true);
       await expectFresh(buffer, mode);
     });
@@ -288,7 +288,7 @@ describe("Combined injection equal-extent holes", () => {
     const { buffer, mode } = await start("alpha = 3\nbeta = 4\n");
     const layer = layers(mode)[0],
       gate = deferPopulation(layer);
-    spyOn(mode, "parseAsync").and.callThrough();
+    spyOn(mode, "parse").and.callThrough();
     buffer.setTextInRange(buffer.findSync("alpha"), "gamma");
     await gate.reached;
     child.addInjectionPoint({

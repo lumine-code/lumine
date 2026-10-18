@@ -4267,7 +4267,6 @@ class LanguageLayer {
     const language = this.grammar.getLanguageSync();
     const generation = this.grammar.queryLoadGeneration;
     const revision = this.buffer.getTextRevision();
-    const parseRanges = this.getParseRanges(includedRanges);
     const context = {
       params,
       nodeRangeSet,
@@ -4276,6 +4275,25 @@ class LanguageLayer {
       generation,
       revision,
     };
+    if (nodeRangeSet?.rangesUnchanged && this.backgroundTree && !this.treeIsDirty) {
+      // An owner can change inside a hole without changing any parser input.
+      // Preserve this optimization with a new immutable snapshot: callbacks
+      // still need the current text between the included ranges.
+      const capture = this.languageMode.document.capture(this.backgroundTree);
+      const reused =
+        capture.previous &&
+        BackgroundParser.reuseSnapshot(capture.previous, capture.text, {
+          edits: capture.edits,
+          revision,
+          includedRanges,
+        });
+      if (reused) {
+        this.languageMode.backgroundSnapshots.add(reused);
+        this.languageMode.parseDetails.set(reused, { incremental: true });
+        return this._applyParsedTree(reused, context);
+      }
+    }
+    const parseRanges = this.getParseRanges(includedRanges);
     if (this.languageMode.shouldParseSynchronously()) {
       const tree = this.languageMode.parse(language, this.backgroundTree, parseRanges, {
         scopeName: this.grammar.scopeName,

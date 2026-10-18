@@ -87,21 +87,17 @@ function semanticChecksum(buffer, mode) {
       root.toString(),
     ]);
     const cursor = layer.tree.walk();
-    try {
-      let finished = false;
-      while (!finished) {
-        const node = cursor.currentNode;
-        add([node.type, node.startIndex, node.endIndex, node.startPosition, node.endPosition]);
-        if (cursor.gotoFirstChild()) continue;
-        while (!cursor.gotoNextSibling()) {
-          if (!cursor.gotoParent()) {
-            finished = true;
-            break;
-          }
+    let finished = false;
+    while (!finished) {
+      const node = cursor.currentNode;
+      add([node.type, node.startIndex, node.endIndex, node.startPosition, node.endPosition]);
+      if (cursor.gotoFirstChild()) continue;
+      while (!cursor.gotoNextSibling()) {
+        if (!cursor.gotoParent()) {
+          finished = true;
+          break;
         }
       }
-    } finally {
-      cursor.delete();
     }
   }
   return finishHighlights();

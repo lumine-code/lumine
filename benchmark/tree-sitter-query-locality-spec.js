@@ -878,81 +878,77 @@ async function measureCase(benchmarkCase, grammarsByScopeName) {
       const source = lines.join("\n");
 
       const parseStartedAt = performance.now();
-      const tree = parser.parse(source);
+      const tree = parser.parseSync(source);
       const parseMs = performance.now() - parseStartedAt;
-      try {
-        expect(tree.rootNode.hasError).toBe(false);
-        let startPosition;
-        let endPosition;
-        let probePosition;
-        let rangeSummary;
-        if (columnRange) {
-          expect(columnRange.endColumn - columnRange.startColumn).toBe(TILE_COLUMNS);
-          expect(columnRange.startColumn).toBeGreaterThan(0);
-          expect(columnRange.endColumn).toBeLessThan(lines[columnRange.row].length);
-          startPosition = { row: columnRange.row, column: columnRange.startColumn };
-          endPosition = { row: columnRange.row, column: columnRange.endColumn };
-          probePosition = startPosition;
-          rangeSummary = {
-            row: columnRange.row,
-            startColumn: columnRange.startColumn,
-            endColumn: columnRange.endColumn,
-            columns: TILE_COLUMNS,
-          };
-        } else {
-          expect(endRow - startRow).toBe(TILE_ROWS);
-          expect(startRow).toBeGreaterThan(childStartRow - 1);
-          expect(endRow).toBeLessThan(lines.length);
-          const firstTextColumn = lines[startRow].search(/\S/);
-          expect(firstTextColumn).toBeGreaterThanOrEqual(0);
-          startPosition = { row: startRow, column: 0 };
-          endPosition = { row: endRow, column: 0 };
-          probePosition = { row: startRow, column: firstTextColumn };
-          rangeSummary = { startRow, endRow, rows: TILE_ROWS };
-        }
-
-        const nodeInTile = tree.rootNode.descendantForPosition(probePosition);
-        const parent = ancestorOfType(nodeInTile, benchmarkCase.parentType);
-        expect(parent).not.toBeNull();
-        expect(comparePoints(parent.startPosition, startPosition)).toBeLessThan(0);
-        expect(comparePoints(parent.endPosition, endPosition)).toBeGreaterThanOrEqual(0);
-        if (benchmarkCase.outerParentType) {
-          expect(ancestorOfType(parent.parent, benchmarkCase.outerParentType)).not.toBeNull();
-        }
-
-        const range = { startPosition, endPosition };
-        for (let iteration = 0; iteration < WARMUP_ITERATIONS; iteration++) {
-          query.captures(tree.rootNode, range);
-        }
-
-        const durations = [];
-        const captureCounts = new Set();
-        for (let iteration = 0; iteration < SAMPLE_ITERATIONS; iteration++) {
-          const startedAt = process.hrtime.bigint();
-          const captures = query.captures(tree.rootNode, range);
-          durations.push(Number(process.hrtime.bigint() - startedAt) / 1e6);
-          captureCounts.add(captures.length);
-        }
-
-        expect(captureCounts.size).toBe(1);
-        expect(query.didExceedMatchLimit()).toBe(false);
-        results.push({
-          size,
-          sourceRows: lines.length,
-          sourceBytes: Buffer.byteLength(source),
-          descendants: tree.rootNode.descendantCount,
-          parentRows: parent.endPosition.row - parent.startPosition.row + 1,
-          range: rangeSummary,
-          captures: [...captureCounts][0],
-          parseMs: round(parseMs),
-          query: summarize(durations),
-        });
-      } finally {
-        tree.delete();
+      expect(tree.rootNode.hasError).toBe(false);
+      let startPosition;
+      let endPosition;
+      let probePosition;
+      let rangeSummary;
+      if (columnRange) {
+        expect(columnRange.endColumn - columnRange.startColumn).toBe(TILE_COLUMNS);
+        expect(columnRange.startColumn).toBeGreaterThan(0);
+        expect(columnRange.endColumn).toBeLessThan(lines[columnRange.row].length);
+        startPosition = { row: columnRange.row, column: columnRange.startColumn };
+        endPosition = { row: columnRange.row, column: columnRange.endColumn };
+        probePosition = startPosition;
+        rangeSummary = {
+          row: columnRange.row,
+          startColumn: columnRange.startColumn,
+          endColumn: columnRange.endColumn,
+          columns: TILE_COLUMNS,
+        };
+      } else {
+        expect(endRow - startRow).toBe(TILE_ROWS);
+        expect(startRow).toBeGreaterThan(childStartRow - 1);
+        expect(endRow).toBeLessThan(lines.length);
+        const firstTextColumn = lines[startRow].search(/\S/);
+        expect(firstTextColumn).toBeGreaterThanOrEqual(0);
+        startPosition = { row: startRow, column: 0 };
+        endPosition = { row: endRow, column: 0 };
+        probePosition = { row: startRow, column: firstTextColumn };
+        rangeSummary = { startRow, endRow, rows: TILE_ROWS };
       }
+
+      const nodeInTile = tree.rootNode.descendantForPosition(probePosition);
+      const parent = ancestorOfType(nodeInTile, benchmarkCase.parentType);
+      expect(parent).not.toBeNull();
+      expect(comparePoints(parent.startPosition, startPosition)).toBeLessThan(0);
+      expect(comparePoints(parent.endPosition, endPosition)).toBeGreaterThanOrEqual(0);
+      if (benchmarkCase.outerParentType) {
+        expect(ancestorOfType(parent.parent, benchmarkCase.outerParentType)).not.toBeNull();
+      }
+
+      const range = { startPosition, endPosition };
+      for (let iteration = 0; iteration < WARMUP_ITERATIONS; iteration++) {
+        query.captures(tree.rootNode, range);
+      }
+
+      const durations = [];
+      const captureCounts = new Set();
+      for (let iteration = 0; iteration < SAMPLE_ITERATIONS; iteration++) {
+        const startedAt = process.hrtime.bigint();
+        const captures = query.captures(tree.rootNode, range);
+        durations.push(Number(process.hrtime.bigint() - startedAt) / 1e6);
+        captureCounts.add(captures.length);
+      }
+
+      expect(captureCounts.size).toBe(1);
+      expect(query.didExceedMatchLimit()).toBe(false);
+      results.push({
+        size,
+        sourceRows: lines.length,
+        sourceBytes: Buffer.byteLength(source),
+        descendants: tree.rootNode.descendantCount,
+        parentRows: parent.endPosition.row - parent.startPosition.row + 1,
+        range: rangeSummary,
+        captures: [...captureCounts][0],
+        parseMs: round(parseMs),
+        query: summarize(durations),
+      });
     }
   } finally {
-    parser.delete();
+    parser.close();
   }
 
   return {

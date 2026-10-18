@@ -212,13 +212,15 @@ describe("Bounded combined Tree-sitter injections", () => {
     const retained = groupFor("value0+").marker.languageLayer;
     const discarded = groupFor("value5+").marker.languageLayer;
     const query = retained.queries.highlightsQuery;
-    expect(regex.queryReferenceCounts.get(query)).toBe(3);
+    expect(regex.queryCache.get("highlightsQuery")).toBe(query);
     await replace("/value3+/", "0");
     expect(layers().length).toBe(2);
     await replace("/value2+/", "0");
     expect(layers()).toEqual([retained]);
     expect(discarded.destroyed).toBe(true);
-    expect(regex.queryReferenceCounts.get(query)).toBe(2);
+    expect(discarded.queries).toEqual({});
+    expect(retained.queries.highlightsQuery).toBe(query);
+    expect(regex.queryCache.get("highlightsQuery")).toBe(query);
     expectBounded();
     await expectIndependentScopes();
   });
@@ -416,7 +418,7 @@ describe("Bounded combined Tree-sitter injections", () => {
     await mode.atGrammarSettlement();
     expect(layers().length).toBe(0);
     expect(original.every((layer) => layer.destroyed)).toBe(true);
-    expect(regex.queryReferenceCounts.get(query)).toBe(1);
+    expect(regex.queryCache.get("highlightsQuery")).toBe(query);
     const replacement = grammar("language-regex", "regex.json", "source.bounded-replacement", [
       "bounded-regex",
     ]);
@@ -472,9 +474,9 @@ describe("Bounded combined Tree-sitter injections", () => {
       if (++calls === 3) throw new Error("broken bounded content");
       return node.childForFieldName("pattern");
     });
-    await expectAsync(
-      mode.rootLanguageLayer._populateInjections(buffer.getRange(), null),
-    ).toBeRejectedWithError("broken bounded content");
+    expect(() => mode.rootLanguageLayer._populateInjections(buffer.getRange(), null)).toThrowError(
+      "broken bounded content",
+    );
     expect(groups()).toEqual(old);
     expect(mode.rootLanguageLayer.combinedInjectionMembersLayer.getMarkerCount()).toBe(count);
   });

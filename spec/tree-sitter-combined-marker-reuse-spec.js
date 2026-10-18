@@ -312,7 +312,7 @@ describe("Combined injection owner/content marker reuse", () => {
     await mode.atGrammarSettlement();
     expect(memberLayer().getMarkerCount()).toBe(0);
     expect(old.every((member) => member.marker.isDestroyed())).toBe(true);
-    expect(regex.queryReferenceCounts.get(query)).toBe(1);
+    expect(regex.queryCache.get("highlightsQuery")).toBe(query);
     const replacement = grammar("language-regex", "regex.json", "source.marker-replacement", [
       "marker-regex",
     ]);
@@ -384,9 +384,9 @@ describe("Combined injection owner/content marker reuse", () => {
       if (++calls === 3) throw new Error("broken shared content");
       return node;
     });
-    await expectAsync(
-      mode.rootLanguageLayer._populateInjections(buffer.getRange(), null),
-    ).toBeRejectedWithError("broken shared content");
+    expect(() => mode.rootLanguageLayer._populateInjections(buffer.getRange(), null)).toThrowError(
+      "broken shared content",
+    );
     expect(memberLayer().getMarkerCount()).toBe(count);
     for (const call of prepared.calls.all()) {
       expect(call.returnValue.contentMarkers[0]).toBe(call.returnValue.marker);
