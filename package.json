@@ -111,7 +111,7 @@
     "tar": "7.5.22",
     "timecop": "github:lumine-code/timecop#fec2eaef2fe4d377e34b55d46d62324f6188feb6",
     "tinyglobby": "^0.2.17",
-    "title-bar": "github:lumine-code/title-bar#c6757e5a3c1cde61b70086b927ce4d9f4b257621",
+    "title-bar": "github:lumine-code/title-bar#0c713ff9a076d09abd47c564cddb5ab2d3bb3cdb",
     "tree-view": "github:lumine-code/tree-view#c1781b2f9680b1079e9c583431aed03e5b0992a3",
     "web-tree-sitter": "0.27.1",
     "whitespace": "github:lumine-code/whitespace#9ffac1ee231b7761ef7b1544ad3b645d5cd5d576",
