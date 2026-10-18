@@ -35,8 +35,8 @@ const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
-// Small updates publish synchronously; all layers share the task budget.
-// Larger updates resume in bounded WASM slices without exposing partial trees.
+// Initial loading shares a task budget and resumes in bounded WASM slices.
+// Once ready, edits publish their syntax and visible scopes synchronously.
 const PARSE_JOB_LIMIT_MICROS = 5000;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
@@ -245,7 +245,8 @@ class TreeSitterLanguageMode {
       capture: () => this.capturePresentationVersion(),
       isCurrent: (stamp) => this.presentationVersionIsCurrent(stamp),
       iterator: () => new HighlightIterator(this),
-      hasBudget: () => !this.useAsyncParsing || parserScheduler.hasBudget(this.syncTimeoutMicros),
+      hasBudget: () =>
+        this.shouldParseSynchronously() || parserScheduler.hasBudget(this.syncTimeoutMicros),
       publish: (range) => this.emitter.emit("did-change-highlighting", range),
     });
     this.subscriptions.add(
@@ -1468,7 +1469,7 @@ class TreeSitterLanguageMode {
     language,
     oldTree,
     includedRanges,
-    { scopeName = null, extraEdits = [], allowAsync = false, budgetOnly = false, signal } = {},
+    { scopeName = null, extraEdits = [], budgetOnly = false, signal } = {},
   ) {
     if (this.destroyed) return null;
     const previous =
@@ -1489,10 +1490,9 @@ class TreeSitterLanguageMode {
       this.parseDetails.set(tree, { incremental: tree.incremental });
       return tree;
     };
-    let deferred = false;
     try {
       const tree =
-        (allowAsync || budgetOnly) && this.useAsyncParsing
+        budgetOnly && !this.shouldParseSynchronously()
           ? parser.tryParseSync(capture.text, {
               ...options,
               deadline: parserScheduler.deadline(this.syncTimeoutMicros),
@@ -1503,21 +1503,12 @@ class TreeSitterLanguageMode {
         parser.reset();
         return null;
       }
-      deferred = true;
-      return parser
-        .parse(capture.text, options)
-        .then(finish)
-        .catch((error) => {
-          if (!this.destroyed && error.name !== "AbortError")
-            throw this.describeParseFailure(error, { scopeName, includedRanges });
-          return null;
-        })
-        .finally(() => this.releaseParserForLanguage(language, parser));
+      return null;
     } catch (error) {
       if (error.name === "AbortError") return null;
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     } finally {
-      if (!deferred) this.releaseParserForLanguage(language, parser);
+      this.releaseParserForLanguage(language, parser);
     }
   }
 
@@ -2055,30 +2046,11 @@ class TreeSitterLanguageMode {
     return indentLength / tabLength;
   }
 
-  // In an ideal world, we would use synchronous indentation all the time. But
-  // it requires us to be able to tell the editor, at an arbitrary point in
-  // time, what the suggested indentation for a buffer row is. We might get
-  // asked this question only once in a transaction — or 100 times. We don't
-  // know ahead of time. And if we want to be able to answer the question
-  // synchronously, we must reparse the buffer synchronously _each time_.
-  //
-  // That's fine in the only-one-edit case, but unacceptable in the
-  // 100-edits-in-one-transaction case. The problem isn't the extra work; it's
-  // the extra _lag_. We don't want the editor to freeze because we're doing
-  // 100 buffer parses in a row.
-  //
-  // In order to do synchronous indentation most of the time while still
-  // guarding against this edge case, we'll
-  //
-  // * start out each transaction preferring synchronous indentation, but
-  // * switch to async indentation if our time budget is exceeded in any one
-  //   transaction.
-  //
+  // Ready grammars update in the editing transaction, including injections,
+  // indentation and presentation. Batch indentation shares one syntax plan;
+  // it must not become deferred merely because the task budget was consumed.
   shouldParseSynchronously() {
-    return (
-      !this.useAsyncParsing ||
-      (this.synchronousUpdates && parserScheduler.hasBudget(this.syncTimeoutMicros))
-    );
+    return !this.useAsyncParsing || this.synchronousUpdates;
   }
 
   shouldUseAsyncIndent() {
@@ -4454,7 +4426,6 @@ class LanguageLayer {
       const tree = this.languageMode.parse(language, this.backgroundTree, parseRanges, {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
-        allowAsync: true,
         signal: controller.signal,
       });
       if (tree?.then)

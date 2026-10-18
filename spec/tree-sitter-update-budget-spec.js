@@ -33,6 +33,7 @@ describe("Tree-sitter update budgets", () => {
     await editor.whenGrammarSettled();
     let painted = draw();
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     let paintTask = null;
     const subscription = editor.onDidChange(() => {
       if (paintTask) return;
@@ -85,6 +86,7 @@ describe("Tree-sitter update budgets", () => {
     const painted = screen();
     expect(painted[1].tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     editor.selectAll();
     editor.toggleLineCommentsInSelection();
     expect(mode.publicationPending).toBe(true);
@@ -106,6 +108,7 @@ describe("Tree-sitter update budgets", () => {
   it("publishes only the newest revision when another edit supersedes queued work", async () => {
     const mode = await start("value = 1\n".repeat(1000));
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     const published = [];
     mode.onDidChangeHighlighting(() => {
       if (mode.tree) published.push(mode.tree.revision);
@@ -161,6 +164,7 @@ describe("Tree-sitter update budgets", () => {
   it("does not parse a transaction again from the post-edit microtask", async () => {
     const mode = await start("value = 1\n".repeat(1000));
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     const parse = spyOn(mode, "parseAsync").and.callThrough();
     editor.getBuffer().insert([0, 0], "# ");
     await editor.whenGrammarSettled();
@@ -190,6 +194,7 @@ describe("Tree-sitter update budgets", () => {
   it("settles automatic indentation and its syntax before a subsequent command", async () => {
     const mode = await start("def work():\n    value = 1\n    return value\n");
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     editor.setCursorBufferPosition([1, Infinity]);
     editor.insertNewline();
     expect(await editor.whenGrammarSettled()).toBe(true);
@@ -206,6 +211,7 @@ describe("Tree-sitter update budgets", () => {
   it("cancels an already started parse when a newer revision supersedes it", async () => {
     const mode = await start("value = 1\n".repeat(1000));
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     let started, firstSignal;
     const entered = new Promise((resolve) => {
       started = resolve;
@@ -279,6 +285,7 @@ describe("Tree-sitter update budgets", () => {
   it("rejects staged scopes when an edit supersedes presentation preparation", async () => {
     const mode = await start('value = "text"\n'.repeat(1000));
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     mode.presentation.request(500, 600, false);
     const pending = mode.presentation.flush();
     editor.getBuffer().insert([500, 0], "# ");
@@ -322,6 +329,7 @@ describe("Tree-sitter update budgets", () => {
     const mode = await start("def work():\n    first = 1\n    return first\n");
     mode.ensureQueriesForLayersSync("foldsQuery");
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     editor.getBuffer().insert([1, 0], "    # comment\n");
     expect(mode.getFoldableRanges()).toEqual([]);
     expect(mode.getFoldableRangeContainingPoint([2, 0])).toBeNull();

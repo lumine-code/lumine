@@ -85,6 +85,7 @@ describe("destroying a buffer during an async parse", () => {
     buffer.setLanguageMode(languageMode);
     await languageMode.ready;
     languageMode.syncTimeoutMicros = 0;
+    spyOn(languageMode, "shouldParseSynchronously").and.returnValue(false);
     const language = grammar.getLanguageSync();
     const parser = languageMode.getOrCreateParserForLanguage(language);
     const close = spyOn(parser, "close").and.callThrough();
@@ -168,6 +169,7 @@ describe("destroying a buffer during an async parse", () => {
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
       languageMode.syncTimeoutMicros = 0;
+      spyOn(languageMode, "shouldParseSynchronously").and.returnValue(false);
       const language = grammar.getLanguageSync();
       const parser = languageMode.getOrCreateParserForLanguage(language);
       const method = asynchronous ? "parse" : "parseSync";

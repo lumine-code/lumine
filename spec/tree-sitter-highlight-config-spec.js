@@ -147,6 +147,7 @@ describe("Tree-sitter configuration-dependent highlighting", () => {
     const original = editor.displayLayer.getScreenLines(0, 1)[0].tags;
     const tree = mode.tree;
     mode.syncTimeoutMicros = 0;
+    spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
     config.set("syntax.enabled", false);
     const pending = mode.presentation.promise;
     expect(pending).not.toBeNull();
