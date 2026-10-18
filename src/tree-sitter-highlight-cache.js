@@ -89,7 +89,7 @@ class HighlightCache {
     }
     this.edits.length = 0;
   }
-  replace(snapshots, stamp) {
+  replace(snapshots, stamp, keep = () => false) {
     this.rebase();
     const retained = new Set();
     for (const snapshot of snapshots) {
@@ -104,11 +104,13 @@ class HighlightCache {
     let events = this.snapshots.reduce((sum, snapshot) => sum + snapshot.events.length, 0);
     // The event allowance evicts old windows, never part of the current view.
     // A dense but bounded batch must not silently lose its highlighting.
-    while (
-      this.snapshots.length > this.maxSnapshots ||
-      (events > this.maxEvents && this.snapshots.length && !retained.has(this.snapshots[0]))
-    )
-      events -= this.snapshots.shift().events.length;
+    while (this.snapshots.length > this.maxSnapshots || events > this.maxEvents) {
+      const index = this.snapshots.findIndex(
+        (snapshot) => !retained.has(snapshot) && !keep(snapshot),
+      );
+      if (index < 0) break;
+      events -= this.snapshots.splice(index, 1)[0].events.length;
+    }
   }
   covers(start, end) {
     this.rebase();
@@ -140,7 +142,7 @@ class HighlightCache {
           events: [],
         };
         cache.snapshots.push(snapshot);
-        if (cache.snapshots.length > cache.maxSnapshots) cache.snapshots.shift();
+        if (!complete && cache.snapshots.length > cache.maxSnapshots) cache.snapshots.shift();
         cover();
         return scopes;
       },

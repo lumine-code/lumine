@@ -3,7 +3,6 @@ const Range = require("./range");
 const HighlightCache = require("./tree-sitter-highlight-cache");
 
 const TILE_ROWS = 64;
-const MAX_TILES = 16;
 
 // Only scope IDs and positions cross the presentation boundary. Preparation
 // owns query execution; a paint can only request work and read the last result.
@@ -45,14 +44,10 @@ class TreeSitterPresentation {
     for (let [startRow, endRow] of ranges) {
       startRow = Math.max(0, startRow - 16);
       endRow = Math.min(lastRow, endRow + 16);
-      // A render request can span a large folded region. Bound retained work;
-      // subsequent requests for its other visible fragments take priority.
+      // The view excludes fold interiors. Retain all its visible fragments;
+      // a cache allowance must never truncate a view with many small folds.
       const first = Math.floor(startRow / TILE_ROWS) * TILE_ROWS;
-      for (
-        let row = first;
-        row <= endRow && row < first + MAX_TILES * TILE_ROWS;
-        row += TILE_ROWS
-      ) {
+      for (let row = first; row <= endRow; row += TILE_ROWS) {
         request.rows.add(row);
         const tile = this.tiles.get(row) ?? { row, dirty: true };
         if (
@@ -74,7 +69,6 @@ class TreeSitterPresentation {
       for (const row of request.rows) wanted.add(row);
     }
     for (const row of this.tiles.keys()) if (!wanted.has(row)) this.tiles.delete(row);
-    while (this.tiles.size > MAX_TILES) this.tiles.delete(this.tiles.keys().next().value);
     if (schedule && [...this.tiles.values()].some((tile) => tile.dirty)) this.schedule();
   }
 
@@ -145,10 +139,14 @@ class TreeSitterPresentation {
       if (!current()) return;
       // Commit the requested fragments together. No partially prepared view
       // becomes visible, even if an edit, query reload or topology change won.
-      this.cache.replace(staged.snapshots.reverse(), {
-        revision: stamp.revision,
-        generation: stamp.generation,
-      });
+      this.cache.replace(
+        staged.snapshots.reverse(),
+        {
+          revision: stamp.revision,
+          generation: stamp.generation,
+        },
+        (snapshot) => this.tiles.has(snapshot.start.row),
+      );
       for (const tile of tiles) {
         const currentTile = this.tiles.get(tile.row);
         if (currentTile) currentTile.dirty = false;

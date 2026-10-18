@@ -4,14 +4,14 @@ const Point = require("../../src/point");
 const HighlightCache = require("../../src/tree-sitter-highlight-cache");
 const Presentation = require("../../src/tree-sitter-presentation");
 
-function fixture() {
+function fixture(lastRow = 1000) {
   let revision = 1;
   const cache = new HighlightCache();
   const published = [];
   let preparations = 0;
   const presentation = new Presentation({
     buffer: {
-      getLastRow: () => 1000,
+      getLastRow: () => lastRow,
       clipPosition: (point) => Point.fromObject(point),
     },
     cache,
@@ -109,6 +109,22 @@ test("destruction cancels yielded presentation work without publishing", async (
   assert.equal(f.preparations(), 0);
   assert.deepEqual(f.published, []);
   assert.deepEqual(f.cache.snapshots, []);
+});
+
+test("keeps every visible fragment when folds spread a view beyond the cold cache allowance", async () => {
+  const f = fixture(10000),
+    view = {};
+  try {
+    const ranges = Array.from({ length: 20 }, (_, i) => [i * 128, i * 128 + 1]);
+    f.presentation.requestRanges(view, ranges);
+    await f.presentation.flush();
+    for (const [row] of ranges) assert.ok(f.cache.covers(new Point(row, 0), new Point(row + 1, 0)));
+    f.presentation.invalidate({ start: new Point(0, 0), end: new Point(0, 1) });
+    await f.presentation.flush();
+    for (const [row] of ranges) assert.ok(f.cache.covers(new Point(row, 0), new Point(row + 1, 0)));
+  } finally {
+    f.presentation.destroy();
+  }
 });
 
 test("a synchronous preparation error retains presentation and does not spin retries", async (t) => {
