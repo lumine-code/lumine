@@ -210,7 +210,36 @@ class TreeSitterParser {
       tree?.delete();
       signal.throwIfAborted();
     }
-    if (!tree) return null;
+    if (!tree) {
+      if (job.oldTree) {
+        const before = job.oldTree.getIncludedRanges();
+        const after = this.parser.getIncludedRanges();
+        const sameRanges =
+          before.length === after.length &&
+          before.every((range, index) => {
+            const next = after[index];
+            return (
+              range.startIndex === next.startIndex &&
+              range.endIndex === next.endIndex &&
+              range.startPosition.row === next.startPosition.row &&
+              range.startPosition.column === next.startPosition.column &&
+              range.endPosition.row === next.endPosition.row &&
+              range.endPosition.column === next.endPosition.column
+            );
+          });
+        if (!sameRanges) {
+          // The 0.27.1 runtime clears included-range differences when resuming
+          // an incremental parse. It can then reuse an old subtree over newly
+          // included source. Keep the fast path if the first slice completes;
+          // otherwise restart this changed-range job fresh and resume normally.
+          this.parser.reset();
+          job.oldTree.delete();
+          job.oldTree = null;
+          job.incremental = false;
+        }
+      }
+      return null;
+    }
     try {
       const changed = job.oldTree ? job.oldTree.getChangedRanges(tree) : [];
       return publish(tree, job.text, job.revision, job.incremental, changed);

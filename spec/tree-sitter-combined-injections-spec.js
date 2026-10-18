@@ -229,7 +229,8 @@ const c = /(?<name>a+)\k<name>/; const d = /[\]\d]+\?/;`;
                 layers: layers().map((layer) => ({
                   revision: layer.tree?.revision,
                   dirty: layer.treeIsDirty,
-                  node: layer.tree?.rootNode.descendantForPosition(position)?.toString(),
+                  nodeType: layer.tree?.rootNode.descendantForPosition(position)?.type,
+                  end: layer.tree?.rootNode.endPosition,
                 })),
               }),
             )

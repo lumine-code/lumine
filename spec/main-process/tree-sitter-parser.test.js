@@ -167,3 +167,59 @@ test("mixed document and synthetic edits preserve UTF-16 coordinates", () => {
     parser.close();
   }
 });
+
+test("an interrupted incremental parse retains newly included injection content", async () => {
+  const regex = await Language.load(
+    fs.readFileSync(require.resolve("language-regex/grammars/regex.wasm")),
+  );
+  const parser = new DocumentParser(regex);
+  const source = Array.from({ length: 300 }, (_, i) => `const p${i} = /value${i}+/;\n`).join("");
+  function ranges(text) {
+    let index = 0;
+    return text
+      .trimEnd()
+      .split("\n")
+      .map((line, row) => {
+        const start = line.indexOf("/") + 1,
+          end = line.lastIndexOf("/");
+        const range = {
+          startIndex: index + start,
+          endIndex: index + end,
+          startPosition: { row, column: start },
+          endPosition: { row, column: end },
+        };
+        index += line.length + 1;
+        return range;
+      });
+  }
+  try {
+    const previous = parser.parseSync(source, { includedRanges: ranges(source) });
+    const addition = "const added = /last+/;\n",
+      text = source + addition;
+    const parse = parser.parser.parse.bind(parser.parser);
+    let interrupted = false;
+    parser.parser.parse = (input, oldTree, options) =>
+      parse(input, oldTree, {
+        ...options,
+        progressCallback() {
+          if (!interrupted && oldTree) {
+            interrupted = true;
+            return true;
+          }
+          return false;
+        },
+      });
+    const tree = await parser.parse(text, {
+      previous,
+      includedRanges: ranges(text),
+      revision: 2,
+      edits: [{ startIndex: source.length, oldEndIndex: source.length, newText: addition }],
+    });
+    assert.equal(interrupted, true);
+    assert.equal(tree.rootNode.endIndex, ranges(text).at(-1).endIndex);
+    assert.equal(tree.rootNode.descendantForIndex(text.lastIndexOf("+")).type, "+");
+    assert.equal(previous.input, source);
+  } finally {
+    parser.close();
+  }
+});
