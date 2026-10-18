@@ -1368,15 +1368,18 @@ class TextBuffer {
     this.assertCanEdit();
     if (this.transactCallDepth === 0)
       return this.transact(() => this.setTextInIndependentRanges(edits));
-    const fallback = () => {
+    if (!this.tryApplyIndependentLineEdits(edits, true)) {
       for (const { range, text } of edits) this.setTextInRange(range, text);
-    };
+    }
+  }
+
+  tryApplyIndependentLineEdits(edits, recordHistory) {
     const requiresIntermediateText = () =>
       Object.values(this.markerLayers).some(
         (layer) =>
           layer.getMarkerCount() > 0 && (layer.trackRanges || layer.destroyInvalidatedMarkers),
       );
-    if (edits.length < 64 || requiresIntermediateText()) return fallback();
+    if (edits.length < 64 || requiresIntermediateText()) return false;
 
     const source = this.getText();
     const changes = [];
@@ -1384,7 +1387,9 @@ class TextBuffer {
     let previousRow = -1;
     let offset = 0;
     let endIndex = 0;
-    for (const { range, text } of edits) {
+    let firstIndex;
+    for (const planned of edits) {
+      const { range, text } = planned;
       const oldRange = this.clipRange(range);
       if (
         typeof text !== "string" ||
@@ -1395,13 +1400,14 @@ class TextBuffer {
         oldRange.start.row !== oldRange.end.row ||
         oldRange.start.row <= previousRow
       )
-        return fallback();
+        return false;
       previousRow = oldRange.start.row;
       const index = this.characterIndexForPosition(oldRange.start);
       const oldEndIndex = index + oldRange.end.column - oldRange.start.column;
       const oldText = source.slice(index, oldEndIndex);
-      if (/[\r\n]/.test(oldText)) return fallback();
-      if (changes.length === 0) endIndex = index;
+      if (/[\r\n]/.test(oldText)) return false;
+      if (Object.hasOwn(planned, "oldText") && planned.oldText !== oldText) return false;
+      if (changes.length === 0) firstIndex = endIndex = index;
       parts.push(source.slice(endIndex, index), text);
       endIndex = oldEndIndex;
       const newEnd = new Point(oldRange.start.row, oldRange.start.column + text.length);
@@ -1419,26 +1425,33 @@ class TextBuffer {
       offset += text.length - oldText.length;
     }
 
+    // Sparse edits must not copy a much larger document. A whole-buffer native
+    // commit materializes a flat text layer; a large partial replacement would
+    // instead make every subsequent edit (including undo) copy its remainder.
+    if (source.length > (endIndex - firstIndex) * 8) return false;
     this.emitWillChangeEvent();
-    if (requiresIntermediateText()) return fallback();
+    if (requiresIntermediateText()) return false;
     const range = new Range(changes[0].oldStart, changes.at(-1).oldEnd);
-    const edit = this.buffer.prepareEdit(range, parts.join(""));
+    const replacement = parts.join("");
+    const edit = this.buffer.prepareEdit(
+      this.getRange(),
+      source.slice(0, firstIndex) + replacement + source.slice(endIndex),
+    );
     const wasApplying = this.applyingEdit;
     try {
       this.applyingEdit = true;
-      const whole = edit.getChange();
       const displayChange = {
-        oldRange: new Range(whole.oldStart, whole.oldEnd),
-        newRange: new Range(whole.newStart, whole.newEnd),
-        oldText: whole.oldText,
-        newText: whole.newText,
+        oldRange: range,
+        newRange: new Range(range.start, changes.at(-1).newEnd),
+        oldText: source.slice(firstIndex, endIndex),
+        newText: replacement,
         origin: "edit",
       };
       this.prepareDisplayLayersForChange(displayChange);
-      const patch = patchFromChanges(changes);
+      const patch = recordHistory ? patchFromChanges(changes) : null;
       edit.commit();
       this.cachedText = null;
-      this.historyProvider.pushPatch(patch);
+      if (recordHistory) this.historyProvider.pushPatch(patch);
       const updateErrors = [];
       for (const change of changes) {
         this._textRevision++;
@@ -1483,10 +1496,32 @@ class TextBuffer {
         updateErrors.push(error);
       }
       if (updateErrors.length) throw updateErrors[0];
+      return true;
     } finally {
       edit.dispose();
       this.applyingEdit = wasApplying;
     }
+  }
+
+  applyHistoryUpdates(changes) {
+    if (
+      changes.length >= 64 &&
+      changes.every(
+        (change) =>
+          change.oldStart.row === change.oldEnd.row &&
+          change.newStart.row === change.newEnd.row &&
+          change.oldStart.row === change.newStart.row &&
+          change.oldStart.column === change.newStart.column,
+      )
+    ) {
+      const edits = changes.map((change) => ({
+        range: new Range(change.oldStart, change.oldEnd),
+        text: change.newText,
+        oldText: change.oldText,
+      }));
+      if (this.tryApplyIndependentLineEdits(edits, false)) return;
+    }
+    for (const change of changes) this.applyChange(this.buffer.prepareEditFromChange(change));
   }
 
   /**
@@ -1952,9 +1987,7 @@ class TextBuffer {
     this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
-      for (const change of pop.textUpdates) {
-        this.applyChange(this.buffer.prepareEditFromChange(change));
-      }
+      this.applyHistoryUpdates(pop.textUpdates);
     } finally {
       this.transactCallDepth--;
     }
@@ -1982,9 +2015,7 @@ class TextBuffer {
     this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
-      for (const change of pop.textUpdates) {
-        this.applyChange(this.buffer.prepareEditFromChange(change));
-      }
+      this.applyHistoryUpdates(pop.textUpdates);
     } finally {
       this.transactCallDepth--;
     }
@@ -2147,9 +2178,7 @@ class TextBuffer {
     if (truncated.textUpdates.length > 0) this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
-      for (const change of truncated.textUpdates) {
-        this.applyChange(this.buffer.prepareEditFromChange(change));
-      }
+      this.applyHistoryUpdates(truncated.textUpdates);
     } finally {
       this.transactCallDepth--;
     }

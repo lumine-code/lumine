@@ -47,6 +47,7 @@ describe("Independent line edit batches", () => {
   function state({ buffer, display, markers }) {
     return {
       text: buffer.getText(),
+      modified: buffer.buffer.isModified(),
       markers: markers.map((marker) => [marker.getRange().serialize(), marker.isValid()]),
       lines: display.getScreenLines().map((line) => [line.lineText, line.tags]),
       longest: display.getApproximateRightmostScreenPosition(),
@@ -65,10 +66,12 @@ describe("Independent line edit batches", () => {
     const layout = spyOn(actual.buffer, "updateDisplayLayersForChange").and.callThrough();
     const history = spyOn(actual.buffer.historyProvider, "pushPatch").and.callThrough();
     const applied = [];
+    const originalRange = actual.buffer.getRange();
     actual.buffer.onDidApplyChanges((batch) => applied.push(batch));
     actual.buffer.setTextInIndependentRanges(edits);
     scalar(expected.buffer, edits);
     expect(prepare.calls.count()).toBe(1);
+    expect(prepare.calls.first().args[0]).toEqual(originalRange);
     expect(layout.calls.count()).toBe(1);
     expect(history.calls.count()).toBe(1);
     expect(state(actual)).toEqual(state(expected));
@@ -81,13 +84,24 @@ describe("Independent line edit batches", () => {
         replay.slice(0, change.startIndex) + change.newText + replay.slice(change.oldEndIndex);
     }
     expect(replay).toBe(actual.buffer.getText());
+    prepare.calls.reset();
+    layout.calls.reset();
+    history.calls.reset();
     actual.buffer.undo();
     expected.buffer.undo();
     expect(state(actual)).toEqual(state(expected));
     expect(actual.buffer.getText()).toBe(source);
+    expect(prepare.calls.count()).toBe(1);
+    expect(layout.calls.count()).toBe(1);
+    expect(history).not.toHaveBeenCalled();
+    prepare.calls.reset();
+    layout.calls.reset();
     actual.buffer.redo();
     expected.buffer.redo();
     expect(state(actual)).toEqual(state(expected));
+    expect(prepare.calls.count()).toBe(1);
+    expect(layout.calls.count()).toBe(1);
+    expect(history).not.toHaveBeenCalled();
   });
 
   it("keeps intermediate text visible to range-tracking callbacks", () => {
@@ -175,5 +189,23 @@ describe("Independent line edit batches", () => {
     buffer.setTextInIndependentRanges(edits);
     expect(prepare.calls.count()).toBe(edits.length);
     expect(seen).toEqual(["  row_127\t😀ą"]);
+  });
+
+  it("does not rewrite a large document for a small edited region", () => {
+    const buffer = new TextBuffer("row\n".repeat(10000));
+    buffers.push(buffer);
+    const prepare = spyOn(buffer.buffer, "prepareEdit").and.callThrough();
+    buffer.setTextInIndependentRanges(
+      Array.from({ length: 64 }, (_, row) => ({
+        range: [
+          [row, 0],
+          [row, 0],
+        ],
+        text: "# ",
+      })),
+    );
+    expect(prepare.calls.count()).toBe(64);
+    expect(buffer.lineForRow(63)).toBe("# row");
+    expect(buffer.lineForRow(64)).toBe("row");
   });
 });
