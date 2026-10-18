@@ -64,7 +64,10 @@ exports.patchFromChanges = function patchFromChanges(changes) {
 // just as patchFromChanges does. Fresh points preserve the native result's
 // independence when event consumers freeze or retain their ranges.
 exports.compactPatchChanges = function compactPatchChanges(changes) {
-  if (changes.length !== 1) return exports.patchFromChanges(changes).getChanges();
+  if (changes.length !== 1) {
+    const independent = compactIndependentRows(changes);
+    return independent ?? exports.patchFromChanges(changes).getChanges();
+  }
   const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = changes[0];
   // Keep native coercion and saturation for nonstandard coordinates. In
   // particular, clipPosition permits fractions even though native edits use
@@ -107,6 +110,45 @@ exports.compactPatchChanges = function compactPatchChanges(changes) {
     },
   ];
 };
+
+// Single-line edits on distinct rows cannot move or overlap one another.
+// Their transaction summary is already compact; avoid round-tripping every
+// string through a temporary native Patch just to reconstruct the same list.
+function compactIndependentRows(changes) {
+  const rows = new Set();
+  for (const { oldStart, oldEnd, newStart, newEnd, oldText, newText } of changes) {
+    if (
+      !isOrdinaryPatchPoint(oldStart) ||
+      !isOrdinaryPatchPoint(oldEnd) ||
+      !isOrdinaryPatchPoint(newStart) ||
+      !isOrdinaryPatchPoint(newEnd) ||
+      typeof oldText !== "string" ||
+      typeof newText !== "string" ||
+      oldStart.row !== oldEnd.row ||
+      oldStart.row !== newStart.row ||
+      oldStart.row !== newEnd.row ||
+      oldStart.column !== newStart.column ||
+      oldEnd.column - oldStart.column !== oldText.length ||
+      newEnd.column - newStart.column !== newText.length ||
+      oldText.includes("\n") ||
+      newText.includes("\n") ||
+      rows.has(oldStart.row)
+    )
+      return null;
+    rows.add(oldStart.row);
+  }
+  return changes
+    .filter(({ oldText, newText }) => oldText.length || newText.length)
+    .map(({ oldStart, oldEnd, newStart, newEnd, oldText, newText }) => ({
+      oldStart: { row: oldStart.row + 0, column: oldStart.column + 0 },
+      oldEnd: { row: oldEnd.row + 0, column: oldEnd.column + 0 },
+      newStart: { row: newStart.row + 0, column: newStart.column + 0 },
+      newEnd: { row: newEnd.row + 0, column: newEnd.column + 0 },
+      oldText,
+      newText,
+    }))
+    .sort((a, b) => a.oldStart.row - b.oldStart.row);
+}
 
 function isOrdinaryPatchPoint(point) {
   return (

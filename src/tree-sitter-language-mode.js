@@ -703,6 +703,8 @@ class TreeSitterLanguageMode {
     }
     for (let i = 0, { length } = changes; i < length; i++) {
       const { oldRange, newRange } = changes[i];
+      if (oldRange.start.row === oldRange.end.row && newRange.start.row === newRange.end.row)
+        continue;
       spliceArray(this.isFoldableCache, newRange.start.row, oldRange.end.row - oldRange.start.row, {
         length: newRange.end.row - newRange.start.row,
       });
@@ -757,15 +759,13 @@ class TreeSitterLanguageMode {
     this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
     this.lastTransactionParseError = error;
 
-    const ranges = [...this.pendingTransactionRanges];
     this.pendingTransactionRanges.clear();
     if (error) {
       console.error("Tree-sitter update failed", error);
     } else {
-      // The editor is going to ask if the changed on-screen lines are now
-      // foldable. Run one capture query per accumulated range only after the
-      // update that owns every subsumed transaction has finished.
-      for (const range of ranges) {
+      // Warm only current views, not thousands of individual edit ranges.
+      // Off-screen folds remain invalidated and resolve when requested.
+      for (const range of this.presentation.getRequestedRanges()) {
         let prefillRange = range;
         if (range.end.row - range.start.row > FOLD_PREFILL_MAX_ROWS) {
           prefillRange = new Range(

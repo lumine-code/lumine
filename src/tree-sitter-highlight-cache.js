@@ -160,9 +160,11 @@ class HighlightCache {
             cache.snapshots = cache.snapshots.filter((item) => item !== snapshot);
             snapshot = null;
           }
-          let total = cache.snapshots.reduce((count, item) => count + item.events.length, 0);
-          while (!complete && total > cache.maxEvents && cache.snapshots.length > 1)
-            total -= cache.snapshots.shift().events.length;
+          if (!complete) {
+            let total = cache.snapshots.reduce((count, item) => count + item.events.length, 0);
+            while (total > cache.maxEvents && cache.snapshots.length > 1)
+              total -= cache.snapshots.shift().events.length;
+          }
         }
         const result = iterator.moveToSuccessor();
         cover();

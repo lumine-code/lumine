@@ -80,6 +80,18 @@ class TreeSitterPresentation {
     }
   }
 
+  getRequestedRanges() {
+    const ranges = [];
+    for (const row of [...this.tiles.keys()].sort((a, b) => a - b)) {
+      if (row > this.buffer.getLastRow()) continue;
+      const range = new Range([row, 0], this.buffer.clipPosition([row + TILE_ROWS, 0]));
+      const previous = ranges.at(-1);
+      if (previous?.end.isEqual(range.start)) previous.end = range.end;
+      else ranges.push(range);
+    }
+    return ranges;
+  }
+
   edit({ oldRange, newRange }) {
     // Equal-height edits leave other tiles' coordinates intact. Parse changes
     // and invalidateOnChange captures can widen this conservative local range

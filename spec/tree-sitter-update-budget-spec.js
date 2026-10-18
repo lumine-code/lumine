@@ -107,6 +107,26 @@ describe("Tree-sitter update budgets", () => {
     expect(parse.calls.count()).toBe(1);
   });
 
+  it("warms fold queries for the current viewport rather than every changed row", async () => {
+    const mode = await start("value = 1\n".repeat(2000));
+    mode.useAsyncParsing = false;
+    editor.displayLayer.getScreenLines(800, 820);
+    await editor.whenGrammarSettled();
+    mode.ensureQueriesForLayersSync("foldsQuery");
+    const captures = spyOn(mode.rootLanguageLayer.queries.foldsQuery, "captures").and.callThrough();
+    mode.syncTimeoutMicros = 1000000;
+    await new Promise((resolve) => setImmediate(resolve));
+    editor.selectAll();
+    editor.toggleLineCommentsInSelection();
+    await editor.whenGrammarSettled();
+    expect(captures.calls.count()).toBeGreaterThan(0);
+    expect(captures.calls.count()).toBeLessThan(4);
+    for (const [, options] of captures.calls.allArgs()) {
+      expect(options.startPosition.row).toBeGreaterThan(700);
+      expect(options.endPosition.row).toBeLessThan(900);
+    }
+  });
+
   it("settles automatic indentation and its syntax before a subsequent command", async () => {
     const mode = await start("def work():\n    value = 1\n    return value\n");
     mode.syncTimeoutMicros = 0;

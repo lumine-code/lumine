@@ -14,6 +14,95 @@ function plain(changes) {
 }
 
 describe("single-change compaction", () => {
+  it("matches native composition for independent rows in arbitrary order", () => {
+    let seed = 73;
+    const random = (max) => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed % max;
+    };
+    const texts = ["", "# ", "😀", "é\t", "\r", "value"];
+    for (let trial = 0; trial < 100; trial++) {
+      const changes = Array.from({ length: 24 }, (_, row) => {
+        const column = random(8),
+          oldText = texts[random(texts.length)],
+          newText = texts[random(texts.length)];
+        return {
+          oldStart: { row, column },
+          newStart: { row, column },
+          oldEnd: { row, column: column + oldText.length },
+          newEnd: { row, column: column + newText.length },
+          oldText,
+          newText,
+        };
+      });
+      for (let i = changes.length - 1; i > 0; i--) {
+        const j = random(i + 1);
+        [changes[i], changes[j]] = [changes[j], changes[i]];
+      }
+      expect(plain(compactPatchChanges(changes))).toEqual(
+        plain(patchFromChanges(changes).getChanges()),
+      );
+    }
+  });
+
+  it("uses full composition for overlapping edits and changes that move subsequent rows", () => {
+    const first = {
+      oldStart: { row: 0, column: 0 },
+      oldEnd: { row: 0, column: 0 },
+      newStart: { row: 0, column: 0 },
+      newEnd: { row: 0, column: 2 },
+      oldText: "",
+      newText: "ab",
+    };
+    for (const second of [
+      {
+        oldStart: { row: 0, column: 1 },
+        oldEnd: { row: 0, column: 2 },
+        newStart: { row: 0, column: 1 },
+        newEnd: { row: 0, column: 2 },
+        oldText: "b",
+        newText: "X",
+      },
+      {
+        oldStart: { row: 1, column: 0 },
+        oldEnd: { row: 1, column: 0 },
+        newStart: { row: 1, column: 0 },
+        newEnd: { row: 2, column: 0 },
+        oldText: "",
+        newText: "\r\n",
+      },
+    ])
+      expect(plain(compactPatchChanges([first, second]))).toEqual(
+        plain(patchFromChanges([first, second]).getChanges()),
+      );
+  });
+
+  it("preserves markers, transaction summaries and history for a bulk column edit", () => {
+    const source = "value = '🦉'\r\n".repeat(100);
+    const buffer = new TextBuffer(source);
+    const marker = buffer.markPosition([50, 5]);
+    const transactions = [];
+    buffer.onDidChangeText((event) => transactions.push(event.changes));
+    try {
+      buffer.transact(() => {
+        for (let row = 0; row < 100; row++) buffer.insert([row, 0], "# ");
+      });
+      expect(marker.getHeadPosition()).toEqual([50, 7]);
+      expect(transactions.length).toBe(1);
+      expect(transactions[0].length).toBe(100);
+      expect(transactions[0].every((change) => change.newText === "# ")).toBe(true);
+      const edited = buffer.getText();
+      buffer.undo();
+      expect(buffer.getText()).toBe(source);
+      expect(marker.getHeadPosition()).toEqual([50, 5]);
+      buffer.redo();
+      expect(buffer.getText()).toBe(edited);
+      expect(marker.getHeadPosition()).toEqual([50, 7]);
+    } finally {
+      buffer.destroy();
+    }
+  });
+
   it("counts UTF-16 columns and LF rows like native text storage", () => {
     const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
     for (const text of ["", "\r", "\r\n", "😀e\u0301", "a\r\nb\nc\r", "line\n".repeat(10000)]) {
