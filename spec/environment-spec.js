@@ -989,6 +989,47 @@ describe("Environment", () => {
       lumineEnv.destroy();
     });
 
+    it("conceals editor content before deactivation and through stylesheet teardown", async () => {
+      const frame = document.createElement("iframe");
+      jasmine.attachToDOM(frame);
+      const frameDocument = frame.contentDocument;
+      const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      environment.initialize({
+        window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+        document: frameDocument,
+      });
+      const styles = frameDocument.createElement("style");
+      styles.textContent =
+        "body { opacity: 1 !important; transition: opacity 60s !important; }" +
+        "lumine-text-editor { display: block; width: 200px; height: 100px; visibility: visible; }";
+      frameDocument.head.appendChild(styles);
+      const editor = frameDocument.createElement("lumine-text-editor");
+      editor.textContent = "Text that must never fill the window during reload";
+      frameDocument.body.appendChild(editor);
+      const bodyStyle = () => frame.contentWindow.getComputedStyle(frameDocument.body);
+      const expectConcealed = () => {
+        expect(bodyStyle().opacity).toBe("0");
+        expect(bodyStyle().transitionDuration).toBe("0s");
+      };
+      spyOn(environment, "saveState").and.resolveTo();
+      spyOn(environment.packages, "deactivatePackages").and.callFake(async () => {
+        expectConcealed();
+        expect(editor.getBoundingClientRect().width).toBe(200);
+        frameDocument.head.replaceChildren();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        expectConcealed();
+      });
+      try {
+        expect(bodyStyle().opacity).toBe("1");
+        expect(await environment.prepareToUnloadEditorWindow()).toBe(true);
+        environment.destroy();
+        expectConcealed();
+      } finally {
+        environment.destroy();
+        frame.remove();
+      }
+    });
+
     for (const failFinalSave of [false, true]) {
       it(`captures Save and Save As changes before unload${failFinalSave ? " and keeps the window open if that capture fails" : ""}`, async () => {
         const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
@@ -1035,6 +1076,7 @@ describe("Environment", () => {
           expect(beginGrammarUnload.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(deactivate.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(environment.unloading).toBe(!failFinalSave);
+          expect(environment.document.body.style.opacity).toBe(failFinalSave ? "" : "0");
         } finally {
           environment.destroy();
         }
@@ -1063,6 +1105,7 @@ describe("Environment", () => {
           expect(beginGrammarUnload).not.toHaveBeenCalled();
           expect(deactivate).not.toHaveBeenCalled();
           expect(environment.unloading).toBe(false);
+          expect(environment.document.body.style.opacity).toBe("");
           expect(environment.workspace.windowLifecycleChanging).toBe(false);
         } finally {
           environment.destroy();
@@ -2150,7 +2193,7 @@ describe("Environment", () => {
         configDirPath,
         blobStore: fakeBlobStore,
         window,
-        document,
+        document: document.implementation.createHTMLDocument(),
       });
       spyOn(lumineEnvironment.stateStore, "close");
       spyOn(lumineEnvironment.projectStateIndex, "close");
@@ -2158,6 +2201,7 @@ describe("Environment", () => {
 
       lumineEnvironment.unloadEditorWindow();
 
+      expect(lumineEnvironment.document.body.style.opacity).toBe("0");
       expect(fakeBlobStore.save).toHaveBeenCalled();
       expect(lumineEnvironment.stateStore.close).toHaveBeenCalled();
       expect(lumineEnvironment.projectStateIndex.close).toHaveBeenCalled();

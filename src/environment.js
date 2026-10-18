@@ -1431,10 +1431,11 @@ class Environment {
         if (!(await save())) return false;
         this.unloading = true;
         this.grammars.beginWindowUnload();
-        // Package deactivation runs while the window is still visible. Mark the
-        // document first so package-owned empty-workspace UI can disappear
-        // without briefly leaving core's empty-pane mark behind on its own.
+        // Package deactivation removes themes and UI before navigation. Conceal
+        // the document first so the surviving editor cannot paint without its
+        // layout and styles.
         this.document.body.classList.add("is-unloading");
+        this.#hideWindowContent();
         // Every orderly unload deactivates, reload included. Skipping it there
         // used to be how a package that would not finish deactivating was kept
         // from hanging the reload; `timeout` is that guarantee now, and it holds
@@ -1465,6 +1466,7 @@ class Environment {
   }
 
   unloadEditorWindow() {
+    this.#hideWindowContent();
     // By the time this runs the window is going away for certain, including on
     // paths that never reached `prepareToUnloadEditorWindow`. Workers and
     // background tasks read this flag to stop starting — and stop settling —
@@ -1487,6 +1489,13 @@ class Environment {
 
     this.storeWindowBackground();
     this.saveBlobStoreSync();
+  }
+
+  #hideWindowContent() {
+    // Inline styles survive stylesheet teardown. Keep layout intact for cleanup
+    // and suppress transitions so no partially dismantled frame can appear.
+    this.document.body.style.setProperty("transition", "none", "important");
+    this.document.body.style.setProperty("opacity", "0", "important");
   }
 
   saveBlobStoreSync() {
