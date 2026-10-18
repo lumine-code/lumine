@@ -342,7 +342,10 @@ class TextBuffer {
       const serializedDirty = serializedState !== "unmodified";
 
       if (persistedBaseMatchesDisk && serializedState === "modified") {
-        buffer.buffer.deserializeChanges(params.outstandingChanges);
+        const changes = params.outstandingChanges;
+        buffer.buffer.deserializeChanges(
+          typeof changes === "string" ? Buffer.from(changes, "base64") : changes,
+        );
         buffer._textRevision++;
       }
 
@@ -484,7 +487,8 @@ class TextBuffer {
       if (this.baseTextDigestCache == null) this.baseTextDigestCache = this.buffer.baseTextDigest();
       result.filePath = filePath;
       result.digestWhenLastPersisted = this.digestWhenLastPersisted;
-      result.outstandingChanges = this.buffer.serializeChanges();
+      // Session snapshots pass through JSON; keep binary patches out of its byte-array form.
+      result.outstandingChanges = this.buffer.serializeChanges().toString("base64");
       result.fileState = this.fileState;
       if (this.fileState !== "unmodified") result.text = this.getText();
     } else {

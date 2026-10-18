@@ -2131,6 +2131,69 @@ three\
       }
     };
 
+    it("keeps outstanding changes compact through JSON while preserving text and history", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "compact-changes.txt");
+      const original = "first 😀\r\nsecond Ω\r\n";
+      const changed = "changed 🧪\r\n\ud800 lone \u0000 終\r\n";
+      fs.writeFileSync(filePath, original);
+      const source = loadBufferSync(filePath);
+      source.setTextInRange(source.getRange(), changed, { normalizeLineEndings: false });
+
+      const serialized = source.serialize();
+      expect(typeof serialized.outstandingChanges).toBe("string");
+      const state = JSON.parse(JSON.stringify(serialized));
+      expect(state.outstandingChanges).toBe(serialized.outstandingChanges);
+      const restored = await deserializeBuffer(state);
+
+      expect(restored.getText()).toBe(changed);
+      expect(restored.getFileState()).toBe("modified");
+      expect(fs.readFileSync(filePath, "utf8")).toBe(original);
+      expect(restored.undo()).toBe(true);
+      expect(restored.getText()).toBe(original);
+      expect(restored.redo()).toBe(true);
+      expect(restored.getText()).toBe(changed);
+    });
+
+    it("restores outstanding changes saved as binary buffers by earlier sessions", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "legacy-changes.txt");
+      fs.writeFileSync(filePath, "before\r\n");
+      const source = loadBufferSync(filePath);
+      source.insert([0, 6], " 😀");
+      const state = source.serialize();
+      state.outstandingChanges = source.buffer.serializeChanges();
+      const stored = JSON.parse(JSON.stringify(state), (_key, value) =>
+        value?.type === "Buffer" ? Buffer.from(value.data) : value,
+      );
+
+      for (const previous of [state, stored]) {
+        const restored = await deserializeBuffer(previous);
+        expect(restored.getText()).toBe("before 😀\r\n");
+        expect(restored.getFileState()).toBe("modified");
+        expect(restored.undo()).toBe(true);
+        expect(restored.getText()).toBe("before\r\n");
+      }
+    });
+
+    it("recovers compact dirty state as conflicted when its saved base changed on disk", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "changed-base.txt");
+      fs.writeFileSync(filePath, "before\r\n");
+      const source = loadBufferSync(filePath);
+      source.setText("unsaved 終\r\n");
+      const state = JSON.parse(JSON.stringify(source.serialize()));
+      source.destroy();
+      fs.writeFileSync(filePath, "external changes\r\n");
+
+      const restored = await deserializeBuffer(state);
+
+      expect(restored.getText()).toBe("unsaved 終\r\n");
+      expect(restored.getFileState()).toBe("conflicted");
+      expect(restored.undo()).toBe(false);
+      expect(fs.readFileSync(filePath, "utf8")).toBe("external changes\r\n");
+    });
+
     it("discards stale folds and clips other markers when the file changed on disk", async function () {
       const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
       const filePath = join(tempDir, "changed-and-shortened.txt");
