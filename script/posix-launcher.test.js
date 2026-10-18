@@ -70,6 +70,7 @@ class Probe {
     }
     var info = new ProcessStartInfo(Environment.GetEnvironmentVariable("LUMINE_TEST_NODE"), String.Join(" ", forwarded));
     info.UseShellExecute = false;
+    info.CreateNoWindow = true;
     bool readInput = Environment.GetEnvironmentVariable("LUMINE_TEST_READ_STDIN") == "1";
     info.RedirectStandardInput = readInput;
     // Framework Process.Start uses Console.InputEncoding for its stdin writer
