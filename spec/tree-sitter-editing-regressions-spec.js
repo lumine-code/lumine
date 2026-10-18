@@ -125,4 +125,70 @@ describe("Tree-sitter editing and history", () => {
     expect(editor.getText()).toBe(original);
     expect(screen()).toEqual(before);
   });
+
+  it("reuses fold query windows when commenting and uncommenting a whole document", async () => {
+    const original = "# %% Code\n" + "value = max(1, 2)\n".repeat(1800);
+    await start(original);
+    const mode = editor.getBuffer().getLanguageMode();
+    mode.ensureQueriesForLayersSync("foldsQuery");
+    const layer = mode
+      .getAllInjectionLayers()
+      .find((item) => item.grammar.scopeName === "source.python");
+    const query = layer.queries.foldsQuery;
+    spyOn(query, "captures").and.callThrough();
+    for (let i = 0; i < 2; i++) {
+      query.captures.calls.reset();
+      editor.selectAll();
+      editor.toggleLineCommentsInSelection();
+      await settle();
+      expect(query.captures.calls.count()).toBeGreaterThan(0);
+      expect(query.captures.calls.count()).toBeLessThan(20);
+    }
+    expect(editor.getText()).toBe(original);
+  });
+
+  it("keeps painted Python scopes while a commented block awaits its parse", async () => {
+    const original = [
+      "@cdb.limit",
+      "def get(ls):",
+      "    item = sof.limit(ls).find(",
+      "        name = 'nodes_dissup',",
+      "        idcs = [11975],",
+      "        comp = lambda b, i: b.d_z < i.d_z,",
+      "        grps = [21, 22, 23, 24],",
+      "    )",
+      "    v_max = ls.meta['val']/3.6 if ls.meta['val']>2 else dyn.parsed['t',1,1].v_max",
+      "    return dict(d_z_Ed=item.d_z, v_max=v_max)",
+      "",
+    ].join("\r\n");
+    await start(original);
+    screen();
+    const mode = editor.getBuffer().getLanguageMode();
+    const parse = mode.parseAsync.bind(mode);
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    spyOn(mode, "parseAsync").and.callFake(async (...args) => {
+      const tree = await parse(...args);
+      await gate;
+      return tree;
+    });
+    try {
+      editor.selectAll();
+      editor.toggleLineCommentsInSelection();
+      const interim = screen().filter((line) => line.text.trim());
+      expect(interim.length).toBe(10);
+      for (const line of interim)
+        expect(line.tags.filter((tag) => tag < 0).length).toBeGreaterThan(2);
+    } finally {
+      release();
+    }
+    await settle();
+    for (let row = 0; row < 10; row++) {
+      const column = editor.lineTextForBufferRow(row).indexOf("#");
+      const scopes = editor.scopeDescriptorForBufferPosition([row, column]).getScopesArray();
+      expect(scopes.some((scope) => scope.startsWith("comment."))).toBe(true);
+    }
+  });
 });

@@ -1,4 +1,5 @@
 const { Node } = require("web-tree-sitter");
+const HighlightCache = require("./tree-sitter-highlight-cache");
 const { Point, Range, spliceArray } = require("./text-buffer");
 const { Patch } = require("@lumine-code/superstring");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
@@ -237,6 +238,7 @@ class TreeSitterLanguageMode {
     maxIdleParsersPerLanguage,
   }) {
     this.buffer = buffer;
+    this.highlightCache = new HighlightCache();
     this.textInputChunk = null;
     this.grammar = grammar;
     this.config = config ?? lumine.config;
@@ -361,6 +363,7 @@ class TreeSitterLanguageMode {
     // Read by the async parse loop, which runs across `setImmediate` and so can
     // still have a batch queued when this returns.
     this.destroyed = true;
+    this.highlightCache.clear();
     this.textInputChunk = null;
 
     let layers = this.getAllLanguageLayers();
@@ -637,6 +640,7 @@ class TreeSitterLanguageMode {
   }
 
   bufferDidChange(change) {
+    this.highlightCache.edit(change);
     this.textInputChunk = null;
     if (!this.rootLanguageLayer) {
       return;
@@ -1026,7 +1030,6 @@ class TreeSitterLanguageMode {
       if (!foldResolver) {
         continue;
       }
-      foldResolver.reset();
       foldResolver.prefillFoldCache(range);
     }
   }
@@ -1098,7 +1101,8 @@ class TreeSitterLanguageMode {
     if (!this.rootLanguageLayer) {
       return new NullLanguageModeHighlightIterator();
     }
-    return new HighlightIterator(this);
+    if (this.publicationPending) return new PendingHighlightIterator(this);
+    return this.highlightCache.record(new HighlightIterator(this), this.buffer);
   }
 
   classNameForScopeId(scopeId) {
@@ -1225,7 +1229,7 @@ class TreeSitterLanguageMode {
 
     // The most accurate way to do this is to reconstruct the results from the
     // highlight iterator itself.
-    const iterator = this.buildHighlightIterator();
+    const iterator = new HighlightIterator(this);
     const scopes = [];
 
     // Add scopes that were open already at this point.
@@ -4478,6 +4482,7 @@ class LanguageLayer {
     }
 
     let affectedRange = this.editedRange;
+    if (affectedRange) this.rangeList.add(affectedRange);
     this.lastTransactionEditedRange = this.editedRange;
     this.editedRange = null;
     if (this.rootRangeInvalidationPending) {
@@ -6038,6 +6043,40 @@ class LanguageLayer {
       oldEndPosition: oldEnd,
       newEndPosition: newEnd,
     };
+  }
+}
+
+class PendingHighlightIterator extends NullLanguageModeHighlightIterator {
+  constructor(languageMode) {
+    super();
+    this.languageMode = languageMode;
+  }
+
+  seek(position, endRow) {
+    const mode = this.languageMode;
+    // Screen lines built without a current snapshot must be rebuilt when it
+    // arrives, including unchanged lines queried beside the edited rows.
+    const range = mode.buffer.clipRange(
+      new Range([position.row, 0], [endRow == null ? Infinity : endRow + 1, 0]),
+    );
+    mode.publicationRanges.add(range);
+    const cached = mode.highlightCache.read(position, range.end, [
+      mode.idForScope(mode.grammar.scopeName),
+    ]);
+    this.iterator = cached.iterator;
+    return cached.scopes;
+  }
+  getPosition() {
+    return this.iterator?.getPosition() ?? Point.INFINITY;
+  }
+  getOpenScopeIds() {
+    return this.iterator?.getOpenScopeIds() ?? [];
+  }
+  getCloseScopeIds() {
+    return this.iterator?.getCloseScopeIds() ?? [];
+  }
+  moveToSuccessor() {
+    return this.iterator?.moveToSuccessor();
   }
 }
 
