@@ -223,3 +223,50 @@ test("an interrupted incremental parse retains newly included injection content"
     parser.close();
   }
 });
+
+test("changed boundary hints retain incremental reuse when their source coverage is identical", async () => {
+  const parser = new DocumentParser(language);
+  try {
+    const line = "const value = 1;\n",
+      source = line.repeat(300);
+    const previous = parser.parseSync(source);
+    const text = source.slice(0, 6) + "w" + source.slice(7);
+    const parse = parser.parser.parse.bind(parser.parser);
+    let interrupted = false;
+    parser.parser.parse = (input, oldTree, options) =>
+      parse(input, oldTree, {
+        ...options,
+        progressCallback() {
+          if (!interrupted && oldTree) {
+            interrupted = true;
+            return true;
+          }
+          return false;
+        },
+      });
+    const tree = await parser.parse(text, {
+      previous,
+      edits: [{ startIndex: 6, oldEndIndex: 7, newText: "w" }],
+      includedRanges: [
+        {
+          startIndex: 0,
+          startPosition: { row: 0, column: 0 },
+          endIndex: line.length,
+          endPosition: { row: 1, column: 0 },
+        },
+        {
+          startIndex: line.length,
+          startPosition: { row: 1, column: 0 },
+          endIndex: text.length,
+          endPosition: { row: 300, column: 0 },
+        },
+      ],
+    });
+    assert.equal(interrupted, true);
+    assert.equal(tree.incremental, true);
+    assert.equal(tree.rootNode.lastNamedChild.id, previous.rootNode.lastNamedChild.id);
+    assert.equal(tree.rootNode.text, text);
+  } finally {
+    parser.close();
+  }
+});

@@ -5881,7 +5881,8 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Wait for the current grammar to finish its initial parse and any pending
-   * transaction, including injected language layers.
+   * transaction, including injected language layers and requested automatic
+   * indentation. Indentation edits are parsed before this wait completes.
    *
    * Returns `false` when the editor is destroyed, the grammar changes, the
    * optional signal is aborted, or parsing the current transaction fails. A
@@ -5901,7 +5902,9 @@ module.exports = class TextEditor {
     if (
       typeof atGrammarSettlement !== "function" &&
       typeof ready?.then !== "function" &&
-      typeof atTransactionEnd !== "function"
+      typeof atTransactionEnd !== "function" &&
+      !this.autoIndentAtTransactionEndPromise &&
+      !this.pendingIndentationPromises?.size
     ) {
       return Promise.resolve(true);
     }
@@ -5940,22 +5943,24 @@ module.exports = class TextEditor {
 
       (async () => {
         try {
-          if (typeof atGrammarSettlement === "function") {
-            const transaction = await atGrammarSettlement.call(languageMode);
+          if (typeof atGrammarSettlement !== "function" && typeof ready?.then === "function")
+            await ready;
+          while (isCurrent()) {
+            const transaction =
+              typeof atGrammarSettlement === "function"
+                ? await atGrammarSettlement.call(languageMode)
+                : typeof atTransactionEnd === "function"
+                  ? await atTransactionEnd.call(languageMode)
+                  : null;
             if (!isCurrent()) return cancel();
-            complete(!transaction?.parseError);
-            return;
+            if (transaction?.parseError) return complete(false);
+            const pending = [...(this.pendingIndentationPromises ?? [])];
+            if (this.autoIndentAtTransactionEndPromise)
+              pending.push(this.autoIndentAtTransactionEndPromise);
+            if (!pending.length) return complete(true);
+            await Promise.all(pending);
           }
-
-          if (typeof ready?.then === "function") await ready;
-          if (!isCurrent()) return cancel();
-
-          const transaction =
-            typeof atTransactionEnd === "function"
-              ? await atTransactionEnd.call(languageMode)
-              : null;
-          if (!isCurrent()) return cancel();
-          complete(!transaction?.parseError);
+          cancel();
         } catch (error) {
           if (!isCurrent()) cancel();
           else fail(error);
@@ -7415,6 +7420,14 @@ module.exports = class TextEditor {
     );
   }
 
+  trackIndentation(promise) {
+    const pending = (this.pendingIndentationPromises ??= new Set());
+    const tracked = promise.finally(() => pending.delete(tracked));
+    pending.add(tracked);
+    tracked.catch(() => {});
+    return tracked;
+  }
+
   // Given a buffer row, indent it.
   //
   // * bufferRow - The row `Number`.
@@ -7432,19 +7445,21 @@ module.exports = class TextEditor {
       // because of further changes in the same transaction, meaning we should
       // schedule an auto-indent for the entire range affected by the
       // transaction.
-      return handleIndentationErrors(
-        Promise.resolve(indentLevel).then((indentLevel) => {
-          if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
-          if (typeof indentLevel === "number") {
-            const revision = buffer.getTextRevision();
-            const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
-            if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-            return range;
-          } else if (indentLevel === undefined) {
-            this.scheduleIndentAdjustment(true);
-          }
-        }),
-        isCurrent,
+      return this.trackIndentation(
+        handleIndentationErrors(
+          Promise.resolve(indentLevel).then((indentLevel) => {
+            if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
+            if (typeof indentLevel === "number") {
+              const revision = buffer.getTextRevision();
+              const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
+              if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+              return range;
+            } else if (indentLevel === undefined) {
+              this.scheduleIndentAdjustment(true);
+            }
+          }),
+          isCurrent,
+        ),
       );
     } else if (typeof indentLevel === "number") {
       return this.setIndentationForBufferRow(bufferRow, indentLevel, options);
@@ -7516,21 +7531,23 @@ module.exports = class TextEditor {
       this.getTabLength(),
     );
     if (indentLevel?.then) {
-      return handleIndentationErrors(
-        Promise.resolve(indentLevel).then((indentLevel) => {
-          if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
-          // We have a stricter contract than `autoIndentBufferRow`: if
-          // `suggestedIndentForEditedBufferRow` doesn't return a number, we
-          // should ignore it. Otherwise we run the risk of dedenting something
-          // that the user doesn't want dedented.
-          if (typeof indentLevel === "number") {
-            const revision = buffer.getTextRevision();
-            const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
-            if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-            return range;
-          }
-        }),
-        isCurrent,
+      return this.trackIndentation(
+        handleIndentationErrors(
+          Promise.resolve(indentLevel).then((indentLevel) => {
+            if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
+            // We have a stricter contract than `autoIndentBufferRow`: if
+            // `suggestedIndentForEditedBufferRow` doesn't return a number, we
+            // should ignore it. Otherwise we run the risk of dedenting something
+            // that the user doesn't want dedented.
+            if (typeof indentLevel === "number") {
+              const revision = buffer.getTextRevision();
+              const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
+              if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+              return range;
+            }
+          }),
+          isCurrent,
+        ),
       );
     } else {
       if (indentLevel != null) this.setIndentationForBufferRow(bufferRow, indentLevel);

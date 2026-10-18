@@ -107,6 +107,22 @@ describe("Tree-sitter update budgets", () => {
     expect(parse.calls.count()).toBe(1);
   });
 
+  it("settles automatic indentation and its syntax before a subsequent command", async () => {
+    const mode = await start("def work():\n    value = 1\n    return value\n");
+    mode.syncTimeoutMicros = 0;
+    editor.setCursorBufferPosition([1, Infinity]);
+    editor.insertNewline();
+    expect(await editor.whenGrammarSettled()).toBe(true);
+    expect(editor.lineTextForBufferRow(2)).toBe("    ");
+    expect(editor.getCursorBufferPosition().column).toBe(4);
+    expect(mode.tree.input).toBe(editor.getText());
+    expect(editor.pendingIndentationPromises?.size ?? 0).toBe(0);
+    expect(editor.autoIndentAtTransactionEndPromise).toBeNull();
+    editor.undo();
+    await editor.whenGrammarSettled();
+    expect(editor.getText()).toBe("def work():\n    value = 1\n    return value\n");
+  });
+
   it("cancels an already started parse when a newer revision supersedes it", async () => {
     const mode = await start("value = 1\n".repeat(1000));
     mode.syncTimeoutMicros = 0;

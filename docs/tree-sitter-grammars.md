@@ -185,11 +185,13 @@ Published trees retain their original UTF-16 text and revision. Consumers await 
 
 The pinned 0.27.1 runtime has unsafe automatic cursor cleanup and interleaved cursor copying. A small ownership layer in the editor uses the public `delete()` and `resetTo()` methods to preserve cursor lifetime and state; it does not modify the dependency or its Wasm binary. A subprocess regression forces garbage collection while cursors from different trees are used and copied.
 
-That runtime also clears included-range differences when resuming an incremental parse, which can lose newly injected content. If a suspended job has different included ranges from its edited old tree, the adapter resets that job once and continues with a fresh parse. Incremental jobs that finish within their first slice, and suspended jobs whose included ranges remain identical, retain the incremental path. A deterministic regression interrupts the changed-range parse and verifies its final injected token.
+That runtime also clears included-range differences when resuming an incremental parse, which can lose newly injected content. If a suspended job covers different source from its edited old tree, the adapter resets that job once and continues with a fresh parse. The comparison merges adjacent ranges and clips them at EOF: changing parse-boundary hints without changing their covered source retains incremental reuse. Incremental jobs that finish within their first slice also retain the incremental path. Deterministic regressions interrupt both kinds of job and verify the new injected token and reuse of unaffected syntax.
 
 Large batches use a fresh parse and conservative syntax invalidation instead of applying thousands of edits to an old tree. The current policy switches at 128 edits, or when changed input spans at least half the previous text and 8192 code units. This affects parsing only: buffer transactions, selections and undo history retain the original edits.
 
 Multicursor newline insertion plans indentation after all cursors have inserted text. It queries only the affected rows against the same committed trees, applies the resulting indents together and groups them with the insertion for undo. Deferred indentation is discarded when a later text revision makes its plan obsolete. Raw highlight and indentation captures are cached in bounded windows for the exact tree, query and range; scope predicates are evaluated again for every consumer.
+
+Use `await editor.whenGrammarSettled()` before a command that depends on completed automatic indentation, such as expanding a snippet after inserting a newline. The editor waits for requested indentation and then settles syntax again if indentation changed the text. The language mode's `atTransactionEnd()` waits for syntax only; it cannot describe pending editor-owned text adjustments.
 
 ### Parser and query costs
 

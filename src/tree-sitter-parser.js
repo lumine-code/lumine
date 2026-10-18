@@ -28,6 +28,30 @@ function isBulkChange(previous, edits) {
   return changed >= 8192 && changed >= previous.input.length / 2;
 }
 
+function rangeCoverage(ranges, text) {
+  const result = [];
+  let endPosition;
+  for (const range of ranges) {
+    if (range.startIndex >= text.length || range.startIndex === range.endIndex) continue;
+    const current = { ...range };
+    if (current.endIndex > text.length) {
+      current.endIndex = text.length;
+      current.endPosition = endPosition ??= positionAt(text, text.length);
+    }
+    const previous = result.at(-1);
+    if (
+      previous &&
+      previous.endIndex === current.startIndex &&
+      previous.endPosition.row === current.startPosition.row &&
+      previous.endPosition.column === current.startPosition.column
+    ) {
+      previous.endIndex = current.endIndex;
+      previous.endPosition = current.endPosition;
+    } else result.push(current);
+  }
+  return result;
+}
+
 function applyEdits(tree, previous, text, edits) {
   let source = previous.input;
   const replay = edits.some((edit) => !edit.startPosition);
@@ -211,9 +235,13 @@ class TreeSitterParser {
       signal.throwIfAborted();
     }
     if (!tree) {
-      if (job.oldTree) {
-        const before = job.oldTree.getIncludedRanges();
-        const after = this.parser.getIncludedRanges();
+      if (job.oldTree && !job.rangeCoverageChecked) {
+        job.rangeCoverageChecked = true;
+        // Parse-boundary hints partition the same source into adjacent ranges.
+        // Compare their union, clipped at EOF, so changing those hints does not
+        // turn a local edit in a large paragraph into a complete reparse.
+        const before = rangeCoverage(job.oldTree.getIncludedRanges(), job.text);
+        const after = rangeCoverage(this.parser.getIncludedRanges(), job.text);
         const sameRanges =
           before.length === after.length &&
           before.every((range, index) => {
