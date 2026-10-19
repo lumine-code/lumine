@@ -189,6 +189,7 @@ class MarkerIndex {
   #root = null;
   #nodes = new Map();
   #seed;
+  #readGeneration = 0;
 
   constructor(seed = 1) {
     this.#seed = seed >>> 0 || 1;
@@ -206,9 +207,29 @@ class MarkerIndex {
     const node = this.#nodes.get(id);
     if (!node) throw new RangeError(`Unknown marker ${id}`);
     const ancestors = [];
-    for (let current = node; current; current = current.parent) ancestors.push(current);
-    for (let index = ancestors.length - 1; index >= 0; index--) push(ancestors[index]);
+    // A resolved ancestor has already passed every pending suffix shift to
+    // this path. Distinct reads share that work until coordinates change.
+    for (
+      let current = node;
+      current && current.readGeneration !== this.#readGeneration;
+      current = current.parent
+    )
+      ancestors.push(current);
+    for (let index = ancestors.length - 1; index >= 0; index--) {
+      const ancestor = ancestors[index];
+      push(ancestor);
+      ancestor.readGeneration = this.#readGeneration;
+    }
     return node;
+  }
+
+  #invalidateReadGeneration() {
+    if (this.#readGeneration === Number.MAX_SAFE_INTEGER) {
+      for (const node of this.#nodes.values()) node.readGeneration = -1;
+      this.#readGeneration = 0;
+    } else {
+      this.#readGeneration++;
+    }
   }
 
   insert(id, start, end) {
@@ -218,6 +239,7 @@ class MarkerIndex {
     validate(start);
     validate(end);
     if (compare(start, end) > 0) throw new RangeError("Marker end precedes start");
+    this.#invalidateReadGeneration();
     const node = update({
       id,
       start: copy(start),
@@ -229,6 +251,7 @@ class MarkerIndex {
       parent: null,
       lazyRows: 0,
       lazyColumns: 0,
+      readGeneration: -1,
     });
     this.#nodes.set(id, node);
     this.#root = insert(this.#root, node);
@@ -237,6 +260,7 @@ class MarkerIndex {
 
   remove(id) {
     if (!this.#nodes.has(id)) return;
+    this.#invalidateReadGeneration();
     const node = this.#node(id);
     this.#root = remove(this.#root, node);
     if (this.#root) this.#root.parent = null;
@@ -372,6 +396,8 @@ class MarkerIndex {
     validate(oldExtent);
     validate(newExtent);
     if (zero(oldExtent) && zero(newExtent)) return null;
+    // Null flags can still mean that an untouched suffix moved lazily.
+    this.#invalidateReadGeneration();
     const oldEnd = traverse(start, oldExtent),
       newEnd = traverse(start, newExtent);
     const [before, after] = split(this.#root, (node) => compare(node.start, oldEnd) <= 0);

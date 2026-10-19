@@ -127,3 +127,120 @@ test("queries clip negative and fractional probes without mutating caller positi
   assert.equal(probe.column, -1);
   assert.throws(() => index.insert(2, point(2, -1), point(3)), RangeError);
 });
+
+test("partial scalar reads match native through mixed mutations and materializing queries", () => {
+  for (const seed of [41, 573, 9281]) {
+    let state = seed;
+    const random = (limit) => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state % limit;
+    };
+    const js = new MarkerIndex(seed);
+    const native = new NativeMarkerIndex(seed);
+    const ids = [];
+    let nextId = 1;
+    const normalize = (value) =>
+      ArrayBuffer.isView(value) || value instanceof Set ? Array.from(value) : value;
+    const apply = (method, ...args) =>
+      assert.deepEqual(
+        normalize(js[method](...args)),
+        normalize(native[method](...args)),
+        `${method} seed ${seed}`,
+      );
+
+    for (let step = 0; step < 1000; step++) {
+      const action = random(6);
+      if (action <= 1 || !ids.length) {
+        const start = point(random(100), random(20));
+        const end = point(start.row + random(4), start.column + random(4));
+        apply("insert", nextId, start, end);
+        ids.push(nextId++);
+      } else if (action === 2) {
+        const [id] = ids.splice(random(ids.length), 1);
+        apply("remove", id);
+      } else if (action === 3) {
+        apply("setExclusive", ids[random(ids.length)], Boolean(random(2)));
+      } else {
+        apply(
+          "splicePacked",
+          point(random(110), random(20)),
+          point(random(3), random(5)),
+          point(random(3), random(5)),
+        );
+      }
+
+      // Read only part of the tree before a query or the next mutation. A
+      // full dump after every splice would mask ancestry-cache mistakes.
+      for (let read = 0; ids.length && read < 8; read++) {
+        const id = ids[random(ids.length)];
+        apply("getStart", id);
+        apply("getEnd", id);
+        apply("getRange", id);
+        apply("compare", id, ids[random(ids.length)]);
+      }
+      const start = point(random(110), random(20));
+      const end = point(start.row + 5, start.column + 5);
+      apply("findIntersecting", start, end);
+      apply("findContaining", start, end);
+      apply("findStartingIn", start, end);
+      apply("getRanges", Uint32Array.from(ids.filter((_, index) => index % 3 === 0)));
+      if (step % 50 === 0) apply("dump");
+    }
+    apply("dump");
+  }
+});
+
+test("suffix-only splices invalidate resolved reads even when no marker flags are returned", () => {
+  const index = new MarkerIndex();
+  for (let id = 1; id <= 200; id++) index.insert(id, point(id * 3), point(id * 3 + 1, 4));
+  for (const id of [199, 1, 100, 50]) assert.deepEqual(index.getStart(id), point(id * 3));
+
+  assert.equal(index.splicePacked(point(0), point(0), point(2, 5)), null);
+  assert.deepEqual(index.getStart(199), point(599));
+  assert.deepEqual(index.getEnd(1), point(6, 4));
+  assert.deepEqual(index.getStart(100), point(302));
+
+  assert.equal(index.splicePacked(point(0), point(1), point(0)), null);
+  assert.deepEqual(index.getStart(199), point(598));
+  assert.deepEqual(index.getStart(1), point(4));
+});
+
+test("resolved reads survive structural insertions and removals after a lazy suffix shift", () => {
+  const index = new MarkerIndex();
+  for (let id = 1; id <= 200; id++) index.insert(id, point(id * 3), point(id * 3, 2));
+  index.splicePacked(point(0), point(0), point(2));
+  assert.deepEqual(index.getStart(100), point(302));
+
+  index.insert(201, point(150, 1), point(151));
+  index.remove(50);
+  index.remove(150);
+  index.splicePacked(point(1), point(0), point(1));
+
+  assert.deepEqual(index.getStart(201), point(151, 1));
+  assert.deepEqual(index.getEnd(201), point(152));
+  assert.deepEqual(index.getStart(100), point(303));
+  assert.deepEqual(index.getStart(200), point(603));
+  assert.throws(() => index.getStart(50), /Unknown marker/);
+  assert.throws(() => index.getRange(150), /Unknown marker/);
+});
+
+test("cached scalar reads retain detached copies and unknown-id errors", () => {
+  const index = new MarkerIndex();
+  index.insert(1, point(1, 2), point(3, 4));
+  index.getStart(1);
+  const start = index.getStart(1);
+  const end = index.getEnd(1);
+  const range = index.getRange(1);
+  start.row = 99;
+  end.column = 99;
+  range.start.column = 99;
+  range.end.row = 99;
+  index.getRanges([1]).fill(99);
+
+  assert.deepEqual(index.getStart(1), point(1, 2));
+  assert.deepEqual(index.getEnd(1), point(3, 4));
+  for (const method of ["getStart", "getEnd", "getRange"]) {
+    assert.throws(() => index[method](999), /Unknown marker/);
+  }
+  assert.throws(() => index.getRanges([1, 999]), /Unknown marker/);
+});

@@ -788,6 +788,8 @@ class DisplayLayer {
 
   getClipColumnDelta(bufferPosition, clipDirection) {
     const { row, column } = bufferPosition;
+    // A line start cannot split a character pair or sit inside a soft tab.
+    if (column === 0) return 0;
 
     // Treat paired unicode characters as atomic...
     const character = this.buffer.getCharacterAtPosition(bufferPosition);
