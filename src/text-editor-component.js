@@ -276,7 +276,9 @@ module.exports = class TextEditorComponent {
     if (props.model !== this.props.model) {
       const previousProps = this.props;
       this.destroyBlockDecorations();
-      if (this.props !== previousProps) return;
+      // A nested same-model update is a no-op. Only a real replacement with
+      // fresh ownership supersedes the model change currently being applied.
+      if (this.props.model !== previousProps.model || this.blockDecorationOwner) return;
       previousProps.model.component = null;
       props.model.component = this;
       this.props = props;
