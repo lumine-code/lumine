@@ -63,29 +63,30 @@ const inputFiles = (directory, relative = "src") => {
 };
 const fingerprint = (source) =>
   sha(JSON.stringify(inputFiles(source).sort(([a], [b]) => a.localeCompare(b))));
-const packageFingerprint = (name) => {
-  const directory = path.join(root, "..", name);
-  const files = (
-    execFileSync("git", ["ls-files", "-z"], { cwd: directory, encoding: "utf8" }) +
-    execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
-      cwd: directory,
-      encoding: "utf8",
-    })
-  )
-    .split("\0")
-    .filter(Boolean);
-  return sha(
-    JSON.stringify(
-      files
-        .filter(
-          (file) =>
-            fs.existsSync(path.join(directory, file)) &&
-            fs.statSync(path.join(directory, file)).isFile(),
-        )
-        .map((file) => [file, sha(fs.readFileSync(path.join(directory, file)))]),
+const packageFiles = (directory) =>
+  [
+    ...new Set(
+      (
+        execFileSync("git", ["ls-files", "-z"], { cwd: directory, encoding: "utf8" }) +
+        execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+          cwd: directory,
+          encoding: "utf8",
+        })
+      )
+        .split("\0")
+        .filter(Boolean),
     ),
+  ]
+    .filter(
+      (file) =>
+        fs.existsSync(path.join(directory, file)) &&
+        fs.statSync(path.join(directory, file)).isFile(),
+    )
+    .sort();
+const packageFingerprint = (directory, files) =>
+  sha(
+    JSON.stringify(files.map((file) => [file, sha(fs.readFileSync(path.join(directory, file)))])),
   );
-};
 
 async function main() {
   const candidateRevision = git("rev-parse", "HEAD").trim();
@@ -147,9 +148,40 @@ async function main() {
     Object.entries(sources).map(([name, source]) => [name, fingerprint(source)]),
   );
   const dependencyHash = sha(fs.readFileSync(path.join(root, "package-lock.json")));
-  const packageHashes = Object.fromEntries(
-    config.packages.map((name) => [name, packageFingerprint(name)]),
-  );
+  const packageSources = {},
+    packageHashes = {},
+    packageRevisions = {},
+    packageInputs = {};
+  for (const name of config.packages) {
+    const source = path.join(root, "..", name);
+    const target = path.join(destination, "packages", name);
+    const files = packageFiles(source);
+    const before = packageFingerprint(source, files);
+    for (const file of files) {
+      const output = path.join(target, file);
+      fs.mkdirSync(path.dirname(output), { recursive: true });
+      fs.copyFileSync(path.join(source, file), output);
+    }
+    assert.equal(
+      packageFingerprint(source, packageFiles(source)),
+      before,
+      `${name} changed while freezing`,
+    );
+    assert.equal(packageFingerprint(target, files), before, `${name} snapshot differs`);
+    if (fs.existsSync(path.join(source, "node_modules")))
+      fs.symlinkSync(
+        path.join(source, "node_modules"),
+        path.join(target, "node_modules"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+    packageSources[name] = target;
+    packageHashes[name] = before;
+    packageInputs[name] = files;
+    packageRevisions[name] = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: source,
+      encoding: "utf8",
+    }).trim();
+  }
   const nativePath = path.join(
     path.dirname(require.resolve("@lumine-code/superstring")),
     "build",
@@ -171,7 +203,7 @@ async function main() {
       fs.mkdirSync(path.join(home, "packages"));
       for (const name of config.packages)
         fs.symlinkSync(
-          path.join(root, "..", name),
+          packageSources[name],
           path.join(home, "packages", name),
           process.platform === "win32" ? "junction" : "dir",
         );
@@ -257,7 +289,11 @@ async function main() {
     );
     assert.equal(sha(fs.readFileSync(nativePath)), nativeHash, "Native reference binary changed");
     for (const name of config.packages)
-      assert.equal(packageFingerprint(name), packageHashes[name], `${name} changed`);
+      assert.equal(
+        packageFingerprint(packageSources[name], packageInputs[name]),
+        packageHashes[name],
+        `${name} snapshot changed`,
+      );
   }
   const summary = [];
   const median = (values) => {
@@ -328,6 +364,8 @@ async function main() {
     sourceHashes: hashes,
     dependencyHash,
     packageHashes,
+    packageRevisions,
+    packagesFrozen: true,
     nativeHash,
     driverHash: sha(bytes),
     modelDriverHash: sha(modelBytes),
