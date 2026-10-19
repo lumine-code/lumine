@@ -85,7 +85,7 @@ Contributions to core menus use `group` and `order` instead of written separator
 | `Developer`                 | `tools`, `authoring`, `services`, `diagnostics`, `inspection`, `windows`, `extensions`                                |
 | `Help`                      | `documentation`, `references`, `examples`, `issues`, `extensions`                                                     |
 
-The first menu uses the canonical `App` path on every platform. Its flat `windows` group comes first: new and detached windows, then closing the current window. Tab transfer remains in the Tabs package menu and context menus. Settings, configuration files, package management, updates and application information follow. Native macOS services and visibility actions remain in App. `File` owns document and project operations.
+The first menu uses the canonical `App` path on every platform. Its flat `windows` group comes first: new and detached windows. Tab transfer remains in the Tabs package menu and context menus. Settings, configuration files, package management, updates and application information follow. Native macOS services and visibility actions remain in App. Close Window and Exit or Quit share the final `quit` group, with Close Window immediately above Exit or Quit. `File` owns document and project operations.
 
 Windows and Linux display the title App. [macOS always displays the application's name for the first native menu](https://github.com/electron/electron/blob/v44.9.0/docs/tutorial/application-menu.md#building-application-menus), so its visible title remains Lumine while contributions still use the canonical `App` path.
 
