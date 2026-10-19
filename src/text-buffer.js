@@ -2981,6 +2981,9 @@ class TextBuffer {
       return this.getEndPosition();
     } else if (column < 0) {
       return Point(row, 0);
+    } else if (column === 0 && options?.clipDirection !== "forward") {
+      // Every line contains its start; only forward clipping can cross it.
+      return position;
     } else {
       const lineLength = this.lineLengthForRow(row);
       if (
