@@ -158,7 +158,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run build -- --types prod,optional,dev
       - name: Test native window lifecycle services
-        run: node --test spec/main-process/auxiliary-window-broker.test.js spec/main-process/file-watch-service.test.js
+        shell: bash
+        run: |
+          prefix=""
+          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
+          $prefix node --test spec/main-process/auxiliary-window-broker.test.js spec/main-process/file-watch-service.test.js
       - name: Test JavaScript document core
         run: npm run test:document-core
       - name: Test Tree-sitter runtime
