@@ -363,7 +363,23 @@ class Patch {
   static compose(patches) {
     const result = new Patch();
     result.#discardIdentities = true;
+    let first = true;
     for (const patch of patches) {
+      if (first && patch.#merge) {
+        // Transaction grouping commonly receives one already canonical patch.
+        // Preserve its persistent tree instead of replaying thousands of splices.
+        const changes = [];
+        let removedIdentity = false;
+        for (const change of patch.#changes) {
+          if (change.oldSource && change.newSource && change.oldSource.equals(change.newSource))
+            removedIdentity = true;
+          else changes.push(change);
+        }
+        result.#changes = removedIdentity ? new ChangeTree(changes) : patch.#changes.copy();
+        first = false;
+        continue;
+      }
+      first = false;
       for (const h of patch.#changes) {
         result.splice(
           h.newStart,
