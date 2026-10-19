@@ -1,5 +1,7 @@
 # Final JavaScript document model versus historical native
 
+Measurement note (2026-10-20): the renderer fixtures below inherited Jasmine's synchronous editor updates. The [hot-edit comparison](hot-edit-performance-2026-10-20.md) uses normal scheduled updates and explains the correction. These historical before/after pairs used identical settings, but their absolute renderer times should not be compared directly to the corrected runner. Node-only model measurements are unaffected.
+
 Measured locally on Windows after all text-model and auto-indent corrections. Candidate: `0f05b1302ba6e36de68403f6986d37b2427e6197`; historical native: `50fa656a4df67f1c989b76a7e21fc14b93129e3b`. Source and package fingerprints, every sample and process median are retained in the [raw report](../benchmark/results/javascript-document-final-comparison-2026-10-19.json).
 
 ## Findings

@@ -290,6 +290,11 @@ describe("JavaScript document editor integration performance", () => {
           pane.activateItem(editor);
           component = lumine.views.getView(editor).getComponent();
         } else component = new TextEditorComponent({ model: editor, updatedSynchronously: false });
+        // The spec harness otherwise forces an immediate render for every
+        // notification. Match production scheduling; measure() flushes the
+        // final state explicitly after grammar settlement.
+        component.element.setUpdatedSynchronously(false);
+        expect(component.updatedSynchronously).toBe(false);
         component.element.style.width = "1000px";
         component.element.style.height = "800px";
         if (!config.packages?.length) jasmine.attachToDOM(component.element);

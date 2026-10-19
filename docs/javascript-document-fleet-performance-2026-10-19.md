@@ -1,5 +1,7 @@
 # JavaScript document model with active packages
 
+Measurement note (2026-10-20): these active-package renderer runs inherited Jasmine's synchronous editor updates. Both backends used that setting, but absolute times include extra test-mode renders. The [hot-edit comparison](hot-edit-performance-2026-10-20.md) corrects the harness to normal update scheduling. Node-only model measurements are unaffected.
+
 The [final comparison after all corrections](javascript-document-final-comparison-2026-10-19.md) includes four fresh processes per backend, current-fleet multiline and indentation scenarios, event-based completion measurements and a separate Python control.
 
 Local Windows measurements on 2026-10-19 after the snapshot, line-reader, fuzzy-search and bulk-edit optimization pass. The [raw performance report](../benchmark/results/javascript-document-fleet-performance-2026-10-19.json) retains every sample, process median, source hash and package fingerprint. The [fleet validation report](../benchmark/results/javascript-document-fleet-validation-2026-10-19.json) records the full package sweep and subsequent retries.
