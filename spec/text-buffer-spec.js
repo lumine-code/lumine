@@ -2993,25 +2993,28 @@ three\
       ).toBe(true);
     });
 
-    it("preserves markers on unchanged lines when the texts differ beyond the native edit-distance bound", function () {
+    it("preserves markers on unchanged lines when both bounded diff deadlines expire", function () {
       const oldLines = [];
       const newLines = [];
-      for (let i = 0; i < 3000; i++) {
+      for (let i = 0; i < 30; i++) {
         oldLines.push(`line ${i}`);
-        newLines.push(i < 1000 || i >= 2000 ? `LINE ${i}` : `line ${i}`);
+        newLines.push(i < 10 || i >= 20 ? `LINE ${i}` : `line ${i}`);
       }
       buffer.setText(oldLines.join("\n"));
       const layer = buffer.addMarkerLayer();
       const marker = layer.markRange([
-        [1500, 0],
-        [1500, 4],
+        [15, 0],
+        [15, 4],
       ]);
+      let now = Date.now();
+      const clock = spyOn(Date, "now").and.callFake(() => (now += 2000));
       buffer.setTextViaDiff(newLines.join("\n"));
+      clock.and.callThrough();
       expect(buffer.getText()).toBe(newLines.join("\n"));
       expect(
         marker.getRange().isEqual([
-          [1500, 0],
-          [1500, 4],
+          [15, 0],
+          [15, 4],
         ]),
       ).toBe(true);
     });

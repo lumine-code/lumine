@@ -1266,21 +1266,13 @@ class TextBuffer {
    * @param {String} text - A `String` containing the new buffer contents.
    */
   setTextViaDiff(text) {
-    const changes = this.buffer.diff(text).getChanges();
+    const patch = this.buffer.diff(text);
+    const changes = patch.getChanges();
     if (changes.length === 0) return;
 
-    // The text differ bounds its edit distance and degrades to a single
-    // change replacing the whole buffer when the texts differ too much. Use
-    // the line-wise JavaScript diff in that case so markers outside the
-    // changed lines are still preserved.
-    const { row: lastRow, column: lastColumn } = this.buffer.getExtent();
-    if (
-      changes.length === 1 &&
-      changes[0].oldStart.row === 0 &&
-      changes[0].oldStart.column === 0 &&
-      changes[0].oldEnd.row === lastRow &&
-      changes[0].oldEnd.column === lastColumn
-    ) {
+    // A bounded diff may replace unchanged interior lines after its deadline.
+    // Recompute by lines without that deadline to preserve their markers.
+    if (patch.isCoarse) {
       return this.setTextViaLineDiff(text);
     }
 

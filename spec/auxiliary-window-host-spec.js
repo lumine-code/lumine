@@ -307,6 +307,7 @@ describe("Auxiliary editor windows", () => {
     };
     await extra.windowService.close();
     await conditionPromise(() => extra.isDestroyed());
+    await workspace.whenWindowOperationsIdle({ prepareToUnload: false });
     expect(workspace.getMainWindow().getEditorContainer().getPaneItems()).toContain(editor);
     expect(editor.getText()).toBe("authoritative unsaved content");
     expect(editor.getElement().ownerDocument).toBe(document);

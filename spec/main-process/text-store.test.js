@@ -8,6 +8,28 @@ const { spawnSync } = require("node:child_process");
 const TextStore = require("../../src/text-store");
 const Patch = require("../../src/text-patch");
 
+test("diff marks deadline fallbacks as coarse while retaining common prefix and suffix", (t) => {
+  const before = "prefix\nbefore\nunchanged\nafter\nsuffix";
+  const after = "prefix\nBEFORE\nunchanged\nAFTER\nsuffix";
+  const store = new TextStore(before);
+  assert.notEqual(store.diff(after).isCoarse, true);
+  let now = 0;
+  t.mock.method(Date, "now", () => (now += 2000));
+
+  const patch = store.diff(after);
+  assert.equal(patch.isCoarse, true);
+  const [change] = patch.getChanges();
+  assert.equal(patch.getChangeCount(), 1);
+  assert.deepEqual(change.oldStart, { row: 1, column: 0 });
+  assert.deepEqual(change.oldEnd, { row: 3, column: 5 });
+  assert.equal(change.oldText, "before\nunchanged\nafter");
+  assert.equal(change.newText, "BEFORE\nunchanged\nAFTER");
+  assert.equal(store.getText(), before);
+  assert.notEqual(store.diff(before).isCoarse, true);
+  assert.notEqual(new TextStore("prefix suffix").diff("prefix new suffix").isCoarse, true);
+  assert.notEqual(new TextStore("prefix old suffix").diff("prefix suffix").isCoarse, true);
+});
+
 test("completion preserves Unicode words and indices across chunk boundaries and case expansion", async () => {
   const word = "𐐀abc";
   const matches = await new TextStore(" ".repeat(32767) + word).findWordsWithSubsequence(

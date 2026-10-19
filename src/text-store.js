@@ -120,6 +120,9 @@ function diff(before, after) {
     parts ??= diffLines(oldValue, newValue, { timeout: 1000 });
   }
   if (!parts) {
+    // Keep timeout degradation explicit: common prefix/suffix trimming means
+    // this coarse replacement need not span the full document.
+    if (oldMiddle.length && newMiddle.length) patch.isCoarse = true;
     patch.splice(
       before.positionAt(start),
       extent(oldMiddle),
