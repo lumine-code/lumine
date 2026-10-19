@@ -133,10 +133,31 @@ describe("registerDefaultCommands", () => {
     }
   });
 
+  it("forwards Restart Window in Developer Mode once on every platform without the old command alias", () => {
+    const send = spyOn(ipcRenderer, "send");
+
+    for (const platform of ["win32", "linux", "darwin"]) {
+      const commands = commandsRegisteredOn(platform);
+      const listeners = commands.get("application:restart-window-in-developer-mode");
+      expect(listeners.length).toBe(1);
+      expect(commands.has("application:reopen-window-in-dev-mode")).toBe(false);
+      const [listener] = listeners;
+      expect(listener.description).toBe("Restart the current window in developer mode.");
+
+      listener.didDispatch();
+
+      expect(send).toHaveBeenCalledOnceWith(
+        "command",
+        "application:restart-window-in-developer-mode",
+      );
+      send.calls.reset();
+    }
+  });
+
   it("registers the core commands migrated from Bacadra Tools", () => {
     const commands = commandNamesRegisteredOn("win32");
 
-    expect(commands.has("application:reopen-window-in-dev-mode")).toBe(true);
+    expect(commands.has("application:restart-window-in-developer-mode")).toBe(true);
     expect(commands.has("git:update-repositories")).toBe(true);
     expect(commands.has("editor:collapse-blank-lines")).toBe(true);
     expect(commands.has("editor:collapse-content-spaces")).toBe(true);

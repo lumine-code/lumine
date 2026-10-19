@@ -1321,7 +1321,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.on("application:new-window", () => this.openPath(createOpenSettings({})));
     this.on("application:new-file", () => (this.focusedWindow() || this).openPath());
     this.on("application:open-dev", () => this.promptForPathToOpen("all", { devMode: true }));
-    this.on("application:reopen-window-in-dev-mode", () => this.reopenWindowInDevMode());
+    this.on("application:restart-window-in-developer-mode", () =>
+      this.restartWindowInDeveloperMode(),
+    );
     this.on("application:reload-all-windows", () => this.reloadAllWindows());
     this.on("application:open-safe", () => this.promptForPathToOpen("all", { safeMode: true }));
 
@@ -1889,7 +1891,7 @@ module.exports = class LumineApplication extends EventEmitter {
 
   // Replaces the focused window with a development-mode window after its
   // current state has been saved and the renderer has agreed to unload.
-  async reopenWindowInDevMode() {
+  async restartWindowInDeveloperMode() {
     const sourceWindow = this.focusedWindow();
     if (!sourceWindow) return;
     if (sourceWindow.devMode) return sourceWindow.reload();
@@ -1960,7 +1962,7 @@ module.exports = class LumineApplication extends EventEmitter {
       } catch (reloadError) {
         console.error("Failed to restore the original window", reloadError);
       }
-      console.error("Failed to reopen the window in development mode", error);
+      console.error("Failed to restart the window in developer mode", error);
       return;
     }
 

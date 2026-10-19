@@ -117,6 +117,8 @@ describe("platform menus", function () {
       const app = menus[platform].menu.find((item) => strip(item.label) === "App");
       const items = app.submenu;
       expect(items.some((item) => strip(item.label) === "Windows")).toBe(false);
+      expect(app.groupOrder[0]).toBe("windows");
+      expect(items[0].command).toBe("application:new-window");
       const index = items.findIndex((item) => item.command === "application:new-window");
       expect(items[index + 1].command).toBe("window:new-detached-window");
       expect(strip(items[index + 1].label)).toBe("New Detached Window");
@@ -129,12 +131,15 @@ describe("platform menus", function () {
       const windows = developer.submenu.filter((item) => item.group === "windows");
       expect(windows.map((item) => item.command)).toEqual([
         "application:open-dev",
-        "application:reopen-window-in-dev-mode",
+        "application:restart-window-in-developer-mode",
       ]);
       expect(windows.every((item) => !item.submenu)).toBe(true);
       expect(developer.submenu.some((item) => strip(item.label) === "Development Windows")).toBe(
         false,
       );
+      const specs = developer.submenu.find((item) => item.command === "window:run-package-specs");
+      expect(specs.group).toBe("authoring");
+      expect(specs.order).toBe(20);
     }
   });
 

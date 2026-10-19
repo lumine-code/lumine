@@ -302,8 +302,11 @@ module.exports = function ({
           return ipcRenderer.send("command", "application:open-dev");
         },
       },
-      "application:reopen-window-in-dev-mode": function () {
-        return ipcRenderer.send("command", "application:reopen-window-in-dev-mode");
+      "application:restart-window-in-developer-mode": {
+        description: "Restart the current window in developer mode.",
+        didDispatch: function () {
+          return ipcRenderer.send("command", "application:restart-window-in-developer-mode");
+        },
       },
       "application:reload-all-windows": function () {
         return ipcRenderer.send("command", "application:reload-all-windows");

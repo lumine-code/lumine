@@ -1987,7 +1987,7 @@ describe("LumineApplication", function () {
     });
   });
 
-  describe("reopening the focused window in development mode", function () {
+  describe("restarting the focused window in developer mode", function () {
     it("opens the same project in a loaded development window before closing the source", async function () {
       const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
       const app = scenario.getApplication(0);
@@ -1995,7 +1995,7 @@ describe("LumineApplication", function () {
       sourceWindow.prepareToUnload = sinon.stub().resolves(true);
       sinon.spy(sourceWindow, "close");
 
-      const openedWindow = await app.reopenWindowInDevMode();
+      const openedWindow = await app.restartWindowInDeveloperMode();
 
       assert.isTrue(sourceWindow.prepareToUnload.calledOnceWithExactly({ reason: "replace" }));
       assert.isTrue(sourceWindow.close.calledOnce);
@@ -2011,7 +2011,7 @@ describe("LumineApplication", function () {
       sourceWindow.isFocused.returns(true);
       sourceWindow.prepareToUnload = sinon.stub().resolves(true);
 
-      const openedWindow = await app.reopenWindowInDevMode();
+      const openedWindow = await app.restartWindowInDeveloperMode();
 
       assert.isTrue(openedWindow.devMode);
       assert.deepEqual(openedWindow.projectRoots || [], []);
@@ -2033,12 +2033,12 @@ describe("LumineApplication", function () {
       };
       sinon.stub(app, "openPaths").resolves(replacementWindow);
 
-      const reopenPromise = app.reopenWindowInDevMode();
+      const restartPromise = app.restartWindowInDeveloperMode();
       await new Promise(process.nextTick);
       assert.isFalse(sourceWindow.close.called);
 
       resolveLoaded();
-      assert.strictEqual(await reopenPromise, replacementWindow);
+      assert.strictEqual(await restartPromise, replacementWindow);
       assert.isTrue(sourceWindow.close.calledOnce);
       assert.isTrue(
         app.openPaths.calledWith({
@@ -2059,7 +2059,7 @@ describe("LumineApplication", function () {
       sinon.spy(sourceWindow, "close");
       sinon.spy(app, "openPaths");
 
-      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isUndefined(await app.restartWindowInDeveloperMode());
       assert.isFalse(sourceWindow.close.called);
       assert.isFalse(app.openPaths.called);
       assert.isFalse(sourceWindow.unloading);
@@ -2073,7 +2073,7 @@ describe("LumineApplication", function () {
       sinon.spy(app, "openPaths");
       sinon.stub(console, "error");
 
-      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isUndefined(await app.restartWindowInDeveloperMode());
       assert.isFalse(app.openPaths.called);
       assert.isFalse(sourceWindow.unloading);
       assert.isTrue(
@@ -2091,7 +2091,7 @@ describe("LumineApplication", function () {
       sourceWindow.reload = sinon.stub().resolves("reloaded");
       sinon.spy(app, "openPaths");
 
-      assert.strictEqual(await app.reopenWindowInDevMode(), "reloaded");
+      assert.strictEqual(await app.restartWindowInDeveloperMode(), "reloaded");
       assert.isTrue(sourceWindow.reload.calledOnceWithExactly());
       assert.isFalse(app.openPaths.called);
     });
@@ -2105,12 +2105,12 @@ describe("LumineApplication", function () {
       sinon.stub(app, "openPaths").rejects(new Error("opening failed"));
       sinon.stub(console, "error");
 
-      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isUndefined(await app.restartWindowInDeveloperMode());
       assert.isTrue(sourceWindow.reload.calledOnceWithExactly({ skipPrepareToUnload: true }));
       assert.isFalse(sourceWindow.unloading);
       assert.isTrue(
         console.error.calledWithMatch(
-          "Failed to reopen the window in development mode",
+          "Failed to restart the window in developer mode",
           sinon.match.instanceOf(Error),
         ),
       );
@@ -2118,12 +2118,12 @@ describe("LumineApplication", function () {
 
     it("exposes the operation as an application command", async function () {
       const app = scenario.addApplication();
-      sinon.stub(app, "reopenWindowInDevMode").resolves();
+      sinon.stub(app, "restartWindowInDeveloperMode").resolves();
 
-      app.emit("application:reopen-window-in-dev-mode");
+      app.emit("application:restart-window-in-developer-mode");
       await new Promise(process.nextTick);
 
-      assert.isTrue(app.reopenWindowInDevMode.calledOnce);
+      assert.isTrue(app.restartWindowInDeveloperMode.calledOnce);
     });
 
     it("does not replace a window if a close supersedes its unload preparation", async function () {
@@ -2136,7 +2136,7 @@ describe("LumineApplication", function () {
       });
       sinon.spy(app, "openPaths");
 
-      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isUndefined(await app.restartWindowInDeveloperMode());
       assert.isFalse(app.openPaths.called);
       assert.isFalse(sourceWindow.reload.called);
       assert.isFalse(sourceWindow.windowStateTransferPending);
@@ -2154,7 +2154,7 @@ describe("LumineApplication", function () {
       };
       sinon.stub(app, "openPaths").resolves(replacement);
 
-      const replacing = app.reopenWindowInDevMode();
+      const replacing = app.restartWindowInDeveloperMode();
       await new Promise(process.nextTick);
       sourceWindow.closing = true;
       finishLoading();
