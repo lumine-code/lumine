@@ -144,3 +144,32 @@ test("retained geometry copies survive lazy suffix shifts and independent edits"
   assert.equal(copy.getChanges().at(-1).newStart.row, 10000);
   assert.equal(patch.getChanges().at(-1).newStart.row, 10099);
 });
+
+test("bulk independent patches match incremental native patches and keep persistent copies", () => {
+  const changes = Array.from({ length: 500 }, (_, row) => ({
+    oldStart: { row: row * 2, column: 1 },
+    oldEnd: { row: row * 2, column: 3 },
+    newStart: { row: row * 2, column: 1 },
+    newEnd: { row: row * 2, column: 4 },
+    oldText: "xx",
+    newText: "new",
+  }));
+  const js = Patch.fromIndependentChanges(changes),
+    native = new NativePatch();
+  for (const change of changes)
+    native.splice(
+      change.newStart,
+      { row: 0, column: 2 },
+      { row: 0, column: 3 },
+      change.oldText,
+      change.newText,
+    );
+  assert.deepEqual(clean(js.getChanges()), clean(native.getChanges()));
+  const copy = js.copy();
+  js.splice({ row: 0, column: 0 }, { row: 0, column: 0 }, { row: 1, column: 0 }, "", "\n");
+  native.splice({ row: 0, column: 0 }, { row: 0, column: 0 }, { row: 1, column: 0 }, "", "\n");
+  assert.deepEqual(clean(js.getChanges()), clean(native.getChanges()));
+  assert.deepEqual(clean(copy.getChanges()), changes);
+  assert.deepEqual(Patch.compose([copy, copy.invert()]).getChanges(), []);
+  assert.equal(Patch.fromIndependentChanges([changes[0], changes[0]]), null);
+});

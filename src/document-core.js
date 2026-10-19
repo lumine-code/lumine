@@ -4,15 +4,23 @@ function range(start, end) {
   return Object.freeze({ start: Object.freeze(start), end: Object.freeze(end) });
 }
 
-function change(before, after, startIndex, removed, inserted) {
+function change(before, startIndex, removed, inserted) {
   const oldEndIndex = startIndex + removed.length;
   const newEndIndex = startIndex + inserted.length;
+  const start = before.positionAt(startIndex);
+  const insertedExtent = inserted.positionAt(inserted.length);
   return Object.freeze({
     startIndex,
     oldEndIndex,
     newEndIndex,
-    oldRange: range(before.positionAt(startIndex), before.positionAt(oldEndIndex)),
-    newRange: range(after.positionAt(startIndex), after.positionAt(newEndIndex)),
+    oldRange: range(start, before.positionAt(oldEndIndex)),
+    newRange: range(
+      { ...start },
+      {
+        row: start.row + insertedExtent.row,
+        column: insertedExtent.row ? insertedExtent.column : start.column + insertedExtent.column,
+      },
+    ),
     removed,
     inserted,
     // Text payloads stay as shared pieces until a string consumer requests them.
@@ -89,6 +97,11 @@ class DocumentDraft {
     return this.#text;
   }
 
+  get changeSet() {
+    if (this.#closed) throw new Error("Draft is closed");
+    return new ChangeSet(this.#changes);
+  }
+
   replace(start, end, text) {
     if (this.#closed) throw new Error("Draft is closed");
     const inserted = text instanceof PieceTree ? text : new PieceTree(text);
@@ -96,7 +109,7 @@ class DocumentDraft {
     const removed = before.subtext(start, end);
     if (removed.equals(inserted)) return this;
     const after = before.replace(start, end, inserted);
-    this.#changes.push(change(before, after, start, removed, inserted));
+    this.#changes.push(change(before, start, removed, inserted));
     this.#text = after;
     return this;
   }
@@ -110,17 +123,42 @@ class DocumentDraft {
       .sort((a, b) => a.start - b.start);
     let previous;
     for (const edit of ordered) {
-      this.#text.subtext(edit.start, edit.end);
+      if (
+        !Number.isSafeInteger(edit.start) ||
+        !Number.isSafeInteger(edit.end) ||
+        edit.start < 0 ||
+        edit.end < edit.start ||
+        edit.end > this.#text.length
+      )
+        throw new RangeError("Batch edit is outside the document");
       if (typeof edit.text !== "string" && !(edit.text instanceof PieceTree))
         throw new TypeError("Document text must be a string or piece tree");
       if (previous && (edit.start < previous.end || edit.start === previous.start))
         throw new RangeError("Batch edits overlap");
       previous = edit;
     }
-    for (let index = ordered.length - 1; index >= 0; index--) {
-      const { start, end, text } = ordered[index];
-      this.replace(start, end, text);
+    const before = this.#text;
+    const insertedTexts = new Map();
+    const insertedSource = (text) => {
+      if (text instanceof PieceTree) return text;
+      if (insertedTexts.has(text)) return insertedTexts.get(text);
+      const source = new PieceTree(text);
+      if (text.length <= 1024 && insertedTexts.size < 128) insertedTexts.set(text, source);
+      return source;
+    };
+    const effective = ordered
+      .map((edit) => ({
+        ...edit,
+        text: insertedSource(edit.text),
+        removed: before.subtext(edit.start, edit.end),
+      }))
+      .filter((edit) => !edit.removed.equals(edit.text));
+    const after = before.replaceAll(effective);
+    for (let index = effective.length - 1; index >= 0; index--) {
+      const { start, text, removed } = effective[index];
+      this.#changes.push(change(before, start, removed, text));
     }
+    this.#text = after;
     return this;
   }
 

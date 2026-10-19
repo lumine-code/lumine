@@ -213,6 +213,52 @@ test("batch edits use base offsets, undo shares the old root and redo advances r
   assert.equal(document.redo(), null);
 });
 
+test("bulk tree assembly matches sequential edits and exact deltas across fragmented sources", () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const next = random(seed);
+    const document = new DocumentCore("a😀b\r\n".repeat(18000));
+    for (let iteration = 0; iteration < 30; iteration++) {
+      const before = document.snapshot();
+      const original = before.text.toString();
+      const width = Math.floor(original.length / 12);
+      const edits = Array.from({ length: 12 }, (_, i) => {
+        const start = i * width + next(Math.max(1, width - 30));
+        return {
+          start,
+          end: start + next(20),
+          text: ["", "new\nline", "\r\n", "😀\ud800", "x".repeat(1100)][next(5)],
+        };
+      });
+      const batch = document.transact((draft) => draft.replaceAll(edits.slice().reverse()));
+      let expected = original;
+      for (const edit of edits.slice().reverse())
+        expected = expected.slice(0, edit.start) + edit.text + expected.slice(edit.end);
+      assert.equal(document.getText(), expected);
+      document.getTextSnapshot().inspect();
+      assert.equal(before.text.toString(), original);
+      let replay = original;
+      for (const edit of batch.changes) {
+        assert.equal(replay.slice(edit.startIndex, edit.oldEndIndex), edit.oldText);
+        assert.deepEqual(edit.oldRange, {
+          start: position(replay, edit.startIndex),
+          end: position(replay, edit.oldEndIndex),
+        });
+        replay = replay.slice(0, edit.startIndex) + edit.newText + replay.slice(edit.oldEndIndex);
+        assert.deepEqual(edit.newRange, {
+          start: position(replay, edit.startIndex),
+          end: position(replay, edit.newEndIndex),
+        });
+      }
+      assert.equal(replay, expected);
+      document.undo();
+      assert.equal(document.getTextSnapshot(), before.text);
+      document.redo();
+      assert.equal(document.getText(), expected);
+      document.clearHistory();
+    }
+  }
+});
+
 test("no-op transactions retain revisions and history limits release undo entries", () => {
   const document = new DocumentCore("x", { historyLimit: 2 });
   assert.equal(

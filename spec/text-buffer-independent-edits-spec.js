@@ -123,8 +123,15 @@ describe("Independent line edit batches", () => {
     expect(seen.at(-1)).toBe(buffer.lineForRow(127));
   });
 
-  it("rejects overlapping rows and inserted line endings before changing text", () => {
+  it("rejects overlapping rows, fractional columns and inserted line endings before changing text", () => {
     for (const first of [
+      {
+        range: [
+          [0, 0.5],
+          [0, 1.5],
+        ],
+        text: "X",
+      },
       {
         range: [
           [1, 0],

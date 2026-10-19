@@ -146,6 +146,58 @@ function collectParts(node, start, end, result) {
     collectParts(node.right, Math.max(0, start - node.left.length), end - node.left.length, result);
 }
 
+function collectNodes(node, start, end, result) {
+  if (!node || start >= end) return;
+  if (start === 0 && end === node.length) {
+    result.push(node);
+    return;
+  }
+  if (node.buffer) {
+    result.push(piece(node.buffer, node.start + start, node.start + end));
+    return;
+  }
+  if (start < node.left.length)
+    collectNodes(node.left, start, Math.min(end, node.left.length), result);
+  if (end > node.left.length)
+    collectNodes(node.right, Math.max(0, start - node.left.length), end - node.left.length, result);
+}
+
+function compactNodes(nodes) {
+  const result = [],
+    pending = [];
+  let length = 0;
+  const flush = () => {
+    if (pending.length === 1) result.push(pending[0]);
+    else if (pending.length)
+      result.push(
+        piece(
+          bufferFor(pending.map((node) => node.buffer.text.slice(node.start, node.end)).join("")),
+        ),
+      );
+    pending.length = 0;
+    length = 0;
+  };
+  for (const node of nodes) {
+    if (!node.buffer || node.length > MERGE_UNITS) {
+      flush();
+      result.push(node);
+    } else {
+      if (length + node.length > MERGE_UNITS) flush();
+      pending.push(node);
+      length += node.length;
+    }
+  }
+  flush();
+  return result;
+}
+
+function joinNodes(nodes, start = 0, end = nodes.length) {
+  if (start === end) return null;
+  if (end - start === 1) return nodes[start];
+  const middle = Math.floor((start + end) / 2);
+  return join(joinNodes(nodes, start, middle), joinNodes(nodes, middle, end));
+}
+
 function integer(value, name, max) {
   if (!Number.isSafeInteger(value) || value < 0 || value > max)
     throw new RangeError(`${name} is outside the document`);
@@ -189,6 +241,39 @@ class PieceTree {
     const [before, rest] = split(this.#root, start);
     const [, after] = split(rest, end - start);
     return PieceTree.#fromRoot(join(join(before, inserted.#root), after));
+  }
+
+  replaceAll(edits) {
+    if (!edits.length) return this;
+    const planned = edits
+      .map(({ start, end, text }) => ({
+        start,
+        end,
+        text: text instanceof PieceTree ? text : new PieceTree(text),
+      }))
+      .sort((a, b) => a.start - b.start);
+    let previous;
+    for (const edit of planned) {
+      integer(edit.start, "Start", this.length);
+      integer(edit.end, "End", this.length);
+      if (
+        edit.end < edit.start ||
+        (previous && (edit.start < previous.end || edit.start === previous.start))
+      )
+        throw new RangeError("Batch edits overlap or have reversed bounds");
+      previous = edit;
+    }
+    const nodes = [];
+    let offset = 0;
+    for (const { start, end, text } of planned) {
+      collectNodes(this.#root, offset, start, nodes);
+      if (text.#root) nodes.push(text.#root);
+      offset = end;
+    }
+    collectNodes(this.#root, offset, this.length, nodes);
+    // Dense batches index each small output block once, instead of repeatedly
+    // re-indexing a growing prefix for every inserted fragment.
+    return PieceTree.#fromRoot(joinNodes(compactNodes(nodes)));
   }
 
   subtext(start, end = this.length) {

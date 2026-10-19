@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const TextStore = require("./text-store");
+const TextPatch = require("./text-patch");
 const Point = require("./point");
 const Range = require("./range");
 const DefaultHistoryProvider = require("./default-history-provider");
@@ -1415,6 +1416,9 @@ class TextBuffer {
         if (
           typeof text !== "string" ||
           /[\r\n]/.test(text) ||
+          ![range.start.row, range.start.column, range.end.row, range.end.column].every(
+            Number.isSafeInteger,
+          ) ||
           range.start.row !== range.end.row ||
           rows.has(range.start.row)
         )
@@ -1505,7 +1509,9 @@ class TextBuffer {
         origin: "edit",
       };
       this.prepareDisplayLayersForChange(displayChange);
-      const patch = recordHistory ? patchFromChanges(changes) : null;
+      const patch = recordHistory
+        ? (TextPatch.fromIndependentChanges(changes) ?? patchFromChanges(changes))
+        : null;
       edit.commit();
       this.cachedText = null;
       if (recordHistory) this.historyProvider.pushPatch(patch);
@@ -2204,6 +2210,16 @@ class TextBuffer {
    */
   clearUndoStack() {
     return this.historyProvider.clearUndoStack();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Clear the redo stack without changing text or the undo stack.
+   */
+  clearRedoStack() {
+    return this.historyProvider.clearRedoStack();
   }
 
   /**

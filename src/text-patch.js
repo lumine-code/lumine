@@ -59,6 +59,63 @@ class Patch {
     this.#discardIdentities = discardIdentityChanges;
   }
 
+  static fromIndependentChanges(changes, { discardIdentityChanges = false } = {}) {
+    const records = [],
+      texts = new Map();
+    const source = (value) => {
+      if (typeof value !== "string" || value.length > 1024) return asText(value);
+      if (texts.has(value)) return texts.get(value);
+      const text = asText(value);
+      if (texts.size < 128) texts.set(value, text);
+      return text;
+    };
+    let previousRow = -1;
+    for (const change of changes) {
+      const { oldStart, oldEnd, newStart, newEnd } = change;
+      if (
+        ![oldStart, oldEnd, newStart, newEnd].every(
+          (p) => p && coordinate(p.row) === p.row && coordinate(p.column) === p.column,
+        ) ||
+        oldStart.row <= previousRow ||
+        oldStart.row !== oldEnd.row ||
+        oldStart.row !== newStart.row ||
+        oldStart.row !== newEnd.row ||
+        oldStart.column !== newStart.column ||
+        oldEnd.column < oldStart.column ||
+        newEnd.column < newStart.column
+      )
+        return null;
+      const oldSource = source(change.oldTextSource ?? change.oldText);
+      const newSource = source(change.newTextSource ?? change.newText);
+      if (
+        !oldSource ||
+        !newSource ||
+        oldSource.lineCount !== 1 ||
+        newSource.lineCount !== 1 ||
+        oldSource.length !== oldEnd.column - oldStart.column ||
+        newSource.length !== newEnd.column - newStart.column
+      )
+        return null;
+      previousRow = oldStart.row;
+      if (
+        (!oldSource.length && !newSource.length) ||
+        (discardIdentityChanges && oldSource.equals(newSource))
+      )
+        continue;
+      records.push({
+        oldStart: point(oldStart),
+        oldEnd: point(oldEnd),
+        newStart: point(newStart),
+        newEnd: point(newEnd),
+        oldSource,
+        newSource,
+      });
+    }
+    const patch = new Patch({ discardIdentityChanges });
+    patch.#changes = new ChangeTree(records);
+    return patch;
+  }
+
   #project(position, axis, end = false) {
     const from = axis === "new" ? "new" : "old";
     const to = from === "new" ? "old" : "new";

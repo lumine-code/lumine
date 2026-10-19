@@ -269,19 +269,16 @@ class TextStore {
   // Offsets address one source snapshot. The facade validates the line-edit
   // contract; storage shares untouched pieces and publishes only one root.
   prepareEdits(edits) {
-    const before = this.#text,
-      revision = this.#revision;
-    const planned = edits
-      .map((edit) => ({ ...edit, text: asText(edit.text) }))
-      .sort((a, b) => a.start - b.start);
+    const revision = this.#revision;
     const draft = this.#document.begin();
     try {
-      draft.replaceAll(planned);
+      draft.replaceAll(edits);
     } catch (error) {
       draft.abort();
       throw error;
     }
     const snapshot = draft.text;
+    const deltas = draft.changeSet.changes;
     let active = true;
     return {
       snapshot,
@@ -292,11 +289,34 @@ class TextStore {
           throw Object.assign(new Error("Prepared edits no longer match the buffer revision"), {
             code: "ERR_STALE_EDIT",
           });
-        const changes = this.#changes.copy();
-        for (let index = planned.length - 1; index >= 0; index--) {
-          const { start, end, text } = planned[index];
-          const removed = before.subtext(start, end);
-          changes.splice(before.positionAt(start), extent(removed), extent(text), removed, text);
+        let changes =
+          this.#changes.getChangeCount() === 0
+            ? Patch.fromIndependentChanges(
+                deltas
+                  .slice()
+                  .reverse()
+                  .map((delta) => ({
+                    oldStart: delta.oldRange.start,
+                    oldEnd: delta.oldRange.end,
+                    newStart: delta.newRange.start,
+                    newEnd: delta.newRange.end,
+                    oldTextSource: delta.removed,
+                    newTextSource: delta.inserted,
+                  })),
+                { discardIdentityChanges: true },
+              )
+            : null;
+        if (!changes) {
+          changes = this.#changes.copy();
+          for (const delta of deltas) {
+            changes.splice(
+              delta.oldRange.start,
+              extent(delta.removed),
+              extent(delta.inserted),
+              delta.removed,
+              delta.inserted,
+            );
+          }
         }
         draft.commit();
         this.#changes = changes;
