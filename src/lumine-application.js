@@ -284,6 +284,26 @@ const handleWindowAction = async (event, action, ...args) => {
   }
   const window = lumineWindow.browserWindow;
 
+  if (
+    lumineWindow.unloadRequest?.committed &&
+    ["pickFolder", "showOpenDialog", "showSaveDialog", "confirm"].includes(action)
+  )
+    throw Object.assign(new Error("The window has committed to unloading."), { code: "ABORT_ERR" });
+  if (
+    lumineWindow.isClosing() &&
+    [
+      "focus",
+      "show",
+      "minimize",
+      "maximize",
+      "unmaximize",
+      "setFullScreen",
+      "openDevTools",
+      "toggleDevTools",
+    ].includes(action)
+  )
+    return;
+
   switch (action) {
     case "getState": {
       const [x, y] = window.getPosition();
@@ -319,7 +339,6 @@ const handleWindowAction = async (event, action, ...args) => {
       window.center();
       return;
     case "focus":
-      if (lumineWindow.isClosing()) return;
       // A nested Electron spec process can become macOS's active application.
       // Focusing the parent BrowserWindow alone does not reactivate its app,
       // so the spec runner must reclaim application focus before page focus.

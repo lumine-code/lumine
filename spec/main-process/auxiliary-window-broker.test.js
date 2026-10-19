@@ -152,7 +152,7 @@ test("late reveal actions cannot show an existing child after its committed hide
     window.visible = false;
   };
   window.isVisible = () => Boolean(window.visible);
-  for (const action of ["show", "focus", "maximize", "unmaximize", "setFullScreen"])
+  for (const action of ["show", "focus", "maximize", "unmaximize", "minimize", "setFullScreen"])
     window[action] = () => {
       revealed.push(action);
       window.visible = true;
@@ -176,6 +176,7 @@ test("late reveal actions cannot show an existing child after its committed hide
     "focus",
     "maximize",
     "unmaximize",
+    "minimize",
     "setFullScreen",
     "openDevTools",
     "toggleDevTools",
@@ -189,6 +190,25 @@ test("late reveal actions cannot show an existing child after its committed hide
   assert.equal(closedDevTools, 1);
   broker.invoke(id, "close");
   assert.equal(window.vetoed, undefined);
+  broker.destroy();
+});
+
+test("a committed hide aborts new native dialogs before they can reveal the closing workspace", async () => {
+  const dialogs = [];
+  const { broker, window } = fixture({
+    showOpenDialog: () => dialogs.push("open"),
+    showSaveDialog: () => dialogs.push("save"),
+    showMessageBox: () => dialogs.push("confirm"),
+  });
+  window.hide = () => {};
+  const token = broker.prepare();
+  broker.didCreateWindow(window, { frameName: token });
+  const { id } = await broker.resolve(token);
+  broker.hide();
+  for (const action of ["showOpenDialog", "showSaveDialog", "confirm"])
+    assert.throws(() => broker.invoke(id, action, { buttons: ["OK"] }), { code: "ABORT_ERR" });
+  assert.deepEqual(dialogs, []);
+  assert.equal(broker.windows.size, 1);
   broker.destroy();
 });
 

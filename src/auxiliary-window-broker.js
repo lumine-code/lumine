@@ -246,6 +246,8 @@ module.exports = class AuxiliaryWindowBroker {
       throw new Error("This auxiliary window does not belong to the workspace.");
     }
     const window = record.window;
+    if (this.closing && ["showOpenDialog", "showSaveDialog", "confirm"].includes(action))
+      throw Object.assign(new Error("The workspace window is closing."), { code: "ABORT_ERR" });
     if (
       this.closing &&
       [
@@ -253,6 +255,7 @@ module.exports = class AuxiliaryWindowBroker {
         "focus",
         "maximize",
         "unmaximize",
+        "minimize",
         "setFullScreen",
         "openDevTools",
         "toggleDevTools",

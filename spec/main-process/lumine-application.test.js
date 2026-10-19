@@ -1447,6 +1447,60 @@ describe("LumineApplication", function () {
       assert.isTrue(showOpenDialog.calledOnce);
     });
 
+    it("allows save prompts before the unload commit and refuses new dialogs afterwards", async function () {
+      const showOpenDialog = sinon
+        .stub(electron.dialog, "showOpenDialog")
+        .resolves({ canceled: true, filePaths: [] });
+      const showMessageBox = sinon
+        .stub(electron.dialog, "showMessageBox")
+        .resolves({ response: 1 });
+      w1.showSaveDialog = sinon.stub().resolves({ canceled: true });
+      w1.closing = true;
+      w1.unloadRequest = { committed: false };
+      const event = { sender: w1.browserWindow.webContents };
+      const requests = [
+        ["pickFolder"],
+        ["showOpenDialog", {}],
+        ["showSaveDialog", {}],
+        ["confirm", { buttons: ["Save", "Cancel"] }],
+      ];
+      for (const request of requests) await LumineApplication.handleWindowAction(event, ...request);
+      assert.strictEqual(showOpenDialog.callCount, 2);
+      assert.isTrue(w1.showSaveDialog.calledOnce);
+      assert.isTrue(showMessageBox.calledOnce);
+
+      w1.unloadRequest.committed = true;
+      for (const request of requests) {
+        try {
+          await LumineApplication.handleWindowAction(event, ...request);
+          assert.fail("a committed unload must refuse another dialog");
+        } catch (error) {
+          assert.strictEqual(error.code, "ABORT_ERR");
+        }
+      }
+      assert.strictEqual(showOpenDialog.callCount, 2);
+      assert.isTrue(w1.showSaveDialog.calledOnce);
+      assert.isTrue(showMessageBox.calledOnce);
+    });
+
+    it("ignores queued native reveal actions once the window starts closing", async function () {
+      w1.closing = true;
+      const event = { sender: w1.browserWindow.webContents };
+      for (const action of [
+        "focus",
+        "show",
+        "minimize",
+        "maximize",
+        "unmaximize",
+        "setFullScreen",
+        "openDevTools",
+        "toggleDevTools",
+      ]) {
+        w1[action] = () => assert.fail(`closing window executed ${action}`);
+        assert.isUndefined(await LumineApplication.handleWindowAction(event, action, true));
+      }
+    });
+
     it("strictly validates and routes macOS application-menu updates", async function () {
       const originalApplicationMenu = app.applicationMenu;
       const applicationMenu = { update: sinon.spy() };
