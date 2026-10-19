@@ -319,6 +319,7 @@ const handleWindowAction = async (event, action, ...args) => {
       window.center();
       return;
     case "focus":
+      if (lumineWindow.isClosing()) return;
       // A nested Electron spec process can become macOS's active application.
       // Focusing the parent BrowserWindow alone does not reactivate its app,
       // so the spec runner must reclaim application focus before page focus.
@@ -341,6 +342,8 @@ const handleWindowAction = async (event, action, ...args) => {
     case "close":
       lumineWindow.close();
       return;
+    case "commitUnload":
+      return lumineWindow.commitUnload(args[0]);
     case "reload":
       await lumineWindow.reload();
       return;
@@ -850,6 +853,8 @@ module.exports = class LumineApplication extends EventEmitter {
     global.lumineApplication = this;
     this.quitting = false;
     this.quittingForUpdate = false;
+    this.pendingWindowOpenCount = 0;
+    this.quitAfterOpening = false;
     this.getAllWindows = this.getAllWindows.bind(this);
     this.getLastFocusedWindow = this.getLastFocusedWindow.bind(this);
     this.resourcePath = options.resourcePath;
@@ -1135,7 +1140,8 @@ module.exports = class LumineApplication extends EventEmitter {
     this.windowStack.removeWindow(window);
     if (!window.isSpec) this.requestSessionStateCleanup();
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
-      app.quit();
+      if (this.pendingWindowOpenCount > 0) this.quitAfterOpening = true;
+      else app.quit();
       return;
     }
     if (!window.isSpec) this.saveCurrentWindowOptions(true);
@@ -1195,7 +1201,7 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   showWindow(lumineWindow) {
-    if (lumineWindow.offscreen) return;
+    if (lumineWindow.offscreen || lumineWindow.isClosing()) return;
     const window = lumineWindow.browserWindow;
     window.show();
     if (lumineWindow.preserveFocus) {
@@ -1210,7 +1216,9 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   getLastFocusedWindow(predicate) {
-    return this.windowStack.getLastFocusedWindow(predicate);
+    return this.windowStack.getLastFocusedWindow(
+      (window) => !window.isClosing() && (!predicate || predicate(window)),
+    );
   }
 
   // Creates server to listen for additional lumine application launches.
@@ -1414,10 +1422,16 @@ module.exports = class LumineApplication extends EventEmitter {
         });
 
         if (!this.quitting) {
+          if (this.pendingWindowOpenCount > 0 && this.getAllWindows().length === 0) {
+            event.preventDefault();
+            this.quitAfterOpening = true;
+            resolveBeforeQuitPromise();
+            return;
+          }
           this.quitting = true;
           event.preventDefault();
           const windowUnloadPromises = this.getAllWindows().map(async (window) => {
-            const unloaded = await window.prepareToUnload();
+            const unloaded = await window.prepareToUnload({ reason: "close" });
             if (unloaded) {
               window.close();
               await window.closedPromise;
@@ -1425,9 +1439,14 @@ module.exports = class LumineApplication extends EventEmitter {
             return unloaded;
           });
           const windowUnloadedResults = await Promise.all(windowUnloadPromises);
-          if (windowUnloadedResults.every(Boolean)) {
-            await this.sessionStateMaintenance.close();
-            await this.fileWatchService.close();
+          if (
+            windowUnloadedResults.every(Boolean) &&
+            this.getAllWindows().length === 0 &&
+            this.pendingWindowOpenCount === 0
+          ) {
+            // Commit to process exit synchronously. Closing shared services
+            // earlier would let a new file request open against a dead service
+            // while their asynchronous cleanup was still finishing.
             app.quit();
           } else {
             this.quitting = false;
@@ -1441,7 +1460,7 @@ module.exports = class LumineApplication extends EventEmitter {
     this.disposable.add(
       ipcHelpers.on(app, "will-quit", () => {
         void this.sessionStateMaintenance.close();
-        void this.fileWatchService.close();
+        void this.fileWatchService.close({ force: true });
         this.killAllProcesses();
 
         return Promise.all([this.deleteSocketFile(), this.deleteSocketSecretFile()]);
@@ -1456,7 +1475,8 @@ module.exports = class LumineApplication extends EventEmitter {
         }
         // Don't quit when the last window is closed on macOS.
         if (process.platform !== "darwin") {
-          app.quit();
+          if (this.pendingWindowOpenCount > 0) this.quitAfterOpening = true;
+          else app.quit();
         }
       }),
     );
@@ -1832,7 +1852,7 @@ module.exports = class LumineApplication extends EventEmitter {
    * @returns {LumineWindow|undefined} currently focused `LumineWindow` or undefined if none.
    */
   focusedWindow() {
-    return this.getAllWindows().find((window) => window.isFocused());
+    return this.getAllWindows().find((window) => !window.isClosing() && window.isFocused());
   }
 
   async reloadAllWindows() {
@@ -1865,7 +1885,7 @@ module.exports = class LumineApplication extends EventEmitter {
     sourceWindow.windowStateTransferPending = true;
     let canUnload;
     try {
-      canUnload = await sourceWindow.prepareToUnload();
+      canUnload = await sourceWindow.prepareToUnload({ reason: "replace" });
     } catch (error) {
       sourceWindow.unloading = false;
       sourceWindow.windowStateTransferPending = false;
@@ -1874,6 +1894,10 @@ module.exports = class LumineApplication extends EventEmitter {
     }
     if (!canUnload) {
       sourceWindow.unloading = false;
+      sourceWindow.windowStateTransferPending = false;
+      return;
+    }
+    if (sourceWindow.isClosing()) {
       sourceWindow.windowStateTransferPending = false;
       return;
     }
@@ -1896,6 +1920,11 @@ module.exports = class LumineApplication extends EventEmitter {
       openedWindow = await this.openPaths(openOptions);
       if (!openedWindow) throw new Error("Development-mode window was not created");
       await openedWindow.loadedPromise;
+      if (sourceWindow.isClosing() || sourceWindow.browserWindow.isDestroyed?.()) {
+        openedWindow.close();
+        sourceWindow.windowStateTransferPending = false;
+        return;
+      }
     } catch (error) {
       if (openedWindow && openedWindow !== sourceWindow) {
         try {
@@ -1904,8 +1933,9 @@ module.exports = class LumineApplication extends EventEmitter {
           console.error("Failed to close the incomplete development window", closeError);
         }
       }
-      sourceWindow.unloading = false;
       sourceWindow.windowStateTransferPending = false;
+      if (sourceWindow.isClosing() || sourceWindow.browserWindow.isDestroyed?.()) return;
+      sourceWindow.unloading = false;
       try {
         await sourceWindow.reload({ skipPrepareToUnload: true });
       } catch (reloadError) {
@@ -2003,7 +2033,24 @@ module.exports = class LumineApplication extends EventEmitter {
    *   :window - `LumineWindow` to open file paths in.
    *   :addToLastWindow - Boolean of whether this should be opened in last focused window.
    */
-  async openPaths({
+  async openPaths(options = {}) {
+    return this.#runWindowOpen(() => this.#openPaths(options));
+  }
+
+  async #runWindowOpen(operation) {
+    this.pendingWindowOpenCount++;
+    try {
+      return await operation();
+    } finally {
+      this.pendingWindowOpenCount--;
+      if (this.pendingWindowOpenCount === 0 && this.quitAfterOpening) {
+        this.quitAfterOpening = false;
+        if (this.getAllWindows().length === 0) app.quit();
+      }
+    }
+  }
+
+  async #openPaths({
     pathsToOpen,
     opener,
     openerPath,
@@ -2090,7 +2137,7 @@ module.exports = class LumineApplication extends EventEmitter {
       }
     } else if (hasNonEmptyPath) {
       // An explicitly provided LumineWindow has precedence.
-      existingWindow = window;
+      existingWindow = window?.isClosing() ? undefined : window;
 
       // If no window is specified and at least one path is provided, locate an existing window that contains all
       // provided paths.
@@ -2124,9 +2171,12 @@ module.exports = class LumineApplication extends EventEmitter {
 
     let openedWindow;
     if (existingWindow) {
+      const accepted = await existingWindow.openLocations(locationsToOpen);
+      if (accepted !== true || existingWindow.isClosing()) existingWindow = undefined;
+    }
+    if (existingWindow) {
       openedWindow = existingWindow;
       StartupTime.addMarker("main-process:lumine-application:open-in-existing");
-      openedWindow.openLocations(locationsToOpen);
       if (!preserveFocus) {
         if (openedWindow.isMinimized()) {
           openedWindow.restore();
@@ -2347,6 +2397,12 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   openPackageUriHandler(url, parsedUrl, devMode, safeMode, env) {
+    return this.#runWindowOpen(() =>
+      this.#openPackageUriHandler(url, parsedUrl, devMode, safeMode, env),
+    );
+  }
+
+  async #openPackageUriHandler(url, parsedUrl, devMode, safeMode, env) {
     let bestWindow;
 
     if (parsedUrl.host === "core") {
@@ -2357,40 +2413,43 @@ module.exports = class LumineApplication extends EventEmitter {
     if (!bestWindow) bestWindow = this.getLastFocusedWindow((win) => !win.isSpecWindow());
 
     if (bestWindow) {
-      bestWindow.sendURIMessage(url);
-      bestWindow.focus();
-      return bestWindow;
-    } else {
-      let windowInitializationScript;
-      let { resourcePath } = this;
-      if (devMode) {
-        try {
-          windowInitializationScript = require.resolve(
-            path.join(this.devResourcePath, "src", "initialize-application-window"),
-          );
-          resourcePath = this.devResourcePath;
-        } catch {
-          /* ignore */
-        }
+      const accepted = await bestWindow.sendURIMessage(url);
+      if (accepted === true && !bestWindow.isClosing()) {
+        bestWindow.focus();
+        return bestWindow;
       }
-
-      if (!windowInitializationScript) {
-        windowInitializationScript = require.resolve("./initialize-application-window");
-      }
-
-      const windowDimensions = this.getDimensionsForNewWindow();
-      const window = this.createWindow({
-        resourcePath,
-        windowInitializationScript,
-        devMode,
-        safeMode,
-        windowDimensions,
-        env,
-      });
-      this.addWindow(window);
-      window.on("window:loaded", () => window.sendURIMessage(url));
-      return window;
     }
+    let windowInitializationScript;
+    let { resourcePath } = this;
+    if (devMode) {
+      try {
+        windowInitializationScript = require.resolve(
+          path.join(this.devResourcePath, "src", "initialize-application-window"),
+        );
+        resourcePath = this.devResourcePath;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!windowInitializationScript) {
+      windowInitializationScript = require.resolve("./initialize-application-window");
+    }
+
+    const windowDimensions = this.getDimensionsForNewWindow();
+    const window = this.createWindow({
+      resourcePath,
+      windowInitializationScript,
+      devMode,
+      safeMode,
+      windowDimensions,
+      env,
+    });
+    this.addWindow(window);
+    window.on("window:loaded", () => {
+      if (!window.isClosing()) window.sendURIMessage(url);
+    });
+    return window;
   }
 
   findPackageWithName(packageName, devMode) {

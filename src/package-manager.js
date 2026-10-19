@@ -1,4 +1,8 @@
 const path = require("path");
+const {
+  setTimeout: scheduleLifecycleTimeout,
+  clearTimeout: cancelLifecycleTimeout,
+} = require("node:timers");
 let normalizePackageData = null;
 
 const _ = require("@lumine-code/underscore-plus");
@@ -24,7 +28,8 @@ const packageJSON = require("../package.json");
 
 // Resolves true if `promise` settles within `ms`, false if it is still pending
 // then. The timer is always cleared: a pending one keeps the process alive, and
-// the caller here is trying to let the window go.
+// the caller here is trying to let the window go. Node timers keep this deadline
+// independent of document timer throttling after the native window is hidden.
 function settlesWithin(promise, ms) {
   let timer;
   return Promise.race([
@@ -33,10 +38,10 @@ function settlesWithin(promise, ms) {
       () => true,
     ),
     new Promise((resolve) => {
-      timer = setTimeout(() => resolve(false), ms);
+      timer = scheduleLifecycleTimeout(() => resolve(false), ms);
     }),
   ]).then((settled) => {
-    clearTimeout(timer);
+    cancelLifecycleTimeout(timer);
     return settled;
   });
 }

@@ -1400,7 +1400,7 @@ class Environment {
     throw new Error("Packages changed while the workspace snapshot was being prepared.");
   }
 
-  async prepareToUnloadEditorWindow() {
+  async prepareToUnloadEditorWindow({ id }) {
     const save = async () => {
       try {
         await this.saveState({ isUnloading: true });
@@ -1430,12 +1430,21 @@ class Environment {
         // before deactivation can release their shared recovery payloads.
         if (!(await save())) return false;
         this.unloading = true;
-        this.grammars.beginWindowUnload();
+        try {
+          await this.applicationDelegate.commitWindowUnload(id);
+        } catch (error) {
+          this.unloading = false;
+          throw error;
+        }
+        const failures = [];
+        captureLifecycleError(failures, () => this.grammars.beginWindowUnload());
         // Package deactivation removes themes and UI before navigation. Conceal
         // the document first so the surviving editor cannot paint without its
         // layout and styles.
-        this.document.body.classList.add("is-unloading");
-        this.#hideWindowContent();
+        captureLifecycleError(failures, () => {
+          this.document.body.classList.add("is-unloading");
+          this.#hideWindowContent();
+        });
         // Every orderly unload deactivates, reload included. Skipping it there
         // used to be how a package that would not finish deactivating was kept
         // from hanging the reload; `timeout` is that guarantee now, and it holds
@@ -1447,17 +1456,22 @@ class Environment {
         // process, and only then does the window navigate. Anything a package
         // deferred to a later frame on its way out therefore runs before
         // `destroy()` takes the workspace away.
-        await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
-        await this.packages.storage.close();
+        await awaitLifecycleCleanup(failures, () =>
+          this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS }),
+        );
+        await awaitLifecycleCleanup(failures, () => this.packages.storage.close());
         // Watchers are not package-owned, and stopping them only from the later
         // DOM unload hook is too late for a caller that must release a project or
         // configuration directory before the renderer disappears. In
         // particular, Windows keeps the directory undeletable until the watcher
         // worker confirms its handles are closed.
-        await this.fileWatchClient.close();
-        this.stateStore.close();
-        this.projectStateIndex.close();
-        this.workspace.closeStateStore();
+        await awaitLifecycleCleanup(failures, () => this.fileWatchClient.close());
+        captureLifecycleError(failures, () => this.stateStore.close());
+        captureLifecycleError(failures, () => this.projectStateIndex.close());
+        captureLifecycleError(failures, () => this.workspace.closeStateStore());
+        // The saved session has committed to unloading. Cleanup errors cannot
+        // return the partially deactivated, concealed document to active use.
+        for (const error of failures) console.error("Failed to finish window cleanup", error);
       } else if (this.workspace) this.workspace.windowLifecycleChanging = false;
       return closing;
     } finally {

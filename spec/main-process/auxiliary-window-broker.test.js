@@ -26,6 +26,10 @@ function fixture(dialogService) {
   const window = new EventEmitter();
   window.webContents = Object.assign(new EventEmitter(), {
     id: 17,
+    isDestroyed: () => Boolean(window.destroyed),
+    setBackgroundThrottling(value) {
+      this.backgroundThrottling = value;
+    },
     setWindowOpenHandler(handler) {
       this.openHandler = handler;
     },
@@ -62,6 +66,67 @@ test("only prepared workspace presentations can open a native child", () => {
   );
   assert.throws(() => broker.prepare({ bounds: { width: -10 } }), /Invalid width/);
   broker.destroy();
+});
+
+test("hiding committed-close presentations preserves their models and native windows for cleanup", () => {
+  const { broker, owner, window } = fixture();
+  let hidden = 0;
+  const runtimeThrottling = [];
+  owner.browserWindow = {
+    webContents: {
+      isDestroyed: () => false,
+      getBackgroundThrottling: () => true,
+      setBackgroundThrottling: (value) => runtimeThrottling.push(value),
+    },
+  };
+  window.hide = () => hidden++;
+  broker.didCreateWindow(window, { frameName: broker.prepare() });
+  broker.hide();
+  assert.equal(hidden, 1);
+  assert.equal(window.webContents.backgroundThrottling, true);
+  assert.deepEqual(runtimeThrottling, [false, true]);
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(broker.windows.size, 1);
+  window.destroy();
+  broker.hide();
+  assert.equal(hidden, 1);
+  assert.deepEqual(runtimeThrottling, [false, true]);
+  broker.destroy();
+});
+
+test("a stale renderer and a failed child hide do not prevent concealing the remaining presentations", (context) => {
+  const { broker, owner, window: first } = fixture();
+  const second = fixture().window;
+  second.webContents.id = 18;
+  broker.didCreateWindow(first, { frameName: broker.prepare() });
+  broker.didCreateWindow(second, { frameName: broker.prepare() });
+  let hidden = 0;
+  let staleRendererCalls = 0;
+  first.webContents.isDestroyed = () => true;
+  first.webContents.setBackgroundThrottling = () => staleRendererCalls++;
+  first.hide = () => {
+    throw new Error("Native child disappeared");
+  };
+  second.hide = () => hidden++;
+  owner.browserWindow = {
+    isDestroyed: () => false,
+    get webContents() {
+      throw new Error("Owner renderer disappeared");
+    },
+  };
+  const errors = [];
+  context.mock.method(console, "error", (...args) => errors.push(args));
+  try {
+    assert.doesNotThrow(() => broker.hide());
+    assert.equal(staleRendererCalls, 0);
+    assert.equal(hidden, 1);
+    assert.equal(second.webContents.backgroundThrottling, true);
+    assert.equal(broker.windows.size, 2);
+    assert.equal(errors.length, 2);
+  } finally {
+    owner.browserWindow = null;
+    broker.destroy();
+  }
 });
 
 test("open dialogs are owned by the addressed auxiliary presentation", async () => {

@@ -8,7 +8,7 @@ const url = require("url");
 const { EventEmitter } = require("events");
 const sandbox = require("sinon").createSandbox();
 const dedent = require("dedent");
-const { BrowserWindow, dialog, webContents } = require("electron");
+const { BrowserWindow, dialog, webContents, ipcMain } = require("electron");
 
 const LumineWindow = require("../../src/lumine-window");
 const LumineApplication = require("../../src/lumine-application");
@@ -91,6 +91,276 @@ describe("LumineWindow", function () {
     });
   }
 
+  describe("committed unload handshake", function () {
+    let window;
+    const reply = (
+      result,
+      id = window.unloadRequest.id,
+      sender = window.browserWindow.webContents,
+    ) => ipcMain.emit("did-prepare-to-unload", { sender }, { id, approved: result });
+
+    beforeEach(() => {
+      window = new LumineWindow(app, service, { browserWindowConstructor: StubBrowserWindow });
+      window.browserWindow.hide = sinon.spy();
+      window.browserWindow.close = sinon.spy();
+    });
+    afterEach(() => window.browserWindow.emit("closed"));
+
+    it("shares one request and lets close supersede a pending reload", async () => {
+      const preparing = window.prepareToUnload({ reason: "reload" });
+      const id = window.unloadRequest.id;
+      assert.isFalse(window.isClosing());
+      assert.strictEqual(window.prepareToUnload({ reason: "close" }), preparing);
+      assert.strictEqual(window.prepareToUnload({ reason: "close" }), preparing);
+      assert.isTrue(window.isClosing());
+      assert.deepEqual(window.browserWindow.sent, [
+        ["prepare-to-unload", { id, reason: "reload" }],
+      ]);
+      assert.isFalse(window.browserWindow.hide.called);
+      reply(false);
+      assert.isFalse(await preparing);
+      assert.isFalse(window.isClosing());
+      const retry = window.prepareToUnload({ reason: "close" });
+      assert.notEqual(window.unloadRequest.id, id);
+      reply(true);
+      assert.isTrue(await retry);
+    });
+
+    it("ignores stale or foreign replies and hides all presentations only after commit", async () => {
+      const preparing = window.prepareToUnload({ reason: "close" });
+      const id = window.unloadRequest.id;
+      const hideChildren = sinon.spy(window.auxiliaryWindowBroker, "hide");
+      reply(true, "stale");
+      reply(true, id, {});
+      assert.isFalse(window.unloadApproved);
+      assert.throws(() => window.commitUnload("stale"), /no longer active/);
+      window.commitUnload(id);
+      assert.isTrue(window.closeCommitted);
+      assert.isTrue(window.browserWindow.hide.calledOnce);
+      assert.isTrue(hideChildren.calledOnce);
+      reply(false);
+      assert.isTrue(await preparing);
+    });
+
+    for (const reason of ["reload", "replace"]) {
+      it(`keeps the native window present for ${reason}`, async () => {
+        const preparing = window.prepareToUnload({ reason });
+        window.commitUnload(window.unloadRequest.id);
+        assert.isFalse(window.browserWindow.hide.called);
+        assert.isFalse(window.isClosing());
+        reply(true);
+        assert.isTrue(await preparing);
+      });
+    }
+
+    it("vetoes repeated native close events until preparation approves them", async () => {
+      const first = { preventDefault: sinon.spy() };
+      const second = { preventDefault: sinon.spy() };
+      window.browserWindow.emit("close", first);
+      window.commitUnload(window.unloadRequest.id);
+      window.browserWindow.emit("close", second);
+      assert.isTrue(first.preventDefault.calledOnce);
+      assert.isTrue(second.preventDefault.calledOnce);
+      assert.equal(window.browserWindow.sent.length, 1);
+      assert.isFalse(window.unloadApproved);
+      assert.isFalse(window.browserWindow.close.called);
+      reply(true);
+      await window.lastPrepareToUnloadPromise;
+      await Promise.resolve();
+      assert.isTrue(window.browserWindow.close.calledOnce);
+    });
+
+    it("releases the handshake when the native window closes before its reply", async () => {
+      const listeners = ipcMain.listenerCount("did-prepare-to-unload");
+      const preparing = window.prepareToUnload({ reason: "close" });
+      window.browserWindow.emit("closed");
+      assert.isTrue(await preparing);
+      assert.equal(ipcMain.listenerCount("did-prepare-to-unload"), listeners);
+    });
+
+    it("settles an obsolete preparation when a fresh renderer generation loads", async () => {
+      const listeners = ipcMain.listenerCount("did-prepare-to-unload");
+      const preparing = window.prepareToUnload({ reason: "close" });
+      window.browserWindow.emit("window:loaded");
+      assert.isFalse(await preparing);
+      assert.isFalse(window.isClosing());
+      assert.isFalse(window.unloadApproved);
+      assert.equal(ipcMain.listenerCount("did-prepare-to-unload"), listeners);
+    });
+
+    it("does not revive a committed close when a fresh renderer reports loaded", async () => {
+      const preparing = window.prepareToUnload({ reason: "close" });
+      const loaded = sinon.spy();
+      window.on("window:loaded", loaded);
+      window.commitUnload(window.unloadRequest.id);
+      window.browserWindow.emit("window:loaded");
+      assert.isFalse(window.browserWindow.close.called);
+      assert.isFalse(window.unloadApproved);
+      reply(true);
+      assert.isTrue(await preparing);
+      await window.getLoadedPromise();
+      assert.isTrue(window.isClosing());
+      assert.isTrue(window.unloadApproved);
+      assert.isTrue(window.browserWindow.close.calledOnce);
+      assert.isFalse(loaded.called);
+      for (const action of ["focus", "maximize", "restore"]) {
+        window.browserWindow[action] = sinon.spy();
+        window[action]();
+        assert.isFalse(window.browserWindow[action].called);
+      }
+    });
+
+    it("delivers queued files and URIs only to the ready replacement renderer after reload", async () => {
+      window.resolveLoadedPromise();
+      const reload = sinon.spy(window.browserWindow, "reload");
+      const reloading = window.reload();
+      const repeatedReload = window.reload();
+      const locations = [{ pathToOpen: "new-project", isDirectory: true }];
+      const opening = window.openLocations(locations);
+      const sendingURI = window.sendURIMessage("lumine://settings");
+      assert.deepEqual(window.projectRoots, []);
+      reply(true);
+      await conditionPromise(() => reload.called, "reload navigation");
+      assert.deepEqual(window.projectRoots, []);
+      assert.isFalse(
+        window.browserWindow.sent.some(
+          ([channel]) => channel === "message" || channel === "uri-message",
+        ),
+      );
+      window.browserWindow.emit("window:loaded");
+      assert.isTrue(await opening);
+      assert.isTrue(await sendingURI);
+      await Promise.all([reloading, repeatedReload]);
+      assert.isTrue(reload.calledOnce);
+      assert.deepEqual(window.projectRoots, ["new-project"]);
+      assert.deepEqual(
+        window.browserWindow.sent.filter(
+          ([channel, command, detail]) =>
+            channel === "message" && command === "open-locations" && detail === locations,
+        ),
+        [["message", "open-locations", locations]],
+      );
+      assert.deepEqual(
+        window.browserWindow.sent.filter(([channel]) => channel === "uri-message"),
+        [["uri-message", "lumine://settings"]],
+      );
+    });
+
+    it("refuses queued files and URIs when close supersedes their pending reload", async () => {
+      window.resolveLoadedPromise();
+      const reloading = window.reload();
+      const opening = window.openLocations([{ pathToOpen: "new-project", isDirectory: true }]);
+      const sendingURI = window.sendURIMessage("lumine://settings");
+      window.prepareToUnload({ reason: "close" });
+      reply(true);
+      assert.isFalse(await opening);
+      assert.isFalse(await sendingURI);
+      await reloading;
+      assert.deepEqual(window.projectRoots, []);
+      assert.isFalse(window.browserWindow.behavior.reloaded);
+    });
+
+    it("refuses queued files and URIs after accepting replacement by another window", async () => {
+      window.resolveLoadedPromise();
+      const preparation = window.prepareToUnload({ reason: "replace" });
+      const opening = window.openLocations([{ pathToOpen: "new-project", isDirectory: true }]);
+      const sendingURI = window.sendURIMessage("lumine://settings");
+      reply(true);
+      assert.isTrue(await preparation);
+      assert.isFalse(await opening);
+      assert.isFalse(await sendingURI);
+      assert.deepEqual(window.projectRoots, []);
+      assert.isFalse(
+        window.browserWindow.sent.some(
+          ([channel]) => channel === "message" || channel === "uri-message",
+        ),
+      );
+    });
+
+    it("delivers queued requests to the existing generation when reload is refused", async () => {
+      window.resolveLoadedPromise();
+      const preparation = window.prepareToUnload({ reason: "reload" });
+      const opening = window.openLocations([{ pathToOpen: "file.js" }]);
+      const sendingURI = window.sendURIMessage("lumine://settings");
+      reply(false);
+      assert.isFalse(await preparation);
+      assert.isTrue(await opening);
+      assert.isTrue(await sendingURI);
+      assert.isFalse(window.browserWindow.behavior.reloaded);
+    });
+
+    it("settles queued opens and reload when its new renderer closes before becoming ready", async () => {
+      window.resolveLoadedPromise();
+      const reloading = window.reload();
+      const opening = window.openLocations([{ pathToOpen: "file.js" }]);
+      const sendingURI = window.sendURIMessage("lumine://settings");
+      reply(true);
+      await conditionPromise(() => window.browserWindow.behavior.reloaded, "reload navigation");
+      window.browserWindow.destroyed = true;
+      window.browserWindow.emit("closed");
+      assert.isTrue(window.isClosing());
+      assert.isFalse(await opening);
+      assert.isFalse(await sendingURI);
+      await reloading;
+    });
+
+    it("falls back to beforeunload and then destroys a renderer that remains wedged after commit", async () => {
+      const clock = sinon.useFakeTimers();
+      const preparing = window.prepareToUnload({ reason: "close" });
+      sinon.stub(console, "warn");
+      sinon.stub(window.browserWindow, "destroy").callsFake(() => {
+        window.browserWindow.destroyed = true;
+        window.browserWindow.emit("closed");
+      });
+      window.commitUnload(window.unloadRequest.id);
+      clock.tick(7999);
+      assert.isFalse(window.unloadApproved);
+      assert.isFalse(window.browserWindow.close.called);
+      clock.tick(1);
+      assert.isTrue(window.unloadApproved);
+      assert.isTrue(window.browserWindow.close.calledOnce);
+      assert.isFalse(window.browserWindow.destroy.called);
+      clock.tick(2000);
+      assert.isTrue(window.browserWindow.destroy.calledOnce);
+      assert.isTrue(await preparing);
+    });
+
+    it("acknowledges a durable commit and retains its watchdog when hiding presentations fails", async () => {
+      const preparing = window.prepareToUnload({ reason: "close" });
+      window.browserWindow.hide = sinon.stub().throws(new Error("Native hide failed"));
+      sinon.stub(window.auxiliaryWindowBroker, "hide").throws(new Error("Auxiliary hide failed"));
+      const report = sinon.stub(console, "error");
+      assert.doesNotThrow(() => window.commitUnload(window.unloadRequest.id));
+      assert.isTrue(window.unloadRequest.committed);
+      assert.isDefined(window.unloadRequest.closeTimer);
+      assert.isFalse(window.unloadApproved);
+      assert.equal(report.callCount, 2);
+      reply(true);
+      assert.isTrue(await preparing);
+    });
+
+    it("does not reload when a close supersedes its pending preparation", async () => {
+      window.resolveLoadedPromise();
+      const reloading = window.reload();
+      window.prepareToUnload({ reason: "close" });
+      reply(true);
+      await reloading;
+      assert.isFalse(window.browserWindow.behavior.reloaded);
+      assert.isFalse(
+        window.browserWindow.sent.some(([channel]) => channel === "will-reload-window"),
+      );
+    });
+
+    it("refuses locations before and after waiting for its renderer when closing", async () => {
+      const opening = window.openLocations([{ pathToOpen: "first.js" }]);
+      window.prepareToUnload({ reason: "close" });
+      assert.isFalse(await window.openLocations([{ pathToOpen: "second.js" }]));
+      window.resolveLoadedPromise();
+      assert.isFalse(await opening);
+      assert.isFalse(window.browserWindow.sent.some(([channel]) => channel === "message"));
+    });
+  });
+
   describe("creating a real window", function () {
     let resourcePath, windowInitializationScript, lumineHome, browserWindow;
     let original, extraWindows, devPackageLinks;
@@ -158,7 +428,8 @@ describe("LumineWindow", function () {
       for (const testWindow of testWindows) {
         if (!testWindow || testWindow.isDestroyed()) continue;
         if (!testWindow.webContents.isCrashed()) {
-          await testWindow.webContents.executeJavaScript("lumine.prepareToUnloadEditorWindow()");
+          const owner = app.windows.find((window) => window.browserWindow === testWindow);
+          if (owner) await owner.prepareToUnload({ reason: "close" });
         }
         testWindow.destroy();
       }
@@ -540,6 +811,7 @@ describe("LumineWindow", function () {
       const loadPromise = emitterEventPromise(w, "window:loaded");
       w.browserWindow.emit("window:loaded");
       await loadPromise;
+      await conditionPromise(() => w.browserWindow.sent.length > 0, "initial locations delivery");
 
       assert.deepEqual(w.browserWindow.sent, [["message", "open-locations", locationsToOpen]]);
     });
@@ -752,7 +1024,7 @@ describe("LumineWindow", function () {
       w.reload();
       await Promise.resolve();
 
-      assert.isTrue(w.prepareToUnload.calledOnceWithExactly());
+      assert.isTrue(w.prepareToUnload.calledOnceWithExactly({ reason: "reload" }));
       assert.isTrue(w.browserWindow.behavior.reloaded);
       assert.isTrue(send.calledOnceWithExactly("will-reload-window"));
       assert.isTrue(send.calledBefore(reload));

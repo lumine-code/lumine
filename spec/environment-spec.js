@@ -920,7 +920,8 @@ describe("Environment", () => {
       let mousedown = new MouseEvent("mousedown");
       lumineEnv.document.dispatchEvent(mousedown);
       expect(lumineEnv.saveState).not.toHaveBeenCalled();
-      await lumineEnv.prepareToUnloadEditorWindow();
+      spyOn(lumineEnv.applicationDelegate, "commitWindowUnload").and.resolveTo();
+      await lumineEnv.prepareToUnloadEditorWindow({ id: "close", reason: "close" });
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: true });
 
       await conditionPromise(
@@ -960,6 +961,7 @@ describe("Environment", () => {
       });
 
       spyOn(lumineEnv, "saveState");
+      spyOn(lumineEnv.applicationDelegate, "commitWindowUnload").and.resolveTo();
       const beginGrammarUnload = spyOn(lumineEnv.grammars, "beginWindowUnload").and.callThrough();
       let unloadingClassWasSetBeforeDeactivation = false;
       spyOn(lumineEnv.packages, "deactivatePackages").and.callFake(() => {
@@ -973,7 +975,10 @@ describe("Environment", () => {
       spyOn(lumineEnv.projectStateIndex, "close");
       spyOn(lumineEnv.workspace, "closeStateStore");
 
-      const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow();
+      const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow({
+        id: "close",
+        reason: "close",
+      });
 
       expect(shouldUnload).toBe(true);
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: true });
@@ -1012,6 +1017,7 @@ describe("Environment", () => {
         expect(bodyStyle().transitionDuration).toBe("0s");
       };
       spyOn(environment, "saveState").and.resolveTo();
+      spyOn(environment.applicationDelegate, "commitWindowUnload").and.resolveTo();
       spyOn(environment.packages, "deactivatePackages").and.callFake(async () => {
         expectConcealed();
         expect(editor.getBoundingClientRect().width).toBe(200);
@@ -1021,7 +1027,9 @@ describe("Environment", () => {
       });
       try {
         expect(bodyStyle().opacity).toBe("1");
-        expect(await environment.prepareToUnloadEditorWindow()).toBe(true);
+        expect(
+          await environment.prepareToUnloadEditorWindow({ id: "reload", reason: "reload" }),
+        ).toBe(true);
         environment.destroy();
         expectConcealed();
       } finally {
@@ -1050,6 +1058,9 @@ describe("Environment", () => {
           documentPath = "after-save-as";
           return true;
         });
+        const commit = spyOn(environment.applicationDelegate, "commitWindowUnload").and.callFake(
+          async () => operations.push("commit"),
+        );
         const originalBeginGrammarUnload = environment.grammars.beginWindowUnload;
         const beginGrammarUnload = spyOn(environment.grammars, "beginWindowUnload").and.callFake(
           () => {
@@ -1065,14 +1076,18 @@ describe("Environment", () => {
         spyOn(environment.notifications, "addError");
         spyOn(console, "error");
         try {
-          expect(await environment.prepareToUnloadEditorWindow()).toBe(!failFinalSave);
+          expect(
+            await environment.prepareToUnloadEditorWindow({ id: "saved-close", reason: "close" }),
+          ).toBe(!failFinalSave);
           expect(snapshots).toEqual(["before-save-as", "after-save-as"]);
           expect(operations).toEqual([
             "save",
             "confirm",
             "save",
-            ...(failFinalSave ? [] : ["grammar-unload", "deactivate"]),
+            ...(failFinalSave ? [] : ["commit", "grammar-unload", "deactivate"]),
           ]);
+          expect(commit.calls.count()).toBe(failFinalSave ? 0 : 1);
+          if (!failFinalSave) expect(commit).toHaveBeenCalledWith("saved-close");
           expect(beginGrammarUnload.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(deactivate.calls.count()).toBe(failFinalSave ? 0 : 1);
           expect(environment.unloading).toBe(!failFinalSave);
@@ -1091,6 +1106,7 @@ describe("Environment", () => {
           document: document.implementation.createHTMLDocument(),
         });
         const save = spyOn(environment, "saveState").and.resolveTo();
+        const commit = spyOn(environment.applicationDelegate, "commitWindowUnload").and.resolveTo();
         if (initialSaveFails) save.and.rejectWith(new Error("Initial capture failed"));
         spyOn(environment.workspace, "confirmClose").and.resolveTo(false);
         const beginGrammarUnload = spyOn(
@@ -1101,7 +1117,10 @@ describe("Environment", () => {
         spyOn(environment.notifications, "addError");
         spyOn(console, "error");
         try {
-          expect(await environment.prepareToUnloadEditorWindow()).toBe(false);
+          expect(
+            await environment.prepareToUnloadEditorWindow({ id: "refused-close", reason: "close" }),
+          ).toBe(false);
+          expect(commit).not.toHaveBeenCalled();
           expect(beginGrammarUnload).not.toHaveBeenCalled();
           expect(deactivate).not.toHaveBeenCalled();
           expect(environment.unloading).toBe(false);
@@ -1112,6 +1131,104 @@ describe("Environment", () => {
         }
       });
     }
+
+    it("waits for the saved session's main-process acknowledgement before teardown", async () => {
+      const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      environment.initialize({
+        window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+        document: document.implementation.createHTMLDocument(),
+      });
+      const save = spyOn(environment, "saveState").and.resolveTo();
+      let acknowledge, entered;
+      const committing = new Promise((resolve) => (entered = resolve));
+      const acknowledged = new Promise((resolve) => (acknowledge = resolve));
+      spyOn(environment.applicationDelegate, "commitWindowUnload").and.callFake(() => {
+        entered();
+        return acknowledged;
+      });
+      const deactivate = spyOn(environment.packages, "deactivatePackages").and.resolveTo();
+      const preparation = environment.prepareToUnloadEditorWindow({ id: "saved", reason: "close" });
+      try {
+        await committing;
+        expect(save).toHaveBeenCalledTimes(2);
+        expect(deactivate).not.toHaveBeenCalled();
+        expect(environment.unloading).toBe(true);
+        expect(environment.document.body.style.opacity).toBe("");
+        acknowledge();
+        expect(await preparation).toBe(true);
+        expect(deactivate).toHaveBeenCalled();
+      } finally {
+        acknowledge();
+        await preparation;
+        environment.destroy();
+      }
+    });
+
+    it("keeps the saved document usable when the native unload commit is rejected", async () => {
+      const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      environment.initialize({
+        window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+        document: document.implementation.createHTMLDocument(),
+      });
+      spyOn(environment, "saveState").and.resolveTo();
+      const failure = new Error("Native commit refused");
+      spyOn(environment.applicationDelegate, "commitWindowUnload").and.rejectWith(failure);
+      const begin = spyOn(environment.grammars, "beginWindowUnload").and.callThrough();
+      const deactivate = spyOn(environment.packages, "deactivatePackages").and.resolveTo();
+      try {
+        await expectAsync(
+          environment.prepareToUnloadEditorWindow({ id: "close", reason: "close" }),
+        ).toBeRejectedWith(failure);
+        expect(environment.unloading).toBe(false);
+        expect(environment.workspace.windowLifecycleChanging).toBe(false);
+        expect(environment.document.body.style.opacity).toBe("");
+        expect(begin).not.toHaveBeenCalled();
+        expect(deactivate).not.toHaveBeenCalled();
+      } finally {
+        environment.destroy();
+      }
+    });
+
+    it("finishes an accepted unload after cleanup failures instead of restoring a concealed document", async () => {
+      const environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+      environment.initialize({
+        window: { requestIdleCallback() {}, addEventListener() {}, removeEventListener() {} },
+        document: document.implementation.createHTMLDocument(),
+      });
+      spyOn(environment, "saveState").and.resolveTo();
+      spyOn(environment.applicationDelegate, "commitWindowUnload").and.resolveTo();
+      spyOn(environment.packages, "deactivatePackages").and.rejectWith(
+        new Error("Package cleanup"),
+      );
+      const storage = spyOn(environment.packages.storage, "close").and.rejectWith(
+        new Error("Storage cleanup"),
+      );
+      const watchers = spyOn(environment.fileWatchClient, "close").and.rejectWith(
+        new Error("Watcher cleanup"),
+      );
+      const state = spyOn(environment.stateStore, "close").and.throwError("State cleanup");
+      const index = spyOn(environment.projectStateIndex, "close").and.stub();
+      const workspace = spyOn(environment.workspace, "closeStateStore").and.stub();
+      const report = spyOn(console, "error");
+      try {
+        expect(
+          await environment.prepareToUnloadEditorWindow({ id: "saved", reason: "reload" }),
+        ).toBe(true);
+        expect(storage).toHaveBeenCalled();
+        expect(watchers).toHaveBeenCalled();
+        expect(state).toHaveBeenCalled();
+        expect(index).toHaveBeenCalled();
+        expect(workspace).toHaveBeenCalled();
+        expect(report).toHaveBeenCalledTimes(4);
+        expect(environment.unloading).toBe(true);
+        expect(environment.document.body.style.opacity).toBe("0");
+      } finally {
+        storage.and.resolveTo();
+        watchers.and.resolveTo();
+        state.and.stub();
+        environment.destroy();
+      }
+    });
 
     it("serializes the project state with all the options supplied in saveState", async () => {
       spyOn(lumine.project, "serialize").and.returnValue({ foo: 42 });

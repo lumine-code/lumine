@@ -177,7 +177,7 @@ module.exports = class AuxiliaryWindowBroker {
     if (!browserWindow || browserWindow.isDestroyed?.()) return;
     const contents = browserWindow.webContents;
     if (!contents || contents.isDestroyed()) return;
-    if (this.windows.size) {
+    if (this.windows.size && !this.closing) {
       if (this.runtimeBackgroundThrottling !== undefined) return;
       this.runtimeBackgroundThrottling = contents.getBackgroundThrottling();
       // The opener also owns every package's shared runtime. Its timers must
@@ -347,6 +347,29 @@ module.exports = class AuxiliaryWindowBroker {
         return;
       default:
         throw new Error(`Unsupported auxiliary window action: ${action}`);
+    }
+  }
+
+  hide() {
+    this.closing = true;
+    const attempt = (operation) => {
+      try {
+        operation();
+      } catch (error) {
+        console.error("Failed to conceal a closing auxiliary presentation", error);
+      }
+    };
+    attempt(() => this.updateRuntimeThrottling());
+    for (const record of this.windows.values()) {
+      if (!record.window.isDestroyed()) {
+        // Hidden presentations must report hidden visibility so the shared
+        // view scheduler uses its Node timer instead of a suspended frame.
+        attempt(() => {
+          const contents = record.window.webContents;
+          if (!contents.isDestroyed()) contents.setBackgroundThrottling(true);
+        });
+        attempt(() => record.window.hide());
+      }
     }
   }
 

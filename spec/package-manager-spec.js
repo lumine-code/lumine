@@ -1813,18 +1813,16 @@ describe("PackageManager", () => {
     // The window is going away, and the main process is waiting on the reply
     // before it may reload or close it. A package that will not finish gets
     // left behind rather than holding that open for good.
-    it("gives up on a package that never finishes deactivating", async () => {
+    it("bounds teardown even when the hidden document's timers do not advance", async () => {
       const pack = await lumine.packages.activatePackage("package-with-deactivate");
       const other = await lumine.packages.activatePackage("package-with-serialization");
-      // Settles far past the bound, so it is the wait that gives up rather than
-      // the package that finishes.
+      let finishDeactivation;
       spyOn(pack.mainModule, "deactivate").and.returnValue(
-        new Promise((resolve) => setTimeout(resolve, 10000)),
+        new Promise((resolve) => (finishDeactivation = resolve)),
       );
       spyOn(console, "warn");
 
       const deactivation = lumine.packages.deactivatePackages({ timeout: 20 });
-      advanceClock(20);
       await deactivation;
 
       expect(console.warn.calls.argsFor(0)[0]).toContain("package-with-deactivate");
@@ -1836,21 +1834,8 @@ describe("PackageManager", () => {
       );
       expect(lumine.packages.isPackageActive(other.name)).toBe(false);
 
-      // Let it finish before the suite moves on: `unloadPackage` refuses a
-      // package that is still active, and `Package#deactivate` early-returns
-      // once it has run, so a straggler left here fails the next spec instead
-      // of this one. Its completion is several microtask turns deep — the main
-      // module's promise, then `Package#deactivate`, then the manager — so it
-      // is flushed rather than awaited once.
-      advanceClock(10000);
-      for (
-        let i = 0;
-        i < 20 &&
-        lumine.packages.getPackageLifecycleState("package-with-deactivate") === "deactivating";
-        i++
-      ) {
-        await Promise.resolve();
-      }
+      finishDeactivation();
+      await lumine.packages.deactivatePackage(pack.name);
       expect(lumine.packages.getPackageLifecycleState("package-with-deactivate")).toBe("loaded");
     });
 

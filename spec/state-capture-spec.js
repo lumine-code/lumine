@@ -82,7 +82,7 @@ describe("workspace state capture", () => {
     const confirm = spyOn(lumine.workspace, "confirmClose");
     const report = spyOn(lumine.notifications, "addError");
     spyOn(console, "error");
-    expect(await lumine.prepareToUnloadEditorWindow()).toBe(false);
+    expect(await lumine.prepareToUnloadEditorWindow({ id: "close", reason: "close" })).toBe(false);
     expect(confirm).not.toHaveBeenCalled();
     expect(report).toHaveBeenCalled();
   });

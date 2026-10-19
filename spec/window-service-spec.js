@@ -36,6 +36,17 @@ describe("WindowService", () => {
     expect(service.getId()).toBe(42);
   });
 
+  it("exposes the unload phase synchronously without requesting native window state", () => {
+    const environment = { unloading: false };
+    service = new WindowService(delegate, environment);
+    expect(service.isUnloading()).toBe(false);
+    environment.unloading = true;
+    expect(service.isUnloading()).toBe(true);
+    environment.unloading = false;
+    expect(service.isUnloading()).toBe(false);
+    expect(delegate.invokeWindow).not.toHaveBeenCalled();
+  });
+
   it("maps state, action, dialog, menu, download, and DevTools calls to fixed actions", async () => {
     await service.getState();
     await service.getSize();

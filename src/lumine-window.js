@@ -31,6 +31,8 @@ function iconFileNameForMode(safeMode, devMode) {
 let includeShellLoadTime = true;
 let nextId = 0;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COMMITTED_CLOSE_TIMEOUT_MS = 8000;
+const FORCE_CLOSE_TIMEOUT_MS = 2000;
 
 module.exports = class LumineWindow extends EventEmitter {
   constructor(lumineApplication, fileRecoveryService, settings = {}) {
@@ -173,6 +175,18 @@ module.exports = class LumineWindow extends EventEmitter {
     if (!this.loadSettings.env) this.env = this.loadSettings.env;
 
     this.browserWindow.on("window:loaded", () => {
+      if (this.closeCommitted) {
+        if (this.unloadRequest) this.closeAfterPreparation(this.unloadRequest.promise);
+        else if (this.unloadApproved) this.close();
+        this.resolveLoadedPromise();
+        return;
+      }
+      this.unloadRequest?.finish(this.unloadRequest.committed);
+      this.unloadRequest?.dispose();
+      this.unloadRequest = null;
+      this.unloadApproved = false;
+      this.closeCommitted = false;
+      this.unloading = false;
       this.disableZoom();
       this.emit("window:loaded");
       this.resolveLoadedPromise();
@@ -258,16 +272,23 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   handleEvents() {
-    this.browserWindow.on("close", async (event) => {
-      if (
-        (!this.lumineApplication.quitting || this.lumineApplication.quittingForUpdate) &&
-        !this.unloading
-      ) {
-        event.preventDefault();
-        this.unloading = true;
-        this.lumineApplication.saveCurrentWindowOptions(false);
-        if (await this.prepareToUnload()) this.close();
+    this.browserWindow.on("close", (event) => {
+      if (this.isSpecWindow()) return;
+      if (this.unloadApproved) {
+        if (this.unloadRequest) this.unloadRequest.reason = "close";
+        this.closeCommitted = true;
+        if (this.unloadRequest?.committed) this.hideCommittedClose(this.unloadRequest);
+        return;
       }
+      event.preventDefault();
+      const alreadyClosing = this.isClosing();
+      this.unloading = true;
+      if (!alreadyClosing)
+        void Promise.resolve(this.lumineApplication.saveCurrentWindowOptions(false)).catch(
+          (error) => console.error(error),
+        );
+      const preparation = this.prepareToUnload({ reason: "close" });
+      this.closeAfterPreparation(preparation);
     });
 
     this.browserWindow.on("closed", () => {
@@ -362,42 +383,173 @@ module.exports = class LumineWindow extends EventEmitter {
     if (this.isSpec) this.browserWindow.on("blur", () => this.browserWindow.focusOnWebView());
   }
 
-  async prepareToUnload() {
-    if (this.isSpecWindow()) return true;
+  isClosing() {
+    return (
+      this.browserWindow.isDestroyed() ||
+      this.closeCommitted === true ||
+      this.unloadRequest?.reason === "close"
+    );
+  }
 
-    this.lastPrepareToUnloadPromise = new Promise((resolve) => {
-      const callback = (event, result) => {
-        if (BrowserWindow.fromWebContents(event.sender) === this.browserWindow) {
-          ipcMain.removeListener("did-prepare-to-unload", callback);
-          if (!result) {
-            this.unloading = false;
-            this.lumineApplication.quitting = false;
-          }
-          resolve(result);
-        }
-      };
-      ipcMain.on("did-prepare-to-unload", callback);
-      // A dropped message never earns a reply, so waiting on one would hang this
-      // handshake for good and leak the listener with it. A renderer that cannot
-      // be reached has nothing left to save and no veto to cast, so treat the
-      // unload as agreed to rather than waiting on an answer that never comes.
-      if (!this.sendToRenderer("prepare-to-unload")) {
-        ipcMain.removeListener("did-prepare-to-unload", callback);
-        resolve(true);
+  /** @private Join an existing close without bypassing its pending package cleanup. */
+  closeAfterPreparation(preparation) {
+    if (this.closeRequestPromise === preparation) return;
+    this.closeRequestPromise = preparation;
+    void preparation
+      .then((approved) => {
+        if (approved && !this.browserWindow.isDestroyed()) this.close();
+      })
+      .catch((error) => console.error("Failed to close the window", error))
+      .finally(() => {
+        if (this.closeRequestPromise === preparation) this.closeRequestPromise = null;
+      });
+  }
+
+  prepareToUnload({ reason }) {
+    if (this.isSpecWindow()) return Promise.resolve(true);
+    if (!["close", "reload", "replace"].includes(reason))
+      return Promise.reject(new TypeError("Unknown window unload reason"));
+    if (this.unloadRequest) {
+      if (reason === "close") {
+        this.unloadRequest.reason = "close";
+        if (this.unloadRequest.committed) this.hideCommittedClose(this.unloadRequest);
       }
-    });
+      return this.unloadRequest.promise;
+    }
 
-    return this.lastPrepareToUnloadPromise;
+    const request = { id: crypto.randomUUID(), reason, committed: false, completed: false };
+    this.unloadRequest = request;
+    this.unloadApproved = false;
+    let resolve;
+    request.promise = new Promise((complete) => (resolve = complete));
+    this.lastPrepareToUnloadPromise = request.promise;
+    const clearTimers = () => {
+      clearTimeout(request.closeTimer);
+      clearTimeout(request.destroyTimer);
+    };
+    const callback = (event, result) => {
+      if (
+        event.sender === this.browserWindow.webContents &&
+        result &&
+        typeof result === "object" &&
+        result.id === request.id
+      )
+        finish(request.committed || result.approved === true);
+    };
+    const closed = () => {
+      request.dispose();
+      finish(true);
+    };
+    request.dispose = () => {
+      clearTimers();
+      ipcMain.removeListener("did-prepare-to-unload", callback);
+      this.browserWindow.removeListener("closed", closed);
+    };
+    const finish = (approved) => {
+      if (request.completed) return;
+      request.completed = true;
+      ipcMain.removeListener("did-prepare-to-unload", callback);
+      this.unloadApproved = approved;
+      if (!approved) {
+        request.dispose();
+        this.unloadRequest = null;
+        this.unloading = false;
+        this.lumineApplication.quitting = false;
+      }
+      resolve(approved);
+    };
+    request.finish = finish;
+    ipcMain.on("did-prepare-to-unload", callback);
+    this.browserWindow.once("closed", closed);
+    // A renderer that cannot be reached has no remaining state to save.
+    if (!this.sendToRenderer("prepare-to-unload", { id: request.id, reason })) finish(true);
+    return request.promise;
+  }
+
+  commitUnload(id) {
+    const request = this.unloadRequest;
+    if (!request || request.id !== id || request.completed)
+      throw new Error("The window unload request is no longer active");
+    request.committed = true;
+    this.unloading = true;
+    if (request.reason === "close") this.hideCommittedClose(request);
+  }
+
+  hideCommittedClose(request) {
+    this.closeCommitted = true;
+    if (request.closeTimer || this.browserWindow.isDestroyed()) return;
+    // Saving and close confirmation have finished. Allow orderly teardown in
+    // the hidden renderer, then fall back to its normal beforeunload cleanup.
+    request.closeTimer = setTimeout(() => {
+      if (this.browserWindow.isDestroyed()) return;
+      console.warn("Window cleanup did not finish after committing its close");
+      this.unloadApproved = true;
+      request.destroyTimer = setTimeout(() => {
+        if (!this.browserWindow.isDestroyed()) this.browserWindow.destroy();
+      }, FORCE_CLOSE_TIMEOUT_MS);
+      request.destroyTimer.unref?.();
+      this.close();
+    }, COMMITTED_CLOSE_TIMEOUT_MS);
+    request.closeTimer.unref?.();
+    for (const hide of [() => this.browserWindow.hide(), () => this.auxiliaryWindowBroker.hide()]) {
+      try {
+        hide();
+      } catch (error) {
+        console.error("Failed to hide a committed closing window", error);
+      }
+    }
   }
 
   openPath(pathToOpen, initialLine, initialColumn) {
     return this.openLocations([{ pathToOpen, initialLine, initialColumn }]);
   }
 
+  /** @private Wait for a live renderer generation rather than its outgoing unload snapshot. */
+  async awaitUsableGeneration() {
+    const closed = this.closedPromise.then(() => false);
+    for (;;) {
+      if (this.isClosing()) return false;
+      const request = this.unloadRequest;
+      if (request) {
+        const preparation = await Promise.race([
+          request.promise.then((approved) => ({ approved })),
+          closed,
+        ]);
+        if (!preparation || this.isClosing()) return false;
+        if (preparation.approved && request.reason === "replace") return false;
+        // The reload continuation installs its new loadedPromise after approval.
+        // Yield once even if this waiter was registered before that continuation.
+        if (preparation.approved && request.reason === "reload") {
+          await Promise.resolve();
+          if (!request.reloadStarted) return false;
+        }
+      }
+      const generation = this.loadedPromise;
+      if (!(await Promise.race([generation.then(() => true), closed])) || this.isClosing())
+        return false;
+      if (
+        this.loadedPromise !== generation ||
+        (this.unloadRequest && this.unloadRequest !== request)
+      )
+        continue;
+      return true;
+    }
+  }
+
   async openLocations(locationsToOpen) {
-    this.addLocationsToOpen(locationsToOpen);
-    await this.loadedPromise;
-    this.sendMessage("open-locations", locationsToOpen);
+    if (this.isClosing()) return false;
+    // A second launch may supply bootstrap intent before the first renderer is
+    // ready. An outgoing unload must settle before acquiring any new roots.
+    const bootstrapIntent = !this.unloadRequest;
+    if (bootstrapIntent) this.addLocationsToOpen(locationsToOpen);
+    for (;;) {
+      const request = this.unloadRequest;
+      const generation = this.loadedPromise;
+      if (!(await this.awaitUsableGeneration()) || this.isClosing()) return false;
+      if (this.unloadRequest !== request || this.loadedPromise !== generation) continue;
+      if (!bootstrapIntent) this.addLocationsToOpen(locationsToOpen);
+      return this.sendToRenderer("message", "open-locations", locationsToOpen);
+    }
   }
 
   didChangeUserSettings(settings) {
@@ -502,8 +654,14 @@ module.exports = class LumineWindow extends EventEmitter {
     }
   }
 
-  sendURIMessage(uri) {
-    this.sendToRenderer("uri-message", uri);
+  async sendURIMessage(uri) {
+    for (;;) {
+      const request = this.unloadRequest;
+      const generation = this.loadedPromise;
+      if (!(await this.awaitUsableGeneration()) || this.isClosing()) return false;
+      if (this.unloadRequest !== request || this.loadedPromise !== generation) continue;
+      return this.sendToRenderer("uri-message", uri);
+    }
   }
 
   sendCommandToBrowserWindow(command, ...args) {
@@ -527,7 +685,7 @@ module.exports = class LumineWindow extends EventEmitter {
   focus() {
     // Native focus can reveal Electron's offscreen placeholder. Page focus is
     // handled separately by the caller and remains available to specs.
-    if (this.offscreen) return;
+    if (this.offscreen || this.isClosing()) return;
     return this.browserWindow.focus();
   }
 
@@ -537,7 +695,7 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   maximize() {
-    if (this.offscreen) return;
+    if (this.offscreen || this.isClosing()) return;
     return this.browserWindow.maximize();
   }
 
@@ -547,7 +705,7 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   restore() {
-    if (this.offscreen) return;
+    if (this.offscreen || this.isClosing()) return;
     return this.browserWindow.restore();
   }
 
@@ -600,8 +758,15 @@ module.exports = class LumineWindow extends EventEmitter {
   // rest of `openPathOnEvent` simply stop doing anything while the renderer
   // itself keeps working normally. Commit to the reload first, latch second.
   async reload({ skipPrepareToUnload = false } = {}) {
-    const canUnload = skipPrepareToUnload || (await this.prepareToUnload());
-    if (!canUnload || this.browserWindow.isDestroyed()) return this.loadedPromise;
+    const preparation = skipPrepareToUnload ? null : this.prepareToUnload({ reason: "reload" });
+    const request = this.unloadRequest;
+    const canUnload = skipPrepareToUnload || (await preparation);
+    if (!canUnload || this.browserWindow.isDestroyed() || this.isClosing())
+      return Promise.race([this.loadedPromise, this.closedPromise]);
+
+    if (request?.reloadStarted) return Promise.race([this.loadedPromise, this.closedPromise]);
+    if (request) request.reloadStarted = true;
+    this.unloadApproved = true;
 
     this.loadedPromise = new Promise((resolve) => {
       this.resolveLoadedPromise = resolve;
@@ -610,7 +775,7 @@ module.exports = class LumineWindow extends EventEmitter {
     // can mistake it for a close and hide the focused window from the taskbar.
     this.sendToRenderer("will-reload-window");
     this.browserWindow.reload();
-    return this.loadedPromise;
+    return Promise.race([this.loadedPromise, this.closedPromise]);
   }
 
   showSaveDialog(options) {

@@ -155,20 +155,26 @@ module.exports = class ApplicationDelegate {
     // throws would leave it waiting forever: no reload, no close, and no second
     // chance to ask. Always answer. Refusing is the safe answer to a failure
     // here, since the alternative discards whatever the handler did not get to
-    // save; the window stays usable and the error says why it would not reload.
-    const outerCallback = async (_event) => {
+    // save. The main process remembers a durable commit separately, so a later
+    // cleanup failure still finishes unloading the concealed generation.
+    const outerCallback = async (_event, request) => {
       let shouldUnload;
       try {
-        shouldUnload = await callback();
+        shouldUnload = await callback(request);
       } catch (error) {
         console.error("Failed to prepare the window to unload", error);
         shouldUnload = false;
       }
-      ipcRenderer.send("did-prepare-to-unload", shouldUnload);
+      ipcRenderer.send("did-prepare-to-unload", { id: request.id, approved: shouldUnload });
     };
 
     ipcRenderer.on("prepare-to-unload", outerCallback);
     return new Disposable(() => ipcRenderer.removeListener("prepare-to-unload", outerCallback));
+  }
+
+  /** @private Acknowledge the saved session before its native close presentation disappears. */
+  commitWindowUnload(id) {
+    return this.invokeWindow("commitUnload", id);
   }
 
   onDidChangeHistoryManager(callback) {

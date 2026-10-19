@@ -1,6 +1,61 @@
 const ApplicationDelegate = require("../src/application-delegate");
 
 describe("ApplicationDelegate", function () {
+  describe("window unload handshake", () => {
+    it("forwards the unload request and identifies its completion reply", async () => {
+      const { ipcRenderer } = require("electron");
+      const delegate = new ApplicationDelegate();
+      const request = { id: "unload-request", reason: "close" };
+      const callback = jasmine.createSpy("prepare unload").and.resolveTo(true);
+      const existing = new Set(ipcRenderer.listeners("prepare-to-unload"));
+      const subscription = delegate.onDidRequestUnload(callback);
+      const listener = ipcRenderer
+        .listeners("prepare-to-unload")
+        .find((candidate) => !existing.has(candidate));
+      const send = spyOn(ipcRenderer, "send");
+      try {
+        await listener({}, request);
+        expect(callback).toHaveBeenCalledOnceWith(request);
+        expect(
+          send.calls.allArgs().filter(([channel]) => channel === "did-prepare-to-unload"),
+        ).toEqual([["did-prepare-to-unload", { id: request.id, approved: true }]]);
+        subscription.dispose();
+        expect(ipcRenderer.listeners("prepare-to-unload")).not.toContain(listener);
+      } finally {
+        subscription.dispose();
+      }
+    });
+
+    it("refuses a failed preparation with the same request identity", async () => {
+      const { ipcRenderer } = require("electron");
+      const delegate = new ApplicationDelegate();
+      const existing = new Set(ipcRenderer.listeners("prepare-to-unload"));
+      const subscription = delegate.onDidRequestUnload(async () => {
+        throw new Error("Preparation failed");
+      });
+      const listener = ipcRenderer
+        .listeners("prepare-to-unload")
+        .find((candidate) => !existing.has(candidate));
+      const send = spyOn(ipcRenderer, "send");
+      spyOn(console, "error");
+      try {
+        await listener({}, { id: "failed-request", reason: "reload" });
+        expect(
+          send.calls.allArgs().filter(([channel]) => channel === "did-prepare-to-unload"),
+        ).toEqual([["did-prepare-to-unload", { id: "failed-request", approved: false }]]);
+      } finally {
+        subscription.dispose();
+      }
+    });
+
+    it("commits the saved session through the fixed window action", async () => {
+      const delegate = new ApplicationDelegate();
+      const invoke = spyOn(delegate, "invokeWindow").and.resolveTo();
+      await delegate.commitWindowUnload("unload-request");
+      expect(invoke).toHaveBeenCalledOnceWith("commitUnload", "unload-request");
+    });
+  });
+
   describe("onWillReloadWindow", function () {
     it("observes committed reloads and removes the listener on disposal", function () {
       const { ipcRenderer } = require("electron");

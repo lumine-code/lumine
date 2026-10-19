@@ -64,6 +64,126 @@ describe("LumineApplication", function () {
     }
   });
 
+  describe("routing while windows are closing", function () {
+    it("opens a file in a fresh window instead of the closing focused project", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      closing.closing = true;
+      closing.isFocused.returns(true);
+      sinon.spy(closing, "openLocations");
+      closing.focus.resetHistory();
+
+      const opened = await scenario.open(parseCommandLine(["a/1.md"]));
+
+      assert.notStrictEqual(opened, closing);
+      assert.isFalse(closing.openLocations.called);
+      assert.isFalse(closing.focus.called);
+      assert.isUndefined(app.focusedWindow());
+      await scenario.assert("[a _] [_ 1.md]");
+    });
+
+    it("ignores an explicitly requested window that is closing", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      closing.closing = true;
+      sinon.spy(closing, "openLocations");
+
+      const opened = await app.openPaths({
+        window: closing,
+        pathsToOpen: [scenario.convertEditorPath("a/1.md")],
+      });
+
+      assert.notStrictEqual(opened, closing);
+      assert.isFalse(closing.openLocations.called);
+    });
+
+    it("reuses the original window after closing was cancelled", async function () {
+      const [window] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      window.closing = true;
+      assert.isUndefined(app.getLastFocusedWindow());
+      window.closing = false;
+
+      assert.strictEqual(await scenario.open(parseCommandLine(["a/1.md"])), window);
+      await scenario.assert("[a 1.md]");
+    });
+
+    it("retries in a new window if the chosen window starts closing before accepting the file", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      sinon.stub(closing, "openLocations").callsFake(async () => {
+        closing.closing = true;
+        return false;
+      });
+      closing.focus.resetHistory();
+
+      const opened = await scenario.open(parseCommandLine(["a/1.md"]));
+
+      assert.notStrictEqual(opened, closing);
+      assert.isFalse(closing.focus.called);
+      assert.isFalse(closing.replaceEnvironment.called);
+      await scenario.assert("[a _] [_ 1.md]");
+    });
+
+    it("keeps the application alive while a new file resolves after the last window closes", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      const file = scenario.convertEditorPath("a/1.md");
+      const location = await app.parsePathToOpen(file);
+      let finishParsing;
+      sinon.stub(app, "parsePathToOpen").returns(
+        new Promise((resolve) => {
+          finishParsing = () => resolve(location);
+        }),
+      );
+      closing.closing = true;
+      electron.app.quit.resetHistory();
+      const opening = app.openPaths({ pathsToOpen: [file] });
+
+      closing.close();
+      electron.app.emit("window-all-closed");
+      assert.isFalse(electron.app.quit.called);
+      finishParsing();
+      const opened = await opening;
+
+      assert.notStrictEqual(opened, closing);
+      assert.isFalse(electron.app.quit.called);
+      assert.strictEqual(app.pendingWindowOpenCount, 0);
+      assert.deepEqual(app.getAllWindows(), [opened]);
+      assert.isTrue(opened._editorPaths.has(location.pathToOpen));
+    });
+
+    it("finishes an explicit quit if the pending file request fails without opening a window", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      const failure = new Error("file request failed");
+      let failParsing;
+      sinon.stub(app, "parsePathToOpen").returns(
+        new Promise((resolve, reject) => {
+          failParsing = () => reject(failure);
+        }),
+      );
+      const opening = app.openPaths({ pathsToOpen: [scenario.convertEditorPath("a/1.md")] });
+      closing.close();
+      electron.app.quit.resetHistory();
+
+      const event = { preventDefault: sinon.spy() };
+      electron.app.emit("before-quit", event);
+      await app.lastBeforeQuitPromise;
+
+      assert.isTrue(event.preventDefault.calledOnce);
+      assert.isFalse(electron.app.quit.called);
+      failParsing();
+      try {
+        await opening;
+        assert.fail("the pending request should reject");
+      } catch (error) {
+        assert.strictEqual(error, failure);
+      }
+      assert.strictEqual(app.pendingWindowOpenCount, 0);
+      assert.isTrue(electron.app.quit.calledOnce);
+    });
+  });
+
   describe("command-line interface behavior", function () {
     describe("with no open windows", function () {
       // This is also the case when a user selects the application from the OS shell
@@ -570,6 +690,38 @@ describe("LumineApplication", function () {
 
     describe("lumine:// URLs", function () {
       describe("with a package-name host", function () {
+        it("routes a URI away from a closing window", async function () {
+          const [closing] = await scenario.launch(parseCommandLine(["a"]));
+          const app = scenario.getApplication(0);
+          app.packages = { getAvailablePackageMetadata: () => [] };
+          closing.closing = true;
+          const uri = "lumine://package-without-url-main/after-close";
+
+          const [opened] = await scenario.open(parseCommandLine([uri]));
+          assert.notStrictEqual(opened, closing);
+          assert.isFalse(closing.sendURIMessage.called);
+          opened.emit("window:loaded");
+          assert.isTrue(opened.sendURIMessage.calledWith(uri));
+        });
+
+        it("retargets a URI if the selected window refuses it while closing", async function () {
+          const [closing] = await scenario.launch(parseCommandLine(["a"]));
+          const app = scenario.getApplication(0);
+          app.packages = { getAvailablePackageMetadata: () => [] };
+          closing.sendURIMessage = sinon.stub().callsFake(async () => {
+            closing.closing = true;
+            return false;
+          });
+          closing.focus.resetHistory();
+          const uri = "lumine://package-without-url-main/after-close";
+
+          const [opened] = await scenario.open(parseCommandLine([uri]));
+          assert.notStrictEqual(opened, closing);
+          assert.isFalse(closing.focus.called);
+          opened.emit("window:loaded");
+          assert.isTrue(opened.sendURIMessage.calledWith(uri));
+        });
+
         it("loads the package's urlMain in a new window", async function () {
           await scenario.launch({});
 
@@ -952,6 +1104,35 @@ describe("LumineApplication", function () {
       assert.isFalse(w1.browserWindow.show.called);
       assert.isFalse(w1.browserWindow.focus.called);
       assert.isFalse(focusApplication.called);
+    });
+
+    it("does not reveal or focus a window once closing has started", async function () {
+      w1.closing = true;
+      w1.browserWindow.show = w1.show;
+      w1.browserWindow.webContents.focus = sinon.spy();
+      w1.focus.resetHistory();
+
+      app.showWindow(w1);
+      await LumineApplication.handleWindowAction({ sender: w1.browserWindow.webContents }, "focus");
+
+      assert.isFalse(w1.show.called);
+      assert.isFalse(w1.focus.called);
+      assert.isFalse(w1.browserWindow.webContents.focus.called);
+    });
+
+    it("commits only the unload belonging to the requesting window", async function () {
+      w1.commitUnload = sinon.stub().returns(true);
+      w0.commitUnload = sinon.stub().returns(false);
+
+      const committed = await LumineApplication.handleWindowAction(
+        { sender: w1.browserWindow.webContents },
+        "commitUnload",
+        42,
+      );
+
+      assert.isTrue(committed);
+      assert.isTrue(w1.commitUnload.calledOnceWithExactly(42));
+      assert.isFalse(w0.commitUnload.called);
     });
 
     it("keeps offscreen spec window actions hidden while allowing page focus", async function () {
@@ -1762,7 +1943,7 @@ describe("LumineApplication", function () {
 
       const openedWindow = await app.reopenWindowInDevMode();
 
-      assert.isTrue(sourceWindow.prepareToUnload.calledOnce);
+      assert.isTrue(sourceWindow.prepareToUnload.calledOnceWithExactly({ reason: "replace" }));
       assert.isTrue(sourceWindow.close.calledOnce);
       assert.isTrue(openedWindow.devMode);
       assert.isFalse(openedWindow.safeMode);
@@ -1890,6 +2071,43 @@ describe("LumineApplication", function () {
 
       assert.isTrue(app.reopenWindowInDevMode.calledOnce);
     });
+
+    it("does not replace a window if a close supersedes its unload preparation", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().callsFake(async () => {
+        sourceWindow.closing = true;
+        return true;
+      });
+      sinon.spy(app, "openPaths");
+
+      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isFalse(app.openPaths.called);
+      assert.isFalse(sourceWindow.reload.called);
+      assert.isFalse(sourceWindow.windowStateTransferPending);
+    });
+
+    it("closes an unfinished replacement if the source starts closing while it loads", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(true);
+      let finishLoading;
+      const replacement = {
+        close: sinon.spy(),
+        loadedPromise: new Promise((resolve) => (finishLoading = resolve)),
+      };
+      sinon.stub(app, "openPaths").resolves(replacement);
+
+      const replacing = app.reopenWindowInDevMode();
+      await new Promise(process.nextTick);
+      sourceWindow.closing = true;
+      finishLoading();
+      assert.isUndefined(await replacing);
+      assert.isTrue(replacement.close.calledOnce);
+      assert.isFalse(sourceWindow.reload.called);
+    });
   });
 
   describe("reloading all windows", function () {
@@ -2001,6 +2219,49 @@ describe("LumineApplication", function () {
   });
 
   describe("quitting", function () {
+    it("leaves shared services live until process exit has committed", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      closing.prepareToUnload = sinon.stub().resolves(true);
+      const closeMaintenance = sinon.spy(app.sessionStateMaintenance, "close");
+      const closeWatchService = sinon.spy(app.fileWatchService, "close");
+      electron.app.quit.resetHistory();
+
+      electron.app.emit("before-quit", { preventDefault() {} });
+      await app.lastBeforeQuitPromise;
+
+      assert.isTrue(electron.app.quit.calledOnce);
+      assert.isFalse(closeMaintenance.called);
+      assert.isFalse(closeWatchService.called);
+
+      electron.app.emit("will-quit");
+      assert.isTrue(closeMaintenance.calledOnce);
+      assert.isTrue(closeWatchService.calledOnceWithExactly({ force: true }));
+    });
+
+    it("keeps a newly opened window and its shared services alive while older windows finish quitting", async function () {
+      const [closing] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      let finishUnloading;
+      closing.prepareToUnload = sinon.stub().callsFake(() => {
+        closing.closing = true;
+        return new Promise((resolve) => (finishUnloading = resolve));
+      });
+      const closeWatchService = sinon.spy(app.fileWatchService, "close");
+      electron.app.quit.resetHistory();
+      electron.app.emit("before-quit", { preventDefault() {} });
+
+      const opened = await scenario.open(parseCommandLine(["b/2.md"]));
+      finishUnloading(true);
+      await app.lastBeforeQuitPromise;
+
+      assert.isTrue(closing.prepareToUnload.calledOnceWithExactly({ reason: "close" }));
+      assert.deepEqual(app.getAllWindows(), [opened]);
+      assert.isFalse(electron.app.quit.called);
+      assert.isFalse(app.quitting);
+      assert.isFalse(closeWatchService.called);
+    });
+
     it("waits until all windows have saved their state before quitting", async function () {
       const [w0] = await scenario.launch(parseCommandLine(["a"]));
       const w1 = await scenario.open(parseCommandLine(["b"]));
@@ -2219,6 +2480,8 @@ class StubWindow extends EventEmitter {
     this.windowStateId = loadSettings.windowStateId || crypto.randomUUID();
     this.loadSettings.windowStateId = this.windowStateId;
     this.windowStateTransferPending = false;
+    this.closing = false;
+    this.closed = false;
 
     this._dimensions = Object.assign({}, loadSettings.windowDimensions) || {
       x: 100,
@@ -2243,6 +2506,7 @@ class StubWindow extends EventEmitter {
     this.prepareToUnload = sinon.spy();
     this.reload = sinon.stub().resolves();
     this.close = () => {
+      this.closed = true;
       // A real BrowserWindow emits "closed" when it closes. Emit it here too so
       // LumineApplication#addWindow's teardown runs and disposes per-window
       // subscriptions (e.g. the macOS scrollbar-style listener) rather than
@@ -2264,7 +2528,7 @@ class StubWindow extends EventEmitter {
       .stub()
       .returns(options.isMaximized !== undefined ? options.isMaximized : false);
 
-    this.sendURIMessage = sinon.spy();
+    this.sendURIMessage = sinon.stub().returns(true);
     this.didChangeUserSettings = sinon.spy();
     this.didFailToReadUserSettings = sinon.spy();
 
@@ -2273,6 +2537,7 @@ class StubWindow extends EventEmitter {
     this.safeMode = loadSettings.safeMode !== undefined ? loadSettings.safeMode : false;
 
     this.browserWindow = new EventEmitter();
+    this.browserWindow.isDestroyed = () => this.closed;
     this.browserWindow.webContents = new EventEmitter();
     this.browserWindow.webContents.send = sinon.spy();
     // Broadcast handlers such as the scrollbar-style listener identify a window
@@ -2291,6 +2556,7 @@ class StubWindow extends EventEmitter {
   }
 
   openLocations(locations) {
+    if (this.isClosing()) return false;
     this._locations.push(...locations);
     for (const location of locations) {
       if (location.pathToOpen) {
@@ -2306,6 +2572,7 @@ class StubWindow extends EventEmitter {
     this.projectRoots.sort();
 
     this.emit("window:locations-opened");
+    return true;
   }
 
   setProjectRoots(projectRoots) {
@@ -2324,6 +2591,10 @@ class StubWindow extends EventEmitter {
 
   isSpecWindow() {
     return this.isSpec;
+  }
+
+  isClosing() {
+    return this.closing || this.closed;
   }
 
   hasProjectPaths() {

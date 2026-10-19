@@ -575,7 +575,10 @@ class FileWatchService {
     };
   }
 
-  close() {
+  close({ force = false } = {}) {
+    // Terminal application shutdown cannot leave a native worker waiting on
+    // its parent. Escalation must also work during an existing graceful close.
+    if (force) this.worker?.kill();
     if (this.closing) return this.closing;
     this.closed = true;
     clearTimeout(this.retryTimer);

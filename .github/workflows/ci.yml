@@ -66,6 +66,8 @@ jobs:
         run: npm run test:eslint-jsx
       - name: Test package storage concurrency
         run: npm run test:storage
+      - name: Test native window lifecycle services
+        run: node --test spec/main-process/auxiliary-window-broker.test.js spec/main-process/file-watch-service.test.js
       - name: Test Electron download retries
         run: node --test script/install-electron.test.js
       - name: Test application packaging

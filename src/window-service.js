@@ -120,6 +120,20 @@ class WindowService {
     return Boolean(getWindowLoadSettings().headless);
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Determine whether this window has finished its final session save and is
+   * releasing its resources for closing or reloading. Automatic saves must stop
+   * once this phase starts.
+   *
+   * @returns {Boolean} Whether the window is unloading.
+   */
+  isUnloading() {
+    return Boolean(this.lumineEnvironment.unloading);
+  }
+
   /** @category Startup */
 
   /**
