@@ -63,3 +63,12 @@ test("compact completion tokens cannot span line boundaries", async () => {
   await assert.rejects(store.findWordCandidates("ac", { extraWordCharacters: "\n" }), RangeError);
   await assert.rejects(store.findWordCandidates("ac", { extraWordCharacters: "\r" }), RangeError);
 });
+
+test("compact completion metadata captures the cursor along with the text snapshot", async () => {
+  const store = new TextStore("banana\nother");
+  const position = { row: 0, column: 3 };
+  const result = store.findWordCandidates("bna", { position });
+  position.row = 1;
+  position.column = 0;
+  assert.equal((await result)[0].containsPosition, true);
+});

@@ -28,6 +28,8 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
   const unicodeExpression = new RegExp("[\\p{L}\\p{N}" + escaped + "]+", "gu");
   const asciiExpression = new RegExp("[a-zA-Z0-9" + escaped + "]+", "g");
   const canContainLF = extra.includes("\n");
+  const compact = Boolean(options.compact);
+  const position = options.position;
   let row = options.origin?.row ?? 0,
     column = options.origin?.column ?? 0,
     word = "",
@@ -35,12 +37,7 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
     startColumn = 0,
     nextLF = -1;
   const recordPosition = (entry) => {
-    if (!options.compact) {
-      entry.push({ row: startRow, column: startColumn });
-      return;
-    }
     entry.occurrences++;
-    const position = options.position;
     if (position) {
       entry.distance = Math.min(entry.distance, Math.abs(startRow - position.row));
       if (
@@ -54,8 +51,10 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
   const finish = () => {
     if (word && word.length <= 80) {
       const existing = words.get(word);
-      if (existing) recordPosition(existing);
-      else if (!rejected.has(word)) {
+      if (existing) {
+        if (compact) recordPosition(existing);
+        else existing.push({ row: startRow, column: startColumn });
+      } else if (!rejected.has(word)) {
         let matched = 0,
           cursor = 0;
         const candidate = fold(word);
@@ -65,15 +64,15 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
           cursor = index + 1;
         }
         if (matched === lower.length) {
-          const entry = options.compact
+          const entry = compact
             ? {
                 position: { row: startRow, column: startColumn },
                 distance: Infinity,
                 containsPosition: false,
                 occurrences: 0,
               }
-            : [];
-          recordPosition(entry);
+            : [{ row: startRow, column: startColumn }];
+          if (compact) recordPosition(entry);
           words.set(word, entry);
         } else if (rejected.size < 2048) rejected.add(word);
       }
@@ -133,7 +132,7 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
       await new Promise((resolve) => setImmediate(resolve));
       deadline = performance.now() + 4;
     }
-    const entry = options.compact
+    const entry = compact
       ? { word, ...positions, score: score(word) }
       : { word, positions, score: score(word) };
     if (results.length < limit) {

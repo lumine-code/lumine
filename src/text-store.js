@@ -671,7 +671,7 @@ class TextStore {
     const end = range ? this.characterIndexForPosition(range.end) : this.#text.length;
     return findWords(this.#text.subtext(start, end), query, extraWordCharacters, maxCount, {
       compact: true,
-      position,
+      position: position ? { row: position.row, column: position.column } : undefined,
       origin: this.#text.positionAt(start),
       signal,
     });
