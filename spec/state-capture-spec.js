@@ -109,7 +109,7 @@ describe("workspace state capture", () => {
     const command = lumine.commands
       .findCommands({ target: lumine.workspace.getElement() })
       .find((entry) => entry.name === "application:clear-project-history");
-    expect(command.description).toBe("Forget the projects offered by the Reopen Project menu.");
+    expect(command.description).toBe("Forget the projects offered by the Recent Projects menu.");
   });
 
   it("rejects asynchronous or failed package serialization instead of persisting an empty payload", () => {

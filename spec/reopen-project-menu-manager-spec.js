@@ -144,7 +144,7 @@ describe("ReopenProjectMenuManager", () => {
       expect(menuArg[0].label).toBe("File");
       expect(menuArg[0].submenu.length).toBe(1);
       const projectsMenu = menuArg[0].submenu[0];
-      expect(projectsMenu.label).toBe("Reopen Project");
+      expect(projectsMenu.label).toBe("Recent Projects");
       expect(projectsMenu.submenu.length).toBe(2);
 
       const first = projectsMenu.submenu[0];
@@ -167,7 +167,7 @@ describe("ReopenProjectMenuManager", () => {
       const menu = menuManager.add.calls.all()[0].args[0][0];
       expect(menu.label).toBe("File");
       expect(menu.submenu.length).toBe(1);
-      expect(menu.submenu[0].label).toBe("Reopen Project");
+      expect(menu.submenu[0].label).toBe("Recent Projects");
       expect(menu.submenu[0].submenu.length).toBe(10);
     });
 
@@ -219,7 +219,7 @@ describe("ReopenProjectMenuManager", () => {
   });
 
   describe("updateProjects", () => {
-    it("keeps recent projects in history order above the history action", () => {
+    it("keeps recent projects in history order above the picker and history action", () => {
       const template = [];
       const core = require(`../menus/${process.platform}.json`);
       for (const item of core.menu) MenuHelpers.merge(template, item);
@@ -230,11 +230,29 @@ describe("ReopenProjectMenuManager", () => {
           { paths: ["/a-earlier"] },
         ]),
       );
+      MenuHelpers.merge(template, {
+        label: "File",
+        submenu: [
+          {
+            label: "Recent Projects",
+            submenu: [
+              {
+                label: "Browse All Recent Projects…",
+                command: "recent-list:toggle",
+                group: "picker",
+                order: 10,
+              },
+            ],
+          },
+        ],
+      });
       const fileMenu = menuLayout(template).find((item) => item.id === "File");
-      const recent = fileMenu.submenu.find((item) => item.id === "Reopen Project").submenu;
+      const recent = fileMenu.submenu.find((item) => item.id === "Recent Projects").submenu;
       expect(recent.map((item) => item.label ?? item.type)).toEqual([
         "/z-latest",
         "/a-earlier",
+        "separator",
+        "Browse All Recent Projects…",
         "separator",
         "Clear Project History",
       ]);
@@ -250,7 +268,7 @@ describe("ReopenProjectMenuManager", () => {
       expect(menu.submenu.length).toBe(1);
 
       const recentMenu = menu.submenu[0];
-      expect(recentMenu.label).toBe("Reopen Project");
+      expect(recentMenu.label).toBe("Recent Projects");
       expect(recentMenu.submenu.length).toBe(2);
 
       const first = recentMenu.submenu[0];

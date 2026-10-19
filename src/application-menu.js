@@ -160,7 +160,7 @@ module.exports = class MacApplicationMenu {
   getDefaultTemplate() {
     return [
       {
-        label: "Lumine",
+        label: "App",
         submenu: [
           {
             label: "New Window",

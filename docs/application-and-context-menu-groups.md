@@ -59,29 +59,40 @@ This is the `fuzzy-files` menu: the headline action joins the `Go` group `files`
 
 Contributions to core menus use `group` and `order` instead of written separators. Choose a group in the immediate parent, rather than a group from another menu with a similar purpose. The platform definitions in `menus/win32.json`, `menus/linux.json` and `menus/darwin.json` contain the current policies.
 
-| Core parent             | Groups in display order                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `File`                  | `new`, `files`, `projects`, `history`, `save`, `properties`, `external`, `settings`, `extensions`, `close`, `quit`    |
-| `Configuration Files`   | `editor`, `packages`, `extensions`                                                                                    |
-| `File > Reopen Project` | `recent`, `history`                                                                                                   |
-| `Edit`                  | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions` |
-| `Edit > Text`           | `case`, `transform`, `whitespace`, `insert`, `delete`, `extensions`                                                   |
-| `View`                  | `commands`, `window`, `panels`, `font`, `appearance`, `extensions`                                                    |
-| `View > Appearance`     | `theme`, `mode`, `chrome`, `extensions`                                                                               |
-| `View > Toggle View`    | `panels`, `docks`, `extensions`                                                                                       |
-| `View > Jupyter`        | `reveal`, `toggle`, `extensions`                                                                                      |
-| `View > Editor`         | `grammar`, `appearance`, `structure`, `intelligence`, `editing`, `version-control`, `extensions`                      |
-| `View > Panes`          | `layout`, `items`, `focus`, `transfer`, `extensions`, `close`                                                         |
-| `Selection`             | `cursors`, `occurrences`, `units`, `ranges`, `document`, `structure`, `leaders`, `extensions`                         |
-| `Go`                    | `files`, `navigation`, `symbols`, `bookmarks`, `changes`, `matches`, `diagnostics`, `extensions`                      |
-| `Search`                | `buffer`, `project`, `results`, `extensions`, `history`                                                               |
-| `Git`                   | `repository`, `branches`, `changes`, `history`, `remote`, `extensions`                                                |
-| `Developer`             | `tools`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `windows`, `extensions`                     |
-| `Help`                  | `documentation`, `examples`, `updates`, `issues`, `extensions`, `about`                                               |
+| Core parent                 | Groups in display order                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `App`                       | `configuration`, `management`, `windows`, `updates`, `information`, `integration`, `system`, `extensions`, `quit`     |
+| `App > Configuration Files` | `editor`, `packages`, `extensions`                                                                                    |
+| `App > Windows`             | `new`, `transfer`, `extensions`, `close`                                                                              |
+| `App > Legal Information`   | `documents`, `extensions`                                                                                             |
+| `File`                      | `new`, `open`, `projects`, `save`, `tools`, `history`, `extensions`, `close`                                          |
+| `File > Browse`             | `sources`, `extensions`                                                                                               |
+| `File > Projects`           | `folders`, `saved`, `extensions`                                                                                      |
+| `File > Recent Projects`    | `recent`, `picker`, `extensions`, `history`                                                                           |
+| `File > File Properties`    | `format`, `extensions`                                                                                                |
+| `File > External`           | `actions`, `extensions`                                                                                               |
+| `Edit`                      | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions` |
+| `Edit > Text`               | `case`, `transform`, `whitespace`, `insert`, `delete`, `extensions`                                                   |
+| `View`                      | `commands`, `window`, `panels`, `font`, `appearance`, `extensions`                                                    |
+| `View > Appearance`         | `theme`, `mode`, `chrome`, `extensions`                                                                               |
+| `View > Toggle View`        | `panels`, `docks`, `extensions`                                                                                       |
+| `View > Jupyter`            | `reveal`, `toggle`, `extensions`                                                                                      |
+| `View > Editor`             | `grammar`, `appearance`, `structure`, `intelligence`, `editing`, `version-control`, `extensions`                      |
+| `View > Panes`              | `layout`, `items`, `focus`, `transfer`, `extensions`, `close`                                                         |
+| `Selection`                 | `cursors`, `occurrences`, `units`, `ranges`, `document`, `structure`, `leaders`, `extensions`                         |
+| `Go`                        | `files`, `navigation`, `symbols`, `bookmarks`, `changes`, `matches`, `diagnostics`, `extensions`                      |
+| `Search`                    | `buffer`, `project`, `results`, `extensions`, `history`                                                               |
+| `Git`                       | `repository`, `branches`, `changes`, `history`, `remote`, `extensions`                                                |
+| `Developer`                 | `tools`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `windows`, `extensions`                     |
+| `Help`                      | `documentation`, `examples`, `issues`, `extensions`                                                                   |
 
-The `settings` group keeps Settings and the Configuration Files submenu together before closing actions on Windows and Linux. Configuration Files starts with Config, Init Script, Keymap, Snippets and Stylesheet in the `editor` group, followed by an alphabetical `packages` group. macOS keeps Settings and that submenu under `Lumine`.
+The first menu uses the canonical `App` path on every platform. It owns settings, configuration files, package management, window lifecycle, updates and application information. `App > Windows` keeps new and detached windows together, followed by moving the current tab into a new window and closing the current window. Native macOS services and visibility actions remain in App. `File` owns document and project operations.
 
-A package with an existing command that opens its persistent configuration file contributes a descriptive row to `File > Configuration Files`, with `group: "packages"` and `order: 10`. MenuManager routes that contribution to `Lumine > Configuration Files` on macOS, so one package menu serves every platform. Keep the command in the package's own submenu too. Configuration panels, bibliography content, project folders and other ordinary documents are not configuration-file contributions.
+A package with an existing command that opens its persistent configuration file contributes a descriptive row to `App > Configuration Files` on every platform, with `group: "packages"` and `order: 10`. The submenu starts with Config, Init Script, Keymap, Snippets and Stylesheet in the `editor` group, followed by alphabetical package entries. Keep the command in the package's own submenu too. Configuration panels, bibliography content, project folders and other ordinary documents are not configuration-file contributions.
+
+`File > New Text File` creates a text document directly; `New Content…` opens the Launcher creation picker for the available content types. `Open File…` uses the Launcher's file-opening workflow. `Open Folder` uses the native folder picker and opens the selected directory as a project immediately, without passing it to Launcher. Its label deliberately omits the ellipsis. System terminal commands remain in their package menu and context menus.
+
+`File > Browse` collects configured-file and archived-version browsers. `Projects` contains adding a folder to the current project and opening saved projects. `File Properties` contains encoding and line endings, and `External` contains opening externally and revealing the file's directory. The direct File rows retain the common create, open, save, reopen and close actions.
 
 `Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with branch selection before changing files and staging and stash operations nested under their subject. `Developer` puts Developer Tools and reload actions first, then authoring, tests, services and inspection; dev-mode window actions live under Development Windows at the end. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
 
@@ -89,7 +100,7 @@ A package with an existing command that opens its persistent configuration file 
 
 `View > Panes` keeps the four Split directions directly visible. Its Focus Pane submenu contains next and previous pane navigation followed by the four directions. Detach and attach actions stay together before closing actions.
 
-The Reopen Project menu preserves recent-project history order with explicit item orders in the `recent` group and puts Clear Project History last in `history`. Empty history contributes no separator.
+`File > Recent Projects` preserves recent-project history order with explicit item orders in the `recent` group, followed by the all-recent-projects picker and Clear Project History last in `history`. Empty history contributes no separator. The dynamic entries keep the `application:reopen-project` command and its project paths unchanged.
 
 A command registers on the scope that actually handles it. An editor-local command may appear in the application menu: the menu preserves the focus from before it opened, checks the registered handlers against that target and disables an unavailable row. Do not move a command to `lumine-workspace` just to expose it in a menu. A workspace command may deliberately resolve the center document and guard its own operation while another surface has focus. A menu alias uses the same command as the package submenu; group metadata changes placement without changing dispatch or keymap scope.
 

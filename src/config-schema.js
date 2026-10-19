@@ -79,8 +79,8 @@ const configSchema = {
         default: "prompt",
       },
       reopenProjectMenuCount: {
-        title: "Reopen Project Menu Count",
-        description: "How many recent projects to show in the Reopen Project menu.",
+        title: "Recent Projects Menu Count",
+        description: "How many recent projects to show in the Recent Projects menu.",
         type: "integer",
         default: 15,
       },

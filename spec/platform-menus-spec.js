@@ -12,20 +12,18 @@ const PLATFORMS = ["win32", "linux", "darwin"];
 // Paths whose presence, label or position is platform-specific. A path listed
 // here is excluded from the cross-platform comparison entirely.
 const ALLOWED_DIVERGENCES = [
-  // macOS puts the application's own items in an app menu named after it, and
-  // takes About/License/Version and Settings out of Help and File to do it.
-  "/Lumine",
-  "/Help/View License",
-  "/Help/View Third-Party Notices",
-  "/Help/VERSION",
-  "/Help/About Lumine",
-  "/File/Settings",
-  "/File/Configuration Files",
+  // macOS adds native application services and visibility actions to App.
+  "/App/Install Shell Commands",
+  "/App/Services",
+  "/App/Hide Lumine",
+  "/App/Hide Others",
+  "/App/Show All",
   // macOS ships a Window menu with the standard role.
   "/Window",
-  // Quit is spelled by platform convention and lives in the app menu on macOS.
-  "/File/Exit",
-  "/File/Quit",
+  // Quit is spelled by platform convention, under App on every platform.
+  "/App/Exit",
+  "/App/Quit",
+  "/App/Quit Lumine",
   // There is no in-window menu bar to toggle on macOS.
   "/View/Toggle Menu Bar",
 ];
@@ -116,7 +114,8 @@ describe("platform menus", function () {
 
   it("places the shared-session window action beside New Window", function () {
     for (const platform of PLATFORMS) {
-      const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;
+      const app = menus[platform].menu.find((item) => strip(item.label) === "App");
+      const items = app.submenu.find((item) => strip(item.label) === "Windows").submenu;
       const index = items.findIndex((item) => item.command === "application:new-window");
       expect(items[index + 1].command).toBe("window:new-detached-window");
       expect(strip(items[index + 1].label)).toBe("New Detached Window");
@@ -137,18 +136,58 @@ describe("platform menus", function () {
     }
   });
 
-  it("offers Launcher New and Open with a direct New Text File action on every platform", function () {
+  it("distinguishes content pickers from direct file and folder actions on every platform", function () {
     for (const platform of PLATFORMS) {
       const items = menus[platform].menu.find((item) => strip(item.label) === "File").submenu;
       const action = (command) => items.find((item) => item.command === command);
-      expect(strip(action("launcher:new").label)).toBe("New…");
-      expect(strip(action("launcher:open").label)).toBe("Open…");
-      expect(strip(action("application:open-folder").label)).toBe("Open Folder…");
+      expect(strip(action("launcher:new").label)).toBe("New Content…");
+      expect(strip(action("launcher:open").label)).toBe("Open File…");
+      expect(strip(action("application:open-folder").label)).toBe("Open Folder");
       expect(strip(action("application:new-file").label)).toBe("New Text File");
       expect(items.indexOf(action("application:new-file"))).toBeLessThan(
         items.indexOf(action("launcher:new")),
       );
       expect(action("application:new-file").order).toBeLessThan(action("launcher:new").order);
+    }
+  });
+
+  it("puts application administration first and keeps File focused on documents and projects", function () {
+    for (const platform of PLATFORMS) {
+      const roots = menus[platform].menu;
+      expect(strip(roots[0].label)).toBe("App");
+      expect(roots.some((item) => strip(item.label) === "Lumine")).toBe(false);
+      const app = flatten(roots[0].submenu);
+      expect(app.get("/Settings")).toBe("application:show-settings");
+      expect(app.get("/Configuration Files")).toBe("(submenu)");
+      expect(app.get("/Windows/Close Window")).toBe("window:close");
+      expect(app.get("/About Lumine")).toBe("application:about");
+      expect(app.get("/Legal Information/License")).toBe("application:open-license");
+      const file = flatten(roots.find((item) => strip(item.label) === "File").submenu);
+      for (const command of [
+        "application:show-settings",
+        "application:new-window",
+        "window:new-detached-window",
+        "window:close",
+        "application:quit",
+      ]) {
+        expect([...file.values()]).not.toContain(command);
+      }
+      for (const submenu of [
+        "Browse",
+        "Projects",
+        "Recent Projects",
+        "File Properties",
+        "External",
+      ]) {
+        expect(file.get(`/${submenu}`)).toBe("(submenu)");
+      }
+      expect(file.get("/Projects/Add Folder to Project…")).toBe("application:add-project-folder");
+      expect(file.get("/Recent Projects/Clear Project History")).toBe(
+        "application:clear-project-history",
+      );
+      expect([...flatten(roots).keys()].some((itemPath) => itemPath.endsWith("/VERSION"))).toBe(
+        false,
+      );
     }
   });
 

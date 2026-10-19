@@ -59,7 +59,7 @@ function menuLayout(items, { groupOrder, sortBy, sortItems, preserveUngrouped = 
     }
   } else if (sortBy === "label") {
     // This is for a named list of surfaces, not an authored sequence of
-    // operations or the dynamic Reopen Project history.
+    // operations or the dynamic Recent Projects history.
     rendered.sort(compare);
   } else if (sortItems) {
     rendered = sortItems(rendered.map(({ item }) => item)).map((item) => ({ item }));

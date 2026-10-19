@@ -1,7 +1,7 @@
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 const path = require("path");
 
-// Populates the 'File > Reopen Project' menu with the most recent projects
+// Populates the 'File > Recent Projects' menu with the most recent projects
 // from the {@link HistoryManager}.
 module.exports = class ReopenProjectMenuManager {
   constructor({ menu, commands, history, config, open }) {
@@ -62,8 +62,8 @@ module.exports = class ReopenProjectMenuManager {
       id: "File",
       submenu: [
         {
-          label: "Reopen Project",
-          id: "Reopen Project",
+          label: "Recent Projects",
+          id: "Recent Projects",
           submenu: projects.map((project, index) => ({
             label: this.createLabel(project),
             command: "application:reopen-project",

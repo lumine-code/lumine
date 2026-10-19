@@ -104,11 +104,11 @@ describe("MenuManager", function () {
   });
 
   describe("::add(items)", function () {
-    it("shares package configuration files in the platform's configuration submenu", function () {
+    it("shares package configuration files under App on every platform", function () {
       for (const platform of ["win32", "linux", "darwin"]) {
         menu.clear();
         menu.platform = platform;
-        const parent = platform === "darwin" ? "Lumine" : "File";
+        const parent = "App";
         menu.add([
           {
             label: parent,
@@ -124,8 +124,11 @@ describe("MenuManager", function () {
         const contribution = [
           {
             label: "File",
+            submenu: [{ label: "New Notebook", command: "new-notebook" }],
+          },
+          {
+            label: "App",
             submenu: [
-              { label: "New Notebook", command: "new-notebook" },
               {
                 label: "Configuration Files",
                 submenu: [
@@ -154,13 +157,11 @@ describe("MenuManager", function () {
         ]);
         const file = menu.getTemplate().find((item) => item.id === "File");
         expect(file.submenu.some((item) => item.command === "new-notebook")).toBe(true);
-        if (platform === "darwin")
-          expect(file.submenu.some((item) => item.id === "Configuration Files")).toBe(false);
+        expect(file.submenu.some((item) => item.id === "Configuration Files")).toBe(false);
         expect(JSON.stringify(contribution)).toBe(original);
         registration.dispose();
         expect(configuration().map((item) => item.command)).toEqual(["config"]);
-        if (platform === "darwin")
-          expect(menu.getTemplate().some((item) => item.id === "File")).toBe(false);
+        expect(menu.getTemplate().some((item) => item.id === "File")).toBe(false);
       }
     });
 
@@ -605,22 +606,21 @@ describe("MenuManager", function () {
       menu.loadPlatformItems();
       const fileMenu = () => menu.getTemplate().find((item) => item.id === "File").submenu;
       const initial = fileMenu();
-      const quit = initial.find((item) => item.command === "application:quit");
       const disposable = menu.add([
         {
           label: "File",
-          groupOrder: ["quit", "new", "close"],
+          groupOrder: ["close", "open", "new"],
           submenu: [
             { label: "New Fixture", command: "fixture:new", group: "new", order: 20 },
-            { label: "Browse Fixture", command: "fixture:open", group: "files", order: 20 },
+            { label: "Browse Fixture", command: "fixture:open", group: "open", order: 20 },
             { label: "Unclassified Fixture", command: "fixture:unknown" },
           ],
         },
       ]);
       const items = fileMenu();
-      expect(items.at(-1).command).toBe(quit ? "application:quit" : "window:close");
+      expect(items.at(-1).command).toBe("pane:close");
       expect(items.findIndex((item) => item.command === "fixture:new")).toBeLessThan(
-        items.findIndex((item) => item.command === "application:new-window"),
+        items.findIndex((item) => item.command === "fixture:open"),
       );
       expect(items.findIndex((item) => item.command === "fixture:unknown")).toBeLessThan(
         items.findIndex((item) => item.command === "core:close"),

@@ -70,6 +70,7 @@ describe("MacApplicationMenu", () => {
 
   it("installs a minimal system menu before a renderer supplies its template", () => {
     assert.strictEqual(installedMenus.length, 1);
+    assert.strictEqual(builtTemplates[0][0].label, "App");
     const items = builtTemplates[0][0].submenu;
     assert.deepStrictEqual(
       items.filter(({ role }) => role).map(({ role }) => role),
@@ -197,7 +198,7 @@ describe("MacApplicationMenu", () => {
   });
 
   it("substitutes the first VERSION placeholder at any depth", () => {
-    const template = [{ label: "Lumine", submenu: [{ label: "VERSION" }] }, { label: "VERSION" }];
+    const template = [{ label: "App", submenu: [{ label: "VERSION" }] }, { label: "VERSION" }];
     applicationMenu.substituteVersion(template);
     assert.strictEqual(template[0].submenu[0].label, "Version 1.2.3");
     assert.strictEqual(template[1].label, "VERSION");

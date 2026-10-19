@@ -39,7 +39,7 @@ class HistoryManager {
       "lumine-workspace",
       {
         "application:clear-project-history": {
-          description: "Forget the projects offered by the Reopen Project menu.",
+          description: "Forget the projects offered by the Recent Projects menu.",
           actionScope: "list",
           didDispatch: this.clearProjects.bind(this),
         },

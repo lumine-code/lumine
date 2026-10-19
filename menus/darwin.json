@@ -1,33 +1,24 @@
 {
   "menu": [
     {
-      "label": "Lumine",
+      "label": "App",
+      "groupOrder": [
+        "configuration",
+        "management",
+        "windows",
+        "updates",
+        "information",
+        "integration",
+        "system",
+        "extensions",
+        "quit"
+      ],
       "submenu": [
         {
-          "label": "About Lumine",
-          "command": "application:about"
-        },
-        {
-          "label": "View License",
-          "command": "application:open-license"
-        },
-        {
-          "label": "View Third-Party Notices",
-          "command": "application:open-third-party-notices"
-        },
-        {
-          "label": "VERSION",
-          "enabled": false
-        },
-        {
-          "type": "separator"
-        },
-        {
           "label": "Settings",
-          "command": "application:show-settings"
-        },
-        {
-          "type": "separator"
+          "command": "application:show-settings",
+          "group": "configuration",
+          "order": 10
         },
         {
           "label": "Configuration Files",
@@ -63,44 +54,98 @@
               "order": 50
             }
           ],
-          "groupOrder": ["editor", "packages", "extensions"]
+          "groupOrder": ["editor", "packages", "extensions"],
+          "group": "configuration",
+          "order": 20
         },
         {
-          "type": "separator"
+          "label": "Windows",
+          "group": "windows",
+          "order": 10,
+          "groupOrder": ["new", "transfer", "extensions", "close"],
+          "submenu": [
+            {
+              "label": "New Window",
+              "command": "application:new-window",
+              "group": "new",
+              "order": 10
+            },
+            {
+              "label": "New Detached Window",
+              "command": "window:new-detached-window",
+              "group": "new",
+              "order": 20
+            },
+            {
+              "label": "Close Window",
+              "command": "window:close",
+              "group": "close",
+              "order": 10
+            }
+          ]
+        },
+        {
+          "label": "About Lumine",
+          "command": "application:about",
+          "group": "information",
+          "order": 10
+        },
+        {
+          "label": "Legal Information",
+          "group": "information",
+          "order": 20,
+          "groupOrder": ["documents", "extensions"],
+          "submenu": [
+            {
+              "label": "License",
+              "command": "application:open-license",
+              "group": "documents",
+              "order": 10
+            },
+            {
+              "label": "Third-Party Notices",
+              "command": "application:open-third-party-notices",
+              "group": "documents",
+              "order": 20
+            }
+          ]
         },
         {
           "label": "Install Shell Commands",
-          "command": "window:install-shell-commands"
-        },
-        {
-          "type": "separator"
+          "command": "window:install-shell-commands",
+          "group": "integration",
+          "order": 10
         },
         {
           "label": "Services",
           "role": "services",
-          "submenu": []
-        },
-        {
-          "type": "separator"
+          "submenu": [],
+          "group": "system",
+          "order": 10
         },
         {
           "label": "Hide Lumine",
-          "command": "application:hide"
+          "command": "application:hide",
+          "group": "system",
+          "order": 30
         },
         {
           "label": "Hide Others",
-          "command": "application:hide-other-applications"
+          "command": "application:hide-other-applications",
+          "group": "system",
+          "order": 40
         },
         {
           "label": "Show All",
-          "command": "application:unhide-all-applications"
-        },
-        {
-          "type": "separator"
+          "command": "application:unhide-all-applications",
+          "group": "system",
+          "order": 50
         },
         {
           "label": "Quit Lumine",
-          "command": "application:quit"
+          "command": "application:quit",
+          "group": "quit",
+          "order": 10
         }
       ]
     },
@@ -114,46 +159,49 @@
           "order": 10
         },
         {
-          "label": "New…",
+          "label": "New Content…",
           "command": "launcher:new",
           "group": "new",
           "order": 20
         },
         {
-          "label": "New Window",
-          "command": "application:new-window",
-          "group": "new",
-          "order": 40
-        },
-        {
-          "label": "New Detached Window",
-          "command": "window:new-detached-window",
-          "group": "new",
-          "order": 50
-        },
-        {
-          "type": "separator"
-        },
-        {
-          "label": "Open…",
+          "label": "Open File…",
           "command": "launcher:open",
-          "group": "files",
+          "group": "open",
           "order": 10
         },
         {
-          "label": "Open Folder…",
+          "label": "Open Folder",
           "command": "application:open-folder",
-          "group": "projects",
-          "order": 10
-        },
-        {
-          "label": "Add Project Folder…",
-          "command": "application:add-project-folder",
-          "group": "projects",
+          "group": "open",
           "order": 20
         },
         {
-          "label": "Reopen Project",
+          "label": "Browse",
+          "group": "open",
+          "order": 30,
+          "groupOrder": ["sources", "extensions"],
+          "submenu": []
+        },
+        {
+          "label": "Projects",
+          "group": "projects",
+          "order": 10,
+          "groupOrder": ["folders", "saved", "extensions"],
+          "submenu": [
+            {
+              "label": "Add Folder to Project…",
+              "command": "application:add-project-folder",
+              "group": "folders",
+              "order": 10
+            }
+          ]
+        },
+        {
+          "label": "Recent Projects",
+          "group": "projects",
+          "order": 20,
+          "groupOrder": ["recent", "picker", "extensions", "history"],
           "submenu": [
             {
               "label": "Clear Project History",
@@ -161,19 +209,7 @@
               "group": "history",
               "order": 10
             }
-          ],
-          "group": "history",
-          "order": 20,
-          "groupOrder": ["recent", "history"]
-        },
-        {
-          "label": "Reopen Closed Tab",
-          "command": "pane:reopen-closed-item",
-          "group": "history",
-          "order": 30
-        },
-        {
-          "type": "separator"
+          ]
         },
         {
           "label": "Save",
@@ -194,7 +230,24 @@
           "order": 30
         },
         {
-          "type": "separator"
+          "label": "File Properties",
+          "group": "tools",
+          "order": 10,
+          "groupOrder": ["format", "extensions"],
+          "submenu": []
+        },
+        {
+          "label": "External",
+          "group": "tools",
+          "order": 20,
+          "groupOrder": ["actions", "extensions"],
+          "submenu": []
+        },
+        {
+          "label": "Reopen Closed Tab",
+          "command": "pane:reopen-closed-item",
+          "group": "history",
+          "order": 10
         },
         {
           "label": "Close Tab",
@@ -207,27 +260,9 @@
           "command": "pane:close",
           "group": "close",
           "order": 30
-        },
-        {
-          "label": "Close Window",
-          "command": "window:close",
-          "group": "close",
-          "order": 40
         }
       ],
-      "groupOrder": [
-        "new",
-        "files",
-        "projects",
-        "history",
-        "save",
-        "properties",
-        "external",
-        "settings",
-        "extensions",
-        "close",
-        "quit"
-      ]
+      "groupOrder": ["new", "open", "projects", "save", "tools", "history", "extensions", "close"]
     },
     {
       "label": "Edit",
@@ -1032,9 +1067,6 @@
           "order": 20
         },
         {
-          "type": "separator"
-        },
-        {
           "label": "Report Issue",
           "command": "application:report-issue",
           "group": "issues",
@@ -1047,7 +1079,7 @@
           "order": 20
         }
       ],
-      "groupOrder": ["documentation", "examples", "updates", "issues", "extensions", "about"]
+      "groupOrder": ["documentation", "examples", "issues", "extensions"]
     }
   ],
   "context-menu": {
