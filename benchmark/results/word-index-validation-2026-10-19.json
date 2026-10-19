@@ -1,0 +1,118 @@
+{
+  "date": "2026-10-19",
+  "core": {
+    "tests": 55,
+    "failures": 0
+  },
+  "buffer": {
+    "specs": 205,
+    "failures": 0
+  },
+  "consumers": {
+    "startedAt": "2026-10-19T02:50:22.925Z",
+    "coreHash": "314255f6d7e35977a3780ad80ca5781514f96d3ef4e593806723e18862037a3c",
+    "source": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\index",
+    "packages": [
+      {
+        "name": "autocomplete",
+        "status": "passed",
+        "startedAt": "2026-10-19T02:50:23.047Z",
+        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\autocomplete-retry-1792378222925.log",
+        "code": 0,
+        "specs": 455,
+        "failures": 0,
+        "pending": 0,
+        "finishedAt": "2026-10-19T02:52:03.520Z",
+        "failureNames": []
+      },
+      {
+        "name": "autocomplete-lumine",
+        "status": "passed",
+        "startedAt": "2026-10-19T02:52:03.522Z",
+        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\autocomplete-lumine-retry-1792378222925.log",
+        "code": 0,
+        "specs": 29,
+        "failures": 0,
+        "pending": 0,
+        "finishedAt": "2026-10-19T02:52:07.028Z",
+        "failureNames": []
+      },
+      {
+        "name": "ide",
+        "status": "passed",
+        "startedAt": "2026-10-19T02:52:07.029Z",
+        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\ide-retry-1792378222925.log",
+        "code": 0,
+        "specs": 1222,
+        "failures": 0,
+        "pending": 0,
+        "finishedAt": "2026-10-19T02:53:23.857Z",
+        "failureNames": []
+      },
+      {
+        "name": "snippets",
+        "status": "passed",
+        "startedAt": "2026-10-19T02:53:23.858Z",
+        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\snippets-retry-1792378222925.log",
+        "code": 0,
+        "specs": 215,
+        "failures": 0,
+        "pending": 0,
+        "finishedAt": "2026-10-19T02:53:59.720Z",
+        "failureNames": []
+      },
+      {
+        "name": "spell-check",
+        "status": "passed",
+        "startedAt": "2026-10-19T02:53:59.721Z",
+        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\spell-check-retry-1792378222925.log",
+        "code": 0,
+        "specs": 151,
+        "failures": 0,
+        "pending": 0,
+        "finishedAt": "2026-10-19T02:54:19.983Z",
+        "failureNames": []
+      }
+    ],
+    "finishedAt": "2026-10-19T02:54:19.983Z",
+    "coreHashAfter": "314255f6d7e35977a3780ad80ca5781514f96d3ef4e593806723e18862037a3c"
+  },
+  "unrelatedControl": {
+    "description": "An accidentally unfiltered exploratory runner reached aura-theme. The same four theme failures reproduce with indexing disabled; neither that interrupted fleet run nor this control is counted as a passing fleet sweep.",
+    "indexed": {
+      "name": "aura-theme",
+      "status": "failed",
+      "startedAt": "2026-10-19T02:49:48.348Z",
+      "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\aura-theme.log",
+      "code": 1,
+      "specs": 13,
+      "failures": 4,
+      "pending": 0,
+      "finishedAt": "2026-10-19T02:49:51.628Z",
+      "failureNames": [
+        "aura-theme keep-open modal shadow tints and restores the existing shadow without changing borders or radii in aura-day-ui",
+        "aura-theme keep-open modal shadow tints and restores the existing shadow without changing borders or radii in aura-night-ui",
+        "aura original One palette matches the original day ui colors",
+        "aura original One palette matches the original night ui colors"
+      ]
+    },
+    "scan": {
+      "name": "aura-theme",
+      "status": "failed",
+      "startedAt": "2026-10-19T02:52:36.497Z",
+      "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\aura-theme-retry-1792378356363.log",
+      "code": 1,
+      "specs": 13,
+      "failures": 4,
+      "pending": 0,
+      "finishedAt": "2026-10-19T02:52:39.499Z",
+      "failureNames": [
+        "aura-theme keep-open modal shadow tints and restores the existing shadow without changing borders or radii in aura-day-ui",
+        "aura-theme keep-open modal shadow tints and restores the existing shadow without changing borders or radii in aura-night-ui",
+        "aura original One palette matches the original day ui colors",
+        "aura original One palette matches the original night ui colors"
+      ]
+    }
+  },
+  "passingTests": 2332
+}

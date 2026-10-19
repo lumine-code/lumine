@@ -28,6 +28,16 @@ The built-in word provider already returned ranked candidates and highlight indi
 
 Provider requests receive an AbortSignal. Replacing or cancelling a request aborts it; obsolete provider results are discarded before filtering and presentation. Buffer scanning cooperatively checks cancellation between chunks and scoring work. Providers can pass the signal to their own cancellable operations.
 
+## Incremental word index
+
+Whole-row `findWordCandidates` requests now use a demand-built index owned by `TextStore`. Blocks cover at most 128 rows and keep a dictionary of words with sorted relative occurrence coordinates. Queries combine block summaries and use binary searches for range boundaries, nearest occurrence and cursor containment, then use the same scorer and bounded result selection as the scanning path. The public result shape and ranking are unchanged.
+
+An edit synchronously evicts intersecting blocks and translates later blocks by the change in row count. Tokenization runs only when a subsequent query needs a missing block. Independent batch edits invalidate blocks in one ordered pass. Discarded prepared edits do not affect the cache; resets clear it. Running queries capture block coordinates and the immutable text root, and a generation check prevents an obsolete query from publishing stale blocks after an edit or a tokenizer change.
+
+Each buffer retains at most 64 blocks, 2097152 UTF-16 units of indexed line content, and 100000 occurrences, whichever limit is reached first. These are cache-content limits, not a byte limit on JavaScript heap. Only one additional-word-character configuration is retained per buffer. No index is built until requested. Partial-line ranges and ranges exceeding two Mi UTF-16 units use the original streaming scanner, preserving partial-word semantics and avoiding full indexing of oversized search regions. The legacy occurrence-array APIs continue to scan.
+
+See [the word-index measurements](word-index-performance-2026-10-19.md) for cold-build cost, repeated requests, typing, newline insertion, paste, bulk edits, multi-buffer requests, memory and actual popup latency. This index does not maintain a global vocabulary or move work to a worker; it avoids repeated tokenization of unchanged portions of the provider's search window.
+
 ## Ranking policy
 
 Filtered external suggestions are ordered by whole-word match, literal prefix, case-insensitive prefix, and subsequence tier. Within a tier, `sortText`, shared match score, and original order decide. Provider-priority blocks remain separate. Replacing the path-oriented native matcher deliberately changes some subsequence tie-breaking and snippet highlight paths; the match now prefers the same word boundaries as buffer completion. Autocomplete does not call the native matcher for scoring or highlighting; the application still ships native matching tools for other surfaces.
@@ -36,7 +46,7 @@ Filtered external suggestions are ordered by whole-word match, literal prefix, c
 
 The [completion model](https://github.com/microsoft/vscode/blob/main/src/vs/editor/contrib/suggest/browser/completionModel.ts) retains scores and match paths, narrows prior results for compatible typing, and separates filter text from label highlights. Its [renderer](https://github.com/microsoft/vscode/blob/main/src/vs/editor/contrib/suggest/browser/suggestWidgetRenderer.ts) consumes those stored matches. Lumine follows that ownership separation using its existing JS scoring implementation; no VS Code implementation was copied.
 
-VS Code's [word provider](https://github.com/microsoft/vscode/blob/main/src/vs/editor/browser/services/editorWorkerService.ts) requests candidates from a worker with synchronized models; [word collection](https://github.com/microsoft/vscode/blob/main/src/vs/editor/common/services/editorWebWorker.ts) deduplicates words and bounds the candidate set. This pass does not add a mirrored worker model to Lumine. Scanning still runs cooperatively over an immutable in-process snapshot. A persistent word index or a worker synchronized with document changes is a separate next step if large scans dominate latency; serializing the whole buffer for each query would defeat the snapshot architecture.
+VS Code's [word provider](https://github.com/microsoft/vscode/blob/main/src/vs/editor/browser/services/editorWorkerService.ts) requests candidates from a worker with synchronized models; [word collection](https://github.com/microsoft/vscode/blob/main/src/vs/editor/common/services/editorWebWorker.ts) deduplicates words and bounds the candidate set. Lumine keeps its incremental index and streaming fallback in-process over immutable snapshots. A worker synchronized with document changes remains a possible follow-up if cold scans dominate latency; serializing the whole buffer for each query would defeat the snapshot architecture.
 
 References were reviewed on 2026-10-19. These links point to upstream `main` and may evolve.
 
