@@ -5657,10 +5657,10 @@ describe("TreeSitterLanguageMode", () => {
       await languageMode.ready;
       buffer.setText("const value = 1;\n");
       await languageMode.atTransactionEnd();
-      languageMode.isFoldableCache[0] = true;
+      languageMode.isFoldableCache.set(0, true);
       spyOn(languageMode, "prefillFoldCache").and.stub();
       languageMode.emitFoldUpdate(new Range([0, 2], [0, 3]));
-      expect(languageMode.isFoldableCache[0]).toBeUndefined();
+      expect(languageMode.isFoldableCache.get(0)).toBeUndefined();
       expect(languageMode.isFoldableAtRow(0)).toBe(false);
     });
 
@@ -5696,7 +5696,7 @@ describe("TreeSitterLanguageMode", () => {
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
-      languageMode.isFoldableCache = [];
+      languageMode.isFoldableCache = new Map();
 
       expect(languageMode.isFoldableAtRow(0)).toBe(true);
       expect(languageMode.isFoldableAtRow(1)).toBe(false);

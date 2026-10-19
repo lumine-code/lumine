@@ -2,6 +2,54 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { createQuery } = require("../../src/completion-matcher");
 const TextStore = require("../../src/text-store");
+const { rankWords } = require("../../src/text-store-search");
+const { scorer, traceMatch } = require("../../src/completion-matcher");
+
+test("bounded word ranking agrees with full sorting for ties, Unicode and result limits", async () => {
+  const words = new Map(
+    ["banana", "bandana", "bNa", "İstanbul", "ΟΣ", "οσα", "😀abc", "AlphaBeta", "alpha_beta"]
+      .flatMap((word) => Array.from({ length: 20 }, (_, i) => word + i))
+      .reverse()
+      .map((word, i) => [
+        word,
+        Object.freeze({ occurrences: i + 1, distance: i, containsPosition: false }),
+      ]),
+  );
+  for (const query of ["", "bna", "ab", "i", "ος", "unmatched"]) {
+    const score = scorer(query);
+    const candidates = new Map([...words].filter(([word]) => Number.isFinite(score(word))));
+    const ordered = [...candidates]
+      .map(([word, metadata]) => ({ word, ...metadata, score: score(word) }))
+      .sort((a, b) => b.score - a.score || (a.word < b.word ? -1 : a.word > b.word ? 1 : 0));
+    for (const limit of [0, 1, 20, Infinity]) {
+      const expected = ordered
+        .slice(0, limit)
+        .map((entry) => ({ ...entry, ...traceMatch(entry.word, query) }));
+      assert.deepEqual(await rankWords(candidates, query, limit, { compact: true }), expected);
+    }
+  }
+});
+
+test("ranking reads occurrence metadata only for final results, even with heap replacements", async () => {
+  let reads = 0;
+  const words = new Map(
+    Array.from({ length: 2000 }, (_, i) => [
+      "banana" + String(i).padStart(5, "0"),
+      {
+        get occurrences() {
+          reads++;
+          return 2;
+        },
+      },
+    ]).reverse(),
+  );
+  const result = await rankWords(words, "bna", 20, { compact: true });
+  assert.deepEqual(
+    result.map((entry) => entry.word),
+    [...words.keys()].sort().slice(0, 20),
+  );
+  assert.equal(reads, 20);
+});
 
 test("prepared completion matches preserve UTF-16 indices, scores and independent queries", () => {
   const query = createQuery("hlo");

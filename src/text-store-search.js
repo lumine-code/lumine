@@ -132,15 +132,23 @@ async function rankWords(words, query, maxCount, options = {}) {
   const better = (a, b) => b.score - a.score || (a.word < b.word ? -1 : a.word > b.word ? 1 : 0);
   const results = [];
   const limit = Math.min(words.size, Math.max(0, Math.trunc(maxCount)));
-  for (const [word, positions] of words) {
+  if (!limit) return [];
+  for (const word of words.keys()) {
     if (options.signal?.aborted) return [];
     if (performance.now() >= deadline) {
       await new Promise((resolve) => setImmediate(resolve));
       deadline = performance.now() + 4;
     }
-    const entry = compact
-      ? { word, ...positions, score: score(word) }
-      : { word, positions, score: score(word) };
+    const value = score(word);
+    // Most words in a large vocabulary cannot enter the bounded result heap.
+    // Compare their scalar keys first; copying occurrence metadata for every
+    // rejected word creates thousands of short-lived objects per keystroke.
+    if (results.length === limit) {
+      const worst = results[0];
+      const order = worst.score - value || (word < worst.word ? -1 : word > worst.word ? 1 : 0);
+      if (order >= 0) continue;
+    }
+    const entry = { word, score: value };
     if (results.length < limit) {
       let index = results.length;
       results.push(entry);
@@ -150,7 +158,7 @@ async function rankWords(words, query, maxCount, options = {}) {
         [results[index], results[parent]] = [results[parent], results[index]];
         index = parent;
       }
-    } else if (limit && better(entry, results[0]) < 0) {
+    } else {
       results[0] = entry;
       let index = 0;
       for (;;) {
@@ -167,7 +175,11 @@ async function rankWords(words, query, maxCount, options = {}) {
   }
   if (options.signal?.aborted) return [];
   results.sort(better);
-  return results.map((result) => ({ ...result, ...traceMatch(result.word, query) }));
+  return results.map(({ word }) => {
+    const positions = words.get(word);
+    const match = traceMatch(word, query);
+    return compact ? { word, ...positions, ...match } : { word, positions, ...match };
+  });
 }
 
 module.exports = { findWords, rankWords };

@@ -56,7 +56,7 @@ describe("Packed Tree-sitter injection change routing", () => {
       presentation: { edit() {} },
       injectionsMarkerLayer: markerLayer,
       rootLanguageLayer: { handleTextChange: jasmine.createSpy("root change") },
-      isFoldableCache: [true],
+      isFoldableCache: new Map([[0, true]]),
       resolveNextTransaction: () => {},
       transactionChangeCount: 0,
     });

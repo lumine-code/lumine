@@ -5,7 +5,7 @@ const TreeSitterPresentation = require("./tree-sitter-presentation");
 const captureQuery = require("./tree-sitter-query-cache");
 const TreeSitterDocument = require("./tree-sitter-document");
 const parserScheduler = require("./tree-sitter-scheduler");
-const { Point, Range, spliceArray } = require("./text-buffer");
+const { Point, Range } = require("./text-buffer");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const ScopeDescriptor = require("./scope-descriptor");
 const ScopeResolver = require("./scope-resolver");
@@ -231,7 +231,7 @@ class TreeSitterLanguageMode {
     this.rootScopeId = this.grammar.idForScope(this.grammar.scopeName);
 
     this.emitter = new Emitter();
-    this.isFoldableCache = [];
+    this.isFoldableCache = new Map();
     this.foldRangeIndex = null;
     this.scopeDescriptorCache = null;
     this.pendingDirtyHighlightRanges = new TreeSitterRangeList();
@@ -702,7 +702,7 @@ class TreeSitterLanguageMode {
                 range.start.row <= changedEndRow && range.end.row >= edit.startPosition.row,
             ))
         ) {
-          this.isFoldableCache = [];
+          this.isFoldableCache = new Map();
           foldRowCacheInvalidated = true;
         }
         continue;
@@ -715,17 +715,42 @@ class TreeSitterLanguageMode {
     if (!this.rootLanguageLayer) {
       return;
     }
-    for (let i = 0, { length } = changes; i < length; i++) {
-      const { oldRange, newRange } = changes[i];
-      if (oldRange.start.row === oldRange.end.row && newRange.start.row === newRange.end.row)
-        continue;
-      spliceArray(this.isFoldableCache, newRange.start.row, oldRange.end.row - oldRange.start.row, {
-        length: newRange.end.row - newRange.start.row,
-      });
-    }
+    this.rebaseFoldCache(changes);
     this.pendingTransactionRanges.addAll(changes.map(({ newRange }) => newRange));
 
     this.requestDocumentUpdate();
+  }
+
+  rebaseFoldCache(changes) {
+    if (
+      this.isFoldableCache.size === 0 ||
+      !changes.some(
+        ({ oldRange, newRange }) =>
+          oldRange.start.row !== oldRange.end.row || newRange.start.row !== newRange.end.row,
+      )
+    )
+      return;
+
+    // Transaction changes are ordered in original and final coordinates.
+    // Move only rows the gutter has actually queried, once per transaction;
+    // shifting a document-sized sparse array once per cursor is quadratic.
+    const rebased = new Map();
+    for (const [row, value] of this.isFoldableCache) {
+      let low = 0;
+      let high = changes.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (changes[middle].oldRange.start.row <= row) low = middle + 1;
+        else high = middle;
+      }
+      if (low === 0) {
+        rebased.set(row, value);
+      } else {
+        const { oldRange, newRange } = changes[low - 1];
+        if (row > oldRange.end.row) rebased.set(row + newRange.end.row - oldRange.end.row, value);
+      }
+    }
+    this.isFoldableCache = rebased;
   }
 
   requestDocumentUpdate() {
@@ -819,8 +844,11 @@ class TreeSitterLanguageMode {
     this.foldRangeIndex = null;
     const startRow = range.start.row;
     const endRow = range.end.row;
-    for (let row = startRow; row <= endRow; row++) {
-      this.isFoldableCache[row] = undefined;
+    if (endRow - startRow < this.isFoldableCache.size) {
+      for (let row = startRow; row <= endRow; row++) this.isFoldableCache.delete(row);
+    } else {
+      for (const row of this.isFoldableCache.keys())
+        if (row >= startRow && row <= endRow) this.isFoldableCache.delete(row);
     }
     if (!prefill) return;
     // Invalidation must cover the whole range, but eager re-computation must
@@ -1867,9 +1895,8 @@ class TreeSitterLanguageMode {
   isFoldableAtRowForRendering(row) {
     // A read inside an open transaction must not cache an incomplete result.
     if (this.publicationPending) return false;
-    if (this.isFoldableCache[row] != null) {
-      return !!this.isFoldableCache[row];
-    }
+    const cached = this.isFoldableCache.get(row);
+    if (cached != null) return cached;
 
     // The gutter asks during rendering. It can acquire chevrons after the
     // deferred query lands without making that render compile a cold query.
@@ -1882,7 +1909,7 @@ class TreeSitterLanguageMode {
       // to the buffer end up moving this row around. But we don't bother to
       // cache the actual _range_ because it'd just get stale once the buffer
       // is edited. Better to wait and look it up when it's needed.
-      this.isFoldableCache[row] = !!range;
+      this.isFoldableCache.set(row, !!range);
     }
     return !!range;
   }

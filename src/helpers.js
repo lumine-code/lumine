@@ -24,10 +24,30 @@ exports.debounce = function debounce(fn, wait) {
 };
 
 exports.spliceArray = function spliceArray(array, start, removedCount, insertedItems = []) {
+  if (insertedItems === array) insertedItems = insertedItems.slice();
   const oldLength = array.length;
   const insertedCount = insertedItems.length;
   removedCount = Math.min(removedCount, oldLength - start);
   const lengthDelta = insertedCount - removedCount;
+  // Small row edits are the hot path in display caches. Let V8 move the
+  // unchanged tail in bulk instead of assigning every following row in JS.
+  // Bound both sides: splice allocates a removed-items array and spreading a
+  // large insertion can exceed the argument limit. Keep the streaming path
+  // for large edits and array-like invalidation spans.
+  if (
+    lengthDelta !== 0 &&
+    Number.isInteger(start) &&
+    start >= 0 &&
+    start <= oldLength &&
+    Number.isInteger(removedCount) &&
+    removedCount >= 0 &&
+    removedCount <= 1024 &&
+    insertedCount <= 1024 &&
+    Array.isArray(insertedItems)
+  ) {
+    array.splice(start, removedCount, ...insertedItems);
+    return;
+  }
   const newLength = oldLength + lengthDelta;
 
   if (lengthDelta > 0) {
