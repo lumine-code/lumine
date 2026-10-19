@@ -2923,7 +2923,15 @@ module.exports = class TextEditor {
       this.backwardsScanInBufferRange(
         /(?:\r\n|\n|\r(?!\n)){3,}/g,
         this.buffer.getRange(),
-        ({ replace }) => replace("\n\n"),
+        ({ range, matchText }) => {
+          // Leave the first blank line intact, including its line ending and
+          // markers. Replacing the whole run moves a cursor on that line.
+          const retainedLength = /^(?:\r\n|\n|\r(?!\n)){2}/.exec(matchText)[0].length;
+          const start = this.buffer.positionForCharacterIndex(
+            this.buffer.characterIndexForPosition(range.start) + retainedLength,
+          );
+          this.buffer.delete([start, range.end]);
+        },
       );
     });
   }

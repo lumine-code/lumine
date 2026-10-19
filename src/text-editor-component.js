@@ -4339,15 +4339,24 @@ module.exports = class TextEditorComponent {
     // stable while another editor inserts or removes lines above their
     // viewport. The focused editor's own edits are usually at (or below) its
     // cursor, so they don't trigger compensation and native behavior is kept.
-    const firstVisibleRow = this.hasInitialMeasurements ? this.getFirstVisibleRow() : null;
+    // The model already has its new height. Reading getScrollTop here would
+    // clamp the old offset before we can translate it through the edits.
+    const scrollTop = this.scrollTop;
+    const firstVisibleRow = this.hasInitialMeasurements
+      ? this.rowForPixelPosition(scrollTop)
+      : null;
     let screenRowDelta = 0;
 
     for (let i = 0; i < changes.length; i++) {
       const { oldRange, newRange } = changes[i];
-      if (firstVisibleRow !== null && newRange.start.row < firstVisibleRow) {
+      if (firstVisibleRow !== null && oldRange.start.row < firstVisibleRow) {
         const oldRows = oldRange.end.row - oldRange.start.row;
         const newRows = newRange.end.row - newRange.start.row;
-        screenRowDelta += newRows - oldRows;
+        // All old ranges refer to the viewport before the transaction. A
+        // deletion below it can have a new start above it after earlier edits.
+        // Display changes include the following unchanged row. Map that
+        // suffix by the row delta, clamping a deleted top row to the start.
+        screenRowDelta += Math.max(newRows - oldRows, oldRange.start.row - firstVisibleRow);
       }
       this.spliceLineTopIndex(
         newRange.start.row,
@@ -4358,7 +4367,7 @@ module.exports = class TextEditorComponent {
 
     if (screenRowDelta !== 0) {
       const lineHeight = this.getLineHeight();
-      if (lineHeight) this.setScrollTop(this.getScrollTop() + screenRowDelta * lineHeight);
+      if (lineHeight) this.setScrollTop(scrollTop + screenRowDelta * lineHeight);
     }
 
     this.scheduleUpdate();
