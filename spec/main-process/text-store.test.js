@@ -103,6 +103,29 @@ test("fuzzy scores, tie-breaking paths and positions match the native reference"
   }
 });
 
+test("completion coordinates survive long lines, split words and newline word characters", async () => {
+  const { findWords } = require("../../src/text-store-search");
+  const NativeStore = require("@lumine-code/superstring").TextBuffer;
+  for (const [source, extra, query] of [
+    ["abc abcX ".repeat(8000) + "\r\nabcEnd", "_", "ac"],
+    ["ab\ncd ef\r\nab_cd\nlast", "_\n", "ac"],
+    ["ab cd\r\nab_cd\nlast", "_ ", "ac"],
+  ]) {
+    const expected = (await new NativeStore(source).findWordsWithSubsequence(query, extra, 10)).map(
+      ({ word, score, matchIndices, positions }) => ({ word, score, matchIndices, positions }),
+    );
+    for (const size of [31, 32768]) {
+      const text = {
+        *chunks() {
+          for (let offset = 0; offset < source.length; offset += size)
+            yield source.slice(offset, offset + size);
+        },
+      };
+      assert.deepEqual(await findWords(text, query, extra, 10), expected);
+    }
+  }
+});
+
 test("dense asynchronous regex searches yield between match batches", async () => {
   const store = new TextStore("needle\r\n".repeat(100000));
   let ticks = 0;

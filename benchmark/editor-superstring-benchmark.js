@@ -421,6 +421,7 @@ for (const unitCount of units) {
 }
 
 const duplicateRows = 6000;
+const singleLineWords = "banana bandana ban_ana bandaid band bNa ";
 const duplicateText = flattened("banana bandana ban_ana bandaid band bNa\n".repeat(duplicateRows));
 const uniqueWords = Array.from({ length: 7000 }, (_, i) => `candidate_word_${i}`);
 const uniqueText = flattened(uniqueWords.join("\n"));
@@ -428,6 +429,26 @@ const uniqueWordSet = new Set(uniqueWords.slice(500, 6500));
 const oversizedUnits = Math.max(...units);
 const oversizedText = flattened("a".repeat(oversizedUnits) + "\nbanana");
 const autocompleteCases = [
+  {
+    id: "single-line-words",
+    text: flattened(singleLineWords.repeat(duplicateRows)),
+    query: "bna",
+    verify(result) {
+      assert.deepEqual(
+        result.map((match) => match.word),
+        ["bNa", "ban_ana", "banana", "bandana", "bandaid"],
+      );
+      for (const match of result) {
+        assert.equal(match.positions.length, duplicateRows);
+        assert.deepEqual(match.positions.at(-1), {
+          row: 0,
+          column:
+            (duplicateRows - 1) * singleLineWords.length + singleLineWords.indexOf(match.word),
+        });
+      }
+      return result.reduce((sum, match) => sum + match.positions.length, 0);
+    },
+  },
   {
     id: "duplicate-words",
     text: duplicateText,

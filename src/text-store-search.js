@@ -139,7 +139,8 @@ async function findWords(text, query, extra = "", maxCount = Infinity) {
     column = 0,
     word = "",
     startRow = 0,
-    startColumn = 0;
+    startColumn = 0,
+    nextLF = -1;
   const finish = () => {
     if (word && word.length <= 80) {
       const existing = words.get(word);
@@ -162,13 +163,10 @@ async function findWords(text, query, extra = "", maxCount = Infinity) {
   const advance = (chunk, begin, end) => {
     let last = begin,
       lines = 0;
-    for (
-      let lf = chunk.indexOf("\n", begin);
-      lf >= 0 && lf < end;
-      lf = chunk.indexOf("\n", lf + 1)
-    ) {
+    while (nextLF >= 0 && nextLF < end) {
       lines++;
-      last = lf + 1;
+      last = nextLF + 1;
+      nextLF = chunk.indexOf("\n", last);
     }
     row += lines;
     column = lines ? end - last : column + end - begin;
@@ -179,6 +177,8 @@ async function findWords(text, query, extra = "", maxCount = Infinity) {
       deadline = performance.now() + 4;
     }
     const expression = nonASCII.test(chunk) ? unicodeExpression : asciiExpression;
+    // Each LF is located once, even when many words share one very long line.
+    nextLF = chunk.indexOf("\n");
     expression.lastIndex = 0;
     let cursor = 0;
     for (let match; (match = expression.exec(chunk));) {
