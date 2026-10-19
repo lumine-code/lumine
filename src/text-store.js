@@ -659,6 +659,23 @@ class TextStore {
       maxCount,
     );
   }
+
+  async findWordCandidates(
+    query,
+    { range, position, extraWordCharacters = "", maxCount = 20, signal } = {},
+  ) {
+    if (/[\r\n]/.test(extraWordCharacters))
+      throw new RangeError("Completion word characters cannot include line endings");
+    const { findWords } = require("./text-store-search");
+    const start = range ? this.characterIndexForPosition(range.start) : 0;
+    const end = range ? this.characterIndexForPosition(range.end) : this.#text.length;
+    return findWords(this.#text.subtext(start, end), query, extraWordCharacters, maxCount, {
+      compact: true,
+      position,
+      origin: this.#text.positionAt(start),
+      signal,
+    });
+  }
 }
 
 module.exports = TextStore;

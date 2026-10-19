@@ -2752,6 +2752,34 @@ class TextBuffer {
   }
 
   /**
+   * @public
+   * @status extended
+   *
+   * Find completion words in an immutable snapshot without allocating every
+   * occurrence. Coordinates are absolute UTF-16 buffer points. Each result
+   * contains word, score, matchIndices, the first position, occurrences,
+   * minimum row distance and containsPosition (inclusive of the word's end).
+   * Words and queries are limited to 80 UTF-16 units. Word characters cannot
+   * include line endings; use the legacy subsequence API for multiline tokens.
+   * @param {String} query - Typed subsequence.
+   * @param {Object} [options] - Search options.
+   * @param {Range} [options.range] - Clipped search range; defaults to the buffer.
+   * @param {Point} [options.position] - Cursor for distance and containment.
+   * @param {String} [options.extraWordCharacters] - Additional word characters.
+   * @param {Number} [options.maxCount=20] - Maximum distinct words returned.
+   * @param {AbortSignal} [options.signal] - Cancel obsolete work; resolves to an empty list.
+   * @returns {Promise<Array<Object>>} Ranked candidates. Distance is Infinity without a position.
+   * @category Searching
+   */
+  findWordCandidates(query, options = {}) {
+    return this.buffer.findWordCandidates(query, {
+      ...options,
+      range: options.range ? this.clipRange(options.range) : undefined,
+      position: options.position ? this.clipPosition(options.position) : undefined,
+    });
+  }
+
+  /**
    * @category Buffer Range Details
    */
 
