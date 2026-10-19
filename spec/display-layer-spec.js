@@ -2585,12 +2585,12 @@ describe("DisplayLayer", () => {
           {
             oldRange: Range(Point(0, 0), Point(2, 0)),
             newRange: Range(Point(0, 0), Point(1, 0)),
-            origin: "edit",
+            origin: "undo",
           },
           {
             oldRange: Range(Point(4, 0), Point(6, 0)),
             newRange: Range(Point(3, 0), Point(4, 0)),
-            origin: "edit",
+            origin: "undo",
           },
         ],
       ]);
@@ -2602,12 +2602,12 @@ describe("DisplayLayer", () => {
           {
             oldRange: Range(Point(0, 0), Point(1, 0)),
             newRange: Range(Point(0, 0), Point(2, 0)),
-            origin: "edit",
+            origin: "redo",
           },
           {
             oldRange: Range(Point(3, 0), Point(4, 0)),
             newRange: Range(Point(4, 0), Point(6, 0)),
-            origin: "edit",
+            origin: "redo",
           },
         ],
       ]);
