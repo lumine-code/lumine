@@ -586,6 +586,18 @@ class TreeSitterLanguageMode {
     for (const job of pendingJobs) job.resolve(false);
   }
 
+  canBatchTextChanges(count) {
+    return count >= TreeSitterParser.bulkEditLimit;
+  }
+
+  // Large independent batches already force a fresh parser tree. Invalidate
+  // presentation and injection routing once over their affected extent; the
+  // document journal still receives every exact splice for revision tracking.
+  bufferDidChangeBatch(change, count) {
+    this.bufferDidChange(change);
+    if (this.rootLanguageLayer) this.transactionChangeCount += count - 1;
+  }
+
   bufferDidChange(change) {
     this.highlightCache.edit(change);
     this.presentation.edit(change);
@@ -594,7 +606,7 @@ class TreeSitterLanguageMode {
       return;
     }
 
-    let { oldRange, newRange, oldText, newText } = change;
+    const { oldRange, newRange } = change;
     this.foldRangeIndex = null;
     this.scopeDescriptorCache = null;
 
@@ -604,8 +616,8 @@ class TreeSitterLanguageMode {
     // `bufferDidFinishTransaction`.
     let edit = {
       startIndex,
-      oldEndIndex: startIndex + oldText.length,
-      newEndIndex: startIndex + newText.length,
+      oldEndIndex: change.oldEndIndex ?? startIndex + change.oldText.length,
+      newEndIndex: change.newEndIndex ?? startIndex + change.newText.length,
       startPosition: oldRange.start,
       oldEndPosition: oldRange.end,
       newEndPosition: newRange.end,
@@ -627,7 +639,7 @@ class TreeSitterLanguageMode {
       this.transactionChangeCount++;
     }
 
-    this.rootLanguageLayer.handleTextChange(edit, oldText, newText);
+    this.rootLanguageLayer.handleTextChange(edit);
 
     const sameExtent =
       edit.oldEndIndex === edit.newEndIndex && edit.oldEndPosition.isEqual(edit.newEndPosition);
@@ -695,7 +707,7 @@ class TreeSitterLanguageMode {
         }
         continue;
       }
-      layer.handleTextChange(edit, oldText, newText);
+      layer.handleTextChange(edit);
     }
   }
 
@@ -3888,7 +3900,7 @@ class LanguageLayer {
     }
   }
 
-  handleTextChange(edit, _oldText, _newText) {
+  handleTextChange(edit) {
     this.nodesToInvalidateOnChange.edit(edit);
     this.foldNodesToInvalidateOnChange.edit(edit);
     // Any text change within the layer invalidates our cached fold boundary
@@ -4250,6 +4262,9 @@ class LanguageLayer {
             startIndex: edit.startIndex,
             oldEndIndex: edit.oldEndIndex,
             newText: capture.text.slice(edit.startIndex, edit.oldEndIndex),
+            startPosition: Object.freeze({ ...edit.startPosition }),
+            oldEndPosition: Object.freeze({ ...edit.oldEndPosition }),
+            newEndPosition: Object.freeze({ ...edit.newEndPosition }),
           }),
         );
         compacted = true;

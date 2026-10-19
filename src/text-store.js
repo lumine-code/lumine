@@ -294,20 +294,34 @@ class TextStore {
           throw Object.assign(new Error("Prepared edits no longer match the buffer revision"), {
             code: "ERR_STALE_EDIT",
           });
+        let row = -1,
+          columnDelta = 0;
         let changes =
-          this.#changes.getChangeCount() === 0
+          this.#changes.getChangeCount() === 0 &&
+          deltas.every(
+            (delta) =>
+              delta.oldRange.start.row === delta.oldRange.end.row &&
+              delta.newRange.start.row === delta.newRange.end.row,
+          )
             ? Patch.fromIndependentChanges(
                 deltas
                   .slice()
                   .reverse()
-                  .map((delta) => ({
-                    oldStart: delta.oldRange.start,
-                    oldEnd: delta.oldRange.end,
-                    newStart: delta.newRange.start,
-                    newEnd: delta.newRange.end,
-                    oldTextSource: delta.removed,
-                    newTextSource: delta.inserted,
-                  })),
+                  .map((delta) => {
+                    if (row !== delta.oldRange.start.row) columnDelta = 0;
+                    row = delta.oldRange.start.row;
+                    const newStart = { row, column: delta.oldRange.start.column + columnDelta };
+                    const newEnd = { row, column: newStart.column + delta.inserted.length };
+                    columnDelta += delta.inserted.length - delta.removed.length;
+                    return {
+                      oldStart: delta.oldRange.start,
+                      oldEnd: delta.oldRange.end,
+                      newStart,
+                      newEnd,
+                      oldTextSource: delta.removed,
+                      newTextSource: delta.inserted,
+                    };
+                  }),
                 { discardIdentityChanges: true },
               )
             : null;

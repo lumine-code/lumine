@@ -68,11 +68,14 @@ function applyEdits(tree, previous, text, edits) {
     const { startIndex, oldEndIndex, newText } = edit;
     const startPosition = edit.startPosition ?? positionAt(source, startIndex);
     const oldEndPosition = edit.oldEndPosition ?? positionAt(source, oldEndIndex);
-    const extent = positionAt(newText, newText.length);
-    const newEndPosition = edit.newEndPosition ?? {
-      row: startPosition.row + extent.row,
-      column: extent.row ? extent.column : startPosition.column + extent.column,
-    };
+    let newEndPosition = edit.newEndPosition;
+    if (!newEndPosition) {
+      const extent = positionAt(newText, newText.length);
+      newEndPosition = {
+        row: startPosition.row + extent.row,
+        column: extent.row ? extent.column : startPosition.column + extent.column,
+      };
+    }
     tree.edit({
       startIndex,
       oldEndIndex,
@@ -131,6 +134,10 @@ function publish(tree, text, revision, incremental, changedRanges = []) {
 // Owns a private editable tree and a resumable WASM parse. Published trees
 // remain valid for consumers holding nodes or cursors from older revisions.
 class TreeSitterParser {
+  static get bulkEditLimit() {
+    return BULK_EDIT_LIMIT;
+  }
+
   constructor(language) {
     this.language = language;
     this.parser = new Parser().setLanguage(language);

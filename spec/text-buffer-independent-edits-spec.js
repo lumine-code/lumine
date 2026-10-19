@@ -134,8 +134,8 @@ describe("Independent line edit batches", () => {
       },
       {
         range: [
-          [1, 0],
-          [1, 0],
+          [1, 1],
+          [1, 1],
         ],
         text: "prefix",
       },
@@ -286,5 +286,193 @@ describe("Independent line edit batches", () => {
     buffer.undo();
     expect(buffer.buffer.isModified()).toBe(false);
     expect(buffer.getText()).toBe("row\n".repeat(1000));
+  });
+
+  it("batches multiple disjoint changes per row without moving markers in untouched gaps", () => {
+    const actual = build(),
+      expected = build();
+    const planned = Array.from({ length: 128 }, (_, row) => [
+      {
+        range: [
+          [row, 0],
+          [row, 0],
+        ],
+        text: "#",
+      },
+      {
+        range: [
+          [row, 2],
+          [row, 3],
+        ],
+        text: "",
+      },
+      {
+        range: [
+          [row, 6],
+          [row, 7],
+        ],
+        text: "WORD",
+      },
+    ]).flat();
+    const batches = [];
+    actual.buffer.onDidApplyChanges((batch) => batches.push(batch));
+    const layout = spyOn(actual.buffer, "updateDisplayLayersForChange").and.callThrough();
+    actual.buffer.setTextInIndependentRanges(planned.slice().reverse());
+    scalar(expected.buffer, planned.slice().reverse());
+    expect(layout.calls.count()).toBe(1);
+    expect(state(actual)).toEqual(state(expected));
+    let replay = source;
+    for (const change of batches[0].changes) {
+      expect(replay.slice(change.startIndex, change.oldEndIndex)).toBe(change.oldText);
+      replay =
+        replay.slice(0, change.startIndex) + change.newText + replay.slice(change.oldEndIndex);
+    }
+    expect(replay).toBe(actual.buffer.getText());
+    for (const operation of ["undo", "redo"]) {
+      layout.calls.reset();
+      actual.buffer[operation]();
+      expected.buffer[operation]();
+      expect(state(actual)).toEqual(state(expected));
+      expect(layout.calls.count()).toBe(1);
+    }
+  });
+
+  it("replace-all batches adjacent matches and retains regex substitution semantics", () => {
+    for (const replacement of ["$1$1", "", "$&!", "$$", "$`", "$'"]) {
+      const text = "abc abc\r\n".repeat(70);
+      const buffer = new TextBuffer(text);
+      buffers.push(buffer);
+      const layout = spyOn(buffer, "updateDisplayLayersForChange").and.callThrough();
+      expect(buffer.replace(/(a|b|c)/g, replacement)).toBe(420);
+      expect(buffer.getText()).toBe(text.replace(/(a|b|c)/g, replacement));
+      if (!replacement.includes("`") && !replacement.includes("'"))
+        expect(layout.calls.count()).toBe(1);
+      buffer.undo();
+      expect(buffer.getText()).toBe(text);
+      buffer.redo();
+      expect(buffer.getText()).toBe(text.replace(/(a|b|c)/g, replacement));
+    }
+  });
+
+  it("keeps regex offsets exact inside CRLF, including zero-width matches", () => {
+    for (const regex of [/\r/g, /\n/g, /(?<=\r)(?=\n)/g, /(?:)/gu]) {
+      for (const replacement of ["", "X", "\n"]) {
+        const source = "a😀\r\n\r\nb\r\n".repeat(70);
+        const buffer = new TextBuffer(source);
+        buffers.push(buffer);
+        buffer.replace(regex, replacement);
+        expect(buffer.getText())
+          .withContext(`${regex} ${JSON.stringify(replacement)}`)
+          .toBe(source.replace(regex, replacement));
+        buffer.undo();
+        expect(buffer.getText()).toBe(source);
+        buffer.redo();
+        expect(buffer.getText()).toBe(source.replace(regex, replacement));
+      }
+    }
+  });
+
+  it("rejects replace-all called from a will-change observer before preparing a batch", () => {
+    const { buffer } = build();
+    buffer.onWillChange(() => {
+      expect(() => buffer.replace(/row/g, "ROW")).toThrowError(/onWillChange/);
+    });
+    buffer.setTextInIndependentRanges(edits);
+    expect(buffer.getText()).not.toContain("ROW");
+  });
+
+  it("synchronizes marker history snapshots requested in the middle of a batch", () => {
+    const { buffer, markers } = build();
+    const layer = markers[0].layer;
+    const snapshots = [];
+    let calls = 0;
+    spyOn(buffer.languageMode, "bufferDidChange").and.callFake(() => {
+      if (++calls % 31 !== 0) return;
+      const snapshot = layer.createSnapshot();
+      layer.verifyHistorySnapshot(snapshot);
+      snapshots.push({
+        snapshot,
+        ranges: [...snapshot.ranges].map(([id, range]) => [id, { ...range }]),
+      });
+    });
+    buffer.setTextInIndependentRanges(edits);
+    for (const { snapshot, ranges } of snapshots) expect([...snapshot.ranges]).toEqual(ranges);
+    layer.verifyHistorySnapshot(layer.createSnapshot());
+    buffer.undo();
+    expect(buffer.getText()).toBe(source);
+  });
+
+  it("matches scalar marker affinities for randomized touching edits on one row", () => {
+    let seed = 771;
+    const random = (n) => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % n;
+    for (let trial = 0; trial < 25; trial++) {
+      const text = "abcdef ".repeat(110);
+      const actual = new TextBuffer(text),
+        expected = new TextBuffer(text);
+      buffers.push(actual, expected);
+      const layers = [actual, expected].map((buffer) =>
+        buffer.addMarkerLayer({ maintainHistory: true }),
+      );
+      for (let i = 0; i < 100; i++) {
+        const start = random(700),
+          end = start + random(701 - start);
+        const options = {
+          invalidate: ["never", "touch", "inside", "overlap", "surround"][random(5)],
+          exclusive: random(2) === 0,
+        };
+        for (const layer of layers)
+          layer.markRange(
+            [
+              [0, start],
+              [0, end],
+            ],
+            options,
+          );
+      }
+      const planned = Array.from({ length: 100 }, (_, i) => ({
+        range: [
+          [0, i * 7],
+          [0, i * 7 + random(8)],
+        ],
+        text: ["", "X", "YYY"][random(3)],
+      }));
+      actual.setTextInIndependentRanges(planned);
+      scalar(expected, planned.slice().reverse());
+      const markerState = (layer) =>
+        layer.getMarkers().map((marker) => [marker.getRange().serialize(), marker.isValid()]);
+      expect(actual.getText()).withContext(`trial ${trial}`).toBe(expected.getText());
+      expect(markerState(layers[0])).withContext(`trial ${trial}`).toEqual(markerState(layers[1]));
+      actual.undo();
+      expected.undo();
+      expect(markerState(layers[0])).toEqual(markerState(layers[1]));
+      actual.redo();
+      expected.redo();
+      expect(markerState(layers[0])).toEqual(markerState(layers[1]));
+    }
+  });
+
+  it("same-row scalar fallback rebases ranges when callbacks need intermediate text", () => {
+    const text = "abc def ghi";
+    const buffer = new TextBuffer(text);
+    buffers.push(buffer);
+    buffer.setTextInIndependentRanges([
+      {
+        range: [
+          [0, 8],
+          [0, 11],
+        ],
+        text: "Z",
+      },
+      {
+        range: [
+          [0, 0],
+          [0, 3],
+        ],
+        text: "LONGER",
+      },
+    ]);
+    expect(buffer.getText()).toBe("LONGER def Z");
+    buffer.undo();
+    expect(buffer.getText()).toBe(text);
   });
 });

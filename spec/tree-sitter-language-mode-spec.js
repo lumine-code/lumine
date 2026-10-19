@@ -306,6 +306,11 @@ describe("TreeSitterLanguageMode", () => {
       });
       layer.getParseRanges(null);
       expect(changedRoots).toEqual([false, true]);
+      for (const edit of layer.parseCompactionEdits) {
+        expect(edit.startPosition).toEqual(buffer.positionForCharacterIndex(edit.startIndex));
+        expect(edit.oldEndPosition).toEqual(buffer.positionForCharacterIndex(edit.oldEndIndex));
+        expect(edit.newEndPosition).toEqual(edit.oldEndPosition);
+      }
       expect(query.captures.calls.allArgs().every((args) => args[1]?.maxStartDepth === 1)).toBe(
         true,
       );

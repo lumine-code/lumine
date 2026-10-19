@@ -69,18 +69,21 @@ class Patch {
       if (texts.size < 128) texts.set(value, text);
       return text;
     };
-    let previousRow = -1;
+    let previous = null;
+    let columnDelta = 0;
     for (const change of changes) {
       const { oldStart, oldEnd, newStart, newEnd } = change;
+      if (previous && oldStart?.row !== previous.oldStart.row) columnDelta = 0;
       if (
         ![oldStart, oldEnd, newStart, newEnd].every(
           (p) => p && coordinate(p.row) === p.row && coordinate(p.column) === p.column,
         ) ||
-        oldStart.row <= previousRow ||
+        (previous &&
+          (compare(oldStart, previous.oldEnd) < 0 || compare(oldStart, previous.oldStart) <= 0)) ||
         oldStart.row !== oldEnd.row ||
         oldStart.row !== newStart.row ||
         oldStart.row !== newEnd.row ||
-        oldStart.column !== newStart.column ||
+        oldStart.column + columnDelta !== newStart.column ||
         oldEnd.column < oldStart.column ||
         newEnd.column < newStart.column
       )
@@ -96,20 +99,28 @@ class Patch {
         newSource.length !== newEnd.column - newStart.column
       )
         return null;
-      previousRow = oldStart.row;
+      previous = change;
+      columnDelta += newSource.length - oldSource.length;
       if (
         (!oldSource.length && !newSource.length) ||
         (discardIdentityChanges && oldSource.equals(newSource))
       )
         continue;
-      records.push({
+      const record = {
         oldStart: point(oldStart),
         oldEnd: point(oldEnd),
         newStart: point(newStart),
         newEnd: point(newEnd),
         oldSource,
         newSource,
-      });
+      };
+      const last = records.at(-1);
+      if (last && compare(last.oldEnd, oldStart) === 0 && compare(last.newEnd, newStart) === 0) {
+        last.oldEnd = record.oldEnd;
+        last.newEnd = record.newEnd;
+        last.oldSource = append(last.oldSource, oldSource);
+        last.newSource = append(last.newSource, newSource);
+      } else records.push(record);
     }
     const patch = new Patch({ discardIdentityChanges });
     patch.#changes = new ChangeTree(records);

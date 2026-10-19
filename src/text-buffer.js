@@ -1383,9 +1383,9 @@ class TextBuffer {
    * @status extended
    *
    * Apply disjoint single-line edits against the current revision as one undo
-   * operation. Each range must address a different row, and replacement text
+   * operation. Ranges may share a row but cannot overlap or share a start, and replacement text
    * cannot contain line endings. Input order does not matter. All edits are
-   * validated before changing text; stale revisions and repeated rows reject.
+   * validated before changing text; stale revisions and overlapping ranges reject.
    *
    * Large batches share unchanged text and update display geometry once.
    * Custom range trackers retain intermediate-text callbacks.
@@ -1401,7 +1401,6 @@ class TextBuffer {
       throw Object.assign(new Error("Edit plan no longer matches the buffer revision"), {
         code: "ERR_STALE_EDIT",
       });
-    const rows = new Set();
     const planned = edits
       .map(({ range, text }) => {
         range = this.clipRange(range);
@@ -1411,20 +1410,34 @@ class TextBuffer {
           ![range.start.row, range.start.column, range.end.row, range.end.column].every(
             Number.isSafeInteger,
           ) ||
-          range.start.row !== range.end.row ||
-          rows.has(range.start.row)
+          range.start.row !== range.end.row
         )
-          throw new RangeError("Independent edits require distinct single-line ranges and text");
-        rows.add(range.start.row);
+          throw new RangeError("Independent edits require disjoint single-line ranges and text");
         return { range, text };
       })
-      .sort((a, b) => a.range.start.row - b.range.start.row);
+      .sort((a, b) => a.range.start.compare(b.range.start));
+    for (let i = 1; i < planned.length; i++) {
+      const previous = planned[i - 1].range,
+        current = planned[i].range;
+      if (previous.end.compare(current.start) > 0 || previous.start.isEqual(current.start))
+        throw new RangeError("Independent edit ranges overlap");
+    }
     const changes = planned.filter(({ range, text }) => this.getTextInRange(range) !== text);
     if (!changes.length) return false;
     return this.transact(() => {
       if (!this.tryApplyIndependentLineEdits(changes, true)) {
-        for (const { range, text } of changes)
-          this.setTextInRange(range, text, { normalizeLineEndings: false });
+        let row = -1,
+          delta = 0;
+        for (const { range, text } of changes) {
+          if (range.start.row !== row) delta = 0;
+          row = range.start.row;
+          this.setTextInRange(
+            new Range([row, range.start.column + delta], [row, range.end.column + delta]),
+            text,
+            { normalizeLineEndings: false },
+          );
+          delta += text.length - range.end.column + range.start.column;
+        }
       }
       return true;
     });
@@ -1440,8 +1453,10 @@ class TextBuffer {
 
     const source = this.getTextSnapshot();
     const changes = [];
+    const canonicalChanges = [];
     const storageEdits = [];
-    let previousRow = -1;
+    let previousRange = null;
+    let columnDelta = 0;
     let offset = 0;
     let endIndex = 0;
     let firstIndex;
@@ -1455,10 +1470,13 @@ class TextBuffer {
         !Number.isInteger(oldRange.start.column) ||
         !Number.isInteger(oldRange.end.column) ||
         oldRange.start.row !== oldRange.end.row ||
-        oldRange.start.row <= previousRow
+        (previousRange &&
+          (previousRange.end.compare(oldRange.start) > 0 ||
+            previousRange.start.compare(oldRange.start) >= 0))
       )
         return false;
-      previousRow = oldRange.start.row;
+      if (!previousRange || oldRange.start.row !== previousRange.start.row) columnDelta = 0;
+      previousRange = oldRange;
       const index = this.characterIndexForPosition(oldRange.start);
       const oldEndIndex = index + oldRange.end.column - oldRange.start.column;
       const oldText = source.slice(index, oldEndIndex);
@@ -1467,11 +1485,20 @@ class TextBuffer {
       if (changes.length === 0) firstIndex = endIndex = index;
       storageEdits.push({ start: index, end: oldEndIndex, text });
       endIndex = oldEndIndex;
-      const newEnd = new Point(oldRange.start.row, oldRange.start.column + text.length);
-      changes.push({
+      const newStart = new Point(oldRange.start.row, oldRange.start.column + columnDelta);
+      const newEnd = new Point(newStart.row, newStart.column + text.length);
+      canonicalChanges.push({
         oldStart: oldRange.start,
         oldEnd: oldRange.end,
-        newStart: oldRange.start,
+        newStart,
+        newEnd,
+        oldText,
+        newText: text,
+      });
+      changes.push({
+        oldStart: newStart,
+        oldEnd: new Point(newStart.row, newStart.column + oldText.length),
+        newStart,
         newEnd,
         oldText,
         newText: text,
@@ -1480,11 +1507,17 @@ class TextBuffer {
         newEndIndex: index + offset + text.length,
       });
       offset += text.length - oldText.length;
+      columnDelta += text.length - oldText.length;
     }
 
     this.emitWillChangeEvent();
     if (requiresIntermediateText()) return false;
-    const range = new Range(changes[0].oldStart, changes.at(-1).oldEnd);
+    const batchLanguageMode =
+      typeof this.languageMode.bufferDidChangeBatch === "function" &&
+      this.languageMode.canBatchTextChanges?.(changes.length)
+        ? this.languageMode
+        : null;
+    const range = new Range(canonicalChanges[0].oldStart, canonicalChanges.at(-1).oldEnd);
     const edit = this.buffer.prepareEdits(storageEdits);
     const wasApplying = this.applyingEdit;
     try {
@@ -1492,6 +1525,9 @@ class TextBuffer {
       const displayChange = {
         oldRange: range,
         newRange: new Range(range.start, changes.at(-1).newEnd),
+        startIndex: firstIndex,
+        oldEndIndex: endIndex,
+        newEndIndex: endIndex + offset,
         get oldText() {
           return source.slice(firstIndex, endIndex);
         },
@@ -1502,42 +1538,56 @@ class TextBuffer {
       };
       this.prepareDisplayLayersForChange(displayChange);
       const patch = recordHistory
-        ? (TextPatch.fromIndependentChanges(changes) ?? patchFromChanges(changes))
+        ? (TextPatch.fromIndependentChanges(canonicalChanges) ?? patchFromChanges(changes))
         : null;
       edit.commit();
       this.cachedText = null;
       if (recordHistory) this.historyProvider.pushPatch(patch);
       const updateErrors = [];
-      for (const change of changes) {
-        this._textRevision++;
-        const oldRange = new Range(change.oldStart, change.oldEnd).freeze();
-        const newRange = new Range(change.newStart, change.newEnd).freeze();
-        const event = Object.freeze({
-          oldRange,
-          newRange,
-          oldText: change.oldText,
-          newText: change.newText,
-          startIndex: change.startIndex,
-          oldEndIndex: change.oldEndIndex,
-          newEndIndex: change.newEndIndex,
-          origin,
-        });
-        this.changesSinceLastDidChangeTextEvent.push(change);
-        this.changesSinceLastStoppedChangingEvent.push(change);
-        this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
-        this.recordAppliedChange(event);
-        const oldExtent = oldRange.getExtent();
-        const newExtent = newRange.getExtent();
-        for (const layer of Object.values(this.markerLayers)) {
+      const historyLayers = Object.values(this.markerLayers);
+      for (const layer of historyLayers) layer.beginHistoryBatch();
+      try {
+        for (const change of changes) {
+          this._textRevision++;
+          const oldRange = new Range(change.oldStart, change.oldEnd).freeze();
+          const newRange = new Range(change.newStart, change.newEnd).freeze();
+          const event = Object.freeze({
+            oldRange,
+            newRange,
+            oldText: change.oldText,
+            newText: change.newText,
+            startIndex: change.startIndex,
+            oldEndIndex: change.oldEndIndex,
+            newEndIndex: change.newEndIndex,
+            origin,
+          });
+          this.changesSinceLastDidChangeTextEvent.push(change);
+          this.changesSinceLastStoppedChangingEvent.push(change);
+          this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
+          this.recordAppliedChange(event);
+          const oldExtent = oldRange.getExtent();
+          const newExtent = newRange.getExtent();
+          for (const layer of Object.values(this.markerLayers)) {
+            try {
+              layer.splice(oldRange.start, oldExtent, newExtent, change.newText);
+            } catch (error) {
+              updateErrors.push(error);
+            }
+            this.markerLayersWithPendingUpdateEvents.add(layer);
+          }
           try {
-            layer.splice(oldRange.start, oldExtent, newExtent, change.newText);
+            if (!batchLanguageMode && (!oldRange.isEmpty() || !newRange.isEmpty()))
+              this.languageMode.bufferDidChange(event);
           } catch (error) {
             updateErrors.push(error);
           }
-          this.markerLayersWithPendingUpdateEvents.add(layer);
         }
+      } finally {
+        for (const layer of historyLayers) layer.endHistoryBatch();
+      }
+      if (batchLanguageMode) {
         try {
-          if (!oldRange.isEmpty() || !newRange.isEmpty()) this.languageMode.bufferDidChange(event);
+          batchLanguageMode.bufferDidChangeBatch(displayChange, changes.length);
         } catch (error) {
           updateErrors.push(error);
         }
@@ -1565,8 +1615,7 @@ class TextBuffer {
         (change) =>
           change.oldStart.row === change.oldEnd.row &&
           change.newStart.row === change.newEnd.row &&
-          change.oldStart.row === change.newStart.row &&
-          change.oldStart.column === change.newStart.column,
+          change.oldStart.row === change.newStart.row,
       )
     ) {
       const edits = changes.map((change) => ({
@@ -2521,11 +2570,13 @@ class TextBuffer {
    * @returns {Number} representing the number of replacements made.
    */
   replace(regex, replacementText) {
+    this.assertCanEdit();
     replacementText = String(replacementText);
 
     const flags = regex.global ? regex.flags : `${regex.flags}g`;
     const globalRegex = new RegExp(regex.source, flags);
     const sourceText = this.getText();
+    const source = this.getTextSnapshot();
     const replacements = [];
     const unicode = globalRegex.unicode || globalRegex.unicodeSets;
     let match;
@@ -2533,11 +2584,16 @@ class TextBuffer {
     while ((match = globalRegex.exec(sourceText)) != null) {
       const startIndex = match.index;
       const endIndex = startIndex + match[0].length;
+      const start = source.positionAt(startIndex),
+        end = source.positionAt(endIndex);
+      const range = new Range(this.clipPosition(start), this.clipPosition(end));
       replacements.push({
-        range: new Range(
-          this.positionForCharacterIndex(startIndex),
-          this.positionForCharacterIndex(endIndex),
-        ),
+        range,
+        oldText: match[0],
+        physicalRange:
+          start.column !== range.start.column || end.column !== range.end.column
+            ? { start, end }
+            : null,
         text: getSubstitution(
           match[0],
           sourceText,
@@ -2554,11 +2610,33 @@ class TextBuffer {
     }
 
     this.transact(() => {
+      if (
+        !replacements.some((replacement) => replacement.physicalRange) &&
+        this.tryApplyIndependentLineEdits(replacements, true)
+      )
+        return;
       for (let i = replacements.length - 1; i >= 0; i--) {
         const replacement = replacements[i];
-        this.setTextInRange(replacement.range, replacement.text, {
-          normalizeLineEndings: false,
-        });
+        if (replacement.physicalRange) {
+          // Editor positions clip the interior of CRLF. Regex indices do not:
+          // preserve either half through storage's physical-boundary handling.
+          this.emitWillChangeEvent();
+          const { start, end } = replacement.physicalRange;
+          this.applyChange(
+            this.buffer.prepareEditFromChange({
+              oldStart: start,
+              oldEnd: end,
+              newStart: start,
+              oldText: replacement.oldText,
+              newText: replacement.text,
+            }),
+            { recordHistory: true },
+          );
+        } else {
+          this.setTextInRange(replacement.range, replacement.text, {
+            normalizeLineEndings: false,
+          });
+        }
       }
     });
 

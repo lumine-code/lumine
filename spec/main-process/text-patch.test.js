@@ -174,6 +174,47 @@ test("bulk independent patches match incremental native patches and keep persist
   assert.equal(Patch.fromIndependentChanges([changes[0], changes[0]]), null);
 });
 
+test("same-row independent patches merge adjacent changes exactly like native", () => {
+  let seed = 991;
+  const random = (n) => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % n;
+  for (let sample = 0; sample < 50; sample++) {
+    const changes = [],
+      native = new NativePatch();
+    for (let row = 0; row < 5; row++) {
+      let column = 0,
+        delta = 0;
+      for (let i = 0; i < 16; i++) {
+        const oldLength = random(3),
+          newLength = random(4);
+        const oldText = "a".repeat(oldLength),
+          newText = "b".repeat(newLength);
+        const change = {
+          oldStart: { row, column },
+          oldEnd: { row, column: column + oldLength },
+          newStart: { row, column: column + delta },
+          newEnd: { row, column: column + delta + newLength },
+          oldText,
+          newText,
+        };
+        changes.push(change);
+        native.splice(
+          change.newStart,
+          { row: 0, column: oldLength },
+          { row: 0, column: newLength },
+          oldText,
+          newText,
+        );
+        delta += newLength - oldLength;
+        column += oldLength + (oldLength ? random(2) : 1);
+      }
+    }
+    const patch = Patch.fromIndependentChanges(changes);
+    assert(patch);
+    assert.deepEqual(clean(patch.getChanges()), clean(native.getChanges()));
+    assert.deepEqual(Patch.compose([patch, patch.invert()]).getChanges(), []);
+  }
+});
+
 test("composing canonical patches removes identities and preserves independent roots", () => {
   for (const mergeAdjacentChanges of [true, false]) {
     const js = new Patch({ mergeAdjacentChanges }),

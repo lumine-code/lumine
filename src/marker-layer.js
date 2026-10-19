@@ -67,6 +67,8 @@ class MarkerLayer {
     // copying every marker. Entries must be replaced, never mutated in place.
     this.historyShadow = maintainHistory ? new MarkerHistoryMap() : null;
     this.historyProperties = maintainHistory ? new MarkerHistoryMap() : null;
+    this.historyBatchDepth = 0;
+    this.historyShadowDirty = false;
     this.destroyInvalidatedMarkers = destroyInvalidatedMarkers;
     this.role = role;
     if (this.role === "selections") {
@@ -504,7 +506,7 @@ class MarkerLayer {
     // other marker's endpoints sit strictly outside the spliced region and
     // translate exactly.
     let touched = null;
-    if (this.historyShadow || this.trackRanges) {
+    if ((this.historyShadow && !this.historyBatchDepth) || this.trackRanges) {
       touched = this.index.findIntersecting(start, traverse(start, oldExtent));
     }
     let trackedRanges = null;
@@ -588,8 +590,43 @@ class MarkerLayer {
     }
 
     if (this.historyShadow) {
-      this.spliceHistoryShadow(touched, start, oldExtent, newExtent);
+      if (this.historyBatchDepth) this.historyShadowDirty = true;
+      else this.spliceHistoryShadow(touched, start, oldExtent, newExtent);
     }
+  }
+
+  // A text batch still splices the live index for every edit, but history only
+  // needs the resulting coordinates. Snapshot readers can force an earlier
+  // synchronization without closing the batch or mutating retained snapshots.
+  beginHistoryBatch() {
+    this.historyBatchDepth = (this.historyBatchDepth || 0) + 1;
+  }
+
+  endHistoryBatch() {
+    this.historyBatchDepth--;
+    if (!this.historyBatchDepth) this.flushHistoryShadow();
+  }
+
+  flushHistoryShadow() {
+    if (!this.historyShadowDirty) return;
+    const ranges = this.index.dump();
+    for (const [id, entry] of this.historyShadow) {
+      const range = ranges[id];
+      if (
+        range &&
+        (entry.sr !== range.start.row ||
+          entry.sc !== range.start.column ||
+          entry.er !== range.end.row ||
+          entry.ec !== range.end.column)
+      )
+        this.historyShadow.set(id, {
+          sr: range.start.row,
+          sc: range.start.column,
+          er: range.end.row,
+          ec: range.end.column,
+        });
+    }
+    this.historyShadowDirty = false;
   }
 
   spliceHistoryShadow(touched, start, oldExtent, newExtent) {
@@ -690,6 +727,7 @@ class MarkerLayer {
   }
 
   createSnapshot() {
+    this.flushHistoryShadow();
     if (this.historyShadow) {
       const ranges = this.historyShadow.snapshot();
       const props = this.historyProperties.snapshot();

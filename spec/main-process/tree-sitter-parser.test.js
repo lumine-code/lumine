@@ -17,6 +17,38 @@ before(async () => {
   );
 });
 
+test("journal coordinates avoid traversing inserted text again", (t) => {
+  const parser = new DocumentParser(language);
+  try {
+    const previous = parser.parseSync(new PieceTree("const a = 1;"), { revision: 0 });
+    const inserted = new PieceTree("longer");
+    const positionAt = PieceTree.prototype.positionAt;
+    t.mock.method(PieceTree.prototype, "positionAt", function (index) {
+      if (this === inserted) throw new Error("Redundant inserted-text traversal");
+      return positionAt.call(this, index);
+    });
+    const tree = parser.parseSync(new PieceTree("const longer = 1;"), {
+      previous,
+      revision: 1,
+      edits: [
+        {
+          startIndex: 6,
+          oldEndIndex: 7,
+          newText: inserted,
+          startPosition: { row: 0, column: 6 },
+          oldEndPosition: { row: 0, column: 7 },
+          newEndPosition: { row: 0, column: 12 },
+        },
+      ],
+    });
+    assert.equal(tree.incremental, true);
+    assert.equal(tree.rootNode.text, "const longer = 1;");
+    assert.equal(previous.rootNode.text, "const a = 1;");
+  } finally {
+    parser.close();
+  }
+});
+
 test("JS document snapshots parse incrementally without flattening and preserve old nodes", () => {
   const parser = new DocumentParser(language);
   const document = new DocumentCore('const café = "😀";\r\n'.repeat(2000));

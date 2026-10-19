@@ -65,7 +65,7 @@ exports.patchFromChanges = function patchFromChanges(changes) {
 // independence when event consumers freeze or retain their ranges.
 exports.compactPatchChanges = function compactPatchChanges(changes) {
   if (changes.length !== 1) {
-    const independent = compactIndependentRows(changes);
+    const independent = compactIndependentRows(changes) ?? compactIndependentSplices(changes);
     return independent ?? exports.patchFromChanges(changes).getChanges();
   }
   const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = changes[0];
@@ -114,6 +114,41 @@ exports.compactPatchChanges = function compactPatchChanges(changes) {
 // Single-line edits on distinct rows cannot move or overlap one another.
 // Their transaction summary is already compact; avoid round-tripping every
 // string through a temporary native Patch just to reconstruct the same list.
+// Ordered disjoint edits have cumulative columns within each row. Recover
+// their original coordinates directly instead of replaying every splice into
+// another patch. Overlapping or reordered edits retain the general composer.
+function compactIndependentSplices(changes) {
+  let row = -1,
+    delta = 0;
+  const canonical = [];
+  for (const change of changes) {
+    const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = change;
+    if (
+      ![oldStart, oldEnd, newStart, newEnd].every(isOrdinaryPatchPoint) ||
+      typeof oldText !== "string" ||
+      typeof newText !== "string" ||
+      oldStart.row < row ||
+      oldStart.row !== oldEnd.row ||
+      oldStart.row !== newStart.row ||
+      oldStart.row !== newEnd.row ||
+      oldStart.column !== newStart.column
+    )
+      return null;
+    if (row !== oldStart.row) delta = 0;
+    row = oldStart.row;
+    canonical.push({
+      oldStart: { row, column: oldStart.column - delta },
+      oldEnd: { row, column: oldEnd.column - delta },
+      newStart,
+      newEnd,
+      oldText,
+      newText,
+    });
+    delta += newEnd.column - oldEnd.column;
+  }
+  return Patch.fromIndependentChanges(canonical)?.getChanges() ?? null;
+}
+
 function compactIndependentRows(changes) {
   const rows = new Set();
   for (const { oldStart, oldEnd, newStart, newEnd, oldText, newText } of changes) {
