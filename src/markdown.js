@@ -55,6 +55,8 @@ function parseFrontMatter(content) {
  * @param {String} [givenOpts.renderMode="full"] - Determines how the page is rendered.
  * Valid values "full" or "fragment".
  * @param {Boolean} [givenOpts.html=true] - Whether HTML tags should be allowed.
+ * @param {Boolean} [givenOpts.allowFileProtocol=false] - Allow file URLs in Markdown
+ * links. The sanitizer's protocol policy still applies.
  * @param {Boolean} [givenOpts.sanitize=true] - If the page content should be sanitized via DOMPurify.
  * @param {Boolean} [givenOpts.sanitizeAllowUnknownProtocols=true] - Controls DOMPurify's
  * own option of 'ALLOW_UNKNOWN_PROTOCOLS'.
@@ -92,6 +94,7 @@ function renderMarkdown(content, givenOpts = {}) {
     renderMode: "full", // Determines if we are rendering a fragment or full page.
     // Valid values: 'full', 'fragment'
     html: true, // Enable HTML tags in source
+    allowFileProtocol: false,
     sanitize: true, // Enable or disable sanitization
     sanitizeAllowUnknownProtocols: true,
     sanitizeAllowSelfClose: true,
@@ -138,6 +141,10 @@ function renderMarkdown(content, givenOpts = {}) {
   const defaultValidateLink = md.validateLink;
   md.validateLink = (url) => {
     if (defaultValidateLink(url)) {
+      return true;
+    }
+
+    if (opts.allowFileProtocol && /^file:/i.test(url)) {
       return true;
     }
 

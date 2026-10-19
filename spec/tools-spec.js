@@ -88,6 +88,35 @@ describe("Renders Markdown", () => {
   });
 
   describe("transforms links correctly", () => {
+    it("requires an explicit opt-in for Markdown file URLs on each render", () => {
+      const source = "[Document](file:///tmp/document.md)";
+      for (const allowFileProtocol of [false, true, false]) {
+        const output = lumine.tools.markdown.render(source, { allowFileProtocol });
+        expect(output).toBe(
+          allowFileProtocol
+            ? '<p><a href="file:///tmp/document.md">Document</a></p>\n'
+            : `<p>${source}</p>\n`,
+        );
+      }
+      expect(lumine.tools.markdown.render(source)).toBe(`<p>${source}</p>\n`);
+    });
+
+    it("retains the sanitizer's protocol policy when file URL parsing is enabled", () => {
+      expect(
+        lumine.tools.markdown.render("[Document](file:///tmp/document.md)", {
+          allowFileProtocol: true,
+          sanitizeAllowUnknownProtocols: false,
+        }),
+      ).toBe("<p><a>Document</a></p>\n");
+      for (const destination of ["javascript:alert%281%29", "data:text/html,unsafe"]) {
+        expect(
+          lumine.tools.markdown.render(`[Unsafe](${destination})`, {
+            allowFileProtocol: true,
+          }),
+        ).not.toContain("<a");
+      }
+    });
+
     it("makes no changes to a fqdn link", () => {
       expect(lumine.tools.markdown.render("[Hello World](https://github.com)")).toBe(
         '<p><a href="https://github.com">Hello World</a></p>\n',
