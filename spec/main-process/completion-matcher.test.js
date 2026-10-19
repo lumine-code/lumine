@@ -20,6 +20,9 @@ test("prepared completion matches preserve UTF-16 indices, scores and independen
   assert.equal(createQuery("ΟΣΑ").isRefinementOf("ΟΣ"), true);
   assert.deepEqual(createQuery("ΟΣ").match("ΟΣΑ").matchIndices, [0, 1]);
   assert.deepEqual(createQuery("ος").match("οσα").matchIndices, [0, 1]);
+  assert.equal(createQuery("ος").match("ΟΣ").exact, true);
+  assert.equal(createQuery("ος").match("ΟΣΑ").prefix, true);
+  assert.equal(createQuery("ς").match("Σ").firstCharacterMatches, true);
   assert.equal(createQuery("a".repeat(257)).match("a".repeat(257)), null);
 });
 

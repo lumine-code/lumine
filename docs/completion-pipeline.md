@@ -22,13 +22,15 @@ flowchart LR
 
 `autocomplete/lib/completion-matches.js` owns per-suggestion match records in a WeakMap. It validates prefix and match text before reuse, skips previously rejected candidates only for a compatible extension, and recomputes when the query shrinks or candidate text changes. The query cache can also reuse results across newly created suggestion objects with identical text. `filterText` supplies the ranking text; a different display label is matched lazily when visible. Explicit provider highlight indices remain authoritative. The renderer passes the whole suggestion to this model instead of independently invoking a native matcher.
 
+Match records also carry `exact`, `prefix`, `caseSensitivePrefix` and `firstCharacterMatches`. Autocomplete derives its ranking tiers and first-character restriction from these flags instead of lowercasing text again with a different rule. Scoring, eligibility, prefix classification and highlighting therefore share one normalization.
+
 The built-in word provider already returned ranked candidates and highlight indices before this change; it was not being ranked through native fuzzy matching a second time. Its improvements here are compact occurrence summaries, absolute coordinates in nonzero search windows, direct matching of configuration suggestions without an auxiliary buffer, and owned buffer-subscription cleanup. Locality bonuses and provider-priority blocks are retained.
 
 Provider requests receive an AbortSignal. Replacing or cancelling a request aborts it; obsolete provider results are discarded before filtering and presentation. Buffer scanning cooperatively checks cancellation between chunks and scoring work. Providers can pass the signal to their own cancellable operations.
 
 ## Ranking policy
 
-Filtered external suggestions are ordered by whole-word match, literal prefix, case-insensitive prefix, and subsequence tier. Within a tier, `sortText`, shared match score, and original order decide. Provider-priority blocks remain separate. Replacing the path-oriented native matcher deliberately changes some subsequence tie-breaking and snippet highlight paths; the match now prefers the same word boundaries as buffer completion. No scoring or highlighting depends on a native text buffer or native fuzzy matcher.
+Filtered external suggestions are ordered by whole-word match, literal prefix, case-insensitive prefix, and subsequence tier. Within a tier, `sortText`, shared match score, and original order decide. Provider-priority blocks remain separate. Replacing the path-oriented native matcher deliberately changes some subsequence tie-breaking and snippet highlight paths; the match now prefers the same word boundaries as buffer completion. Autocomplete does not call the native matcher for scoring or highlighting; the application still ships native matching tools for other surfaces.
 
 ## What was borrowed from VS Code
 

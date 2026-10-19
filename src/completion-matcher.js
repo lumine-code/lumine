@@ -71,12 +71,12 @@ function scorer(query) {
     lowerQuery = fold(query);
   const best = new Float64Array(size),
     adjacent = new Float64Array(size);
-  return (word) => {
+  return (word, lowerWord) => {
     if (!query.length) return 0;
+    lowerWord ??= fold(word);
     best.fill(-Infinity);
     adjacent.fill(-Infinity);
     best[0] = 0;
-    const lowerWord = fold(word);
     const lastRelevant = lowerWord.lastIndexOf(lowerQuery.at(-1));
     for (let index = 0; index <= lastRelevant; index++) {
       const penalty = index < 3 ? 3 : 1;
@@ -118,6 +118,8 @@ function scorer(query) {
  *
  * Prepare one completion query. Results keep their score and lazily computed
  * UTF-16 match indices together. This scorer does not apply path bonuses.
+ * Matches also expose exact, prefix, caseSensitivePrefix and
+ * firstCharacterMatches flags using the same normalization as scoring.
  * Queries longer than 256 UTF-16 units produce no matches. Cached candidate
  * text is bounded to 2048 entries and 262144 UTF-16 units per query.
  *
@@ -144,11 +146,16 @@ function createQuery(query) {
     match(text) {
       if (typeof text !== "string") throw new TypeError("Completion candidate must be a string");
       if (cache.has(text)) return cache.get(text);
-      const value = score(text);
+      const lowerText = fold(text);
+      const value = score(text, lowerText);
       let indices;
       const result = Number.isFinite(value)
         ? Object.freeze({
             score: value,
+            exact: lowerText === folded,
+            prefix: lowerText.startsWith(folded),
+            caseSensitivePrefix: text.startsWith(query),
+            firstCharacterMatches: lowerText.codePointAt(0) === folded.codePointAt(0),
             get matchIndices() {
               return (indices ??= Object.freeze(query ? traceMatch(text, query).matchIndices : []));
             },
