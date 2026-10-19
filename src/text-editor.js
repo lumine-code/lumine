@@ -1138,7 +1138,7 @@ module.exports = class TextEditor {
    * buffer changes.
    *
    * Ranges reported for text changes carry the buffer's `origin`: `edit`,
-   * `reload`, or `mixed`. For buffer-coordinate transactions, subscribe to
+   * `undo`, `redo`, `reload`, or `mixed`. For buffer-coordinate transactions, subscribe to
    * {@link TextBuffer#onDidChange} on {@link #getBuffer} instead.
    *
    * Because observers are invoked synchronously, it's important not to perform
@@ -1181,7 +1181,7 @@ module.exports = class TextEditor {
    * @param {Point} callback.event.newBufferPosition
    * @param {Point} callback.event.newScreenPosition
    * @param {Boolean} callback.event.textChanged
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`; identifies history replay and buffer reloads independently of `textChanged`.
    * @param {Cursor} callback.event.cursor - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -1202,7 +1202,7 @@ module.exports = class TextEditor {
    * @param {Range} callback.event.newBufferRange
    * @param {Range} callback.event.newScreenRange
    * @param {Boolean} callback.event.textChanged - whether a buffer text change moved the selection.
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`; identifies history replay and buffer reloads independently of `textChanged`.
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */

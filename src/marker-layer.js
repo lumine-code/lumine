@@ -640,7 +640,7 @@ class MarkerLayer {
     }
   }
 
-  restoreFromSnapshot(snapshots, alwaysCreate) {
+  restoreFromSnapshot(snapshots, alwaysCreate, origin = "edit") {
     if (snapshots == null) return;
     snapshots = MarkerLayer.materializeSnapshot(snapshots);
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
@@ -656,7 +656,7 @@ class MarkerLayer {
       }
       let marker = this.markersById.get(parseInt(id));
       if (marker) {
-        marker.update(marker.getRange(), snapshot, true, true);
+        marker.update(marker.getRange(), snapshot, true, true, origin);
       } else {
         marker = snapshot.marker;
         if (marker) {
@@ -671,7 +671,7 @@ class MarkerLayer {
             ec: range.end.column,
           });
           marker.refreshHistoryProps();
-          marker.update(marker.getRange(), snapshot, true, true);
+          marker.update(marker.getRange(), snapshot, true, true, origin);
           if (this.emitCreateMarkerEvents) {
             this.emitter.emit("did-create-marker", marker);
           }

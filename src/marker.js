@@ -138,7 +138,7 @@ class Marker {
    * @param {Object} callback.event.oldProperties - containing the marker's custom properties before the change.
    * @param {Object} callback.event.newProperties - containing the marker's custom properties after the change.
    * @param {Boolean} callback.event.textChanged - indicating whether this change was caused by a textual change to the buffer or whether the marker was manipulated directly via its public API.
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`; identifies history replay and buffer reloads independently of `textChanged`.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChange(callback) {
@@ -649,6 +649,7 @@ class Marker {
     { range, reversed, tailed, valid, exclusive, properties },
     textChanged = false,
     suppressMarkerLayerUpdateEvents = false,
+    origin = "edit",
   ) {
     if (this.isDestroyed()) {
       return;
@@ -708,7 +709,7 @@ class Marker {
 
     if (positionsChanged) this.positionGeneration++;
     if (updated) this.refreshHistoryProps();
-    this.emitChangeEvent(range ?? oldRange, textChanged, propertiesChanged);
+    this.emitChangeEvent(range ?? oldRange, textChanged, propertiesChanged, origin);
     if (updated && !suppressMarkerLayerUpdateEvents) {
       this.layer.markerUpdated();
     }

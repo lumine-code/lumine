@@ -58,7 +58,7 @@ module.exports = class Selection {
    * @param {Range} callback.event.newBufferRange
    * @param {Range} callback.event.newScreenRange
    * @param {Boolean} callback.event.textChanged - whether a buffer text change moved the selection.
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`; identifies history replay and buffer reloads independently of `textChanged`.
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */

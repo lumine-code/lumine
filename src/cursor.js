@@ -45,7 +45,7 @@ module.exports = class Cursor extends Model {
    * @param {Point} callback.event.newBufferPosition
    * @param {Point} callback.event.newScreenPosition
    * @param {Boolean} callback.event.textChanged
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`; identifies buffer reloads independently of `textChanged`.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`; identifies history replay and buffer reloads independently of `textChanged`.
    * @param {Cursor} callback.event.cursor - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */

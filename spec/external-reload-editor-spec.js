@@ -92,6 +92,32 @@ describe("external reloads in text editors", () => {
     expect(selectionEvents[selectionEvents.length - 1].textChanged).toBe(false);
   });
 
+  it("identifies history changes in cursor, selection, marker, and rendered events", () => {
+    const editor = createEditor();
+    editor.insertText("d");
+    const cursorOrigins = [];
+    const selectionOrigins = [];
+    const markerOrigins = [];
+    const displayMarkerOrigins = [];
+    const renderedOrigins = [];
+    editor.onDidChangeCursorPosition(({ origin }) => cursorOrigins.push(origin));
+    editor.onDidChangeSelectionRange(({ origin }) => selectionOrigins.push(origin));
+    editor
+      .getLastSelection()
+      .marker.bufferMarker.onDidChange(({ origin }) => markerOrigins.push(origin));
+    editor.getLastSelection().marker.onDidChange(({ origin }) => displayMarkerOrigins.push(origin));
+    editor.onDidChange((changes) => renderedOrigins.push(...changes.map(({ origin }) => origin)));
+
+    editor.undo();
+    editor.redo();
+
+    for (const origins of [cursorOrigins, selectionOrigins, markerOrigins, displayMarkerOrigins])
+      expect(origins).toEqual(["undo", "redo"]);
+    expect(renderedOrigins).toContain("undo");
+    expect(renderedOrigins).toContain("redo");
+    expect(renderedOrigins.every((origin) => origin === "undo" || origin === "redo")).toBe(true);
+  });
+
   it("preserves reload origins for both editors sharing a buffer", async () => {
     const first = createEditor();
     const second = createEditor();
@@ -162,6 +188,41 @@ describe("external reloads in text editors", () => {
     editor.insertText("?");
 
     expect(buffer.getFileState()).toBe("modified");
+    expect(pane.getPendingItem()).toBeNull();
+  });
+
+  for (const operation of ["undo", "redo"]) {
+    it(`clears a re-pended tab when ${operation} changes its text`, () => {
+      const editor = createEditor();
+      const pane = new Pane({ activeItem: editor, items: [editor] });
+      panes.push(pane);
+      editor.insertText("!");
+      if (operation === "redo") editor.undo();
+      pane.togglePendingItem();
+      expect(pane.getPendingItem()).toBe(editor);
+
+      editor[operation]();
+
+      expect(pane.getPendingItem()).toBeNull();
+    });
+  }
+
+  it("clears a re-pended tab when a transaction mixes editing and history replay", () => {
+    const editor = createEditor();
+    const pane = new Pane({ activeItem: editor, items: [editor] });
+    panes.push(pane);
+    editor.insertText("!");
+    pane.togglePendingItem();
+    const origins = [];
+    buffer.onDidChangeText(({ origin }) => origins.push(origin));
+
+    buffer.transact(() => {
+      buffer.append("x");
+      buffer.undo();
+      buffer.append("y");
+    });
+
+    expect(origins).toEqual(["mixed"]);
     expect(pane.getPendingItem()).toBeNull();
   });
 

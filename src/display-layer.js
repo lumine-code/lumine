@@ -374,7 +374,7 @@ class DisplayLayer {
   // this layer, so its spatial index would keep describing the folds as they
   // were before the restore: the text would come back unfolded while the
   // markers say otherwise. Reconcile over the rows the two sets disagree on.
-  foldsDidRestore(previousRanges) {
+  foldsDidRestore(previousRanges, origin = "edit") {
     const currentRanges = this.foldRangesSnapshot();
     const changedRows = differingRowSpan(previousRanges, currentRanges);
     if (changedRows == null) return;
@@ -383,8 +383,11 @@ class DisplayLayer {
     const { startRow, endRow } = changedRows;
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
     this.markMarkerScreenPositionsDirty();
-    this.didChange(this.updateSpatialIndex(startRow, endRow + 1, endRow + 1, Infinity));
-    this.notifyObserversIfMarkerScreenPositionsChanged();
+    this.didChange({
+      ...this.updateSpatialIndex(startRow, endRow + 1, endRow + 1, Infinity),
+      origin,
+    });
+    this.notifyObserversIfMarkerScreenPositionsChanged(origin);
   }
 
   destroyFoldMarkers(foldMarkers) {
@@ -1276,9 +1279,9 @@ class DisplayLayer {
     this.emitter.emit("did-change", changes);
   }
 
-  notifyObserversIfMarkerScreenPositionsChanged() {
+  notifyObserversIfMarkerScreenPositionsChanged(origin = "edit") {
     this.displayMarkerLayersById.forEach((layer) => {
-      layer.notifyObserversIfMarkerScreenPositionsChanged();
+      layer.notifyObserversIfMarkerScreenPositionsChanged(origin);
     });
   }
 

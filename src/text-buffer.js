@@ -532,7 +532,7 @@ class TextBuffer {
    *
    * @param {Function} callback - to be called when a transaction in which textual changes occurred is completed.
    * @param {Object} callback.event - with the following keys:
-   * @param {String} callback.event.origin - `edit` for editor and API mutations, `reload` for text loaded from the backing file, or `mixed` when a transaction contains both.
+   * @param {String} callback.event.origin - `edit` for editor and API mutations, `undo` or `redo` for history replay, `reload` for text loaded from the backing file, or `mixed` when a transaction contains more than one origin. `edit` includes programmatic changes and does not prove that a key was pressed.
    * @param {Range} callback.event.oldRange - The smallest combined {@link Range} containing all of the old text.
    * @param {Range} callback.event.newRange - The smallest combined {@link Range} containing all of the new text.
    * @param {Array<Object>} callback.event.changes - of `Objects` summarizing the aggregated changes that occurred during the transaction. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
@@ -562,7 +562,7 @@ class TextBuffer {
    * UTF-16 code units. `beforeRevision` and `afterRevision` identify the text
    * states surrounding the batch; compare them with {@link #getTextRevision}.
    * `isCurrent()` returns false after the buffer advances beyond this batch.
-   * `origin` identifies the batch as `edit`, `reload`, or `mixed`;
+   * `origin` identifies the batch as `edit`, `undo`, `redo`, `reload`, or `mixed`;
    * each individual edit also carries its own `origin`.
    * @returns {Disposable} Subscription to the applied edit batches.
    */
@@ -596,7 +596,7 @@ class TextBuffer {
    *
    * @param {Function} callback - to be called when the buffer stops changing.
    * @param {Object} callback.event - with the following keys:
-   * @param {String} callback.event.origin - `edit`, `reload`, or `mixed`, covering all transactions in this idle interval.
+   * @param {String} callback.event.origin - `edit`, `undo`, `redo`, `reload`, or `mixed`, covering all transactions in this idle interval. `mixed` means that more than one origin occurred.
    * @param {Array} callback.event.transactions - Immutable transaction snapshots in application order, each containing `origin` and `changes`. Their ranges use the coordinates of their own transaction. Use these for reactions to the latest edit rather than treating the combined diff as user input.
    * @param {Array<Object>} callback.event.changes - An `Array` containing `Objects` summarizing the aggregated changes. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
    * @param {Range} callback.event.changes[].oldRange - The {@link Range} of the deleted text in the contents of the buffer as it existed *before* the batch of changes reported by this event.
@@ -1438,7 +1438,7 @@ class TextBuffer {
     });
   }
 
-  tryApplyIndependentLineEdits(edits, recordHistory) {
+  tryApplyIndependentLineEdits(edits, recordHistory, origin = "edit") {
     const requiresIntermediateText = () =>
       Object.values(this.markerLayers).some(
         (layer) =>
@@ -1506,7 +1506,7 @@ class TextBuffer {
         get newText() {
           return edit.snapshot.slice(firstIndex, endIndex + offset);
         },
-        origin: "edit",
+        origin,
       };
       this.prepareDisplayLayersForChange(displayChange);
       const patch = recordHistory
@@ -1528,11 +1528,11 @@ class TextBuffer {
           startIndex: change.startIndex,
           oldEndIndex: change.oldEndIndex,
           newEndIndex: change.newEndIndex,
-          origin: "edit",
+          origin,
         });
         this.changesSinceLastDidChangeTextEvent.push(change);
         this.changesSinceLastStoppedChangingEvent.push(change);
-        this.changeOriginsSinceLastDidChangeTextEvent.add("edit");
+        this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
         this.recordAppliedChange(event);
         const oldExtent = oldRange.getExtent();
         const newExtent = newRange.getExtent();
@@ -1566,7 +1566,7 @@ class TextBuffer {
     }
   }
 
-  applyHistoryUpdates(changes) {
+  applyHistoryUpdates(changes, origin = "edit") {
     if (
       changes.length >= 64 &&
       changes.every(
@@ -1582,9 +1582,10 @@ class TextBuffer {
         text: change.newText,
         oldText: change.oldText,
       }));
-      if (this.tryApplyIndependentLineEdits(edits, false)) return;
+      if (this.tryApplyIndependentLineEdits(edits, false, origin)) return;
     }
-    for (const change of changes) this.applyChange(this.buffer.prepareEditFromChange(change));
+    for (const change of changes)
+      this.applyChange(this.buffer.prepareEditFromChange(change), { origin });
   }
 
   /**
@@ -2062,11 +2063,11 @@ class TextBuffer {
     this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
-      this.applyHistoryUpdates(pop.textUpdates);
+      this.applyHistoryUpdates(pop.textUpdates, "undo");
     } finally {
       this.transactCallDepth--;
     }
-    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer);
+    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "undo");
     const origin = this.emitDidChangeTextEvent();
     this.emitMarkerChangeEvents(pop.markers, origin);
     return true;
@@ -2090,11 +2091,11 @@ class TextBuffer {
     this.emitWillChangeEvent();
     this.transactCallDepth++;
     try {
-      this.applyHistoryUpdates(pop.textUpdates);
+      this.applyHistoryUpdates(pop.textUpdates, "redo");
     } finally {
       this.transactCallDepth--;
     }
-    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer);
+    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "redo");
     const origin = this.emitDidChangeTextEvent();
     this.emitMarkerChangeEvents(pop.markers, origin);
     return true;
@@ -4143,7 +4144,8 @@ class TextBuffer {
     return snapshot;
   }
 
-  restoreFromMarkerSnapshot(snapshot, selectionsMarkerLayer) {
+  restoreFromMarkerSnapshot(snapshot, selectionsMarkerLayer, origin = "edit") {
+    if (snapshot == null) return;
     // Fold markers are restored straight onto their layer below, so each
     // display layer has to be told afterwards which rows moved — see
     // `DisplayLayer::foldsDidRestore`.
@@ -4172,15 +4174,16 @@ class TextBuffer {
         this.markerLayers[selectionsMarkerLayer.id].restoreFromSnapshot(
           layerSnapshot,
           markerLayerId !== selectionsMarkerLayer.id,
+          origin,
         );
       } else if (this.markerLayers[markerLayerId]) {
-        this.markerLayers[markerLayerId].restoreFromSnapshot(layerSnapshot);
+        this.markerLayers[markerLayerId].restoreFromSnapshot(layerSnapshot, false, origin);
       }
     }
 
     for (const [id, previousRanges] of foldRangesByDisplayLayerId) {
       const displayLayer = this.displayLayers[id];
-      if (displayLayer) displayLayer.foldsDidRestore(previousRanges);
+      if (displayLayer) displayLayer.foldsDidRestore(previousRanges, origin);
     }
   }
 

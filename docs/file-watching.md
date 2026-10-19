@@ -46,9 +46,9 @@ Custom TextBuffer data sources retain their own identity and stream transformati
 
 ## Buffer change origins
 
-`TextBuffer.onDidChange`, `onDidChangeText` and `onDidApplyChanges` identify changes with `origin`: `edit` for editor and API mutations, `reload` for text read from the backing file, or `mixed` for a transaction containing both. Editing includes programmatic changes and undo; it does not prove that a key was pressed. Reloads still notify syntax, language servers, decorations and other consumers of the current text. Cursor and selection events carry the same origin alongside `textChanged`.
+`TextBuffer.onDidChange`, `onDidChangeText` and `onDidApplyChanges` identify changes with `origin`: `edit` for editor and API mutations, `undo` or `redo` for history replay, `reload` for text read from the backing file, or `mixed` for a transaction containing more than one origin. `edit` includes programmatic changes and does not prove that a key was pressed. Every origin still notifies syntax, language servers, decorations and other consumers of the current text. Cursor and selection events carry the same origin alongside `textChanged`.
 
-`onDidStopChanging` preserves the combined diff in `changes` and exposes immutable `transactions` in application order, each with its own `origin` and `changes`. A transaction's ranges refer to the text before and after that transaction, not to the start of the entire idle interval. Reactions to the latest insertion should inspect the last transaction: a reload and typing immediately afterwards may share one idle event, whose overall origin is `mixed`.
+`onDidStopChanging` preserves the combined diff in `changes` and exposes immutable `transactions` in application order, each with its own `origin` and `changes`. A transaction's ranges refer to the text before and after that transaction, not to the start of the entire idle interval. The overall origin is `mixed` when the interval contains more than one origin. Automatic editing assistance should respond only to `edit` and inspect the last transaction for reactions to the latest insertion: undo, redo or a reload and typing immediately afterwards may share one idle event.
 
 ```js
 buffer.onDidStopChanging(({ transactions }) => {

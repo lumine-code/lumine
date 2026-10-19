@@ -101,7 +101,7 @@ describe("TextBuffer change origins", () => {
     expect(event.transactions[0].changes[0].oldText).toBe("abc");
   });
 
-  it("keeps ordinary edits and undo separate from the preceding reload", async () => {
+  it("distinguishes ordinary edits and history operations from the preceding reload", async () => {
     const origins = [];
     buffer.onDidChangeText((event) => origins.push(event.origin));
     source.text = "abcd";
@@ -110,7 +110,119 @@ describe("TextBuffer change origins", () => {
     buffer.undo();
     buffer.redo();
 
-    expect(origins).toEqual(["reload", "edit", "edit", "edit"]);
+    expect(origins).toEqual(["reload", "edit", "undo", "redo"]);
+  });
+
+  it("identifies undo and redo in text, applied-change, marker and display events", () => {
+    const textOrigins = [];
+    const applied = [];
+    const markerOrigins = [];
+    const displayOrigins = [];
+    const marker = buffer.markRange([
+      [0, 0],
+      [0, 3],
+    ]);
+    const display = buffer.addDisplayLayer();
+    display.getScreenLineCount();
+    buffer.onDidChangeText((event) => textOrigins.push(event.origin));
+    buffer.onDidApplyChanges((event) => applied.push(event));
+    marker.onDidChange((event) => markerOrigins.push(event.origin));
+    display.onDidChange((changes) =>
+      displayOrigins.push(...changes.map((change) => change.origin)),
+    );
+
+    buffer.insert([0, 1], "d");
+    buffer.undo();
+    buffer.redo();
+
+    const expected = ["edit", "undo", "redo"];
+    expect(buffer.getText()).toBe("adbc");
+    expect(textOrigins).toEqual(expected);
+    expect(applied.map((event) => event.origin)).toEqual(expected);
+    expect(applied.map((event) => event.changes.map((change) => change.origin))).toEqual(
+      expected.map((origin) => [origin]),
+    );
+    expect(markerOrigins).toEqual(expected);
+    expect(displayOrigins).toEqual(expected);
+  });
+
+  it("preserves history operations and subsequent typing within one idle interval", async () => {
+    const idle = stoppedChanging();
+    buffer.append("d");
+    buffer.undo();
+    buffer.redo();
+    buffer.append("e");
+    const event = await idle;
+
+    expect(event.origin).toBe("mixed");
+    expect(event.transactions.map((transaction) => transaction.origin)).toEqual([
+      "edit",
+      "undo",
+      "redo",
+      "edit",
+    ]);
+    expect(event.transactions.map((transaction) => transaction.changes[0].newText)).toEqual([
+      "d",
+      "",
+      "d",
+      "e",
+    ]);
+    expect(event.changes[0].newText).toBe("de");
+    expect(buffer.getText()).toBe("abcde");
+  });
+
+  it("preserves undo and redo origins for independent line edit batches", () => {
+    const original = "row\n".repeat(64);
+    buffer.destroy();
+    buffer = new TextBuffer(original);
+    const applied = [];
+    const textOrigins = [];
+    const displayOrigins = [];
+    const display = buffer.addDisplayLayer();
+    display.getScreenLineCount();
+    buffer.onDidChangeText((event) => textOrigins.push(event.origin));
+    buffer.onDidApplyChanges((event) => applied.push(event));
+    display.onDidChange((changes) =>
+      displayOrigins.push(...changes.map((change) => change.origin)),
+    );
+    const prepare = spyOn(buffer.buffer, "prepareEdits").and.callThrough();
+
+    buffer.setTextInIndependentRanges(
+      Array.from({ length: 64 }, (_, row) => ({
+        range: [
+          [row, 0],
+          [row, 0],
+        ],
+        text: "# ",
+      })),
+    );
+    buffer.undo();
+    expect(buffer.getText()).toBe(original);
+    buffer.redo();
+
+    expect(buffer.getText()).toBe("# row\n".repeat(64));
+    expect(prepare.calls.count()).toBe(3);
+    expect(textOrigins).toEqual(["edit", "undo", "redo"]);
+    expect(applied.map((event) => event.origin)).toEqual(["edit", "undo", "redo"]);
+    expect(applied.map((event) => event.changes.length)).toEqual([64, 64, 64]);
+    expect(
+      applied.every((event) => event.changes.every((change) => change.origin === event.origin)),
+    ).toBe(true);
+    expect(displayOrigins).toEqual(["edit", "undo", "redo"]);
+  });
+
+  it("does not leak history origins into edits made by a change observer", () => {
+    buffer.append("d");
+    const origins = [];
+    buffer.onDidChangeText((event) => {
+      origins.push(event.origin);
+      if (event.origin === "undo") buffer.append("e");
+    });
+
+    buffer.undo();
+
+    expect(origins).toEqual(["undo", "edit"]);
+    expect(buffer.getText()).toBe("abce");
   });
 
   for (const withEdit of [false, true]) {

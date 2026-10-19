@@ -386,12 +386,12 @@ class DisplayMarkerLayer {
     return this.emitter.emit("did-update");
   }
 
-  notifyObserversIfMarkerScreenPositionsChanged() {
+  notifyObserversIfMarkerScreenPositionsChanged(origin = "edit") {
     if (!this.screenPositionsDirty) this.markScreenPositionsDirty();
     let completed = false;
     try {
       for (let marker of this.getMarkers()) {
-        marker.notifyObservers(false);
+        marker.notifyObservers(false, origin);
       }
       completed = true;
     } finally {

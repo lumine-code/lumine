@@ -940,7 +940,7 @@ module.exports = class Pane {
       this.setPendingItem(item);
       if (item instanceof TextEditor) {
         this.pendingItemSubscription = item.getBuffer().onDidChange(({ origin }) => {
-          if (origin === "edit") this.clearPendingItem();
+          if (origin !== "reload") this.clearPendingItem();
         });
       } else if (typeof item.onDidChange === "function") {
         this.pendingItemSubscription = item.onDidChange(() => this.clearPendingItem());
@@ -1146,7 +1146,7 @@ module.exports = class Pane {
               if (state.watchedPending) {
                 if (item instanceof TextEditor)
                   this.pendingItemSubscription = item.getBuffer().onDidChange(({ origin }) => {
-                    if (origin === "edit") this.clearPendingItem();
+                    if (origin !== "reload") this.clearPendingItem();
                   });
                 else if (typeof item.onDidChange === "function")
                   this.pendingItemSubscription = item.onDidChange(() => this.clearPendingItem());
