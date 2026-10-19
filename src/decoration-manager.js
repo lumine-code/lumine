@@ -248,12 +248,15 @@ module.exports = class DecorationManager {
     this.emitter.emit("did-update-decorations");
   }
 
-  decorationDidChangeType(decoration) {
+  decorationDidChangeType(decoration, oldProperties) {
     if (decoration.isType("overlay")) {
       this.overlayDecorations.add(decoration);
     } else {
       this.overlayDecorations.delete(decoration);
     }
+    // Initial decorations are handed to the component after construction.
+    // A later type change can introduce a block the component has not seen.
+    if (oldProperties && decoration.isType("block")) this.editor.didAddDecoration(decoration);
   }
 
   didDestroyMarkerDecoration(decoration) {

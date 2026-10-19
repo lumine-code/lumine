@@ -1,4 +1,4 @@
-const { Disposable } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
@@ -171,6 +171,8 @@ module.exports = class TextEditorComponent {
     this.blockDecorationResizeObserver = new this.window.ResizeObserver(
       this.didResizeBlockDecorations.bind(this),
     );
+    this.blockDecorationStates = new Map();
+    this.bindBlockDecorationLifetime();
     this.lineComponentsByScreenLineId = new Map();
     this.overlayComponents = new Set();
     this.shouldRenderDummyScrollbars = true;
@@ -272,10 +274,17 @@ module.exports = class TextEditorComponent {
 
   update(props) {
     if (props.model !== this.props.model) {
-      this.props.model.component = null;
+      const previousProps = this.props;
+      this.destroyBlockDecorations();
+      if (this.props !== previousProps) return;
+      previousProps.model.component = null;
       props.model.component = this;
+      this.props = props;
+      this.bindBlockDecorationLifetime();
+      this.observeBlockDecorations();
+    } else {
+      this.props = props;
     }
-    this.props = props;
     this.scheduleUpdate();
   }
 
@@ -584,7 +593,7 @@ module.exports = class TextEditorComponent {
       for (let i = 0; i < decorations.length; i++) {
         const decoration = decorations[i];
         const marker = decoration.getMarker();
-        if (marker.isValid() && decoration.getProperties().type === "block") {
+        if (marker.isValid() && decoration.isType("block")) {
           this.blockDecorationsToMeasure.add(decoration);
         }
       }
@@ -3987,6 +3996,10 @@ module.exports = class TextEditorComponent {
     return this.lineTopIndex.pixelPositionAfterBlocksForRow(row);
   }
 
+  getRowGeometryVersion() {
+    return this.lineTopIndex.geometryVersion;
+  }
+
   pixelLeftForRowAndColumn(row, column) {
     const screenLine = this.renderedScreenLineForRow(row);
     if (screenLine) {
@@ -4579,71 +4592,153 @@ module.exports = class TextEditorComponent {
 
   observeBlockDecorations() {
     const { model } = this.props;
-    const decorations = model.getDecorations({ type: "block" });
+    const decorations = model.getDecorations().filter((decoration) => decoration.isType("block"));
     for (let i = 0; i < decorations.length; i++) {
       this.addBlockDecoration(decorations[i]);
     }
   }
 
-  addBlockDecoration(decoration, subscribeToChanges = true) {
+  bindBlockDecorationLifetime() {
+    const owner = { model: this.props.model, retired: false };
+    this.blockDecorationOwner = owner;
+    owner.lifetime = owner.model.onDidDestroy(() => {
+      if (this.blockDecorationOwner === owner) this.destroyBlockDecorations();
+    });
+    this.blockDecorationLifetime = owner.lifetime;
+  }
+
+  ownsBlockDecoration(decoration, state) {
+    return (
+      !state.owner.retired &&
+      this.blockDecorationOwner === state.owner &&
+      this.props.model === state.owner.model &&
+      this.blockDecorationStates.get(decoration) === state
+    );
+  }
+
+  addBlockDecoration(decoration) {
+    const owner = this.blockDecorationOwner;
+    if (
+      !owner ||
+      owner.retired ||
+      decoration.decorationManager.editor !== owner.model ||
+      this.props.model.isDestroyed() ||
+      this.blockDecorationStates.has(decoration) ||
+      decoration.isDestroyed()
+    )
+      return;
     const marker = decoration.getMarker();
-    const { item, position } = decoration.getProperties();
-    const element = TextEditor.viewForItem(item);
-
-    if (marker.isValid()) {
-      const row = marker.getHeadScreenPosition().row;
-      this.lineTopIndex.insertBlock(decoration, row, 0, position === "after");
-      this.blockDecorationsToMeasure.add(decoration);
-      this.blockDecorationsByElement.set(element, decoration);
-      this.blockDecorationResizeObserver.observe(element);
-      this.blockDecorationElements.add(element);
-
-      this.scheduleUpdate();
-    }
-
-    if (subscribeToChanges) {
-      let wasValid = marker.isValid();
-
-      const didUpdateDisposable = marker.bufferMarker.onDidChange(({ textChanged }) => {
-        const isValid = marker.isValid();
-        if (wasValid && !isValid) {
-          wasValid = false;
-          element.removeAttribute("data-block-decoration-selected");
-          this.blockDecorationsToMeasure.delete(decoration);
-          this.heightsByBlockDecoration.delete(decoration);
-          this.blockDecorationsByElement.delete(element);
-          this.blockDecorationResizeObserver.unobserve(element);
-          this.blockDecorationElements.delete(element);
-          this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
-          this.scheduleUpdate();
-        } else if (!wasValid && isValid) {
-          wasValid = true;
-          this.addBlockDecoration(decoration, false);
-        } else if (isValid && !textChanged) {
+    const state = { owner, element: null, after: false, subscriptions: new CompositeDisposable() };
+    this.blockDecorationStates.set(decoration, state);
+    const owns = () => this.ownsBlockDecoration(decoration, state);
+    state.subscriptions.add(
+      marker.bufferMarker.onDidChange(({ textChanged }) => {
+        if (!owns()) return;
+        const active = marker.isValid() && decoration.isType("block");
+        if (Boolean(state.element) !== active) {
+          this.updateBlockDecoration(decoration, state);
+        } else if (state.element && !textChanged) {
+          const row = marker.getHeadScreenPosition().row;
           this.withScrollAnchor(() => {
-            this.lineTopIndex.moveBlock(decoration, marker.getHeadScreenPosition().row);
+            if (owns() && state.element && marker.isValid() && decoration.isType("block")) {
+              this.lineTopIndex.moveBlock(decoration, row);
+            }
           });
           this.scheduleUpdate();
         }
-      });
+      }),
+      decoration.onDidChangeProperties(() => {
+        if (owns()) this.updateBlockDecoration(decoration, state);
+      }),
+      decoration.onDidDestroy(() => this.removeBlockDecoration(decoration, state)),
+    );
+    this.updateBlockDecoration(decoration, state);
+  }
 
-      const didDestroyDisposable = decoration.onDidDestroy(() => {
-        didUpdateDisposable.dispose();
-        didDestroyDisposable.dispose();
-        element.removeAttribute("data-block-decoration-selected");
+  updateBlockDecoration(decoration, state) {
+    const marker = decoration.getMarker();
+    const properties = decoration.getProperties();
+    const active = marker.isValid() && decoration.isType("block");
+    const element = active ? TextEditor.viewForItem(properties.item) : null;
+    const after = properties.position === "after";
+    if (
+      !this.ownsBlockDecoration(decoration, state) ||
+      decoration.isDestroyed() ||
+      decoration.getProperties() !== properties ||
+      active !== (marker.isValid() && decoration.isType("block"))
+    )
+      return;
+    if (element === state.element && (!element || after === state.after)) return;
+    const height =
+      element === state.element ? (this.heightsByBlockDecoration.get(decoration) ?? 0) : 0;
+    const row = element ? marker.getHeadScreenPosition().row : null;
+    if (
+      !this.ownsBlockDecoration(decoration, state) ||
+      decoration.isDestroyed() ||
+      decoration.getProperties() !== properties ||
+      active !== (marker.isValid() && decoration.isType("block"))
+    )
+      return;
 
-        if (wasValid) {
-          wasValid = false;
-          this.blockDecorationsToMeasure.delete(decoration);
-          this.heightsByBlockDecoration.delete(decoration);
-          this.blockDecorationsByElement.delete(element);
-          this.blockDecorationResizeObserver.unobserve(element);
-          this.blockDecorationElements.delete(element);
-          this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
-          this.scheduleUpdate();
-        }
-      });
+    this.withScrollAnchor(() => {
+      this.removeBlockDecorationGeometry(decoration, state);
+      // Item resolution and selection attributes can invoke package elements.
+      // A nested property change or retirement owns the resulting state.
+      if (
+        !this.ownsBlockDecoration(decoration, state) ||
+        decoration.isDestroyed() ||
+        !marker.isValid() ||
+        !decoration.isType("block") ||
+        decoration.getProperties() !== properties ||
+        state.element ||
+        !element
+      )
+        return;
+      state.element = element;
+      state.after = after;
+      this.lineTopIndex.insertBlock(decoration, row, height, after);
+      this.heightsByBlockDecoration.set(decoration, height);
+      this.blockDecorationsToMeasure.add(decoration);
+      this.blockDecorationsByElement.set(element, decoration);
+      this.blockDecorationElements.add(element);
+      this.blockDecorationResizeObserver.observe(element);
+    });
+    this.scheduleUpdate();
+  }
+
+  removeBlockDecorationGeometry(decoration, state) {
+    const element = state.element;
+    if (!element) return;
+    state.element = null;
+    state.after = false;
+    this.blockDecorationsToMeasure.delete(decoration);
+    this.heightsByBlockDecoration.delete(decoration);
+    this.blockDecorationsByElement.delete(element);
+    this.blockDecorationResizeObserver.unobserve(element);
+    this.blockDecorationElements.delete(element);
+    this.lineTopIndex.removeBlock(decoration);
+    element.removeAttribute("data-block-decoration-selected");
+  }
+
+  removeBlockDecoration(decoration, state = this.blockDecorationStates.get(decoration)) {
+    if (!state || this.blockDecorationStates.get(decoration) !== state) return;
+    this.blockDecorationStates.delete(decoration);
+    state.subscriptions.dispose();
+    this.withScrollAnchor(() => this.removeBlockDecorationGeometry(decoration, state));
+    this.scheduleUpdate();
+  }
+
+  destroyBlockDecorations() {
+    const owner = this.blockDecorationOwner;
+    if (!owner || owner.retired) return;
+    owner.retired = true;
+    this.blockDecorationOwner = null;
+    this.blockDecorationLifetime = null;
+    owner.lifetime.dispose();
+    for (const [decoration, state] of [...this.blockDecorationStates]) {
+      if (state.owner === owner) this.removeBlockDecoration(decoration, state);
     }
+    if (!this.blockDecorationOwner) this.blockDecorationResizeObserver.disconnect();
   }
 
   didResizeBlockDecorations(entries) {
@@ -4654,6 +4749,7 @@ module.exports = class TextEditorComponent {
     for (let i = 0; i < entries.length; i++) {
       const { target, contentRect } = entries[i];
       const decoration = this.blockDecorationsByElement.get(target);
+      if (this.blockDecorationStates.get(decoration)?.element !== target) continue;
       const previousHeight = this.heightsByBlockDecoration.get(decoration);
       if (this.element.contains(target) && contentRect.height !== previousHeight) {
         this.invalidateBlockDecorationDimensions(decoration);

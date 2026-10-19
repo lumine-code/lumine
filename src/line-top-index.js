@@ -7,6 +7,7 @@ const {
 
 class LineTopIndex {
   constructor(params = {}) {
+    this.geometryVersion = 0;
     this.setDefaultLineHeight(params.defaultLineHeight || 0);
     this.randomGenerator = new Random(params.seed || Date.now());
     this.root = null;
@@ -21,6 +22,7 @@ class LineTopIndex {
   }
 
   setDefaultLineHeight(lineHeight) {
+    if (this.defaultLineHeight !== lineHeight) this.geometryVersion++;
     this.defaultLineHeight = lineHeight;
   }
 
@@ -77,6 +79,7 @@ class LineTopIndex {
 
   splice(start, oldExtent, newExtent) {
     if (this.isEmpty() || (oldExtent === 0 && newExtent === 0)) return new Set();
+    this.geometryVersion++;
 
     let oldEnd = start + oldExtent;
     let newEnd = start + newExtent;
@@ -272,6 +275,7 @@ class LineTopIndex {
   }
 
   adjustNodeBlockHeight(node, delta, isAfterRow) {
+    if (delta !== 0) this.geometryVersion++;
     if (isAfterRow) node.followingBlockHeight += delta;
     node.blockHeight += delta;
     node.distanceFromLeftAncestor.pixels += delta;

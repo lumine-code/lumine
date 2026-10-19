@@ -227,9 +227,7 @@ module.exports = class Decoration {
     }
     const oldProperties = this.properties;
     this.properties = normalizeDecorationProperties(this, newProperties);
-    if (newProperties.type != null) {
-      this.decorationManager.decorationDidChangeType(this);
-    }
+    this.decorationManager.decorationDidChangeType(this, oldProperties);
     this.decorationManager.emitDidUpdateDecorations();
     return this.emitter.emit("did-change-properties", {
       oldProperties,
