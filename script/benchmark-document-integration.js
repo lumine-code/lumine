@@ -165,7 +165,6 @@ async function main() {
   for (const [index, label] of order.entries()) {
     const source = sources[label];
     const output = path.join(destination, `${label}-${index}.json`);
-    const log = fs.createWriteStream(path.join(destination, `${label}-${index}.log`));
     const home = path.join(destination, "homes", `${label}-${index}`);
     fs.mkdirSync(home, { recursive: true });
     if (config.packages.length) {
@@ -187,6 +186,7 @@ async function main() {
       LUMINE_TEST_PACKAGES: config.packages.join(" "),
     };
     delete env.CI;
+    const log = fs.openSync(path.join(destination, `${label}-${index}.log`), "w");
     const child = spawn(
       electron,
       [
@@ -198,15 +198,17 @@ async function main() {
         "--test",
         path.join(source, driver),
       ],
-      { cwd: source, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: source, env, windowsHide: true, stdio: ["ignore", log, log] },
     );
-    child.stdout.pipe(log);
-    child.stderr.pipe(log);
-    const code = await new Promise((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", resolve);
-    });
-    log.end();
+    let code;
+    try {
+      code = await new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", resolve);
+      });
+    } finally {
+      fs.closeSync(log);
+    }
     if (code !== 0 || !fs.existsSync(output))
       throw new Error(
         `Benchmark ${label} exited ${code}; inspect ${path.basename(output, ".json")}.log`,
