@@ -1,0 +1,2858 @@
+{
+  "comparison": "Same corrected core, Python rules and indentation plans; the scalar control replaces applyIndentationLevels with per-row setIndentationForBufferRow calls. This isolates application strategy and is not a historical-code or native comparison.",
+  "startedAt": "2026-10-19T15:37:59.242Z",
+  "finishedAt": "2026-10-19T15:39:00.582Z",
+  "order": ["before", "after", "after", "before"],
+  "config": {
+    "samples": 5,
+    "warmups": 2,
+    "packages": [
+      "search-panel",
+      "code-format",
+      "whitespace",
+      "sort-lines",
+      "minimap",
+      "scrollmap",
+      "marker",
+      "bracket-matcher",
+      "snippets",
+      "autocomplete",
+      "highlight-selected",
+      "language-javascript",
+      "language-python",
+      "language-ipython",
+      "language-html",
+      "language-css",
+      "language-json",
+      "language-gfm",
+      "language-regex",
+      "language-text"
+    ]
+  },
+  "revisions": {
+    "lumine": "8ab6ceb45e81356cfff90a962d7edd8d4188a7b7",
+    "search-panel": "1f5bd79df56b8de966cf1156621c06ed5de30a73",
+    "code-format": "8162effa003683a712c29567e1bd8235444b5116",
+    "whitespace": "ee05e7f5a94fc3d53eb92781665ffd53bc05d937",
+    "sort-lines": "be6cb36b2ba7ffbdf948c2063bbeac843d43399b",
+    "minimap": "51be105b7cceabbac4c91f52a6d1f648b902ad4a",
+    "scrollmap": "41625d322161e696d131aa785dde6aa29774f36d",
+    "marker": "5597ac5ecb17eb1c81268d10bda6da85c4b10279",
+    "bracket-matcher": "a6db1f4d12de37eeb8ce0c190e6f4e4a259379e9",
+    "snippets": "52517581fafc699a2d28135df202fa3af9cb2d0d",
+    "autocomplete": "127021c926eb6ea86023995fbe25eb8be83cdfff",
+    "highlight-selected": "e581e70fb5a6f3bc87e5f9a0ef1574ee4ebd4db0",
+    "language-javascript": "721d40ef20e4ffda4125b375f50c908541fa7c08",
+    "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
+    "language-ipython": "21b9a9347811b0fc7037a3afb16d4cd59f09f6c4",
+    "language-html": "76d58baa9436f0f8a4399cc090edcfd723f7c347",
+    "language-css": "8322694be050ba09814aa744c1818b4ee41446c3",
+    "language-json": "8733eeb377f951347033ab05f1135f0807602f60",
+    "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+    "language-regex": "47c2574e682e900d61c3e5d6107887fb750c1ffb",
+    "language-text": "13edc429649f21fb09d0ff9f4bd54ff5d5c7d694"
+  },
+  "dependencyHash": "5a986003be7552fc791ceb9f25bca8ef936764f4644265f488cf0fc79eb41423",
+  "sourceFingerprints": {
+    "before/lumine": "93e67c1ced9bd28359ba8b00fc8a883f24dd818cd4941b58e301509603c7de5f",
+    "after/lumine": "93e67c1ced9bd28359ba8b00fc8a883f24dd818cd4941b58e301509603c7de5f",
+    "before/search-panel": "5aac8ce123ce10beef3a1224eca60815c90da787307102a5e5877e1b26c44671",
+    "after/search-panel": "5aac8ce123ce10beef3a1224eca60815c90da787307102a5e5877e1b26c44671",
+    "before/code-format": "91130ef0d02df169ab6ff4e969f377ef205ab5ffffa363adf1dfada4964aa8d9",
+    "after/code-format": "91130ef0d02df169ab6ff4e969f377ef205ab5ffffa363adf1dfada4964aa8d9",
+    "before/whitespace": "e75808244f94d01c0886ba1b7b31dece3b403f4ca1f8a7237571ec98ab2ce6c4",
+    "after/whitespace": "e75808244f94d01c0886ba1b7b31dece3b403f4ca1f8a7237571ec98ab2ce6c4",
+    "before/sort-lines": "497b5d51c71c2490fffc4793ea82250a0dad93be20aa3995101dcd4cdeae0228",
+    "after/sort-lines": "497b5d51c71c2490fffc4793ea82250a0dad93be20aa3995101dcd4cdeae0228",
+    "before/minimap": "5e2126ed5bc962ae7d7bc5635fca5ffb439da19ed4e32a03536f30322441157c",
+    "after/minimap": "5e2126ed5bc962ae7d7bc5635fca5ffb439da19ed4e32a03536f30322441157c",
+    "before/scrollmap": "f11cd1ae476b4a7f187d943ab5b889af9d9b66d9b90710b3997e653e45924d7c",
+    "after/scrollmap": "f11cd1ae476b4a7f187d943ab5b889af9d9b66d9b90710b3997e653e45924d7c",
+    "before/marker": "d749fcd1af239008d1916ad982d3daad7bf76a4a41cbbdf0336556400f4cd195",
+    "after/marker": "d749fcd1af239008d1916ad982d3daad7bf76a4a41cbbdf0336556400f4cd195",
+    "before/bracket-matcher": "bb3a5c9691bdcdcbf8aa5076d34eb554c0b13a81fdbd7b9f179161585810d039",
+    "after/bracket-matcher": "bb3a5c9691bdcdcbf8aa5076d34eb554c0b13a81fdbd7b9f179161585810d039",
+    "before/snippets": "a9dd26758386a6ebc536397b1443e8d3e2c6496640414d2e8017f5346e9d29b1",
+    "after/snippets": "a9dd26758386a6ebc536397b1443e8d3e2c6496640414d2e8017f5346e9d29b1",
+    "before/autocomplete": "adcdf15ca2bc5641f8f693d7c3cfedd58accab5f2636452bd3ab9bb5d9733bb5",
+    "after/autocomplete": "adcdf15ca2bc5641f8f693d7c3cfedd58accab5f2636452bd3ab9bb5d9733bb5",
+    "before/highlight-selected": "fa6eab7e86c210d0fe831f2f1291f17b12c2e62c64ece26f72e440f9b905241d",
+    "after/highlight-selected": "fa6eab7e86c210d0fe831f2f1291f17b12c2e62c64ece26f72e440f9b905241d",
+    "before/language-javascript": "00901342232554ab4ffb55692aa8e0c5c23aec785352edcb7427b72d4e524bc0",
+    "after/language-javascript": "00901342232554ab4ffb55692aa8e0c5c23aec785352edcb7427b72d4e524bc0",
+    "before/language-python": "6e1cb7e56fb1ccd0875b09b8c86eacbef8f4a8135da47f27851581fa3d4c91de",
+    "after/language-python": "6e1cb7e56fb1ccd0875b09b8c86eacbef8f4a8135da47f27851581fa3d4c91de",
+    "before/language-ipython": "17a24cf0767708d8e096d30a0934dcf51d57bf640417fd208cdfe5e301d11eaa",
+    "after/language-ipython": "17a24cf0767708d8e096d30a0934dcf51d57bf640417fd208cdfe5e301d11eaa",
+    "before/language-html": "fb5bf2d279e7bb5d9953d5a339099e0e472f9b7577ce6d5ce335fb3c4fa23c5a",
+    "after/language-html": "fb5bf2d279e7bb5d9953d5a339099e0e472f9b7577ce6d5ce335fb3c4fa23c5a",
+    "before/language-css": "5bcd9a95b2a2b485a5700e529052bebe16c392e7dff7b6cc11e0a7901e177fe7",
+    "after/language-css": "5bcd9a95b2a2b485a5700e529052bebe16c392e7dff7b6cc11e0a7901e177fe7",
+    "before/language-json": "75ed255c7f39207c34e1cbc5b32602e5a8405867de04ce8452504c3b594afc56",
+    "after/language-json": "75ed255c7f39207c34e1cbc5b32602e5a8405867de04ce8452504c3b594afc56",
+    "before/language-gfm": "8a853f4db7e8f90dc1a779285b76f08c695b044e5224d2ecc9672cc5dec773fe",
+    "after/language-gfm": "8a853f4db7e8f90dc1a779285b76f08c695b044e5224d2ecc9672cc5dec773fe",
+    "before/language-regex": "efb49a1553e03a343860b620d3af6444bfa12fd21f0433aee3c3f31babdde439",
+    "after/language-regex": "efb49a1553e03a343860b620d3af6444bfa12fd21f0433aee3c3f31babdde439",
+    "before/language-text": "548f3471c341117c669592250e9a6b380b9c61baf37d6cc124007c97a25b9e30",
+    "after/language-text": "548f3471c341117c669592250e9a6b380b9c61baf37d6cc124007c97a25b9e30"
+  },
+  "targetHashes": {
+    "src/selection.js": "bafdae51307af172ffdd11e3dcc77ac4928867cfc37a4bcfc29962fa54fc3766",
+    "src/text-editor.js": "e3baa0c8c4b70d961627a760c4f73acf39c1eaa4e2bee267c902b8d36eef657e",
+    "src/tree-sitter-indent-resolver.js": "652f1c426c78c55f15254ee83cad9e33e3beed2724058fe9e924315fed8d6154",
+    "src/scope-resolver.js": "ad68e9578e6c7486fd6ed398b3e4f8b77e641772d63643c629ac537e01e9b50d",
+    "src/tree-sitter-language-mode.js": "cd755be30fdfcaee5f5cc4b55a9fc2188390f5d336c03c7182c37e698ab63b80"
+  },
+  "pythonQueryHash": "2bcfe2cb661eb78560db0eff0e79321930df58ecdfcdc539e6368a84377cc8cd",
+  "runs": [
+    {
+      "variant": "before",
+      "runtime": {
+        "node": "24.22.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.11",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.43-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167"
+      },
+      "scalar": true,
+      "packages": [
+        "search-panel",
+        "code-format",
+        "whitespace",
+        "sort-lines",
+        "minimap",
+        "scrollmap",
+        "marker",
+        "bracket-matcher",
+        "snippets",
+        "autocomplete",
+        "highlight-selected",
+        "language-javascript",
+        "language-python",
+        "language-ipython",
+        "language-html",
+        "language-css",
+        "language-json",
+        "language-gfm",
+        "language-regex",
+        "language-text"
+      ],
+      "samples": 5,
+      "warmups": 2,
+      "results": [
+        {
+          "id": "javascript-2100-rows",
+          "inputHash": "aebeb114fe664b92edef6c7437773bfe59fb9b8aff813bad56b750bed63dc40d",
+          "outputHash": "97a2bed11769510ec1932e1cdd0fb2949d1f54b57a9aee1959af8245e5a95094",
+          "layouts": [1500, 1500, 1500, 1500, 1500],
+          "metrics": {
+            "edit": {
+              "median": 204.59999999403954,
+              "p95": 212.79999999701977,
+              "samples": [
+                158.80000001192093, 212.6000000089407, 212.79999999701977, 204.59999999403954,
+                188.70000000298023
+              ]
+            },
+            "undo": {
+              "median": 79.5,
+              "p95": 87.90000000596046,
+              "samples": [50.400000005960464, 87.90000000596046, 83, 54.900000005960464, 79.5]
+            },
+            "redo": {
+              "median": 60.70000000298023,
+              "p95": 74.79999999701977,
+              "samples": [
+                40.79999999701977, 52.6000000089407, 68.29999999701977, 74.79999999701977,
+                60.70000000298023
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-1800-rows",
+          "inputHash": "f0cf0ed6b098159850a7c698be5706db25e10658070c4732b5a82d550e34c2bf",
+          "outputHash": "199f45e2f5b4f6ea98c79c63e996d8a82a0e318937e60f7e6c6507c44a4eb2de",
+          "layouts": [1500, 1500, 1500, 1500, 1500],
+          "metrics": {
+            "edit": {
+              "median": 394.29999999701977,
+              "p95": 462.29999999701977,
+              "samples": [
+                394.29999999701977, 394.70000000298023, 386.40000000596046, 462.29999999701977,
+                369.5
+              ]
+            },
+            "undo": {
+              "median": 61.19999998807907,
+              "p95": 77,
+              "samples": [
+                77, 56.900000005960464, 49.19999998807907, 61.19999998807907, 62.69999998807907
+              ]
+            },
+            "redo": {
+              "median": 49.8999999910593,
+              "p95": 56.8999999910593,
+              "samples": [
+                56.5, 49.8999999910593, 43.099999994039536, 56.8999999910593, 37.6000000089407
+              ]
+            }
+          }
+        },
+        {
+          "id": "html-100-injections",
+          "inputHash": "885f9ecfbfbdbbe1ea228818b28e6389a71e9299897357d9bc3260609f28307f",
+          "outputHash": "96218639331c4657e2298c974412604774fecbd1b6b712f920ccec71efda8775",
+          "layouts": [500, 500, 500, 500, 500],
+          "metrics": {
+            "edit": {
+              "median": 160.09999999403954,
+              "p95": 177.70000000298023,
+              "samples": [
+                150.79999999701977, 145.79999999701977, 177.70000000298023, 160.09999999403954,
+                168.29999999701977
+              ]
+            },
+            "undo": {
+              "median": 57,
+              "p95": 62.099999994039536,
+              "samples": [
+                62.099999994039536, 43.6000000089407, 43.599999994039536, 57, 60.29999999701977
+              ]
+            },
+            "redo": {
+              "median": 47.900000005960464,
+              "p95": 64.6000000089407,
+              "samples": [
+                64.6000000089407, 47.20000000298023, 45.70000000298023, 47.900000005960464,
+                57.6000000089407
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-enter-300",
+          "inputHash": "4a194d5b91fd0c3bcc89acd24ec71914e75c3230b778a33d8fa885c1c954117c",
+          "outputHash": "cc8b0d9aecc1f18121defaed7ed704b0f0382b57335843b47416a8008e6428f0",
+          "layouts": [600, 600, 600, 600, 600],
+          "metrics": {
+            "edit": {
+              "median": 162.5,
+              "p95": 181.5,
+              "samples": [173.09999999403954, 181.5, 162.5, 148.29999999701977, 145]
+            },
+            "undo": {
+              "median": 56.79999999701977,
+              "p95": 70,
+              "samples": [57.29999999701977, 56.79999999701977, 70, 56.5, 49.900000005960464]
+            },
+            "redo": {
+              "median": 61.29999999701977,
+              "p95": 63.29999999701977,
+              "samples": [
+                61.20000000298023, 35.70000000298023, 62.5, 63.29999999701977, 61.29999999701977
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "runtime": {
+        "node": "24.22.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.11",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.43-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167"
+      },
+      "scalar": false,
+      "packages": [
+        "search-panel",
+        "code-format",
+        "whitespace",
+        "sort-lines",
+        "minimap",
+        "scrollmap",
+        "marker",
+        "bracket-matcher",
+        "snippets",
+        "autocomplete",
+        "highlight-selected",
+        "language-javascript",
+        "language-python",
+        "language-ipython",
+        "language-html",
+        "language-css",
+        "language-json",
+        "language-gfm",
+        "language-regex",
+        "language-text"
+      ],
+      "samples": 5,
+      "warmups": 2,
+      "results": [
+        {
+          "id": "javascript-2100-rows",
+          "inputHash": "aebeb114fe664b92edef6c7437773bfe59fb9b8aff813bad56b750bed63dc40d",
+          "outputHash": "97a2bed11769510ec1932e1cdd0fb2949d1f54b57a9aee1959af8245e5a95094",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 157.70000000298023,
+              "p95": 180.79999999701977,
+              "samples": [
+                104, 97.59999999403954, 180.79999999701977, 167.6000000089407, 157.70000000298023
+              ]
+            },
+            "undo": {
+              "median": 62.29999999701977,
+              "p95": 88.20000000298023,
+              "samples": [
+                53.1000000089407, 46.5, 62.29999999701977, 88.20000000298023, 66.3999999910593
+              ]
+            },
+            "redo": {
+              "median": 44.79999999701977,
+              "p95": 76.79999999701977,
+              "samples": [
+                43.8999999910593, 43.6000000089407, 44.79999999701977, 70.5, 76.79999999701977
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-1800-rows",
+          "inputHash": "f0cf0ed6b098159850a7c698be5706db25e10658070c4732b5a82d550e34c2bf",
+          "outputHash": "199f45e2f5b4f6ea98c79c63e996d8a82a0e318937e60f7e6c6507c44a4eb2de",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 255.3999999910593,
+              "p95": 351.09999999403954,
+              "samples": [
+                351.09999999403954, 249.3999999910593, 326.8999999910593, 250.09999999403954,
+                255.3999999910593
+              ]
+            },
+            "undo": {
+              "median": 57.80000001192093,
+              "p95": 60.70000000298023,
+              "samples": [
+                60.70000000298023, 57.80000001192093, 53.400000005960464, 34.70000000298023,
+                60.70000000298023
+              ]
+            },
+            "redo": {
+              "median": 53.79999999701977,
+              "p95": 56.400000005960464,
+              "samples": [
+                56.400000005960464, 53.79999999701977, 35.30000001192093, 47.5, 54.099999994039536
+              ]
+            }
+          }
+        },
+        {
+          "id": "html-100-injections",
+          "inputHash": "885f9ecfbfbdbbe1ea228818b28e6389a71e9299897357d9bc3260609f28307f",
+          "outputHash": "96218639331c4657e2298c974412604774fecbd1b6b712f920ccec71efda8775",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 114.5,
+              "p95": 116.70000000298023,
+              "samples": [
+                110.8999999910593, 114.5, 115.69999998807907, 116.70000000298023, 112.90000000596046
+              ]
+            },
+            "undo": {
+              "median": 71.1000000089407,
+              "p95": 75.1000000089407,
+              "samples": [
+                64.69999998807907, 71.5, 71.1000000089407, 67.70000000298023, 75.1000000089407
+              ]
+            },
+            "redo": {
+              "median": 66.30000001192093,
+              "p95": 77.70000000298023,
+              "samples": [
+                66.30000001192093, 65.8999999910593, 45.599999994039536, 70.3999999910593,
+                77.70000000298023
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-enter-300",
+          "inputHash": "4a194d5b91fd0c3bcc89acd24ec71914e75c3230b778a33d8fa885c1c954117c",
+          "outputHash": "cc8b0d9aecc1f18121defaed7ed704b0f0382b57335843b47416a8008e6428f0",
+          "layouts": [301, 301, 301, 301, 301],
+          "metrics": {
+            "edit": {
+              "median": 170,
+              "p95": 197,
+              "samples": [197, 178.59999999403954, 167.5, 140.90000000596046, 170]
+            },
+            "undo": {
+              "median": 69.5,
+              "p95": 70.40000000596046,
+              "samples": [
+                69.8999999910593, 70.40000000596046, 46.20000000298023, 68.20000000298023, 69.5
+              ]
+            },
+            "redo": {
+              "median": 45.20000000298023,
+              "p95": 64,
+              "samples": [
+                45.20000000298023, 42.8999999910593, 36.6000000089407, 64, 53.1000000089407
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "runtime": {
+        "node": "24.22.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.11",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.43-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167"
+      },
+      "scalar": false,
+      "packages": [
+        "search-panel",
+        "code-format",
+        "whitespace",
+        "sort-lines",
+        "minimap",
+        "scrollmap",
+        "marker",
+        "bracket-matcher",
+        "snippets",
+        "autocomplete",
+        "highlight-selected",
+        "language-javascript",
+        "language-python",
+        "language-ipython",
+        "language-html",
+        "language-css",
+        "language-json",
+        "language-gfm",
+        "language-regex",
+        "language-text"
+      ],
+      "samples": 5,
+      "warmups": 2,
+      "results": [
+        {
+          "id": "javascript-2100-rows",
+          "inputHash": "aebeb114fe664b92edef6c7437773bfe59fb9b8aff813bad56b750bed63dc40d",
+          "outputHash": "97a2bed11769510ec1932e1cdd0fb2949d1f54b57a9aee1959af8245e5a95094",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 121.59999999403954,
+              "p95": 194.5,
+              "samples": [107.70000000298023, 96.8999999910593, 181, 194.5, 121.59999999403954]
+            },
+            "undo": {
+              "median": 80.79999999701977,
+              "p95": 81.19999998807907,
+              "samples": [
+                49.69999998807907, 47.599999994039536, 81.19999998807907, 80.79999999701977,
+                81.1000000089407
+              ]
+            },
+            "redo": {
+              "median": 54.79999999701977,
+              "p95": 78.20000000298023,
+              "samples": [41.5, 49.70000000298023, 54.79999999701977, 78.20000000298023, 75]
+            }
+          }
+        },
+        {
+          "id": "python-1800-rows",
+          "inputHash": "f0cf0ed6b098159850a7c698be5706db25e10658070c4732b5a82d550e34c2bf",
+          "outputHash": "199f45e2f5b4f6ea98c79c63e996d8a82a0e318937e60f7e6c6507c44a4eb2de",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 300.5,
+              "p95": 318.70000000298023,
+              "samples": [
+                265.29999999701977, 318.70000000298023, 300.5, 303.6000000089407, 228.69999998807907
+              ]
+            },
+            "undo": {
+              "median": 60.900000005960464,
+              "p95": 62,
+              "samples": [60.900000005960464, 59.1000000089407, 62, 53.70000000298023, 62]
+            },
+            "redo": {
+              "median": 41.400000005960464,
+              "p95": 58.30000001192093,
+              "samples": [
+                56.900000005960464, 41.400000005960464, 37.70000000298023, 58.30000001192093,
+                36.70000000298023
+              ]
+            }
+          }
+        },
+        {
+          "id": "html-100-injections",
+          "inputHash": "885f9ecfbfbdbbe1ea228818b28e6389a71e9299897357d9bc3260609f28307f",
+          "outputHash": "96218639331c4657e2298c974412604774fecbd1b6b712f920ccec71efda8775",
+          "layouts": [1, 1, 1, 1, 1],
+          "metrics": {
+            "edit": {
+              "median": 114.70000000298023,
+              "p95": 137.90000000596046,
+              "samples": [
+                137.90000000596046, 116.19999998807907, 84.1000000089407, 114.70000000298023,
+                88.3999999910593
+              ]
+            },
+            "undo": {
+              "median": 62.70000000298023,
+              "p95": 75.1000000089407,
+              "samples": [
+                75.1000000089407, 62.70000000298023, 74.90000000596046, 60.79999999701977,
+                49.6000000089407
+              ]
+            },
+            "redo": {
+              "median": 74.70000000298023,
+              "p95": 79.5,
+              "samples": [79.5, 79.09999999403954, 74.70000000298023, 68, 59.099999994039536]
+            }
+          }
+        },
+        {
+          "id": "python-enter-300",
+          "inputHash": "4a194d5b91fd0c3bcc89acd24ec71914e75c3230b778a33d8fa885c1c954117c",
+          "outputHash": "cc8b0d9aecc1f18121defaed7ed704b0f0382b57335843b47416a8008e6428f0",
+          "layouts": [301, 301, 301, 301, 301],
+          "metrics": {
+            "edit": {
+              "median": 167.70000000298023,
+              "p95": 198.59999999403954,
+              "samples": [
+                198.59999999403954, 146.40000000596046, 174.6000000089407, 167.70000000298023,
+                144.90000000596046
+              ]
+            },
+            "undo": {
+              "median": 67.90000000596046,
+              "p95": 68,
+              "samples": [66.29999999701977, 61.400000005960464, 68, 68, 67.90000000596046]
+            },
+            "redo": {
+              "median": 60.5,
+              "p95": 62.5,
+              "samples": [55.70000000298023, 62.400000005960464, 60.5, 56.099999994039536, 62.5]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "runtime": {
+        "node": "24.22.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.11",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.43-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.9.0",
+        "chrome": "152.0.7977.167"
+      },
+      "scalar": true,
+      "packages": [
+        "search-panel",
+        "code-format",
+        "whitespace",
+        "sort-lines",
+        "minimap",
+        "scrollmap",
+        "marker",
+        "bracket-matcher",
+        "snippets",
+        "autocomplete",
+        "highlight-selected",
+        "language-javascript",
+        "language-python",
+        "language-ipython",
+        "language-html",
+        "language-css",
+        "language-json",
+        "language-gfm",
+        "language-regex",
+        "language-text"
+      ],
+      "samples": 5,
+      "warmups": 2,
+      "results": [
+        {
+          "id": "javascript-2100-rows",
+          "inputHash": "aebeb114fe664b92edef6c7437773bfe59fb9b8aff813bad56b750bed63dc40d",
+          "outputHash": "97a2bed11769510ec1932e1cdd0fb2949d1f54b57a9aee1959af8245e5a95094",
+          "layouts": [1500, 1500, 1500, 1500, 1500],
+          "metrics": {
+            "edit": {
+              "median": 191.69999998807907,
+              "p95": 265.1000000089407,
+              "samples": [
+                162.70000000298023, 178.6000000089407, 191.69999998807907, 265.1000000089407, 238
+              ]
+            },
+            "undo": {
+              "median": 73.3999999910593,
+              "p95": 84.5,
+              "samples": [
+                51.1000000089407, 73.3999999910593, 75.79999999701977, 84.5, 69.1000000089407
+              ]
+            },
+            "redo": {
+              "median": 63.5,
+              "p95": 67.79999999701977,
+              "samples": [
+                40.099999994039536, 52.6000000089407, 63.5, 67.79999999701977, 66.90000000596046
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-1800-rows",
+          "inputHash": "f0cf0ed6b098159850a7c698be5706db25e10658070c4732b5a82d550e34c2bf",
+          "outputHash": "199f45e2f5b4f6ea98c79c63e996d8a82a0e318937e60f7e6c6507c44a4eb2de",
+          "layouts": [1500, 1500, 1500, 1500, 1500],
+          "metrics": {
+            "edit": {
+              "median": 361.09999999403954,
+              "p95": 469.59999999403954,
+              "samples": [
+                358, 412.29999999701977, 361.09999999403954, 469.59999999403954, 308.70000000298023
+              ]
+            },
+            "undo": {
+              "median": 48.70000000298023,
+              "p95": 64.70000000298023,
+              "samples": [
+                48.70000000298023, 38, 64.70000000298023, 43.30000001192093, 59.29999999701977
+              ]
+            },
+            "redo": {
+              "median": 54.20000000298023,
+              "p95": 56.599999994039536,
+              "samples": [56.599999994039536, 35.5, 56, 54.20000000298023, 37.29999999701977]
+            }
+          }
+        },
+        {
+          "id": "html-100-injections",
+          "inputHash": "885f9ecfbfbdbbe1ea228818b28e6389a71e9299897357d9bc3260609f28307f",
+          "outputHash": "96218639331c4657e2298c974412604774fecbd1b6b712f920ccec71efda8775",
+          "layouts": [500, 500, 500, 500, 500],
+          "metrics": {
+            "edit": {
+              "median": 145.29999999701977,
+              "p95": 155.20000000298023,
+              "samples": [
+                155.20000000298023, 145.29999999701977, 153.29999999701977, 142.5,
+                138.79999999701977
+              ]
+            },
+            "undo": {
+              "median": 71.59999999403954,
+              "p95": 76.6000000089407,
+              "samples": [
+                71.59999999403954, 71.70000000298023, 50.19999998807907, 55.099999994039536,
+                76.6000000089407
+              ]
+            },
+            "redo": {
+              "median": 69.90000000596046,
+              "p95": 77.09999999403954,
+              "samples": [
+                69.90000000596046, 61.70000000298023, 69.80000001192093, 74.40000000596046,
+                77.09999999403954
+              ]
+            }
+          }
+        },
+        {
+          "id": "python-enter-300",
+          "inputHash": "4a194d5b91fd0c3bcc89acd24ec71914e75c3230b778a33d8fa885c1c954117c",
+          "outputHash": "cc8b0d9aecc1f18121defaed7ed704b0f0382b57335843b47416a8008e6428f0",
+          "layouts": [600, 600, 600, 600, 600],
+          "metrics": {
+            "edit": {
+              "median": 164.70000000298023,
+              "p95": 171,
+              "samples": [
+                171, 170.20000000298023, 164.70000000298023, 151.29999999701977, 130.3999999910593
+              ]
+            },
+            "undo": {
+              "median": 69.6000000089407,
+              "p95": 72.79999999701977,
+              "samples": [
+                69.09999999403954, 69.6000000089407, 68.79999999701977, 72, 72.79999999701977
+              ]
+            },
+            "redo": {
+              "median": 60.69999998807907,
+              "p95": 62.400000005960464,
+              "samples": [
+                55.3999999910593, 60.69999998807907, 61.599999994039536, 62.400000005960464, 46
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "id": "javascript-2100-rows/edit",
+      "scalar": {
+        "median": 198.1499999910593,
+        "p95": 265.1000000089407,
+        "processMedians": [204.59999999403954, 191.69999998807907],
+        "layouts": [
+          [1500, 1500, 1500, 1500, 1500],
+          [1500, 1500, 1500, 1500, 1500]
+        ]
+      },
+      "batch": {
+        "median": 139.64999999850988,
+        "p95": 194.5,
+        "processMedians": [157.70000000298023, 121.59999999403954],
+        "layouts": [
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1]
+        ]
+      }
+    },
+    {
+      "id": "javascript-2100-rows/undo",
+      "scalar": {
+        "median": 76.44999999552965,
+        "p95": 87.90000000596046,
+        "processMedians": [79.5, 73.3999999910593]
+      },
+      "batch": {
+        "median": 71.54999999701977,
+        "p95": 88.20000000298023,
+        "processMedians": [62.29999999701977, 80.79999999701977]
+      }
+    },
+    {
+      "id": "javascript-2100-rows/redo",
+      "scalar": {
+        "median": 62.100000001490116,
+        "p95": 74.79999999701977,
+        "processMedians": [60.70000000298023, 63.5]
+      },
+      "batch": {
+        "median": 49.79999999701977,
+        "p95": 78.20000000298023,
+        "processMedians": [44.79999999701977, 54.79999999701977]
+      }
+    },
+    {
+      "id": "python-1800-rows/edit",
+      "scalar": {
+        "median": 377.69999999552965,
+        "p95": 469.59999999403954,
+        "processMedians": [394.29999999701977, 361.09999999403954],
+        "layouts": [
+          [1500, 1500, 1500, 1500, 1500],
+          [1500, 1500, 1500, 1500, 1500]
+        ]
+      },
+      "batch": {
+        "median": 277.94999999552965,
+        "p95": 351.09999999403954,
+        "processMedians": [255.3999999910593, 300.5],
+        "layouts": [
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1]
+        ]
+      }
+    },
+    {
+      "id": "python-1800-rows/undo",
+      "scalar": {
+        "median": 54.94999999552965,
+        "p95": 77,
+        "processMedians": [61.19999998807907, 48.70000000298023]
+      },
+      "batch": {
+        "median": 59.3500000089407,
+        "p95": 62,
+        "processMedians": [57.80000001192093, 60.900000005960464]
+      }
+    },
+    {
+      "id": "python-1800-rows/redo",
+      "scalar": {
+        "median": 52.04999999701977,
+        "p95": 56.8999999910593,
+        "processMedians": [49.8999999910593, 54.20000000298023]
+      },
+      "batch": {
+        "median": 47.600000001490116,
+        "p95": 58.30000001192093,
+        "processMedians": [53.79999999701977, 41.400000005960464]
+      }
+    },
+    {
+      "id": "html-100-injections/edit",
+      "scalar": {
+        "median": 152.69999999552965,
+        "p95": 177.70000000298023,
+        "processMedians": [160.09999999403954, 145.29999999701977],
+        "layouts": [
+          [500, 500, 500, 500, 500],
+          [500, 500, 500, 500, 500]
+        ]
+      },
+      "batch": {
+        "median": 114.60000000149012,
+        "p95": 137.90000000596046,
+        "processMedians": [114.5, 114.70000000298023],
+        "layouts": [
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1]
+        ]
+      }
+    },
+    {
+      "id": "html-100-injections/undo",
+      "scalar": {
+        "median": 64.29999999701977,
+        "p95": 76.6000000089407,
+        "processMedians": [57, 71.59999999403954]
+      },
+      "batch": {
+        "median": 66.90000000596046,
+        "p95": 75.1000000089407,
+        "processMedians": [71.1000000089407, 62.70000000298023]
+      }
+    },
+    {
+      "id": "html-100-injections/redo",
+      "scalar": {
+        "median": 58.900000005960464,
+        "p95": 77.09999999403954,
+        "processMedians": [47.900000005960464, 69.90000000596046]
+      },
+      "batch": {
+        "median": 70.50000000745058,
+        "p95": 79.5,
+        "processMedians": [66.30000001192093, 74.70000000298023]
+      }
+    },
+    {
+      "id": "python-enter-300/edit",
+      "scalar": {
+        "median": 163.60000000149012,
+        "p95": 181.5,
+        "processMedians": [162.5, 164.70000000298023],
+        "layouts": [
+          [600, 600, 600, 600, 600],
+          [600, 600, 600, 600, 600]
+        ]
+      },
+      "batch": {
+        "median": 168.85000000149012,
+        "p95": 198.59999999403954,
+        "processMedians": [170, 167.70000000298023],
+        "layouts": [
+          [301, 301, 301, 301, 301],
+          [301, 301, 301, 301, 301]
+        ]
+      }
+    },
+    {
+      "id": "python-enter-300/undo",
+      "scalar": {
+        "median": 63.20000000298023,
+        "p95": 72.79999999701977,
+        "processMedians": [56.79999999701977, 69.6000000089407]
+      },
+      "batch": {
+        "median": 68.70000000298023,
+        "p95": 70.40000000596046,
+        "processMedians": [69.5, 67.90000000596046]
+      }
+    },
+    {
+      "id": "python-enter-300/redo",
+      "scalar": {
+        "median": 60.99999999254942,
+        "p95": 63.29999999701977,
+        "processMedians": [61.29999999701977, 60.69999998807907]
+      },
+      "batch": {
+        "median": 52.850000001490116,
+        "p95": 64,
+        "processMedians": [45.20000000298023, 60.5]
+      }
+    }
+  ],
+  "validation": {
+    "coreSpecs": 1976,
+    "nodeTests": 110,
+    "packages": [
+      {
+        "name": "autocomplete",
+        "code": 0,
+        "specs": 455,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "autocomplete-lumine",
+        "code": 0,
+        "specs": 29,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "bracket-matcher",
+        "code": 0,
+        "specs": 215,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "code-format",
+        "code": 0,
+        "specs": 110,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "column-selection",
+        "code": 0,
+        "specs": 75,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "highlight-selected",
+        "code": 0,
+        "specs": 37,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "ide",
+        "code": 0,
+        "specs": 1222,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "indent-guide",
+        "code": 0,
+        "specs": 28,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ahkpp",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-bibtex",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-blade",
+        "code": 0,
+        "specs": 18,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-c",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-clojure",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-cmake",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-coffee-script",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-crystal",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-csharp",
+        "code": 0,
+        "specs": 22,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-css",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-csv",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-cython",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-dart",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-diff",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-dockerfile",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-elixir",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-erlang",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-fortran",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-gfm",
+        "code": 0,
+        "specs": 13,
+        "failures": 0
+      },
+      {
+        "name": "language-git",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-go",
+        "code": 0,
+        "specs": 20,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-graphql",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-groovy",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-haskell",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-hcl",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-html",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-hyperlink",
+        "code": 0,
+        "specs": 23,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ini",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ipython",
+        "code": 0,
+        "specs": 125,
+        "failures": 0
+      },
+      {
+        "name": "language-java",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-javascript",
+        "code": 0,
+        "specs": 35,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-json",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-jsonnet",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-julia",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-just",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-kdl",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-kotlin",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-latex",
+        "code": 0,
+        "specs": 15,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-less",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-log",
+        "code": 0,
+        "specs": 19,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-lua",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-make",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-matlab",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-mustache",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-nginx",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-nix",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-objective-c",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-perl",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-php",
+        "code": 0,
+        "specs": 26,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-powershell",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-property-list",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-protobuf",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-python",
+        "code": 0,
+        "specs": 44,
+        "failures": 0
+      },
+      {
+        "name": "language-r",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-regex",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ruby",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ruby-on-rails",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-rust",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sass",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-scala",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-shellscript",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-snakemake",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sofistik",
+        "code": 0,
+        "specs": 86,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-source",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sql",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-swift",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tasklist",
+        "code": 0,
+        "specs": 21,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tcl",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-text",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-todo",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-toml",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tree-sitter-query",
+        "code": 0,
+        "specs": 20,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-typescript",
+        "code": 0,
+        "specs": 26,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-typst",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-vue",
+        "code": 0,
+        "specs": 24,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-xml",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-yaml",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-zig",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "marker",
+        "code": 0,
+        "specs": 105,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "minimap",
+        "code": 0,
+        "specs": 71,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "regex-aligner",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "scrollmap",
+        "code": 0,
+        "specs": 56,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "search-panel",
+        "code": 0,
+        "specs": 145,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "snippets",
+        "code": 0,
+        "specs": 215,
+        "failures": 0
+      },
+      {
+        "name": "sort-lines",
+        "code": 0,
+        "specs": 34,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "spell-check",
+        "code": 0,
+        "specs": 151,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "table-editor",
+        "code": 0,
+        "specs": 93,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "whitespace",
+        "code": 0,
+        "specs": 56,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      }
+    ],
+    "initialCore": [
+      {
+        "name": "core",
+        "code": 0,
+        "specs": 1974,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "node",
+        "code": 0,
+        "specs": null,
+        "failures": null,
+        "pending": 0,
+        "failureNames": []
+      }
+    ],
+    "initialPackages": [
+      {
+        "name": "autocomplete",
+        "code": 0,
+        "specs": 455,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "autocomplete-lumine",
+        "code": 0,
+        "specs": 29,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "bracket-matcher",
+        "code": 0,
+        "specs": 215,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "code-format",
+        "code": 0,
+        "specs": 110,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "column-selection",
+        "code": 0,
+        "specs": 75,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "highlight-selected",
+        "code": 0,
+        "specs": 37,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "ide",
+        "code": 0,
+        "specs": 1222,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "indent-guide",
+        "code": 0,
+        "specs": 28,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ahkpp",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-bibtex",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-blade",
+        "code": 0,
+        "specs": 18,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-c",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-clojure",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-cmake",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-coffee-script",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-crystal",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-csharp",
+        "code": 0,
+        "specs": 22,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-css",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-csv",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-cython",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-dart",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-diff",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-dockerfile",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-elixir",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-erlang",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-fortran",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-gfm",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-git",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-go",
+        "code": 0,
+        "specs": 20,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-graphql",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-groovy",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-haskell",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-hcl",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-html",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-hyperlink",
+        "code": 0,
+        "specs": 23,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ini",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ipython",
+        "code": 0,
+        "specs": 125,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-java",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-javascript",
+        "code": 0,
+        "specs": 35,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-json",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-jsonnet",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-julia",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-just",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-kdl",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-kotlin",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-latex",
+        "code": 0,
+        "specs": 15,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-less",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-log",
+        "code": 0,
+        "specs": 19,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-lua",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-make",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-matlab",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-mustache",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-nginx",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-nix",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-objective-c",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-perl",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-php",
+        "code": 0,
+        "specs": 26,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-powershell",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-property-list",
+        "code": 0,
+        "specs": 11,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-protobuf",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-python",
+        "code": 0,
+        "specs": 43,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-r",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-regex",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ruby",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-ruby-on-rails",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-rust",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sass",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-scala",
+        "code": 0,
+        "specs": 7,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-shellscript",
+        "code": 0,
+        "specs": 10,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-snakemake",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sofistik",
+        "code": 0,
+        "specs": 86,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-source",
+        "code": 0,
+        "specs": 3,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-sql",
+        "code": 0,
+        "specs": 8,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-swift",
+        "code": 0,
+        "specs": 13,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tasklist",
+        "code": 0,
+        "specs": 21,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tcl",
+        "code": 0,
+        "specs": 6,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-text",
+        "code": 0,
+        "specs": 12,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-todo",
+        "code": 0,
+        "specs": 9,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-toml",
+        "code": 0,
+        "specs": 5,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-tree-sitter-query",
+        "code": 0,
+        "specs": 20,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-typescript",
+        "code": 0,
+        "specs": 26,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-typst",
+        "code": 0,
+        "specs": 17,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-vue",
+        "code": 0,
+        "specs": 24,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-xml",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-yaml",
+        "code": 0,
+        "specs": 4,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "language-zig",
+        "code": 0,
+        "specs": 14,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "marker",
+        "code": 0,
+        "specs": 105,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "minimap",
+        "code": 0,
+        "specs": 71,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "regex-aligner",
+        "code": 0,
+        "specs": 16,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "scrollmap",
+        "code": 0,
+        "specs": 56,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "search-panel",
+        "code": 0,
+        "specs": 145,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "snippets",
+        "code": 0,
+        "specs": 215,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "sort-lines",
+        "code": 0,
+        "specs": 34,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "spell-check",
+        "code": 0,
+        "specs": 151,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "table-editor",
+        "code": 0,
+        "specs": 93,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      },
+      {
+        "name": "whitespace",
+        "code": 0,
+        "specs": 56,
+        "failures": 0,
+        "pending": 0,
+        "failureNames": []
+      }
+    ],
+    "finalPass": {
+      "startedAt": "2026-10-19T15:40:27.647Z",
+      "reason": "Validate the final local Python query after the full fleet run; includes the explicit typing-mode guard for deferred automatic correction.",
+      "runs": [
+        {
+          "name": "core",
+          "code": 0,
+          "specs": 1976,
+          "failures": 0
+        },
+        {
+          "name": "language-python",
+          "code": 0,
+          "specs": 44,
+          "failures": 0
+        },
+        {
+          "name": "language-ipython",
+          "code": 0,
+          "specs": 125,
+          "failures": 0
+        },
+        {
+          "name": "language-gfm",
+          "code": 0,
+          "specs": 13,
+          "failures": 0
+        },
+        {
+          "name": "snippets",
+          "code": 0,
+          "specs": 215,
+          "failures": 0
+        }
+      ],
+      "inputsStable": true,
+      "finishedAt": "2026-10-19T15:45:45.762Z"
+    },
+    "packageFingerprints": {
+      "about": "e0b153ad43fd10c954c5ec03eb84544c62dd1aff55a5caf7159477de04d0116e",
+      "archive-view": "21b58b3b3ab5f459da5e9571995e56780d3cef871853e450ba81441c3f74a223",
+      "aura-theme": "81c357e7b3a945dfee2ff53b2fab9a3db1f9bbc38c16c0b926226dff90cc1af0",
+      "autoclose-html": "24044c13a3bcc536f98aafc474b5fceb2f145ebb6dc4cf7fc3cc77fe55a71156",
+      "autocomplete": "9d9f45d97e266e5ad9bed3298e99bfb946438f986de1db62ed5f008e4f1a6171",
+      "autocomplete-lumine": "aa47b76d55d0ab786106514fed89ab18f43a2368fd7e131fa2b10310569e7171",
+      "autoflow": "74a9f67b876faf801ebd500181867eb85c13d7083a868e61dc33ab6f54b1a8e7",
+      "autosave": "466582fd5ad58b13829c4f0186dd319a2f5c862752c554c9e5b16feb7b4d03db",
+      "bacadra-tools": "71e7ed6c1349efc10660e90e0c7dec943550f891a12b18c432a559ce7ca2a3b4",
+      "background-tips": "2c622778a3d60718147e8256ee3577586413608e219c5e66a76217e5fcab5b77",
+      "banager-tools": "433019210880e3bf236183cd94a1cfa87e02fe4fad5e810534e6b69a242a363f",
+      "bib-finder": "ffdda5c3efe9524b385d0b6b051eb6413fbaa58976664c0e7997305e0eb74356",
+      "bookmarks": "0d29f40e55d6d16423b077fda895d5e6656653f062e979c227454225d21f8a4e",
+      "bracket-matcher": "ea6f6a5f7baf20ad04b43297fe9c0b59bddf11b7e1d226bf01d37bafc469923a",
+      "breadcrumbs": "24d50923aff098516e99c53dd33bfc57639512ceef5290516e1fdbcb1b2f1e33",
+      "build": "7070fa7d40d8c7b3bc51f11e3246c49ecafb018e8860553d3d720fe9757b45d1",
+      "busy-signal": "64171e06485dc6596dff0b9d52e44bfc705340e1b0d0d3a64818a41eced00c37",
+      "calc-inline": "6bf0bd55bf390c05b3b33db9675bb633d7c24141ffe9c31d9fd9fcd7ee5e4767",
+      "code-format": "ae13e5bbab8f93429346532d7ba4339d7f11c3fb7b7d0e8deaf26071059d6998",
+      "code-lens": "063279aaaac13fc6bcd1865d4e20c12c3fd5e829e32fdba1db4635aa74042c02",
+      "color-inline": "00de7821c4a4f9f363502a92b3e60c0489b9bd2bf6feb332bed6be8fbd9cef01",
+      "color-picker": "d75b1f79244c76c5c0a8246f6bb27cb3b68b9c83233b6698c43605e84e47d62e",
+      "column-selection": "34475ef675d2e664b04817d4756704ee92bb8699fddfab8d6b7fac00e09a186f",
+      "command-palette": "cc5493b448a0267648cbde3e79d378b4c95b65647f9f6b47b1d209e6f3633a69",
+      "cursor-history": "545c471bc0ae72f1fb7320fc36148ef63ce6f0ea4df316118c125405df86c32e",
+      "cursor-leader": "7d37ddbce1785be213d3ded5a75f28bcfd3e186ee4b9c882ebd614f18a4eff59",
+      "deprecation-cop": "5e0fcc3d388ab582179e8611e696b428abe4c96d7ce5f21c3e4081f9177bdcc3",
+      "dev-live-reload": "faba92d1b7baf913369ee969570fdf82c353320014e76d4cb96e56ac3e6a85bb",
+      "diagnostics": "610f8acf17a2af4da0fca86f1e0101010e5532774038255dece199b3f6b788cc",
+      "diff-view": "b04ba7b682d70f83ea33358875070bd4e115f0f2e371ad36ccbc0c0d8b209c83",
+      "documentation-view": "e54cfb1023cda0fde137d8bfa7113766cdf5b6ab7a5fd2131e1dd6147f660b3a",
+      "encoding-selector": "8f0f6722717c3503e8874009e3aeeda3980cbeffe52c8f6ff5a885e36504485b",
+      "fast-publish": "e73eafbe6093d28d597366686cd6b2c7a2a6a10fffa27c20e9ae00287bfb878b",
+      "file-operations": "f540988fd0f53646fb893dd78a9627d496781e96d0a3dc7999a6eb46b90ddac3",
+      "find-references": "f3dba123f1ee1627ead9ab6cdba20c2fe093ba9c277cc093cc720fada3c2dbdf",
+      "folder-sync": "a07f9964ac816836877910730ea4d19409fa567d74e7f275433972a2f74c06b1",
+      "fuzzy-explorer": "3e2f5ab3aa18555f61af97df54d146b6f9373be16fbf88edbb378587f293468b",
+      "fuzzy-files": "f5e37d9921298370608aa241604b06845f48ec50918ebc611f7ae6bccb49ee3f",
+      "fuzzy-workspace": "2e696f8f0264d62ae181f8a20a1b01187b264c054dd2daa15bb81a321e1830b0",
+      "git-blame": "5588099bed603b55aaefd9daa6de3b798a8492bb7788e8707d19be67bb5538d2",
+      "git-center": "7dec20088c6bbe431ce438d2560f8c636062d6afed644e8f8c92b992fcc2b211",
+      "git-command": "48ab20ff4b81b52c0cd203a05229f6782a3c50d770b166a87df9b37c88437ee5",
+      "git-diff": "fea897549c26e081064f900f9fe3689ecce3f6910207641c9c244935c6599215",
+      "git-panel": "0c7c81823e2b9b576d191e33c26d649674bd30e557658e76abdeae99a004b72d",
+      "github-panel": "ebfc4ae014ceca0313b5fd5f28abf83d106d9136be9b2d20c0f50f0f7b19e9fa",
+      "go-to-line": "41decb4f7aaca13ab1f17a29bfa0fa36fe7c1f64cee8b40634a9f309d8cc09ac",
+      "grammar-selector": "e1eb2912b7665ef9f289143e685a3f76c3a2705385de4c095e7150f09a457287",
+      "graviss": "292b53b3124b3489cfccc1e88b879d7b21d9e296936dcdd194085da36372114d",
+      "graviss-sofistik": "e1241f93be3109efb39c6ff15aea6205391a6b46728707aa4dc7f71a091e9c81",
+      "hierarchy-view": "c708665ec992f601a6f2f63083e27ada0bff4755f03a1ee8c2e3e4541a4972ed",
+      "highlight-selected": "c29f396ec1b953710762ac14560a38bd3c4e7d5db39582a9017591317c952264",
+      "hover": "1a2423f729a5e0806e89f3bb2ae84e99ee2d29b9f8bec844743c76b39095575c",
+      "hyperclick": "28621a787308890cd9c330b55166f0fa4b848cf02133289f5b7241077c24d563",
+      "ide": "4e050f9e838a371883d25556e3a3c1a68a687fcb5583e798697b96b68aede66f",
+      "ide-basedpyright": "0f1153be47bbce20407930f7d300129ad469f25a473d0538db0ceea546504682",
+      "ide-bash": "ac2eb1458ae5c1b92c9bd42ad23e4c8b1d2d3b3974ea18acec870d2f46dddcd7",
+      "ide-clangd": "fc87acc868ad875fbebdfb9e8f2c4d7da3eefae8b2256deade9487a5d50b44b8",
+      "ide-css": "9e704e750f5ef51ee421d1a38c39a4690b03e2076a9eb3c7019e71ce39e9e669",
+      "ide-dart": "443bf8032e10a19f40f71327bee8f8bc7c7672f497940080ac9077d7493a6efa",
+      "ide-dockerfile": "f68a47eb3b6f88611d9a7819637cc7766dbd57adf94fb4848e21b4e5bbf1935b",
+      "ide-eslint": "fcf0b3da9eddcbd9f70018ad2b793b2a30ee1d1775f43ed61522c7f9d2b4876c",
+      "ide-gopls": "6e80648342a050ab3cb906df1da7629e7586d4a138b405e1ff034fa7431d7291",
+      "ide-graphql": "06714fac312a46a15d25ee975cb79c33ca8a5ca530eef09b9cc62081cfb17b66",
+      "ide-html": "32c923a0a3388716d31861457980cb178b03bcd34d271e32e0bc270fad7f7ed9",
+      "ide-jdtls": "afdae1d5d3aaee0effe84eef54c069752653df247f9990979050ec59afb242b9",
+      "ide-json": "10c71dfb3ccf7fd2bc50b67d6210017836276c72ebd269beaac6bbd8b231fcc6",
+      "ide-lemminx": "c871269f063ca472686c79d5664d633dbe1cee0489cfd30770e8a3141f6a4d18",
+      "ide-luals": "83f1836c0ff7ac22c6c6ccb5887089500c4c61cafab07ff66fa7fda9ae687753",
+      "ide-marksman": "684da4f0a5c5f06805ea20abb827e9dc89e3fa6b92344be53bd529cdc4100a04",
+      "ide-phpantom": "afca9f3c2f1f9c744dfa9bff4e8d60dacc8bc0c7ed5538595a27b233b22c7a1b",
+      "ide-powershell": "0d58c3a174bba0fb4972e7818881e52fecd5bb353303afdcda2abd28296c23ee",
+      "ide-r": "58d77a35883776c3020afcec36d4ce8374f2342d5c712a74499937cd20d4ec98",
+      "ide-roslyn": "f97e9dee208b3f5defd5883df7d97b031696a503954386cfcf1b1151dfd2407b",
+      "ide-ruby": "978a857ff2cad297c3c4fe96ebd0704d99074ca4a0503d1ff026f066e4565800",
+      "ide-ruff": "bcffbe49e74d0aa0d0d4ce19f2eab4b4d9ceaf66cbf1044fb0cb6b8fa6ca4b4e",
+      "ide-rust": "3cad7980b6b838a4562b6920eae6b8dee1e203af6a1fd1f1d1ececf8fb720a4e",
+      "ide-sass": "c289407ad5b3d51f116a907aff2079c08b90ec1082f55e21fc8b11c168bb66db",
+      "ide-sofistik": "8750af7846bc84ff7e5cb556097cb948289b765db23bda23be5f9c41ef7692a7",
+      "ide-swift": "dd79006c5030ef433c813e0603257ec9f7ba3011ac22a1d75ff18477e9d5017f",
+      "ide-texlab": "150f8897be563950818c40aa800a1a8ae6a9b45766e95043cbb20946f2dcd6e7",
+      "ide-tinymist": "7d836f5d81b8f1ef6ab45ffa65aa650213af641cbb6732d9f66adca03b8a6200",
+      "ide-tombi": "b770a4eccbb26ebc394feab7fa7d005e16e13cf6c0851062acc6e527540f3b31",
+      "ide-typescript": "f91a669679b10c2e92938dacdf107bf7dff95ca7c470c0d2acb76fb9a8b60f10",
+      "ide-vue": "695d0890a30916526a736f0f37054095e89dc4b90bf072321c28d2042c822c83",
+      "ide-yaml": "4c3ea8a02f18197680be37b1d31c0235f81c39f74ed8fe254ff4701df0416c9f",
+      "ide-zls": "0ab751fe9449c64a206a2cd4ed47e2725e2aeca72ea47dd6f0ce3e983beeef6e",
+      "image-editor": "79c76ddb7a5ee3ab7c495cadc8d8798972b5d46aeb8d6aae2be3118a6fe80a7c",
+      "image-paste": "35092a2e4646c954e8daa1662a8abff9796f39b6117190ad4c3f082a7dbcb391",
+      "incompatible-packages": "092974345afecd7376b08fec52a05739fc66b91f5312d68939370c3b4607a15c",
+      "indent-guide": "a8eb0494f322808f55eb3d1c3f16d82b5beca86c8cb06480c49357483f0c6067",
+      "inlay-hints": "af8d881f4d365df1a8e421b2a422232ec2cd04a0aabb1324e5f62066f17aa249",
+      "intentions": "00819b9220117d57869e8dc8f713a6a48020a5daaf1b0f9f0b6436b46121ca2d",
+      "invert-colors": "027778f6df4a6b5b1d3e2db413871cf9368e768d58aa35b960935d62b6aadaca",
+      "jupyter-cells": "53dcaab68c41de13985089664edfccca6a49a87a8af672006d8da0accdd2e078",
+      "jupyter-explorer": "ea0f565a39b5f91f7472d87d609d7bad85fdba85cc65017f4816346972c56a28",
+      "jupyter-inspector": "dfdf4e7c0e81cb6a0caf3dce6516f04aae71c44d165cabb45b5241bdc843107b",
+      "jupyter-monitor": "21ddef1fb9a07c08273f0b45dacd0a56eb03fc4194b63f4f9b8ab1d0508cebbf",
+      "jupyter-prompt": "1368e26727213f2d9bc01d2e6b0c2ef6413e98020bc1ff24b96c7abaea4d3d01",
+      "jupyter-repl": "5914e58d972e892911dacab2cc528f1a526edd1da7b99e8557727f314f60eeaa",
+      "jupyter-variables": "8f1147685b7f4471f5f2b116dd3eb6b446fa04803b231a4444806e8feb486a32",
+      "jupyter-view": "7d6dde7e1a88964340f827ef3b5858852b0868acfec907716e48b0575cd0aba7",
+      "jupyter-watches": "d4a9bdac9ca648bc6dc382f52704a5e49273a0327c59d1fa2b3473a5d5630542",
+      "keybinding-resolver": "d447c74b796a49b978fb8981a760cd5c8edeb8aae2ec7cbb9f76871eaf55d6c2",
+      "language-ahkpp": "4da4043bdf6a58b1766160827e1fcd8503f23394252d3ea7823355d839c6a325",
+      "language-bibtex": "435cc5e61357c646bfe7336d4d0ec33e4af15ffc357c3bbd2dd9309698ebbd30",
+      "language-blade": "081e91639121625c6b0aabeec492bc6cc5a46fec606aef9f0603bbfb7c10764c",
+      "language-c": "3c36a76da77f732766b1ff09fb0db75d433227d85a5c2cadd621fc4424fa56db",
+      "language-clojure": "dee623232b34c6896fa9990af0e7116fda3e93382e6bb4ac8c60c57f44f775d1",
+      "language-cmake": "5316d4b74b97355e40a37a385387e89719675a188311cda29ff9f694dea2baae",
+      "language-coffee-script": "3182663a125d217ddd70bde497233987feb711149408f28795d8e8e65a977bd1",
+      "language-crystal": "2f0522b97f181acc2d4df088405ed35527b673afb9294730a535c4a6999af97b",
+      "language-csharp": "cf8e0f0747566b3e9f26b49683bc77fef8990c511582e94134f635188a76301a",
+      "language-css": "185807006bc5be6926e16b20c2c5a3a08de7749aca6bc515f65752a38027108a",
+      "language-csv": "f0b80f9009ef901352214473771015ee71ac72fe3349edf8fce32e27e3ddadc2",
+      "language-cython": "e6cbd4fd39849420d90f3b7ff2cc5c41d919523da95337bba72e7379be408d30",
+      "language-dart": "df90b7fb549e08f283ea7e50b1f81e55a8cb9310ecb38371d6612d01ccc247ff",
+      "language-diff": "45fc2a82d1d7a109560f146b3d9a9f3ca3c7b47978682fd5e4deab5bf8f31dc3",
+      "language-dockerfile": "6630fffd8da13939eec912fa44d1b6e159b9589a8e4456ca699b1ad50a1cf21e",
+      "language-elixir": "7538b5f942e204aaaccdc5523b8069b428c1cb35d9a72d46b916b130658ad2cd",
+      "language-erlang": "14a2cc4b104a0fef1654ad6c51aac721a14eb246d6e5a350175785c4d45835eb",
+      "language-fortran": "250fea559929fb1efeb13a3b3c689b74ed8ab301dd79f65b4900c55081d0b757",
+      "language-gfm": "0dde4bf6e5723a4aa8a5d5dd10027c35e28ac3801efc1f5ea40bd3966072afce",
+      "language-git": "d45080dc4534f7e8e5ce41ffd55af9f888c02db0af102cccfb51e159bec67886",
+      "language-go": "50ec0234caa14487bdf9afaa0098d178d225e6041dcd7a7a95e828440fce651a",
+      "language-graphql": "e076daf92398edfed1a522ae5c5e76df19257c59b27cb7148949ebb78c18bdd6",
+      "language-groovy": "3a99bd789d66c151f2c7b8fde3b8487f34a259b2c270468d181826eb5bc21d35",
+      "language-haskell": "8cae720559439c62f2638477f3e23ad1635c746c44b99cf77f94b44568cb81f9",
+      "language-hcl": "cfcbfb2339402f26b29fb306007f3ea344805fbb129eebed86de63b0ea33d7cf",
+      "language-html": "2314a69023aefb5898ca970d60b8bef02cf6f37e85c9a12573475f14b7dca815",
+      "language-hyperlink": "f9d9096b21263f6918bd8e339dd05d90caee35257e4eb65be7428980e40bee54",
+      "language-ini": "2dedfdac6509d880087b5748c831183ecc9ad7fbae7b07f5c7189d968aacc716",
+      "language-ipython": "1d112f80c6112c873a1740190b3a4c4b4f6ecff8aa6e3e7d48aeb4040508b288",
+      "language-java": "cbeb5208479ae19d604c6f1ba4bc42631a784c288e6be634c2716a37800c5e33",
+      "language-javascript": "c5db4a9e4e43dac6c078a8f22ec4869c657dcd400ee88202a9318b07a313a83d",
+      "language-json": "16c11fa6021a278035c07ae07bd26c8be5cb6808b9223331b4049f347043f7a5",
+      "language-jsonnet": "ec85493f1889c9dab6d1b4d163c67b6060c64ecdd95f3a665c6f20644fb765f8",
+      "language-julia": "005e18204f62c564c1bfa7e2310693df103711119f20dd3d827c38c7c08c7243",
+      "language-just": "4c3e0a8e7be4332ff0427838d433bca4bbf5f31be861e26c2eb3e85cdccc7332",
+      "language-kdl": "d61503111f28ec41363df09a70b5ee7699f679c5ea579b96d0047c73f08178f4",
+      "language-kotlin": "549256638fa6e1b64557a1daf6757dd18102ca88298357b7c2ff1bc0f5f54e53",
+      "language-latex": "e3c62f9388c9b95d267f4c83e07bd4fd1bccee41eb366991c0e000df0be78eef",
+      "language-less": "9cc07170237831af31758f906e483c4c16ed14f42726df1e78eea6bfde151e48",
+      "language-log": "b0a48e9f014461d9915baafeb5e43fa05b9b9dfff8faea637480599716499fd1",
+      "language-lua": "a803f174da14aa46449c7784a3c9dd2cbbc7de359457a43d4be1035f1be60537",
+      "language-make": "3635eafbe9ce73c78fd08b575144227ee31814bb6c4fe8e8a42cdf037022fb69",
+      "language-matlab": "53d8da72bc01e06c0574a2369538759c89e5d60d0fe23311ae3a88cda252fd82",
+      "language-mustache": "ee00488d9aef0b987a88b30b44ad6b7aae676378f94d24b9a5df3c8d18090506",
+      "language-nginx": "d00dafc3465cddac4e41b29d2f642c04d2084139c9f386575c4f9f923d466108",
+      "language-nix": "355651fd66f04f5ea2bfc28a76c845c6d1562bc443184c1a647569765e45473e",
+      "language-objective-c": "7c9aa40c46ad15f2f90102ff879214ed42c609fb3d86286e1b4a2da6c0f0fe8f",
+      "language-perl": "cec33b8bae5f6852407c0b6f489845e348581ec833c291d500dcf8ae7363d3d2",
+      "language-php": "b3f9de14764ba0507a91149beb10255a5580fb386f11033f8addd30295e6d0f7",
+      "language-powershell": "2b9367bd51dcd8373ce0c0b16f44ca9ab59516d9bc5c4bf4d196890667018a5c",
+      "language-property-list": "b2bdc1e61f462ab794e187e52fe45df066a0dc596fd1e286fe606b1d46d04d93",
+      "language-protobuf": "665e16f0b51563460e542b3c229ce4048fbd1ba55094ae171486d30186a242ae",
+      "language-python": "09e9f63b8ea420ac7aff09ad22432388d3171ebb936a208d7243f7ac4e858f01",
+      "language-r": "1e18fd60018c18494eec893fdc8d04014823b510c563b0ac9be47f8eec8c8bc0",
+      "language-regex": "28be2d4b772e36ccf04316051c5863ead9a9dadc884195da45d47806dce9c7ec",
+      "language-ruby": "c7be2bde27b4dda48adeb9729498b8fca8b5eafc55719ce48a93ec7ddf28ef45",
+      "language-ruby-on-rails": "c69735a23632551aa64aa5545723c7a8d9b15584948cbc59d469ec7e5c67d304",
+      "language-rust": "85698bf787b7dffaf0892901dd70d1e6b3ef3cdd421d3565707f5ec95b5e89d2",
+      "language-sass": "6a269f801bebcc8443c39290795a35cf618fec298955394952101de8bf9a95ab",
+      "language-scala": "a9c90cdbe43fe9f6aebab3a82d18bdb305a38eb7f844142b3028bdc6fa11da65",
+      "language-shellscript": "f9f1df79b1a155b5e35a1d6adeb1067d45cf339b4d7fd0088be2529a20587646",
+      "language-snakemake": "a523c488783e558881835a6eadd27d9a07d7ea3f21ce09db3b1250644f8289db",
+      "language-sofistik": "aca3ad8343348c8e0c09874477ed8d4ac8d5c4424f74634f45dd89967415a57f",
+      "language-source": "6f503074e534c542917cda6228eef6c9e7427f7b2ec4556d85ac9bcb1fba6643",
+      "language-sql": "5ba437ef142d21bb856eba828ab5bf8cb96dd7ec01372ac4f51c8194a5ee84cb",
+      "language-swift": "02761b35e58aa594c785608fb7fc3ebc882db4e5a2262f9f959b1dc85b4fc924",
+      "language-tasklist": "c21ab671bfdc936957a923aade1c9825b405b99edb7761f9924db80ab69642c9",
+      "language-tcl": "714ca0eb96e8b3cca26b3302282214bc58070a50744a5228c804dc33f233756e",
+      "language-text": "6ae1a95a49d2711bdf1614225b066390f5e7fd78a4e1e2fcd206816b2c3eedf6",
+      "language-todo": "2da88e7c119082a2446dca45f15affc92a9b5431cda64584cc18337eb81b570e",
+      "language-toml": "410da2fe8361a9a891c011a0027c8df195ba285edc5686af55528916890c85b8",
+      "language-tree-sitter-query": "1e4e2a8d8eeac5f4d1d0b9ca6709a61086db9e7d0830cb92c9c41af1fa6a12f5",
+      "language-typescript": "48088766468fbc7b9b270cc8951a4f5d30ebbe78af09e0f33fda4ede2ff0ac63",
+      "language-typst": "4dbaa454d3365b7b84d2fec4f3a59e2a80a921ae76ef1b8067303538ad73aa23",
+      "language-vue": "ba96944917d9dadd5473e12aa20a35a95ed97ef258b05544d3552650e3d6ffc1",
+      "language-xml": "5686ed57866d5b05e20ef7ed4082a1fe538443ab123af5470d27795d7c4b9528",
+      "language-yaml": "6795faa99c57474fc15ce72a311f72a84f8f4eac86d1eda1e0119a7f49d8b01d",
+      "language-zig": "0bfec2e4af2689c1bf06420e09325a7adb1728f715491149529549964bf376f1",
+      "latex-tools": "8a4e6032891103e1aa9b3f16c6c7e920799cd3e31eb1d10055b110f6cf79b593",
+      "launcher": "415494cdc7a72e6a42e2b3385b011eba88587091eca4a07441439fbebe8898cc",
+      "line-ending": "d7b3e2ec09112360f7fc05ac406a476c5d8de368d0ecaf285718616181394449",
+      "link": "02da8a2dfd16573b876603b1a2bdf90fe80d1970a2f4b090053109f42619f8c2",
+      "linter": "b5eb992dda691c07682619046f0d427e877a07aa55495dfa28860687cf023e2b",
+      "linter-todo": "68ee1713c469b737a87e29cdf9fed8db58fb33da1b333a6c7fdee7dca523a248",
+      "log-filter": "ab0562bc10e49a7dfe2c7f6ec000f5d30da92ff9b937aec56a314f50221570f5",
+      "lumine-mcp": "a52be274f35a916e5a350e710994ed01f71c8b5306040f5e3c4b0c166f8fcd95",
+      "lumine-updater": "d9d1df1113edf89b90c078561b8b89494bd425d285f1af375678573a8eb5df7f",
+      "markdown-preview": "49af3bb7dd324ab6f2146f212bd6da06645d0787fa458a1d9b7e4ba67ee3e043",
+      "marker": "38c315c0a1af029f2a8c4fa25946f31b293dad9fe58648848a3fd6cd25c4141f",
+      "minimap": "af0b7c897ff8089794144c00b108d4270331fc8cd363734b2d5f0ef89539b756",
+      "more-icons": "56205d65781a39a62e0b2a0dd14f1d8c59e2cbb73cefc9714531d0fcd797bc35",
+      "native-clip": "a38be04ae667dc259e4b81dab682daf96983f865b46c18233fe5100a94ec00d5",
+      "native-icons": "0f1b897a3dc6e2fcbfc2a16bc5ce783e80695047584e76f4fce51189ee099dbe",
+      "navigation-panel": "2f99f704e250240fd0525aaa2235ae15ec6b13fe335240c29d6488d2dddb8b19",
+      "notifications": "4a333f52724d46797a57640f24e9f3f983c84bad18d2677548ab499091b1900f",
+      "one-theme": "07ff01e58e06ebfaea02d46c5b08ab14a7e90aa639c8aa42f3fd347ca200b586",
+      "open-external": "48a946d5eb8760f5b5a17f8af1b83775eededaf8d6c95df27c5968fc7811fc7f",
+      "open-in-totalcmd": "a84f3457e6176e2244b42508dcaab34902db5ffba325e79f3810670a0b7eb938",
+      "open-repository": "8b89df501e7e89bab62af5c9fafa6a35746f1f58f874fc88f65d895143703a3c",
+      "outline-view": "5032330317a37afbc661860ca50848aad6e9bf617f55f0d2e35d2128b7bb6ab2",
+      "overtype-mode": "13d1e77e0a896e40d0d723261729ca80a5001caede4ffb08777abcba67025be4",
+      "package-generator": "ba2257593989ac9d7058321ebbf13b9caf41f50b2342f659c85c702224f6f224",
+      "pdf-view": "0b41004cbec9ec5a64f3a106d569c8c37f1a1fc69d6c66e94be8283e78e93ce6",
+      "prettier": "291770c619bfd99e7c9a716f4b0d2cba3ec1c2cdc8d05f10620fcb1fdb840a92",
+      "project-list": "c30fdeedcc308865eefc3eef87174c4a84b53f591980a8f6a5ddec3cc7ee689c",
+      "quick-layout": "62a8ad1ac7488889965044cacc03e0b1a7e6693689108f2b582be53fc0efff35",
+      "recent-list": "b0e64c1521e02a2a197d96cf4c5f2331bc6ddf53b00aa1c718697a75b1a847b4",
+      "refactor": "4af8b122c2d68a5f2a3535cb83f1d60b0a5bc050d186704da96c7f4d59629d79",
+      "regex-aligner": "14eb611ba585d5597dbf83857e35c943be7e70be8964bea23292d5e47ed9068b",
+      "scrollmap": "1ee742be1cbcba7161aa108d94899b9b307e23d94eeab254523a0782ab20a82a",
+      "search-panel": "af3cb3ee4537a847f0430266b60a199a9a427c3dbdd958a8009560c12a65ee43",
+      "semantic-tokens": "e5def64489b3993fcf7cd86bd1bbeff798fc8d0cb1be4a069b94218b546c4ce2",
+      "sequence-creator": "ec4c0c44f6bab5d8b4bc2103429bec6464f71dc613c326fceab6d5b628e16c93",
+      "settings-view": "dd69dcc2cb8aca3b1da38b6a4167441ab328be2fafe0726eed461b3c1bd54cef",
+      "snippets": "efb95dc562fa4df66c31f81f9de189314ffd69546512414af3edb22e979ad2b2",
+      "sofistik-tools": "90abf4f2316ba316a314990e7aa7463d011b3c443f2070a47f972b88b75ac0a1",
+      "sort-lines": "42b97519f24e5be593ce312612f5268cbe29df2b3b31367d04a4efb077020919",
+      "spell-check": "d3a1124c0a4e0bc2135fc4b0b8ee1b64701802d7e18ff49fe89d7c8d7edd4ae8",
+      "sqlite-view": "a21040d1df133030e8a9df51b716e06e71d9bd9894a287b3c9337dc350fb3113",
+      "status-bar": "9abdc8475a977636e03ffc234458a25737781c39e6d1e345bda400dcde3b0380",
+      "styleguide": "086b8682db6adab0cfdf0951f66700354a44e2b455ebc1880ee592df7c925d1d",
+      "super-select": "00bec0be65f1bf6894cdbd0b23644fed65dedcec4a64d75d24fcaffb455a226f",
+      "symbol": "f9a909342d7a76a456c90c8ef33b4cb8c991e68c378fa663021a76399efa721a",
+      "symbol-tree-sitter": "e1f33b2dd81e6cd5d9b9dab5d2619249a7f81c4a9f5eab2e03a14a28deee9519",
+      "table-editor": "2aa54d391b23ee532769e7477b79213fa669c59b30b2623e73f069b0ab7c380b",
+      "tabs": "1527464fe4d8c73128f5a0c320d05d38106ea5091e08c7557ef2c852892584c7",
+      "tasklist-tools": "7a50bb1934d83a31b02f3e4af1bf66dac6ae7d998cffb55e02ed9cb31be6ba3a",
+      "terminal": "5eac743c172a693b768e312200d6f95a689d9ef15d7d146d1c47ed896b98226b",
+      "terminal-spawn": "93d98d80a706775c57d07006cd58e28675e9dc0e6b7219bbfbe6f7e750e78c9c",
+      "theme-selector": "fc692bdc7bd39c49958e776959517a295b30a95df8261eb2fd6475e676a1ba22",
+      "timecop": "3545b573bd257cae46db6948bfdee4c0b409a87ce266e8056e83181b03e3dca3",
+      "title-bar": "3e2c86a5dd65b6285a0cffe2f50aaeed3b17bef56dc41fe8194094e03dbcb337",
+      "toolbar": "37a083b052d92233b3aef0433f974b8b2a3026f887a253ebe92324f230e424ef",
+      "tree-view": "e4d27d66649e88505043f29a79d4f2b4b49d9a53e76c7b2415682a31905d532a",
+      "tree-view-favourite": "ea81c8aac068669a1749b467933fccea0a184f9860c1a37969acea05eb402f06",
+      "typst-tools": "46f0c3c4e7f7cfcd06272b51f5d6ae209a37a5182dc46ff6c5d0b6a48c5ae83b",
+      "vscode-theme": "8409779004f85bfbfab6c6255116a0dd0bf835124e22c7d2393e18a602bb9e2c",
+      "whitespace": "ea2e6ce4a194f06d4eb231b0c72f8b5a48809cc0806440f3cdbec478cc0a4770",
+      "window-title": "234c08a863ae537ef294d6abdacd5a621822593f7d2d5ea9de4138c658bf1d18",
+      "word-map": "3210928d0c84e3c7b01746f3c6f9c5d352edd284e8d7786abc99ab4b2a74ff03",
+      "wrap-guide": "162478a2803b7722819efd64d3fbf2a15e43cb990d2c24a0a558f8b34c6d3ff8"
+    },
+    "supplementaryRegressionSpecs": {
+      "specs": 16,
+      "failures": 0,
+      "reason": "Stronger CRLF insertion assertion, no runtime changes.",
+      "hash": "2b08cc95b4f39e4c589dc28ec8a1ef68d4c4cd675711de2d0c654bc8b422b40b"
+    }
+  },
+  "implementationCommits": {
+    "lumine": "65a0abd232a883ed5a36641d1393bbdafe2c8c6a",
+    "languagePython": "50d82f3acfaef58b28c11ac5a5dd96fd7c3f4cdf"
+  }
+}
