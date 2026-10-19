@@ -122,6 +122,12 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
     }
   }
   finish();
+  return rankWords(words, query, maxCount, options);
+}
+
+async function rankWords(words, query, maxCount, options = {}) {
+  let deadline = performance.now() + 4;
+  const compact = Boolean(options.compact);
   const score = scorer(query);
   const better = (a, b) => b.score - a.score || (a.word < b.word ? -1 : a.word > b.word ? 1 : 0);
   const results = [];
@@ -164,4 +170,4 @@ async function findWords(text, query, extra = "", maxCount = Infinity, options =
   return results.map((result) => ({ ...result, ...traceMatch(result.word, query) }));
 }
 
-module.exports = { findWords };
+module.exports = { findWords, rankWords };

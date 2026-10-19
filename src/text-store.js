@@ -169,10 +169,12 @@ class TextStore {
   #resetGeneration = 0;
   #lines = new Map();
   #lastLine = null;
+  #wordIndex;
 
-  constructor(text = "") {
+  constructor(text = "", { wordIndex = true } = {}) {
     this.#base = asText(text);
     this.#document = new DocumentCore(this.#base, { historyLimit: 0 });
+    this.#wordIndex = wordIndex ? new (require("./word-index"))() : null;
   }
   get #text() {
     return this.#document.getTextSnapshot();
@@ -322,6 +324,7 @@ class TextStore {
           }
         }
         draft.commit();
+        this.#wordIndex?.invalidateBatch(deltas);
         this.#changes = changes;
         this.#invalidateLines();
         this.#revision++;
@@ -416,6 +419,7 @@ class TextStore {
           });
         this.#changes.splice(oldStart, extent(removed), extent(inserted), removed, inserted);
         draft.commit();
+        this.#wordIndex?.invalidate(oldStart.row, oldEnd.row, newEnd.row);
         this.#invalidateLines();
         this.#revision++;
       },
@@ -438,6 +442,7 @@ class TextStore {
     this.setTextInRange({ start: zero, end: this.getExtent() }, text);
   }
   reset(text) {
+    this.#wordIndex?.clear();
     this.#base = asText(text);
     this.#document = new DocumentCore(this.#base, { historyLimit: 0 });
     this.#invalidateLines();
@@ -672,10 +677,29 @@ class TextStore {
     const { findWords } = require("./text-store-search");
     const start = range ? this.characterIndexForPosition(range.start) : 0;
     const end = range ? this.characterIndexForPosition(range.end) : this.#text.length;
+    const origin = this.#text.positionAt(start);
+    const finish = this.#text.positionAt(end);
+    const capturedPosition = position ? { row: position.row, column: position.column } : undefined;
+    if (
+      this.#wordIndex &&
+      origin.column === 0 &&
+      (finish.column === 0 || end === this.#text.length) &&
+      end > start &&
+      end - start <= 2 * 1024 * 1024
+    )
+      return this.#wordIndex.find(
+        this.#text,
+        origin.row,
+        end === this.#text.length ? this.#text.lineCount : finish.row,
+        query,
+        extraWordCharacters,
+        maxCount,
+        { position: capturedPosition, signal },
+      );
     return findWords(this.#text.subtext(start, end), query, extraWordCharacters, maxCount, {
       compact: true,
-      position: position ? { row: position.row, column: position.column } : undefined,
-      origin: this.#text.positionAt(start),
+      position: capturedPosition,
+      origin,
       signal,
     });
   }
