@@ -66,16 +66,17 @@ const results = [];
       filterText: i % 5 === 0 ? `custom_${i}` : undefined,
     }));
   for (const count of [100, 1000, 10000])
-    for (const mode of ["cold", "repeat", "extend"]) {
+    for (const mode of ["cold", "repeat", "fresh-repeat", "extend"]) {
       const elapsed = [],
         calls = [];
       for (let sample = -warmups; sample < samples; sample++) {
-        const items = makeItems(count);
+        let items = makeItems(count);
         const owner = {};
         if (mode !== "cold")
           runtime.filterSuggestions.call(owner, items, {
             prefix: mode === "extend" ? "cx" : "caw",
           });
+        if (mode === "fresh-repeat") items = makeItems(count);
         global.gc?.();
         const before = nativeCalls,
           start = performance.now();
@@ -96,7 +97,7 @@ const results = [];
       calls = [];
     for (let sample = -warmups; sample < samples; sample++) {
       const items = makeItems(1000),
-        result = runtime.filterSuggestions(items, { prefix: "caw" }).slice(0, 20);
+        result = runtime.filterSuggestions.call({}, items, { prefix: "caw" }).slice(0, 20);
       const render = () =>
         result.map((item) =>
           hasModel
@@ -104,11 +105,18 @@ const results = [];
             : counted.match(item.text, "caw", { recordMatchIndexes: true })?.matchIndexes,
         );
       if (mode === "rerender") render();
+      global.gc?.();
       const before = nativeCalls,
         start = performance.now();
       const indices = render(),
         duration = performance.now() - start;
-      for (const value of indices) assert(value.length === 3);
+      for (const [index, value] of indices.entries()) {
+        assert.equal(value.length, 3);
+        assert.equal(
+          value.map((offset) => result[index].text[offset].toLowerCase()).join(""),
+          "caw",
+        );
+      }
       if (sample >= 0) {
         elapsed.push(duration);
         calls.push(nativeCalls - before);
@@ -117,23 +125,41 @@ const results = [];
     results.push({ id: `highlight/${mode}/20`, ...summary(elapsed), nativeCalls: calls });
   }
   const TextBuffer = require(path.join(core, "src/text-buffer"));
-  for (const mode of ["legacy", "compact"]) {
-    if (mode === "compact" && !TextBuffer.prototype.findWordCandidates) continue;
-    const elapsed = [];
-    let resultBytes;
-    for (let sample = -warmups; sample < samples; sample++) {
-      const buffer = new TextBuffer("banana bandana ban_ana bandaid band bNa\n".repeat(6000));
-      const start = performance.now();
-      const result = await (mode === "compact"
-        ? buffer.findWordCandidates("bna", { extraWordCharacters: "_", position: [5000, 3] })
-        : buffer.findWordsWithSubsequence("bna", "_", 20));
-      const duration = performance.now() - start;
-      assert.equal(result.length, 5);
-      if (sample >= 0) elapsed.push(duration);
-      resultBytes = JSON.stringify(result).length;
-      buffer.destroy();
+  for (const fixture of [
+    {
+      id: "repeated",
+      text: "banana bandana ban_ana bandaid band bNa\n".repeat(6000),
+      query: "bna",
+      count: 5,
+    },
+    {
+      id: "unique",
+      text: Array.from({ length: 6000 }, (_, i) => `candidate_word_${i}`).join("\n"),
+      query: "caw",
+      count: 20,
+    },
+  ]) {
+    for (const mode of ["legacy", "compact"]) {
+      if (mode === "compact" && !TextBuffer.prototype.findWordCandidates) continue;
+      const elapsed = [];
+      let resultBytes;
+      for (let sample = -warmups; sample < samples; sample++) {
+        const buffer = new TextBuffer(fixture.text);
+        const start = performance.now();
+        const result = await (mode === "compact"
+          ? buffer.findWordCandidates(fixture.query, {
+              extraWordCharacters: "_",
+              position: [5000, 3],
+            })
+          : buffer.findWordsWithSubsequence(fixture.query, "_", 20));
+        const duration = performance.now() - start;
+        assert.equal(result.length, fixture.count);
+        if (sample >= 0) elapsed.push(duration);
+        resultBytes = JSON.stringify(result).length;
+        buffer.destroy();
+      }
+      results.push({ id: `words/${fixture.id}/${mode}/6000`, ...summary(elapsed), resultBytes });
     }
-    results.push({ id: `words/${mode}/6000`, ...summary(elapsed), resultBytes });
   }
   const digest = (directory) => {
     const files = [];

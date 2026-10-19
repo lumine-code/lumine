@@ -39,3 +39,7 @@ The [completion model](https://github.com/microsoft/vscode/blob/main/src/vs/edit
 VS Code's [word provider](https://github.com/microsoft/vscode/blob/main/src/vs/editor/browser/services/editorWorkerService.ts) requests candidates from a worker with synchronized models; [word collection](https://github.com/microsoft/vscode/blob/main/src/vs/editor/common/services/editorWebWorker.ts) deduplicates words and bounds the candidate set. This pass does not add a mirrored worker model to Lumine. Scanning still runs cooperatively over an immutable in-process snapshot. A persistent word index or a worker synchronized with document changes is a separate next step if large scans dominate latency; serializing the whole buffer for each query would defeat the snapshot architecture.
 
 References were reviewed on 2026-10-19. These links point to upstream `main` and may evolve.
+
+## Validation
+
+See [the completion performance report](completion-performance-2026-10-19.md) for before/after popup measurements, cold and repeated matching, native call counts, output sizes and correctness coverage. Small cold lists regress slightly; repeated matching improves substantially; the default word popup is effectively unchanged in the final measurement.

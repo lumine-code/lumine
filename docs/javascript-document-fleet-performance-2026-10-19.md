@@ -2,6 +2,8 @@
 
 Local Windows measurements on 2026-10-19 after the snapshot, line-reader, fuzzy-search and bulk-edit optimization pass. The [raw performance report](../benchmark/results/javascript-document-fleet-performance-2026-10-19.json) retains every sample, process median, source hash and package fingerprint. The [fleet validation report](../benchmark/results/javascript-document-fleet-validation-2026-10-19.json) records the full package sweep and subsequent retries.
 
+The popup case below used timer polling for readiness. The later [completion pipeline report](completion-performance-2026-10-19.md) uses model and DOM events instead; use that method for fine-grained popup comparisons. Historical popup differences here cannot establish a cost for crossing the native fuzzy-matcher boundary, and the default word provider already bypassed that matcher.
+
 ## Findings
 
 These findings describe the broad matrix before the final two refinements; see [the follow-up comparison](#follow-up-fuzzy-scanning-and-transaction-history) for their measured effect.
