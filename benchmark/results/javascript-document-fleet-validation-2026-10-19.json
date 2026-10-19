@@ -1697,7 +1697,7 @@
         "failureNames": []
       },
       {
-        "name": "linter-panel",
+        "name": "diagnostics",
         "status": "passed",
         "code": 0,
         "specs": 118,
@@ -4065,7 +4065,7 @@
       "coreHash": "c7130afd60ab4a00d36d635376294eb020e6356edb9d9aa6dc664aab03faef62"
     },
     {
-      "name": "linter-panel",
+      "name": "diagnostics",
       "status": "passed",
       "specs": 118,
       "failures": 0,
