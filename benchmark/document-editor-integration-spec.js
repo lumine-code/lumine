@@ -59,6 +59,54 @@ describe("JavaScript document editor integration performance", () => {
       { id: "ipython-injections", scope: "source.python.ipy" },
       ...(config.packageCases
         ? [
+            { id: "buffer-replace-5000", rows: 5000, bulk: "buffer" },
+            {
+              id: "search-replace-5000",
+              rows: 5000,
+              bulk: "search",
+              command: "search-panel:replace-all",
+            },
+            {
+              id: "search-replace-single-2000",
+              rows: 2000,
+              bulk: "search",
+              singleLine: true,
+              command: "search-panel:replace-all",
+            },
+            {
+              id: "format-edits-2000-js",
+              rows: 2000,
+              bulk: "format",
+              scope: "source.js",
+              command: "code-format:format-code",
+            },
+            {
+              id: "format-plan-2000-js",
+              rows: 2000,
+              bulk: "format-plan",
+              scope: "source.js",
+              command: "code-format:format-code",
+            },
+            ...(config.bulkSyntaxCases
+              ? [
+                  {
+                    id: "format-edits-html-500",
+                    rows: 500,
+                    bulk: "format",
+                    scope: "text.html.basic",
+                    command: "code-format:format-code",
+                    line: '<script>const foo = "😀終"; foo;</script><p>foo</p>\r\n',
+                  },
+                  {
+                    id: "format-edits-python-500",
+                    rows: 500,
+                    bulk: "format",
+                    scope: "source.python",
+                    command: "code-format:format-code",
+                    line: 'foo = "😀終"\r\nprint(foo)\r\n',
+                  },
+                ]
+              : []),
             { id: "sort-lines-10000", command: "sort-lines:sort", rows: 10000 },
             {
               id: "autocomplete-popup",
@@ -126,45 +174,49 @@ describe("JavaScript document editor integration performance", () => {
           : item.long
             ? `${"abcdefghijklmnopqrstuvwxyz ".repeat(180)}終\n`
             : 'const value = "text 終"; // sample\n');
-      const original = item.command
-        ? Array.from({ length: item.rows }, (_, i) =>
-            item.id.startsWith("sort-")
-              ? `line ${String(item.rows - i).padStart(5, "0")}\n`
-              : item.id.includes("trim")
-                ? `line ${i}  \t\n`
-                : `\tline ${i}\n`,
-          ).join("")
-        : item.completion
-          ? "\n" + line.repeat(Math.ceil(item.units / line.length))
-          : item.html
-            ? "<html><style>.sample { color: red }</style><body><script>" +
-              "var value = 1;\n".repeat(20000) +
-              "</script>" +
-              '<p class="sample">Text 終</p>\n'.repeat(25000) +
-              "</body></html>"
-            : item.json
-              ? JSON.stringify(
-                  Array.from({ length: 20000 }, (_, i) => ({
-                    id: i,
-                    name: "value 終",
-                    enabled: true,
-                  })),
-                )
-              : item.id === "ipython-injections"
-                ? Array.from(
-                    { length: 120 },
-                    (_, i) =>
-                      `# %%\nvalue_${i} = ${i}\n# %% [markdown]\n# Heading ${i}\n# Some **text** and a [link](https://example.test/${i}).\n`,
-                  ).join("")
-                : item.repetitions
-                  ? line.repeat(item.repetitions)
-                  : item.scope
-                    ? line.repeat(Math.floor(item.units / line.length))
-                    : line.repeat(Math.ceil(item.units / line.length)).slice(0, item.units);
+      const original = item.bulk
+        ? (item.line ?? (item.singleLine ? "foo tail foo; " : "const foo = foo + 1;\n")).repeat(
+            item.rows,
+          )
+        : item.command
+          ? Array.from({ length: item.rows }, (_, i) =>
+              item.id.startsWith("sort-")
+                ? `line ${String(item.rows - i).padStart(5, "0")}\n`
+                : item.id.includes("trim")
+                  ? `line ${i}  \t\n`
+                  : `\tline ${i}\n`,
+            ).join("")
+          : item.completion
+            ? "\n" + line.repeat(Math.ceil(item.units / line.length))
+            : item.html
+              ? "<html><style>.sample { color: red }</style><body><script>" +
+                "var value = 1;\n".repeat(20000) +
+                "</script>" +
+                '<p class="sample">Text 終</p>\n'.repeat(25000) +
+                "</body></html>"
+              : item.json
+                ? JSON.stringify(
+                    Array.from({ length: 20000 }, (_, i) => ({
+                      id: i,
+                      name: "value 終",
+                      enabled: true,
+                    })),
+                  )
+                : item.id === "ipython-injections"
+                  ? Array.from(
+                      { length: 120 },
+                      (_, i) =>
+                        `# %%\nvalue_${i} = ${i}\n# %% [markdown]\n# Heading ${i}\n# Some **text** and a [link](https://example.test/${i}).\n`,
+                    ).join("")
+                  : item.repetitions
+                    ? line.repeat(item.repetitions)
+                    : item.scope
+                      ? line.repeat(Math.floor(item.units / line.length))
+                      : line.repeat(Math.ceil(item.units / line.length)).slice(0, item.units);
       const pasteLine = 'const pasted = "value";\n';
       const paste = pasteLine.repeat(Math.ceil(1000000 / pasteLine.length)).slice(0, 1000000);
       const buffer = new TextBuffer({ text: original });
-      let editor, component;
+      let editor, component, providerLease;
       const timings = Object.fromEntries(
         ["edit", "undo", "redo"].map((name) => [
           name,
@@ -203,7 +255,7 @@ describe("JavaScript document editor integration performance", () => {
         component.element.style.width = "1000px";
         component.element.style.height = "800px";
         if (!config.packages?.length) jasmine.attachToDOM(component.element);
-        if (item.completion) component.element.focus();
+        if (item.completion || item.bulk) component.element.focus();
         if (config.packages?.includes("minimap")) {
           await tick();
           expect(
@@ -248,25 +300,63 @@ describe("JavaScript document editor integration performance", () => {
         component.updateSync();
         await editor.whenGrammarSettled();
         component.updateSync();
-        const expected = item.command
-          ? item.id.startsWith("sort-")
-            ? Array.from(
-                { length: item.rows },
-                (_, i) => `line ${String(i + 1).padStart(5, "0")}\n`,
-              ).join("")
-            : item.id.includes("trim")
-              ? original.replace(/[ \t]+\n/g, "\n")
-              : original.replace(/^\t/gm, "    ")
-          : item.cursors
-            ? original
-                .split("\n")
-                .map((value, row) =>
-                  row % 3 === 0 && row / 3 < item.cursors ? ` ${value}` : value,
-                )
-                .join("\n")
-            : (item.paste ? paste : item.completion ? "bna" : " ") + original;
+        const expected = item.bulk
+          ? original.replace(/foo/g, "longer")
+          : item.command
+            ? item.id.startsWith("sort-")
+              ? Array.from(
+                  { length: item.rows },
+                  (_, i) => `line ${String(i + 1).padStart(5, "0")}\n`,
+                ).join("")
+              : item.id.includes("trim")
+                ? original.replace(/[ \t]+\n/g, "\n")
+                : original.replace(/^\t/gm, "    ")
+            : item.cursors
+              ? original
+                  .split("\n")
+                  .map((value, row) =>
+                    row % 3 === 0 && row / 3 < item.cursors ? ` ${value}` : value,
+                  )
+                  .join("\n")
+              : (item.paste ? paste : item.completion ? "bna" : " ") + original;
         const originalHash = hash(original),
           editedHash = hash(expected);
+        if (item.bulk?.startsWith("format")) {
+          const edits = [...original.matchAll(/foo/g)].map((match) => ({
+            oldRange: [
+              buffer.positionForCharacterIndex(match.index),
+              buffer.positionForCharacterIndex(match.index + 3),
+            ],
+            newText: "longer",
+          }));
+          providerLease = lumine.packages
+            .getActivePackage("code-format")
+            .mainModule.consumeCodeFormatFile({
+              priority: 100,
+              packageName: "bulk-benchmark",
+              grammarScopes: [editor.getGrammar().scopeName],
+              formatEntireFile() {
+                const revision = buffer.getTextRevision();
+                return Promise.resolve(
+                  item.bulk === "format-plan"
+                    ? {
+                        text: expected,
+                        edits,
+                        isCurrent: () => buffer.getTextRevision() === revision,
+                      }
+                    : edits,
+                );
+              },
+            });
+        }
+        if (item.bulk === "search") {
+          const search = lumine.packages.getActivePackage("search-panel").mainModule;
+          search.createFindView();
+          search.findView.findEditor.setText("foo");
+          search.findView.replaceEditor.setText("longer");
+          search.findView.search();
+          expect(search.findView.target.getResultCount()).toBe(item.rows * 2);
+        }
         const markerBaseline = markers.map((marker) => marker.getRange().serialize());
         const mode = buffer.getLanguageMode();
         let editedSyntax, originalSyntax, editedScreenLines;
@@ -346,28 +436,32 @@ describe("JavaScript document editor integration performance", () => {
           await measure(
             "edit",
             () =>
-              item.completion
-                ? (async () => {
-                    editor.insertText("bna", { autoIndent: false });
-                    lumine.commands.dispatch(component.element, "autocomplete:activate");
-                    const manager =
-                      lumine.packages.getActivePackage("autocomplete").mainModule
-                        .autocompleteManager;
-                    const deadline = performance.now() + 10000;
-                    while (!manager.suggestionList?.items?.some((item) => item.text === "banana")) {
-                      if (performance.now() > deadline)
-                        throw new Error("Autocomplete did not publish expected suggestions");
-                      await tick();
-                    }
-                  })()
-                : item.command
-                  ? lumine.commands.dispatch(component.element, item.command)
-                  : item.paste
-                    ? editor.pasteText({
-                        clipboard: { readWithMetadata: () => ({ text: paste }) },
-                        autoIndent: false,
-                      })
-                    : editor.insertText(" ", { autoIndent: false }),
+              item.bulk === "buffer"
+                ? buffer.replace(/foo/g, "longer")
+                : item.completion
+                  ? (async () => {
+                      editor.insertText("bna", { autoIndent: false });
+                      lumine.commands.dispatch(component.element, "autocomplete:activate");
+                      const manager =
+                        lumine.packages.getActivePackage("autocomplete").mainModule
+                          .autocompleteManager;
+                      const deadline = performance.now() + 10000;
+                      while (
+                        !manager.suggestionList?.items?.some((item) => item.text === "banana")
+                      ) {
+                        if (performance.now() > deadline)
+                          throw new Error("Autocomplete did not publish expected suggestions");
+                        await tick();
+                      }
+                    })()
+                  : item.command
+                    ? lumine.commands.dispatch(component.element, item.command)
+                    : item.paste
+                      ? editor.pasteText({
+                          clipboard: { readWithMetadata: () => ({ text: paste }) },
+                          autoIndent: false,
+                        })
+                      : editor.insertText(" ", { autoIndent: false }),
             editedHash,
             false,
             record,
@@ -411,6 +505,7 @@ describe("JavaScript document editor integration performance", () => {
           memory: process.memoryUsage(),
         });
       } finally {
+        providerLease?.dispose();
         subscription.dispose();
         component?.element.remove();
         editor?.destroy();
