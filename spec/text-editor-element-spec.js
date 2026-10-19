@@ -354,20 +354,19 @@ describe("TextEditorElement", () => {
       element.style.width = "200px";
       jasmine.attachToDOM(element);
 
-      const horizontalScrollbarHeight = element.component.getHorizontalScrollbarHeight();
-
       expect(element.getMaxScrollTop()).toBe(0);
       await editor.update({ autoHeight: false });
+      expect(element.component.canScrollHorizontally()).toBe(false);
 
-      element.style.height = 100 + horizontalScrollbarHeight + "px";
+      element.style.height = "100px";
       await element.getNextUpdatePromise();
       expect(element.getMaxScrollTop()).toBe(60);
 
-      element.style.height = 120 + horizontalScrollbarHeight + "px";
+      element.style.height = "120px";
       await element.getNextUpdatePromise();
       expect(element.getMaxScrollTop()).toBe(40);
 
-      element.style.height = 200 + horizontalScrollbarHeight + "px";
+      element.style.height = "200px";
       await element.getNextUpdatePromise();
       expect(element.getMaxScrollTop()).toBe(0);
     }));
