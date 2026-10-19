@@ -1,0 +1,1266 @@
+{
+  "createdAt": "2026-10-19T01:16:56.070Z",
+  "samples": 9,
+  "warmups": 3,
+  "processesPerVariant": 2,
+  "order": ["native", "before", "after", "after", "before", "native"],
+  "sourceHashes": {
+    "native": "e7825c62d6818f88e3bffab57e7e9f05ec97c97429e111c01eff1ef5916d6912",
+    "before": "bebf6935b037ef74ef0081a65f4a300b6e05ecc5954260910be11430a0dcc3d6",
+    "after": "b6949eaef16035b0bf74bf7e7849f813cd89add61223d40724634d2cc1ecacd4"
+  },
+  "driverHash": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+  "dependencyHash": "dc9136a9755a50092dec257711a5a897fa72fd2c70a9810d1bb2562a9f442ed5",
+  "summary": [
+    {
+      "id": "document/batch-1000/8000000",
+      "native": {
+        "median": 601.1559500000012,
+        "processMedians": [590.3236000000034, 611.9882999999991]
+      },
+      "before": {
+        "median": 511.5334499999999,
+        "processMedians": [546.6654999999992, 476.40140000000065]
+      },
+      "after": {
+        "median": 475.80219999999963,
+        "processMedians": [480.3903999999993, 471.21399999999994]
+      }
+    },
+    {
+      "id": "autocomplete/single-line-words",
+      "native": {
+        "median": 2.5319999999992433,
+        "processMedians": [2.490799999999581, 2.5731999999989057]
+      },
+      "before": {
+        "median": 24.849100000001272,
+        "processMedians": [25.02430000000095, 24.673900000001595]
+      },
+      "after": {
+        "median": 7.486450000000332,
+        "processMedians": [6.66110000000117, 8.311799999999494]
+      }
+    },
+    {
+      "id": "autocomplete/duplicate-words",
+      "native": {
+        "median": 2.4077500000003056,
+        "processMedians": [2.442800000000716, 2.3726999999998952]
+      },
+      "before": {
+        "median": 10.582899999999427,
+        "processMedians": [11.14679999999862, 10.019000000000233]
+      },
+      "after": {
+        "median": 5.997799999999188,
+        "processMedians": [5.892700000000332, 6.102899999998044]
+      }
+    },
+    {
+      "id": "autocomplete/unique-words-max20",
+      "native": {
+        "median": 10.322149999999965,
+        "processMedians": [9.9887000000017, 10.65559999999823]
+      },
+      "before": {
+        "median": 17.301299999999173,
+        "processMedians": [18.251000000000204, 16.351599999998143]
+      },
+      "after": {
+        "median": 13.261750000001484,
+        "processMedians": [13.394000000000233, 13.129500000002736]
+      }
+    },
+    {
+      "id": "autocomplete/oversized-word",
+      "native": {
+        "median": 21.646249999997963,
+        "processMedians": [20.773599999996804, 22.51889999999912]
+      },
+      "before": {
+        "median": 7.9988999999986845,
+        "processMedians": [7.728299999998853, 8.269499999998516]
+      },
+      "after": {
+        "median": 7.860350000000835,
+        "processMedians": [7.9046999999991385, 7.816000000002532]
+      }
+    }
+  ],
+  "reports": [
+    {
+      "label": "native",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\native-reference\\lumine",
+        "documentBackend": "native",
+        "binding": "C:\\Data\\Develop\\Lumine\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
+        "bindingSha256": "a38f64f60f846bb1acb1cde4f88372b3ec01d28da180308549611a4551a592ea",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "fc04de539ef9778c3b4b05cb4df7baebd62e807da156e593665c0d10749a583d",
+        "default-history-provider.js": "8c8bf9484414f384ff82e3b1e81af2eb8cf3f965b2e07c3ffe70d2f787da7152",
+        "helpers.js": "25d318c0e677df51b1e432d8dd40bda0020d732ef2c09e41fd84e797554fff2e",
+        "text-editor.js": "90e0785a3d46d49d685161bae6acfa2df208eb4f15b7b9a66d1c26e5e24283e8",
+        "display-layer.js": "f2924b19691459f2ea5ef55b469a2564a2247a1372b8dd349a553d216124030a"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 590.3236000000034,
+          "p95Ms": 626.7372000000014,
+          "minMs": 580.3758999999991,
+          "maxMs": 626.7372000000014,
+          "samplesMs": [
+            611.0682999999999, 581.0748999999996, 594.8630000000012, 626.7372000000014,
+            590.187899999999, 580.3758999999991, 590.3236000000034, 592.2741999999998, 586.4159
+          ],
+          "timerDelay": {
+            "medianMs": 590.8582000000024,
+            "p95Ms": 627.213600000001,
+            "minMs": 581.0786000000007,
+            "maxMs": 627.213600000001,
+            "samplesMs": [
+              611.4767000000002, 581.4812000000002, 595.5833000000002, 627.213600000001,
+              590.6702999999998, 581.0786000000007, 590.8582000000024, 592.668999999998,
+              587.0871000000006
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 2.490799999999581,
+          "p95Ms": 2.7550999999984924,
+          "minMs": 2.3245999999999185,
+          "maxMs": 2.7550999999984924,
+          "samplesMs": [
+            2.490799999999581, 2.6591000000007625, 2.633300000001327, 2.4746000000013737,
+            2.7550999999984924, 2.583999999998923, 2.3731000000007043, 2.3473999999987427,
+            2.3245999999999185
+          ],
+          "timerDelay": {
+            "medianMs": 2.4980999999970663,
+            "p95Ms": 2.7668999999987136,
+            "minMs": 2.3325999999979103,
+            "maxMs": 2.7668999999987136,
+            "samplesMs": [
+              2.4980999999970663, 2.6700999999993655, 2.64259999999922, 2.4835999999995693,
+              2.7668999999987136, 2.591199999998935, 2.3813000000009197, 2.3555000000014843,
+              2.3325999999979103
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 2.442800000000716,
+          "p95Ms": 2.8125,
+          "minMs": 2.343700000001263,
+          "maxMs": 2.8125,
+          "samplesMs": [
+            2.343700000001263, 2.3839000000007218, 2.4724999999998545, 2.5891000000010536,
+            2.4134999999987485, 2.8125, 2.442800000000716, 2.5318999999981315, 2.36620000000039
+          ],
+          "timerDelay": {
+            "medianMs": 2.3924999999981083,
+            "p95Ms": 2.8281999999999243,
+            "minMs": 0.09649999999965075,
+            "maxMs": 2.8281999999999243,
+            "samplesMs": [
+              2.350699999999051, 2.3924999999981083, 2.480100000000675, 0.09649999999965075,
+              2.4277000000001863, 2.8281999999999243, 2.4637000000002445, 0.11309999999866704,
+              2.380199999999604
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 9.9887000000017,
+          "p95Ms": 10.580799999999726,
+          "minMs": 9.557700000001205,
+          "maxMs": 10.580799999999726,
+          "samplesMs": [
+            10.048000000002503, 10.154699999999139, 9.886500000000524, 9.557700000001205,
+            9.9887000000017, 10.221199999999953, 9.922999999998865, 9.632200000000012,
+            10.580799999999726
+          ],
+          "timerDelay": {
+            "medianMs": 10.00380000000223,
+            "p95Ms": 10.601999999998952,
+            "minMs": 9.571899999999005,
+            "maxMs": 10.601999999998952,
+            "samplesMs": [
+              10.062600000001112, 10.168600000000879, 9.900799999999435, 9.571899999999005,
+              10.00380000000223, 10.236499999999069, 9.938399999999092, 9.647300000000541,
+              10.601999999998952
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 20.773599999996804,
+          "p95Ms": 22.04160000000047,
+          "minMs": 20.521899999999732,
+          "maxMs": 22.04160000000047,
+          "samplesMs": [
+            20.99120000000039, 20.66740000000209, 20.521899999999732, 21.381199999999808,
+            22.04160000000047, 20.773599999996804, 21.74750000000131, 20.7416000000012,
+            20.5711999999985
+          ],
+          "timerDelay": {
+            "medianMs": 2.9917999999997846,
+            "p95Ms": 3.300999999999476,
+            "minMs": 2.348500000000058,
+            "maxMs": 3.300999999999476,
+            "samplesMs": [
+              2.348500000000058, 2.908100000000559, 2.9917999999997846, 2.673500000000786,
+              3.1028000000005704, 2.933899999999994, 3.2115000000012515, 3.2292000000015832,
+              3.300999999999476
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    },
+    {
+      "label": "before",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
+        "documentBackend": "javascript",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "0e1e5c376fe7378fa59c9eabf59c2fc4c3f41549273f7a36c136965949e0f422",
+        "default-history-provider.js": "b580402bc91c8c7a920d78f8c4edc5871df8e9e48ed23592eecd358af945d747",
+        "helpers.js": "a8e12c3fabf6b1690f853a187f766d32a9e85974da0eaeead813a5313514c37c",
+        "text-editor.js": "da48459bf43a9713579e18f6ce6ef2ee79c5d932e0d962168223b5c983ee8ce3",
+        "display-layer.js": "1feed5a0480accdb690a3f7981d0328951ecd278767ef58c8db63ee3b681f74e",
+        "document-core.js": "6f0ac0f5db81ff13cf2353dcfa522cbf9c9b426319e98da72a81ff8049ae4423",
+        "piece-tree.js": "23c968ee68d93ed378c5e70a3bf45c8be64d51f2b1b59ea239f217769f1e846c",
+        "change-tree.js": "5ffd9dc854960e7f66fbc39a703252e0211784aed182870ade8bd138698adee9",
+        "text-store.js": "307c5e0af7a2d96629e16a081bee9841caed0b75ad5fa1c74d452c943bcfaef1",
+        "text-store-search.js": "547f1f79626f1af3c67b023e79a76edd5979ccba438e4e22be53a87bf2f08f98",
+        "text-patch.js": "fcfc091a4a485550c1520ff34deabf6ea7403a5a3ecc9ea5f80fdf62c85cbef5",
+        "marker-index.js": "2da23f741c6a0730e466c54db7eaf177aa76811033f56fa218999674762a0a42"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 546.6654999999992,
+          "p95Ms": 662.9017000000003,
+          "minMs": 478.46789999999964,
+          "maxMs": 662.9017000000003,
+          "samplesMs": [
+            662.9017000000003, 574.0859, 479.33799999999974, 478.46789999999964, 508.5650999999998,
+            504.35269999999946, 546.6654999999992, 565.0767999999989, 550.6467999999986
+          ],
+          "timerDelay": {
+            "medianMs": 547.040399999998,
+            "p95Ms": 665.7762000000002,
+            "minMs": 478.8905999999988,
+            "maxMs": 665.7762000000002,
+            "samplesMs": [
+              665.7762000000002, 574.4290000000001, 479.71230000000105, 478.8905999999988,
+              508.9438000000009, 504.78309999999874, 547.040399999998, 565.454099999999,
+              551.0306999999993
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 25.02430000000095,
+          "p95Ms": 31.9149000000034,
+          "minMs": 23.048500000000786,
+          "maxMs": 31.9149000000034,
+          "samplesMs": [
+            24.981500000001688, 25.544099999999162, 23.048500000000786, 25.02430000000095,
+            25.576999999997497, 23.09059999999954, 23.778200000000652, 31.9149000000034,
+            26.510000000002037
+          ],
+          "timerDelay": {
+            "medianMs": 6.754399999997986,
+            "p95Ms": 7.189100000003236,
+            "minMs": 4.42069999999876,
+            "maxMs": 7.189100000003236,
+            "samplesMs": [
+              4.704700000002049, 7.052100000000792, 6.754399999997986, 5.53979999999865,
+              6.880899999996473, 4.42069999999876, 6.9091000000007625, 7.189100000003236,
+              5.484000000000378
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 11.14679999999862,
+          "p95Ms": 14.840299999999843,
+          "minMs": 10.033100000000559,
+          "maxMs": 14.840299999999843,
+          "samplesMs": [
+            10.235000000000582, 11.490100000002712, 11.152200000000448, 12.217400000001362,
+            10.16530000000057, 10.033100000000559, 10.96310000000085, 14.840299999999843,
+            11.14679999999862
+          ],
+          "timerDelay": {
+            "medianMs": 5.022899999999936,
+            "p95Ms": 5.16110000000117,
+            "minMs": 4.809000000001106,
+            "maxMs": 5.16110000000117,
+            "samplesMs": [
+              5.071700000000419, 5.16110000000117, 4.97979999999734, 5.01220000000103,
+              5.02390000000014, 4.970699999998033, 4.809000000001106, 5.035100000000966,
+              5.022899999999936
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 18.251000000000204,
+          "p95Ms": 21.27479999999923,
+          "minMs": 11.737400000001799,
+          "maxMs": 21.27479999999923,
+          "samplesMs": [
+            18.251000000000204, 11.737400000001799, 21.183899999999994, 14.997200000001612,
+            19.148700000001554, 21.27479999999923, 19.064699999998993, 15.765299999999115,
+            14.811100000002625
+          ],
+          "timerDelay": {
+            "medianMs": 4.411700000000565,
+            "p95Ms": 4.993399999999383,
+            "minMs": 4.155500000000757,
+            "maxMs": 4.993399999999383,
+            "samplesMs": [
+              4.411700000000565, 4.778800000000047, 4.993399999999383, 4.155500000000757,
+              4.605200000001787, 4.814399999999296, 4.189599999997881, 4.202900000000227,
+              4.193999999999505
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 7.728299999998853,
+          "p95Ms": 9.88799999999901,
+          "minMs": 7.452399999998306,
+          "maxMs": 9.88799999999901,
+          "samplesMs": [
+            9.88799999999901, 8.256600000000617, 7.565099999999802, 7.728299999998853,
+            7.646300000000338, 7.727999999999156, 8.141999999999825, 7.452399999998306,
+            8.038700000000972
+          ],
+          "timerDelay": {
+            "medianMs": 4.162499999998545,
+            "p95Ms": 4.214799999997922,
+            "minMs": 4.102999999999156,
+            "maxMs": 4.214799999997922,
+            "samplesMs": [
+              4.207800000000134, 4.213800000001356, 4.162499999998545, 4.214799999997922,
+              4.1336000000010245, 4.169299999997747, 4.148600000000442, 4.102999999999156,
+              4.135200000000623
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    },
+    {
+      "label": "after",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\core-search-history",
+        "documentBackend": "javascript",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "0e1e5c376fe7378fa59c9eabf59c2fc4c3f41549273f7a36c136965949e0f422",
+        "default-history-provider.js": "b580402bc91c8c7a920d78f8c4edc5871df8e9e48ed23592eecd358af945d747",
+        "helpers.js": "a8e12c3fabf6b1690f853a187f766d32a9e85974da0eaeead813a5313514c37c",
+        "text-editor.js": "da48459bf43a9713579e18f6ce6ef2ee79c5d932e0d962168223b5c983ee8ce3",
+        "display-layer.js": "1feed5a0480accdb690a3f7981d0328951ecd278767ef58c8db63ee3b681f74e",
+        "document-core.js": "6f0ac0f5db81ff13cf2353dcfa522cbf9c9b426319e98da72a81ff8049ae4423",
+        "piece-tree.js": "23c968ee68d93ed378c5e70a3bf45c8be64d51f2b1b59ea239f217769f1e846c",
+        "change-tree.js": "5ffd9dc854960e7f66fbc39a703252e0211784aed182870ade8bd138698adee9",
+        "text-store.js": "307c5e0af7a2d96629e16a081bee9841caed0b75ad5fa1c74d452c943bcfaef1",
+        "text-store-search.js": "e16fd992097cc51d5feff83ccbcfda71a44944911eafabff5d752fdbdc6b3c2e",
+        "text-patch.js": "d818c00a1dba0acc42d80bc487da6803d438621ca33c86b9583945eb08cfe727",
+        "marker-index.js": "2da23f741c6a0730e466c54db7eaf177aa76811033f56fa218999674762a0a42"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 480.3903999999993,
+          "p95Ms": 659.4696999999996,
+          "minMs": 460.09330000000045,
+          "maxMs": 659.4696999999996,
+          "samplesMs": [
+            659.4696999999996, 480.3903999999993, 485.45969999999943, 538.7877000000008,
+            470.60649999999987, 482.196899999999, 467.266599999999, 473.84539999999834,
+            460.09330000000045
+          ],
+          "timerDelay": {
+            "medianMs": 480.7578999999996,
+            "p95Ms": 659.8549999999996,
+            "minMs": 460.438900000001,
+            "maxMs": 659.8549999999996,
+            "samplesMs": [
+              659.8549999999996, 480.7578999999996, 485.84970000000067, 539.2823000000008,
+              470.95590000000084, 482.53079999999864, 467.65139999999883, 474.16799999999785,
+              460.438900000001
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 6.66110000000117,
+          "p95Ms": 8.393199999998615,
+          "minMs": 5.7049000000006345,
+          "maxMs": 8.393199999998615,
+          "samplesMs": [
+            8.242699999998877, 8.393199999998615, 6.66110000000117, 8.031100000000151,
+            8.179000000000087, 5.735000000000582, 5.8034999999981665, 5.760599999997794,
+            5.7049000000006345
+          ],
+          "timerDelay": {
+            "medianMs": 4.34320000000298,
+            "p95Ms": 4.909499999997934,
+            "minMs": 4.157999999999447,
+            "maxMs": 4.909499999997934,
+            "samplesMs": [
+              4.763299999998708, 4.909499999997934, 4.34320000000298, 4.3924000000006345,
+              4.779099999999744, 4.1854999999995925, 4.193599999998696, 4.157999999999447,
+              4.163199999999051
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 5.892700000000332,
+          "p95Ms": 8.104199999997945,
+          "minMs": 4.373499999997875,
+          "maxMs": 8.104199999997945,
+          "samplesMs": [
+            4.554199999998673, 4.373499999997875, 8.104199999997945, 5.892700000000332,
+            5.843000000000757, 5.893599999999424, 5.818400000000111, 5.927899999998772,
+            6.005400000001828
+          ],
+          "timerDelay": {
+            "medianMs": 4.241799999999785,
+            "p95Ms": 4.433899999999994,
+            "minMs": 4.141599999999016,
+            "maxMs": 4.433899999999994,
+            "samplesMs": [
+              4.176400000000285, 4.306399999997666, 4.141599999999016, 4.241799999999785,
+              4.218400000001566, 4.27219999999943, 4.177000000003318, 4.287700000000768,
+              4.433899999999994
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 13.394000000000233,
+          "p95Ms": 23.95980000000054,
+          "minMs": 11.44210000000021,
+          "maxMs": 23.95980000000054,
+          "samplesMs": [
+            14.48489999999947, 14.666600000000471, 12.542699999998149, 23.95980000000054,
+            13.620699999999488, 13.394000000000233, 11.44210000000021, 11.652799999999843,
+            11.903900000001158
+          ],
+          "timerDelay": {
+            "medianMs": 4.13550000000032,
+            "p95Ms": 4.929299999999785,
+            "minMs": 4.114999999997963,
+            "maxMs": 4.929299999999785,
+            "samplesMs": [
+              4.155299999998533, 4.929299999999785, 4.126000000000204, 4.825700000001234,
+              4.15139999999883, 4.1336000000010245, 4.114999999997963, 4.121800000000803,
+              4.13550000000032
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 7.9046999999991385,
+          "p95Ms": 8.165699999997742,
+          "minMs": 7.75249999999869,
+          "maxMs": 8.165699999997742,
+          "samplesMs": [
+            7.9046999999991385, 7.911399999997229, 7.800499999997555, 7.860599999999977,
+            7.75249999999869, 7.932400000001508, 8.165699999997742, 7.782000000002881,
+            7.937200000000303
+          ],
+          "timerDelay": {
+            "medianMs": 4.1679000000003725,
+            "p95Ms": 4.189099999999598,
+            "minMs": 4.14969999999812,
+            "maxMs": 4.189099999999598,
+            "samplesMs": [
+              4.179699999996956, 4.167499999999563, 4.158299999999144, 4.189099999999598,
+              4.14969999999812, 4.1833000000005995, 4.163699999997334, 4.1679000000003725,
+              4.176300000002811
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    },
+    {
+      "label": "after",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\core-search-history",
+        "documentBackend": "javascript",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "0e1e5c376fe7378fa59c9eabf59c2fc4c3f41549273f7a36c136965949e0f422",
+        "default-history-provider.js": "b580402bc91c8c7a920d78f8c4edc5871df8e9e48ed23592eecd358af945d747",
+        "helpers.js": "a8e12c3fabf6b1690f853a187f766d32a9e85974da0eaeead813a5313514c37c",
+        "text-editor.js": "da48459bf43a9713579e18f6ce6ef2ee79c5d932e0d962168223b5c983ee8ce3",
+        "display-layer.js": "1feed5a0480accdb690a3f7981d0328951ecd278767ef58c8db63ee3b681f74e",
+        "document-core.js": "6f0ac0f5db81ff13cf2353dcfa522cbf9c9b426319e98da72a81ff8049ae4423",
+        "piece-tree.js": "23c968ee68d93ed378c5e70a3bf45c8be64d51f2b1b59ea239f217769f1e846c",
+        "change-tree.js": "5ffd9dc854960e7f66fbc39a703252e0211784aed182870ade8bd138698adee9",
+        "text-store.js": "307c5e0af7a2d96629e16a081bee9841caed0b75ad5fa1c74d452c943bcfaef1",
+        "text-store-search.js": "e16fd992097cc51d5feff83ccbcfda71a44944911eafabff5d752fdbdc6b3c2e",
+        "text-patch.js": "d818c00a1dba0acc42d80bc487da6803d438621ca33c86b9583945eb08cfe727",
+        "marker-index.js": "2da23f741c6a0730e466c54db7eaf177aa76811033f56fa218999674762a0a42"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 471.21399999999994,
+          "p95Ms": 501.2762999999977,
+          "minMs": 460.1949999999997,
+          "maxMs": 501.2762999999977,
+          "samplesMs": [
+            482.5175999999992, 462.5187999999998, 471.21399999999994, 475.02470000000176,
+            474.08539999999994, 471.08300000000054, 460.1949999999997, 462.3186999999998,
+            501.2762999999977
+          ],
+          "timerDelay": {
+            "medianMs": 471.5455000000002,
+            "p95Ms": 501.5975999999973,
+            "minMs": 460.5650999999998,
+            "maxMs": 501.5975999999973,
+            "samplesMs": [
+              482.83939999999984, 462.90369999999984, 471.5455000000002, 475.3593000000001,
+              474.4357, 471.4225999999999, 460.5650999999998, 462.6729000000014, 501.5975999999973
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 8.311799999999494,
+          "p95Ms": 8.5695999999989,
+          "minMs": 6.76589999999851,
+          "maxMs": 8.5695999999989,
+          "samplesMs": [
+            8.311799999999494, 8.326399999998102, 6.76589999999851, 8.433099999998376,
+            8.263500000000931, 8.5695999999989, 7.306499999998778, 8.386399999999412,
+            8.310300000001007
+          ],
+          "timerDelay": {
+            "medianMs": 4.856400000000576,
+            "p95Ms": 5.052700000000186,
+            "minMs": 4.516199999998207,
+            "maxMs": 5.052700000000186,
+            "samplesMs": [
+              4.799800000000687, 4.856400000000576, 4.516199999998207, 4.8879999999990105,
+              4.791800000002695, 5.052700000000186, 4.906299999998737, 4.859500000002299,
+              4.8012999999991735
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 6.102899999998044,
+          "p95Ms": 8.843800000002375,
+          "minMs": 5.965299999999843,
+          "maxMs": 8.843800000002375,
+          "samplesMs": [
+            8.787100000001374, 8.695899999998801, 8.843800000002375, 7.132300000001123,
+            6.011699999999109, 5.966599999999744, 6.053800000001502, 6.102899999998044,
+            5.965299999999843
+          ],
+          "timerDelay": {
+            "medianMs": 4.457500000000437,
+            "p95Ms": 5.187000000001717,
+            "minMs": 4.203600000000733,
+            "maxMs": 5.187000000001717,
+            "samplesMs": [
+              5.143100000001141, 5.024099999998725, 5.187000000001717, 4.203600000000733,
+              4.38300000000163, 4.327799999999115, 4.459800000000541, 4.457500000000437,
+              4.3320999999996275
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 13.129500000002736,
+          "p95Ms": 13.942399999999907,
+          "minMs": 11.387199999997392,
+          "maxMs": 13.942399999999907,
+          "samplesMs": [
+            13.942399999999907, 13.430700000000797, 13.129500000002736, 13.068300000002637,
+            13.135300000001735, 13.818599999998696, 11.387199999997392, 11.4233000000022,
+            11.551500000001397
+          ],
+          "timerDelay": {
+            "medianMs": 4.1336000000010245,
+            "p95Ms": 4.285100000000966,
+            "minMs": 4.110199999999168,
+            "maxMs": 4.285100000000966,
+            "samplesMs": [
+              4.129599999996572, 4.144899999999325, 4.135000000002037, 4.137399999999616,
+              4.1336000000010245, 4.285100000000966, 4.113099999998667, 4.11869999999908,
+              4.110199999999168
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 7.816000000002532,
+          "p95Ms": 7.869900000001508,
+          "minMs": 7.744399999999587,
+          "maxMs": 7.869900000001508,
+          "samplesMs": [
+            7.8422000000027765, 7.869900000001508, 7.8125, 7.860000000000582, 7.853599999998551,
+            7.754499999999098, 7.816000000002532, 7.787100000001374, 7.744399999999587
+          ],
+          "timerDelay": {
+            "medianMs": 4.143299999999726,
+            "p95Ms": 4.170200000000477,
+            "minMs": 4.118999999998778,
+            "maxMs": 4.170200000000477,
+            "samplesMs": [
+              4.14980000000287, 4.131700000001729, 4.143299999999726, 4.170200000000477,
+              4.146499999998923, 4.127300000000105, 4.152200000000448, 4.133499999999913,
+              4.118999999998778
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    },
+    {
+      "label": "before",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
+        "documentBackend": "javascript",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "0e1e5c376fe7378fa59c9eabf59c2fc4c3f41549273f7a36c136965949e0f422",
+        "default-history-provider.js": "b580402bc91c8c7a920d78f8c4edc5871df8e9e48ed23592eecd358af945d747",
+        "helpers.js": "a8e12c3fabf6b1690f853a187f766d32a9e85974da0eaeead813a5313514c37c",
+        "text-editor.js": "da48459bf43a9713579e18f6ce6ef2ee79c5d932e0d962168223b5c983ee8ce3",
+        "display-layer.js": "1feed5a0480accdb690a3f7981d0328951ecd278767ef58c8db63ee3b681f74e",
+        "document-core.js": "6f0ac0f5db81ff13cf2353dcfa522cbf9c9b426319e98da72a81ff8049ae4423",
+        "piece-tree.js": "23c968ee68d93ed378c5e70a3bf45c8be64d51f2b1b59ea239f217769f1e846c",
+        "change-tree.js": "5ffd9dc854960e7f66fbc39a703252e0211784aed182870ade8bd138698adee9",
+        "text-store.js": "307c5e0af7a2d96629e16a081bee9841caed0b75ad5fa1c74d452c943bcfaef1",
+        "text-store-search.js": "547f1f79626f1af3c67b023e79a76edd5979ccba438e4e22be53a87bf2f08f98",
+        "text-patch.js": "fcfc091a4a485550c1520ff34deabf6ea7403a5a3ecc9ea5f80fdf62c85cbef5",
+        "marker-index.js": "2da23f741c6a0730e466c54db7eaf177aa76811033f56fa218999674762a0a42"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 476.40140000000065,
+          "p95Ms": 516.3358999999982,
+          "minMs": 465.6971999999987,
+          "maxMs": 516.3358999999982,
+          "samplesMs": [
+            481.0599000000002, 473.0574000000006, 497.8605000000007, 465.6971999999987,
+            476.40140000000065, 478.1841999999997, 466.9938999999995, 472.23199999999997,
+            516.3358999999982
+          ],
+          "timerDelay": {
+            "medianMs": 476.72789999999986,
+            "p95Ms": 516.7027999999991,
+            "minMs": 466.0615999999991,
+            "maxMs": 516.7027999999991,
+            "samplesMs": [
+              481.39789999999994, 473.4218000000001, 498.575499999999, 466.0615999999991,
+              476.72789999999986, 478.5648000000001, 467.3892999999989, 472.5493999999999,
+              516.7027999999991
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 24.673900000001595,
+          "p95Ms": 29.114300000001094,
+          "minMs": 21.052999999999884,
+          "maxMs": 29.114300000001094,
+          "samplesMs": [
+            23.109199999998964, 24.673900000001595, 21.052999999999884, 23.325199999999313,
+            25.015299999999115, 25.838400000000547, 25.739000000001397, 23.579299999997602,
+            29.114300000001094
+          ],
+          "timerDelay": {
+            "medianMs": 7.032899999998335,
+            "p95Ms": 8.552100000000792,
+            "minMs": 5.3629000000000815,
+            "maxMs": 8.552100000000792,
+            "samplesMs": [
+              7.032899999998335, 5.3629000000000815, 7.135400000002846, 7.085699999999633,
+              7.645199999999022, 8.552100000000792, 5.520199999999022, 6.87749999999869,
+              5.389800000000832
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 10.019000000000233,
+          "p95Ms": 14.946900000002643,
+          "minMs": 7.811600000000908,
+          "maxMs": 14.946900000002643,
+          "samplesMs": [
+            12.24239999999918, 10.019000000000233, 14.946900000002643, 7.811600000000908,
+            10.136799999996583, 8.579099999999016, 8.732799999997951, 8.186099999998987,
+            10.634199999996781
+          ],
+          "timerDelay": {
+            "medianMs": 4.854899999998452,
+            "p95Ms": 6.054500000002008,
+            "minMs": 4.205699999998615,
+            "maxMs": 6.054500000002008,
+            "samplesMs": [
+              4.854899999998452, 6.054500000002008, 5.33520000000135, 4.352300000002288,
+              5.379899999999907, 4.739300000001094, 4.872899999998481, 4.213299999999435,
+              4.205699999998615
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 16.351599999998143,
+          "p95Ms": 19.912899999999354,
+          "minMs": 12.930299999999988,
+          "maxMs": 19.912899999999354,
+          "samplesMs": [
+            17.33759999999893, 19.21559999999954, 17.739799999999377, 19.912899999999354,
+            16.351599999998143, 14.266100000000733, 12.930299999999988, 15.061600000000908,
+            14.36069999999745
+          ],
+          "timerDelay": {
+            "medianMs": 4.156100000000151,
+            "p95Ms": 5.2171999999991385,
+            "minMs": 4.117600000001403,
+            "maxMs": 5.2171999999991385,
+            "samplesMs": [
+              5.041000000001077, 5.2171999999991385, 4.849900000001071, 4.538699999997334,
+              4.1392999999989115, 4.156100000000151, 4.117600000001403, 4.137399999999616,
+              4.1401999999980035
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 8.269499999998516,
+          "p95Ms": 11.731500000001688,
+          "minMs": 7.660299999999552,
+          "maxMs": 11.731500000001688,
+          "samplesMs": [
+            8.811399999998685, 9.621499999997468, 7.8608000000022, 8.269499999998516,
+            8.124299999999494, 7.660299999999552, 7.697700000000623, 11.731500000001688,
+            11.180499999998574
+          ],
+          "timerDelay": {
+            "medianMs": 4.174699999999575,
+            "p95Ms": 4.271199999999226,
+            "minMs": 4.1229999999995925,
+            "maxMs": 4.271199999999226,
+            "samplesMs": [
+              4.162899999999354, 4.23319999999876, 4.1939000000020314, 4.230200000001787,
+              4.126499999998487, 4.1229999999995925, 4.174699999999575, 4.271199999999226,
+              4.169999999998254
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    },
+    {
+      "label": "native",
+      "environment": {
+        "node": "v24.18.0",
+        "platform": "win32",
+        "arch": "x64",
+        "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\native-reference\\lumine",
+        "documentBackend": "native",
+        "binding": "C:\\Data\\Develop\\Lumine\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
+        "bindingSha256": "a38f64f60f846bb1acb1cde4f88372b3ec01d28da180308549611a4551a592ea",
+        "gcBetweenSamples": true,
+        "gcAfterSetup": false
+      },
+      "methodology": {
+        "samples": 9,
+        "warmups": 3,
+        "unit": "ms per operation",
+        "freshSetupPerSample": true,
+        "setupTimed": false,
+        "grammar": "plain text / NullLanguageMode",
+        "autoIndent": false,
+        "spatialIndexPopulatedBeforeEdit": true,
+        "includes": "TextBuffer transactions/history and TextEditor model selections/display-layer notifications",
+        "excludes": "DOM updates, rendering, idle indexing, native clipboard transfer, paste providers, syntax parsing",
+        "comparison": "One editor source snapshot per process; alternate serial runs to limit drift",
+        "yieldsBetweenSamples": true
+      },
+      "sourceHashes": {
+        "text-buffer.js": "fc04de539ef9778c3b4b05cb4df7baebd62e807da156e593665c0d10749a583d",
+        "default-history-provider.js": "8c8bf9484414f384ff82e3b1e81af2eb8cf3f965b2e07c3ffe70d2f787da7152",
+        "helpers.js": "25d318c0e677df51b1e432d8dd40bda0020d732ef2c09e41fd84e797554fff2e",
+        "text-editor.js": "90e0785a3d46d49d685161bae6acfa2df208eb4f15b7b9a66d1c26e5e24283e8",
+        "display-layer.js": "f2924b19691459f2ea5ef55b469a2564a2247a1372b8dd349a553d216124030a"
+      },
+      "benchmarkSha256": "da85308d669a6cfac5ce600913a37083861048957cbcffaa401ca97ecb9dd908",
+      "results": [
+        {
+          "id": "document/batch-1000/8000000",
+          "workload": {
+            "utf16Units": 8000000,
+            "operations": 1000,
+            "surface": "indexed editor model"
+          },
+          "medianMs": 611.9882999999991,
+          "p95Ms": 659.7301000000007,
+          "minMs": 597.1441999999988,
+          "maxMs": 659.7301000000007,
+          "samplesMs": [
+            613.9130999999998, 612.9861000000001, 597.1441999999988, 599.0668000000005,
+            611.9882999999991, 605.3127999999997, 615.5972999999976, 659.7301000000007,
+            605.689699999999
+          ],
+          "timerDelay": {
+            "medianMs": 612.4863999999998,
+            "p95Ms": 660.734199999999,
+            "minMs": 597.8051999999989,
+            "maxMs": 660.734199999999,
+            "samplesMs": [
+              614.4017000000003, 613.3976999999995, 597.8051999999989, 599.4664000000012,
+              612.4863999999998, 606.0600999999988, 616.0982000000004, 660.734199999999,
+              606.0774999999994
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/single-line-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 2.5731999999989057,
+          "p95Ms": 3.2783000000017637,
+          "minMs": 2.4514000000017404,
+          "maxMs": 3.2783000000017637,
+          "samplesMs": [
+            3.2783000000017637, 2.4650000000001455, 3.0204999999987194, 2.525099999998929,
+            2.4514000000017404, 2.5731999999989057, 2.4935000000004948, 2.9627000000000407,
+            2.7343000000000757
+          ],
+          "timerDelay": {
+            "medianMs": 2.505199999999604,
+            "p95Ms": 3.2910999999985506,
+            "minMs": 0.08020000000033178,
+            "maxMs": 3.2910999999985506,
+            "samplesMs": [
+              3.2910999999985506, 2.4734000000025844, 3.028999999998632, 2.534800000001269,
+              2.459900000001653, 2.5835000000006403, 2.505199999999604, 0.08020000000033178,
+              0.08299999999871943
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/duplicate-words",
+          "workload": {
+            "utf16Units": 240000,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 2.3726999999998952,
+          "p95Ms": 2.5891000000010536,
+          "minMs": 2.3321999999971013,
+          "maxMs": 2.5891000000010536,
+          "samplesMs": [
+            2.355599999998958, 2.4219000000011874, 2.5891000000010536, 2.4544000000023516,
+            2.364399999998568, 2.3321999999971013, 2.3726999999998952, 2.3439999999973224,
+            2.4082999999991443
+          ],
+          "timerDelay": {
+            "medianMs": 2.3875000000007276,
+            "p95Ms": 2.5989000000008673,
+            "minMs": 2.3457999999991443,
+            "maxMs": 2.5989000000008673,
+            "samplesMs": [
+              2.363199999999779, 2.4310999999979686, 2.5989000000008673, 2.463999999999942,
+              2.3781999999991967, 2.3457999999991443, 2.3875000000007276, 2.3580999999976484,
+              2.423899999997957
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/unique-words-max20",
+          "workload": {
+            "utf16Units": 138889,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": {
+              "start": {
+                "row": 500,
+                "column": 0
+              },
+              "end": {
+                "row": 6500,
+                "column": 0
+              }
+            }
+          },
+          "medianMs": 10.65559999999823,
+          "p95Ms": 12.761800000000221,
+          "minMs": 10.188599999997678,
+          "maxMs": 12.761800000000221,
+          "samplesMs": [
+            10.468799999998737, 10.520799999998417, 10.188599999997678, 10.34599999999773,
+            10.88550000000032, 11.504000000000815, 12.108099999997648, 12.761800000000221,
+            10.65559999999823
+          ],
+          "timerDelay": {
+            "medianMs": 10.68119999999908,
+            "p95Ms": 12.794299999997747,
+            "minMs": 10.209399999999732,
+            "maxMs": 12.794299999997747,
+            "samplesMs": [
+              10.489300000001094, 10.543099999998958, 10.209399999999732, 10.36869999999908,
+              10.910499999998137, 11.531899999998132, 12.149599999997008, 12.794299999997747,
+              10.68119999999908
+            ]
+          }
+        },
+        {
+          "id": "autocomplete/oversized-word",
+          "workload": {
+            "utf16Units": 8000007,
+            "maxCount": 20,
+            "operations": 1,
+            "rowWindow": "whole buffer"
+          },
+          "medianMs": 22.51889999999912,
+          "p95Ms": 24.252799999998388,
+          "minMs": 21.63839999999982,
+          "maxMs": 24.252799999998388,
+          "samplesMs": [
+            21.63839999999982, 22.08680000000095, 22.68029999999999, 24.252799999998388,
+            22.51889999999912, 22.776600000001054, 22.31630000000223, 21.684100000002218,
+            22.605600000002596
+          ],
+          "timerDelay": {
+            "medianMs": 2.69539999999688,
+            "p95Ms": 2.984500000002299,
+            "minMs": 0.11350000000311411,
+            "maxMs": 2.984500000002299,
+            "samplesMs": [
+              2.91990000000078, 2.984500000002299, 2.69539999999688, 2.529099999999744,
+              2.7163000000000466, 1.875400000000809, 2.8166000000019267, 0.11350000000311411,
+              1.9364000000023225
+            ]
+          }
+        }
+      ],
+      "checksum": 96720312
+    }
+  ]
+}

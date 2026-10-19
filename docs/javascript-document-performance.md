@@ -2,6 +2,8 @@
 
 Local Windows comparison from 2026-10-19. This is the first integrated JavaScript candidate, measured before the later fleet/API optimization pass; the reference is the native editor at `b05b9769ed1402ca04135a9b6258949a9185e626`. The [raw report](../benchmark/results/javascript-document-integration-2026-10-19.json) contains source/driver/dependency hashes, every process and every measured sample. The candidate was uncommitted at measurement time; its source fingerprint identifies it.
 
+The later [active-package and optimization report](javascript-document-fleet-performance-2026-10-19.md) adds the fleet validation, broader editor scenarios and measured fuzzy/history refinements.
+
 ## Method
 
 Both implementations ran serially on Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz, win32 x64, Electron 44.9.0 with embedded Node 24.22.0; the separate model processes used Node v24.18.0. Four fresh renderer processes and four fresh model processes per implementation used three warmups and nine samples for each case. Order alternated native/JS then JS/native. Tables use the conventional median of four process medians; all units below are milliseconds unless stated otherwise.
