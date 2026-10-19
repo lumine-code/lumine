@@ -15,7 +15,7 @@ A submenu owner declares its layout on the parent item. A context-menu owner dec
 
 Groups appear in `groupOrder` order. Within each group, items with a finite `order` appear before items without one; equal or omitted orders sort by label, ignoring mnemonic `&` markers. Use spaced numbers such as `10`, `20` and `30` so another contribution can fit between existing items.
 
-An unknown or omitted group joins `extensions`. Declare that slot where additional commands belong; for example, core's `File` places it before `close` and `quit`. If an owner omits the `extensions` slot, it is appended after the declared groups.
+An unknown or omitted group joins `extensions`. Declare that slot where additional commands belong; core's `File` places it before `close`, and `App` before `quit`. If an owner omits the `extensions` slot, it is appended after the declared groups.
 
 Empty groups disappear, and exactly one separator appears between the remaining groups. Hidden items and empty submenus do not leave empty groups behind. `groupOrder`, `sortBy`, `group` and `order` describe layout and are removed from the rendered menu.
 
@@ -87,6 +87,8 @@ Contributions to core menus use `group` and `order` instead of written separator
 | `Help`                      | `documentation`, `examples`, `issues`, `extensions`                                                                   |
 
 The first menu uses the canonical `App` path on every platform. It owns settings, configuration files, package management, window lifecycle, updates and application information. `App > Windows` keeps new and detached windows together, followed by moving the current tab into a new window and closing the current window. Native macOS services and visibility actions remain in App. `File` owns document and project operations.
+
+Windows and Linux display the title App. [macOS always displays the application's name for the first native menu](https://github.com/electron/electron/blob/v44.9.0/docs/tutorial/application-menu.md#building-application-menus), so its visible title remains Lumine while contributions still use the canonical `App` path.
 
 A package with an existing command that opens its persistent configuration file contributes a descriptive row to `App > Configuration Files` on every platform, with `group: "packages"` and `order: 10`. The submenu starts with Config, Init Script, Keymap, Snippets and Stylesheet in the `editor` group, followed by alphabetical package entries. Keep the command in the package's own submenu too. Configuration panels, bibliography content, project folders and other ordinary documents are not configuration-file contributions.
 
