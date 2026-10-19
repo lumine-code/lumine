@@ -96,3 +96,45 @@ An exploratory larger bulk piece-compaction target reduced reader callback count
 The main HTML control was about 4% slower, so it was repeated alone against the same frozen sources with reversed after/before/before/after process order, 15 samples and four warmups per process. That isolated comparison measured 299.70 → 301.45 ms. Both captures remain in the JSON: the first difference did not reproduce as a consistent slowdown, and neither capture establishes an HTML speedup. No correctness suites ran during either timing capture.
 
 Run the model driver with `node --expose-gc benchmark/marker-history-locality.js --source <frozen-checkout> --output <report.json>`. Source and dependency identity must match across variants; the report records the active package set and configuration for the existing editor integration driver.
+
+## Multicursor and multiline follow-up
+
+The [multiline capture](../benchmark/results/multiline-edit-performance-2026-10-19.json) measures three changes together: disjoint multiline plans commit storage/history/display once; multicursor commands defer history maps after row-changing edits while preserving scalar selection callbacks; and transaction grouping builds large ordered, disjoint patch sequences in one pass. Overlapping/reordered patches retain general composition. Column-only selection edits retain local history updates. The public contract and CRLF fallback are documented in [independent text edits](bulk-text-edits.md).
+
+Core and code-format source bytes were frozen together with 20 active package/grammar repositories. Both variants share those bytes except for the explicitly recorded runtime files, whose baseline comes from the recorded repository commits. Four fresh processes run before/after/after/before, with seven measured samples and two warmups per process. Tables show the mean of each variant's two process medians, in milliseconds. Raw samples, process medians, pooled p95, runtime versions, source/dependency hashes and all edit/undo/redo timings remain in the JSON.
+
+| Core model operation            | Before ms | After ms |
+| ------------------------------- | --------: | -------: |
+| multiline-replacement-1000/edit |    218.13 |    35.59 |
+| multiline-replacement-1000/undo |    232.49 |    49.95 |
+| multiline-replacement-1000/redo |    231.68 |    38.71 |
+| independent-5000/edit           |     65.46 |    60.50 |
+| single-edit-control/edit        |      0.45 |     0.48 |
+
+| Editor with the active package fleet | Before ms | After ms |
+| ------------------------------------ | --------: | -------: |
+| multicursor-1000/edit                |    198.70 |   217.70 |
+| multicursor-newline-1000/edit        |    759.30 |   711.70 |
+| multicursor-newline-1000/undo        |    592.70 |   269.95 |
+| multicursor-paste-1000/edit          |    751.35 |   661.20 |
+| multicursor-paste-1000/undo          |    670.60 |   253.15 |
+| multiline-format-js-1000/edit        |    278.20 |    69.55 |
+| multiline-delete-js-1000/edit        |    152.40 |    66.50 |
+| multiline-format-html-500/edit       |   1203.80 |   462.50 |
+| format-edits-2000-js/edit            |    155.00 |   134.65 |
+| whitespace-trim-5000/edit            |     93.80 |    86.70 |
+| autocomplete-popup/edit              |     14.30 |    19.60 |
+
+The multicursor fixtures insert into 1000 distinct rows in a one-million-unit plain-text document. The multiline paste inserts three lines per cursor. These timed insertion fixtures disable automatic indentation; normal indentation behavior remains covered by core/package correctness suites. The formatter fixtures add line breaks in 2000 JavaScript replacements, replace 1000 two-line JavaScript ranges, and change 1500 matches across 500 HTML script regions plus text nodes. Complete formatter plans continue to use their previous whole-document replacement path.
+
+Editor timing includes command execution, grammar settlement and explicit layout, excluding fixture setup, verification and physical presentation. Model timing covers the edit or history operation with a display layer and markers; full text/marker/screen-line hashes are checked outside the timer against scalar application. All editor output and syntax signatures match between variants. The existing single-line, whitespace and completion workloads are controls, not assumptions that every operation accelerates. No correctness tests launched by this task ran during capture.
+
+Validation passed 1915 focused editor specs, 110 Node tests and 3394 specs in 27 package/grammar suites. Marker histories were checked against live indexes. Tests cover CRLF, Unicode, adjacent edits, invalid plans, snapshot retention, callback order, rollback after exceptions, word-index equivalence to scanning, and every syntax node's coordinates against fresh JavaScript/Python/HTML parses. Randomized multiline patches and ordered/overlapping composition are compared with the native oracle. Source and package fingerprints stayed unchanged.
+
+The two-sample pilot predates the final composition optimization and is excluded from the final measurements. Instrumented profiling identified repeated history translation and patch insertion; its overlapping method timers are diagnostic, not benchmark results. Early mixed core/package smoke commands omitted code-format's declared test providers; all 232 targeted specs passed once the isolated home and explicit provider list were complete.
+
+Reproduce the model subset with `node --expose-gc benchmark/bulk-edit-benchmark.js --source <snapshot> --filter "^(multiline-replacement-1000|independent-5000|single-edit-control)$" --samples 7 --warmups 2 --output <report.json>`. The editor driver accepts `multilineCases: true` in `LUMINE_DOCUMENT_BENCH_CONFIG`; the report retains its exact filter and active package set.
+
+The main matrix showed a slower completion popup and a large spread in ordinary typing, so both were repeated separately against the same frozen sources, in reversed after/before/before/after order. The completion control used 15 samples and four warmups per process and measured 12.70 → 12.80 ms. The two cursor controls used nine samples and three warmups per process: ordinary insertion measured 219.95 → 219.45 ms, newline insertion 827.90 → 720.20 ms, and newline undo 719.90 → 278.15 ms. The slowdown in ordinary typing/completion did not reproduce in those isolated controls. Both the original matrix and the controls are retained; the controls do not establish an ordinary-typing or completion speedup. Timings from separate rounds should not be compared as if they shared machine load and warmup state.
+
+The initial fleet run had two Windows EPERM failures while synchronously removing temporary file-opening fixtures in code-format, after the behavioral assertions passed. Cleanup now awaits asynchronous removal with the same path guard and bounded retry policy, allowing the renderer event loop to progress during handle release. The full 110-spec package suite then passed twice against the measured core; the original failures, changed spec hash and repeat results are retained in the report. Runtime sources were unchanged. The final green counts above are cumulative validation, not a claim that the first fleet run had no failures.
