@@ -36,6 +36,7 @@ module.exports = class AuxiliaryWindowBroker {
 
   prepare(options = {}) {
     if (this.destroyed) throw new Error("The workspace window has closed.");
+    if (this.closing) throw new Error("The workspace window is closing.");
     const persistentId =
       options.persistentId === undefined ? crypto.randomUUID() : options.persistentId;
     if (
@@ -92,7 +93,7 @@ module.exports = class AuxiliaryWindowBroker {
 
   windowOpenHandler({ url, frameName }) {
     const request = this.pending.get(frameName);
-    if (this.destroyed || url !== "about:blank" || !request || request.opened)
+    if (this.destroyed || this.closing || url !== "about:blank" || !request || request.opened)
       return { action: "deny" };
     request.opened = true;
     return {
@@ -109,8 +110,9 @@ module.exports = class AuxiliaryWindowBroker {
 
   didCreateWindow(window, details) {
     const request = this.pending.get(details.frameName);
-    if (!request || this.destroyed) {
-      window.destroy();
+    if (!request || this.destroyed || this.closing) {
+      if (request && !request.record) this.cancel(details.frameName);
+      if (!window.isDestroyed()) window.destroy();
       return;
     }
     // Auxiliary IDs occupy a separate range from ordinary LumineWindow IDs.
@@ -209,7 +211,7 @@ module.exports = class AuxiliaryWindowBroker {
     const record = await pending.ready;
     clearTimeout(pending.timeout);
     this.pending.delete(token);
-    if (!record || this.destroyed || record.window.isDestroyed()) {
+    if (!record || this.destroyed || this.closing || record.window.isDestroyed()) {
       throw new Error("The auxiliary window request was cancelled.");
     }
     return { id: record.id, persistentId: record.persistentId, state: this.state(record) };
@@ -244,6 +246,19 @@ module.exports = class AuxiliaryWindowBroker {
       throw new Error("This auxiliary window does not belong to the workspace.");
     }
     const window = record.window;
+    if (
+      this.closing &&
+      [
+        "show",
+        "focus",
+        "maximize",
+        "unmaximize",
+        "setFullScreen",
+        "openDevTools",
+        "toggleDevTools",
+      ].includes(action)
+    )
+      return;
     switch (action) {
       case "updateEmbeddedKeyboard":
         return record.keyboard.update(args[0]);
@@ -352,6 +367,9 @@ module.exports = class AuxiliaryWindowBroker {
 
   hide() {
     this.closing = true;
+    for (const request of this.pending.values()) {
+      if (!request.record) this.cancel(request.token);
+    }
     const attempt = (operation) => {
       try {
         operation();

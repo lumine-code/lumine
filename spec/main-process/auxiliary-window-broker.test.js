@@ -129,6 +129,69 @@ test("a stale renderer and a failed child hide do not prevent concealing the rem
   }
 });
 
+test("a committed hide cancels pending creations and rejects their late native windows", async () => {
+  const { broker, window } = fixture();
+  const token = broker.prepare();
+  const resolving = broker.resolve(token);
+  const refused = assert.rejects(resolving, /cancelled/);
+  broker.hide();
+  assert.throws(() => broker.prepare(), /closing/);
+  assert.equal(broker.windowOpenHandler({ url: "about:blank", frameName: token }).action, "deny");
+  broker.didCreateWindow(window, { frameName: token });
+  await refused;
+  assert.equal(window.isDestroyed(), true);
+  assert.equal(broker.windows.size, 0);
+  assert.equal(broker.pending.size, 0);
+  broker.destroy();
+});
+
+test("late reveal actions cannot show an existing child after its committed hide", async () => {
+  const { broker, window } = fixture();
+  const revealed = [];
+  window.hide = () => {
+    window.visible = false;
+  };
+  window.isVisible = () => Boolean(window.visible);
+  for (const action of ["show", "focus", "maximize", "unmaximize", "setFullScreen"])
+    window[action] = () => {
+      revealed.push(action);
+      window.visible = true;
+    };
+  window.webContents.focus = () => {
+    revealed.push("page focus");
+  };
+  window.webContents.openDevTools = () => {
+    revealed.push("devtools");
+  };
+  window.webContents.isDevToolsOpened = () => false;
+  let closedDevTools = 0;
+  window.webContents.closeDevTools = () => closedDevTools++;
+  const token = broker.prepare();
+  broker.didCreateWindow(window, { frameName: token });
+  const { id } = await broker.resolve(token);
+  window.visible = true;
+  broker.hide();
+  for (const action of [
+    "show",
+    "focus",
+    "maximize",
+    "unmaximize",
+    "setFullScreen",
+    "openDevTools",
+    "toggleDevTools",
+  ])
+    broker.invoke(id, action, true);
+  assert.equal(window.isVisible(), false);
+  assert.deepEqual(revealed, []);
+  assert.equal(broker.windows.size, 1);
+  assert.equal(broker.invoke(id, "getState").visible, false);
+  broker.invoke(id, "closeDevTools");
+  assert.equal(closedDevTools, 1);
+  broker.invoke(id, "close");
+  assert.equal(window.vetoed, undefined);
+  broker.destroy();
+});
+
 test("open dialogs are owned by the addressed auxiliary presentation", async () => {
   const requests = [];
   const result = { canceled: false, filePaths: ["chosen.grv"] };
