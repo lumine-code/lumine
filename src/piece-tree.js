@@ -17,12 +17,20 @@ function upperBound(values, value) {
 
 function bufferFor(text) {
   const starts = [];
-  for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1))
+  const crlfs = [];
+  for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) {
     starts.push(index + 1);
+    if (text.charCodeAt(index - 1) === 13) crlfs.push(index + 1);
+  }
   const astrals = [];
   const expression = /[\ud800-\udbff][\udc00-\udfff]/g;
   for (let match; (match = expression.exec(text));) astrals.push(match.index + 2);
-  return { text, starts: Uint32Array.from(starts), astrals: Uint32Array.from(astrals) };
+  return {
+    text,
+    starts: Uint32Array.from(starts),
+    crlfs: Uint32Array.from(crlfs),
+    astrals: Uint32Array.from(astrals),
+  };
 }
 
 function piece(buffer, start = 0, end = buffer.text.length) {
@@ -37,6 +45,7 @@ function piece(buffer, start = 0, end = buffer.text.length) {
     last,
     length: end - start,
     breaks: last - first,
+    crlfs: upperBound(buffer.crlfs, end) - upperBound(buffer.crlfs, start + 1),
     tail: last > first ? end - buffer.starts[last - 1] : end - start,
     height: 1,
     pieces: 1,
@@ -52,6 +61,7 @@ function branch(left, right) {
     right,
     length: left.length + right.length,
     breaks: left.breaks + right.breaks,
+    crlfs: left.crlfs + right.crlfs + (left.lastUnit === 13 && right.firstUnit === 10 ? 1 : 0),
     tail: right.breaks ? right.tail : left.tail + right.length,
     height: 1 + Math.max(left.height, right.height),
     pieces: left.pieces + right.pieces,
@@ -226,6 +236,13 @@ class PieceTree {
   }
   get lineCount() {
     return (this.#root?.breaks ?? 0) + 1;
+  }
+
+  getLineEndings() {
+    const endings = new Set();
+    if (this.#root?.breaks > this.#root?.crlfs) endings.add("\n");
+    if (this.#root?.crlfs) endings.add("\r\n");
+    return endings;
   }
 
   get hasAstral() {
@@ -463,7 +480,7 @@ class PieceTree {
         visit(node.left);
         visit(node.right);
         const expected = branch(node.left, node.right);
-        for (const key of ["length", "breaks", "tail", "height", "pieces"])
+        for (const key of ["length", "breaks", "crlfs", "tail", "height", "pieces"])
           if (node[key] !== expected[key]) throw new Error(`Invalid ${key} summary`);
         if (Math.abs(node.left.height - node.right.height) > 1)
           throw new Error("Unbalanced document tree");

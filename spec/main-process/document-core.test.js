@@ -17,6 +17,42 @@ function position(text, index) {
   return { row: prefix.split("\n").length - 1, column: index - prefix.lastIndexOf("\n") - 1 };
 }
 
+test("line-ending metadata survives edits across piece boundaries and old snapshots", () => {
+  const endings = (text) =>
+    new Set([
+      ...(/(^|[^\r])\n/.test(text) ? ["\n"] : []),
+      ...(text.includes("\r\n") ? ["\r\n"] : []),
+    ]);
+  const next = random(813);
+  let text = "x".repeat(32767) + "\r\n" + "y".repeat(32766) + "\r\n\n\r";
+  let tree = new PieceTree(text);
+  const retained = [];
+  for (let i = 0; i < 800; i++) {
+    assert.deepEqual(tree.getLineEndings(), endings(text));
+    if (i % 100 === 0) retained.push([tree, text]);
+    const start = next(text.length + 1);
+    const end = Math.min(text.length, start + next(1000));
+    const inserted = ["", "\r", "\n", "\r\n", "x\ny", "\r\rx", "\n\n"][next(7)];
+    tree = tree.replace(start, end, inserted);
+    text = text.slice(0, start) + inserted + text.slice(end);
+  }
+  for (const [snapshot, source] of [...retained, [tree, text]]) {
+    assert.deepEqual(snapshot.getLineEndings(), endings(source));
+    snapshot.getLineEndings().clear();
+    assert.deepEqual(snapshot.getLineEndings(), endings(source));
+  }
+  for (const source of ["", "\r", "\n", "\r\n", "\rX\n"]) {
+    const before = new PieceTree(source);
+    for (let start = 0; start <= source.length; start++)
+      for (let end = start; end <= source.length; end++)
+        for (const inserted of ["", "\r", "\n", "\r\n"])
+          assert.deepEqual(
+            before.replace(start, end, inserted).getLineEndings(),
+            endings(source.slice(0, start) + inserted + source.slice(end)),
+          );
+  }
+});
+
 test("snapshot line readers stream exact rows across piece and CRLF boundaries", () => {
   for (const source of [
     "",

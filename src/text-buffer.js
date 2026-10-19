@@ -1148,6 +1148,16 @@ class TextBuffer {
 
   /**
    * @public
+   * @status experimental
+   * @returns {Set<string>} LF and/or CRLF endings currently present in the buffer.
+   * Reads persistent tree metadata in constant time. A lone CR is ordinary text.
+   */
+  getLineEndings() {
+    return this.buffer.getLineEndings();
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Get the length of the line for the given 0-indexed row, without its

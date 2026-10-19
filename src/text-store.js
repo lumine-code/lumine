@@ -191,6 +191,9 @@ class TextStore {
   getLineCount() {
     return this.#text.lineCount;
   }
+  getLineEndings() {
+    return this.#text.getLineEndings();
+  }
   getExtent() {
     return extent(this.#text);
   }
