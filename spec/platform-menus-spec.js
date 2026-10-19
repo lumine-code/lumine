@@ -115,10 +115,26 @@ describe("platform menus", function () {
   it("places the shared-session window action beside New Window", function () {
     for (const platform of PLATFORMS) {
       const app = menus[platform].menu.find((item) => strip(item.label) === "App");
-      const items = app.submenu.find((item) => strip(item.label) === "Windows").submenu;
+      const items = app.submenu;
+      expect(items.some((item) => strip(item.label) === "Windows")).toBe(false);
       const index = items.findIndex((item) => item.command === "application:new-window");
       expect(items[index + 1].command).toBe("window:new-detached-window");
       expect(strip(items[index + 1].label)).toBe("New Detached Window");
+    }
+  });
+
+  it("keeps development-window actions directly in Developer", function () {
+    for (const platform of PLATFORMS) {
+      const developer = menus[platform].menu.find((item) => strip(item.label) === "Developer");
+      const windows = developer.submenu.filter((item) => item.group === "windows");
+      expect(windows.map((item) => item.command)).toEqual([
+        "application:open-dev",
+        "application:reopen-window-in-dev-mode",
+      ]);
+      expect(windows.every((item) => !item.submenu)).toBe(true);
+      expect(developer.submenu.some((item) => strip(item.label) === "Development Windows")).toBe(
+        false,
+      );
     }
   });
 
@@ -159,7 +175,7 @@ describe("platform menus", function () {
       const app = flatten(roots[0].submenu);
       expect(app.get("/Settings")).toBe("application:show-settings");
       expect(app.get("/Configuration Files")).toBe("(submenu)");
-      expect(app.get("/Windows/Close Window")).toBe("window:close");
+      expect(app.get("/Close Window")).toBe("window:close");
       expect(app.get("/About Lumine")).toBe("application:about");
       expect(app.get("/Legal Information/License")).toBe("application:open-license");
       const file = flatten(roots.find((item) => strip(item.label) === "File").submenu);

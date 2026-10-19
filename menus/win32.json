@@ -59,30 +59,22 @@
           "groupOrder": ["editor", "packages", "extensions"]
         },
         {
-          "label": "&Windows",
+          "label": "&New Window",
+          "command": "application:new-window",
           "group": "windows",
-          "order": 10,
-          "groupOrder": ["new", "transfer", "extensions", "close"],
-          "submenu": [
-            {
-              "label": "&New Window",
-              "command": "application:new-window",
-              "group": "new",
-              "order": 10
-            },
-            {
-              "label": "New &Detached Window",
-              "command": "window:new-detached-window",
-              "group": "new",
-              "order": 20
-            },
-            {
-              "label": "&Close Window",
-              "command": "window:close",
-              "group": "close",
-              "order": 10
-            }
-          ]
+          "order": 10
+        },
+        {
+          "label": "New &Detached Window",
+          "command": "window:new-detached-window",
+          "group": "windows",
+          "order": 20
+        },
+        {
+          "label": "Close &Window",
+          "command": "window:close",
+          "group": "windows",
+          "order": 40
         },
         {
           "label": "&About Lumine",
@@ -972,19 +964,16 @@
           "order": 10
         },
         {
-          "label": "Development Windows",
-          "submenu": [
-            {
-              "label": "Open in &Dev Mode…",
-              "command": "application:open-dev"
-            },
-            {
-              "label": "Reopen Window in Dev &Mode",
-              "command": "application:reopen-window-in-dev-mode"
-            }
-          ],
+          "label": "Open in &Dev Mode…",
+          "command": "application:open-dev",
           "group": "windows",
           "order": 10
+        },
+        {
+          "label": "Reopen Window in Dev &Mode",
+          "command": "application:reopen-window-in-dev-mode",
+          "group": "windows",
+          "order": 20
         }
       ],
       "groupOrder": [
@@ -1026,7 +1015,7 @@
           "order": 20
         }
       ],
-      "groupOrder": ["documentation", "examples", "issues", "extensions"]
+      "groupOrder": ["documentation", "references", "examples", "issues", "extensions"]
     }
   ],
   "context-menu": {

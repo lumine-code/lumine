@@ -63,7 +63,6 @@ Contributions to core menus use `group` and `order` instead of written separator
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `App`                       | `configuration`, `management`, `windows`, `updates`, `information`, `integration`, `system`, `extensions`, `quit`     |
 | `App > Configuration Files` | `editor`, `packages`, `extensions`                                                                                    |
-| `App > Windows`             | `new`, `transfer`, `extensions`, `close`                                                                              |
 | `App > Legal Information`   | `documents`, `extensions`                                                                                             |
 | `File`                      | `new`, `open`, `projects`, `save`, `tools`, `history`, `extensions`, `close`                                          |
 | `File > Browse`             | `sources`, `extensions`                                                                                               |
@@ -84,9 +83,9 @@ Contributions to core menus use `group` and `order` instead of written separator
 | `Search`                    | `buffer`, `project`, `results`, `extensions`, `history`                                                               |
 | `Git`                       | `repository`, `branches`, `changes`, `history`, `remote`, `extensions`                                                |
 | `Developer`                 | `tools`, `authoring`, `testing`, `services`, `diagnostics`, `inspection`, `windows`, `extensions`                     |
-| `Help`                      | `documentation`, `examples`, `issues`, `extensions`                                                                   |
+| `Help`                      | `documentation`, `references`, `examples`, `issues`, `extensions`                                                     |
 
-The first menu uses the canonical `App` path on every platform. It owns settings, configuration files, package management, window lifecycle, updates and application information. `App > Windows` keeps new and detached windows together, followed by moving the current tab into a new window and closing the current window. Native macOS services and visibility actions remain in App. `File` owns document and project operations.
+The first menu uses the canonical `App` path on every platform. It owns settings, configuration files, package management, window lifecycle, updates and application information. Its flat `windows` group keeps new and detached windows together, followed by moving the current tab into a new window and closing the current window. Native macOS services and visibility actions remain in App. `File` owns document and project operations.
 
 Windows and Linux display the title App. [macOS always displays the application's name for the first native menu](https://github.com/electron/electron/blob/v44.9.0/docs/tutorial/application-menu.md#building-application-menus), so its visible title remains Lumine while contributions still use the canonical `App` path.
 
@@ -96,7 +95,9 @@ A package with an existing command that opens its persistent configuration file 
 
 `File > Browse` collects configured-file and archived-version browsers. `Projects` contains adding a folder to the current project and opening saved projects. `File Properties` contains encoding and line endings, and `External` contains opening externally and revealing the file's directory. The direct File rows retain the common create, open, save, reopen and close actions.
 
-`Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with branch selection before changing files and staging and stash operations nested under their subject. `Developer` puts Developer Tools and reload actions first, then authoring, tests, services and inspection; dev-mode window actions live under Development Windows at the end. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
+`Go` owns file and symbol navigation, cursor history, bookmarks, changes and diagnostics. `Search` owns text search and replacement. `Git` exposes the repository workflow, with branch selection before changing files and staging and stash operations nested under their subject. `Developer` puts Developer Tools and reload actions first, then authoring, tests, services and inspection; its flat `windows` group puts dev-mode window actions at the end. Keep everyday package actions first and administrative or configuration actions last; preserve the full package surface under `Packages`.
+
+`Help` starts with the editor's Documentation and API Reference, then groups Symbol Documentation and SOFiSTiK Documentation together in `references`. Example browsers follow in `examples`, before issue reporting and search.
 
 `View > Toggle View` contains view and dock visibility switches. `View > Open or Focus View` opens or focuses persistent surfaces. Jupyter surfaces share `View > Jupyter`; its reveal group opens or switches focus, while its toggle group changes visibility. Color picking belongs in Edit, marker-layer configuration in View > Editor, keyboard inspection in Developer, and file-diff selection in Git. Window chrome switches belong in View > Appearance.
 
