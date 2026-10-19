@@ -896,12 +896,13 @@ ScopeResolver.TESTS = {
   },
 
   // Passes when the node at a relative descriptor has one of the given types.
+  // The descriptor "self" addresses the captured node without traversing it.
   // This keeps queries rooted on the captured leaf while still letting them
   // describe nearby structural context without traversing a large container.
   typeAt(node, rawValue) {
     let [descriptor, ...types] = rawValue.split(/\s+/);
     if (!descriptor || types.length === 0) return false;
-    let target = resolveNodeDescriptor(node, descriptor);
+    let target = descriptor === "self" ? node : resolveNodeDescriptor(node, descriptor);
     return target ? types.includes(target.type) : false;
   },
 

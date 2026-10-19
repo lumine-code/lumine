@@ -2319,7 +2319,7 @@ module.exports = class TextEditor {
     if (options.autoDecreaseIndent == null) options.autoDecreaseIndent = this.shouldAutoIndent();
     const languageMode = this.buffer.getLanguageMode();
     const batchNewlineIndent =
-      text === "\n" &&
+      (text === "\n" || text === "\r\n") &&
       options.autoIndentNewline &&
       this.getSelections().length > 1 &&
       languageMode.suggestedIndentForBufferRowsAtRows;
@@ -2327,11 +2327,21 @@ module.exports = class TextEditor {
       ? { ...options, autoIndent: false, autoIndentNewline: false }
       : options;
     const indentMarkers = [];
+    const indentBaselines = new Map();
     let result;
     try {
       result = this.mutateSelectedText((selection) => {
         const range = selection.insertText(text, insertionOptions);
-        if (batchNewlineIndent) indentMarkers.push(this.markBufferPosition(range.end));
+        if (batchNewlineIndent) {
+          const marker = this.markBufferPosition(range.end);
+          indentMarkers.push(marker);
+          // Insertion observers may remove whitespace from the previous blank
+          // row. Preserve the same baseline that a single cursor sees before
+          // those callbacks, while still planning against the final syntax.
+          const previousRow = range.end.row - 1;
+          if (this.buffer.isRowBlank(previousRow))
+            indentBaselines.set(marker, this.indentationForBufferRow(previousRow));
+        }
         const didInsertEvent = { text, range };
         this.emitter.emit("did-insert-text", didInsertEvent);
         return range;
@@ -2343,17 +2353,21 @@ module.exports = class TextEditor {
     if (groupLastChanges) this.buffer.groupLastChanges();
 
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(indentMarkers, languageMode);
+      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines);
     } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
       this.scheduleIndentAdjustment();
     }
     return result;
   }
 
-  adjustNewlineIndentation(markers, languageMode) {
+  adjustNewlineIndentation(markers, languageMode, baselines = new Map()) {
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
-    const options = { preserveLeadingWhitespace: true, skipBlankLines: false };
+    const options = {
+      preserveLeadingWhitespace: true,
+      skipBlankLines: false,
+      comparisonRowIndents: new Map(),
+    };
     const isCurrent = () =>
       canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
     const cleanup = () => {
@@ -2369,17 +2383,21 @@ module.exports = class TextEditor {
         ),
       ].sort((a, b) => a - b);
       if (!rows.length) return;
+      for (const marker of markers) {
+        if (marker.isValid() && baselines.has(marker))
+          options.comparisonRowIndents.set(
+            marker.getHeadBufferPosition().row,
+            baselines.get(marker),
+          );
+      }
       // Plan every cursor against the same committed trees, then edit once.
       const indents = languageMode.suggestedIndentForBufferRowsAtRows(
         rows,
         this.getTabLength(),
         options,
       );
-      if (!indents) return;
-      this.transact(() => {
-        for (const [row, indent] of indents)
-          if (typeof indent === "number") this.setIndentationForBufferRow(row, indent, options);
-      });
+      if (!indents || !isCurrent()) return;
+      this.applyIndentationLevels(indents, options);
       if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
     };
     if (!languageMode.publicationPending) {
@@ -6304,7 +6322,7 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options] - See {@link Selection#insertText}.
    * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to read; defaults to the editor's clipboard.
-   * @returns {Promise|Boolean|undefined} A promise when the clipboard adapter reads asynchronously, false when an observer cancels a synchronous paste, or undefined on synchronous completion or refusal.
+   * @returns {Promise|Boolean|undefined} A promise when clipboard reading or indentation is asynchronous, false when an observer cancels a synchronous paste, or undefined on synchronous completion or refusal.
    */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
@@ -6318,112 +6336,139 @@ module.exports = class TextEditor {
       if (!metadata) metadata = {};
       if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndentOnPaste();
 
-      this.mutateSelectedText((selection, index) => {
-        let fullLine, indentBasis, text;
-        if (metadata.selections && metadata.selections.length === this.getSelections().length) {
-          ({ text, indentBasis, fullLine } = metadata.selections[index]);
-        } else {
-          ({ indentBasis, fullLine } = metadata);
-          text = clipboardText;
-        }
-
-        if (
-          indentBasis != null &&
-          (text.includes("\n") || !selection.cursor.hasPrecedingCharactersOnLine())
-        ) {
-          options.indentBasis = indentBasis;
-        } else {
-          options.indentBasis = null;
-        }
-
-        const pasteStart = selection.getBufferRange().start;
-        const indentPastedText =
-          (fullLine && selection.isEmpty()) ||
-          !/\S/.test(this.buffer.lineForRow(pasteStart.row).slice(0, pasteStart.column));
-        let range;
-        if (fullLine && selection.isEmpty()) {
-          const oldPosition = selection.getBufferRange().start;
-          selection.setBufferRange([
-            [oldPosition.row, 0],
-            [oldPosition.row, 0],
-          ]);
-          range = selection.insertText(text, options);
-          const newPosition = oldPosition.translate([1, 0]);
-          selection.setBufferRange([newPosition, newPosition]);
-        } else {
-          range = selection.insertText(text, options);
-        }
-
-        if (
-          languageMode.shouldParseSynchronously?.() &&
-          indentPastedText &&
-          options.autoIndent &&
-          text.includes("\n")
-        ) {
-          const marker = this.markBufferRange(range);
-          try {
-            const endRow = range.end.row - (range.end.column === 0 ? 1 : 0);
-            this.autoIndentBufferRows(range.start.row, endRow, { ...options, isPastedText: true });
-            range = marker.getBufferRange();
-            text = this.buffer.getTextInRange(range);
-            this.emitter.emit("did-insert-text", { text, range });
-          } finally {
-            marker.destroy();
+      const pendingIndents = [];
+      try {
+        this.mutateSelectedText((selection, index) => {
+          let fullLine, indentBasis, text;
+          if (metadata.selections && metadata.selections.length === this.getSelections().length) {
+            ({ text, indentBasis, fullLine } = metadata.selections[index]);
+          } else {
+            ({ indentBasis, fullLine } = metadata);
+            text = clipboardText;
           }
-        } else if (
-          languageMode.atTransactionEnd &&
-          indentPastedText &&
-          options.autoIndent &&
-          text.includes("\n")
-        ) {
-          // The `autoIndent` option as passed to `Selection#insertText` has no
-          // effect in `TreeSitterLanguageMode` because it asks what the
-          // right indent level would be for the given text _before_ inserting
-          // it, and that question can't be answered because the text isn't part
-          // of the buffer yet and can't be parsed.
-          //
-          // The good news is that we can wait until the transaction's done;
-          // we'll know the extent of the buffer involved in the paste, so we can
-          // auto-indent those rows once they're in the buffer and reflected in
-          // the parse tree. This also lets us defer the `did-insert-text` event
-          // until the auto-indent happens, so that the event metadata is more
-          // accurate.
-          //
-          // We can also use this technique to format text as required by the
-          // `editor:paste-without-reformatting` command. Instead of
-          // getting the suggested indent level for each row of the pasted text,
-          // we get the suggested indent level of the first row, then alter each
-          // succeeding row's level by the same amount.
-          //
-          languageMode.atTransactionEnd().then(({ range }) => {
-            let marker = this.markBufferRange(range);
-            let endRow = range.end.row;
-            // A range that ends on column 0 of a given row doesn't actually
-            // touch that row.
-            if (range.end.column === 0) endRow--;
-            let checkpoint = this.buffer.createCheckpoint();
-            this.autoIndentBufferRows(range.start.row, endRow, {
-              ...options,
-              isPastedText: true,
-            });
-            // Detect whether the buffer actually changed. If it did, fold that
-            // change into the previous history entry.
-            if (this.buffer.getChangesSinceCheckpoint(checkpoint).length > 0) {
-              this.buffer.groupLastChanges();
-            }
 
-            range = marker.getBufferRange();
-            text = this.buffer.getTextInRange(range);
+          if (
+            indentBasis != null &&
+            (text.includes("\n") || !selection.cursor.hasPrecedingCharactersOnLine())
+          ) {
+            options.indentBasis = indentBasis;
+          } else {
+            options.indentBasis = null;
+          }
+
+          const pasteStart = selection.getBufferRange().start;
+          const indentPastedText =
+            (fullLine && selection.isEmpty()) ||
+            !/\S/.test(this.buffer.lineForRow(pasteStart.row).slice(0, pasteStart.column));
+          let range;
+          if (fullLine && selection.isEmpty()) {
+            const oldPosition = selection.getBufferRange().start;
+            selection.setBufferRange([
+              [oldPosition.row, 0],
+              [oldPosition.row, 0],
+            ]);
+            range = selection.insertText(text, options);
+            const newPosition = oldPosition.translate([1, 0]);
+            selection.setBufferRange([newPosition, newPosition]);
+          } else {
+            range = selection.insertText(text, options);
+          }
+
+          if (
+            languageMode.shouldParseSynchronously?.() &&
+            indentPastedText &&
+            options.autoIndent &&
+            text.includes("\n")
+          ) {
+            const marker = this.markBufferRange(range);
+            try {
+              const endRow = range.end.row - (range.end.column === 0 ? 1 : 0);
+              this.autoIndentBufferRows(range.start.row, endRow, {
+                ...options,
+                isPastedText: true,
+              });
+              range = marker.getBufferRange();
+              text = this.buffer.getTextInRange(range);
+              this.emitter.emit("did-insert-text", { text, range });
+            } finally {
+              marker.destroy();
+            }
+          } else if (
+            languageMode.atTransactionEnd &&
+            indentPastedText &&
+            options.autoIndent &&
+            text.includes("\n")
+          ) {
+            // The `autoIndent` option as passed to `Selection#insertText` has no
+            // effect in `TreeSitterLanguageMode` because it asks what the
+            // right indent level would be for the given text _before_ inserting
+            // it, and that question can't be answered because the text isn't part
+            // of the buffer yet and can't be parsed.
+            //
+            // The good news is that we can wait until the transaction's done;
+            // we'll know the extent of the buffer involved in the paste, so we can
+            // auto-indent those rows once they're in the buffer and reflected in
+            // the parse tree. This also lets us defer the `did-insert-text` event
+            // until the auto-indent happens, so that the event metadata is more
+            // accurate.
+            //
+            // We can also use this technique to format text as required by the
+            // `editor:paste-without-reformatting` command. Instead of
+            // getting the suggested indent level for each row of the pasted text,
+            // we get the suggested indent level of the first row, then alter each
+            // succeeding row's level by the same amount.
+            //
+            pendingIndents.push({
+              marker: this.markBufferRange(range),
+              options: { ...options, isPastedText: true },
+            });
+          } else {
             this.emitter.emit("did-insert-text", { text, range });
-          });
-        } else {
-          this.emitter.emit("did-insert-text", { text, range });
-        }
-      });
+          }
+        });
+      } catch (error) {
+        for (const { marker } of pendingIndents) marker.destroy();
+        throw error;
+      }
+      if (pendingIndents.length) return this.adjustPastedIndentation(pendingIndents, languageMode);
     };
 
     const clipboardData = clipboard.readWithMetadata();
     return isPromise(clipboardData) ? clipboardData.then(paste) : paste(clipboardData);
+  }
+
+  // Each paste owns its range, not the entire transaction's extent. Deferred
+  // work may adjust only the revision it observed, and always releases markers.
+  adjustPastedIndentation(pastes, languageMode) {
+    const buffer = this.buffer;
+    let revision = buffer.getTextRevision();
+    const isCurrent = () =>
+      canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+    const adjustment = (async () => {
+      for (const { marker, options } of pastes) {
+        await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
+        if (!isCurrent() || !marker.isValid()) return;
+        const range = marker.getBufferRange();
+        const indents = languageMode.suggestedIndentForBufferRows?.(
+          range.start.row,
+          range.end.row - (range.end.column === 0 ? 1 : 0),
+          this.getTabLength(),
+          options,
+        );
+        if (!isCurrent()) return;
+        this.applyIndentationLevels(indents, options);
+        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+        revision = buffer.getTextRevision();
+        const currentRange = marker.getBufferRange();
+        this.emitter.emit("did-insert-text", {
+          text: buffer.getTextInRange(currentRange),
+          range: currentRange,
+        });
+      }
+    })().finally(() => {
+      for (const { marker } of pastes) marker.destroy();
+    });
+    return this.trackIndentation(handleIndentationErrors(adjustment, isCurrent));
   }
 
   /**
@@ -7457,7 +7502,7 @@ module.exports = class TextEditor {
         handleIndentationErrors(
           Promise.resolve(indentLevel).then((indentLevel) => {
             if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
-            if (typeof indentLevel === "number") {
+            if (Number.isFinite(indentLevel) && indentLevel >= 0) {
               const revision = buffer.getTextRevision();
               const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
               if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
@@ -7469,7 +7514,7 @@ module.exports = class TextEditor {
           isCurrent,
         ),
       );
-    } else if (typeof indentLevel === "number") {
+    } else if (Number.isFinite(indentLevel) && indentLevel >= 0) {
       return this.setIndentationForBufferRow(bufferRow, indentLevel, options);
     }
   }
@@ -7479,8 +7524,27 @@ module.exports = class TextEditor {
   // * startRow - The row `Number` to start at
   // * endRow - The row `Number` to end at
   autoIndentBufferRows(startRow, endRow, options = {}) {
-    const languageMode = this.buffer.getLanguageMode();
-    let lastRowIndented = startRow - 1;
+    const buffer = this.buffer;
+    const languageMode = buffer.getLanguageMode();
+    const revision = buffer.getTextRevision();
+    startRow = Math.max(0, startRow);
+    endRow = Math.min(buffer.getLastRow(), endRow);
+    if (
+      languageMode.publicationPending &&
+      !languageMode.shouldParseSynchronously?.() &&
+      languageMode.atGrammarSettlement
+    ) {
+      const isCurrent = () =>
+        canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+      return this.trackIndentation(
+        handleIndentationErrors(
+          Promise.resolve(languageMode.atGrammarSettlement()).then(() => {
+            if (isCurrent()) return this.autoIndentBufferRows(startRow, endRow, options);
+          }),
+          isCurrent,
+        ),
+      );
+    }
     if (languageMode.suggestedIndentForBufferRows) {
       // In tree-sitter mode, we are fortunate that this command will only ever
       // be called at the ends of transactions, when the parse tree is clean.
@@ -7488,7 +7552,7 @@ module.exports = class TextEditor {
       // atomically. Compared to the naive version below, on a hypothetical
       // ten-line range, this will result in only one tree re-parse (after
       // we're done) rather than ten.
-      let indents = languageMode.suggestedIndentForBufferRows(
+      const indents = languageMode.suggestedIndentForBufferRows(
         startRow,
         endRow,
         this.getTabLength(),
@@ -7498,32 +7562,63 @@ module.exports = class TextEditor {
       // The language mode may not be able to indent the whole block
       // atomically. If not, we'll indent as much as we're able, then fall back
       // to the costlier approach.
-      if (indents !== null) {
-        this.transact(() => {
-          for (let [row, indent] of indents) {
-            this.setIndentationForBufferRow(row, indent);
-            lastRowIndented = row;
-          }
-        });
-        if (lastRowIndented === endRow) {
-          return;
-        }
-      }
-
-      if (options.isPastedText) {
-        // With this option enabled, if we reach this point, it means that
-        // `indents` is `null`, or somehow gave us an incomplete set of indent
-        // levels. In either case, we don't want to fall back to a row-by-row
-        // auto-indent, because we were just using this mode to batch-adjust
-        // the rows to preserve relative indentation.
+      if (
+        !canAdjustIndentation(this, buffer, languageMode) ||
+        buffer.getTextRevision() !== revision ||
+        indents === null
+      )
         return;
-      }
+      const valid = new Map(
+        [...indents].filter(
+          ([row, indent]) =>
+            row >= startRow &&
+            row <= endRow &&
+            Number.isInteger(row) &&
+            Number.isFinite(indent) &&
+            indent >= 0,
+        ),
+      );
+      return this.transact(() => {
+        this.applyIndentationLevels(valid, options);
+        if (options.isPastedText) return;
+        for (let row = startRow; row <= endRow; row++) {
+          if (!indents.has(row)) this.autoIndentBufferRow(row, options);
+        }
+      });
     }
-    let row = lastRowIndented + 1;
+    let row = startRow;
     while (row <= endRow) {
-      this.autoIndentBufferRow(row);
+      this.autoIndentBufferRow(row, options);
       row++;
     }
+  }
+
+  // Apply one revision-bound whitespace plan. In particular, never coerce a
+  // missing or deferred hint to zero, and never rebuild display per row.
+  applyIndentationLevels(indents, { preserveLeadingWhitespace = false } = {}) {
+    if (!indents) return false;
+    const buffer = this.buffer;
+    const revision = buffer.getTextRevision();
+    const lineForRow = buffer.getTextSnapshot().lineReader();
+    const edits = [];
+    const indentStrings = new Map();
+    for (const [row, indent] of indents) {
+      if (!Number.isInteger(row) || !Number.isFinite(indent) || indent < 0) continue;
+      const line = lineForRow(row);
+      if (line === undefined) continue;
+      const endColumn = preserveLeadingWhitespace ? 0 : line.match(/^\s*/)[0].length;
+      if (!indentStrings.has(indent)) indentStrings.set(indent, this.buildIndentString(indent));
+      const text = indentStrings.get(indent);
+      if (line.slice(0, endColumn) !== text)
+        edits.push({
+          range: [
+            [row, 0],
+            [row, endColumn],
+          ],
+          text,
+        });
+    }
+    return buffer.setTextInIndependentRanges(edits, { expectedRevision: revision });
   }
 
   autoDecreaseIndentForBufferRow(bufferRow) {
@@ -7547,7 +7642,7 @@ module.exports = class TextEditor {
             // `suggestedIndentForEditedBufferRow` doesn't return a number, we
             // should ignore it. Otherwise we run the risk of dedenting something
             // that the user doesn't want dedented.
-            if (typeof indentLevel === "number") {
+            if (Number.isFinite(indentLevel) && indentLevel >= 0) {
               const revision = buffer.getTextRevision();
               const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
               if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
@@ -7558,7 +7653,8 @@ module.exports = class TextEditor {
         ),
       );
     } else {
-      if (indentLevel != null) this.setIndentationForBufferRow(bufferRow, indentLevel);
+      if (Number.isFinite(indentLevel) && indentLevel >= 0)
+        this.setIndentationForBufferRow(bufferRow, indentLevel);
     }
   }
 
@@ -7594,7 +7690,9 @@ module.exports = class TextEditor {
         if (autoIndentRequests === 0 && !force) return;
 
         const revision = buffer.getTextRevision();
-        this.transact(() => this.autoIndentBufferRows(range.start.row, range.end.row));
+        this.transact(() =>
+          this.autoIndentBufferRows(range.start.row, range.end.row, { isReindenting: false }),
+        );
         if (!isCurrent()) return;
         if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
         if (isCurrent()) this.didAdjustIndent = true;

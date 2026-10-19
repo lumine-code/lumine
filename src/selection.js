@@ -771,7 +771,7 @@ module.exports = class Selection {
       this.editor.setIndentationForBufferRow(oldBufferRange.start.row, desiredIndentLevel);
     }
 
-    if (options.autoIndentNewline && text === "\n") {
+    if (options.autoIndentNewline && (text === "\n" || text === "\r\n")) {
       this.editor.autoIndentBufferRow(newBufferRange.end.row, {
         preserveLeadingWhitespace: true,
         skipBlankLines: false,

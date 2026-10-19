@@ -2134,7 +2134,8 @@ class TreeSitterLanguageMode {
   // * `endRow` The row `Number` to end at.
   //
   // Returns either a `Map` or `null`. If a `Map`, its keys will be row numbers
-  // and its values will be desired indentation levels. May not return the
+  // and its values will be desired indentation levels, or null to explicitly
+  // preserve a row's whitespace. Missing rows request fallback. May not return the
   // entire range of requested rows, in which case the caller should
   // auto-indent the remaining rows through another means. If `null`, signifies
   // that no auto-indent should be attempted at all for the given range.

@@ -96,7 +96,7 @@ class IndentResolver {
       existingIndent = this.indentLevelForLine(this.buffer.lineForRow(row), tabLength);
     }
 
-    let comparisonRowIndent = options.comparisonRowIndent;
+    let comparisonRowIndent = options.comparisonRowIndent ?? options.comparisonRowIndents?.get(row);
     if (comparisonRowIndent === undefined) {
       comparisonRowIndent = languageMode.indentLevelForLine(
         this.buffer.lineForRow(comparisonRow),
@@ -173,6 +173,10 @@ class IndentResolver {
     if (options.tree && originalControllingLayer === controllingLayer) {
       // Make sure this tree belongs to the layer we expect it to.
       indentTree = options.tree;
+    }
+    if (!indentTree && options.treeForLayer) {
+      indentTree = options.treeForLayer(controllingLayer);
+      if (!indentTree) return null;
     }
 
     // In practice, we want to use synchronous hinting whenever we can. Here we
@@ -282,6 +286,7 @@ class IndentResolver {
         currentRow: row,
         comparisonRow,
         tabLength,
+        isReindenting: options.isReindenting,
       });
       if (!passed) {
         continue;
@@ -454,10 +459,17 @@ class IndentResolver {
         // we'll reluctantly still use the original layer and tree.)
         //
         indentsQuery = dedentControllingLayer.queries.indentsQuery;
-        indentTree = dedentControllingLayer.getOrParseTree({
-          bounded:
-            !options.forceTreeParse && languageMode.useAsyncParsing && languageMode.useAsyncIndent,
-        });
+        scopeResolver = dedentControllingLayer.scopeResolver;
+        scopeResolver.reset();
+        indentTree = options.treeForLayer
+          ? options.treeForLayer(dedentControllingLayer)
+          : dedentControllingLayer.getOrParseTree({
+              bounded:
+                !options.forceTreeParse &&
+                languageMode.useAsyncParsing &&
+                languageMode.useAsyncIndent,
+            });
+        if (!indentTree && options.treeForLayer) return null;
         if (!indentTree)
           return this.deferIndentSuggestion(row, tabLength, rawOptions, {
             comparisonRow,
@@ -483,12 +495,11 @@ class IndentResolver {
 
       for (let capture of dedentCaptures) {
         let { name, node } = capture;
-        let { text } = node;
 
         // As in Phase 1, we allow captures to opt into being recognized even
         // when they're empty.
         let allowEmpty = this.getProperty(capture, "allowEmpty", "boolean", false);
-        if (text === "" && !allowEmpty) {
+        if (node.startIndex === node.endIndex && !allowEmpty) {
           continue;
         }
 
@@ -515,6 +526,7 @@ class IndentResolver {
           currentRow: row,
           comparisonRow,
           tabLength,
+          isReindenting: options.isReindenting,
         });
         if (!passed) {
           continue;
@@ -535,14 +547,25 @@ class IndentResolver {
         //
         // If a capture is confident it knows what it's doing, it can opt out
         // of this behavior with `(#set! indent.force true)`.
-        if (!force && !currentRowText.startsWith(text)) {
+        if (!force && !currentRowText.startsWith(node.text)) {
           continue;
         }
 
         // The `@match` capture short-circuits nearly all indentation logic by
         // pointing us to a different node and asking us to match the
         // indentation of whatever row that node starts on.
-        if (name === "match") {
+        if (name === "preserve") {
+          scopeResolver.reset();
+          options.preservedRows?.add(row);
+          if (!options.skipEvent)
+            this.emitter.emit("did-suggest-indent", {
+              currentRow: row,
+              comparisonRow,
+              captureMode: "preserve",
+              finalIndent: this.indentLevelForLine(lineText, tabLength),
+            });
+          return null;
+        } else if (name === "match") {
           let matchIndentLevel = this.resolveMatch(capture, {
             currentRow: row,
             comparisonRow,
@@ -566,10 +589,8 @@ class IndentResolver {
             return finalIndent;
           }
         } else if (name === "none") {
-          // TODO: `@none` is an experiment for any situation in which the
-          // current line’s indent should be reset to `0`. This is obviously
-          // rarely needed and I can’t remember exactly what the envisioned use
-          // case was, but we’ll leave it in for now.
+          // Reset to the left margin, for example for a parsed module-level
+          // Python statement during explicit reindent.
           scopeResolver.reset();
           if (!options.skipEvent) {
             this.emitter.emit("did-suggest-indent", {
@@ -760,6 +781,11 @@ class IndentResolver {
   }
 
   suggestedIndentForBufferRows(startRow, endRow, tabLength, options = {}) {
+    options = {
+      isReindenting: !options.isPastedText && !options.preserveLeadingWhitespace,
+      ...options,
+    };
+    const revision = this.buffer.getTextRevision();
     const rows =
       options.rows ??
       Array.from({ length: Math.max(0, endRow - startRow + 1) }, (_, index) => startRow + index);
@@ -770,32 +796,37 @@ class IndentResolver {
     };
     let { languageMode } = this;
     let root = languageMode.rootLanguageLayer;
-    if (!root || !root.tree) {
-      let results = new Map();
-      for (const row of rows) {
-        results.set(row, null);
-      }
-      return results;
-    }
+    if (!root || !root.tree || !root.ready) return null;
 
     let results = new Map();
-    let comparisonRow = null;
-    let comparisonRowIndent = null;
+    // Returned values may be additive; references and @match captures need
+    // the absolute indentation that previously planned rows will have.
+    const indentationLevels = new Map();
+    const preservedRows = new Set();
+    let previousRow = -1,
+      previousComparison = 0;
 
     let { isPastedText = false } = options;
     let indentDelta;
 
     for (const row of rows) {
-      if (comparisonRow !== null && row > comparisonRow + 1) {
-        comparisonRow = null;
-        comparisonRowIndent = null;
-      }
+      if (this.buffer.getTextRevision() !== revision) return null;
+      const comparisonRow =
+        options.comparisonRow ??
+        (options.skipBlankLines !== false &&
+        row > 1 &&
+        row === previousRow + 1 &&
+        this.buffer.isRowBlank(row - 1)
+          ? previousComparison
+          : this.getComparisonRow(row, options));
+      previousRow = row;
+      previousComparison = comparisonRow;
       // If this row were being indented by `suggestedIndentForBufferRow`, it'd
       // look at the end of the previous row to find the controlling layer,
       // because we start at the previous row to find the suggested indent for
       // the current row.
       let controllingLayer = languageMode.controllingLayerAtPoint(
-        this.buffer.clipPosition(new Point(row - 1, Infinity)),
+        this.buffer.clipPosition(new Point(comparisonRow, Infinity)),
         // This query isn't as precise as the one we end up making later, but
         // that's OK. This is just a first pass.
         (layer) => !!layer.queries.indentsQuery && !!layer.tree,
@@ -817,6 +848,7 @@ class IndentResolver {
             return null;
           }
           let tree = treeForLayer(controllingLayer);
+          if (!tree) return null;
 
           let firstLineCurrentIndent = this.indentLevelForLine(
             this.buffer.lineForRow(row),
@@ -827,15 +859,18 @@ class IndentResolver {
             ...options,
             controllingLayer,
             tree,
+            treeForLayer,
           });
 
-          if (firstLineIdealIndent == null) {
+          if (typeof firstLineIdealIndent !== "number" || !Number.isFinite(firstLineIdealIndent)) {
             // If we decline to suggest an indent level for the first line,
             // then there's no change to be made here. Keep the whole region
             // the way it is.
             return null;
           } else {
-            indentDelta = firstLineIdealIndent - firstLineCurrentIndent;
+            indentDelta = options.preserveLeadingWhitespace
+              ? firstLineIdealIndent
+              : firstLineIdealIndent - firstLineCurrentIndent;
             if (indentDelta === 0) {
               // If the first row doesn't have to be adjusted, neither do any
               // others.
@@ -849,7 +884,12 @@ class IndentResolver {
         // All rows other than the first are easy — just apply the delta.
         let actualIndent = this.indentLevelForLine(this.buffer.lineForRow(row), tabLength);
 
-        results.set(row, actualIndent + indentDelta);
+        results.set(
+          row,
+          options.preserveLeadingWhitespace
+            ? Math.max(indentDelta, 0)
+            : Math.max(actualIndent + indentDelta, 0),
+        );
         continue;
       }
 
@@ -861,33 +901,47 @@ class IndentResolver {
       // that `suggestedIndentForBufferRow` doesn't try to look up the comparison
       // row itself and find out we haven't actually fixed any of the previous
       // rows' indentations yet.
-      let indent;
-      if (controllingLayer) {
-        let tree = treeForLayer(controllingLayer);
+      {
+        const tree = controllingLayer ? treeForLayer(controllingLayer) : null;
+        if (controllingLayer && !tree) return results;
         let rowOptions = {
           ...options,
           tree,
           controllingLayer,
-          comparisonRow: comparisonRow ?? undefined,
-          comparisonRowIndent: comparisonRowIndent ?? undefined,
-          indentationLevels: results,
+          comparisonRow,
+          comparisonRowIndent: indentationLevels.get(comparisonRow),
+          indentationLevels,
+          treeForLayer,
+          preservedRows,
         };
-        indent = this.suggestedIndentForBufferRow(row, tabLength, rowOptions);
-        if (indent === null) {
+        const indent = this.suggestedIndentForBufferRow(row, tabLength, rowOptions);
+        if (preservedRows.has(row)) {
+          results.set(row, null);
+          indentationLevels.set(
+            row,
+            this.indentLevelForLine(this.buffer.lineForRow(row), tabLength),
+          );
+          continue;
+        }
+        if (typeof indent !== "number" || !Number.isFinite(indent)) {
           // We could not retrieve the correct indentation level for this row
           // without re-parsing the tree. We should give up and return what we
           // have so that `TextEditor` can finish the job through a less
           // efficient means.
           return results;
         }
-      } else {
-        // We could not retrieve the correct indentation level for this row
-        // because it isn't governed by any layer that has an indents query.
-        return results;
+        results.set(row, indent);
+        indentationLevels.set(
+          row,
+          options.preserveLeadingWhitespace
+            ? this.indentLevelForLine(
+                this.buffer.lineForRow(row),
+                tabLength,
+                Math.floor(indent * tabLength),
+              )
+            : indent,
+        );
       }
-      results.set(row, indent);
-      comparisonRow = row;
-      comparisonRowIndent = indent;
     }
 
     return results;
@@ -1037,7 +1091,7 @@ class IndentResolver {
         comparisonRow,
         tabLength,
       });
-      if (!passed) return;
+      if (!passed) continue;
 
       let force = this.getProperty(indent, "force", "boolean", false);
 
@@ -1122,8 +1176,8 @@ class IndentResolver {
     return comparisonRow;
   }
 
-  indentLevelForLine(line, tabLength) {
-    let indentLength = 0;
+  indentLevelForLine(line, tabLength, initialColumn = 0) {
+    let indentLength = initialColumn;
     for (let i = 0, { length } = line; i < length; i++) {
       const char = line[i];
       if (char === "\t") {
@@ -1239,6 +1293,11 @@ class IndentResolver {
 // implemented as generic scope tests because they expose metadata that only
 // makes sense in an indentation context.
 IndentResolver.TESTS = {
+  // Structural rules may guide an explicit reindent, but must not infer a
+  // newly typed line's intended scope from temporarily incomplete Python syntax.
+  reindent(_node, _value, { isReindenting }) {
+    return Boolean(isReindenting);
+  },
   // Returns `true` if the position descriptor's row equals that of the current
   // row (the row whose indentation level is being suggested).
   //
