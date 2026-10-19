@@ -70,22 +70,20 @@ class Patch {
       return text;
     };
     let previous = null;
-    let columnDelta = 0;
     for (const change of changes) {
       const { oldStart, oldEnd, newStart, newEnd } = change;
-      if (previous && oldStart?.row !== previous.oldStart.row) columnDelta = 0;
       if (
         ![oldStart, oldEnd, newStart, newEnd].every(
           (p) => p && coordinate(p.row) === p.row && coordinate(p.column) === p.column,
         ) ||
         (previous &&
           (compare(oldStart, previous.oldEnd) < 0 || compare(oldStart, previous.oldStart) <= 0)) ||
-        oldStart.row !== oldEnd.row ||
-        oldStart.row !== newStart.row ||
-        oldStart.row !== newEnd.row ||
-        oldStart.column + columnDelta !== newStart.column ||
-        oldEnd.column < oldStart.column ||
-        newEnd.column < newStart.column
+        compare(oldEnd, oldStart) < 0 ||
+        compare(newEnd, newStart) < 0 ||
+        compare(
+          newStart,
+          previous ? shift(oldStart, previous.oldEnd, previous.newEnd) : oldStart,
+        ) !== 0
       )
         return null;
       const oldSource = source(change.oldTextSource ?? change.oldText);
@@ -93,14 +91,11 @@ class Patch {
       if (
         !oldSource ||
         !newSource ||
-        oldSource.lineCount !== 1 ||
-        newSource.lineCount !== 1 ||
-        oldSource.length !== oldEnd.column - oldStart.column ||
-        newSource.length !== newEnd.column - newStart.column
+        compare(oldSource.positionAt(oldSource.length), distance(oldEnd, oldStart)) !== 0 ||
+        compare(newSource.positionAt(newSource.length), distance(newEnd, newStart)) !== 0
       )
         return null;
       previous = change;
-      columnDelta += newSource.length - oldSource.length;
       if (
         (!oldSource.length && !newSource.length) ||
         (discardIdentityChanges && oldSource.equals(newSource))
@@ -372,6 +367,41 @@ class Patch {
     return patch;
   }
   static compose(patches) {
+    // Multicursor transactions produce one patch per selection. When those
+    // splices are ordered and disjoint, recover original coordinates once
+    // instead of repeatedly inserting them into the growing history tree.
+    if (patches.length >= 64) {
+      const independent = [];
+      let oldEnd = { row: 0, column: 0 },
+        newEnd = oldEnd,
+        ordered = true;
+      outer: for (const patch of patches) {
+        for (const change of patch.#changes) {
+          if (!change.oldSource || !change.newSource || compare(change.newStart, newEnd) < 0) {
+            ordered = false;
+            break outer;
+          }
+          const oldStart = shift(change.newStart, newEnd, oldEnd);
+          oldEnd = traverse(oldStart, distance(change.oldEnd, change.oldStart));
+          newEnd = change.newEnd;
+          independent.push({
+            oldStart,
+            oldEnd,
+            newStart: change.newStart,
+            newEnd,
+            oldTextSource: change.oldSource,
+            newTextSource: change.newSource,
+          });
+        }
+      }
+      if (ordered) {
+        const result = Patch.fromIndependentChanges(independent, { discardIdentityChanges: true });
+        if (result) {
+          result.#discardIdentities = false;
+          return result;
+        }
+      }
+    }
     const result = new Patch();
     result.#discardIdentities = true;
     let first = true;

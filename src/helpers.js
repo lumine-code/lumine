@@ -111,15 +111,12 @@ exports.compactPatchChanges = function compactPatchChanges(changes) {
   ];
 };
 
-// Single-line edits on distinct rows cannot move or overlap one another.
-// Their transaction summary is already compact; avoid round-tripping every
-// string through a temporary native Patch just to reconstruct the same list.
-// Ordered disjoint edits have cumulative columns within each row. Recover
-// their original coordinates directly instead of replaying every splice into
-// another patch. Overlapping or reordered edits retain the general composer.
+// Recover original coordinates from ordered disjoint splices using the old
+// and new end of the previous change, including row shifts. Overlapping or
+// reordered edits retain the general composer.
 function compactIndependentSplices(changes) {
-  let row = -1,
-    delta = 0;
+  let previousOldEnd = { row: 0, column: 0 },
+    previousNewEnd = previousOldEnd;
   const canonical = [];
   for (const change of changes) {
     const { oldStart, oldEnd, newStart, newEnd, oldText, newText } = change;
@@ -127,24 +124,24 @@ function compactIndependentSplices(changes) {
       ![oldStart, oldEnd, newStart, newEnd].every(isOrdinaryPatchPoint) ||
       typeof oldText !== "string" ||
       typeof newText !== "string" ||
-      oldStart.row < row ||
-      oldStart.row !== oldEnd.row ||
       oldStart.row !== newStart.row ||
-      oldStart.row !== newEnd.row ||
-      oldStart.column !== newStart.column
+      oldStart.column !== newStart.column ||
+      oldStart.row < previousNewEnd.row ||
+      (oldStart.row === previousNewEnd.row && oldStart.column < previousNewEnd.column)
     )
       return null;
-    if (row !== oldStart.row) delta = 0;
-    row = oldStart.row;
+    const originalStart = traverse(previousOldEnd, traversal(oldStart, previousNewEnd));
+    const originalEnd = traverse(originalStart, traversal(oldEnd, oldStart));
     canonical.push({
-      oldStart: { row, column: oldStart.column - delta },
-      oldEnd: { row, column: oldEnd.column - delta },
+      oldStart: originalStart,
+      oldEnd: originalEnd,
       newStart,
       newEnd,
       oldText,
       newText,
     });
-    delta += newEnd.column - oldEnd.column;
+    previousOldEnd = originalEnd;
+    previousNewEnd = newEnd;
   }
   return Patch.fromIndependentChanges(canonical)?.getChanges() ?? null;
 }

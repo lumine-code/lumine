@@ -54,6 +54,44 @@ describe("JavaScript document editor integration performance", () => {
       { id: "soft-wrap-long-lines", units: 1000000, markers: 1000, wrapped: true, long: true },
       { id: "single-line-1m", units: 1000000, singleLine: true },
       { id: "multicursor-1000", units: 1000000, cursors: 1000 },
+      ...(config.multilineCases
+        ? [
+            { id: "multicursor-newline-1000", units: 1000000, cursors: 1000, insertedText: "\n" },
+            {
+              id: "multicursor-paste-1000",
+              units: 1000000,
+              cursors: 1000,
+              insertedText: "one\n😀two\nthree",
+            },
+            {
+              id: "multiline-format-js-1000",
+              rows: 1000,
+              bulk: "format",
+              scope: "source.js",
+              replacement: "longer\n",
+              command: "code-format:format-code",
+            },
+            {
+              id: "multiline-delete-js-1000",
+              rows: 1000,
+              bulk: "format",
+              scope: "source.js",
+              line: "foo();\nbar();\n",
+              pattern: /foo\(\);\nbar\(\);/g,
+              replacement: "longer();",
+              command: "code-format:format-code",
+            },
+            {
+              id: "multiline-format-html-500",
+              rows: 500,
+              bulk: "format",
+              scope: "text.html.basic",
+              line: '<script>const foo = "😀終"; foo;</script><p>foo</p>\r\n',
+              replacement: "longer\r\n",
+              command: "code-format:format-code",
+            },
+          ]
+        : []),
       { id: "paste-1m", units: 1000000, paste: true },
       { id: "javascript-1m", units: 1000000, scope: "source.js" },
       { id: "ipython-injections", scope: "source.python.ipy" },
@@ -301,7 +339,7 @@ describe("JavaScript document editor integration performance", () => {
         await editor.whenGrammarSettled();
         component.updateSync();
         const expected = item.bulk
-          ? original.replace(/foo/g, "longer")
+          ? original.replace(item.pattern ?? /foo/g, item.replacement ?? "longer")
           : item.command
             ? item.id.startsWith("sort-")
               ? Array.from(
@@ -315,19 +353,21 @@ describe("JavaScript document editor integration performance", () => {
               ? original
                   .split("\n")
                   .map((value, row) =>
-                    row % 3 === 0 && row / 3 < item.cursors ? ` ${value}` : value,
+                    row % 3 === 0 && row / 3 < item.cursors
+                      ? `${item.insertedText ?? " "}${value}`
+                      : value,
                   )
                   .join("\n")
               : (item.paste ? paste : item.completion ? "bna" : " ") + original;
         const originalHash = hash(original),
           editedHash = hash(expected);
         if (item.bulk?.startsWith("format")) {
-          const edits = [...original.matchAll(/foo/g)].map((match) => ({
+          const edits = [...original.matchAll(item.pattern ?? /foo/g)].map((match) => ({
             oldRange: [
               buffer.positionForCharacterIndex(match.index),
-              buffer.positionForCharacterIndex(match.index + 3),
+              buffer.positionForCharacterIndex(match.index + match[0].length),
             ],
-            newText: "longer",
+            newText: item.replacement ?? "longer",
           }));
           providerLease = lumine.packages
             .getActivePackage("code-format")
@@ -461,7 +501,11 @@ describe("JavaScript document editor integration performance", () => {
                           clipboard: { readWithMetadata: () => ({ text: paste }) },
                           autoIndent: false,
                         })
-                      : editor.insertText(" ", { autoIndent: false }),
+                      : editor.insertText(item.insertedText ?? " ", {
+                          autoIndent: false,
+                          autoIndentNewline: false,
+                          autoDecreaseIndent: false,
+                        }),
             editedHash,
             false,
             record,

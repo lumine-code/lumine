@@ -69,6 +69,27 @@ test("index follows edits at block boundaries, multiline edits, batch edits and 
   await check();
 });
 
+test("multiline batches translate retained word blocks like a fresh scanner", async () => {
+  const stores = pair(fixture());
+  await equivalent(...stores, "ca", { extraWordCharacters: "_", maxCount: 1000 });
+  for (const store of stores) {
+    const edits = Array.from({ length: 80 }, (_, row) => ({
+      start: store.characterIndexForPosition({ row, column: 0 }),
+      end: store.characterIndexForPosition({ row, column: 5 }),
+      text: row % 2 ? "" : "candidateAdded\nnewRow\nconst",
+    }));
+    const batch = store.prepareEdits(edits);
+    batch.commit();
+    batch.dispose();
+  }
+  for (const row of [0, 260, 600, 760])
+    await equivalent(...stores, "ca", {
+      extraWordCharacters: "_",
+      position: { row, column: 1 },
+      maxCount: 1000,
+    });
+});
+
 test("running queries retain invocation snapshots and cannot publish stale blocks", async () => {
   const [indexed, scan] = pair(fixture());
   await equivalent(indexed, scan);

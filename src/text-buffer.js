@@ -29,6 +29,16 @@ const getSubstitution = require("./text-substitution");
 const { SaveCancelledError } = require("./save-errors");
 const { confirmSave, sameSavePath } = require("./save-confirmation");
 
+function textExtent(text) {
+  let row = 0,
+    last = -1;
+  for (let index = text.indexOf("\n"); index >= 0; index = text.indexOf("\n", index + 1)) {
+    row++;
+    last = index;
+  }
+  return new Point(row, text.length - last - 1);
+}
+
 function textChangesOnlyPatch(patch) {
   if (!patch || patch.getChangeCount() === 0) return patch;
   // A file load can invert an edit and rollback into an identical replacement.
@@ -1382,9 +1392,9 @@ class TextBuffer {
    * @public
    * @status extended
    *
-   * Apply disjoint single-line edits against the current revision as one undo
-   * operation. Ranges may share a row but cannot overlap or share a start, and replacement text
-   * cannot contain line endings. Input order does not matter. All edits are
+   * Apply disjoint edits against the current revision as one undo
+   * operation. Ranges may span multiple rows but cannot overlap or share a start.
+   * Text is stored literally unless line-ending normalization is requested. Input order does not matter. All edits are
    * validated before changing text; stale revisions and overlapping ranges reject.
    *
    * Large batches share unchanged text and update display geometry once.
@@ -1392,10 +1402,14 @@ class TextBuffer {
    * @param {Array<Object>} edits - Objects with a buffer `range` and replacement `text`.
    * @param {Object} [options] - Batch options.
    * @param {Number} [options.expectedRevision] - Required current revision for an asynchronous plan.
+   * @param {Boolean} [options.normalizeLineEndings=false] - Normalize replacements using each original start row's line ending.
    * @returns {Boolean} Whether the batch changed text.
    * @category Mutating Text
    */
-  setTextInIndependentRanges(edits, { expectedRevision = this.getTextRevision() } = {}) {
+  setTextInIndependentRanges(
+    edits,
+    { expectedRevision = this.getTextRevision(), normalizeLineEndings = false } = {},
+  ) {
     this.assertCanEdit();
     if (expectedRevision !== this.getTextRevision())
       throw Object.assign(new Error("Edit plan no longer matches the buffer revision"), {
@@ -1406,13 +1420,18 @@ class TextBuffer {
         range = this.clipRange(range);
         if (
           typeof text !== "string" ||
-          /[\r\n]/.test(text) ||
           ![range.start.row, range.start.column, range.end.row, range.end.column].every(
             Number.isSafeInteger,
-          ) ||
-          range.start.row !== range.end.row
+          )
         )
-          throw new RangeError("Independent edits require disjoint single-line ranges and text");
+          throw new RangeError("Independent edits require integer ranges and string text");
+        if (normalizeLineEndings) {
+          const ending =
+            this.preferredLineEnding ||
+            this.lineEndingForRow(range.start.row) ||
+            this.lineEndingForRow(range.start.row - 1);
+          if (ending) text = text.replace(newlineRegex, ending);
+        }
         return { range, text };
       })
       .sort((a, b) => a.range.start.compare(b.range.start));
@@ -1424,26 +1443,36 @@ class TextBuffer {
     }
     const changes = planned.filter(({ range, text }) => this.getTextInRange(range) !== text);
     if (!changes.length) return false;
+    const source = this.getTextSnapshot();
     return this.transact(() => {
-      if (!this.tryApplyIndependentLineEdits(changes, true)) {
-        let row = -1,
-          delta = 0;
+      if (!this.tryApplyIndependentEdits(changes, true)) {
+        let oldEnd = Point.ZERO,
+          newEnd = Point.ZERO;
         for (const { range, text } of changes) {
-          if (range.start.row !== row) delta = 0;
-          row = range.start.row;
-          this.setTextInRange(
-            new Range([row, range.start.column + delta], [row, range.end.column + delta]),
-            text,
-            { normalizeLineEndings: false },
+          const newStart = newEnd.traverse(range.start.traversalFrom(oldEnd));
+          const oldText = source.slice(source.offsetAt(range.start), source.offsetAt(range.end));
+          // A previous edit can form CRLF around the next physical boundary.
+          // Preserve the original plan's offsets instead of clipping it again.
+          this.emitWillChangeEvent();
+          this.applyChange(
+            this.buffer.prepareEditFromChange({
+              oldStart: range.start,
+              oldEnd: range.end,
+              newStart,
+              oldText,
+              newText: text,
+            }),
+            { recordHistory: true },
           );
-          delta += text.length - range.end.column + range.start.column;
+          oldEnd = range.end;
+          newEnd = newStart.traverse(textExtent(text));
         }
       }
       return true;
     });
   }
 
-  tryApplyIndependentLineEdits(edits, recordHistory, origin = "edit") {
+  tryApplyIndependentEdits(edits, recordHistory, origin = "edit") {
     const requiresIntermediateText = () =>
       Object.values(this.markerLayers).some(
         (layer) =>
@@ -1456,7 +1485,8 @@ class TextBuffer {
     const canonicalChanges = [];
     const storageEdits = [];
     let previousRange = null;
-    let columnDelta = 0;
+    let previousNewEnd = Point.ZERO;
+    let previousOutputLastUnit = NaN;
     let offset = 0;
     let endIndex = 0;
     let firstIndex;
@@ -1465,28 +1495,42 @@ class TextBuffer {
       const oldRange = this.clipRange(range);
       if (
         typeof text !== "string" ||
-        /[\r\n]/.test(text) ||
         !Number.isInteger(oldRange.start.row) ||
         !Number.isInteger(oldRange.start.column) ||
         !Number.isInteger(oldRange.end.column) ||
-        oldRange.start.row !== oldRange.end.row ||
+        !Number.isInteger(oldRange.end.row) ||
+        !oldRange.isEqual(range) ||
         (previousRange &&
           (previousRange.end.compare(oldRange.start) > 0 ||
             previousRange.start.compare(oldRange.start) >= 0))
       )
         return false;
-      if (!previousRange || oldRange.start.row !== previousRange.start.row) columnDelta = 0;
-      previousRange = oldRange;
       const index = this.characterIndexForPosition(oldRange.start);
-      const oldEndIndex = index + oldRange.end.column - oldRange.start.column;
+      const oldEndIndex =
+        oldRange.start.row === oldRange.end.row
+          ? index + oldRange.end.column - oldRange.start.column
+          : this.characterIndexForPosition(oldRange.end);
       const oldText = source.slice(index, oldEndIndex);
-      if (/[\r\n]/.test(oldText)) return false;
       if (Object.hasOwn(planned, "oldText") && planned.oldText !== oldText) return false;
+      const leftUnit =
+        previousRange && index === endIndex ? previousOutputLastUnit : source.charCodeAt(index - 1);
+      // Scalar storage expands edits that split or create CRLF. Keep those
+      // boundary-affinity semantics by retaining scalar application at seams.
+      if (
+        (leftUnit === 13 &&
+          (source.charCodeAt(index) === 10 ||
+            text.charCodeAt(0) === 10 ||
+            (!text.length && source.charCodeAt(oldEndIndex) === 10))) ||
+        (text.charCodeAt(text.length - 1) === 13 && source.charCodeAt(oldEndIndex) === 10)
+      )
+        return false;
       if (changes.length === 0) firstIndex = endIndex = index;
       storageEdits.push({ start: index, end: oldEndIndex, text });
       endIndex = oldEndIndex;
-      const newStart = new Point(oldRange.start.row, oldRange.start.column + columnDelta);
-      const newEnd = new Point(newStart.row, newStart.column + text.length);
+      const newStart = previousRange
+        ? previousNewEnd.traverse(oldRange.start.traversalFrom(previousRange.end))
+        : oldRange.start;
+      const newEnd = newStart.traverse(textExtent(text));
       canonicalChanges.push({
         oldStart: oldRange.start,
         oldEnd: oldRange.end,
@@ -1497,7 +1541,7 @@ class TextBuffer {
       });
       changes.push({
         oldStart: newStart,
-        oldEnd: new Point(newStart.row, newStart.column + oldText.length),
+        oldEnd: newStart.traverse(oldRange.getExtent()),
         newStart,
         newEnd,
         oldText,
@@ -1507,7 +1551,9 @@ class TextBuffer {
         newEndIndex: index + offset + text.length,
       });
       offset += text.length - oldText.length;
-      columnDelta += text.length - oldText.length;
+      previousRange = oldRange;
+      previousNewEnd = newEnd;
+      previousOutputLastUnit = text.length ? text.charCodeAt(text.length - 1) : leftUnit;
     }
 
     this.emitWillChangeEvent();
@@ -1609,21 +1655,13 @@ class TextBuffer {
   }
 
   applyHistoryUpdates(changes, origin = "edit") {
-    if (
-      changes.length >= 64 &&
-      changes.every(
-        (change) =>
-          change.oldStart.row === change.oldEnd.row &&
-          change.newStart.row === change.newEnd.row &&
-          change.oldStart.row === change.newStart.row,
-      )
-    ) {
+    if (changes.length >= 64) {
       const edits = changes.map((change) => ({
         range: new Range(change.oldStart, change.oldEnd),
         text: change.newText,
         oldText: change.oldText,
       }));
-      if (this.tryApplyIndependentLineEdits(edits, false, origin)) return;
+      if (this.tryApplyIndependentEdits(edits, false, origin)) return;
     }
     for (const change of changes)
       this.applyChange(this.buffer.prepareEditFromChange(change), { origin });
@@ -2232,6 +2270,19 @@ class TextBuffer {
     }
   }
 
+  // Scalar selection edits still expose every intermediate text state. Defer
+  // history after row shifts; column-only edits keep their local index probes.
+  // Snapshot readers flush dirty maps even inside a nested batch.
+  batchMarkerHistory(fn) {
+    const layers = Object.values(this.markerLayers).filter((layer) => layer.historyShadow);
+    for (const layer of layers) layer.beginHistoryBatch(false);
+    try {
+      return fn();
+    } finally {
+      for (const layer of layers) layer.endHistoryBatch(false);
+    }
+  }
+
   /**
    * @public
    * @status public
@@ -2612,7 +2663,7 @@ class TextBuffer {
     this.transact(() => {
       if (
         !replacements.some((replacement) => replacement.physicalRange) &&
-        this.tryApplyIndependentLineEdits(replacements, true)
+        this.tryApplyIndependentEdits(replacements, true)
       )
         return;
       for (let i = replacements.length - 1; i >= 0; i--) {

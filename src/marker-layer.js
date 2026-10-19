@@ -68,6 +68,7 @@ class MarkerLayer {
     this.historyShadow = maintainHistory ? new MarkerHistoryMap() : null;
     this.historyProperties = maintainHistory ? new MarkerHistoryMap() : null;
     this.historyBatchDepth = 0;
+    this.historyColumnBatchDepth = 0;
     this.historyShadowDirty = false;
     this.destroyInvalidatedMarkers = destroyInvalidatedMarkers;
     this.role = role;
@@ -502,8 +503,10 @@ class MarkerLayer {
     if (this.markersById.size === 0) return;
     // Only custom trackers need pre-edit ranges. History reuses the touched
     // ids returned by the splice, avoiding a second interval query and sort.
-    const collectHistoryTouches =
-      this.historyShadow && !this.historyBatchDepth && !this.trackRanges;
+    const deferHistory =
+      this.historyBatchDepth &&
+      (this.historyColumnBatchDepth || this.historyShadowDirty || oldExtent.row !== newExtent.row);
+    const collectHistoryTouches = this.historyShadow && !deferHistory && !this.trackRanges;
     let touched = this.trackRanges
       ? this.index.findIntersecting(start, traverse(start, oldExtent))
       : null;
@@ -591,7 +594,7 @@ class MarkerLayer {
     }
 
     if (this.historyShadow) {
-      if (this.historyBatchDepth) this.historyShadowDirty = true;
+      if (deferHistory) this.historyShadowDirty = true;
       else this.spliceHistoryShadow(touched, start, oldExtent, newExtent);
     }
   }
@@ -599,12 +602,14 @@ class MarkerLayer {
   // A text batch still splices the live index for every edit, but history only
   // needs the resulting coordinates. Snapshot readers can force an earlier
   // synchronization without closing the batch or mutating retained snapshots.
-  beginHistoryBatch() {
+  beginHistoryBatch(deferColumns = true) {
     this.historyBatchDepth = (this.historyBatchDepth || 0) + 1;
+    if (deferColumns) this.historyColumnBatchDepth++;
   }
 
-  endHistoryBatch() {
+  endHistoryBatch(deferColumns = true) {
     this.historyBatchDepth--;
+    if (deferColumns) this.historyColumnBatchDepth--;
     if (!this.historyBatchDepth) this.flushHistoryShadow();
   }
 

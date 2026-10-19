@@ -215,6 +215,53 @@ test("same-row independent patches merge adjacent changes exactly like native", 
   }
 });
 
+test("multiline independent patches match native through adjacent edits and row shifts", () => {
+  let seed = 1701;
+  const random = (n) => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % n;
+  const position = (text, offset) => {
+    const prefix = text.slice(0, offset);
+    return { row: prefix.split("\n").length - 1, column: offset - prefix.lastIndexOf("\n") - 1 };
+  };
+  for (let sample = 0; sample < 100; sample++) {
+    const source = "ab😀\r\ncd\nef\n".repeat(100),
+      changes = [],
+      native = new NativePatch();
+    let output = source,
+      cursor = 0,
+      delta = 0;
+    for (let i = 0; i < 50; i++) {
+      const start = cursor + random(3),
+        end = start + random(9);
+      const text = ["", "x\ny", "😀\r\nZ\n", "ending", "\n"][random(5)];
+      const oldText = source.slice(start, end);
+      const newStart = position(output, start + delta);
+      output = output.slice(0, start + delta) + text + output.slice(end + delta);
+      const newEnd = position(output, start + delta + text.length);
+      changes.push({
+        oldStart: position(source, start),
+        oldEnd: position(source, end),
+        newStart,
+        newEnd,
+        oldText,
+        newText: text,
+      });
+      native.splice(
+        newStart,
+        position(oldText, oldText.length),
+        position(text, text.length),
+        oldText,
+        text,
+      );
+      delta += text.length - oldText.length;
+      cursor = end + (start === end ? 1 : 0);
+    }
+    const patch = Patch.fromIndependentChanges(changes);
+    assert(patch);
+    assert.deepEqual(clean(patch.getChanges()), clean(native.getChanges()));
+    assert.deepEqual(Patch.compose([patch, patch.invert()]).getChanges(), []);
+  }
+});
+
 test("composing canonical patches removes identities and preserves independent roots", () => {
   for (const mergeAdjacentChanges of [true, false]) {
     const js = new Patch({ mergeAdjacentChanges }),
@@ -234,5 +281,29 @@ test("composing canonical patches removes identities and preserves independent r
     const original = clean(js.getChanges());
     result.splice({ row: 0, column: 0 }, { row: 0, column: 0 }, { row: 0, column: 1 }, "", "!");
     assert.deepEqual(clean(js.getChanges()), original);
+  }
+});
+
+test("composing many ordered selection patches matches native and falls back for overlaps", () => {
+  for (const overlap of [false, true]) {
+    const patches = [],
+      native = new NativePatch();
+    for (let i = 0; i < 200; i++) {
+      const start = { row: overlap ? 0 : i * 3, column: 2 };
+      const oldExtent = { row: 0, column: 1 },
+        newExtent = { row: 1, column: 1 };
+      const patch = new Patch();
+      patch.splice(start, oldExtent, newExtent, "a", "x\ny");
+      native.splice(start, oldExtent, newExtent, "a", "x\ny");
+      patches.push(patch);
+    }
+    const before = patches.map((patch) => clean(patch.getChanges()));
+    const combined = Patch.compose(patches);
+    assert.deepEqual(clean(combined.getChanges()), clean(native.getChanges()));
+    assert.deepEqual(
+      patches.map((patch) => clean(patch.getChanges())),
+      before,
+    );
+    assert.deepEqual(Patch.compose([combined, combined.invert()]).getChanges(), []);
   }
 });

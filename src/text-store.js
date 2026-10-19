@@ -271,7 +271,7 @@ class TextStore {
     );
   }
 
-  // Offsets address one source snapshot. The facade validates the line-edit
+  // Offsets address one source snapshot. The facade validates the independent-edit
   // contract; storage shares untouched pieces and publishes only one root.
   prepareEdits(edits) {
     const revision = this.#revision;
@@ -294,25 +294,18 @@ class TextStore {
           throw Object.assign(new Error("Prepared edits no longer match the buffer revision"), {
             code: "ERR_STALE_EDIT",
           });
-        let row = -1,
-          columnDelta = 0;
+        let oldEnd = zero,
+          newEnd = zero;
         let changes =
-          this.#changes.getChangeCount() === 0 &&
-          deltas.every(
-            (delta) =>
-              delta.oldRange.start.row === delta.oldRange.end.row &&
-              delta.newRange.start.row === delta.newRange.end.row,
-          )
+          this.#changes.getChangeCount() === 0
             ? Patch.fromIndependentChanges(
                 deltas
                   .slice()
                   .reverse()
                   .map((delta) => {
-                    if (row !== delta.oldRange.start.row) columnDelta = 0;
-                    row = delta.oldRange.start.row;
-                    const newStart = { row, column: delta.oldRange.start.column + columnDelta };
-                    const newEnd = { row, column: newStart.column + delta.inserted.length };
-                    columnDelta += delta.inserted.length - delta.removed.length;
+                    const newStart = traverse(newEnd, distance(delta.oldRange.start, oldEnd));
+                    oldEnd = delta.oldRange.end;
+                    newEnd = traverse(newStart, extent(delta.inserted));
                     return {
                       oldStart: delta.oldRange.start,
                       oldEnd: delta.oldRange.end,

@@ -76,7 +76,9 @@ function apply(context, scenario, scalar = false) {
   } else assert.equal(buffer.replace(/foo/g, replacement), scenario.count);
 }
 const results = [];
-for (const scenario of scenarios) {
+for (const scenario of scenarios.filter(
+  (scenario) => !option("filter") || new RegExp(option("filter")).test(scenario.id),
+)) {
   const oracle = build(scenario),
     expected = { before: state(oracle.buffer, oracle.layer, oracle.display) };
   apply(oracle, scenario, true);

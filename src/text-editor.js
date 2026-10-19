@@ -2464,9 +2464,9 @@ module.exports = class TextEditor {
   mutateSelectedText(fn, groupingInterval = 0) {
     return this.mergeIntersectingSelections(() => {
       return this.transact(groupingInterval, () => {
-        return this.getSelectionsOrderedByBufferPosition().map((selection, index) =>
-          fn(selection, index),
-        );
+        const selections = this.getSelectionsOrderedByBufferPosition();
+        const mutate = () => selections.map((selection, index) => fn(selection, index));
+        return selections.length >= 64 ? this.buffer.batchMarkerHistory(mutate) : mutate();
       });
     });
   }

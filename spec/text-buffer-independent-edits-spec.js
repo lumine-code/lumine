@@ -1,6 +1,6 @@
 const TextBuffer = require("../src/text-buffer");
 
-describe("Independent line edit batches", () => {
+describe("Independent edit batches", () => {
   const buffers = [];
   afterEach(() => {
     for (const buffer of buffers.splice(0)) buffer.destroy();
@@ -116,14 +116,14 @@ describe("Independent line edit batches", () => {
       [0, 0],
       [127, 8],
     ]);
-    const prepare = spyOn(buffer.buffer, "prepareEdit").and.callThrough();
+    const prepare = spyOn(buffer.buffer, "prepareEditFromChange").and.callThrough();
     buffer.setTextInIndependentRanges(edits);
     expect(prepare.calls.count()).toBe(edits.length);
     expect(seen[0]).toBe("  row_127\t😀ą");
     expect(seen.at(-1)).toBe(buffer.lineForRow(127));
   });
 
-  it("rejects overlapping rows, fractional columns and inserted line endings before changing text", () => {
+  it("rejects overlapping ranges, fractional columns and non-string text before changing text", () => {
     for (const first of [
       {
         range: [
@@ -144,7 +144,7 @@ describe("Independent line edit batches", () => {
           [0, 0],
           [0, 0],
         ],
-        text: "new\nline\r\n",
+        text: null,
       },
     ]) {
       const actual = build(),
@@ -190,7 +190,7 @@ describe("Independent line edit batches", () => {
       );
       marker.onDidDestroy(() => seen.push(buffer.lineForRow(127)));
     });
-    const prepare = spyOn(buffer.buffer, "prepareEdit").and.callThrough();
+    const prepare = spyOn(buffer.buffer, "prepareEditFromChange").and.callThrough();
     buffer.setTextInIndependentRanges(edits);
     expect(prepare.calls.count()).toBe(edits.length);
     expect(seen).toEqual(["  row_127\t😀ą"]);
@@ -229,7 +229,7 @@ describe("Independent line edit batches", () => {
         },
         {
           range: [
-            [1, 0],
+            [0, 0],
             [2, 0],
           ],
           text: "Y",
