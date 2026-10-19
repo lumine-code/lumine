@@ -59,3 +59,40 @@ All 96 selected package suites passed: 4202 specs, including all 78 available gr
 The full editor run executed 6928 specs with one pending platform-specific test and eight environment failures. Seven Project failures came from the source snapshot lacking a Git repository; all 93 Project specs passed after initializing a disposable repository in that fixture. The ModuleCache filesystem-call assertion fails in both before/after snapshots with the shared dependency junction, while all six ModuleCache specs pass in the normal checkout with identical ModuleCache source. These controls resolve the failures without changing production code or hiding the initial result; this is cumulative validation rather than one all-green frozen run.
 
 The pass also fixes regex replacements targeting either half of CRLF or a zero-width position inside it, rejects reentrant replace-all before preparing edits, and preserves text/selections/result markers when direct formatting or search replacement is refused by a read-only editor. Full text materialization for arbitrary RegExp matching remains. General multiline batches and the parser's 128-edit fresh-parse threshold remain separate optimization targets.
+
+## Marker history locality follow-up
+
+A later pass removes two repeated operations from scalar edits: history now reuses the touched marker ids returned by the index splice, and row-preserving edits query only starts that can shift on their last row. The bounded, unordered query stops after one thirty-second of the layer's marker count and falls back to the existing map scan for dense results. Custom range trackers still receive pre-edit ranges; multiline edits that shift rows retain the full translation path. Independent bulk edits retain their single history synchronization.
+
+The [marker locality capture](../benchmark/results/marker-history-locality-2026-10-19.json) compares the JavaScript model immediately before and after this change, with shared core/package source bytes frozen once and only marker-layer.js and marker-index.js different. Two fresh processes per variant run in before/after/after/before order. The model has 15 samples and four warmups per process; the editor has seven samples and two warmups. Tables show the mean of the two process medians in milliseconds; the JSON retains raw samples, process medians, pooled p95, hashes and runtime versions. Timed sections exclude correctness checks and fixture creation.
+
+| Model operation               | Before ms | After ms |
+| ----------------------------- | --------: | -------: |
+| typing-10000-markers          |     0.687 |    0.279 |
+| scalar-batch-10000-markers    |    20.699 |    4.537 |
+| bulk-batch-10000-markers      |     2.901 |    2.753 |
+| same-row-10000-markers        |     1.970 |    1.868 |
+| mostly-same-row-10000-markers |     1.740 |    1.740 |
+| touching-row-10000-markers    |    25.313 |   21.413 |
+| newline-10000-markers         |     1.254 |    1.284 |
+
+Each model fixture contains 10000 rows. The scalar and bulk batches insert into 100 distinct rows; they demonstrate why callers that already have an edit plan should use the bulk API. Dense controls place every marker, or 90% of them, on the edited row. The touching control covers the edit with 10000 ranges. Single edits without markers and with ten markers are also recorded, but their sub-millisecond variation is not evidence of a general speedup.
+
+| Editor operation with 20 active packages | Before ms | After ms |
+| ---------------------------------------- | --------: | -------: |
+| plain-1m-markers/edit                    |     3.500 |    3.450 |
+| multicursor-1000/edit                    |   142.600 |  129.100 |
+| format-edits-2000-js/edit                |    89.150 |   85.900 |
+| format-edits-html-500/edit               |   280.800 |  292.300 |
+| whitespace-trim-5000/edit                |    53.450 |   53.650 |
+| autocomplete-popup/edit                  |    11.000 |    9.700 |
+
+Editor timings include command execution, grammar settlement and explicit DOM layout; they exclude physical frame presentation. Formatting, whitespace and completion are controls, not claims of broad acceleration. This change reduces bookkeeping around edits and does not change parser policy, word indexing or package APIs. Output text, marker state, undo/redo and syntax signatures agree between both variants.
+
+Validation passed 1901 focused editor specs, 107 Node tests and 3393 specs in 27 selected package/grammar suites, with marker-history/index verification enabled for editor and package tests. The index's bounded queries also have randomized differential coverage against the native oracle after lazy shifts. Frozen source and package fingerprints remained unchanged.
+
+An exploratory larger bulk piece-compaction target reduced reader callback counts but did not establish a reliable edit-time gain, so the production piece sizes remain unchanged. The earlier unbounded marker query regressed the all-markers-on-one-row case; the shipped bounded query and dense fallback address that case. Neither pilot is presented as shipped performance evidence.
+
+The main HTML control was about 4% slower, so it was repeated alone against the same frozen sources with reversed after/before/before/after process order, 15 samples and four warmups per process. That isolated comparison measured 299.70 → 301.45 ms. Both captures remain in the JSON: the first difference did not reproduce as a consistent slowdown, and neither capture establishes an HTML speedup. No correctness suites ran during either timing capture.
+
+Run the model driver with `node --expose-gc benchmark/marker-history-locality.js --source <frozen-checkout> --output <report.json>`. Source and dependency identity must match across variants; the report records the active package set and configuration for the existing editor integration driver.
