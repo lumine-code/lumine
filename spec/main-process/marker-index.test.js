@@ -5,6 +5,40 @@ const { MarkerIndex: NativeMarkerIndex } = require("@lumine-code/superstring");
 const point = (row, column = 0) => ({ row, column });
 const compare = (a, b) => a.row - b.row || a.column - b.column;
 
+test("bounded start queries stay exact through lazy shifts and stop at their limit", () => {
+  const index = new MarkerIndex();
+  const native = new NativeMarkerIndex();
+  for (let id = 0; id < 1000; id++) {
+    for (const target of [index, native])
+      target.insert(id, point(id % 100, id % 7), point((id % 100) + 2, 9));
+  }
+  for (let step = 0; step < 40; step++) {
+    const start = point((step * 17) % 100, 2);
+    for (const target of [index, native])
+      target.splice(start, point(step % 2, 1), point(step % 3, 4));
+    for (const [a, b] of [
+      [point(0), point(Infinity, Infinity)],
+      [start, point(start.row, Infinity)],
+      [point(25, 1), point(70, 3)],
+      [point(1000), point(1001)],
+    ]) {
+      const expected = [...native.findStartingIn(a, b)].sort((x, y) => x - y);
+      for (const limit of [0, 1, 16, expected.length, 1000]) {
+        const actual = index.findStartingInLimited(a, b, limit);
+        if (expected.length > limit) assert.equal(actual, null);
+        else
+          assert.deepEqual(
+            actual.sort((x, y) => x - y),
+            expected,
+          );
+      }
+    }
+    assert.deepEqual(index.dump(), native.dump());
+  }
+  for (const limit of [-1, 1.5, Infinity, NaN])
+    assert.throws(() => index.findStartingInLimited(point(0), point(1), limit), RangeError);
+});
+
 test("JavaScript interval index matches native coordinates, queries and invalidation", () => {
   for (let seed = 1; seed <= 20; seed++) {
     let state = seed;

@@ -223,6 +223,107 @@ describe("MarkerLayer", function () {
         }
       };
 
+      it("updates row-local history without visiting markers elsewhere in the file", () => {
+        buffer.setText("abcdefghij\n".repeat(1000));
+        for (let row = 0; row < 1000; row++) {
+          layer3.markRange([
+            [row, 7],
+            [row, 9],
+          ]);
+        }
+        // Spanning markers and endpoints touching the edit use the index's
+        // affinity rules; only untouched starts on the last row translate.
+        for (const range of [
+          [
+            [498, 1],
+            [501, 9],
+          ],
+          [
+            [499, 1],
+            [500, 8],
+          ],
+          [
+            [500, 8],
+            [501, 9],
+          ],
+          [
+            [500, 1],
+            [500, 3],
+          ],
+          [
+            [500, 3],
+            [500, 3],
+          ],
+          [
+            [500, 3],
+            [500, 5],
+          ],
+        ]) {
+          for (const exclusive of [false, true]) layer3.markRange(range, { exclusive });
+        }
+        const retained = layer3.createSnapshot();
+        const expected = MarkerLayer.materializeSnapshot(retained);
+        const iteration = spyOn(layer3.historyShadow, Symbol.iterator).and.throwError(
+          "Row-local edit scanned the full history map",
+        );
+        buffer.insert([500, 3], "XY");
+        buffer.setTextInRange(
+          [
+            [499, 4],
+            [500, 4],
+          ],
+          "x\nyyyyy",
+        );
+        buffer.setTextInRange(
+          [
+            [500, 1],
+            [500, 6],
+          ],
+          "",
+        );
+        expect(iteration.calls.count()).toBe(0);
+        expectShadowAgreesWithIndex(layer3);
+        expect(MarkerLayer.materializeSnapshot(retained)).toEqual(expected);
+        for (let i = 0; i < 3; i++) {
+          buffer.undo();
+          expectShadowAgreesWithIndex(layer3);
+        }
+        for (let i = 0; i < 3; i++) {
+          buffer.redo();
+          expectShadowAgreesWithIndex(layer3);
+        }
+      });
+
+      it("reuses splice intersections for history without querying them twice", () => {
+        buffer.setText("abcdefghij\n".repeat(20));
+        for (const invalidate of ["never", "touch", "inside", "overlap", "surround"]) {
+          for (const exclusive of [false, true]) {
+            layer3.markRange(
+              [
+                [1, 2],
+                [3, 7],
+              ],
+              { invalidate, exclusive },
+            );
+            layer3.markPosition([2, 4], { invalidate, exclusive });
+          }
+        }
+        const query = spyOn(layer3.index, "findIntersecting").and.throwError("Redundant query");
+        buffer.setTextInRange(
+          [
+            [1, 5],
+            [3, 1],
+          ],
+          "x\ny",
+        );
+        expectShadowAgreesWithIndex(layer3);
+        buffer.undo();
+        expectShadowAgreesWithIndex(layer3);
+        buffer.redo();
+        expectShadowAgreesWithIndex(layer3);
+        expect(query).not.toHaveBeenCalled();
+      });
+
       it("stays exact through creates, destroys, explicit moves and splices", () => {
         buffer.setText("one two\nthree four\nfive six\n");
         const kept = layer3.markRange([

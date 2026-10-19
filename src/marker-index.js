@@ -348,6 +348,36 @@ class MarkerIndex {
   findStartingIn(start, end) {
     return this.#find(start, end, "start");
   }
+
+  // Internal locality probe. Unordered ids avoid sorting an implementation
+  // detail; null asks the caller to scan its own map when the result is dense.
+  findStartingInLimited(start, end, limit) {
+    start = queryPoint(start);
+    end = queryPoint(end);
+    validate(start, true);
+    validate(end, true);
+    if (!Number.isSafeInteger(limit) || limit < 0) throw new RangeError("Invalid result limit");
+    if (
+      this.#root &&
+      this.#nodes.size > limit &&
+      compare(this.#root.minStart, start) >= 0 &&
+      compare(this.#root.maxStart, end) <= 0
+    )
+      return null;
+    const ids = [];
+    const visit = (node) => {
+      if (!node || compare(node.maxStart, start) < 0 || compare(node.minStart, end) > 0)
+        return true;
+      push(node);
+      if (!visit(node.left)) return false;
+      if (compare(node.start, start) >= 0 && compare(node.start, end) <= 0) {
+        if (ids.length === limit) return false;
+        ids.push(node.id);
+      }
+      return visit(node.right);
+    };
+    return visit(this.#root) ? ids : null;
+  }
   findEndingIn(start, end) {
     return this.#find(start, end, "end");
   }

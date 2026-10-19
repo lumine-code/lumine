@@ -500,15 +500,13 @@ class MarkerLayer {
     // Empty layers have no coordinates or invalidation state to update. The
     // buffer still schedules their transaction-level did-update notification.
     if (this.markersById.size === 0) return;
-    // Markers the splice touches (closed interval, so boundary contact counts)
-    // move in ways plain arithmetic cannot reproduce — a deletion collapses
-    // their boundaries — so they are re-read from the index afterwards. Every
-    // other marker's endpoints sit strictly outside the spliced region and
-    // translate exactly.
-    let touched = null;
-    if ((this.historyShadow && !this.historyBatchDepth) || this.trackRanges) {
-      touched = this.index.findIntersecting(start, traverse(start, oldExtent));
-    }
+    // Only custom trackers need pre-edit ranges. History reuses the touched
+    // ids returned by the splice, avoiding a second interval query and sort.
+    const collectHistoryTouches =
+      this.historyShadow && !this.historyBatchDepth && !this.trackRanges;
+    let touched = this.trackRanges
+      ? this.index.findIntersecting(start, traverse(start, oldExtent))
+      : null;
     let trackedRanges = null;
     if (this.trackRanges && touched.size > 0) {
       const ranges = [];
@@ -539,8 +537,10 @@ class MarkerLayer {
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
     if (typeof this.index.splicePacked === "function") {
       const invalidated = this.index.splicePacked(start, oldExtent, newExtent);
+      if (collectHistoryTouches) touched = new Set();
       if (invalidated !== null) {
         for (let offset = 0; offset < invalidated.length; offset += 2) {
+          if (collectHistoryTouches) touched.add(invalidated[offset]);
           const marker = this.markersById.get(invalidated[offset]);
           let strategy = marker.getInvalidationStrategy();
           // Coerce unusual property keys exactly once, as the legacy lookup does.
@@ -562,6 +562,7 @@ class MarkerLayer {
       }
     } else {
       const invalidated = this.index.splice(start, oldExtent, newExtent);
+      if (collectHistoryTouches) touched = invalidated.touch;
       for (const id of invalidated.touch) {
         const marker = this.markersById.get(id);
         if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
@@ -640,7 +641,29 @@ class MarkerLayer {
     const newEndColumn = newEnd.column;
     const rowDelta = newEndRow - oldEndRow;
 
-    if (rowDelta !== 0 || oldEndColumn !== newEndColumn) {
+    let shifted = null;
+    if (rowDelta === 0 && oldEndColumn !== newEndColumn) {
+      // Untouched markers can only move if they start after the edit on its
+      // last row. Query the updated index in new coordinates rather than scan
+      // every history entry in the document for each typed character.
+      shifted = this.index.findStartingInLimited(
+        newEnd,
+        { row: newEndRow, column: Infinity },
+        Math.floor(this.historyShadow.size / 32),
+      );
+    }
+    if (shifted !== null) {
+      for (const id of shifted) {
+        if (touched.has(id)) continue;
+        const entry = this.historyShadow.get(id);
+        this.historyShadow.set(id, {
+          sr: entry.sr,
+          sc: newEndColumn + (entry.sc - oldEndColumn),
+          er: entry.er,
+          ec: entry.er === oldEndRow ? newEndColumn + (entry.ec - oldEndColumn) : entry.ec,
+        });
+      }
+    } else if (rowDelta !== 0 || oldEndColumn !== newEndColumn) {
       for (const [id, entry] of this.historyShadow) {
         if (touched.has(id)) continue;
         // Entirely before the splice: nothing moved.

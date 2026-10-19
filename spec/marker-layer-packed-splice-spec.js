@@ -249,7 +249,7 @@ describe("MarkerLayer packed splice", () => {
       const trace = result[1].trace;
       const firstSplice = trace.findIndex(([event]) => event === "splice");
       expect(trace[firstSplice - 1]).toEqual(["bufferMarkerRangesDidChange"]);
-      expect(trace[firstSplice - 2][0]).toBe("intersect");
+      expect(trace.some(([event]) => event === "intersect")).toBe(false);
     });
   }
 
