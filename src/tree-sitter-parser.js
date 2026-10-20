@@ -1,5 +1,6 @@
 const { Parser } = require("web-tree-sitter");
 require("./tree-sitter-cursor");
+const ownTree = require("./tree-sitter-tree");
 
 const metadata = new WeakMap();
 const BULK_EDIT_LIMIT = 128;
@@ -97,6 +98,7 @@ function applyEdits(tree, previous, text, edits) {
 }
 
 function publish(tree, text, revision, incremental, changedRanges = []) {
+  tree = ownTree(tree);
   tree.textCallback = nodeTextInput(text);
   metadata.set(tree, { text, revision });
   Object.defineProperties(tree, {

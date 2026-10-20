@@ -8,6 +8,7 @@ const path = require("path");
 const crypto = require("crypto");
 const TextStore = require("./text-store");
 const TextPatch = require("./text-patch");
+const { idleDisposals } = require("./idle-disposal-queue");
 const Point = require("./point");
 const Range = require("./range");
 const DefaultHistoryProvider = require("./default-history-provider");
@@ -4424,6 +4425,7 @@ class TextBuffer {
         );
         if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges, origin, beforeRevision);
         if (compactedChanges.length > 0) {
+          idleDisposals.didEdit();
           const changeEvent = new ChangeEvent(this, compactedChanges, origin);
           this.languageMode.bufferDidFinishTransaction(changeEvent);
           this.emitter.emit("did-change-text", changeEvent);
