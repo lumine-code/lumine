@@ -66,7 +66,24 @@ The deletion itself still costs approximately 90–92 ms in either owner. Offloa
 
 This is an ownership experiment, not a production editor worker. It does not implement the current renderer's synchronous Tree/Node/query APIs, the complete injection pipeline, or worker cancellation under concurrent document generations. It also does not measure a production worker's total memory overhead. A worker removes these tree operations from the renderer, but does not guarantee absence of all pauses; even the deliberately expensive validation phase has occasional host scheduling outliers.
 
-The evidence supports a next architectural step: a worker-owned parser and revisioned, serializable results for visible highlighting, folds and symbols. Consumers would request bounded results and retain a validated cache instead of receiving WASM node pointers. Shipping this requires integration and memory measurements, not just the isolated benchmark.
+The isolated result motivates testing a worker as the sole parser owner, with revisioned, serializable results for visible highlighting, folds and symbols. Consumers would request bounded results and retain a validated cache instead of receiving WASM node pointers. This remains an untested architecture, not an accepted implementation plan. Further worker testing was deferred after the integration experiment below.
+
+## Withdrawn duplicate-parser integration
+
+A subsequent Electron prototype added a worker-owned document and syntax tree while retaining the renderer's existing parser. Four fleet processes covered local symbols and LSP, each with the worker disabled and enabled, for 4800 character inputs across middle-of-file and near-EOF openings. Outline remained closed and the full 195778-symbol cache was populated. The prototype passed seven Node tests and 172 editor integration specs; bounded worker captures agreed with the renderer.
+
+| Condition     | Position | Input p99 without worker, ms | Input p99 with worker, ms |
+| ------------- | -------- | ---------------------------: | ------------------------: |
+| Local symbols | Middle   |                          1.2 |                       1.2 |
+| Local symbols | Near EOF |                          0.7 |                       0.8 |
+| LSP           | Middle   |                          1.5 |                       1.6 |
+| LSP           | Near EOF |                          1.1 |                       1.0 |
+
+Worker readiness took approximately 1.82–1.94 seconds on opening. The observed process RSS decrease after closing worker sessions was approximately 302–317 MiB; GC and other process activity make this an estimate, not an isolated worker-allocation measurement. Each opening transferred the full text once, followed by 600 delta batches containing 600 inserted UTF-16 units. Final worker syntax readiness took approximately 126–129 ms after middle-of-file typing and 6–7 ms near EOF. There was only one process per condition, so small latency differences are not statistically established improvements.
+
+The renderer still owned its original tree, so its expensive synchronous WASM operations remained. Duplicating the parser added memory and initialization cost without demonstrating an interaction benefit. The integration was therefore removed, including its runtime files and prototype-specific specs. The standalone benchmark above remains available as an optional experiment; it is not loaded by the editor.
+
+The current editor parses on the renderer thread. Cooperative scheduling yields between parse slices but does not create a separate thread. A future sole-owner worker test must replace renderer tree ownership and account for synchronous consumers, injections, cancellation, initialization and memory. The rejected duplicate-parser result does not establish the performance of that different architecture.
 
 ## Validation
 
@@ -74,7 +91,7 @@ Implementation commits are `fc201a27` in core and `4d0726a` in IDE. They are loc
 
 The final test set passes 815 tests: 246 editor/IDE integration specs, 97 Node runtime tests and 472 autocomplete specs. Coverage includes large-buffer indentation and grouped undo, immediate text after a deferred newline, editor destruction while queued, synchronous overrides, root ranges, nested and combined injections, snapshot publication, request preparation and cancellation, completion cache reuse and manual/trigger-character bypass. The worker experiment additionally checks fresh-parse equivalence across reopening for the supplied large document and generated JavaScript with CRLF, accented identifiers and surrogate pairs.
 
-Changed sources pass ESLint and formatting checks. Tests run locally on Windows with `CI` unset; this is not cross-platform CI evidence. No dependency pins are part of this change, and concurrent fuzzy work is preserved. Raw CPU traces, private-input configuration and detailed run output remain in local diagnostic storage.
+Changed sources pass ESLint and formatting checks. Tests run locally on Windows with `CI` unset; this is not cross-platform CI evidence. No dependency pins are part of this change, and concurrent fuzzy work is preserved. CPU profiles, raw traces (stored in ZIP archives after cleanup), private-input configuration and detailed run output remain in local diagnostic storage. These are historical measurements; cleaning the diagnostic storage does not constitute a new performance run.
 
 ## Reproduction
 
