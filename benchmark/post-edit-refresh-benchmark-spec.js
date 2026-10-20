@@ -1,8 +1,7 @@
 // LUMINE_SCROLL_CONFIG: {out, file, server, packages, cycles?, operation?, retiredTree?}.
 // retiredTree queues one independent raw WASM tree after typing; no GC is forced.
 // Optional profile handshakes are diagnostic only. Input files are never saved.
-// LUMINE_SCROLL_CONFIG supplies {out, file, server, packages, cycles?, operation?}.
-// Optional profile handshakes are diagnostic only. Input files are never saved.
+// requireSymbols waits for the full document cache before measuring edits.
 const fs = require("fs"),
   path = require("path"),
   crypto = require("crypto");
@@ -128,6 +127,14 @@ describe("Typing then scrolling with language services", () => {
         parser.delete();
       }
       await sleep(2500);
+      let initialSymbolCount;
+      if (c.requireSymbols) {
+        const symbols = await registry.getFileSymbols(editor);
+        initialSymbolCount = symbols.length;
+        expect(initialSymbolCount).toBeGreaterThan(c.requireSymbols);
+        // Exclude publication work from the typing window.
+        await sleep(500);
+      }
       if (cycle === 0 && c.profile) {
         fs.writeFileSync(path.join(c.out, "ready"), "");
         while (!fs.existsSync(path.join(c.out, "go"))) await sleep(20);
@@ -213,6 +220,7 @@ describe("Typing then scrolling with language services", () => {
       if (c.retiredTree) expect(retirement.duration).toBeGreaterThan(0);
       result.cases.push({
         cycle,
+        initialSymbolCount,
         retirement,
         inputHash,
         outputHash: hash(editor.getText()),
