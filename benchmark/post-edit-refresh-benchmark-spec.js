@@ -2,6 +2,8 @@
 // retiredTree queues one independent raw WASM tree after typing; no GC is forced.
 // Optional profile handshakes are diagnostic only. Input files are never saved.
 // requireSymbols waits for the full document cache before measuring edits.
+// inputCount (60), inputInterval (16.667 ms), idleMs (6000) control duration.
+// diagnostic wraps synchronous calls; disable it for accepted timing runs.
 const fs = require("fs"),
   path = require("path"),
   crypto = require("crypto");
@@ -21,7 +23,16 @@ describe("Typing then scrolling with language services", () => {
     lumine.config.set("symbol.providerTimeout", 10000);
     const result = { packages: c.packages, cases: [] },
       inputHash = hash(fs.readFileSync(c.file));
+    const probe = c.diagnostic
+      ? require("./interaction-probe")({
+          core: process.env.LUMINE_RESOURCE_PATH,
+          packagePaths: Object.fromEntries(
+            c.packages.map((name) => [name, lumine.packages.getActivePackage(name)?.path]),
+          ),
+        })
+      : null;
     for (let cycle = 0; cycle < (c.cycles || 2); cycle++) {
+      probe?.phase(`opening-${cycle}`);
       const editor = await lumine.workspace.open(c.file);
       editor.getElement().setUpdatedSynchronously(false);
       await editor.whenGrammarSettled();
@@ -150,20 +161,23 @@ describe("Typing then scrolling with language services", () => {
         running = true;
       const frame = (t) => {
         if (!running) return;
-        if (previous !== undefined) frames.push({ at: t, duration: t - previous });
+        if (previous !== undefined)
+          frames.push({ at: t, duration: t - previous, callbackLag: performance.now() - t });
         previous = t;
         requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
       await new Promise((r) => requestAnimationFrame(r));
       console.timeStamp("typing-" + cycle);
+      probe?.phase(`typing-${cycle}`);
       const start = performance.now();
-      for (let i = 0; i < 60; i++) {
-        await sleep(Math.max(0, start + i * 16.667 - performance.now()));
+      for (let i = 0; i < (c.inputCount ?? 60); i++) {
+        const scheduledAt = start + i * (c.inputInterval ?? 16.667);
+        await sleep(Math.max(0, scheduledAt - performance.now()));
         const at = performance.now();
         if (c.operation === "enter") editor.insertNewline();
         else editor.insertText(i % 12 === 11 ? " " : "a");
-        inputs.push({ at, duration: performance.now() - at });
+        inputs.push({ at, duration: performance.now() - at, delay: at - scheduledAt });
       }
       const inputEnd = performance.now();
       const syntaxSettlement = c.measureSyntaxSettlement
@@ -191,6 +205,7 @@ describe("Typing then scrolling with language services", () => {
         });
       }
       console.timeStamp("scroll-" + cycle);
+      probe?.phase(`scroll-${cycle}`);
       const top = editor.getElement().getScrollTop();
       for (let i = 0; i < 180; i++) {
         await sleep(Math.max(0, inputEnd + i * 16.667 - performance.now()));
@@ -210,7 +225,8 @@ describe("Typing then scrolling with language services", () => {
           top: editor.getElement().getScrollTop(),
         });
       }
-      await sleep(6000);
+      probe?.phase(`idle-${cycle}`);
+      await sleep(c.idleMs ?? 6000);
       const end = performance.now();
       running = false;
       console.timeStamp("done-" + cycle);
@@ -247,6 +263,7 @@ describe("Typing then scrolling with language services", () => {
         frames,
         services,
         session: session ? { state: session.state, adapter: session.adapter.id } : null,
+        diagnostic: probe?.snapshot(),
       });
       fs.writeFileSync(path.join(c.out, "result.json"), JSON.stringify(result, null, 2));
       clearTimeout(early);
@@ -260,6 +277,7 @@ describe("Typing then scrolling with language services", () => {
       expect(hash(fs.readFileSync(c.file))).toBe(inputHash);
     }
     result.finished = true;
+    probe?.dispose();
     fs.writeFileSync(path.join(c.out, "result.json"), JSON.stringify(result, null, 2));
     if (c.profile) {
       fs.writeFileSync(path.join(c.out, "stop"), "");
