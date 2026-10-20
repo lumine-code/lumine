@@ -73,11 +73,12 @@ describe("SelectList", () => {
     it("keeps the prepared ranking batch while the query changes", async () => {
       view = textItemView();
       await view.setQuery("o");
-      const matcher = view.filterMatcher;
+      const preparation = view.workerPreparation;
+      expect(preparation).not.toBeNull();
       for (const item of view.getFilteredItems()) view.getMatchIndices(item);
       await view.setQuery("on");
       for (const item of view.getFilteredItems()) view.getMatchIndices(item);
-      expect(view.filterMatcher).toBe(matcher);
+      expect(view.workerPreparation).toBe(preparation);
     });
 
     it("materializes its DOM lazily and stays out of the editor registry while detached", () => {

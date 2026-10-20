@@ -16,7 +16,6 @@ const $ = etch.dom;
 // matcher knob.
 const DEFAULT_MAX_RESULTS = SelectListModel.DEFAULT_PAGE_SIZE;
 const FILTER_PROGRESS_DELAY = 250;
-const ASYNC_SEARCH_MIN_ITEMS = 2048;
 
 // The component's own last row when matches exceed the cap. Never handed to the
 // consumer's callbacks: confirming it grows the list, selecting it reads as
@@ -44,32 +43,26 @@ let nextSelectListId = 1;
  * list actually overflows its viewport; shorter lists retain their natural
  * order without section separators. Pass `null` to remove this alternative.
  *
- * Set `search.prepareOnIdle: true` for a large built-in fuzzy list with a pure
- * `getFilterText` callback. Core may extract and normalize its text before a
- * query, in short yielding batches. Query sources and custom matchers are
- * unaffected. Source replacement and destruction cancel pending preparation;
- * an immediate query completes any remaining preparation before matching.
- *
- * `search.yieldToInput: true` also yields while ranking large flat lists (at
- * least 2048 items). It requires pure filter-text and score callbacks and the
- * built-in matcher without a custom sort. The previous rendered rows remain
- * visible, but selection and actions cannot confirm a stale match. A filtering
- * spinner replaces the action affordance after 250 ms of continuous filtering;
- * superseding a pending query does not restart that delay or flash a visible
- * spinner. Source loading still owns its separate
- * loading message. Every match is published together when ready;
- * newer input, source changes and destruction cancel the obsolete request.
- * `setQuery()` resolves after that request's results have rendered.
  * Built-in fuzzy search uses a dedicated Chromium worker per list by default,
  * regardless of list size. It prepares text, scores, sorts and traces the first
- * page. Set `search.worker: false` for a list known to always be small.
- * A worker starts on the first nonempty query, or during explicit idle
- * preparation, and is reused until the source changes or the list is destroyed.
+ * page. Set `search.worker: false` for a list known to always be small; this
+ * path prepares candidates on demand and matches synchronously.
+ *
+ * Set `search.prepareOnIdle: true` to prepare the worker's candidates before
+ * a query when `getFilterText` is pure. This option applies only to workers.
+ * Source replacement and destruction cancel pending preparation.
+ *
+ * While the worker filters, the previous rows remain visible and selection
+ * and actions cannot confirm a stale match. A spinner replaces the action
+ * affordance after 250 ms of continuous filtering; superseding a query does
+ * not restart that delay. Source loading retains its separate loading message.
+ * All matches are published together, and `setQuery()` resolves after rendering.
+ * New input, source changes and destruction cancel obsolete requests.
+ *
  * Query sources, custom matchers and custom filters retain their own execution
  * contract. Custom sort callbacks still run on the UI thread after worker
- * ranking. There is no global backend setting.
- * Pure score modifiers still run on their owning
- * UI thread in yielding batches; only numeric scores cross back to the worker.
+ * ranking. Pure score modifiers run there in yielding batches; only numeric
+ * scores cross back to the worker. There is no global backend setting.
  *
  * A recents adapter's `save(ids, change)` receives the operation's intent:
  * `{type: 'record'|'remove'|'clear'|'limit'|'replace', id?, limit}`. Apply it to
@@ -129,7 +122,6 @@ class SelectList extends InputDialog {
     this.filterMatcherIds = null;
     this.filterMatcherIgnoresDiacritics = null;
     this.filterMatcherGeneration = null;
-    this.matcherPreparation = null;
     this.queryWork = null;
     this.filteringProgressTimer = null;
     this.filteringProgressVisible = false;
@@ -195,12 +187,12 @@ class SelectList extends InputDialog {
       ? { sections: this.props.sections }
       : { items: this.props.items ?? [] };
     const initialQuery = this.modelQuery(this.props.query ?? "", this.props);
-    const yielding = this.shouldYieldSearch(this.props, initialQuery);
+    const searchInWorker = this.shouldSearchInWorker(this.props, initialQuery);
     this.model = new SelectListModel({
       ...source,
       getItemId: this.modelGetItemId,
       search: this.modelSearch,
-      query: yielding ? "" : initialQuery,
+      query: searchInWorker ? "" : initialQuery,
       recentIds: this.props.recentItemIds ?? configuredRecentIds,
       allowEmptySelection: selection.allowEmpty,
       pageSize: DEFAULT_MAX_RESULTS,
@@ -210,11 +202,11 @@ class SelectList extends InputDialog {
     this.props.items = this.model.getItems();
     this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
     this.validateOverflowSections(this.props);
-    if (yielding) this.model._applyUpdate({ query: initialQuery }, false, []);
+    if (searchInWorker) this.model._applyUpdate({ query: initialQuery }, false, []);
     this.syncModelState();
-    if (yielding)
+    if (searchInWorker)
       this.startQueryWork(selection.initial === undefined ? {} : { initial: selection.initial });
-    this.scheduleMatcherPreparation();
+    this.prepareWorkerOnIdle();
   }
 
   validateOverflowSections(props) {
@@ -608,13 +600,13 @@ class SelectList extends InputDialog {
     const previousSelection = this.selectionSnapshot();
     const initialSelection = this.initialSelectionForSession();
     this.model.resetDisplayLimit();
-    const yielding = this.shouldYieldSearch(this.props, this.model.getQuery());
-    if (yielding) this.model._applyUpdate({ initialSelection: { mode: "none" } }, false, []);
+    const searchInWorker = this.shouldSearchInWorker(this.props, this.model.getQuery());
+    if (searchInWorker) this.model._applyUpdate({ initialSelection: { mode: "none" } }, false, []);
     else this.model.update({ initialSelection });
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();
-    if (yielding) {
+    if (searchInWorker) {
       const selection = { initial: SelectListModel.normalizeInitialSelection(initialSelection) };
       if (this.queryWork) this.queryWork.selection = selection;
       else this.startQueryWork(selection);
@@ -703,7 +695,6 @@ class SelectList extends InputDialog {
     this.cancelQueryWork();
     this.clearWorkerMatcher();
     this.renderedItemsTree = null;
-    this.cancelMatcherPreparation();
     this.filterMatcher = null;
     this.filterMatcherIds = null;
     this.filterMatcherIgnoresDiacritics = null;
@@ -799,14 +790,14 @@ class SelectList extends InputDialog {
     if (this.props.source?.mode === "query") this.clearWorkerMatcher();
     if (query === this.model.getQuery() && !this.queryWork) return sourcePromise;
 
-    const yielding = this.shouldYieldSearch(this.props, query);
-    const selection = yielding ? this.selectionForSearch({ query }, previousSelection) : null;
-    this.model._applyUpdate({ query }, false, yielding ? [] : undefined);
-    this.cancelQueryWork(yielding);
+    const searchInWorker = this.shouldSearchInWorker(this.props, query);
+    const selection = searchInWorker ? this.selectionForSearch({ query }, previousSelection) : null;
+    this.model._applyUpdate({ query }, false, searchInWorker ? [] : undefined);
+    this.cancelQueryWork(searchInWorker);
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();
-    if (yielding) this.startQueryWork(selection);
+    if (searchInWorker) this.startQueryWork(selection);
     this.publishSelectionChange(previousSelection, "source");
     const updatePromise = this.updateComponent();
     return Promise.all([sourcePromise, updatePromise, this.queryWork?.promise]).then(
@@ -1038,22 +1029,22 @@ class SelectList extends InputDialog {
       this.supportsLocalFuzzySearch(nextProps) &&
       Object.keys(modelChanges).length === 1 &&
       "recentIds" in modelChanges;
-    const yielding =
-      changesModel && !recentsOnly && this.shouldYieldSearch(nextProps, modelChanges.query);
-    const querySelection = yielding
+    const searchInWorker =
+      changesModel && !recentsOnly && this.shouldSearchInWorker(nextProps, modelChanges.query);
+    const querySelection = searchInWorker
       ? this.selectionForSearch(modelChanges, previousSelection)
       : null;
     if (changesModel) {
-      if (yielding && querySelection.initial) modelChanges.initialSelection = { mode: "none" };
+      if (searchInWorker && querySelection.initial)
+        modelChanges.initialSelection = { mode: "none" };
       this.model._applyUpdate(
         modelChanges,
         false,
-        recentsOnly ? this.model._filteredRecords : yielding ? [] : undefined,
+        recentsOnly ? this.model._filteredRecords : searchInWorker ? [] : undefined,
       );
-      if (!recentsOnly) this.cancelQueryWork(yielding);
+      if (!recentsOnly) this.cancelQueryWork(searchInWorker);
       if (this.workerPreparation?.generation !== this.model.getGeneration())
         this.clearWorkerMatcher();
-      if (!yielding && !recentsOnly) this.cancelMatcherPreparation();
     }
     if (resetOverflow) this.overflowSectionsActive = false;
 
@@ -1097,7 +1088,7 @@ class SelectList extends InputDialog {
       "sections" in props ||
       "source" in props
     )
-      this.scheduleMatcherPreparation();
+      this.prepareWorkerOnIdle();
 
     if (changesModel || "selection" in props || props.itemUpdateOptions) {
       this.showMoreSelected = false;
@@ -1105,7 +1096,7 @@ class SelectList extends InputDialog {
       this.syncModelState();
       this.publishSelectionChange(previousSelection, itemsChanged ? "items" : "update");
     }
-    if (yielding) this.startQueryWork(querySelection);
+    if (searchInWorker) this.startQueryWork(querySelection);
 
     if (itemsChanged) {
       this.emitter.emit("did-change-items", { list: this, items: this.getItems() });
@@ -1423,16 +1414,15 @@ class SelectList extends InputDialog {
         query: this.modelQuery(this.getQuery()),
         ...(this.overflowSectionsActive ? { items: this.props.items } : {}),
       };
-      const yielding = this.shouldYieldSearch(this.props, changes.query);
-      const selection = yielding ? this.selectionForSearch(changes, previousSelection) : null;
-      this.model._applyUpdate(changes, false, yielding ? [] : undefined);
-      this.cancelQueryWork(yielding);
-      if (!yielding) this.cancelMatcherPreparation();
+      const searchInWorker = this.shouldSearchInWorker(this.props, changes.query);
+      const selection = searchInWorker ? this.selectionForSearch(changes, previousSelection) : null;
+      this.model._applyUpdate(changes, false, searchInWorker ? [] : undefined);
+      this.cancelQueryWork(searchInWorker);
       this.overflowSectionsActive = false;
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
-      if (yielding) this.startQueryWork(selection);
+      if (searchInWorker) this.startQueryWork(selection);
     }
     super.didChangeQuery();
     if (previousSelection) this.publishSelectionChange(previousSelection, "query");
@@ -1458,15 +1448,8 @@ class SelectList extends InputDialog {
     return pending ? Promise.all([rendering, pending]).then(() => undefined) : rendering;
   }
 
-  shouldYieldSearch(props, query = this.model.getQuery()) {
-    const search = props.search;
-    return !!(
-      query &&
-      this.supportsLocalFuzzySearch(props) &&
-      (this.usesWorker(props) ||
-        (search?.yieldToInput &&
-          (props.items?.length ?? this.model?.getItemCount() ?? 0) >= ASYNC_SEARCH_MIN_ITEMS))
-    );
+  shouldSearchInWorker(props, query = this.model.getQuery()) {
+    return !!query && this.usesWorker(props);
   }
 
   supportsLocalFuzzySearch(props = this.props) {
@@ -1511,7 +1494,6 @@ class SelectList extends InputDialog {
     const generation = this.model.getGeneration();
     const query = this.model.getQuery();
     const options = this.props.search ?? {};
-    const useWorker = this.usesWorker();
     const check = () => {
       controller.signal.throwIfAborted();
       if (this.destroyed || this.model.getGeneration() !== generation)
@@ -1521,61 +1503,13 @@ class SelectList extends InputDialog {
       // Let the editor paint the new query before doing any candidate work.
       await new Promise((resolve) => setImmediate(resolve));
       check();
-      let ids;
-      let highlights;
-      if (useWorker) {
-        const result = await this.matchInWorker(
-          records,
-          generation,
-          query,
-          options,
-          controller.signal,
-        );
-        ids = result.order;
-        highlights = result.highlights;
-      } else {
-        if (this.filterMatcherGeneration !== generation || this.filterMatcherFirst !== records[0]) {
-          const pending = this.matcherPreparation;
-          this.cancelMatcherPreparation();
-          const preparation =
-            pending?.generation === generation && pending.records === records
-              ? pending
-              : {
-                  generation,
-                  records,
-                  ignoreDiacritics: !!options.ignoreDiacritics,
-                  matcher: fuzzyMatcher.setCandidates([], {
-                    ignoreDiacritics: !!options.ignoreDiacritics,
-                  }),
-                  ids: new Map(),
-                  next: 0,
-                };
-          this.matcherPreparation = preparation;
-          do {
-            check();
-            this.prepareMatcherBatch(
-              preparation,
-              (item) => this.model.getFilterText(item),
-              performance.now() + 6,
-            );
-            if (preparation.next < records.length)
-              await new Promise((resolve) => setImmediate(resolve));
-          } while (preparation.next < records.length);
-          check();
-          if (this.matcherPreparation === preparation) this.matcherPreparation = null;
-          this.installPreparedMatcher(preparation);
-        }
-        ids = await this.filterMatcher.fuzzyMatcher.matchIdsAsync(
-          query,
-          {
-            algorithm: options.algorithm || "fuzzaldrin",
-            scoreModifier: options.scoreModifier
-              ? (score, id) => options.scoreModifier(score, records[id].item)
-              : undefined,
-          },
-          { signal: controller.signal },
-        );
-      }
+      const { order: ids, highlights } = await this.matchInWorker(
+        records,
+        generation,
+        query,
+        options,
+        controller.signal,
+      );
       let results = new Array(ids.length);
       const selection = work.selection;
       const preferred = this.model._recordById.get(selection.retainId);
@@ -1662,7 +1596,6 @@ class SelectList extends InputDialog {
       preparation.client.closed
     ) {
       this.clearWorkerMatcher();
-      this.cancelMatcherPreparation();
       this.filterMatcher = null;
       this.filterMatcherIds = null;
       this.filterMatcherGeneration = null;
@@ -1830,32 +1763,17 @@ class SelectList extends InputDialog {
       this.filterMatcherGeneration !== context.generation ||
       this.filterMatcherFirst !== candidates[0]
     ) {
-      const pending = this.matcherPreparation;
-      if (
-        pending &&
-        pending.generation === context.generation &&
-        pending.records === candidates &&
-        pending.ignoreDiacritics === !!options.ignoreDiacritics
-      ) {
-        this.cancelMatcherPreparation();
-        this.prepareMatcherBatch(pending, (item) => context.getFilterText(item), Infinity);
-        this.installPreparedMatcher(pending);
-      } else {
-        this.cancelMatcherPreparation();
-        const texts = candidates.map(
-          (candidate) => candidate.filterText ?? context.getFilterText(candidate.item),
-        );
-        const ignoreDiacritics = !!options.ignoreDiacritics;
-        if (this.filterMatcher && this.filterMatcherIgnoresDiacritics === ignoreDiacritics)
-          this.filterMatcher.setCandidates(texts);
-        else this.filterMatcher = fuzzyMatcher.setCandidates(texts, { ignoreDiacritics });
-        this.filterMatcherIgnoresDiacritics = ignoreDiacritics;
-        this.filterMatcherIds = new Map(
-          candidates.map((candidate, index) => [candidate.id, index]),
-        );
-        this.filterMatcherGeneration = context.generation;
-        this.filterMatcherFirst = candidates[0];
-      }
+      const texts = candidates.map(
+        (candidate) => candidate.filterText ?? context.getFilterText(candidate.item),
+      );
+      const ignoreDiacritics = !!options.ignoreDiacritics;
+      if (this.filterMatcher && this.filterMatcherIgnoresDiacritics === ignoreDiacritics)
+        this.filterMatcher.setCandidates(texts);
+      else this.filterMatcher = fuzzyMatcher.setCandidates(texts, { ignoreDiacritics });
+      this.filterMatcherIgnoresDiacritics = ignoreDiacritics;
+      this.filterMatcherIds = new Map(candidates.map((candidate, index) => [candidate.id, index]));
+      this.filterMatcherGeneration = context.generation;
+      this.filterMatcherFirst = candidates[0];
     }
     const modifyScore = options.scoreModifier;
     return this.filterMatcher
@@ -1868,109 +1786,25 @@ class SelectList extends InputDialog {
       .map((id) => candidates[id]);
   }
 
-  /** @private */
-  cancelMatcherPreparation() {
-    if (this.matcherPreparation) clearTimeout(this.matcherPreparation.timer);
-    this.matcherPreparation = null;
-  }
-
-  /** @private */
-  scheduleMatcherPreparation() {
-    this.cancelMatcherPreparation();
-    const useWorker = this.usesWorker();
+  /** @private Prepare only the worker; synchronous lists stay lazy. */
+  prepareWorkerOnIdle() {
     if (
       this.destroyed ||
       !this.model ||
-      (this.filterMatcher && !useWorker) ||
       this.model.getQuery() ||
-      this.props.source?.mode === "query" ||
       !this.props.search?.prepareOnIdle ||
-      this.props.search.filter ||
-      this.props.search.matcher ||
-      (this.model._records.length < ASYNC_SEARCH_MIN_ITEMS && !useWorker)
+      !this.usesWorker()
     )
       return;
-    if (useWorker) {
-      try {
-        this.prepareWorkerCandidates(
-          this.model._records,
-          this.model.getGeneration(),
-          this.props.search,
-        );
-      } catch {
-        // A worker construction failure is reported if a query actually needs it.
-      }
-      return;
+    try {
+      this.prepareWorkerCandidates(
+        this.model._records,
+        this.model.getGeneration(),
+        this.props.search,
+      );
+    } catch {
+      // A worker construction failure is reported if a query actually needs it.
     }
-    const ignoreDiacritics = !!this.props.search.ignoreDiacritics;
-    const work = {
-      generation: this.model.getGeneration(),
-      records: this.model._records,
-      ignoreDiacritics,
-      matcher: fuzzyMatcher.setCandidates([], { ignoreDiacritics }),
-      ids: new Map(),
-      next: 0,
-      timer: null,
-    };
-    this.matcherPreparation = work;
-    const current = () =>
-      !this.destroyed &&
-      this.props.source?.mode !== "query" &&
-      this.matcherPreparation === work &&
-      this.model?.getGeneration() === work.generation &&
-      this.model._records === work.records;
-    const run = () => {
-      if (!current()) {
-        if (this.matcherPreparation === work) this.cancelMatcherPreparation();
-        return;
-      }
-      try {
-        this.prepareMatcherBatch(
-          work,
-          (item) => this.model.getFilterText(item),
-          performance.now() + 4,
-        );
-      } catch {
-        // A speculative extraction failure is retried by the normal query path,
-        // where the existing transactional/error handling owns the exception.
-        this.cancelMatcherPreparation();
-        return;
-      }
-      if (!current()) {
-        if (this.matcherPreparation === work) this.cancelMatcherPreparation();
-        return;
-      }
-      if (work.next === work.records.length) {
-        this.matcherPreparation = null;
-        this.installPreparedMatcher(work);
-      } else work.timer = setTimeout(run, 0);
-    };
-    work.timer = setTimeout(run, 0);
-  }
-
-  /** @private */
-  prepareMatcherBatch(work, getText, deadline) {
-    do {
-      const ids = [],
-        texts = [];
-      const end = Math.min(work.records.length, work.next + 64);
-      for (; work.next < end; work.next++) {
-        const record = work.records[work.next];
-        ids.push(work.next);
-        texts.push(getText(record.item));
-        work.ids.set(record.id, work.next);
-      }
-      work.matcher.fuzzyMatcher.addCandidates(ids, texts);
-    } while (work.next < work.records.length && performance.now() < deadline);
-  }
-
-  /** @private */
-  installPreparedMatcher(work) {
-    this.filterMatcher = work.matcher;
-    this.filterMatcherIds = work.ids;
-    this.filterMatcherIgnoresDiacritics = work.ignoreDiacritics;
-    this.filterMatcherGeneration = work.generation;
-    this.filterMatcherFirst = work.records[0];
   }
 
   /** @category Filtering */

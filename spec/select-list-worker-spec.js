@@ -279,6 +279,73 @@ describe("SelectList worker search", () => {
     expect(list.matchCandidates).not.toHaveBeenCalled();
   });
 
+  it("replaces an unfinished idle preparation when the source changes", async () => {
+    list = lumine.workspace.buildSelectList(options({ prepareOnIdle: true }));
+    const previous = list.workerPreparation;
+    const replacement = values.map((_, index) => `beta-${index}`);
+    await list.setItems(replacement);
+    expect(previous.client.closed).toBe(true);
+    await list.workerPreparation.promise;
+    await list.setQuery("zolc");
+    expect(list.getFilteredItems()).toEqual([]);
+    await list.setQuery("beta");
+    expect(list.getMatchCount()).toBe(replacement.length);
+  });
+
+  it("terminates idle preparation without extracting text after destruction", async () => {
+    const extract = jasmine.createSpy("extract").and.callFake((value) => value);
+    list = lumine.workspace.buildSelectList(
+      options({ prepareOnIdle: true, getFilterText: extract }),
+    );
+    const preparation = list.workerPreparation;
+    await list.destroy();
+    await expectAsync(preparation.promise).toBeRejected();
+    expect(extract).not.toHaveBeenCalled();
+    expect(preparation.client.closed).toBe(true);
+    expect(preparation.client.pending.size).toBe(0);
+  });
+
+  it("retries a failed idle extraction when a query needs the data", async () => {
+    let fail = true;
+    list = lumine.workspace.buildSelectList(
+      options({
+        prepareOnIdle: true,
+        getFilterText(value) {
+          if (fail && value === values[1024]) throw new Error("extraction failed");
+          return value;
+        },
+      }),
+    );
+    const preparation = list.workerPreparation;
+    await expectAsync(preparation.promise).toBeRejectedWithError("extraction failed");
+    expect(list.getQuery()).toBe("");
+    expect(list.isFiltering()).toBe(false);
+    fail = false;
+    await list.setQuery("sample");
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(list.workerPreparation).not.toBe(preparation);
+  });
+
+  it("leaves idle work to custom matching callbacks and query sources", async () => {
+    const extract = jasmine.createSpy("extract").and.callFake((value) => value);
+    for (const custom of [{ matcher: (rows) => rows }, { filter: (items) => items }]) {
+      list = lumine.workspace.buildSelectList(
+        options({ prepareOnIdle: true, getFilterText: extract, ...custom }),
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(extract).not.toHaveBeenCalled();
+      expect(list.workerPreparation).toBeNull();
+      await list.destroy();
+    }
+    list = lumine.workspace.buildSelectList({
+      ...options({ prepareOnIdle: true, getFilterText: extract }),
+      source: { mode: "query", load: () => values },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(extract).not.toHaveBeenCalled();
+    expect(list.workerPreparation).toBeNull();
+  });
+
   it("flattens sectioned matches in a worker and restores sections when cleared", async () => {
     list = lumine.workspace.buildSelectList({
       sections: [

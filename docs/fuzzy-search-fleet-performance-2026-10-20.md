@@ -14,6 +14,8 @@ The worker prepares text, scores candidates, orders all matches and traces the f
 
 ## Measurement
 
+The cooperative main-thread backend below is a historical experiment. SelectList now retains only the default worker and synchronous `worker: false` paths. The current benchmark's `worker: false` option measures synchronous matching; reproducing the cooperative measurements requires the recorded historical source and driver revisions. Worker-side asynchronous ranking and callback batching remain in use.
+
 [fuzzy-fleet-spec.js](../benchmark/fuzzy-fleet-spec.js) opens the actual fuzzy-explorer and fuzzy-files hosts, types through the mini editor, waits for matching and layout, and moves selection. The inputs are fixed snapshots containing 30253 explorer paths and 500000 project paths. The latter preserves the original large workspace workload; no directory exclusion or reduced result limit is credited as a performance improvement. The local `.dev` exclusion added during investigation was removed.
 
 The [raw report](../benchmark/results/fuzzy-search-fleet-2026-10-20.json) contains individual samples, runtime metadata, driver and source hashes, input hashes, match counts and hashes of every ordered result set. It contains no corpus paths. Every query must produce the identical complete ordered result set within its active-document scenario. The default rendered page remains 99 rows; all matches remain selectable through pagination.

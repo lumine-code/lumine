@@ -1,12 +1,10 @@
-describe("SelectList cooperative search", () => {
+describe("SelectList large sources", () => {
   let list;
   const values = Array.from({ length: 8193 }, (_, i) => `Żółć/sample-${i}.js`);
   function create(search = {}) {
     return lumine.workspace.buildSelectList({
       items: values,
       search: {
-        worker: false,
-        yieldToInput: true,
         ignoreDiacritics: true,
         algorithm: "command-t",
         ...search,
@@ -19,39 +17,6 @@ describe("SelectList cooperative search", () => {
     list = null;
   });
 
-  it("yields to input and publishes all ordered matches with original highlight offsets", async () => {
-    list = create();
-    let inputRan = false;
-    setTimeout(() => {
-      inputRan = true;
-    }, 0);
-    const pending = list.setQuery("zolc");
-    expect(list.getMatchCount()).toBe(0);
-    expect(list.getSelectedItem()).toBeNull();
-    await pending;
-    expect(inputRan).toBe(true);
-    expect(list.getMatchCount()).toBe(values.length);
-    const expected = lumine.tools.fuzzyMatcher
-      .setCandidates(values, { ignoreDiacritics: true })
-      .match("zolc", { algorithm: "command-t" })
-      .map((row) => row.value);
-    expect(list.getFilteredItems()).toEqual(expected);
-    expect(list.getMatchIndices(values[0])).toEqual([0, 1, 2, 3]);
-    list.model.selectId(expected.at(-1));
-    expect(list.model.getSelectedIndex()).toBe(values.length - 1);
-  });
-  it("discards superseded queries and source generations", async () => {
-    list = create();
-    const old = list.setQuery("zolc");
-    const latest = list.setQuery("sample42");
-    await Promise.all([old, latest]);
-    expect(list.getFilteredItems().every((value) => value.includes("sample"))).toBe(true);
-    const pending = list.setQuery("sample");
-    await list.update({ items: ["other"] });
-    await pending;
-    expect(list.getItems()).toEqual(["other"]);
-    expect(list.getFilteredItems()).toEqual([]);
-  });
   it("reuses preparation when new input arrives after extraction has started", async () => {
     let began;
     const started = new Promise((resolve) => {
@@ -71,7 +36,7 @@ describe("SelectList cooperative search", () => {
     await Promise.all([old, latest]);
     expect(list.getMatchCount()).toBe(values.length);
     expect(extractions).toBe(values.length);
-    expect(list.matcherPreparation).toBeNull();
+    expect(list.workerPreparation.next).toBe(values.length);
   });
   it("cancels when the query clears or the list is destroyed", async () => {
     list = create();
@@ -91,19 +56,6 @@ describe("SelectList cooperative search", () => {
     await pending;
     expect(list.getMatchCount()).toBe(values.length);
     expect(list.getQuery()).toBe("sample");
-  });
-  it("reports callback failures and can retry successfully", async () => {
-    let fail = true;
-    list = create({
-      scoreModifier: (score) => {
-        if (fail) throw new Error("score failed");
-        return score;
-      },
-    });
-    await expectAsync(list.setQuery("sample")).toBeRejectedWithError("score failed");
-    fail = false;
-    await list.setQuery("sample");
-    expect(list.getMatchCount()).toBe(values.length);
   });
   it("keeps custom matcher callbacks synchronous", async () => {
     const matcher = jasmine.createSpy("matcher").and.callFake((rows) => rows);

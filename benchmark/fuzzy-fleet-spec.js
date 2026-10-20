@@ -54,8 +54,8 @@ describe("Fleet fuzzy interaction performance", () => {
             Object.getOwnPropertyDescriptor(oldView.prototype, key),
           );
       view.prototype.update = require("../src/input-dialog").prototype.update;
-      view.prototype.scheduleMatcherPreparation = function () {};
-      view.prototype.shouldYieldSearch = () => false;
+      view.prototype.prepareWorkerOnIdle = function () {};
+      view.prototype.shouldSearchInWorker = () => false;
     }
     for (const name of ["fuzzy-matcher", "select-list", "select-list-model"]) {
       const file = config.reference
@@ -154,7 +154,7 @@ describe("Fleet fuzzy interaction performance", () => {
         const list = host.getModel();
         if (config.worker === false && list.props.search.worker !== false)
           await list.update({
-            search: { ...list.props.search, worker: false, yieldToInput: true },
+            search: { ...list.props.search, worker: false },
           });
         if (config.cold) {
           list.clearWorkerMatcher();
@@ -166,8 +166,7 @@ describe("Fleet fuzzy interaction performance", () => {
         if (!list.getItemCount()) await list.reload();
         list.getElement().getBoundingClientRect();
         record("open", performance.now() - started, sample);
-        if (config.waitForPreparation) {
-          while (list.matcherPreparation) await new Promise((resolve) => setTimeout(resolve, 0));
+        if (config.waitForPreparation && list.workerPreparation) {
           await list.workerPreparation?.promise;
           record("prepared", performance.now() - started, sample);
         }
@@ -250,8 +249,14 @@ describe("Fleet fuzzy interaction performance", () => {
           sources,
           libraryHash: beforeLibraryHash,
           coldMatcherEachOpen: !!config.cold,
-          waitsForPreparation: !!config.waitForPreparation,
+          waitsForPreparation:
+            !!config.waitForPreparation && !config.reference && config.worker !== false,
           worker: config.reference ? false : config.worker !== false,
+          backend: config.reference
+            ? "reference"
+            : config.worker === false
+              ? "synchronous"
+              : "worker",
           activeEditor: !!activeEditor,
           projectCorpusHash: config.projectCorpus
             ? hash(fs.readFileSync(config.projectCorpus))

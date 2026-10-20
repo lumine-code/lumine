@@ -11,7 +11,9 @@ const list = lumine.workspace.buildSelectList({
 });
 ```
 
-Leave the default enabled for lists that can grow with a project, document, installed packages or user data. The file finders, bibliography entries and similar collections need no explicit opt-in. `search.prepareOnIdle: true` can prepare candidates before the first query when `getFilterText` is pure; this moves preparation earlier rather than eliminating its cost.
+The opt-out prepares candidates on demand and matches synchronously, reusing prepared text across queries. It does not start a worker or schedule background preparation. There are exactly two built-in execution paths: worker and synchronous.
+
+Leave the default enabled for lists that can grow with a project, document, installed packages or user data. The file finders, bibliography entries and similar collections need no explicit opt-in. For worker lists, `search.prepareOnIdle: true` can prepare candidates before the first query when `getFilterText` is pure; this moves preparation earlier rather than eliminating its cost. This option has no effect with `worker: false`.
 
 ## Completion and presentation
 
@@ -23,6 +25,6 @@ Recent-item changes reorder only the resting list. While a query is active, a hi
 
 ## Callback ownership
 
-`getFilterText`, score modifiers and custom sort callbacks remain in the owning renderer; arbitrary closures are not serialized into a worker. Candidate extraction and score modification use yielding batches. Worker matching, built-in ordering and first-page highlighting run off the UI thread. A custom sort runs after fuzzy ranking and retains the model's callback context and stable tie order; an expensive custom comparator can still block the renderer.
+`getFilterText`, score modifiers and custom sort callbacks remain in the owning renderer; arbitrary closures are not serialized into a worker. On the worker path, candidate extraction and score modification use yielding batches. Worker matching, built-in ordering and first-page highlighting run off the UI thread. A custom sort runs after fuzzy ranking and retains the model's callback context and stable tie order; an expensive custom comparator can still block the renderer. With `worker: false`, candidate preparation, matching and these callbacks run synchronously.
 
-Custom `search.filter` or `search.matcher` callbacks and `source.mode: "query"` providers own their filtering and scheduling. The built-in worker does not wrap or replace their implementations. A list with `worker: false` may explicitly request cooperative main-thread matching using `yieldToInput: true`; this yields for large built-in searches but is not needed with the default worker.
+Custom `search.filter` or `search.matcher` callbacks and `source.mode: "query"` providers own their filtering and scheduling. The built-in worker does not wrap or replace their implementations.
