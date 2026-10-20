@@ -86,6 +86,7 @@ class WordIndex {
     const words = new Map();
     const lower = fold(query);
     const eligibility = new Map();
+    let matchingSteps = 0;
     for (const item of plan) {
       if (options.signal?.aborted) return [];
       let block = item.block;
@@ -118,13 +119,20 @@ class WordIndex {
         }
         if (generation === this.generation && !options.signal?.aborted) this.retain(block);
       }
-      for (const [word, positions] of block.words) {
-        if (performance.now() >= deadline) {
+      // Block words and relative positions are immutable. Extending a folded
+      // query cannot make a previously rejected subsequence match. Keep one
+      // complete result per block, shared safely by rebased block snapshots.
+      const previous = block.matches;
+      const reusable = previous && lower.startsWith(previous.query);
+      const unchanged = reusable && lower === previous.query;
+      const matches = unchanged ? previous.words : [];
+      for (const [word, positions] of reusable ? previous.words : block.words) {
+        if ((++matchingSteps & 63) === 0 && performance.now() >= deadline) {
           await yieldTurn();
           deadline = performance.now() + 4;
           if (options.signal?.aborted) return [];
         }
-        let accepted = eligibility.get(word);
+        let accepted = unchanged || eligibility.get(word);
         if (accepted === undefined) {
           const candidate = fold(word);
           let offset = 0;
@@ -140,6 +148,7 @@ class WordIndex {
           if (eligibility.size < 4096) eligibility.set(word, accepted);
         }
         if (!accepted) continue;
+        if (lower && !unchanged) matches.push([word, positions]);
         const first = lowerBound(positions, item.start - block.start, 0);
         const last = lowerBound(positions, item.end - block.start, 0);
         if (first === last) continue;
@@ -174,6 +183,9 @@ class WordIndex {
           }
         }
       }
+      // Never publish a partial filter. Range clipping and locality belong to
+      // the query result, not this whole-block candidate cache.
+      if (lower && !unchanged) block.matches = { query: lower, words: matches };
     }
     return rankWords(words, query, maxCount, { ...options, compact: true });
   }

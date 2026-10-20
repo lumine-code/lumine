@@ -18,6 +18,65 @@ function pair(text) {
   return [new TextStore(text), new TextStore(text, { wordIndex: false })];
 }
 
+test("prefix refinement reuses whole-block candidates across ranges and rebased rows", async () => {
+  const source = new TextStore(fixture());
+  const scan = new TextStore(source.getText(), { wordIndex: false });
+  const index = new WordIndex();
+  const find = (query, start = 0, end = 700) =>
+    index.find(source.getTextSnapshot(), start, end, query, "_", 1000, {
+      position: { row: 300, column: 40 },
+    });
+  await find("ca");
+  for (const block of index.blocks) {
+    block.words[Symbol.iterator] = () => {
+      throw new Error("Refining a query must not revisit rejected block words");
+    };
+  }
+  for (const query of ["can", "candidate", "candidate_6", "candidate_6"]) {
+    assert.deepEqual(
+      await find(query),
+      await scan.findWordCandidates(query, {
+        extraWordCharacters: "_",
+        maxCount: 1000,
+        position: { row: 300, column: 40 },
+        range: { start: { row: 0, column: 0 }, end: { row: 700, column: 0 } },
+      }),
+    );
+  }
+  // A different query must be allowed to see previously rejected words again.
+  for (const block of index.blocks) delete block.words[Symbol.iterator];
+  for (const query of ["ca", "ΟΣ", "ΟΣΑ", "i", "İ", ""]) {
+    assert.deepEqual(
+      await find(query),
+      await scan.findWordCandidates(query, {
+        extraWordCharacters: "_",
+        maxCount: 1000,
+        position: { row: 300, column: 40 },
+        range: { start: { row: 0, column: 0 }, end: { row: 700, column: 0 } },
+      }),
+    );
+  }
+});
+
+test("refined filters preserve clipping, edits and interleaved query snapshots", async () => {
+  const stores = pair(fixture());
+  await equivalent(...stores, "c");
+  for (const query of ["ca", "can", "candidate", "candidate_6"]) {
+    await equivalent(...stores, query, {
+      range: { start: { row: 250, column: 0 }, end: { row: 650, column: 0 } },
+    });
+    for (const store of stores)
+      store.setTextInRange({ start: { row: 0, column: 0 }, end: { row: 0, column: 0 } }, "new\n");
+    await equivalent(...stores, query);
+  }
+  for (const query of ["ca", "candidate_1", "ca", "candidate_6", "ΟΣ", ""]) {
+    const pending = stores[0].findWordCandidates(query);
+    const expected = stores[1].findWordCandidates(query);
+    await stores[0].findWordCandidates("unmatched");
+    assert.deepEqual(await pending, await expected);
+  }
+});
+
 test("indexed words equal scanning for ranges, Unicode, custom tokens and locality", async () => {
   const [indexed, scan] = pair(fixture());
   for (const extraWordCharacters of ["_", "", "_.-", "[]\\"]) {
