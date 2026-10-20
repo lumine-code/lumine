@@ -1,6 +1,6 @@
 # Document edit contract
 
-The document boundary separates storage from editor policy. The JavaScript TextStore owns immutable PieceTree roots, patch payloads and prepared edits. TextBuffer owns transactions, history grouping, marker updates and notification ordering. Language modes and parsers consume committed changes; they do not orchestrate storage mutations or infer the history representation. Superstring is a development-only differential reference, never a runtime dependency of this boundary.
+The document boundary separates storage from editor policy. The JavaScript TextStore owns immutable PieceTree roots, patch payloads and prepared edits. TextBuffer owns transactions, history grouping, marker updates and notification ordering. Language modes and parsers consume committed changes; they do not orchestrate storage mutations or infer the history representation. Superstring is an optional external differential reference, absent from the normal installation and runtime.
 
 ## Preparing and committing
 

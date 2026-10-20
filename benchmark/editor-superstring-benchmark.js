@@ -569,6 +569,7 @@ async function main() {
         "text-store-search.js",
         "text-patch.js",
         "marker-index.js",
+        "text-model.js",
       ]
         .filter((file) => fs.existsSync(path.join(source, "src", file)))
         .map((file) => [

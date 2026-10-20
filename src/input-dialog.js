@@ -1425,10 +1425,12 @@ class InputDialog {
 
   renderQueryRow() {
     const actionPending = this.pendingActionCommands.size > 0;
+    const filtering = this.isFiltering();
+    const pending = actionPending || filtering;
     return $.div(
       {
         ref: "queryRow",
-        className: `query-row${this.itemActionsAvailable ? " has-item-actions" : ""}`,
+        className: `query-row${this.itemActionsAvailable || filtering ? " has-item-actions" : ""}`,
       },
       $(ContentView, { element: this.queryEditor.getElement() }),
       this.props.internalActionPalette
@@ -1436,17 +1438,20 @@ class InputDialog {
         : $.button(
             {
               ref: "itemActionsIndicator",
-              className: `item-actions-indicator${
-                actionPending ? " is-pending" : " icon icon-ellipsis"
-              }`,
+              className: `item-actions-indicator${pending ? " is-pending" : " icon icon-ellipsis"}`,
               type: "button",
               tabIndex: -1,
-              hidden: !this.itemActionsAvailable,
+              hidden: !this.itemActionsAvailable && !filtering,
+              disabled: filtering,
               attributes: {
-                "aria-label": actionPending ? "Action in progress" : "Actions",
+                "aria-label": filtering
+                  ? "Filtering results"
+                  : actionPending
+                    ? "Action in progress"
+                    : "Actions",
                 "aria-haspopup": "listbox",
                 "aria-expanded": String(this.actionsExpanded),
-                "aria-busy": String(actionPending),
+                "aria-busy": String(pending),
               },
               on: {
                 mousedown: (event) => {
@@ -1459,15 +1464,18 @@ class InputDialog {
                 click: (event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  this.requestActions();
+                  if (!this.isFiltering()) this.requestActions();
                 },
               },
             },
-            actionPending
-              ? $.span({ className: "action-pending-spinner loading-spinner-tiny" })
-              : "",
+            pending ? $.span({ className: "action-pending-spinner loading-spinner-tiny" }) : "",
           ),
     );
+  }
+
+  /** @private SelectList reports local filtering separately from source loading. */
+  isFiltering() {
+    return false;
   }
 
   /**
@@ -1485,8 +1493,11 @@ class InputDialog {
     if (!this.component?.refs?.itemActionsIndicator) return;
     const available = Boolean(this.host) && this.hostVisible && this.hasAvailableActions();
     this.itemActionsAvailable = available;
-    this.component.refs.itemActionsIndicator.hidden = !available;
-    this.component.refs.queryRow.classList.toggle("has-item-actions", available);
+    this.component.refs.itemActionsIndicator.hidden = !available && !this.isFiltering();
+    this.component.refs.queryRow.classList.toggle(
+      "has-item-actions",
+      available || this.isFiltering(),
+    );
   }
 
   /**

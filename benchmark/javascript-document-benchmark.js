@@ -208,10 +208,13 @@ if (worker) {
   const fingerprint = () =>
     Object.fromEntries(sourceFiles.map((file) => [file, hash(path.join(__dirname, "..", file))]));
   const sources = fingerprint();
-  // The lint-only install deliberately has no compiled addons. Resolve the
-  // installed package entry, then locate its Release build only at run time.
+  // The historical editor owns its oracle; the current editor has no native
+  // text dependency, including in development and lint installations.
+  const nativeRequire = require("node:module").createRequire(
+    path.join(nativeSource, "package.json"),
+  );
   const nativeBinaryPath = path.join(
-    path.dirname(require.resolve("@lumine-code/superstring")),
+    path.dirname(nativeRequire.resolve("@lumine-code/superstring")),
     "build",
     "Release",
     "superstring.node",

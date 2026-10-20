@@ -50,10 +50,15 @@ let nextSelectListId = 1;
  *
  * `search.yieldToInput: true` also yields while ranking large flat lists (at
  * least 2048 items). It requires pure filter-text and score callbacks and the
- * built-in matcher without a custom sort. Pending results are empty, so actions
- * cannot confirm a stale match. Every match is published together when ready;
+ * built-in matcher without a custom sort. The previous rendered rows remain
+ * visible, but selection and actions cannot confirm a stale match. A filtering
+ * spinner replaces the action affordance; source loading still owns its separate
+ * loading message. Every match is published together when ready;
  * newer input, source changes and destruction cancel the obsolete request.
  * `setQuery()` resolves after that request's results have rendered.
+ * Add `search.worker: true` to prepare text, score, sort and trace the first page
+ * in a dedicated Chromium worker. Pure score modifiers still run on their owning
+ * UI thread in yielding batches; only numeric scores cross back to the worker.
  *
  * A recents adapter's `save(ids, change)` receives the operation's intent:
  * `{type: 'record'|'remove'|'clear'|'limit'|'replace', id?, limit}`. Apply it to
@@ -115,6 +120,8 @@ class SelectList extends InputDialog {
     this.filterMatcherGeneration = null;
     this.matcherPreparation = null;
     this.queryWork = null;
+    this.workerPreparation = null;
+    this.renderedItemsTree = null;
     this.recentRevision = 0;
     this.recentLoadGeneration = 0;
     this.recentSaveQueue = null;
@@ -669,6 +676,8 @@ class SelectList extends InputDialog {
    */
   async destroyNow() {
     this.cancelQueryWork();
+    this.clearWorkerMatcher();
+    this.renderedItemsTree = null;
     this.cancelMatcherPreparation();
     this.filterMatcher = null;
     this.filterMatcherIds = null;
@@ -992,9 +1001,11 @@ class SelectList extends InputDialog {
     const changesModel = Object.keys(modelChanges).length > 0;
     const yielding = changesModel && this.shouldYieldSearch(nextProps, modelChanges.query);
     if (changesModel) {
-      this.cancelQueryWork();
-      if (!yielding) this.cancelMatcherPreparation();
       this.model._applyUpdate(modelChanges, false, yielding ? [] : undefined);
+      this.cancelQueryWork();
+      if (this.workerPreparation?.generation !== this.model.getGeneration())
+        this.clearWorkerMatcher();
+      if (!yielding) this.cancelMatcherPreparation();
     }
     if (resetOverflow) this.overflowSectionsActive = false;
 
@@ -1060,9 +1071,17 @@ class SelectList extends InputDialog {
   }
 
   renderBody() {
-    if (this.queryWork && !this.model.getMatchCount())
-      return $.div({ className: "message-line", role: "status" }, "Searching…");
-    return this.renderItems();
+    if (this.queryWork && this.renderedItemsTree) return this.renderedItemsTree;
+    return (this.renderedItemsTree = this.renderItems());
+  }
+
+  isFiltering() {
+    return this.queryWork != null;
+  }
+
+  refreshItemActionsIndicator() {
+    super.refreshItemActionsIndicator();
+    this.component?.refs?.items?.setAttribute("aria-busy", String(this.isFiltering()));
   }
 
   /** @category Items */
@@ -1332,14 +1351,14 @@ class SelectList extends InputDialog {
     let previousSelection = null;
     if (this.model && !this.suppressModelQueryUpdate) {
       previousSelection = this.selectionSnapshot();
-      this.cancelQueryWork();
       const changes = {
         query: this.modelQuery(this.getQuery()),
         ...(this.overflowSectionsActive ? { items: this.props.items } : {}),
       };
       const yielding = this.shouldYieldSearch(this.props, changes.query);
-      if (!yielding) this.cancelMatcherPreparation();
       this.model._applyUpdate(changes, false, yielding ? [] : undefined);
+      this.cancelQueryWork();
+      if (!yielding) this.cancelMatcherPreparation();
       this.overflowSectionsActive = false;
       this.showMoreSelected = false;
       this.resetRenderedItems();
@@ -1365,7 +1384,7 @@ class SelectList extends InputDialog {
     const search = props.search;
     return !!(
       query &&
-      search?.yieldToInput &&
+      (search?.yieldToInput || search?.worker) &&
       !search.filter &&
       !search.matcher &&
       !search.sort &&
@@ -1397,47 +1416,61 @@ class SelectList extends InputDialog {
       // Let the editor paint the new query before doing any candidate work.
       await new Promise((resolve) => setImmediate(resolve));
       check();
-      if (this.filterMatcherGeneration !== generation || this.filterMatcherFirst !== records[0]) {
-        const pending = this.matcherPreparation;
-        this.cancelMatcherPreparation();
-        const preparation =
-          pending?.generation === generation && pending.records === records
-            ? pending
-            : {
-                generation,
-                records,
-                ignoreDiacritics: !!options.ignoreDiacritics,
-                matcher: fuzzyMatcher.setCandidates([], {
+      let ids;
+      let highlights;
+      if (options.worker) {
+        const result = await this.matchInWorker(
+          records,
+          generation,
+          query,
+          options,
+          controller.signal,
+        );
+        ids = result.order;
+        highlights = result.highlights;
+      } else {
+        if (this.filterMatcherGeneration !== generation || this.filterMatcherFirst !== records[0]) {
+          const pending = this.matcherPreparation;
+          this.cancelMatcherPreparation();
+          const preparation =
+            pending?.generation === generation && pending.records === records
+              ? pending
+              : {
+                  generation,
+                  records,
                   ignoreDiacritics: !!options.ignoreDiacritics,
-                }),
-                ids: new Map(),
-                next: 0,
-              };
-        this.matcherPreparation = preparation;
-        do {
+                  matcher: fuzzyMatcher.setCandidates([], {
+                    ignoreDiacritics: !!options.ignoreDiacritics,
+                  }),
+                  ids: new Map(),
+                  next: 0,
+                };
+          this.matcherPreparation = preparation;
+          do {
+            check();
+            this.prepareMatcherBatch(
+              preparation,
+              (item) => this.model.getFilterText(item),
+              performance.now() + 6,
+            );
+            if (preparation.next < records.length)
+              await new Promise((resolve) => setImmediate(resolve));
+          } while (preparation.next < records.length);
           check();
-          this.prepareMatcherBatch(
-            preparation,
-            (item) => this.model.getFilterText(item),
-            performance.now() + 6,
-          );
-          if (preparation.next < records.length)
-            await new Promise((resolve) => setImmediate(resolve));
-        } while (preparation.next < records.length);
-        check();
-        if (this.matcherPreparation === preparation) this.matcherPreparation = null;
-        this.installPreparedMatcher(preparation);
+          if (this.matcherPreparation === preparation) this.matcherPreparation = null;
+          this.installPreparedMatcher(preparation);
+        }
+        ids = await this.filterMatcher.fuzzyMatcher.matchIdsAsync(
+          query,
+          {
+            algorithm: options.algorithm || "fuzzaldrin",
+            scoreModifier: options.scoreModifier
+              ? (score, id) => options.scoreModifier(score, records[id].item)
+              : undefined,
+          },
+          { signal: controller.signal },
+        );
       }
-      const ids = await this.filterMatcher.fuzzyMatcher.matchIdsAsync(
-        query,
-        {
-          algorithm: options.algorithm || "fuzzaldrin",
-          scoreModifier: options.scoreModifier
-            ? (score, id) => options.scoreModifier(score, records[id].item)
-            : undefined,
-        },
-        { signal: controller.signal },
-      );
       const results = new Array(ids.length);
       let deadline = performance.now() + 6;
       for (let i = 0; i < ids.length; i++) {
@@ -1458,6 +1491,12 @@ class SelectList extends InputDialog {
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
+      if (highlights)
+        for (const { id, indexes } of highlights)
+          this.matchIndicesMap.set(records[id].id, {
+            text: this.model.getFilterText(records[id].item),
+            indexes,
+          });
       if (this.queryWork === work) this.queryWork = null;
       this.publishSelectionChange(previousSelection, "query");
       this.refreshItemActionsIndicator();
@@ -1465,6 +1504,8 @@ class SelectList extends InputDialog {
     })()
       .catch((error) => {
         if (controller.signal.aborted) return;
+        if (this.queryWork === work) this.queryWork = null;
+        this.clearWorkerMatcher();
         void this.setStatus({ type: "error", message: error?.message ?? String(error) });
         throw error;
       })
@@ -1476,7 +1517,110 @@ class SelectList extends InputDialog {
     void work.promise.catch(() => {});
   }
 
+  clearWorkerMatcher() {
+    this.workerPreparation?.controller.abort();
+    this.workerPreparation?.client.close();
+    this.workerPreparation = null;
+  }
+
+  prepareWorkerCandidates(records, generation, options) {
+    let preparation = this.workerPreparation;
+    if (
+      !preparation ||
+      preparation.generation !== generation ||
+      preparation.records !== records ||
+      preparation.client.closed
+    ) {
+      this.clearWorkerMatcher();
+      this.cancelMatcherPreparation();
+      this.filterMatcher = null;
+      this.filterMatcherIds = null;
+      this.filterMatcherGeneration = null;
+      this.filterMatcherFirst = null;
+      const WorkerClient = require("./fuzzy-search-worker-client");
+      preparation = this.workerPreparation = {
+        generation,
+        records,
+        next: 0,
+        controller: new AbortController(),
+        client: new WorkerClient({ ignoreDiacritics: !!options.ignoreDiacritics }),
+      };
+      const { client, controller } = preparation;
+      preparation.promise = (async () => {
+        await client.ready;
+        while (preparation.next < records.length) {
+          controller.signal.throwIfAborted();
+          const offset = preparation.next;
+          const end = Math.min(offset + 1024, records.length);
+          const values = [];
+          for (let i = offset; i < end; i++) values.push(this.model.getFilterText(records[i].item));
+          await client.request("add", { offset, values }, { signal: controller.signal });
+          preparation.next = end;
+        }
+        return client;
+      })();
+      // Idle preparation is speculative. Query requests observe the rejection;
+      // a subsequent request may retry a failed worker.
+      void preparation.promise.catch((error) => client.close(error));
+    }
+    return preparation;
+  }
+
+  async matchInWorker(records, generation, query, options, signal) {
+    signal.throwIfAborted();
+    const preparation = this.prepareWorkerCandidates(records, generation, options);
+    const client = await new Promise((resolve, reject) => {
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      preparation.promise.then(
+        (client) => {
+          signal.removeEventListener("abort", abort);
+          resolve(client);
+        },
+        (error) => {
+          signal.removeEventListener("abort", abort);
+          reject(error);
+        },
+      );
+    });
+    signal.throwIfAborted();
+    const matchingOptions = { algorithm: options.algorithm || "fuzzaldrin" };
+    let scores;
+    if (options.scoreModifier) {
+      const raw = await client.request("scan", { query, options: matchingOptions }, { signal });
+      scores = new Float64Array(records.length);
+      let deadline = performance.now() + 4;
+      for (let i = 0; i < records.length; i++) {
+        if (raw.scores[i] > 0) {
+          const score =
+            raw.ceiling === null ? raw.scores[i] : Math.min(1, raw.scores[i] / raw.ceiling);
+          scores[i] = options.scoreModifier(score, records[i].item);
+        }
+        if ((i & 255) === 0 && performance.now() >= deadline) {
+          await new Promise((resolve) => setImmediate(resolve));
+          signal.throwIfAborted();
+          deadline = performance.now() + 4;
+        }
+      }
+    }
+    signal.throwIfAborted();
+    return client.request(
+      "rank",
+      {
+        query,
+        options: matchingOptions,
+        scores,
+        highlightCount: this.model.getPageSize(),
+      },
+      { signal, transfer: scores ? [scores.buffer] : [] },
+    );
+  }
+
   didClickItem(itemIndex, event) {
+    if (this.isFiltering()) return;
     const target = this.queryEditor.getElement();
     event ??= new target.ownerDocument.defaultView.MouseEvent("click");
     if (event.button !== 0) return;
@@ -1497,6 +1641,7 @@ class SelectList extends InputDialog {
   }
 
   didContextMenuItem(itemIndex) {
+    if (this.isFiltering()) return false;
     this.selectIndex(itemIndex);
     if (!this.host) return false;
     const available = this.hasAvailableActions(this.getActionContext("context-menu"));
@@ -1524,6 +1669,7 @@ class SelectList extends InputDialog {
    * @category Pagination
    */
   async showMore({ followSelection = false } = {}) {
+    if (this.isFiltering()) return false;
     if (!this.model.hasMore()) return false;
     const previousSelection = this.selectionSnapshot();
     const revealIndex = this.model.getDisplayedCount();
@@ -1604,7 +1750,7 @@ class SelectList extends InputDialog {
     if (
       this.destroyed ||
       !this.model ||
-      this.filterMatcher ||
+      (this.filterMatcher && !this.props.search?.worker) ||
       this.model.getQuery() ||
       this.props.source?.mode === "query" ||
       !this.props.search?.prepareOnIdle ||
@@ -1613,6 +1759,18 @@ class SelectList extends InputDialog {
       this.model._records.length < 2048
     )
       return;
+    if (this.props.search.worker) {
+      try {
+        this.prepareWorkerCandidates(
+          this.model._records,
+          this.model.getGeneration(),
+          this.props.search,
+        );
+      } catch {
+        // A worker construction failure is reported if a query actually needs it.
+      }
+      return;
+    }
     const ignoreDiacritics = !!this.props.search.ignoreDiacritics;
     const work = {
       generation: this.model.getGeneration(),
@@ -1961,6 +2119,7 @@ class SelectList extends InputDialog {
    * @returns {Promise<void>}
    */
   selectIndex(index, updateComponent = true, reason = "programmatic") {
+    if (this.isFiltering()) return Promise.resolve();
     const previous = this.selectionSnapshot();
     if (this.items.length === 0 || index === undefined) {
       this.model.selectNone();
@@ -2004,6 +2163,7 @@ class SelectList extends InputDialog {
    * @returns {Promise<void>}
    */
   selectItem(item) {
+    if (this.isFiltering()) return Promise.resolve();
     const previous = this.selectionSnapshot();
     const previousDisplayedCount = this.model.getDisplayedCount();
     this.model.selectItem(item);

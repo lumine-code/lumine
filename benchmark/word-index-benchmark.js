@@ -193,7 +193,8 @@ async function measure(id, setup, run, verify) {
     "word-index.js",
     "completion-matcher.js",
     "piece-tree.js",
-  ];
+    "text-model.js",
+  ].filter((file) => fs.existsSync(path.join(core, "src", file)));
   const sourceHashes = Object.fromEntries(
     files.map((name) => [
       name,

@@ -34,7 +34,7 @@
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#818f874523a45440aa100f71586a37562aed1d7b",
     "@lumine-code/fs-plus": "github:lumine-code/fs-plus#c8146839779f96e176dd1fa740857117d12cb456",
     "@lumine-code/fs-temp": "github:lumine-code/fs-temp#49c48134ee6e25f8fa2391b41d2151c8f24e3ca2",
-    "@lumine-code/fuzzy-search": "github:lumine-code/fuzzy-search#ba6bf3931e14a0a16b7623deb4a10e47817a6a63",
+    "@lumine-code/fuzzy-search": "github:lumine-code/fuzzy-search#71d84aad4859e41d9186f7eb16347f84b1459079",
     "@lumine-code/grim": "github:lumine-code/grim#76f5e3969bc0f5d6ab6c836b449dfa01ec68da3c",
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#6340cfffae12f089e4407cc12204b12041643f54",
     "@lumine-code/season": "github:lumine-code/season#b0212a0b99cdece50552c5ea8e30919402bb1b3f",
@@ -130,10 +130,8 @@
     "benchmark:icons": "node script/benchmark-icons.js",
     "benchmark:text-editor-long-lines": "npm run test:only -- benchmark/text-editor-long-line-input-spec.js",
     "benchmark:text-editor-scroll": "npm run test:only -- benchmark/text-editor-scroll-spec.js",
-    "benchmark:superstring": "node --expose-gc benchmark/editor-superstring-benchmark.js",
     "benchmark:javascript-document": "node benchmark/javascript-document-benchmark.js",
     "benchmark:document-integration": "node script/benchmark-document-integration.js",
-    "benchmark:superstring-renderer": "npm run test:only -- benchmark/editor-superstring-renderer-spec.js",
     "benchmark:grammar-query-locality": "npm run test:only -- benchmark/tree-sitter-query-locality-spec.js",
     "benchmark:tree-sitter": "npm run test:only -- benchmark/tree-sitter-spec.js",
     "start": "electron --no-sandbox --enable-logging . -f --dev",
@@ -155,7 +153,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test": "npm run test:document-core && npm run test:tree-sitter-runtime && npm run test:editor && npm run test:main && npm run test:launchers",
-    "test:document-core": "node --test spec/main-process/document-core.test.js spec/main-process/text-store.test.js spec/main-process/text-patch.test.js spec/main-process/marker-index.test.js spec/main-process/completion-matcher.test.js spec/main-process/word-index.test.js",
+    "test:document-core": "node --test spec/main-process/document-core.test.js spec/main-process/text-store.test.js spec/main-process/text-patch.test.js spec/main-process/marker-index.test.js spec/main-process/completion-matcher.test.js spec/main-process/word-index.test.js spec/main-process/text-model-boundary.test.js",
     "test:tree-sitter-runtime": "node --test spec/main-process/tree-sitter-*.test.js",
     "test:editor": "npm run test:only -- spec",
     "test:main": "npm run test:only -- --main-process spec/main-process",
@@ -165,10 +163,12 @@
     "test:eslint-jsx": "node --test script/eslint-jsx.test.js",
     "test:storage": "node --test script/package-storage.test.js script/select-list-recents.test.js",
     "benchmark:file-watch": "node benchmark/file-watch-benchmark.js",
-    "benchmark:tree-sitter-editing": "npm run test:only -- benchmark/tree-sitter-editing-spec.js"
+    "benchmark:tree-sitter-editing": "npm run test:only -- benchmark/tree-sitter-editing-spec.js",
+    "test:document-native": "node script/run-document-native.js",
+    "benchmark:text-model": "node --expose-gc benchmark/editor-superstring-benchmark.js",
+    "benchmark:text-model-renderer": "npm run test:only -- benchmark/editor-superstring-renderer-spec.js"
   },
   "devDependencies": {
-    "@lumine-code/superstring": "github:lumine-code/superstring#809c57b536eca226a6cb9433bc75e07a39462574",
     "@babel/parser": "^8.0.7",
     "@electron/asar": "4.3.1",
     "@electron/notarize": "^3.1.1",
@@ -187,7 +187,6 @@
   },
   "allowScripts": {
     "github:lumine-code/keyboard-layout#6340cfffae12f089e4407cc12204b12041643f54": true,
-    "github:lumine-code/superstring#809c57b536eca226a6cb9433bc75e07a39462574": true,
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#818f874523a45440aa100f71586a37562aed1d7b": true,
     "github:lumine-code/watcher#648bc45ae35ae31cd7d226be5ab1882da37229c7": true

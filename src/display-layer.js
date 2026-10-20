@@ -1,4 +1,4 @@
-const Patch = require("./text-patch");
+const { TextPatch: Patch } = require("./text-model");
 const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");

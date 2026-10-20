@@ -33,9 +33,13 @@ function freeze() {
   if (fs.existsSync(path.join(destination, "manifest.json"))) return destination;
   fs.mkdirSync(destination, { recursive: true });
   const source = path.join(destination, "lumine");
-  const files = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" })
-    .split("\0")
-    .filter(Boolean);
+  const files = [
+    ...new Set(
+      (git("ls-files", "-z") + "\0" + git("ls-files", "--others", "--exclude-standard", "-z"))
+        .split("\0")
+        .filter(Boolean),
+    ),
+  ].filter((file) => fs.existsSync(path.join(ROOT, file)));
   for (const relative of files) {
     const target = path.join(source, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -46,22 +50,6 @@ function freeze() {
     path.join(ROOT, "benchmark", "display-legacy-spec.js"),
     path.join(source, "benchmark", "display-legacy-spec.js"),
   );
-  const installedAddon = path.dirname(require.resolve("@lumine-code/superstring/package.json"));
-  const frozenAddon = path.join(destination, "superstring");
-  fs.cpSync(installedAddon, frozenAddon, { recursive: true });
-  for (const relative of files.filter((file) => file.startsWith("src/") && file.endsWith(".js"))) {
-    const target = path.join(source, relative);
-    const contents = fs.readFileSync(target, "utf8");
-    if (contents.includes('require("@lumine-code/superstring")')) {
-      fs.writeFileSync(
-        target,
-        contents.replaceAll(
-          'require("@lumine-code/superstring")',
-          `require(${JSON.stringify(frozenAddon)})`,
-        ),
-      );
-    }
-  }
   fs.symlinkSync(
     path.join(ROOT, "node_modules"),
     path.join(source, "node_modules"),
@@ -70,13 +58,10 @@ function freeze() {
   const manifest = {
     schemaVersion: 1,
     editorSha: git("rev-parse", "HEAD"),
-    superstringPin: require(path.join(ROOT, "package.json")).dependencies[
-      "@lumine-code/superstring"
-    ],
+    documentBackend: "javascript",
     workingTree: git("status", "--short"),
     frozenAt: new Date().toISOString(),
     source,
-    frozenAddon,
     benchmarkSha256: sha256(
       fs.readFileSync(path.join(ROOT, "benchmark", "display-legacy-spec.js")),
     ),
@@ -95,6 +80,9 @@ async function run(source, label, index) {
   const electron = require("electron");
   const home = path.join(runDirectory, "homes", `${label}-${index}`);
   fs.mkdirSync(home, { recursive: true });
+  const env = { ...process.env };
+  delete env.CI;
+  delete env.ELECTRON_RUN_AS_NODE;
   console.log(`${label} process ${index}: ${config.samples} samples, ${config.warmups} warmups`);
   const child = spawn(
     electron,
@@ -111,7 +99,7 @@ async function run(source, label, index) {
       cwd: source,
       windowsHide: true,
       env: {
-        ...process.env,
+        ...env,
         LUMINE_HOME: home,
         LUMINE_RESOURCE_PATH: source,
         LUMINE_DISPLAY_BENCHMARK_WORKSPACE: WORKSPACE,
@@ -224,7 +212,7 @@ async function main() {
   const baselineSource = JSON.parse(
     fs.readFileSync(path.join(frozen, "manifest.json"), "utf8"),
   ).source;
-  // The corpus is shared; production sources and the native addon stay frozen.
+  // The corpus is shared; production sources stay frozen.
   fs.copyFileSync(
     path.join(ROOT, "benchmark", "display-legacy-spec.js"),
     path.join(baselineSource, "benchmark", "display-legacy-spec.js"),

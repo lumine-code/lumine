@@ -1,6 +1,6 @@
 # Editor performance diagnostics
 
-Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; newer integration measurements live in [Superstring integration performance](superstring-performance.md).
+Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; the current implementation is described in [JavaScript document core](javascript-document-core.md). Native comparisons use the [optional external reference](../benchmark/native-reference/README.md).
 
 The later [text change boundary comparison](text-change-performance.md) records transaction-transfer optimizations, a native preparation experiment and paired renderer measurements.
 
@@ -10,14 +10,14 @@ The production ownership and notification boundary is specified by the [document
 
 ## Display performance benchmarks
 
-The editor repository provides `npm run benchmark:display` for display mapping, decoration queries, long-line edits and scrolling. Freeze the baseline before changing production code; the runner copies the source and the exact installed Superstring addon into the output directory. Use the same directory for the subsequent comparison:
+The editor repository provides `npm run benchmark:display` for display mapping, decoration queries, long-line edits and scrolling. Freeze the baseline before changing production code; the runner copies existing tracked and untracked editor source into the output directory without a native text addon. Use the same directory for the subsequent comparison:
 
 ```sh
 npm run benchmark:display -- --phase baseline --profile quick --output ../.dev/benchmarks/display-legacy/my-run
 npm run benchmark:display -- --compare --profile release --output ../.dev/benchmarks/display-legacy/my-run
 ```
 
-The release comparison alternates baseline and candidate in three A–B–B–A blocks, giving six fresh processes per variant, five warmups and thirty measured samples per case. Run it on the same machine with fixed editor dimensions and font settings, after builds and other test processes finish. Raw samples, runtime and addon metadata, semantic checksums, medians, p95 and bootstrap confidence intervals remain in the output directory; generated reports are not committed.
+The release comparison alternates baseline and candidate in three A–B–B–A blocks, giving six fresh processes per variant, five warmups and thirty measured samples per case. Run it on the same machine with fixed editor dimensions and font settings, after builds and other test processes finish. Raw samples, runtime and source metadata, semantic checksums, medians, p95 and bootstrap confidence intervals remain in the output directory; generated reports are not committed.
 
 Measure the complete operation rather than the native lookup alone: packed mapping still pays for JavaScript clipping and result allocation, and cached markers can be cheaper than a batch. Geometry reuse applies to short ASCII identifier replacements that preserve layout; parser highlighting events may invalidate a larger range afterwards. The component-update measurements report synchronous CPU and DOM work, not the time a frame is presented on screen.
 

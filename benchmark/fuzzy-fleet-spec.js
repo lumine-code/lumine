@@ -63,6 +63,13 @@ describe("Fleet fuzzy interaction performance", () => {
         : path.resolve(__dirname, "../src", `${name}.js`);
       sources[name] = hash(fs.readFileSync(file));
     }
+    for (const name of [
+      "input-dialog",
+      "dialog-actions",
+      "fuzzy-search-worker",
+      "fuzzy-search-worker-client",
+    ])
+      sources[name] = hash(fs.readFileSync(path.resolve(__dirname, "../src", `${name}.js`)));
     const libraryDirectory = config.library
       ? path.join(config.library, "lib")
       : path.dirname(require.resolve("@lumine-code/fuzzy-search"));
@@ -145,7 +152,10 @@ describe("Fleet fuzzy interaction performance", () => {
         const started = performance.now();
         const host = name === "fuzzy-explorer" ? main.ensureSelectList() : main.ensureFinder();
         const list = host.getModel();
+        if (config.worker === false && list.props.search.worker !== false)
+          await list.update({ search: { ...list.props.search, worker: false } });
         if (config.cold) {
+          list.clearWorkerMatcher();
           list.filterMatcher = null;
           list.filterMatcherGeneration = null;
           list.filterMatcherFirst = null;
@@ -156,6 +166,7 @@ describe("Fleet fuzzy interaction performance", () => {
         record("open", performance.now() - started, sample);
         if (config.waitForPreparation) {
           while (list.matcherPreparation) await new Promise((resolve) => setTimeout(resolve, 0));
+          await list.workerPreparation?.promise;
           record("prepared", performance.now() - started, sample);
         }
         count = list.getMatchCount();
@@ -238,6 +249,7 @@ describe("Fleet fuzzy interaction performance", () => {
           libraryHash: beforeLibraryHash,
           coldMatcherEachOpen: !!config.cold,
           waitsForPreparation: !!config.waitForPreparation,
+          worker: config.reference ? false : config.worker !== false,
           activeEditor: !!activeEditor,
           projectCorpusHash: config.projectCorpus
             ? hash(fs.readFileSync(config.projectCorpus))

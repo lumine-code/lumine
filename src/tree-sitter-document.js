@@ -1,4 +1,4 @@
-const PieceTree = require("./piece-tree");
+const { PieceTree } = require("./text-model");
 
 // Owns the parser's view of applied document revisions. It never edits text
 // or trees and never infers offsets from clipped buffer positions.

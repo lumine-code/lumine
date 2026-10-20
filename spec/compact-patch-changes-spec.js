@@ -14,7 +14,7 @@ function plain(changes) {
 }
 
 describe("single-change compaction", () => {
-  it("matches native composition for independent rows in arbitrary order", () => {
+  it("matches patch composition for independent rows in arbitrary order", () => {
     let seed = 73;
     const random = (max) => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -103,14 +103,14 @@ describe("single-change compaction", () => {
     }
   });
 
-  it("counts UTF-16 columns and LF rows like native text storage", () => {
-    const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
+  it("counts UTF-16 columns and advances rows only at LF", () => {
     for (const text of ["", "\r", "\r\n", "😀e\u0301", "a\r\nb\nc\r", "line\n".repeat(10000)]) {
-      expect(extentForText(text)).toEqual(new NativeTextBuffer(text).getExtent());
+      const lines = text.split("\n");
+      expect(extentForText(text)).toEqual({ row: lines.length - 1, column: lines.at(-1).length });
     }
   });
 
-  it("matches native patch compaction for empty, Unicode, line-ending and rebased changes", () => {
+  it("matches patch compaction for empty, Unicode, line-ending and rebased changes", () => {
     const texts = ["", "abc", "A😀B", "\r\n", "a\rb\nc", "a\nb\n"];
     for (const oldText of texts) {
       for (const newText of texts) {
@@ -151,7 +151,7 @@ describe("single-change compaction", () => {
     expect(Object.isFrozen(change.newEnd)).toBe(false);
   });
 
-  it("preserves native coercion, saturation and negative-zero normalization", () => {
+  it("preserves coordinate coercion, saturation and negative-zero normalization", () => {
     for (const start of [
       { row: 0.5, column: 1.75 },
       { row: -0, column: -0 },

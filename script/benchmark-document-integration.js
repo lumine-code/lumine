@@ -89,6 +89,30 @@ const packageFingerprint = (directory, files) =>
   );
 
 async function main() {
+  const { resolveReference } = require("./native-superstring-reference");
+  const reference = resolveReference(
+    option("native-reference", process.env.LUMINE_NATIVE_SUPERSTRING),
+  );
+  // The historical editor must retain its own native dependencies. Never
+  // install an oracle into the current editor or a shared node_modules link.
+  let baselineReference;
+  try {
+    const requireBaseline = require("node:module").createRequire(
+      path.join(baseline, "package.json"),
+    );
+    baselineReference = resolveReference(
+      path.dirname(requireBaseline.resolve("@lumine-code/superstring/package.json")),
+    );
+  } catch (error) {
+    throw new Error("The native baseline needs its own installed Superstring reference.", {
+      cause: error,
+    });
+  }
+  assert.equal(
+    baselineReference.bindingSha256,
+    reference.bindingSha256,
+    "Native baseline and selected reference differ",
+  );
   const candidateRevision = git("rev-parse", "HEAD").trim();
   const candidateDirty = Boolean(git("status", "--porcelain=v1").trim());
   const sourceBeforeCopy = fingerprint(root);
@@ -182,12 +206,7 @@ async function main() {
       encoding: "utf8",
     }).trim();
   }
-  const nativePath = path.join(
-    path.dirname(require.resolve("@lumine-code/superstring")),
-    "build",
-    "Release",
-    "superstring.node",
-  );
+  const nativePath = reference.binding;
   const nativeHash = sha(fs.readFileSync(nativePath));
   const reports = [];
   const order = [];
@@ -218,6 +237,7 @@ async function main() {
       LUMINE_TEST_PACKAGES: config.packages.join(" "),
     };
     delete env.CI;
+    delete env.ELECTRON_RUN_AS_NODE;
     const log = fs.openSync(path.join(destination, `${label}-${index}.log`), "w");
     const child = spawn(
       electron,

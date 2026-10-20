@@ -1,6 +1,6 @@
 # JavaScript document core
 
-The running editor now owns its text entirely in JavaScript. `TextBuffer` uses `TextStore`, persistent `PieceTree` snapshots, JavaScript spatial patches and a JavaScript marker index. Superstring is a development-only reference for differential tests and native benchmarks; it is not loaded by the document runtime. Tree-sitter continues to run through the existing WASM adapter. The migration is preproduction work. Local implementation checkpoints are committed; dependency repins and publication are separate steps.
+The running editor owns its text entirely in JavaScript. `TextBuffer` uses `TextStore` and the internal `src/text-model` module: persistent `PieceTree` snapshots, document drafts, spatial patches and a marker index. Native Superstring is absent from normal dependencies, installation and tests. It remains an explicitly selected external reference for optional differential checks. Tree-sitter continues to run through the existing WASM adapter.
 
 ## Ownership
 
@@ -15,6 +15,10 @@ The running editor now owns its text entirely in JavaScript. `TextBuffer` uses `
 | `tree-sitter-document.js`, `tree-sitter-parser.js` | Revision journals, immutable parser sources and WASM input callbacks.                    |
 
 `TextStore` disables `DocumentCore`'s standalone history: the editor history provider is the single owner of user-visible undo and redo. This avoids retaining a second undo stack. The public TextBuffer transaction and notification contract remains intact for package compatibility. Kernel drafts publish atomically; an outer editor transaction can still publish sequential internal edits before its consolidated change event. See [Document edit contract](document-edit-contract.md).
+
+The source directory stays flat. Production consumers import `src/text-model.js`, which exports `PieceTree`, `DocumentCore`, `ChangeSet`, `TextPatch` and `MarkerIndex`; `ChangeTree` is an implementation detail. The module imports only its own files. Patch byte serialization retains the host `Buffer` API, so this is a Node/Electron module, not a claim of browser portability. `TextStore` remains a core adapter for saved-base state, I/O and search. User history, display policy and parser ownership stay outside the module. Tests and benchmarks may address implementation files for white-box instrumentation.
+
+This is an internal module, not a separately versioned library. Snapshot and patch objects cross the boundary by reference without text conversion, cloning or a second constructor identity. Packages continue to use the public `TextBuffer` APIs; they do not depend on internal file paths.
 
 ## Text and geometry
 
@@ -71,11 +75,17 @@ Regex search now uses JavaScript RegExp with the editor's LF/CRLF anchor policy.
 
 ## Validation and performance
 
-`npm run test:document-core` covers randomized text/history operations, marker queries and invalidation against the native oracle, patch composition and old-coordinate invalidation, persistent geometry copies, stale edits, encodings, stream boundaries and saved-base races. A child-process regression asserts that a real TextBuffer edit/marker/undo path does not load Superstring. `npm run test:tree-sitter-runtime` covers bounded parser input, source lifetime and revision behavior. The full editor, main-process and relevant package suites exercise the public integration.
+`npm run test:document-core` covers randomized text/history operations against flat strings, patch replay and inversion, marker affinity and coordinate lists, persistent geometry copies, stale edits, encodings, stream boundaries and saved-base races. Boundary tests guard the module's imports and the absence of Superstring from the normal install. A child-process regression asserts that a real TextBuffer edit/marker/undo path does not load Superstring. `npm run test:tree-sitter-runtime` covers bounded parser input, source lifetime and revision behavior. The full editor, main-process and relevant package suites exercise the public integration.
+
+`npm run test:document-native` retains the historical differential checks as an optional suite. It requires `LUMINE_NATIVE_SUPERSTRING` pointing to a separately built reference and fails clearly when no reference is supplied. See [native reference setup](../benchmark/native-reference/README.md). Normal tests neither load that reference nor silently skip essential assertions.
+
+The 2026-10-20 internal-module cleanup keeps `src` flat and leaves the five data-structure implementations unchanged. Local validation after removing the installed native package passed 64 document-model tests, 58 Tree-sitter runtime tests, 858 editor integration specs and all 15 optional native comparisons. The display benchmark also froze a JavaScript baseline successfully without a native addon, and bundled-dependency validation passed. These are local Windows results; no cross-platform CI result is implied.
+
+A serial before/after/after/before model comparison against `aef9280eb5` covered 32 insertion, replacement, undo and redo scenarios on buffer and editor-model surfaces, using flat and multiline payloads of 128 and 1000000 UTF-16 units, two warmups and seven measured samples per process. All checksums matched. No scenario exceeded both a 5% and 0.5 ms increase in the aggregate median. The largest absolute increase was multiline editor redo at 1000000 units: 59.18 to 60.87 ms, about 2.9%; this small process-level sample does not prove zero performance variation. The benchmark excludes DOM presentation and syntax parsing. Raw local runs are retained under `.dev/internal-text-model-20261020`.
 
 The [2026-10-19 integration report](javascript-document-performance.md) records the first same-facade and real-editor comparison, before the subsequent fleet/API optimization pass.
 
-The comparison driver is `npm run benchmark:document-integration`. It takes `--baseline PATH` pointing at a frozen native editor checkout and freezes the current tracked and untracked WIP into a separate directory. Both sources execute identical benchmark scripts with the same installed dependencies. Each run records source, driver, lockfile and native-addon hashes and rejects changes during measurement. Use a fresh `--output PATH`; the driver deliberately refuses to replace a candidate directory.
+The comparison driver is `npm run benchmark:document-integration`. It takes `--baseline PATH` pointing at a frozen native editor checkout with independent native dependencies, plus an external native reference selected through `LUMINE_NATIVE_SUPERSTRING` or `--native-reference PATH`. It freezes the current tracked and untracked WIP into a separate directory. Both sources execute identical benchmark scripts with the same installed dependencies. Each run records source, driver, lockfile and native-addon hashes and rejects changes during measurement. Use a fresh `--output PATH`; the driver deliberately refuses to replace a candidate directory.
 
 The default run uses four fresh processes per implementation, alternating native/JS then JS/native, with three warmups and nine samples per scenario. The aggregate is the conventional median of process medians; individual samples and per-process statistics remain in the report. This controls some process/JIT and order effects but does not turn nine samples into a stable tail-latency estimate. Measurements are specific to the recorded machine, operating system and runtime.
 

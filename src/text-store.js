@@ -3,9 +3,7 @@ const crypto = require("node:crypto");
 const { once } = require("node:events");
 const iconv = require("iconv-lite");
 const { diffChars, diffLines } = require("diff");
-const PieceTree = require("./piece-tree");
-const { DocumentCore } = require("./document-core");
-const Patch = require("./text-patch");
+const { PieceTree, DocumentCore, TextPatch: Patch } = require("./text-model");
 const zero = { row: 0, column: 0 };
 const traverse = (a, b) => ({ row: a.row + b.row, column: b.row ? b.column : a.column + b.column });
 const distance = (a, b) => ({

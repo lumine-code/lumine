@@ -46,6 +46,27 @@ describe("SelectList cooperative search", () => {
     expect(list.getItems()).toEqual(["other"]);
     expect(list.getFilteredItems()).toEqual([]);
   });
+  it("reuses preparation when new input arrives after extraction has started", async () => {
+    let began;
+    const started = new Promise((resolve) => {
+      began = resolve;
+    });
+    let extractions = 0;
+    list = create({
+      getFilterText(value) {
+        extractions++;
+        began();
+        return value;
+      },
+    });
+    const old = list.setQuery("zolc");
+    await started;
+    const latest = list.setQuery("sample");
+    await Promise.all([old, latest]);
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(extractions).toBe(values.length);
+    expect(list.matcherPreparation).toBeNull();
+  });
   it("cancels when the query clears or the list is destroyed", async () => {
     list = create();
     const pending = list.setQuery("sample");
@@ -56,6 +77,14 @@ describe("SelectList cooperative search", () => {
     await list.destroy();
     await later;
     expect(list.queryWork).toBeNull();
+  });
+  it("keeps the current search alive when a replacement transaction is rejected", async () => {
+    list = create();
+    const pending = list.setQuery("sample");
+    expect(() => list.update({ items: ["duplicate", "duplicate"] })).toThrow();
+    await pending;
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(list.getQuery()).toBe("sample");
   });
   it("reports callback failures and can retry successfully", async () => {
     let fail = true;
@@ -92,6 +121,7 @@ describe("SelectList cooperative search", () => {
   it("captures action items lazily from the original source with frozen snapshot semantics", async () => {
     list = create();
     const context = list.getActionContext();
+    Object.freeze(context);
     const records = list.model._records;
     spyOn(records, "map").and.callThrough();
     const snapshot = list.dialogActions.snapshot(context);

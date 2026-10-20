@@ -1,4 +1,4 @@
-const Patch = require("./text-patch");
+const { TextPatch: Patch } = require("./text-model");
 const MarkerLayer = require("./marker-layer");
 const { patchFromChanges } = require("./helpers");
 

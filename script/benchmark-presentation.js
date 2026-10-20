@@ -72,7 +72,6 @@ function filesBelow(directory) {
     return entry.isDirectory() ? filesBelow(file) : [file];
   });
 }
-const addonRoot = path.dirname(require.resolve("@lumine-code/superstring/package.json"));
 const hashedFiles = [
   ...[
     "package.json",
@@ -86,8 +85,15 @@ const hashedFiles = [
     "benchmark/presentation-observer.js",
     "script/benchmark-presentation.js",
   ].map((file) => path.join(root, file)),
-  path.join(addonRoot, "package.json"),
-  ...filesBelow(path.join(addonRoot, "build")).filter((file) => file.endsWith(".node")),
+  ...[
+    "text-model.js",
+    "piece-tree.js",
+    "document-core.js",
+    "text-patch.js",
+    "change-tree.js",
+    "marker-index.js",
+  ].map((file) => path.join(root, "src", file)),
+  path.join(root, "src", "text-store.js"),
   ...packagePaths.flatMap((source) => [
     path.join(source, "package.json"),
     ...filesBelow(path.join(source, "grammars")),

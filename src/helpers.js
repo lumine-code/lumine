@@ -1,4 +1,4 @@
-const Patch = require("./text-patch");
+const { TextPatch: Patch } = require("./text-model");
 const Range = require("./range");
 const { traverse, traversal } = require("./point-helpers");
 

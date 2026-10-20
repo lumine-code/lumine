@@ -124,7 +124,8 @@ const files = [
   "helpers.js",
   "piece-tree.js",
   "marker-index.js",
-];
+  "text-model.js",
+].filter((file) => fs.existsSync(path.join(source, "src", file)));
 const report = {
   node: process.version,
   samples,
