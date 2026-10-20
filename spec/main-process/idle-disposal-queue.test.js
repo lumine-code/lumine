@@ -73,6 +73,23 @@ test("a failed disposer does not strand other collected resources", () => {
   assert.deepEqual(disposed, [2]);
 });
 
+test("scroll activity extends the edit pause until the gesture has settled", () => {
+  const state = setup(),
+    disposed = [];
+  state.queue.didEdit();
+  state.queue.add(1, (value) => disposed.push(value));
+  state.run();
+  for (let i = 0; i < 10; i++) {
+    state.advance(200);
+    state.queue.didInteract();
+    state.run();
+    assert.deepEqual(disposed, []);
+    assert.equal(state.tasks.length, 1);
+  }
+  state.run();
+  assert.deepEqual(disposed, [1]);
+});
+
 test("continuous pressure does not retain an ever-growing prefix of consumed slots", () => {
   const state = setup({ pressureLimit: 2 });
   const dispose = () => {};

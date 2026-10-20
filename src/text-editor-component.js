@@ -3,6 +3,7 @@ const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
+const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
 const NodePool = require("./node-pool");
 const DummyScrollbarComponent = require("./dummy-scrollbar-component");
@@ -2709,6 +2710,7 @@ module.exports = class TextEditorComponent {
     if (!this.visible) this.didShow();
     const { x, y, distanceScale } = this.normalizedWheelDeltas(event);
     if (this.applyWheelScroll(x, y, event.timeStamp, event.momentum, distanceScale)) {
+      idleDisposals.didInteract();
       event.preventDefault();
     }
   }
@@ -5089,6 +5091,9 @@ module.exports = class TextEditorComponent {
     // is gone, scrolling down cannot bring the old empty gap back.
     this.preservedScrollTop = Math.min(this.preservedScrollTop, scrollTop);
     if (scrollTop !== this.scrollTop) {
+      // Include every animation frame and scrollbar drag, not only wheel
+      // events: a native tree destructor can outlast an entire scroll frame.
+      idleDisposals.didInteract();
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
       // Programmatic dummy-scrollbar echoes are filtered before reaching here.
@@ -5131,6 +5136,7 @@ module.exports = class TextEditorComponent {
     // Exact for the same reason as setScrollTop; outputs quantize.
     scrollLeft = Math.max(0, Math.min(this.getMaxScrollLeft(), scrollLeft));
     if (scrollLeft !== this.scrollLeft) {
+      idleDisposals.didInteract();
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
       // Programmatic dummy-scrollbar echoes are filtered before reaching here.

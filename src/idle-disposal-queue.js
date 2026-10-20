@@ -1,11 +1,11 @@
-// Native disposers cannot be interrupted. Prefer a pause between edit bursts,
+// Native disposers cannot be interrupted. Prefer a pause between interactions,
 // and yield between jobs. The pressure threshold prevents indefinite typing
 // from postponing every release; the time budget is soft for a single job.
 class IdleDisposalQueue {
   constructor({
     now = () => performance.now(),
     schedule = (callback, delay) => setTimeout(callback, delay),
-    quietMs = 100,
+    quietMs = 250,
     budgetMs = 2,
     pressureLimit = 2048,
   } = {}) {
@@ -16,12 +16,16 @@ class IdleDisposalQueue {
     this.pressureLimit = pressureLimit;
     this.pending = [];
     this.offset = 0;
-    this.lastEdit = -Infinity;
+    this.lastActivity = -Infinity;
     this.scheduled = false;
   }
 
   didEdit() {
-    this.lastEdit = this.now();
+    this.didInteract();
+  }
+
+  didInteract() {
+    this.lastActivity = this.now();
   }
 
   add(value, dispose) {
@@ -33,7 +37,7 @@ class IdleDisposalQueue {
   }
 
   drain() {
-    const wait = Math.max(0, this.lastEdit + this.quietMs - this.now());
+    const wait = Math.max(0, this.lastActivity + this.quietMs - this.now());
     if (wait && this.pending.length - this.offset <= this.pressureLimit) {
       this.schedule(() => this.drain(), wait);
       return;

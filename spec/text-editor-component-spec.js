@@ -2481,6 +2481,21 @@ describe("TextEditorComponent", () => {
       expect(ended).toBe(1);
     });
 
+    it("keeps native disposal out of the wheel event and subsequent animation frames", () => {
+      const { idleDisposals } = require("../src/idle-disposal-queue");
+      const { component } = buildSmoothComponent();
+      const activity = spyOn(idleDisposals, "didInteract").and.callThrough();
+      component.didMouseWheel({ deltaY: 80, preventDefault() {} });
+      expect(activity).toHaveBeenCalled();
+      activity.calls.reset();
+      component.scrollAnimator.advance(FRAME);
+      expect(activity).toHaveBeenCalled();
+      activity.calls.reset();
+      component.scrollAnimator.advance(FRAME);
+      expect(activity).toHaveBeenCalled();
+      driveAnimationToCompletion(component);
+    });
+
     it("does not prevent default when the editor cannot scroll in the requested direction", () => {
       const { component } = buildSmoothComponent();
       const preventDefault = jasmine.createSpy("preventDefault");
