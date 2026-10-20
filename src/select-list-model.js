@@ -128,6 +128,8 @@ module.exports = class SelectListModel {
     this._displayLimit = DEFAULT_PAGE_SIZE;
     this._generation = 0;
     this._filterTextCache = new Map();
+    this._matcherCandidates = null;
+    this._matcherCandidateSet = null;
     this._records = [];
     this._recordById = new Map();
     this._recordByItem = new Map();
@@ -403,7 +405,7 @@ module.exports = class SelectListModel {
             recordById: this._recordById,
             recordByItem: this._recordByItem,
           };
-    const filterTextCache = generationChanged ? new Map() : new Map(this._filterTextCache);
+    const filterTextCache = generationChanged ? new Map() : this._filterTextCache;
 
     const draft = {
       source,
@@ -415,10 +417,15 @@ module.exports = class SelectListModel {
       pageSize,
       generation,
       filterTextCache,
+      copyFilterTextCacheOnWrite: !generationChanged,
+      matcherCandidates: generationChanged ? null : this._matcherCandidates,
+      matcherCandidateSet: generationChanged ? null : this._matcherCandidateSet,
       ...built,
     };
     const filteredRecords = this._deriveFilteredRecords(draft);
-    const filteredIndexById = new Map(filteredRecords.map((record, index) => [record.id, index]));
+    const filteredIndexById = new Map();
+    for (let index = 0; index < filteredRecords.length; index++)
+      filteredIndexById.set(filteredRecords[index].id, index);
 
     let selectedId;
     if (hasOwn(changes, "initialSelection")) {
@@ -481,7 +488,9 @@ module.exports = class SelectListModel {
     this._pageSize = pageSize;
     this._displayLimit = displayLimit;
     this._generation = generation;
-    this._filterTextCache = filterTextCache;
+    this._filterTextCache = draft.filterTextCache;
+    this._matcherCandidates = draft.matcherCandidates;
+    this._matcherCandidateSet = draft.matcherCandidateSet;
     this._records = built.records;
     this._recordById = built.recordById;
     this._recordByItem = built.recordByItem;
@@ -534,6 +543,7 @@ module.exports = class SelectListModel {
         item,
         sourceIndex: records.length,
         sectionId: context.sectionId,
+        sourceSectionId: context.sectionId,
         sectionIndex,
         itemIndex,
         recent: false,
@@ -576,8 +586,10 @@ module.exports = class SelectListModel {
     }
 
     const recentSet = state.query ? new Set() : new Set(state.recentIds);
-    return records.map((record) =>
-      Object.freeze({
+    return records.map((record) => {
+      const recent = recentSet.has(record.id);
+      if ((!state.query || record.sectionId === null) && record.recent === recent) return record;
+      return Object.freeze({
         ...record,
         // A query is one ranked result set; source groups no longer create
         // visual boundaries. Keep the source section separately for callers
@@ -585,9 +597,9 @@ module.exports = class SelectListModel {
         sourceSectionId: record.sectionId,
         sectionId: state.query ? null : record.sectionId,
         sectionIndex: state.query ? -1 : record.sectionIndex,
-        recent: recentSet.has(record.id),
-      }),
-    );
+        recent,
+      });
+    });
   }
 
   _searchRecords(state) {
@@ -602,16 +614,19 @@ module.exports = class SelectListModel {
     }
 
     if (state.search.matcher) {
-      const candidates = state.records.map((record, index) =>
+      const candidates = (state.matcherCandidates ??= state.records.map((record, index) =>
         Object.freeze({
           id: record.id,
           item: record.item,
           index,
           filterText: this._filterTextForRecord(record, state),
         }),
-      );
+      ));
+      state.matcherCandidateSet ??= new Set(candidates);
       const context = this._searchContext(state);
-      const result = state.search.matcher(candidates, state.query, context);
+      // A custom matcher may sort its input array. Keep prepared records shared,
+      // but preserve the per-request array ownership of the public contract.
+      const result = state.search.matcher(candidates.slice(), state.query, context);
       return this._normalizeSearchResults(result, state, candidates, "search.matcher");
     }
 
@@ -650,7 +665,7 @@ module.exports = class SelectListModel {
 
   _normalizeSearchResults(result, state, candidates, source) {
     if (!Array.isArray(result)) throw new TypeError(`${source} must return an array`);
-    const candidateSet = candidates ? new Set(candidates) : null;
+    const candidateSet = candidates ? (state.matcherCandidateSet ?? new Set(candidates)) : null;
     const seen = new Set();
     return result.map((value) => {
       let record = null;
@@ -726,6 +741,10 @@ module.exports = class SelectListModel {
       text = record.item;
     }
     text = text == null ? "" : String(text);
+    if (state.copyFilterTextCacheOnWrite) {
+      state.filterTextCache = new Map(state.filterTextCache);
+      state.copyFilterTextCacheOnWrite = false;
+    }
     state.filterTextCache.set(record.id, text);
     return text;
   }

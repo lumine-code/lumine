@@ -51,6 +51,33 @@ describe("SelectList", () => {
   });
 
   describe("public model API", () => {
+    it("keeps alternate-label highlights separate and refreshes prepared text after source changes", async () => {
+      const item = { id: "item", text: "Straße" };
+      view = createSelectList({
+        items: [item],
+        getItemId: (item) => item.id,
+        search: { getFilterText: (item) => item.text, ignoreDiacritics: true },
+        renderItem: (item) => ({ primary: item.text }),
+      });
+      await view.setQuery("ss");
+      expect(view.getMatchIndices(item)).toEqual([4, 4]);
+      expect(view.getMatchIndices(item, "ss")).toEqual([0, 1]);
+      expect(view.getMatchIndices(item)).toEqual([4, 4]);
+      item.text = "ss-new";
+      await view.setItems([item]);
+      expect(view.getMatchIndices(item)).toEqual([0, 1]);
+    });
+
+    it("keeps the prepared ranking batch while the query changes", async () => {
+      view = textItemView();
+      await view.setQuery("o");
+      const matcher = view.filterMatcher;
+      for (const item of view.getFilteredItems()) view.getMatchIndices(item);
+      await view.setQuery("on");
+      for (const item of view.getFilteredItems()) view.getMatchIndices(item);
+      expect(view.filterMatcher).toBe(matcher);
+    });
+
     it("materializes its DOM lazily and stays out of the editor registry while detached", () => {
       view = lumine.workspace.buildSelectList({
         items: ["one"],

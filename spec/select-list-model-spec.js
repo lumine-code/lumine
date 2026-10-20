@@ -5,6 +5,26 @@ describe("SelectListModel", () => {
     return { id, label };
   }
 
+  it("lets custom matchers reorder each input without mutating prepared candidate order", () => {
+    const seen = [];
+    const model = new SelectListModel({
+      items: ["alpha", "beta", "gamma"],
+      search: {
+        matcher(candidates) {
+          seen.push(candidates.map((candidate) => candidate.item));
+          return candidates.reverse();
+        },
+      },
+    });
+    model.update({ query: "a" });
+    model.update({ query: "b" });
+    expect(seen).toEqual([
+      ["alpha", "beta", "gamma"],
+      ["alpha", "beta", "gamma"],
+    ]);
+    expect(model.getFilteredItems()).toEqual(["gamma", "beta", "alpha"]);
+  });
+
   describe("stable item identity", () => {
     it("uses primitive items as their own IDs", () => {
       const symbol = Symbol("symbol-item");

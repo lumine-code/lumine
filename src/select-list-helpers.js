@@ -13,7 +13,7 @@ const fuzzyMatcher = require("./fuzzy-matcher");
  * @param {string} query - The query to match
  * @param {Object} [options] - Optional settings
  * @param {boolean} [options.removeDiacritics=false] - Match accent-insensitively.
- *   Folding is done natively; the returned indices refer to the original `text`.
+ *   Folded matches retain indices into the original `text`.
  * @returns {number[]|null} Array of character indices that matched, or null if no match
  * @private
  */
