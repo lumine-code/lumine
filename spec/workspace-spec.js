@@ -1,6 +1,5 @@
 const { copyableElement } = require("./helpers/pane-item-fixtures");
 const path = require("path");
-const etch = require("@lumine-code/etch");
 const temp = require("@lumine-code/fs-temp").track();
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
@@ -3324,8 +3323,7 @@ describe("Workspace", () => {
       });
       const element = list.getElement();
 
-      list.getQueryEditor().setText("al");
-      await etch.getScheduler().getNextUpdatePromise();
+      await list.setQuery("al");
 
       const matches = element.querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["al"]);
