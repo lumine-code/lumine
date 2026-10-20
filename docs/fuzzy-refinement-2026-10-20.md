@@ -1,8 +1,10 @@
 # Fuzzy query refinement follow-up
 
-The optimized JavaScript port meets the migration criterion on the measured Lumine workloads, so the editor now uses `@lumine-code/fast-fuzzy`. Extending `se` to `sel` over 100000 paths takes 93.70 ms, versus 155.90 ms for the first JS port and 90.60 ms for native. At 10000 paths it takes 14.75 ms, versus 22.05 ms and 14.95 ms respectively. The remaining 100000-path difference is about 3.4%; easier profiling and maintenance justify adopting JS at this level of similarity. This supersedes the initial decision in the [first evaluation](fuzzy-matching-evaluation-2026-10-20.md), which also documents the consumer review.
+The optimized JavaScript port meets the migration criterion on the measured Lumine workloads, so the editor adopted `@lumine-code/fast-fuzzy`, subsequently renamed to `@lumine-code/fuzzy-search`. Extending `se` to `sel` over 100000 paths takes 93.70 ms, versus 155.90 ms for the first JS port and 90.60 ms for native. At 10000 paths it takes 14.75 ms, versus 22.05 ms and 14.95 ms respectively. The remaining 100000-path difference is about 3.4%; easier profiling and maintenance justify adopting JS at this level of similarity. This supersedes the initial decision in the [first evaluation](fuzzy-matching-evaluation-2026-10-20.md), which also documents the consumer review.
 
 These are local Windows measurements. They establish the decision for this corpus and machine, not a universal claim that JavaScript outperforms native code or that a 100000-item synchronous search cannot block the renderer.
+
+The later [fleet integration report](fuzzy-search-fleet-performance-2026-10-20.md) records the production per-list worker, complete 500000-file measurements and the final default-worker policy. The worker-pool experiment below is retained as an earlier investigation.
 
 ## Normalize each candidate once
 
