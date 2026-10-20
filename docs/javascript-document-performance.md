@@ -1,5 +1,7 @@
 # JavaScript versus native document performance
 
+Historical measurements. Native comparison tooling and prototype patches were retired on 2026-10-21; commands and source paths below describe the recorded checkout, not the current one. See [current model validation and benchmarks](javascript-document-core.md#validation-and-performance).
+
 The [final comparison after the text-model and auto-indent corrections](javascript-document-final-comparison-2026-10-19.md) reruns native and JS with shared compatible packages, and measures the current JS package fleet separately.
 
 Local Windows comparison from 2026-10-19. This is the first integrated JavaScript candidate, measured before the later fleet/API optimization pass; the reference is the native editor at `b05b9769ed1402ca04135a9b6258949a9185e626`. The [raw report](../benchmark/results/javascript-document-integration-2026-10-19.json) contains source/driver/dependency hashes, every process and every measured sample. The candidate was uncommitted at measurement time; its source fingerprint identifies it.

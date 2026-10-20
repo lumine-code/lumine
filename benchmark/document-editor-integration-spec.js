@@ -29,8 +29,7 @@ describe("JavaScript document editor integration performance", () => {
     await lumine.packages.activatePackage("language-python");
     await lumine.packages.activatePackage("language-ipython");
     for (const name of config.packages ?? []) await lumine.packages.activatePackage(name);
-    // Binary/query loading is setup, outside the edit benchmark. Preloading
-    // also avoids the historical native loader's parallel file-read limit.
+    // Binary/query loading is setup, outside the edit benchmark.
     for (const scope of [
       "source.js",
       "source.css",
@@ -562,10 +561,6 @@ describe("JavaScript document editor integration performance", () => {
       }
       await tick();
     }
-    const nativeModules = Object.keys(require.cache).filter((name) =>
-      /superstring[\\/]/.test(name),
-    );
-    report.superstringLoaded = nativeModules.length > 0;
     const output = process.env.LUMINE_DOCUMENT_BENCH_OUTPUT;
     if (output) fs.writeFileSync(output, JSON.stringify(report, null, 2));
     console.log(`DOCUMENT_BENCHMARK_COMPLETE=${report.results.length}`);

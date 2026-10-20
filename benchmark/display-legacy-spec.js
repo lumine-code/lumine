@@ -425,7 +425,6 @@ describe("Legacy display performance benchmark", () => {
       );
     }
     results.push(await scrollCase(false), await scrollCase(true));
-    const addons = Object.keys(require.cache).filter((file) => file.endsWith("superstring.node"));
     const report = {
       schemaVersion: 1,
       runtime: process.versions,
@@ -433,10 +432,6 @@ describe("Legacy display performance benchmark", () => {
       arch: process.arch,
       config: CONFIG,
       memory: process.memoryUsage(),
-      addons: addons.map((file) => ({
-        path: file,
-        sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"),
-      })),
       corpus: {
         hash: checksum(results.map(({ id }) => id)),
         validation: "SHA256 of normalized points and packed bytes for every sample",

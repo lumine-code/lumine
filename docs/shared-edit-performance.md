@@ -1,5 +1,7 @@
 # Shared native edit ownership experiment
 
+Historical measurements. Native comparison tooling and prototype patches were retired on 2026-10-21; commands and source paths below describe the recorded checkout, not the current one. See [current model validation and benchmarks](javascript-document-core.md#validation-and-performance).
+
 This report records the October 17 experiment with immutable native text shared by buffer mutation and undo history. Its patches preserve the measured prototype. The production implementation follows the [document edit contract](document-edit-contract.md), with explicit prepared-edit lifetimes, a patch-only history interface and a revisioned change stream.
 
 ## Boundary and variants
@@ -95,7 +97,7 @@ The independent-buffer case retains twelve 1120000-unit insertions with their un
 
 ## Artifacts
 
-The [Superstring patch](../benchmark/experiments/shared-edit-superstring.patch) contains the implementation and native/Node ownership tests. The [editor patch](../benchmark/experiments/shared-edit-editor.patch) contains the optional preparation integration. Apply each to its baseline revision in a disposable checkout. The dedicated workflow applies the native patch before building and testing the library; it never changes the editor's dependency pin.
+The native and editor ownership prototype patches were retired with the native comparison tooling. Their implementations and tests remain available in Git history at the measured revisions.
 
 Frozen checkouts, build/test logs, compiled addons, differential traces, measurement drivers and raw process outputs are retained locally under `.dev/benchmarks/shared-edits/2026-10-17` at the workspace root. The native experiment changes no dependencies. Its Windows, macOS and Linux jobs validate package contents with `npm pack --dry-run`.
 

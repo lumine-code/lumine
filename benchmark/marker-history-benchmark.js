@@ -1,4 +1,4 @@
-// Use one immutable source and one native build per process. The runner writes
+// Use one immutable source and one JavaScript model per process. The runner writes
 // only when --output is supplied; alternate baseline/candidate process order.
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
@@ -49,7 +49,7 @@ for (const count of counts) {
           layer.markRange([start, [start[0], start[1] + 2]], { invalidate: "never" });
         }
         // A checkpoint models history that already retains a prior generation.
-        // Its creation, native oracle and fixture allocation are not timed.
+        // Its creation, correctness checks and fixture allocation are not timed.
         buffer.createCheckpoint();
         const position = operation === "replace-touched" && count ? [1, 0] : [0, 0];
         const replacement = operation.startsWith("replace");
@@ -191,10 +191,15 @@ if (memoryEdits) {
 }
 
 const hash = (file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-const native = Object.keys(require.cache).find((file) => file.endsWith("superstring.node"));
 const sourceHashes = Object.fromEntries(
   [
     "text-buffer.js",
+    "text-model.js",
+    "marker-index.js",
+    "text-patch.js",
+    "piece-tree.js",
+    "document-core.js",
+    "change-tree.js",
     "marker-layer.js",
     "marker.js",
     "default-history-provider.js",
@@ -211,7 +216,6 @@ const report = {
   source,
   sourceHashes,
   benchmarkSha256: hash(__filename),
-  nativeSha256: hash(native),
   samples,
   warmups,
   results,

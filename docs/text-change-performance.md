@@ -1,5 +1,7 @@
 # Text change boundary performance
 
+Historical measurements. Native comparison tooling and prototype patches were retired on 2026-10-21; commands and source paths below describe the recorded checkout, not the current one. See [current model validation and benchmarks](javascript-document-core.md#validation-and-performance).
+
 Measurements and architectural decisions for reducing repeated text conversion around editor transactions.
 
 ## Ownership and implementation
@@ -60,7 +62,7 @@ Compared with the improved JavaScript variant on the same experimental binary:
 
 The prototype has a real benefit in the large flat insertion case, but the multiline insertion adds about 48 ms to the median and 94 ms to p95. The flat 1M replacement also regresses. Their process-bootstrap intervals exclude one in the respective directions. The broader decision weighs absolute stalls, workload relevance and ownership boundaries: these mixed results do not justify making the extra native contract and patch handoff the general editing path. This rejects this particular prototype, not native computation as a whole. Superstring's production source and installed dependency remain unchanged.
 
-The [Superstring prototype patch](../benchmark/experiments/prepared-change-superstring.patch) targets the library revision above. The [editor prototype patch](../benchmark/experiments/prepared-change-editor.patch) targets the optimized editor sources. They are benchmark artifacts for disposable checkouts, not supported runtime APIs; the editor integration deliberately covers the benchmark's default history provider rather than all extension contracts. The prototype passed sixteen local preparation/ownership checks and the measured cases' assertions. It was not promoted through cross-platform release validation.
+The native and editor prepared-change prototype patches were retired with the native comparison tooling. Their implementations and original validation remain available in Git history.
 
 ## Evidence and reproduction
 

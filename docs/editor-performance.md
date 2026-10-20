@@ -1,6 +1,6 @@
 # Editor performance diagnostics
 
-Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; the current implementation is described in [JavaScript document core](javascript-document-core.md). Native comparisons use the [optional external reference](../benchmark/native-reference/README.md).
+Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; the current implementation is described in [JavaScript document core](javascript-document-core.md). Native measurements below are historical records; their comparison infrastructure has been retired.
 
 The later [text change boundary comparison](text-change-performance.md) records transaction-transfer optimizations, a native preparation experiment and paired renderer measurements.
 

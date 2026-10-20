@@ -1,5 +1,7 @@
 # Production document edit measurements
 
+Historical measurements. Native comparison tooling and prototype patches were retired on 2026-10-21; commands and source paths below describe the recorded checkout, not the current one. See [current model validation and benchmarks](javascript-document-core.md#validation-and-performance).
+
 The production implementation follows the [document edit contract](document-edit-contract.md). The October 18 comparison uses editor `42a44283eacde1ddad540699547169bb831e5391` and Superstring `809c57b536eca226a6cb9433bc75e07a39462574`, against editor `fddfdf74fd942f2a8117f8b7237311981261d50c` and Superstring `14f39ee40d749f37d2b554f026e974fa43d07f98`. The earlier [ownership experiment](shared-edit-performance.md) remains a separate historical result.
 
 ## Method

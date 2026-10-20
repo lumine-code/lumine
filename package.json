@@ -130,8 +130,6 @@
     "benchmark:icons": "node script/benchmark-icons.js",
     "benchmark:text-editor-long-lines": "npm run test:only -- benchmark/text-editor-long-line-input-spec.js",
     "benchmark:text-editor-scroll": "npm run test:only -- benchmark/text-editor-scroll-spec.js",
-    "benchmark:javascript-document": "node benchmark/javascript-document-benchmark.js",
-    "benchmark:document-integration": "node script/benchmark-document-integration.js",
     "benchmark:grammar-query-locality": "npm run test:only -- benchmark/tree-sitter-query-locality-spec.js",
     "benchmark:tree-sitter": "npm run test:only -- benchmark/tree-sitter-spec.js",
     "start": "electron --no-sandbox --enable-logging . -f --dev",
@@ -164,9 +162,8 @@
     "test:storage": "node --test script/package-storage.test.js script/select-list-recents.test.js",
     "benchmark:file-watch": "node benchmark/file-watch-benchmark.js",
     "benchmark:tree-sitter-editing": "npm run test:only -- benchmark/tree-sitter-editing-spec.js",
-    "test:document-native": "node script/run-document-native.js",
-    "benchmark:text-model": "node --expose-gc benchmark/editor-superstring-benchmark.js",
-    "benchmark:text-model-renderer": "npm run test:only -- benchmark/editor-superstring-renderer-spec.js"
+    "benchmark:text-model": "node --expose-gc benchmark/text-model-benchmark.js",
+    "benchmark:text-model-renderer": "npm run test:only -- benchmark/text-model-renderer-spec.js"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",

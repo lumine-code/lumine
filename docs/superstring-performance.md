@@ -1,5 +1,7 @@
 # Superstring integration performance
 
+Historical measurements. Native comparison tooling and prototype patches were retired on 2026-10-21; commands and source paths below describe the recorded checkout, not the current one. See [current model validation and benchmarks](javascript-document-core.md#validation-and-performance).
+
 Measured on 2026-10-02 with Node v24.18.0, Windows x64, and Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz. The editor model comparison uses immutable Lumine source 8b2a2f2 and native superstring revisions 3d785eb → 5d40a32. The later marker comparison measures 5d40a32 → f2b73f4. These stages are separate measurements.
 
 ## Method

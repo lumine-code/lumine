@@ -1,5 +1,5 @@
-// Compare frozen editor implementations in separate processes:
-// node --expose-gc benchmark/editor-superstring-benchmark.js --binding FILE.node
+// Measure JavaScript editor models in separate processes:
+// npm run benchmark:text-model -- --samples 9 --warmups 2
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -7,9 +7,22 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 const { performance } = require("node:perf_hooks");
-const { compileFunction } = require("node:vm");
 
 const args = process.argv.slice(2);
+const valueOptions = new Set([
+  "--source",
+  "--samples",
+  "--warmups",
+  "--units",
+  "--filter",
+  "--output",
+]);
+for (let index = 0; index < args.length; index++) {
+  if (args[index] === "--gc-after-setup") continue;
+  assert(valueOptions.has(args[index]), `Unknown option: ${args[index]}`);
+  assert(args[index + 1] && !args[index + 1].startsWith("--"), `${args[index]} requires a value`);
+  index++;
+}
 function option(name, fallback) {
   const index = args.indexOf(`--${name}`);
   if (index === -1) return fallback;
@@ -19,6 +32,10 @@ function option(name, fallback) {
 }
 
 const source = path.resolve(option("source", path.join(__dirname, "..")));
+assert(
+  fs.existsSync(path.join(source, "src", "text-model.js")),
+  "The benchmark requires a JavaScript text-model source",
+);
 const samples = Number(option("samples", 9));
 const warmups = Number(option("warmups", 2));
 const units = option("units", "1000000,8000000").split(",").map(Number);
@@ -31,57 +48,7 @@ assert(
   "Invalid --units",
 );
 
-// Route every editor consumer (text storage, history, display layers, markers)
-// to one native build before importing any editor module. Compare builds in
-// separate processes to keep addon initialization and module caches independent.
 const editorRequire = Module.createRequire(path.join(source, "package.json"));
-const nativeDocument = fs
-  .readFileSync(path.join(source, "src", "text-buffer.js"), "utf8")
-  .includes('require("@lumine-code/superstring")');
-const superstringEntry = nativeDocument ? editorRequire.resolve("@lumine-code/superstring") : null;
-const bindingOption = option("binding", process.env.LUMINE_SUPERSTRING_BENCH_BINDING);
-assert(
-  !bindingOption || nativeDocument,
-  "A binding override requires a native editor source snapshot",
-);
-let bindingPath;
-if (bindingOption) {
-  bindingPath = path.resolve(bindingOption);
-  assert(!require.cache[superstringEntry], "superstring was loaded before the binding override");
-  const binding = require(bindingPath);
-  const nativeRequire = Module.createRequire(superstringEntry);
-  const wrapperRequire = (request) => {
-    if (
-      request === "./build/Release/superstring.node" ||
-      request === "./build/Debug/superstring.node"
-    ) {
-      return binding;
-    }
-    return nativeRequire(request);
-  };
-  const wrapper = new Module(superstringEntry);
-  wrapper.filename = superstringEntry;
-  const execute = compileFunction(
-    fs.readFileSync(superstringEntry, "utf8"),
-    ["exports", "require", "module", "__filename", "__dirname"],
-    { filename: superstringEntry },
-  );
-  execute.call(
-    wrapper.exports,
-    wrapper.exports,
-    wrapperRequire,
-    wrapper,
-    superstringEntry,
-    path.dirname(superstringEntry),
-  );
-  wrapper.loaded = true;
-  require.cache[superstringEntry] = wrapper;
-} else if (nativeDocument) {
-  editorRequire("@lumine-code/superstring");
-  bindingPath = Object.keys(require.cache).find(
-    (filename) => filename.startsWith(path.dirname(superstringEntry)) && filename.endsWith(".node"),
-  );
-}
 
 const TextBuffer = editorRequire(path.join(source, "src", "text-buffer"));
 const TextEditor = editorRequire(path.join(source, "src", "text-editor"));
@@ -133,8 +100,7 @@ function createState(text, withEditor) {
   return state;
 }
 
-// The same public TextBuffer facade is used on both sides. Only its parser
-// snapshot representation differs: native flattens, JS retains a piece root.
+// Measure the public TextBuffer facade with and without retained parser snapshots.
 for (const size of [1000000, 8000000, 32000000, 128000000]) {
   const line = 'const value = "text 終"; // sample\n';
   let input;
@@ -173,7 +139,7 @@ for (const size of [1000000, 8000000, 32000000, 128000000]) {
           ],
           "X",
         );
-        if (snapshot) state.snapshot = state.buffer.getTextSnapshot?.() ?? state.buffer.getText();
+        if (snapshot) state.snapshot = state.buffer.getTextSnapshot();
         return state;
       },
       (state) => {
@@ -237,14 +203,13 @@ add(
     {
       utf16Units: text.length,
       operations: 1,
-      read: "snapshot line iterator, or legacy getLines on the native reference",
+      read: "snapshot line iterator",
     },
     () => createState(text, false),
     (state) => {
       state.total = 0;
-      const snapshot = state.buffer.getTextSnapshot?.();
-      for (const value of snapshot?.lines?.() ?? state.buffer.getLines())
-        state.total += value.length;
+      const snapshot = state.buffer.getTextSnapshot();
+      for (const value of snapshot.lines()) state.total += value.length;
       return state;
     },
     (state) => {
@@ -299,7 +264,7 @@ add(
   { utf16Units: 8000000, operations: 20, retainedSnapshots: 21 },
   () => {
     const state = createState("a終".repeat(4000000), false);
-    state.snapshots = [state.buffer.getTextSnapshot?.() ?? state.buffer.getText()];
+    state.snapshots = [state.buffer.getTextSnapshot()];
     if (global.gc) global.gc();
     state.memoryBefore = process.memoryUsage();
     return state;
@@ -313,7 +278,7 @@ add(
         ],
         "X",
       );
-      state.snapshots.push(state.buffer.getTextSnapshot?.() ?? state.buffer.getText());
+      state.snapshots.push(state.buffer.getTextSnapshot());
     }
     if (global.gc) global.gc();
     const after = process.memoryUsage();
@@ -531,11 +496,7 @@ async function main() {
       arch: process.arch,
       cpu: os.cpus()[0]?.model,
       source,
-      documentBackend: nativeDocument ? "native" : "javascript",
-      binding: bindingPath,
-      bindingSha256: bindingPath
-        ? crypto.createHash("sha256").update(fs.readFileSync(bindingPath)).digest("hex")
-        : undefined,
+      documentBackend: "javascript",
       gcBetweenSamples: typeof global.gc === "function",
       gcAfterSetup: gcAfterSetup && typeof global.gc === "function",
     },

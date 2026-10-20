@@ -2,7 +2,6 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 const root = path.resolve(__dirname, "../..");
 
@@ -67,56 +66,11 @@ test("the internal model shares constructor identity and imports no editor or ex
   assert.equal(result.status, 0, result.stderr);
 });
 
-test("Superstring is absent from the normal install and optional tests require explicit opt-in", () => {
+test("Superstring is absent from the installation", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json")));
   const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json")));
   for (const field of ["dependencies", "devDependencies", "optionalDependencies"])
     assert.equal(manifest[field]?.["@lumine-code/superstring"], undefined);
   assert.equal(lock.packages["node_modules/@lumine-code/superstring"], undefined);
   assert(!Object.keys(manifest.allowScripts).some((key) => key.includes("superstring")));
-  const env = { ...process.env };
-  delete env.CI;
-  delete env.LUMINE_NATIVE_SUPERSTRING;
-  const result = spawnSync(process.execPath, [path.join(root, "script/run-document-native.js")], {
-    env,
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 30000,
-  });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /Native comparison is opt-in/);
-});
-
-test("the optional oracle rejects a JavaScript substitute with a leftover binary", () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-native-reference-"));
-  const release = path.join(directory, "build", "Release");
-  fs.mkdirSync(release, { recursive: true });
-  const manifest = path.join(directory, "package.json");
-  const entry = path.join(directory, "index.js");
-  const binding = path.join(release, "superstring.node");
-  try {
-    fs.writeFileSync(manifest, JSON.stringify({ name: "@lumine-code/superstring" }));
-    fs.writeFileSync(entry, "module.exports = {};");
-    fs.writeFileSync(binding, "not an actual native addon");
-    const env = { ...process.env, LUMINE_NATIVE_SUPERSTRING: directory };
-    delete env.CI;
-    const helper = require.resolve("../../script/native-superstring-reference");
-    const result = spawnSync(
-      process.execPath,
-      ["-e", `require(${JSON.stringify(helper)}).load()`],
-      {
-        env,
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: 30000,
-      },
-    );
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /did not load its native Release binding/);
-  } finally {
-    for (const file of [manifest, entry, binding]) fs.unlinkSync(file);
-    fs.rmdirSync(release);
-    fs.rmdirSync(path.join(directory, "build"));
-    fs.rmdirSync(directory);
-  }
 });

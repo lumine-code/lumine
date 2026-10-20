@@ -30,7 +30,7 @@ function summarize(samplesMs) {
   };
 }
 
-describe("Text editor superstring renderer benchmark", () => {
+describe("Text editor model renderer benchmark", () => {
   it("reports large paste, undo and redo model costs and synchronous component updates", async () => {
     jasmine.useRealClock();
     const original = multilineText("original");
@@ -152,9 +152,6 @@ describe("Text editor superstring renderer benchmark", () => {
           .createHash("sha256")
           .update(fs.readFileSync(__filename))
           .digest("hex"),
-        nativeHashes: Object.keys(require.cache)
-          .filter((file) => file.endsWith("superstring.node"))
-          .map((file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")),
         results: Object.entries(measurements).map(([operation, samples]) => ({
           operation,
           model: summarize(samples.model),
@@ -164,9 +161,9 @@ describe("Text editor superstring renderer benchmark", () => {
           ),
         })),
       };
-      const output = process.env.LUMINE_SUPERSTRING_RENDERER_BENCHMARK_OUTPUT;
+      const output = process.env.LUMINE_TEXT_MODEL_RENDERER_BENCHMARK_OUTPUT;
       if (output) fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
-      console.log(`EDITOR_SUPERSTRING_RENDERER_BENCHMARK=${JSON.stringify(report)}`);
+      console.log(`EDITOR_TEXT_MODEL_RENDERER_BENCHMARK=${JSON.stringify(report)}`);
     } finally {
       if (component) component.element.remove();
       if (editor) editor.destroy();

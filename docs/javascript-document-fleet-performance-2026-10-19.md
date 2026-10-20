@@ -162,13 +162,9 @@ These are local Windows results on one machine, not cross-platform CI or a guara
 
 See [the first integration report](javascript-document-performance.md) for historical measurements before this optimization pass. Different package activation and renderer setup make those timings unsuitable for direct before/after ratios.
 
-## Reproduction
+## Historical reproduction
 
-```powershell
-node script/benchmark-document-integration.js --baseline ../.dev/js-fleet-optimization/native-reference/lumine --processes 2 --samples 9 --warmups 3 --package-cases --model-filter "^(autocomplete|document|search)/|^editor-model/insert/multiline/1000000" --packages "sort-lines,whitespace,autocomplete,bracket-matcher,snippets,minimap,scrollmap,marker,highlight-selected,language-html,language-css,language-json,language-gfm,language-regex,language-javascript,language-python,language-ipython,language-text" --output ../.dev/js-fleet-optimization/new-measurement
-```
-
-The native archive must be prepared at the reference revision with the same installed dependencies; the runner copies identical benchmark drivers into both trees and freezes selected package working trees. Use a fresh output directory and keep installed dependencies and the frozen snapshots unchanged throughout the run. Ordinary workspace package edits cannot alter an already captured snapshot.
+The native-versus-JavaScript runner was retired on 2026-10-21. Its original implementation is available in Git history; the recorded results below remain historical evidence. For current JavaScript model and renderer measurements, use the commands in [JavaScript document core](javascript-document-core.md#validation-and-performance).
 
 ## Follow-up: fuzzy scanning and transaction history
 
@@ -204,4 +200,4 @@ The remaining costs are visible: completion-popup latency is still higher in JS,
 
 Validation after both refinements: 40 document-core/storage/patch/marker tests passed; 970 buffer/editor/display specs passed; autocomplete 445, code-format 107, table-editor 93 and whitespace 56 specs passed (701 package specs total). The new differential tests cover line-boundary characters inside words, long lines, words crossing piece boundaries, identity changes and independence of shared patch roots. The complete 6892-spec editor sweep and full package fleet sweep recorded above predate these final two refinements.
 
-To reproduce the renderer subset, use the full command above with `--filter "whitespace-|autocomplete-popup" --model-filter "^autocomplete/"` and a fresh output directory. For the model comparison, run `node --expose-gc benchmark/editor-superstring-benchmark.js --source <snapshot> --units 1000000,8000000 --samples 9 --warmups 3 --filter "^autocomplete/|^document/batch-1000/" --output <result.json>` separately for each frozen source in the recorded order. The raw reports retain the exact source hashes and individual samples.
+For new measurements of these scenarios, use the current JavaScript benchmark entry points described above. The raw reports retain the historical source hashes and individual samples.
