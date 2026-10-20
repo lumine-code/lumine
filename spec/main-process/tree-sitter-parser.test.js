@@ -712,3 +712,81 @@ test("fresh and explicitly untracked parses do not prepare a comparison tree", (
     parser.close();
   }
 });
+
+test("a completed native tree waits for the next slice without parsing twice", (t) => {
+  const { Tree } = require("web-tree-sitter"),
+    parser = new DocumentParser(language);
+  try {
+    const previous = parser.parseSync("let x = 1;", { revision: 1 });
+    const options = { previous, edits: [], revision: 2, deadline: 10 };
+    let now = 0,
+      parses = 0,
+      comparisons = 0;
+    t.mock.method(performance, "now", () => now);
+    const parse = parser.parser.parse.bind(parser.parser),
+      compare = Tree.prototype.getChangedRanges;
+    t.mock.method(parser.parser, "parse", (input, old, config) => {
+      parses++;
+      const tree = parse(input, old, { ...config, progressCallback: () => false });
+      now = 20;
+      return tree;
+    });
+    t.mock.method(Tree.prototype, "getChangedRanges", function (other) {
+      comparisons++;
+      return compare.call(this, other);
+    });
+    assert.equal(parser.tryParseSync("let x = 1;", options), null);
+    assert.ok(parser.pending.parsedTree);
+    assert.equal(comparisons, 0);
+    now = 0;
+    const tree = parser.tryParseSync("let x = 1;", options);
+    assert.equal(tree.input, "let x = 1;");
+    assert.equal(tree.revision, 2);
+    assert.equal(parses, 1);
+    assert.equal(comparisons, 1);
+    assert.equal(parser.pending, null);
+  } finally {
+    parser.close();
+  }
+});
+
+test("cancellation, replacement and close dispose staged native results", async (t) => {
+  const { Tree } = require("web-tree-sitter");
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  for (const action of ["abort", "replace", "close"]) {
+    const parser = new DocumentParser(language);
+    const dispose = Tree.prototype.delete,
+      disposed = new Map();
+    const deleteSpy = t.mock.method(Tree.prototype, "delete", function () {
+      disposed.set(this, (disposed.get(this) ?? 0) + 1);
+      return dispose.call(this);
+    });
+    try {
+      const previous = parser.parseSync("let x = 1;");
+      const parse = parser.parser.parse.bind(parser.parser);
+      t.mock.method(parser.parser, "parse", (input, old, config) => {
+        const result = parse(input, old, { ...config, progressCallback: () => false });
+        now = 20;
+        return result;
+      });
+      const controller = new AbortController(),
+        options = { previous, edits: [], revision: 2, deadline: 10, signal: controller.signal };
+      now = 0;
+      assert.equal(parser.tryParseSync("let x = 1;", options), null);
+      const { oldTree, parsedTree } = parser.pending;
+      if (action === "abort") {
+        controller.abort();
+        await assert.rejects(parser.parse("let x = 1;", options), { name: "AbortError" });
+      } else if (action === "replace") {
+        parser.parseSync("let y = 2;", { revision: 3 });
+      } else parser.close();
+      assert.equal(disposed.get(oldTree), 1);
+      assert.equal(disposed.get(parsedTree), 1);
+      assert.equal(parser.pending, null);
+    } finally {
+      parser.close();
+      deleteSpy.mock.restore();
+    }
+  }
+});

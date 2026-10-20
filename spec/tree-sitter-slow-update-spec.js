@@ -23,7 +23,7 @@ describe("Large-buffer syntax update policy", () => {
     expect(mode.document.capture).not.toHaveBeenCalled();
   });
 
-  it("requires repeated expensive updates and leaves small buffers synchronous", () => {
+  it("budgets large buffers immediately and leaves small buffers synchronous", () => {
     let length = 600000;
     const mode = Object.create(TreeSitterLanguageMode.prototype);
     Object.assign(mode, {
@@ -31,17 +31,16 @@ describe("Large-buffer syntax update policy", () => {
       synchronousUpdates: true,
       buffer: { getLength: () => length },
     });
-    mode.recordSynchronousUpdate(50);
-    expect(mode.shouldParseSynchronously()).toBe(true);
-    mode.recordSynchronousUpdate(1);
-    mode.recordSynchronousUpdate(50);
+    expect(mode.shouldBudgetSynchronousParse()).toBe(true);
     expect(mode.shouldParseSynchronously()).toBe(true);
     mode.recordSynchronousUpdate(50);
     expect(mode.shouldParseSynchronously()).toBe(false);
     length = 100;
+    expect(mode.shouldBudgetSynchronousParse()).toBe(false);
     expect(mode.shouldParseSynchronously()).toBe(true);
     length = 600000;
     mode.useAsyncParsing = false;
+    expect(mode.shouldBudgetSynchronousParse()).toBe(false);
     expect(mode.shouldParseSynchronously()).toBe(true);
   });
 
@@ -200,4 +199,126 @@ it("replays from one error-free root checkpoint and releases it when history is 
     editor.destroy();
   }
   expect(layer.errorFreeTree).toBe(null);
+}, 30000);
+
+it("budgets the first large edit and resumes the same native job and parser lease", async () => {
+  jasmine.useRealClock();
+  await lumine.packages.activatePackage("language-javascript");
+  const editor = await lumine.workspace.open();
+  editor.setText("export function value() { return 1; }\n".repeat(18000));
+  editor.setGrammar(lumine.grammars.grammarForScopeName("source.js"));
+  editor.update({ autoIndent: false });
+  await editor.whenGrammarSettled();
+  await new Promise(setImmediate);
+  const mode = editor.getBuffer().getLanguageMode();
+  const parser = mode.getOrCreateParserForLanguage(mode.rootLanguage);
+  const nativeParse = parser.parser.parse.bind(parser.parser),
+    inputs = [];
+  let interrupted = false;
+  spyOn(parser.parser, "parse").and.callFake((input, old, options) => {
+    inputs.push(input);
+    return nativeParse(input, old, {
+      ...options,
+      progressCallback: (state) => {
+        if (!interrupted) {
+          interrupted = true;
+          return true;
+        }
+        return options.progressCallback(state);
+      },
+    });
+  });
+  const acquire = spyOn(mode, "acquireParserForLanguage").and.callThrough();
+  const release = spyOn(mode, "releaseParserForLanguage").and.callThrough();
+  const capture = spyOn(mode.document, "capture").and.callThrough();
+  try {
+    expect(mode.deferLargeBufferUpdates).not.toBe(true);
+    editor.setCursorBufferPosition([17000, 0]);
+    editor.insertText("a", { autoIndent: false });
+    expect(mode.shouldParseSynchronously()).toBe(false);
+    expect(mode.publicationPending).toBe(true);
+    expect(release).not.toHaveBeenCalled();
+    await editor.whenGrammarSettled();
+    expect(interrupted).toBe(true);
+    expect(inputs.length).toBeGreaterThan(1);
+    expect(inputs.every((input) => input === inputs[0])).toBe(true);
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(mode.tree.input).toBe(editor.getText());
+    expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
+  } finally {
+    editor.destroy();
+  }
+}, 30000);
+
+it("returns a queued first-edit lease after cancellation without starting another parse", async () => {
+  jasmine.useRealClock();
+  const scheduler = require("../src/tree-sitter-scheduler"),
+    releases = [];
+  const blockers = Array.from({ length: scheduler.concurrency }, () =>
+    scheduler.run(() => new Promise((resolve) => releases.push(resolve))),
+  );
+  await new Promise(setImmediate);
+  const parser = {
+    pending: {},
+    tryParseSync: jasmine.createSpy("try").and.returnValue(null),
+    parse: jasmine.createSpy("parse"),
+    reset() {
+      this.pending = null;
+    },
+  };
+  const mode = Object.assign(Object.create(TreeSitterLanguageMode.prototype), {
+    useAsyncParsing: true,
+    syncTimeoutMicros: 5000,
+    buffer: { getLength: () => 600000 },
+    document: { capture: () => ({ text: "text", revision: 1, previous: null, edits: [] }) },
+    backgroundSnapshots: new WeakSet(),
+    parseDetails: new WeakMap(),
+    acquireParserForLanguage: () => parser,
+    releaseParserForLanguage: jasmine.createSpy("release"),
+  });
+  try {
+    const controller = new AbortController();
+    const pending = mode.parse({}, null, null, { resumable: true, signal: controller.signal });
+    controller.abort();
+    expect(await pending).toBe(null);
+    expect(parser.parse).not.toHaveBeenCalled();
+    expect(parser.pending).toBe(null);
+    expect(mode.releaseParserForLanguage).toHaveBeenCalledTimes(1);
+  } finally {
+    releases.forEach((resolve) => resolve());
+    await Promise.all(blockers);
+  }
+});
+
+it("budgets the first newline and preserves deferred indentation and undo", async () => {
+  jasmine.useRealClock();
+  await lumine.packages.activatePackage("language-python");
+  const editor = await lumine.workspace.open();
+  const original = "value = 1\n".repeat(60000) + "def work():\n    return 1\n";
+  editor.setText(original);
+  editor.setGrammar(lumine.grammars.grammarForScopeName("source.python"));
+  editor.update({ autoIndent: true, undoGroupingInterval: 10000 });
+  await editor.whenGrammarSettled();
+  const mode = editor.getBuffer().getLanguageMode();
+  try {
+    expect(mode.deferLargeBufferUpdates).not.toBe(true);
+    mode.syncTimeoutMicros = 0;
+    mode.editTimeoutMicros = 0;
+    editor.getBuffer().clearUndoStack();
+    editor.setCursorBufferPosition([60000, 11]);
+    editor.insertNewline({ groupUndo: true });
+    expect(mode.shouldParseSynchronously()).toBe(false);
+    await editor.whenGrammarSettled();
+    await editor.autoIndentAtTransactionEndPromise;
+    await editor.whenGrammarSettled();
+    expect(editor.getCursorBufferPosition().column).toBe(4);
+    expect(mode.tree.input).toBe(editor.getText());
+    editor.undo();
+    await editor.whenGrammarSettled();
+    expect(editor.getText()).toBe(original);
+  } finally {
+    editor.destroy();
+  }
 }, 30000);

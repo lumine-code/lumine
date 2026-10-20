@@ -37,9 +37,10 @@ const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 // Initial loading shares a task budget and resumes in bounded WASM slices.
-// Fast steady edits publish synchronously. Repeatedly slow large-buffer
-// updates return to the same resumable path instead of blocking every key.
+// Large-buffer edits share this allowance from their first update. Fast work
+// publishes synchronously; unfinished work retains its parser for resumption.
 const PARSE_JOB_LIMIT_MICROS = 5000;
+const EDIT_PARSE_LIMIT_MICROS = 8000;
 const LARGE_BUFFER_ASYNC_THRESHOLD = 512 * 1024;
 const SLOW_SYNCHRONOUS_UPDATE_MS = 12;
 const SLOW_PARSE_COALESCE_MS = 50;
@@ -192,6 +193,7 @@ class TreeSitterLanguageMode {
     config,
     grammars,
     syncTimeoutMicros,
+    editTimeoutMicros,
     injectionCandidateChunkRows,
     injectionCandidateChunkCodeUnits,
     injectionReconcileChunkSize,
@@ -213,6 +215,7 @@ class TreeSitterLanguageMode {
     this.grammarRegistry = grammars;
 
     this.syncTimeoutMicros = syncTimeoutMicros ?? PARSE_JOB_LIMIT_MICROS;
+    this.editTimeoutMicros = editTimeoutMicros ?? syncTimeoutMicros ?? EDIT_PARSE_LIMIT_MICROS;
     this.useAsyncParsing = FEATURE_ASYNC_PARSE;
     this.useAsyncIndent = FEATURE_ASYNC_INDENT;
     this.injectionCandidateChunkRows =
@@ -1587,7 +1590,7 @@ class TreeSitterLanguageMode {
     language,
     oldTree,
     includedRanges,
-    { scopeName = null, extraEdits = [], budgetOnly = false, signal } = {},
+    { scopeName = null, extraEdits = [], budgetOnly = false, resumable = false, signal } = {},
   ) {
     if (this.destroyed) return null;
     const previous =
@@ -1608,25 +1611,53 @@ class TreeSitterLanguageMode {
       this.parseDetails.set(tree, { incremental: tree.incremental });
       return tree;
     };
+    const fail = (error) => {
+      if (error.name === "AbortError" || this.destroyed) return null;
+      throw this.describeParseFailure(error, { scopeName, includedRanges });
+    };
+    let retained = false;
     try {
       const tree =
-        budgetOnly && !this.shouldParseSynchronously()
+        resumable ||
+        (budgetOnly && (!this.shouldParseSynchronously() || this.shouldBudgetSynchronousParse()))
           ? parser.tryParseSync(capture.text, {
               ...options,
-              deadline: parserScheduler.deadline(this.syncTimeoutMicros),
+              deadline: parserScheduler.deadline(
+                this.shouldBudgetSynchronousParse()
+                  ? (this.editTimeoutMicros ?? this.syncTimeoutMicros)
+                  : this.syncTimeoutMicros,
+              ),
             })
           : parser.parseSync(capture.text, options);
       if (tree) return finish(tree);
+      if (this.shouldBudgetSynchronousParse()) {
+        this.deferLargeBufferUpdates = true;
+        this.lastLargeBufferEditAt = performance.now();
+      }
       if (budgetOnly) {
         parser.reset();
         return null;
       }
+      if (resumable) {
+        retained = true;
+        return parserScheduler
+          .run(() => parser.parse(capture.text, options), {
+            signal,
+            priority: () =>
+              lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100,
+          })
+          .then(finish, fail)
+          .finally(() => {
+            // A queued cancellation has not entered parser.parse's cleanup.
+            if (parser.pending) parser.reset();
+            this.releaseParserForLanguage(language, parser);
+          });
+      }
       return null;
     } catch (error) {
-      if (error.name === "AbortError") return null;
-      throw this.describeParseFailure(error, { scopeName, includedRanges });
+      return fail(error);
     } finally {
-      this.releaseParserForLanguage(language, parser);
+      if (!retained) this.releaseParserForLanguage(language, parser);
     }
   }
 
@@ -2165,14 +2196,15 @@ class TreeSitterLanguageMode {
   }
 
   recordSynchronousUpdate(duration) {
-    this.slowSynchronousUpdates =
-      duration > SLOW_SYNCHRONOUS_UPDATE_MS ? (this.slowSynchronousUpdates ?? 0) + 1 : 0;
-    if (this.slowSynchronousUpdates >= 2) this.deferLargeBufferUpdates = true;
+    if (duration > SLOW_SYNCHRONOUS_UPDATE_MS) this.deferLargeBufferUpdates = true;
   }
 
-  // One cold call or GC interruption must not change ordinary editing policy.
-  // Slow large grammars use the existing revision-checked async publication
-  // and indentation paths. Small buffers always retain synchronous updates.
+  shouldBudgetSynchronousParse() {
+    return this.useAsyncParsing && this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD;
+  }
+
+  // A timed-out slice or a slow non-interruptible stage switches subsequent
+  // large-buffer updates to the revision-checked async path.
   shouldParseSynchronously() {
     return (
       !this.useAsyncParsing ||
@@ -4549,13 +4581,16 @@ class LanguageLayer {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
         signal: controller.signal,
+        resumable: this.languageMode.shouldBudgetSynchronousParse(),
       });
-      if (tree?.then)
+      if (tree?.then) {
+        params.async = true;
         return tree
           .then((result) => this._applyParsedTree(result, context))
           .finally(() => {
             if (this.parseAbort === controller) this.parseAbort = null;
           });
+      }
       this.parseAbort = null;
       return this._applyParsedTree(tree, context);
     }

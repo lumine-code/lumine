@@ -271,23 +271,25 @@ class TreeSitterParser {
 
   step(job, deadline, signal) {
     signal?.throwIfAborted();
-    let tree;
-    this.executing = true;
-    try {
-      tree = this.parser.parse(job.input, job.oldTree, {
-        includedRanges: job.includedRanges,
-        progressCallback: () => this.closed || signal?.aborted || performance.now() >= deadline,
-      });
-    } finally {
-      this.executing = false;
-      if (this.closed) {
-        tree?.delete();
-        this.dispose();
+    let tree = job.parsedTree;
+    if (!tree) {
+      this.executing = true;
+      try {
+        tree = this.parser.parse(job.input, job.oldTree, {
+          includedRanges: job.includedRanges,
+          progressCallback: () => this.closed || signal?.aborted || performance.now() >= deadline,
+        });
+      } finally {
+        this.executing = false;
+        if (this.closed) {
+          tree?.delete();
+          this.dispose();
+        }
       }
     }
     if (this.closed) return null;
     if (signal?.aborted) {
-      tree?.delete();
+      if (tree !== job.parsedTree) tree?.delete();
       signal.throwIfAborted();
     }
     if (!tree) {
@@ -327,6 +329,11 @@ class TreeSitterParser {
       }
       return null;
     }
+    if (performance.now() >= deadline) {
+      job.parsedTree = tree;
+      return null;
+    }
+    job.parsedTree = null;
     let comparisonTree;
     try {
       // Prepare a separate presentation base only after parsing completes.
@@ -411,6 +418,7 @@ class TreeSitterParser {
   resetPending() {
     if (!this.disposed) this.parser.reset();
     this.pending?.oldTree?.delete();
+    this.pending?.parsedTree?.delete();
     this.pending = null;
   }
 
