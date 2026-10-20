@@ -103,7 +103,14 @@ function applyEdits(tree, previous, text, edits) {
   return tree;
 }
 
-function publish(tree, text, revision, incremental, changedRanges = []) {
+function publish(
+  tree,
+  text,
+  revision,
+  incremental,
+  changedRanges = [],
+  changedRangesBaseRevision = null,
+) {
   tree = ownTree(tree);
   tree.textCallback = nodeTextInput(text);
   metadata.set(tree, { text, revision });
@@ -114,6 +121,7 @@ function publish(tree, text, revision, incremental, changedRanges = []) {
     input: { get: () => (typeof text === "string" ? text : text.toString()) },
     revision: { value: revision },
     incremental: { value: incremental },
+    changedRangesBaseRevision: { value: changedRangesBaseRevision },
     changedRanges: {
       value: Object.freeze(
         changedRanges.map((range) =>
@@ -161,7 +169,13 @@ class TreeSitterParser {
   }
 
   static prepareTree(previous, text, { edits = [] } = {}) {
-    return applyEdits(previous.copy(), previous, text, edits);
+    const tree = previous.copy();
+    try {
+      return applyEdits(tree, previous, text, edits);
+    } catch (error) {
+      tree.delete();
+      throw error;
+    }
   }
 
   static reuseSnapshot(previous, text, { edits = [], includedRanges, revision = 0 } = {}) {
@@ -212,12 +226,12 @@ class TreeSitterParser {
       tree.delete();
       return null;
     }
-    return publish(tree, text, revision, true);
+    return publish(tree, text, revision, true, [], previous.revision);
   }
 
   begin(text, options) {
     if (this.closed) throw new Error("Parser is closed");
-    const { previous = null, edits = [], revision = 0, includedRanges } = options;
+    const { previous = null, edits = [], revision = 0, includedRanges, comparison } = options;
     if (this.pending) {
       const job = this.pending;
       if (
@@ -225,10 +239,17 @@ class TreeSitterParser {
         job.previous === previous &&
         (job.edits === edits || (!job.edits.length && !edits.length)) &&
         job.revision === revision &&
-        job.includedRanges === includedRanges
+        job.includedRanges === includedRanges &&
+        job.comparison === comparison
       )
         return job;
       this.resetPending();
+    }
+    if (
+      comparison != null &&
+      (comparison.previous?.language !== this.language || !metadata.has(comparison.previous))
+    ) {
+      throw new TypeError("Comparison requires a published tree of the parser's language");
     }
     const incremental =
       previous?.language === this.language &&
@@ -242,6 +263,7 @@ class TreeSitterParser {
       edits,
       revision,
       includedRanges,
+      comparison,
       oldTree,
       incremental,
     });
@@ -305,13 +327,25 @@ class TreeSitterParser {
       }
       return null;
     }
+    let comparisonTree;
     try {
-      const changed = job.oldTree ? job.oldTree.getChangedRanges(tree) : [];
-      return publish(tree, job.text, job.revision, job.incremental, changed);
+      // Prepare a separate presentation base only after parsing completes.
+      // Cancelled jobs never copy it, and resumption retains the same choice.
+      let baseRevision = null;
+      if (job.oldTree && job.comparison !== null) {
+        comparisonTree =
+          job.comparison === undefined
+            ? job.oldTree
+            : TreeSitterParser.prepareTree(job.comparison.previous, job.text, job.comparison);
+        baseRevision = (job.comparison?.previous ?? job.previous).revision;
+      }
+      const changed = comparisonTree ? comparisonTree.getChangedRanges(tree) : [];
+      return publish(tree, job.text, job.revision, job.incremental, changed, baseRevision);
     } catch (error) {
       tree.delete();
       throw error;
     } finally {
+      if (comparisonTree && comparisonTree !== job.oldTree) comparisonTree.delete();
       job.oldTree?.delete();
       this.pending = null;
     }

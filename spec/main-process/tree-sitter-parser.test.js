@@ -509,3 +509,206 @@ test("a suspended incremental parse with earlier errors restarts fresh before re
     fresh.close();
   }
 });
+
+test("a separate comparison base computes ranges once against the displayed revision", (t) => {
+  const { Tree } = require("web-tree-sitter");
+  const parser = new DocumentParser(language),
+    document = new DocumentCore('const café = "😀";\r\n');
+  const reader = new TreeSitterDocument(document);
+  try {
+    const first = reader.capture(),
+      healthy = parser.parseSync(first.text, first);
+    const start = document.getText().indexOf('"');
+    document.transact((d) => d.replace(start, start + 4, ""));
+    const damagedInput = reader.capture(healthy),
+      displayed = parser.parseSync(damagedInput.text, damagedInput);
+    assert.equal(displayed.rootNode.hasError, true);
+    document.undo();
+    const input = reader.capture(healthy),
+      comparison = reader.capture(displayed);
+    const edited = DocumentParser.prepareTree(displayed, input.text, comparison);
+    const expected = edited.getChangedRanges(healthy);
+    edited.delete();
+    assert.ok(expected.length > 0);
+    const copies = [],
+      disposed = [],
+      compared = [];
+    for (const base of [healthy, displayed]) {
+      const copy = base.copy.bind(base);
+      t.mock.method(base, "copy", () => {
+        const tree = copy();
+        copies.push({ base, tree });
+        return tree;
+      });
+    }
+    const compare = Tree.prototype.getChangedRanges,
+      dispose = Tree.prototype.delete;
+    t.mock.method(Tree.prototype, "getChangedRanges", function (next) {
+      compared.push(this);
+      return compare.call(this, next);
+    });
+    t.mock.method(Tree.prototype, "delete", function () {
+      if (copies.some((c) => c.tree === this)) disposed.push(this);
+      return dispose.call(this);
+    });
+    const tree = parser.parseSync(input.text, { ...input, comparison });
+    assert.equal(tree.incremental, true);
+    assert.equal(tree.changedRangesBaseRevision, displayed.revision);
+    assert.deepEqual(tree.changedRanges, expected);
+    assert.equal(compared.length, 1);
+    assert.equal(compared[0], copies.find((c) => c.base === displayed).tree);
+    assert.equal(copies.length, 2);
+    assert.deepEqual(new Set(disposed), new Set(copies.map((c) => c.tree)));
+    assert.equal(disposed.length, 2);
+    assert.equal(tree.rootNode.toString(), healthy.rootNode.toString());
+    assert.equal(displayed.input, damagedInput.text.toString());
+    assert.ok(Object.isFrozen(tree.changedRanges));
+  } finally {
+    reader.close();
+    parser.close();
+  }
+});
+
+test("suspended jobs defer comparison copies and changing the comparison resets the job", (t) => {
+  const parser = new DocumentParser(language);
+  try {
+    const healthy = parser.parseSync("let x = 1;", { revision: 1 });
+    const displayed = parser.parseSync("let y = 1;", { revision: 2 });
+    const copies = [];
+    const copy = healthy.copy.bind(healthy);
+    t.mock.method(healthy, "copy", () => {
+      const tree = copy();
+      const dispose = tree.delete.bind(tree);
+      let deleted = false;
+      tree.delete = () => {
+        assert.equal(deleted, false);
+        deleted = true;
+        dispose();
+      };
+      copies.push(() => deleted);
+      return tree;
+    });
+    t.mock.method(displayed, "copy", () => {
+      throw Error("Must not prepare a cancelled comparison");
+    });
+    t.mock.method(parser.parser, "parse", () => null);
+    const comparison = { previous: displayed, edits: [] };
+    const options = { previous: healthy, edits: [], comparison, timeoutMicros: 1000000 };
+    assert.equal(parser.tryParseSync("let x = 1;", options), null);
+    const first = parser.pending;
+    assert.equal(parser.tryParseSync("let x = 1;", options), null);
+    assert.equal(parser.pending, first);
+    assert.equal(copies.length, 1);
+    assert.equal(
+      parser.tryParseSync("let x = 1;", { ...options, comparison: { ...comparison } }),
+      null,
+    );
+    assert.notEqual(parser.pending, first);
+    assert.equal(copies.length, 2);
+    assert.equal(copies[0](), true);
+    parser.close();
+    assert.equal(copies[1](), true);
+    assert.equal(parser.pending, null);
+  } finally {
+    parser.close();
+  }
+});
+
+test("failed comparison preparation and range queries release private trees", (t) => {
+  const { Tree } = require("web-tree-sitter"),
+    parser = new DocumentParser(language);
+  try {
+    const healthy = parser.parseSync("let x = 1;", { revision: 1 }),
+      displayed = parser.parseSync("let y = 1;", { revision: 2 });
+    const copies = [],
+      disposed = new Map(),
+      dispose = Tree.prototype.delete;
+    for (const base of [healthy, displayed]) {
+      const copy = base.copy.bind(base);
+      t.mock.method(base, "copy", () => {
+        const tree = copy();
+        copies.push(tree);
+        return tree;
+      });
+    }
+    t.mock.method(Tree.prototype, "delete", function () {
+      disposed.set(this, (disposed.get(this) ?? 0) + 1);
+      return dispose.call(this);
+    });
+    const options = {
+      previous: healthy,
+      edits: [],
+      comparison: {
+        previous: displayed,
+        edits: [
+          {
+            startIndex: 0,
+            oldEndIndex: 0,
+            get newText() {
+              throw Error("prepare failure");
+            },
+          },
+        ],
+      },
+    };
+    assert.throws(() => parser.parseSync("let x = 1;", options), /prepare failure/);
+    assert.equal(parser.pending, null);
+    assert.equal(copies.length, 2);
+    for (const tree of copies) assert.equal(disposed.get(tree), 1);
+    t.mock.method(Tree.prototype, "getChangedRanges", () => {
+      throw Error("compare failure");
+    });
+    assert.throws(
+      () =>
+        parser.parseSync("let x = 1;", {
+          ...options,
+          comparison: { previous: displayed, edits: [] },
+        }),
+      /compare failure/,
+    );
+    assert.equal(parser.pending, null);
+    assert.equal(copies.length, 4);
+    for (const tree of copies) assert.equal(disposed.get(tree), 1);
+    // Each failed job also releases the newly parsed, unpublished result.
+    assert.equal(disposed.size, 6);
+    for (const count of disposed.values()) assert.equal(count, 1);
+  } finally {
+    parser.close();
+  }
+});
+
+test("fresh and explicitly untracked parses do not prepare a comparison tree", (t) => {
+  const parser = new DocumentParser(language);
+  try {
+    const previous = parser.parseSync("let x = 1;", { revision: 7 });
+    const displayed = parser.parseSync("let y = 1;", { revision: 8 });
+    t.mock.method(displayed, "copy", () => {
+      throw Error("Unused comparison");
+    });
+    const edits = Array.from({ length: DocumentParser.bulkEditLimit }, () => ({
+      startIndex: 0,
+      oldEndIndex: 0,
+      newText: "",
+    }));
+    const fresh = parser.parseSync("let x = 1;", {
+      previous,
+      edits,
+      comparison: { previous: displayed, edits: [] },
+    });
+    assert.equal(fresh.incremental, false);
+    assert.equal(fresh.changedRangesBaseRevision, null);
+    assert.deepEqual(fresh.changedRanges, []);
+    const untracked = parser.parseSync("let x = 1;", { previous, comparison: null });
+    assert.equal(untracked.incremental, true);
+    assert.equal(untracked.changedRangesBaseRevision, null);
+    const normal = parser.parseSync("let x = 1;", { previous });
+    assert.equal(normal.changedRangesBaseRevision, previous.revision);
+    assert.throws(
+      () => parser.parseSync("let x = 1;", { previous, comparison: { previous: {} } }),
+      /published tree/,
+    );
+    assert.equal(parser.pending, null);
+  } finally {
+    parser.close();
+  }
+});

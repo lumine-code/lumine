@@ -152,6 +152,9 @@ it("replays from one error-free root checkpoint and releases it when history is 
     await editor.whenGrammarSettled();
     expect(layer.backgroundHasErrors).toBe(true);
     expect(layer.errorFreeTree).toBe(first);
+    const displayedRevision = mode.tree.revision;
+    const { Tree } = require("web-tree-sitter");
+    const comparisons = spyOn(Tree.prototype, "getChangedRanges").and.callThrough();
     const capture = spyOn(mode.document, "capture").and.callThrough();
     for (let i = 0; i < 200; i++) editor.insertText(i % 12 === 11 ? " " : "a");
     await editor.whenGrammarSettled();
@@ -159,6 +162,8 @@ it("replays from one error-free root checkpoint and releases it when history is 
     expect(mode.tree.incremental).toBe(true);
     expect(mode.parseDetails.get(mode.tree).incremental).toBe(true);
     expect(mode.parseDetails.get(mode.tree).changedRanges).toBeDefined();
+    expect(mode.tree.changedRangesBaseRevision).toBe(displayedRevision);
+    expect(comparisons.calls.count()).toBe(1);
     const Parser = require("../src/tree-sitter-parser");
     const reference = new Parser(mode.tree.language);
     try {

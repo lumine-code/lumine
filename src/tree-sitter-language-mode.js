@@ -1535,6 +1535,16 @@ class TreeSitterLanguageMode {
                 : capture.edits,
               revision: capture.revision,
               includedRanges: includedRanges ?? undefined,
+              comparison: fromCheckpoint
+                ? comparison.previous
+                  ? {
+                      previous: comparison.previous,
+                      edits: extraEdits.length
+                        ? [...comparison.edits, ...extraEdits]
+                        : comparison.edits,
+                    }
+                  : null
+                : undefined,
             };
             let tree =
               this.syncTimeoutMicros > 0
@@ -1546,21 +1556,11 @@ class TreeSitterLanguageMode {
             if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
             if (!tree) return null;
             this.backgroundSnapshots.add(tree);
-            const details = { incremental: tree.incremental && !fromCheckpoint };
-            if (fromCheckpoint && tree.incremental && comparison.previous) {
-              // Parsing uses the healthy checkpoint, but presentation must
-              // compare against the last displayed revision, including errors
-              // repaired back to the checkpoint's original syntax.
-              const edited = TreeSitterParser.prepareTree(comparison.previous, capture.text, {
-                edits: extraEdits.length ? [...comparison.edits, ...extraEdits] : comparison.edits,
-              });
-              try {
-                details.changedRanges = edited.getChangedRanges(tree);
-                details.incremental = true;
-              } finally {
-                edited.delete();
-              }
-            }
+            const details = {
+              incremental:
+                tree.incremental && tree.changedRangesBaseRevision === previous?.revision,
+            };
+            if (fromCheckpoint && details.incremental) details.changedRanges = tree.changedRanges;
             this.parseDetails.set(tree, details);
             return tree;
           } catch (error) {
