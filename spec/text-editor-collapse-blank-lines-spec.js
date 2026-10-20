@@ -8,8 +8,8 @@ describe("Collapsing blank lines preserves the reading position", () => {
     component?.element.remove();
   });
 
-  function build(text) {
-    editor = new TextEditor({ softWrapped: false, autoHeight: false });
+  function build(text, options = {}) {
+    editor = new TextEditor({ softWrapped: false, autoHeight: false, ...options });
     editor.setText(text);
     component = new TextEditorComponent({ model: editor });
     component.element.style.height = "300px";
@@ -37,6 +37,106 @@ describe("Collapsing blank lines preserves the reading position", () => {
       component.getScrollTop();
 
     expect(Math.abs(after - offset)).toBeLessThan(1);
+  });
+
+  for (const scrollPastEnd of [false, true]) {
+    for (const topOffset of [0, 0.25]) {
+      it(`keeps the top content near EOF with scrollPastEnd=${scrollPastEnd} and offset=${topOffset}, even when text observers read the viewport`, () => {
+        const lines = Array.from({ length: 100 }, (_, row) => `line-${row}`);
+        lines.fill("", 10, 17);
+        lines.fill("", 85, 97);
+        build(lines.join("\n"), { scrollPastEnd });
+        const lineHeight = component.getLineHeight();
+        component.element.style.height = `${20.5 * lineHeight}px`;
+        component.updateSync();
+        editor.setCursorBufferPosition([80, 3], { autoscroll: false });
+        component.setScrollTop((79 + topOffset) * lineHeight);
+        component.updateSync();
+        const offset = component.pixelPositionAfterBlocksForRow(79) - component.getScrollTop();
+        editor.getBuffer().onDidChangeText(() => component.getScrollTop());
+
+        editor.collapseBlankLines();
+        for (let update = 0; update < 3; update++) component.updateSync();
+
+        expect(editor.lineTextForBufferRow(component.getFirstVisibleRow())).toBe("line-79");
+        expect(component.pixelPositionAfterBlocksForRow(73) - component.getScrollTop()).toBeCloseTo(
+          offset,
+          5,
+        );
+        expect(editor.getScrollPastEnd()).toBe(scrollPastEnd);
+
+        const scrollTop = component.getScrollTop();
+        editor.collapseBlankLines();
+        component.updateSync();
+        expect(component.getScrollTop()).toBeCloseTo(scrollTop, 5);
+
+        if (!scrollPastEnd) {
+          const naturalMaximum = Math.round(
+            component.getContentHeight() - component.getScrollContainerClientHeight(),
+          );
+          expect(scrollTop).toBeGreaterThan(naturalMaximum);
+          component.setScrollTop(scrollTop - lineHeight);
+          component.updateSync();
+          expect(component.getMaxScrollTop()).toBeNear(scrollTop - lineHeight);
+          component.setScrollTop(0);
+          component.updateSync();
+          component.setScrollTop(scrollTop);
+          expect(component.getScrollTop()).toBe(naturalMaximum);
+        }
+      });
+    }
+  }
+
+  it("keeps the top text when a surviving block moves from a deleted blank line to after it", () => {
+    const lines = Array.from({ length: 150 }, (_, row) => `line-${row}`);
+    lines.fill("", 11, 13);
+    build(lines.join("\n"));
+    const item = document.createElement("div");
+    item.style.height = "80px";
+    editor.decorateMarker(editor.markBufferPosition([12, 0], { invalidate: "never" }), {
+      type: "block",
+      position: "after",
+      item,
+    });
+    component.updateSync();
+    const lineHeight = component.getLineHeight();
+    component.setScrollTop(component.pixelPositionAfterBlocksForRow(13) + 0.25 * lineHeight);
+    component.updateSync();
+    const offset = component.pixelPositionAfterBlocksForRow(13) - component.getScrollTop();
+
+    editor.collapseBlankLines();
+    component.updateSync();
+
+    expect(editor.lineTextForBufferRow(component.getFirstVisibleRow())).toBe("line-13");
+    expect(component.pixelPositionAfterBlocksForRow(12) - component.getScrollTop()).toBeCloseTo(
+      offset,
+      5,
+    );
+  });
+
+  it("does not carry the temporary EOF space to a replacement editor", () => {
+    const lines = Array.from({ length: 100 }, (_, row) => `line-${row}`);
+    lines.fill("", 85, 97);
+    build(lines.join("\n"));
+    const lineHeight = component.getLineHeight();
+    component.element.style.height = `${20.5 * lineHeight}px`;
+    component.updateSync();
+    component.setScrollTop(79.25 * lineHeight);
+    editor.collapseBlankLines();
+    component.updateSync();
+    expect(component.getScrollTop()).toBeGreaterThan(
+      component.getContentHeight() - component.getScrollContainerClientHeight(),
+    );
+
+    const previousEditor = editor;
+    editor = new TextEditor({ autoHeight: false });
+    editor.setText("short document");
+    component.update({ ...component.props, model: editor });
+    previousEditor.destroy();
+    component.updateSync();
+
+    expect(component.getScrollTop()).toBe(0);
+    expect(component.getMaxScrollTop()).toBe(0);
   });
 
   it("keeps a cursor on the first blank line that survives the collapse", () => {

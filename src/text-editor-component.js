@@ -181,6 +181,7 @@ module.exports = class TextEditorComponent {
     this.scrollTopPending = false;
     this.scrollLeftPending = false;
     this.scrollTop = 0;
+    this.preservedScrollTop = 0;
     this.scrollLeft = 0;
     this.renderedScrollTop = 0;
     this.renderedScrollLeft = 0;
@@ -282,6 +283,7 @@ module.exports = class TextEditorComponent {
       previousProps.model.component = null;
       props.model.component = this;
       this.props = props;
+      this.preservedScrollTop = 0;
       this.bindBlockDecorationLifetime();
       this.observeBlockDecorations();
     } else {
@@ -4541,6 +4543,40 @@ module.exports = class TextEditorComponent {
     return changed;
   }
 
+  // Keep the first visible content through a synchronous buffer operation.
+  // A marker follows edits above it; a plain buffer position cannot. Retain
+  // enough scroll extent at EOF to restore it even when rows below disappear.
+  preserveScrollPosition(callback) {
+    const { model } = this.props;
+    if (!this.hasInitialMeasurements || model.getAutoHeight() || model.isMini()) return callback();
+
+    const scrollTop = this.getScrollTop();
+    const row = this.rowForPixelPosition(scrollTop);
+    const textTop = this.pixelPositionAfterBlocksForRow(row);
+    const anchorToText = scrollTop >= textTop;
+    const offset = (anchorToText ? textTop : this.pixelPositionBeforeBlocksForRow(row)) - scrollTop;
+    const marker = model.markBufferPosition(model.bufferPositionForScreenPosition(Point(row, 0)), {
+      invalidate: "never",
+    });
+    try {
+      return callback();
+    } finally {
+      const bufferPosition = marker.isDestroyed() ? null : marker.getStartBufferPosition();
+      marker.destroy();
+      if (!model.isDestroyed() && this.props.model === model && bufferPosition) {
+        const position = model.screenPositionForBufferPosition(bufferPosition);
+        const rowTop = anchorToText
+          ? this.pixelPositionAfterBlocksForRow(position.row)
+          : this.pixelPositionBeforeBlocksForRow(position.row);
+        const target = Math.max(0, rowTop - offset);
+        this.preservedScrollTop = target;
+        this.derivedDimensionsCache = {};
+        this.setScrollTop(target);
+        this.scheduleUpdate();
+      }
+    }
+  }
+
   // Runs a synchronous spatial-index mutation while preserving the editor's
   // current visual anchor. Explicit cursor autoscroll remains authoritative:
   // pending autoscroll is applied later in the same update after block
@@ -4878,19 +4914,28 @@ module.exports = class TextEditorComponent {
   }
 
   getScrollHeight() {
+    let scrollHeight;
     if (this.props.model.getScrollPastEnd()) {
-      return (
+      scrollHeight =
         this.getContentHeight() +
         Math.max(
           3 * this.getLineHeight(),
           this.getScrollContainerClientHeight() - 3 * this.getLineHeight(),
-        )
-      );
+        );
     } else if (this.props.model.getAutoHeight()) {
-      return this.getContentHeight();
+      scrollHeight = this.getContentHeight();
     } else {
-      return Math.max(this.getContentHeight(), this.getScrollContainerClientHeight());
+      scrollHeight = Math.max(this.getContentHeight(), this.getScrollContainerClientHeight());
     }
+    if (this.preservedScrollTop > 0 && !this.props.model.getAutoHeight()) {
+      // getMaxScrollTop rounds to whole pixels; its limit must not round below
+      // the exact fractional position being preserved.
+      const preservedHeight =
+        Math.ceil(this.preservedScrollTop) + this.getScrollContainerClientHeight();
+      if (scrollHeight >= preservedHeight) this.preservedScrollTop = 0;
+      else scrollHeight = preservedHeight;
+    }
+    return scrollHeight;
   }
 
   getScrollWidth() {
@@ -5040,6 +5085,9 @@ module.exports = class TextEditorComponent {
     // deterministic tie rule leaked in one direction and a long run-all
     // walked the viewport a quarter screen, half a pixel per measure pass.
     scrollTop = Math.max(0, Math.min(this.getMaxScrollTop(), scrollTop));
+    // Consume the temporary EOF space as the viewport moves upward. Once it
+    // is gone, scrolling down cannot bring the old empty gap back.
+    this.preservedScrollTop = Math.min(this.preservedScrollTop, scrollTop);
     if (scrollTop !== this.scrollTop) {
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.

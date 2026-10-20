@@ -2937,21 +2937,23 @@ module.exports = class TextEditor {
    */
   collapseBlankLines(options = {}) {
     if (!this.ensureWritable("collapseBlankLines", options)) return;
-    this.transact(() => {
-      this.backwardsScanInBufferRange(
-        /(?:\r\n|\n|\r(?!\n)){3,}/g,
-        this.buffer.getRange(),
-        ({ range, matchText }) => {
-          // Leave the first blank line intact, including its line ending and
-          // markers. Replacing the whole run moves a cursor on that line.
-          const retainedLength = /^(?:\r\n|\n|\r(?!\n)){2}/.exec(matchText)[0].length;
-          const start = this.buffer.positionForCharacterIndex(
-            this.buffer.characterIndexForPosition(range.start) + retainedLength,
-          );
-          this.buffer.delete([start, range.end]);
-        },
-      );
-    });
+    const collapse = () =>
+      this.transact(() => {
+        this.backwardsScanInBufferRange(
+          /(?:\r\n|\n|\r(?!\n)){3,}/g,
+          this.buffer.getRange(),
+          ({ range, matchText }) => {
+            // Leave the first blank line intact, including its line ending and
+            // markers. Replacing the whole run moves a cursor on that line.
+            const retainedLength = /^(?:\r\n|\n|\r(?!\n)){2}/.exec(matchText)[0].length;
+            const start = this.buffer.positionForCharacterIndex(
+              this.buffer.characterIndexForPosition(range.start) + retainedLength,
+            );
+            this.buffer.delete([start, range.end]);
+          },
+        );
+      });
+    return this.component ? this.component.preserveScrollPosition(collapse) : collapse();
   }
 
   /**
