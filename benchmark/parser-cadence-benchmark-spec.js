@@ -1,5 +1,5 @@
 // Isolated renderer benchmark. LUMINE_PARSER_CADENCE_CONFIG supplies
-// { out, files, packages }. Files are never saved. Each file runs at 60, 30
+// { out, files, packages, scenarios? }. Files are never saved. Each file runs at 60, 30
 // and 8 commands per second; results include settlement and renderer CPU.
 const fs = require("fs"),
   path = require("path"),
@@ -25,7 +25,7 @@ describe("Foreground, parser settlement and process CPU by cadence", () => {
         };
       };
     for (let fileIndex = 0; fileIndex < config.files.length; fileIndex++)
-      for (const [count, interval] of [
+      for (const [count, interval] of config.scenarios ?? [
         [240, 16.667],
         [120, 33.333],
         [24, 125],
@@ -36,7 +36,10 @@ describe("Foreground, parser settlement and process CPU by cadence", () => {
         editor.getElement().setUpdatedSynchronously(false);
         editor.update({ undoGroupingInterval: 0 });
         await editor.whenGrammarSettled();
-        editor.setCursorBufferPosition([Math.max(0, editor.getLastBufferRow() - 100), 0]);
+        editor.setCursorBufferPosition([
+          Math.max(0, editor.getLastBufferRow() - 100),
+          config.cursorColumn ?? 0,
+        ]);
         editor.scrollToCursorPosition({ mode: "center" });
         await sleep(500);
         const durations = [],
@@ -69,10 +72,12 @@ describe("Foreground, parser settlement and process CPU by cadence", () => {
         running = false;
         const mode = editor.getBuffer().getLanguageMode();
         expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
+        if (config.requireValidSyntax) expect(mode.tree.rootNode.hasError).toBe(false);
         expect(mode.tree.input).toBe(editor.getText());
         result.cases.push({
           fileIndex,
           grammar: editor.getGrammar().scopeName,
+          incremental: mode.tree.incremental,
           count,
           interval,
           command: stats(durations),
