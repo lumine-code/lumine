@@ -116,7 +116,7 @@ describe("Tree-sitter revisioned text snapshots", () => {
     expect(mode.tree.rootNode.text).toBe(changed);
   });
 
-  it("invalidates independent snapshots for sync and async native reloads", async () => {
+  it("invalidates independent snapshots for sync and async reloads", async () => {
     const source = "const alpha = 1;";
     const { buffer } = await buildMode(source);
     const fixture = temp.openSync("tree-sitter-input-cache");
@@ -144,7 +144,7 @@ describe("Tree-sitter revisioned text snapshots", () => {
     expect(await editor.whenGrammarSettled()).toBe(true);
   });
 
-  it("reads committed native text when a synchronous reload observer throws", async () => {
+  it("reads committed text when a synchronous reload observer throws", async () => {
     const source = "const alpha = 1;";
     const changed = "const bravo = 2;";
     const { buffer } = await buildMode(source);

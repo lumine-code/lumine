@@ -1710,7 +1710,6 @@ module.exports = class TextEditorComponent {
       decorationsByMarker.size < 32 ||
       !displayLayer.hasStandardCharacterWidth() ||
       !displayLayer.hasStandardWrapBoundary() ||
-      typeof displayLayer.spatialIndex.changesForOldPositions !== "function" ||
       displayLayer.spatialIndex.getChangeCount() === 0
     )
       return null;

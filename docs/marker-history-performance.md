@@ -1,12 +1,14 @@
 # Marker history performance
 
+Historical measurements from 2026-10-17, before the JavaScript text-model migration. The implementation description and validation counts below refer to that revision. The current marker index is JavaScript; see [JavaScript document core](javascript-document-core.md).
+
 Marker history snapshots share unchanged range and property blocks instead of copying every marker at both ends of each transaction.
 
 ## Implementation
 
 `MarkerHistoryMap` keeps the live state in an ordinary JavaScript Map and partitions snapshot references into blocks of 128 marker ids. Taking a snapshot shares the block directory. The first subsequent write copies that directory, and each changed block is copied once before the next snapshot. Range entries are replaced rather than mutated, and property records remain shared when only a marker's coordinates change. Snapshots retain no parent-version chain.
 
-The native MarkerIndex remains authoritative. Its mutations, invalidation semantics, public marker identity, callbacks and serialized history format are unchanged. Snapshot materialization is deferred until undo, redo, restoration or serialization needs it. Enabling `LUMINE_VERIFY_MARKER_SNAPSHOTS=1` compares snapshots with an eager native index dump; this correctness instrumentation must remain disabled during timing runs.
+At the measured revision, the native MarkerIndex remained authoritative. Its mutations, invalidation semantics, public marker identity, callbacks and serialized history format are unchanged. Snapshot materialization is deferred until undo, redo, restoration or serialization needs it. Enabling `LUMINE_VERIFY_MARKER_SNAPSHOTS=1` compares snapshots with an eager native index dump; this correctness instrumentation must remain disabled during timing runs.
 
 This is not a constant-time edit algorithm. Coordinate-changing edits still walk the live marker ranges, and a newline before many markers updates all affected ranges. The first write after a snapshot copies the block directory, whose size depends on the marker-id distribution. The extra live Map and block directory retain references to the same values; they trade a small amount of live bookkeeping for substantially less repeated snapshot allocation.
 

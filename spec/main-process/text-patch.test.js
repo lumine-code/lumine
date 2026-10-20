@@ -1,9 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Patch = require("../../src/text-patch");
-// Native patches can retain zero-width identity records. They have no text or
-// coordinate effect; the new contract elides them rather than exposing an
-// implementation-dependent change count.
+// Ignore zero-width identity records when comparing text and coordinates;
+// they have no effect on either.
 const clean = (value) => {
   const result = JSON.parse(JSON.stringify(value));
   return Array.isArray(result)

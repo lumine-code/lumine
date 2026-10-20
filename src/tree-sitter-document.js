@@ -45,7 +45,7 @@ class TreeSitterDocument {
     if (this.textSnapshot?.revision !== revision) {
       this.textSnapshot = Object.freeze({
         revision,
-        text: this.buffer.getTextSnapshot?.() ?? this.buffer.getText(),
+        text: this.buffer.getTextSnapshot(),
       });
     }
     const { text } = this.textSnapshot;
@@ -147,8 +147,7 @@ function coalesceEdits(edits, text) {
           // Multiple groups keep their intermediate sequential text instead.
           inserted =
             from === 0 && end === edits.length
-              ? (text.subtext?.(record.startIndex, record.newEndIndex) ??
-                text.slice(record.startIndex, record.newEndIndex))
+              ? text.subtext(record.startIndex, record.newEndIndex)
               : materializeEdits(edits, from, end);
         }
         return inserted;

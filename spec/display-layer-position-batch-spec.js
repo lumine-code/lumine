@@ -102,23 +102,6 @@ describe("DisplayLayer buffer-position batches", () => {
     expect(layer.translateBufferPositions([])).toEqual([]);
   });
 
-  it("falls back when a preceding Superstring build lacks packed lookup", () => {
-    const layer = buildLayer("alpha beta ".repeat(20), { softWrapColumn: 9 });
-    layer.populateSpatialIndexIfNeeded(Infinity, Infinity);
-    const patch = layer.spatialIndex;
-    layer.spatialIndex = new Proxy(patch, {
-      get(target, key) {
-        if (key === "changesForOldPositions") return undefined;
-        const value = Reflect.get(target, key, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    assertMatchesScalar(
-      layer,
-      Array.from({ length: 100 }, (_, index) => [0, index]),
-    );
-  });
-
   it("populates only the required prefix and retains custom callback behavior", () => {
     const layer = buildLayer("alpha beta\n".repeat(200), {
       softWrapColumn: 8,

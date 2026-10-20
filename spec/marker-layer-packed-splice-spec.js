@@ -5,8 +5,8 @@ const Point = require("../src/point");
 const Flags = { touch: 1, inside: 2, overlap: 4, surround: 8 };
 const Strategies = ["never", "surround", "overlap", "inside", "touch", "custom"];
 
-// Exercise the facade with an older installed addon as well. Once the native
-// method is installed, the same scenarios call it directly on each index.
+// The control adapts scalar invalidation sets to the packed contract. Compare
+// state and event ordering with the real packed implementation.
 function encodeInvalidations(invalidated) {
   if (invalidated.touch.size === 0) return null;
   const result = new Uint32Array(invalidated.touch.size * 2);
@@ -54,30 +54,26 @@ describe("MarkerLayer packed splice", () => {
     const { trace } = context;
     const index = layer.index;
     const splice = index.splice.bind(index);
-    const splicePacked = index.splicePacked?.bind(index);
+    const splicePacked = index.splicePacked.bind(index);
     const recordSplice = (start, oldExtent, newExtent) => {
       trace.push(["splice", start.serialize(), oldExtent.serialize(), newExtent.serialize()]);
     };
 
     Object.defineProperty(index, "splicePacked", {
       configurable: true,
-      value: packed
-        ? (start, oldExtent, newExtent) => {
-            recordSplice(start, oldExtent, newExtent);
-            const result = splicePacked
-              ? splicePacked(start, oldExtent, newExtent)
-              : encodeInvalidations(splice(start, oldExtent, newExtent));
-            context.packedResults.push(result === null ? null : [...result]);
-            return result;
-          }
-        : undefined,
+      value: (start, oldExtent, newExtent) => {
+        recordSplice(start, oldExtent, newExtent);
+        const result = packed
+          ? splicePacked(start, oldExtent, newExtent)
+          : encodeInvalidations(splice(start, oldExtent, newExtent));
+        context.packedResults.push(result === null ? null : [...result]);
+        return result;
+      },
     });
     Object.defineProperty(index, "splice", {
       configurable: true,
-      value: (start, oldExtent, newExtent) => {
-        if (packed) throw new Error("Packed facade called the legacy splice method");
-        recordSplice(start, oldExtent, newExtent);
-        return splice(start, oldExtent, newExtent);
+      value: () => {
+        throw new Error("MarkerLayer must use the packed splice contract");
       },
     });
     const findIntersecting = index.findIntersecting.bind(index);

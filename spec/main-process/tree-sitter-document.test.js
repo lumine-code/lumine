@@ -1,5 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { DocumentCore, PieceTree } = require("../../src/text-model");
 const TreeSitterDocument = require("../../src/tree-sitter-document");
 const { TreeSitterScheduler } = require("../../src/tree-sitter-scheduler");
 
@@ -10,9 +11,12 @@ function source(initial = "") {
     reads = 0;
   return {
     getTextRevision: () => revision,
-    getText: () => {
+    getTextSnapshot: () => {
       reads++;
-      return text;
+      return new PieceTree(text);
+    },
+    getText: () => {
+      throw new Error("Parser capture must use snapshots");
     },
     onDidApplyChanges(callback) {
       listener = callback;
@@ -54,14 +58,14 @@ test("parser document captures live revisions and replays exact sequential offse
   buffer.edit(2, 2, "x"); // Inside CRLF: point clipping must not enter this path.
   buffer.edit(0, 1, "\ud800");
   const next = document.capture(first);
-  let replayed = first.text;
+  let replayed = first.text.toString();
   for (const edit of next.edits)
     replayed = replayed.slice(0, edit.startIndex) + edit.newText + replayed.slice(edit.oldEndIndex);
   assert.equal(next.previous, first);
-  assert.equal(replayed, next.text);
+  assert.equal(replayed, next.text.toString());
   assert.equal(document.isCurrent(first), false);
   assert.equal(document.isCurrent(next), true);
-  assert.equal(first.text, "a\r\nb🦉");
+  assert.equal(first.text.toString(), "a\r\nb🦉");
   document.close();
   assert.equal(document.isCurrent(next), false);
   assert.throws(() => document.capture(), /closed/);
@@ -81,7 +85,7 @@ test("gaps, unavailable pending changes and bounded history choose a fresh parse
   buffer.edit(0, 1, "d", false);
   buffer.edit(0, 1, "e");
   assert.equal(document.capture(latest).previous, null);
-  assert.equal(document.capture().text, "e");
+  assert.equal(document.capture().text.toString(), "e");
   document.close();
 });
 
@@ -95,7 +99,7 @@ test("pending changes must connect the complete revision chain and obey history 
   const combined = document.capture(first);
   assert.equal(combined.previous, first);
   assert.equal(combined.edits.length, 2);
-  assert.equal(combined.text, "abc");
+  assert.equal(combined.text.toString(), "abc");
   const c = buffer.edit(3, 3, "d", false);
   buffer.getPendingAppliedChanges = () => c;
   assert.equal(document.capture(first).previous, null); // Missing b.
@@ -112,7 +116,7 @@ test("pending changes must connect the complete revision chain and obey history 
   const large = buffer.edit(4, 4, "x".repeat(11), false);
   buffer.getPendingAppliedChanges = () => large;
   assert.equal(document.capture(current).previous, null);
-  assert.equal(combined.text, "abc");
+  assert.equal(combined.text.toString(), "abc");
   assert.equal(a.afterRevision, b.beforeRevision);
   document.close();
 });
@@ -197,8 +201,6 @@ test("cancelled queued parser jobs never run and errors release capacity", async
   assert.equal(await scheduler.run(() => 42), 42);
   assert.equal(ran, false);
 });
-const { DocumentCore } = require("../../src/document-core");
-const PieceTree = require("../../src/piece-tree");
 
 function verifyReplay(first, capture) {
   let text = first.text;

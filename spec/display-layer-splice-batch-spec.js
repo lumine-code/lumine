@@ -39,8 +39,8 @@ describe("DisplayLayer geometry splice batching", () => {
     batched.layer.clearSpatialIndex();
     sequential.layer.clearSpatialIndex();
 
-    const nativeSpatialIndex = batched.layer.spatialIndex;
-    const nativeSplice = nativeSpatialIndex.splice.bind(nativeSpatialIndex);
+    const spatialIndex = batched.layer.spatialIndex;
+    const scalarSplice = spatialIndex.splice.bind(spatialIndex);
     const spliceMany = jasmine.createSpy("spliceMany").and.callFake((packed) => {
       const start = { row: 0, column: 0 };
       const deletedExtent = { row: 0, column: 0 };
@@ -52,10 +52,10 @@ describe("DisplayLayer geometry splice batching", () => {
         deletedExtent.column = packed[i + 3];
         insertedExtent.row = packed[i + 4];
         insertedExtent.column = packed[i + 5];
-        nativeSplice(start, deletedExtent, insertedExtent);
+        scalarSplice(start, deletedExtent, insertedExtent);
       }
     });
-    batched.layer.spatialIndex = new Proxy(nativeSpatialIndex, {
+    batched.layer.spatialIndex = new Proxy(spatialIndex, {
       get(target, property) {
         if (property === "spliceMany") return spliceMany;
         const value = Reflect.get(target, property, target);

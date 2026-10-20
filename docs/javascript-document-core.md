@@ -20,6 +20,10 @@ The source directory stays flat. Production consumers import `src/text-model.js`
 
 This is an internal module, not a separately versioned library. Snapshot and patch objects cross the boundary by reference without text conversion, cloning or a second constructor identity. Packages continue to use the public `TextBuffer` APIs; they do not depend on internal file paths.
 
+The internal contract requires `TextPatch.spliceMany` and `changesForOldPositions`, and `MarkerIndex.splicePacked` and `getRanges`. Consumers call these directly; they do not negotiate capabilities with an older backend. Scalar paths remain for small workloads and custom display callbacks. `mergeAdjacentChanges` is the sole patch merge option; balancing belongs to the data structure, with no caller-managed `rebalance` phase.
+
+The 2026-10-21 contract cleanup passed 63 model tests, 58 Tree-sitter runtime tests and 1212 editor integration specs on Windows. Coverage includes display geometry, marker invalidation and event ordering, history, file changes, parser snapshots, injections, syntax publication and update budgets. These are correctness checks; no new performance or worker measurements are implied.
+
 ## Text and geometry
 
 The storage design takes inspiration from VS Code's piece tree, with no copied VS Code source. Text lives in indexed buffers and pieces refer to their ranges. Lumine uses a persistent AVL tree: an edit copies affected search paths, while a snapshot retains the root without enumerating pieces. Adjacent ranges of one buffer can coalesce; small pieces from different buffers merge with bounded copying to avoid one leaf per typed character.
@@ -69,7 +73,7 @@ History serialization is version 7 and JS patch serialization is version 2. Save
 
 ## Parsing and search
 
-The Tree-sitter journal retains one immutable PieceTree per source revision. WASM input callbacks consume bounded strings, and published syntax nodes retain their own revision's source. Explicit `tree.input` access still returns a complete string for existing consumers; it is not used by the incremental parser path.
+The Tree-sitter journal requires `getTextSnapshot()` and retains one immutable PieceTree per source revision. It does not fall back to a flattened `getText()` string. WASM input callbacks consume bounded strings, and published syntax nodes retain their own revision's source. Explicit `tree.input` access still returns a complete string for existing consumers; it is not used by the incremental parser path.
 
 Regex search now uses JavaScript RegExp with the editor's LF/CRLF anchor policy. Its asynchronous API captures the invocation snapshot, yields before searching and yields between match batches at roughly four-millisecond checkpoints. The RegExp engine still runs on the calling thread and materializes the requested search range; one expensive RegExp execution cannot be interrupted by those checkpoints. It is not a worker implementation and a difficult expression can still block that thread. Fuzzy search scans bounded chunks, yields cooperatively at roughly four-millisecond checkpoints and retains only the top requested candidates; scores, match paths and positions have independent JavaScript regression coverage. Neither syntax workers nor worker-based regex execution are claimed by this migration.
 

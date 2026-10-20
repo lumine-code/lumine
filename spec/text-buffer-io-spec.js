@@ -1353,7 +1353,7 @@ describe("TextBuffer IO", () => {
       const changed = new Promise((resolve) => buffer.onDidChange(resolve));
       // All three TextBuffer loads are already overlapping at this point.
       // Complete their native reads oldest-to-newest so the latest snapshot is
-      // deterministically the final one applied to the native buffer.
+      // deterministically the final one applied to the buffer.
       for (const { promise, release } of pendingLoads) {
         release();
         await promise;

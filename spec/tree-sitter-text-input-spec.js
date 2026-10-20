@@ -65,7 +65,7 @@ describe("Tree-sitter snapshot text input", () => {
     expect(reader.capture().text.slice(-2)).toBe("😀");
   });
 
-  it("replays exact indices when CRLF is split between native patch layers", () => {
+  it("replays exact indices when CRLF is split between patch layers", () => {
     buffer.setText("first\nsecond\n");
     const reader = document();
     const previous = reader.capture();

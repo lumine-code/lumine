@@ -216,9 +216,8 @@ module.exports = class ScreenLineBuilder {
         }
 
         // Emit ordinary text in runs bounded by anything that needs
-        // character-level handling. Besides avoiding a native buffer call per
-        // UTF-16 code unit, this keeps the common case to one substring and one
-        // append per syntax segment or soft-wrapped screen line.
+        // character-level handling. This keeps the common case to one substring
+        // and one append per syntax segment or soft-wrapped screen line.
         if (
           this.currentBuiltInClassNameFlags === 0 &&
           !this.inLeadingWhitespace &&

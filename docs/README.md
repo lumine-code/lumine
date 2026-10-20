@@ -29,4 +29,5 @@ Detailed guides for extending the editor, with runtime contracts in the [API ref
 - [Jupyter integrations](https://github.com/lumine-code/jupyter-repl/blob/master/docs/3_integration.md): the service and lifecycle guide owned by `jupyter-repl`.
 - [Testing language-server packages](language-server-testing.md): the shared server integration matrix.
 - [Editor performance diagnostics](editor-performance.md): benchmark procedures and recorded display, injection, marker and captured-frame comparisons.
-- [Superstring integration performance](superstring-performance.md): later native integration measurements and their evidence.
+- [JavaScript document core](javascript-document-core.md): internal model boundaries, snapshots, validation and current benchmarks.
+- [Document edit contract](document-edit-contract.md): committed changes, transactions and parser integration.

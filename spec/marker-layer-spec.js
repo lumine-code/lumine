@@ -36,7 +36,7 @@ describe("MarkerLayer", function () {
     expect(uniq(ids).length).toEqual(ids.length);
   });
 
-  it("skips empty native indexes while retaining update events and later marker movement", function () {
+  it("skips empty indexes while retaining update events and later marker movement", function () {
     const splice = spyOn(layer1.index, "splicePacked").and.callThrough();
     const updated = jasmine.createSpy("updated");
     layer1.onDidUpdate(updated);
@@ -205,7 +205,7 @@ describe("MarkerLayer", function () {
     beforeEach(() => (layer3 = buffer.addMarkerLayer({ maintainHistory: true })));
 
     // History snapshots read the layer's shadow ranges instead of paying the
-    // native index dump. The shadow is bookkeeping duplicated from the index,
+    // index dump. The shadow is bookkeeping duplicated from the index,
     // so pin their agreement across every mutation shape here; the randomized
     // referee is `LUMINE_VERIFY_MARKER_SNAPSHOTS=1`, which compares the two on
     // every snapshot the whole suite takes.

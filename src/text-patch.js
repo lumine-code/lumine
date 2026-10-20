@@ -347,7 +347,6 @@ class Patch {
     );
     return patch;
   }
-  rebalance() {}
   serialize() {
     return Buffer.from(
       JSON.stringify({ version: 2, merge: this.#merge, changes: this.getChanges() }),

@@ -70,7 +70,7 @@ function runEdits(buffer) {
   return checksum;
 }
 
-function nativeCallCounts(buffer, range) {
+function bufferCallCounts(buffer, range) {
   const counts = {};
   const methods = ["getLastRow", "lineLengthForRow"];
   try {
@@ -186,8 +186,8 @@ try {
       operationsPerSample: repetitions * 128 * (entry.edit ? 2 : 1),
       baselineMs: median(beforeTimes),
       candidateMs: median(afterTimes),
-      baselineCalls: entry.edit ? null : nativeCallCounts(before, beforeRanges[0]),
-      candidateCalls: entry.edit ? null : nativeCallCounts(after, afterRanges[0]),
+      baselineCalls: entry.edit ? null : bufferCallCounts(before, beforeRanges[0]),
+      candidateCalls: entry.edit ? null : bufferCallCounts(after, afterRanges[0]),
       beforeTimes,
       afterTimes,
       checksum: expected,

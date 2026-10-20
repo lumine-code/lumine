@@ -5,17 +5,17 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 const { Point, Range } = TextBuffer;
 
-// Use the real addon when present, and the same native scalar coordinates when
-// checking the editor's compatibility path against an older installed addon.
+// Compare packed reads with a test-only adapter built from scalar reads.
+// Both expose the required range-batch contract to the language mode.
 function configureRanges(index, packed) {
   const getRange = index.getRange.bind(index);
-  const getRanges = index.getRanges?.bind(index);
+  const getRanges = index.getRanges.bind(index);
   const scalar = jasmine.createSpy("scalar ranges").and.callFake(getRange);
   const batch = jasmine.createSpy("packed ranges").and.callFake((ids) => {
-    if (getRanges) return getRanges(ids);
+    if (packed) return getRanges(ids);
     const result = new Uint32Array(ids.length * 4);
     for (let i = 0; i < ids.length; i++) {
-      const { start, end } = getRange(ids[i]);
+      const { start, end } = scalar(ids[i]);
       result.set([start.row, start.column, end.row, end.column], i * 4);
     }
     return result;
@@ -23,7 +23,7 @@ function configureRanges(index, packed) {
   Object.defineProperty(index, "getRange", { configurable: true, value: scalar });
   Object.defineProperty(index, "getRanges", {
     configurable: true,
-    value: packed ? batch : undefined,
+    value: batch,
   });
   return { scalar, batch, getRange };
 }
@@ -122,7 +122,7 @@ describe("Packed Tree-sitter injection change routing", () => {
     });
   }
 
-  it("retains scalar routing when an older addon has no batch method", () => {
+  it("matches the required batch contract through the scalar control", () => {
     const state = create(false);
     state.buffer.setTextInRange(
       [
@@ -132,7 +132,7 @@ describe("Packed Tree-sitter injection change routing", () => {
       "4",
     );
 
-    expect(state.ranges.batch).not.toHaveBeenCalled();
+    expect(state.ranges.batch).toHaveBeenCalledTimes(1);
     expect(state.ranges.scalar).toHaveBeenCalledTimes(64);
     expect(
       state.markers.filter((marker) => marker.languageLayer.handleTextChange.calls.any()),

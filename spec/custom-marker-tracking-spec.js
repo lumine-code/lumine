@@ -31,7 +31,7 @@ describe("custom marker range tracking", () => {
     for (const owned of buffers) owned.destroy();
   });
 
-  it("leaves native marker defaults and custom properties independent of tracking", () => {
+  it("leaves marker defaults and custom properties independent of tracking", () => {
     const layer = buffer.addMarkerLayer({ trackRanges: keepRanges });
     const marker = layer.markRange(
       [
@@ -119,7 +119,7 @@ describe("custom marker range tracking", () => {
     expect(marker.isDestroyed()).toBe(false);
   });
 
-  it("counts exact boundary contact and leaves untouched ranges to the native index", () => {
+  it("counts exact boundary contact and leaves untouched ranges to the index", () => {
     const tracker = jasmine.createSpy("range tracker").and.callFake(keepRanges);
     const layer = buffer.addMarkerLayer({ trackRanges: tracker });
     const marker = mark(layer);
@@ -364,7 +364,7 @@ describe("custom marker range tracking", () => {
     expect(layer.getRangeTracker()).toBe(null);
   });
 
-  it("finishes text, native marker, display, and history updates if a callback throws", () => {
+  it("finishes text, marker, display, and history updates if a callback throws", () => {
     const error = new Error("custom tracker failed");
     const logged = spyOn(console, "error");
     const layer = buffer.addMarkerLayer({

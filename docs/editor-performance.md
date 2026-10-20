@@ -2,11 +2,9 @@
 
 Benchmark procedures and recorded comparisons for the editor's display, injection routing, markers and captured-frame diagnostics. The records below describe their original measured revisions and environments; the current implementation is described in [JavaScript document core](javascript-document-core.md). Native measurements below are historical records; their comparison infrastructure has been retired.
 
-The later [text change boundary comparison](text-change-performance.md) records transaction-transfer optimizations, a native preparation experiment and paired renderer measurements.
+The current model and validation entry points are described in [JavaScript document core](javascript-document-core.md), and the production ownership and notification boundary in [document edit contract](document-edit-contract.md).
 
-The [shared native edit ownership experiment](shared-edit-performance.md) separates immutable patch sharing from a prepared mutation path and compares their editing, renderer and memory costs.
-
-The production ownership and notification boundary is specified by the [document edit contract](document-edit-contract.md), with measured costs and limitations in [production document edit measurements](document-edit-performance.md).
+Historical native-era records include [text change boundary measurements](text-change-performance.md), the [shared edit ownership experiment](shared-edit-performance.md), [document edit measurements](document-edit-performance.md) and [Superstring integration measurements](superstring-performance.md). Their commands and implementation descriptions apply to the recorded revisions.
 
 ## Display performance benchmarks
 
@@ -19,7 +17,7 @@ npm run benchmark:display -- --compare --profile release --output ../.dev/benchm
 
 The release comparison alternates baseline and candidate in three A–B–B–A blocks, giving six fresh processes per variant, five warmups and thirty measured samples per case. Run it on the same machine with fixed editor dimensions and font settings, after builds and other test processes finish. Raw samples, runtime and source metadata, semantic checksums, medians, p95 and bootstrap confidence intervals remain in the output directory; generated reports are not committed.
 
-Measure the complete operation rather than the native lookup alone: packed mapping still pays for JavaScript clipping and result allocation, and cached markers can be cheaper than a batch. Geometry reuse applies to short ASCII identifier replacements that preserve layout; parser highlighting events may invalidate a larger range afterwards. The component-update measurements report synchronous CPU and DOM work, not the time a frame is presented on screen.
+Measure the complete operation rather than the index lookup alone: packed mapping still pays for JavaScript clipping and result allocation, and cached markers can be cheaper than a batch. Geometry reuse applies to short ASCII identifier replacements that preserve layout; parser highlighting events may invalidate a larger range afterwards. The component-update measurements report synchronous CPU and DOM work, not the time a frame is presented on screen.
 
 ### Recorded legacy display comparison
 

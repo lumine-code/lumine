@@ -538,37 +538,23 @@ class MarkerLayer {
     }
 
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
-    if (typeof this.index.splicePacked === "function") {
-      const invalidated = this.index.splicePacked(start, oldExtent, newExtent);
-      if (collectHistoryTouches) touched = new Set();
-      if (invalidated !== null) {
-        for (let offset = 0; offset < invalidated.length; offset += 2) {
-          if (collectHistoryTouches) touched.add(invalidated[offset]);
-          const marker = this.markersById.get(invalidated[offset]);
-          let strategy = marker.getInvalidationStrategy();
-          // Coerce unusual property keys exactly once, as the legacy lookup does.
-          if (
-            (typeof strategy === "object" && strategy !== null) ||
-            typeof strategy === "function"
-          ) {
-            strategy = Reflect.ownKeys({ [strategy]: null })[0];
-          }
-          const flag = InvalidationFlags[strategy];
-          if (
-            Object.hasOwn(InvalidationFlags, strategy)
-              ? invalidated[offset + 1] & flag
-              : flag?.has(marker.id)
-          ) {
-            applyInvalidation(marker, this.destroyInvalidatedMarkers);
-          }
+    const invalidated = this.index.splicePacked(start, oldExtent, newExtent);
+    if (collectHistoryTouches) touched = new Set();
+    if (invalidated !== null) {
+      for (let offset = 0; offset < invalidated.length; offset += 2) {
+        if (collectHistoryTouches) touched.add(invalidated[offset]);
+        const marker = this.markersById.get(invalidated[offset]);
+        let strategy = marker.getInvalidationStrategy();
+        // Coerce unusual property keys exactly once, as the legacy lookup does.
+        if ((typeof strategy === "object" && strategy !== null) || typeof strategy === "function") {
+          strategy = Reflect.ownKeys({ [strategy]: null })[0];
         }
-      }
-    } else {
-      const invalidated = this.index.splice(start, oldExtent, newExtent);
-      if (collectHistoryTouches) touched = invalidated.touch;
-      for (const id of invalidated.touch) {
-        const marker = this.markersById.get(id);
-        if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
+        const flag = InvalidationFlags[strategy];
+        if (
+          Object.hasOwn(InvalidationFlags, strategy)
+            ? invalidated[offset + 1] & flag
+            : flag?.has(marker.id)
+        ) {
           applyInvalidation(marker, this.destroyInvalidatedMarkers);
         }
       }

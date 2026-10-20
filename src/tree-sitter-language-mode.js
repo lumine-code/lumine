@@ -657,7 +657,7 @@ class TreeSitterLanguageMode {
     let foldRowCacheInvalidated = false;
     const markers = this.injectionsMarkerLayer.getMarkers();
     let packedRanges;
-    if (markers.length >= 64 && typeof this.injectionsMarkerLayer.index.getRanges === "function") {
+    if (markers.length >= 64) {
       const ids = new Uint32Array(markers.length);
       for (let index = 0; index < markers.length; index++) ids[index] = markers[index].id;
       // The synchronous routing loop only edits trees and clears their caches;

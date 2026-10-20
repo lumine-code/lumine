@@ -181,7 +181,7 @@ function diagnostics(mode) {
     );
   try {
     // N-API prototype methods may be non-configurable. Shadow only the actual
-    // objects owned by this buffer; never import a second addon to patch it.
+    // objects owned by this buffer so the probe observes the active model.
     timed(mode.buffer.buffer, "setTextInRange", "nativeTextMutation");
     timed(MarkerLayer.prototype, "splice", "markerLayerSplice");
     for (const layer of Object.values(mode.buffer.markerLayers)) {

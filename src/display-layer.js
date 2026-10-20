@@ -476,7 +476,6 @@ class DisplayLayer {
       positions.length < 64 ||
       !this.hasStandardCharacterWidth() ||
       !this.hasStandardWrapBoundary() ||
-      typeof this.spatialIndex.changesForOldPositions !== "function" ||
       this.spatialIndex.getChangeCount() === 0
     ) {
       return positions.map((position) => this.translateBufferPosition(position, options));
@@ -819,9 +818,8 @@ class DisplayLayer {
     if (column === previousTabStop) return 0;
     const nextTabStop = previousTabStop + this.tabLength;
 
-    // A cursor inside a long indentation used to make one native call per
-    // preceding space, per cursor, per movement. Materialize the line once and
-    // scan its JavaScript string instead.
+    // Read a long indentation once per cursor movement, then scan the string
+    // without repeating buffer lookups for every preceding space.
     const line = this.buffer.lineForRow(row);
     for (let index = column - 1; index >= 0; index--) {
       if (line[index] !== " ") return 0;
@@ -1052,9 +1050,8 @@ class DisplayLayer {
     const line = this.buffer.lineForRow(bufferRow);
     if (line == null) return 0;
 
-    // Crossing the native TextBuffer boundary once per trailing character is
-    // especially expensive for generated files whose lines end in a long run
-    // of padding. Materialize the line once and scan its JavaScript string.
+    // Read the line once and scan its string, including long runs of padding
+    // in generated files, without repeated buffer lookups.
     let column = line.length;
     while (column > 0) {
       const character = line[column - 1];
@@ -1754,9 +1751,6 @@ class DisplayLayer {
 
     if (bufferRow > this.indexedBufferRowCount) {
       this.indexedBufferRowCount = bufferRow;
-      if (bufferRow === this.buffer.getLineCount()) {
-        this.spatialIndex.rebalance();
-      }
     }
 
     const oldScreenRowCount = oldEndScreenRow - startScreenRow;
@@ -2140,9 +2134,6 @@ function translateHardTabsWithRunSkipping(layer, target, tabCount, expanding, cl
 function createEmptyLayoutState() {
   return {
     spatialIndex: new Patch({
-      // Superstring renamed this option; pass both spellings so either side of
-      // that transition keeps adjacent display hunks separate.
-      mergeAdjacentHunks: false,
       mergeAdjacentChanges: false,
     }),
     tabCounts: [],
@@ -2353,26 +2344,7 @@ function applyGeometrySplices(patch, splices) {
   for (let i = 0; i < splices.length; i++) {
     packed[i] = Number.isFinite(splices[i]) ? splices[i] : 0xffffffff;
   }
-  if (typeof patch.spliceMany === "function") {
-    patch.spliceMany(packed);
-    return;
-  }
-
-  // Test doubles without the packed API retain the same behavior through a sequential
-  // fallback. Reuse the point objects so the fallback pays only the unavoidable
-  // splice call per hunk, not three allocations as well.
-  const start = { row: 0, column: 0 };
-  const deletedExtent = { row: 0, column: 0 };
-  const insertedExtent = { row: 0, column: 0 };
-  for (let i = 0; i < packed.length; i += 6) {
-    start.row = packed[i];
-    start.column = packed[i + 1];
-    deletedExtent.row = packed[i + 2];
-    deletedExtent.column = packed[i + 3];
-    insertedExtent.row = packed[i + 4];
-    insertedExtent.column = packed[i + 5];
-    patch.splice(start, deletedExtent, insertedExtent);
-  }
+  patch.spliceMany(packed);
 }
 
 function populateSpatialIndexForAsciiBoundaryLine(

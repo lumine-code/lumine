@@ -147,7 +147,7 @@ describe("TextBuffer deferred file observation", () => {
   });
 
   for (const newestFirst of [false, true]) {
-    it(`cancels an obsolete native reload before applying its contents (${newestFirst ? "newest" : "oldest"} finishes first)`, async () => {
+    it(`cancels an obsolete reload before applying its contents (${newestFirst ? "newest" : "oldest"} finishes first)`, async () => {
       const custom = source();
       buffer = await TextBuffer.load(custom);
       const reads = [];
