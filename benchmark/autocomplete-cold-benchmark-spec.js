@@ -69,7 +69,7 @@ describe("Cold completion with the active package fleet", () => {
           .autocompleteManager;
       const activationMs = performance.now() - activationStart;
       lumine.config.set("autocomplete.autoActivationDelay", 0);
-      expect(manager.editor).toBe(editor);
+      expect(manager.editor === editor).toBeTrue();
       if (config.idleMs && cycle === 0) await sleep(config.idleMs);
       let publishedAt, suggestionsHash;
       const subscription = manager.suggestionList.onDidChangeItems((items) => {
@@ -84,9 +84,15 @@ describe("Cold completion with the active package fleet", () => {
       const start = performance.now();
       editor.insertText("p");
       const firstMs = performance.now() - start;
-      await waitFor(
-        () => publishedAt !== undefined && editor.getElement().querySelector(".autocomplete li"),
-      );
+      await waitFor(() => {
+        const popup = editor.getElement().querySelector("autocomplete-suggestion-list");
+        return (
+          publishedAt !== undefined &&
+          popup?.querySelector("li") &&
+          !popup.hasAttribute("data-render-pending") &&
+          !popup.hasAttribute("data-initializing")
+        );
+      });
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const visibleFrameMs = performance.now() - start;
       const initialFrames = stats(frames.filter((f) => f.at >= start).map((f) => f.duration));
@@ -112,6 +118,7 @@ describe("Cold completion with the active package fleet", () => {
         activationMs,
         firstMs,
         publicationMs: publishedAt - start,
+        popupAfterPublicationMs: visibleFrameMs - (publishedAt - start),
         visibleFrameMs,
         suggestionsHash,
         initialFrames,
