@@ -1,6 +1,31 @@
 const SelectListModel = require("../src/select-list-model");
 
 describe("SelectListModel", () => {
+  it("retains dense result positions across reordering, sparse matches and mixed primitive IDs", () => {
+    const ids = [false, 0, "", 1n, Symbol("row")];
+    const items = Array.from({ length: 4096 }, (_, i) => ({
+      id: ids[i] ?? `row-${i}`,
+      label: `item-${i}`,
+    }));
+    const model = new SelectListModel({
+      items,
+      search: {
+        matcher: (rows, query) => (query === "sparse" ? [rows[4095], rows[2]] : rows.reverse()),
+      },
+    });
+    model.update({ query: "dense" });
+    for (const i of [0, 1, 2, 3, 4, 2048, 4095]) {
+      model.selectId(items[i].id);
+      expect(model.getSelectedIndex()).toBe(items.length - 1 - i);
+      expect(model.getSelectedItem()).toBe(items[i]);
+    }
+    model.update({ query: "sparse" });
+    model.selectId("");
+    expect(model.getSelectedIndex()).toBe(1);
+    model.update({ query: "", items: items.slice().reverse() });
+    model.selectId(false);
+    expect(model.getSelectedIndex()).toBe(items.length - 1);
+  });
   function item(id, label = id) {
     return { id, label };
   }

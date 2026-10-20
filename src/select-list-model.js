@@ -2,6 +2,29 @@
 
 const DEFAULT_PAGE_SIZE = 99;
 const NO_SELECTION = Symbol("no-selection");
+// Private protocol shared only with the built-in SelectList adapter. Public
+// matchers still receive independent candidate arrays and validated results.
+const PreparedRecordMatcher = Symbol("prepared-record-matcher");
+
+// Dense result sets do not need another hash table of every source ID. Resolve
+// an ID through the existing source table and keep only its result position.
+function resultIndex(records, sourceRecords, recordById) {
+  if (records.length < 2048 || records.length * 8 < sourceRecords.length)
+    return new Map(records.map((record, index) => [record.id, index]));
+  const positions = new Uint32Array(sourceRecords.length);
+  for (let index = 0; index < records.length; index++)
+    positions[records[index].sourceIndex] = index + 1;
+  return {
+    get(id) {
+      const record = recordById.get(id);
+      const position = record ? positions[record.sourceIndex] : 0;
+      return position ? position - 1 : undefined;
+    },
+    has(id) {
+      return this.get(id) !== undefined;
+    },
+  };
+}
 
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
@@ -179,6 +202,14 @@ module.exports = class SelectListModel {
     return this._filteredRecords.map((record) => record.item);
   }
 
+  getItemCount() {
+    return this._records.length;
+  }
+
+  getMatchCount() {
+    return this._filteredRecords.length;
+  }
+
   /** Returns the currently displayed page prefix. No sentinel is appended. */
   getDisplayedItems() {
     return this._filteredRecords.slice(0, this._displayLimit).map((record) => record.item);
@@ -349,7 +380,7 @@ module.exports = class SelectListModel {
     return this._applyUpdate(changes, false);
   }
 
-  _applyUpdate(changes, initial) {
+  _applyUpdate(changes, initial, preparedResults) {
     if (hasOwn(changes, "items") && hasOwn(changes, "sections")) {
       throw new TypeError("items and sections are alternative list sources");
     }
@@ -422,10 +453,8 @@ module.exports = class SelectListModel {
       matcherCandidateSet: generationChanged ? null : this._matcherCandidateSet,
       ...built,
     };
-    const filteredRecords = this._deriveFilteredRecords(draft);
-    const filteredIndexById = new Map();
-    for (let index = 0; index < filteredRecords.length; index++)
-      filteredIndexById.set(filteredRecords[index].id, index);
+    const filteredRecords = preparedResults ?? this._deriveFilteredRecords(draft);
+    const filteredIndexById = resultIndex(filteredRecords, built.records, built.recordById);
 
     let selectedId;
     if (hasOwn(changes, "initialSelection")) {
@@ -574,7 +603,11 @@ module.exports = class SelectListModel {
     if (state.query) {
       records = this._searchRecords(state);
       if (state.search.sort) records = this._sortRecords(records, state);
+      // Flat source records already have no section and recent=false. Search
+      // returns an owned array, so there is no presentation metadata to rewrite.
+      if (state.source.kind === "items") return records;
     } else {
+      if (!state.search.sort && state.recentIds.length === 0) return state.records;
       records = state.records.slice();
       if (state.search.sort) {
         records =
@@ -614,6 +647,8 @@ module.exports = class SelectListModel {
     }
 
     if (state.search.matcher) {
+      if (state.search.matcher[PreparedRecordMatcher])
+        return state.search.matcher(state.records, state.query, this._searchContext(state));
       const candidates = (state.matcherCandidates ??= state.records.map((record, index) =>
         Object.freeze({
           id: record.id,
@@ -798,3 +833,4 @@ module.exports = class SelectListModel {
 };
 
 module.exports.DEFAULT_PAGE_SIZE = DEFAULT_PAGE_SIZE;
+module.exports.PreparedRecordMatcher = PreparedRecordMatcher;

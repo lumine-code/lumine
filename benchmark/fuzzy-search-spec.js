@@ -31,9 +31,10 @@ describe("Fuzzy search performance", () => {
         path.join(directory, config.javascriptReferenceDirectory ? "library" : "native.node"),
       );
       const matcher = compile("fuzzy-matcher", {
-        [config.javascriptReferenceDirectory
-          ? "@lumine-code/fast-fuzzy"
-          : "@lumine-code/fuzzy-native"]: implementation,
+        "@lumine-code/fuzzy-search": implementation,
+        // Frozen pre-migration sources are loaded only when explicitly supplied.
+        "@lumine-code/fast-fuzzy": implementation,
+        "@lumine-code/fuzzy-native": implementation,
       });
       const oldModel = compile("select-list-model");
       const currentModel = require("../src/select-list-model");
@@ -143,9 +144,8 @@ describe("Fuzzy search performance", () => {
     }
     const libraryDirectory = config.javascriptReferenceDirectory
       ? path.join(config.javascriptReferenceDirectory, "library/lib")
-      : !config.nativeReferenceDirectory &&
-          require("../package.json").dependencies["@lumine-code/fast-fuzzy"]
-        ? path.dirname(require.resolve("@lumine-code/fast-fuzzy"))
+      : !config.nativeReferenceDirectory
+        ? path.dirname(require.resolve("@lumine-code/fuzzy-search"))
         : null;
     const libraryHash = libraryDirectory
       ? hash(
@@ -156,16 +156,7 @@ describe("Fuzzy search performance", () => {
               .map((name) => [name, hash(fs.readFileSync(path.join(libraryDirectory, name)))]),
           ),
         )
-      : hash(
-          fs.readFileSync(
-            config.nativeReferenceDirectory
-              ? path.join(config.nativeReferenceDirectory, "native.node")
-              : path.resolve(
-                  path.dirname(require.resolve("@lumine-code/fuzzy-native")),
-                  "../build/Release/fuzzy-native.node",
-                ),
-          ),
-        );
+      : hash(fs.readFileSync(path.join(config.nativeReferenceDirectory, "native.node")));
     fs.writeFileSync(
       config.output,
       JSON.stringify(

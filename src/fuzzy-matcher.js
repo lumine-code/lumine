@@ -1,4 +1,4 @@
-const fuzzy = require("@lumine-code/fast-fuzzy");
+const fuzzy = require("@lumine-code/fuzzy-search");
 
 // Cached single-candidate matchers for the one-shot match()/score() helpers,
 // keyed by the construction-time ignoreDiacritics flag, so per-row highlight
@@ -108,7 +108,17 @@ class Matcher {
     });
   }
 
-  /** @private Highlight a prepared candidate without rebuilding its text. */
+  /**
+   * @public
+   * @status extended
+   *
+   * Highlight a prepared candidate without rebuilding its text.
+   *
+   * @param {Number} id - Candidate position returned by {@link #match}.
+   * @param {String} query - The query to highlight.
+   * @param {Object} [options] - Matching options accepted by {@link #match}.
+   * @returns {Array<Number>|null} Original UTF-16 indexes, or null for a non-match.
+   */
   getMatchIndexes(id, query, options = {}) {
     return this.fuzzyMatcher.getMatchIndexes(id, query, {
       ...options,

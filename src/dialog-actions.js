@@ -8,6 +8,9 @@ const DISPATCH_TARGETS = new Set(["local", "workspace", "opener"]);
 const TONES = new Set(["normal", "danger"]);
 const DEFAULT_GROUP = Symbol("default-dialog-action-group");
 const DECLINED = Symbol("declined-dialog-action");
+// Trusted immutable SelectList record arrays can be captured without walking
+// every item merely to check whether one action is available.
+const PreparedItems = Symbol("prepared-action-items");
 
 /**
  * Owns the explicit action catalogue and execution policy for a dialog.
@@ -376,8 +379,22 @@ class DialogActions {
     if (!context || typeof context !== "object" || Array.isArray(context)) {
       throw new TypeError("Dialog action context must be an object.");
     }
-    const snapshot = { ...context };
-    if (Array.isArray(snapshot.items)) snapshot.items = Object.freeze([...snapshot.items]);
+    let snapshot;
+    const records = context[PreparedItems]?.records;
+    if (records) {
+      snapshot = {};
+      for (const key of Reflect.ownKeys(context))
+        if (key !== "items" && Object.prototype.propertyIsEnumerable.call(context, key))
+          snapshot[key] = context[key];
+      let items;
+      Object.defineProperty(snapshot, "items", {
+        enumerable: true,
+        get: () => (items ??= Object.freeze(records.map((record) => record.item))),
+      });
+    } else {
+      snapshot = { ...context };
+      if (Array.isArray(snapshot.items)) snapshot.items = Object.freeze([...snapshot.items]);
+    }
     if (!("itemId" in snapshot) && snapshot.item != null) {
       snapshot.itemId = this.getItemId(snapshot.item, snapshot);
     }
@@ -663,4 +680,5 @@ function callWithSignal(callback, signal) {
 }
 
 DialogActions.DECLINED = DECLINED;
+DialogActions.PreparedItems = PreparedItems;
 module.exports = DialogActions;
