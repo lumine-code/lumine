@@ -166,6 +166,9 @@ describe("Typing then scrolling with language services", () => {
         inputs.push({ at, duration: performance.now() - at });
       }
       const inputEnd = performance.now();
+      const syntaxSettlement = c.measureSyntaxSettlement
+        ? editor.whenGrammarSettled().then(() => performance.now() - inputEnd)
+        : null;
       const early = setTimeout(() => {
         services.push({ kind: "consumer-request", at: performance.now() });
         void Promise.all([
@@ -221,6 +224,7 @@ describe("Typing then scrolling with language services", () => {
       result.cases.push({
         cycle,
         initialSymbolCount,
+        syntaxReadyAfterInputMs: syntaxSettlement ? await syntaxSettlement : undefined,
         retirement,
         inputHash,
         outputHash: hash(editor.getText()),
