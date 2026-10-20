@@ -236,6 +236,7 @@ class InputDialog {
   }
 
   requestActions() {
+    if (this.isFiltering()) return;
     this.emitter.emit("did-request-actions", { dialog: this });
   }
 
@@ -705,7 +706,7 @@ class InputDialog {
    * @returns {Boolean}
    */
   hasAvailableActions(context = this.getActionContext()) {
-    return this.dialogActions.hasAvailable(context);
+    return !this.isFiltering() && this.dialogActions.hasAvailable(context);
   }
 
   /**
@@ -1035,6 +1036,7 @@ class InputDialog {
 
   /** @private Confirm follows the declared primary action when one applies. */
   canConfirm() {
+    if (this.isFiltering()) return false;
     const context = this.currentActionContext(this.getActionContext("primary"));
     const primary = this.dialogActions.applicableRecords(context).find((entry) => entry.primary)
       ?.record.action;
@@ -1055,6 +1057,7 @@ class InputDialog {
    * @returns {Promise<Object>|undefined} The primary action completion promise, or undefined after emitting onDidConfirm.
    */
   confirm() {
+    if (this.isFiltering()) return;
     const primary = this.dialogActions.getPrimary(this.getActionContext("primary"));
     if (primary) return this.runAction(primary.command, { source: "primary" });
     const query = this.getQuery();
@@ -1426,7 +1429,7 @@ class InputDialog {
   renderQueryRow() {
     const actionPending = this.pendingActionCommands.size > 0;
     const filtering = this.isFiltering();
-    const pending = actionPending || filtering;
+    const pending = actionPending || this.shouldShowFilteringProgress();
     return $.div(
       {
         ref: "queryRow",
@@ -1451,7 +1454,7 @@ class InputDialog {
                     : "Actions",
                 "aria-haspopup": "listbox",
                 "aria-expanded": String(this.actionsExpanded),
-                "aria-busy": String(pending),
+                "aria-busy": String(actionPending || filtering),
               },
               on: {
                 mousedown: (event) => {
@@ -1475,6 +1478,11 @@ class InputDialog {
 
   /** @private SelectList reports local filtering separately from source loading. */
   isFiltering() {
+    return false;
+  }
+
+  /** @private Filtering progress may wait briefly to avoid flashing on fast queries. */
+  shouldShowFilteringProgress() {
     return false;
   }
 

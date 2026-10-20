@@ -15,6 +15,7 @@ const $ = etch.dom;
 // The page size is an implementation policy rather than a package-facing
 // matcher knob.
 const DEFAULT_MAX_RESULTS = SelectListModel.DEFAULT_PAGE_SIZE;
+const FILTER_PROGRESS_DELAY = 250;
 
 // The component's own last row when matches exceed the cap. Never handed to the
 // consumer's callbacks: confirming it grows the list, selecting it reads as
@@ -52,12 +53,16 @@ let nextSelectListId = 1;
  * least 2048 items). It requires pure filter-text and score callbacks and the
  * built-in matcher without a custom sort. The previous rendered rows remain
  * visible, but selection and actions cannot confirm a stale match. A filtering
- * spinner replaces the action affordance; source loading still owns its separate
+ * spinner replaces the action affordance after 250 ms of continuous filtering;
+ * superseding a pending query does not restart that delay or flash a visible
+ * spinner. Source loading still owns its separate
  * loading message. Every match is published together when ready;
  * newer input, source changes and destruction cancel the obsolete request.
  * `setQuery()` resolves after that request's results have rendered.
- * Add `search.worker: true` to prepare text, score, sort and trace the first page
- * in a dedicated Chromium worker. Pure score modifiers still run on their owning
+ * Workers are disabled by default. Add `search.worker: true` to prepare text,
+ * score, sort and trace the first page in a dedicated Chromium worker. Lists
+ * below 2048 items remain synchronous even with this option enabled.
+ * Pure score modifiers still run on their owning
  * UI thread in yielding batches; only numeric scores cross back to the worker.
  *
  * A recents adapter's `save(ids, change)` receives the operation's intent:
@@ -120,6 +125,8 @@ class SelectList extends InputDialog {
     this.filterMatcherGeneration = null;
     this.matcherPreparation = null;
     this.queryWork = null;
+    this.filteringProgressTimer = null;
+    this.filteringProgressVisible = false;
     this.workerPreparation = null;
     this.renderedItemsTree = null;
     this.recentRevision = 0;
@@ -181,11 +188,13 @@ class SelectList extends InputDialog {
     const source = Object.prototype.hasOwnProperty.call(this.props, "sections")
       ? { sections: this.props.sections }
       : { items: this.props.items ?? [] };
+    const initialQuery = this.modelQuery(this.props.query ?? "", this.props);
+    const yielding = this.shouldYieldSearch(this.props, initialQuery);
     this.model = new SelectListModel({
       ...source,
       getItemId: this.modelGetItemId,
       search: this.modelSearch,
-      query: this.modelQuery(this.props.query ?? "", this.props),
+      query: yielding ? "" : initialQuery,
       recentIds: this.props.recentItemIds ?? configuredRecentIds,
       allowEmptySelection: selection.allowEmpty,
       pageSize: DEFAULT_MAX_RESULTS,
@@ -195,7 +204,10 @@ class SelectList extends InputDialog {
     this.props.items = this.model.getItems();
     this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
     this.validateOverflowSections(this.props);
+    if (yielding) this.model._applyUpdate({ query: initialQuery }, false, []);
     this.syncModelState();
+    if (yielding)
+      this.startQueryWork(selection.initial === undefined ? {} : { initial: selection.initial });
     this.scheduleMatcherPreparation();
   }
 
@@ -590,10 +602,17 @@ class SelectList extends InputDialog {
     const previousSelection = this.selectionSnapshot();
     const initialSelection = this.initialSelectionForSession();
     this.model.resetDisplayLimit();
-    this.model.update({ initialSelection });
+    const yielding = this.shouldYieldSearch(this.props, this.model.getQuery());
+    if (yielding) this.model._applyUpdate({ initialSelection: { mode: "none" } }, false, []);
+    else this.model.update({ initialSelection });
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();
+    if (yielding) {
+      const selection = { initial: SelectListModel.normalizeInitialSelection(initialSelection) };
+      if (this.queryWork) this.queryWork.selection = selection;
+      else this.startQueryWork(selection);
+    }
     this.publishSelectionChange(previousSelection, "session");
     this.refreshItemActionsIndicator();
     void this.updateComponent();
@@ -771,15 +790,22 @@ class SelectList extends InputDialog {
     if (!this.model || this.suppressModelQueryUpdate) return sourcePromise;
 
     const query = this.modelQuery(this.getQuery(), this.props);
-    if (query === this.model.getQuery()) return sourcePromise;
+    if (this.props.source?.mode === "query") this.clearWorkerMatcher();
+    if (query === this.model.getQuery() && !this.queryWork) return sourcePromise;
 
-    this.model.update({ query });
+    const yielding = this.shouldYieldSearch(this.props, query);
+    const selection = yielding ? this.selectionForSearch({ query }, previousSelection) : null;
+    this.model._applyUpdate({ query }, false, yielding ? [] : undefined);
+    this.cancelQueryWork(yielding);
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();
+    if (yielding) this.startQueryWork(selection);
     this.publishSelectionChange(previousSelection, "source");
     const updatePromise = this.updateComponent();
-    return Promise.all([sourcePromise, updatePromise]).then(() => undefined);
+    return Promise.all([sourcePromise, updatePromise, this.queryWork?.promise]).then(
+      () => undefined,
+    );
   }
 
   modelQuery(query, props = this.props) {
@@ -1000,9 +1026,13 @@ class SelectList extends InputDialog {
 
     const changesModel = Object.keys(modelChanges).length > 0;
     const yielding = changesModel && this.shouldYieldSearch(nextProps, modelChanges.query);
+    const querySelection = yielding
+      ? this.selectionForSearch(modelChanges, previousSelection)
+      : null;
     if (changesModel) {
+      if (yielding && querySelection.initial) modelChanges.initialSelection = { mode: "none" };
       this.model._applyUpdate(modelChanges, false, yielding ? [] : undefined);
-      this.cancelQueryWork();
+      this.cancelQueryWork(yielding);
       if (this.workerPreparation?.generation !== this.model.getGeneration())
         this.clearWorkerMatcher();
       if (!yielding) this.cancelMatcherPreparation();
@@ -1057,7 +1087,7 @@ class SelectList extends InputDialog {
       this.syncModelState();
       this.publishSelectionChange(previousSelection, itemsChanged ? "items" : "update");
     }
-    if (yielding) this.startQueryWork();
+    if (yielding) this.startQueryWork(querySelection);
 
     if (itemsChanged) {
       this.emitter.emit("did-change-items", { list: this, items: this.getItems() });
@@ -1071,12 +1101,32 @@ class SelectList extends InputDialog {
   }
 
   renderBody() {
-    if (this.queryWork && this.renderedItemsTree) return this.renderedItemsTree;
+    if (this.queryWork) return this.renderedItemsTree ?? "";
     return (this.renderedItemsTree = this.renderItems());
   }
 
   isFiltering() {
     return this.queryWork != null;
+  }
+
+  shouldShowFilteringProgress() {
+    return this.isFiltering() && this.filteringProgressVisible;
+  }
+
+  startFilteringProgress() {
+    if (this.filteringProgressTimer !== null || this.filteringProgressVisible) return;
+    this.filteringProgressTimer = setTimeout(() => {
+      this.filteringProgressTimer = null;
+      if (this.destroyed || !this.queryWork) return;
+      this.filteringProgressVisible = true;
+      void this.updateComponent();
+    }, FILTER_PROGRESS_DELAY);
+  }
+
+  stopFilteringProgress() {
+    if (this.filteringProgressTimer !== null) clearTimeout(this.filteringProgressTimer);
+    this.filteringProgressTimer = null;
+    this.filteringProgressVisible = false;
   }
 
   refreshItemActionsIndicator() {
@@ -1356,14 +1406,15 @@ class SelectList extends InputDialog {
         ...(this.overflowSectionsActive ? { items: this.props.items } : {}),
       };
       const yielding = this.shouldYieldSearch(this.props, changes.query);
+      const selection = yielding ? this.selectionForSearch(changes, previousSelection) : null;
       this.model._applyUpdate(changes, false, yielding ? [] : undefined);
-      this.cancelQueryWork();
+      this.cancelQueryWork(yielding);
       if (!yielding) this.cancelMatcherPreparation();
       this.overflowSectionsActive = false;
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
-      if (yielding) this.startQueryWork();
+      if (yielding) this.startQueryWork(selection);
     }
     super.didChangeQuery();
     if (previousSelection) this.publishSelectionChange(previousSelection, "query");
@@ -1372,9 +1423,18 @@ class SelectList extends InputDialog {
 
   update(props = {}) {
     const rendering = super.update(props);
-    const pending = ["query", "items", "sections", "search", "source", "getItemId"].some(
-      (key) => key in props,
-    )
+    const pending = [
+      "query",
+      "items",
+      "sections",
+      "search",
+      "source",
+      "getItemId",
+      "selection",
+      "recentItemIds",
+      "overflowSections",
+      "itemUpdateOptions",
+    ].some((key) => key in props)
       ? this.queryWork?.promise
       : null;
     return pending ? Promise.all([rendering, pending]).then(() => undefined) : rendering;
@@ -1390,19 +1450,35 @@ class SelectList extends InputDialog {
       !search.sort &&
       !props.sections &&
       props.source?.mode !== "query" &&
-      (props.items?.length ?? this.model.getItemCount()) >= 2048
+      (props.items?.length ?? this.model?.getItemCount() ?? 0) >= 2048
     );
   }
 
-  cancelQueryWork() {
+  cancelQueryWork(preserveProgress = false) {
     this.queryWork?.controller.abort();
     this.queryWork = null;
+    if (!preserveProgress) this.stopFilteringProgress();
   }
 
-  startQueryWork() {
+  finishQueryWork(work) {
+    if (this.queryWork !== work) return;
+    this.queryWork = null;
+    this.stopFilteringProgress();
+  }
+
+  selectionForSearch(changes, previous) {
+    if ("initialSelection" in changes)
+      return { initial: SelectListModel.normalizeInitialSelection(changes.initialSelection) };
+    if (changes.query === undefined || changes.query === this.model.getQuery())
+      return this.queryWork?.selection ?? { retainId: previous.id };
+    return {};
+  }
+
+  startQueryWork(selection = {}) {
     const controller = new AbortController();
-    const work = { controller, promise: null };
+    const work = { controller, promise: null, selection };
     this.queryWork = work;
+    this.startFilteringProgress();
     const records = this.model._records;
     const generation = this.model.getGeneration();
     const query = this.model.getQuery();
@@ -1472,9 +1548,13 @@ class SelectList extends InputDialog {
         );
       }
       const results = new Array(ids.length);
+      const selection = work.selection;
+      const preferred = this.model._recordById.get(selection.retainId);
+      let retained = false;
       let deadline = performance.now() + 6;
       for (let i = 0; i < ids.length; i++) {
         results[i] = records[ids[i]];
+        if (results[i] === preferred) retained = true;
         if ((i & 1023) === 0 && performance.now() >= deadline) {
           await new Promise((resolve) => setImmediate(resolve));
           check();
@@ -1484,7 +1564,14 @@ class SelectList extends InputDialog {
       check();
       const previousSelection = this.selectionSnapshot();
       this.model._applyUpdate(
-        { query, initialSelection: { mode: this.model._allowEmptySelection ? "none" : "first" } },
+        {
+          query,
+          initialSelection:
+            selection.initial ??
+            (retained
+              ? { id: selection.retainId }
+              : { mode: this.model._allowEmptySelection ? "none" : "first" }),
+        },
         false,
         results,
       );
@@ -1497,20 +1584,20 @@ class SelectList extends InputDialog {
             text: this.model.getFilterText(records[id].item),
             indexes,
           });
-      if (this.queryWork === work) this.queryWork = null;
+      this.finishQueryWork(work);
       this.publishSelectionChange(previousSelection, "query");
       this.refreshItemActionsIndicator();
       await this.updateComponent();
     })()
       .catch((error) => {
         if (controller.signal.aborted) return;
-        if (this.queryWork === work) this.queryWork = null;
+        this.finishQueryWork(work);
         this.clearWorkerMatcher();
         void this.setStatus({ type: "error", message: error?.message ?? String(error) });
         throw error;
       })
       .finally(() => {
-        if (this.queryWork === work) this.queryWork = null;
+        this.finishQueryWork(work);
       });
     // Keyboard changes have no promise consumer. Explicit setQuery still
     // receives the rejection while the surface reports the error in both cases.
@@ -2449,6 +2536,7 @@ class SelectList extends InputDialog {
    * @returns {Promise<Object|Boolean>|undefined} Primary action completion, a paging result for the Show more row, or undefined after a confirmation event.
    */
   confirmSelection() {
+    if (this.isFiltering()) return;
     if (this.selectedItemRaw() === SHOW_MORE_ITEM) {
       return this.showMore();
     }

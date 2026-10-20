@@ -53,6 +53,21 @@ function assertStableId(id, description) {
   return id;
 }
 
+function normalizeInitialSelection(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new TypeError("initialSelection must be {mode: 'first'|'none'} or {id}.");
+  const hasMode = hasOwn(value, "mode");
+  const hasId = hasOwn(value, "id");
+  if (hasMode === hasId)
+    throw new TypeError("initialSelection must declare exactly one of mode or id.");
+  if (hasMode) {
+    if (value.mode !== "first" && value.mode !== "none")
+      throw new TypeError("initialSelection mode must be 'first' or 'none'.");
+    return { mode: value.mode };
+  }
+  return { id: assertStableId(value.id, "Initial selection ID") };
+}
+
 function normalizePageSize(value) {
   if (!Number.isInteger(value) || value <= 0) {
     throw new RangeError("pageSize must be a positive integer");
@@ -458,27 +473,13 @@ module.exports = class SelectListModel {
 
     let selectedId;
     if (hasOwn(changes, "initialSelection")) {
-      const requestedSelection = changes.initialSelection;
-      if (
-        !requestedSelection ||
-        typeof requestedSelection !== "object" ||
-        Array.isArray(requestedSelection)
-      ) {
-        throw new TypeError("initialSelection must be {mode: 'first'|'none'} or {id}.");
-      }
-      const hasMode = hasOwn(requestedSelection, "mode");
-      const hasId = hasOwn(requestedSelection, "id");
-      if (hasMode === hasId) {
-        throw new TypeError("initialSelection must declare exactly one of mode or id.");
-      }
-      if (hasMode && requestedSelection.mode === "none") {
+      const requestedSelection = normalizeInitialSelection(changes.initialSelection);
+      if (requestedSelection.mode === "none") {
         selectedId = NO_SELECTION;
-      } else if (hasMode && requestedSelection.mode === "first") {
+      } else if (requestedSelection.mode === "first") {
         selectedId = filteredRecords[0]?.id ?? NO_SELECTION;
-      } else if (hasMode) {
-        throw new TypeError("initialSelection mode must be 'first' or 'none'.");
       } else {
-        const requestedId = assertStableId(requestedSelection.id, "Initial selection ID");
+        const requestedId = requestedSelection.id;
         if (!filteredIndexById.has(requestedId)) {
           throw new RangeError(`No filtered item has ID ${String(requestedId)}`);
         }
@@ -834,3 +835,4 @@ module.exports = class SelectListModel {
 
 module.exports.DEFAULT_PAGE_SIZE = DEFAULT_PAGE_SIZE;
 module.exports.PreparedRecordMatcher = PreparedRecordMatcher;
+module.exports.normalizeInitialSelection = normalizeInitialSelection;

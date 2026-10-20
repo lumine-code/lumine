@@ -19,6 +19,27 @@ describe("SelectList worker search", () => {
       },
     };
   }
+  it("keeps workers opt-in and never starts one for a small list", async () => {
+    list = lumine.workspace.buildSelectList({
+      items: ["alpha", "beta"],
+      search: { worker: true, prepareOnIdle: true },
+    });
+    const small = list.setQuery("a");
+    expect(list.getMatchCount()).toBe(2);
+    expect(list.queryWork).toBeNull();
+    expect(list.workerPreparation).toBeNull();
+    await small;
+    await list.destroy();
+    list = lumine.workspace.buildSelectList({
+      items: values,
+      search: { ignoreDiacritics: true, algorithm: "command-t" },
+    });
+    const ordinary = list.setQuery("sample");
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(list.queryWork).toBeNull();
+    expect(list.workerPreparation).toBeNull();
+    await ordinary;
+  });
   for (const algorithm of ["command-t", "fuzzaldrin"]) {
     it(`keeps every adjusted result and visible highlight equivalent with ${algorithm}`, async () => {
       let factor = 1;
@@ -64,6 +85,7 @@ describe("SelectList worker search", () => {
       return match.apply(this, args);
     });
     const pending = list.setQuery("sample42");
+    expect(list.shouldShowFilteringProgress()).toBe(false);
     await list.updateComponent();
     expect(list.isFiltering()).toBe(true);
     expect(list.component.refs.items).toBe(viewport);
@@ -76,13 +98,27 @@ describe("SelectList worker search", () => {
     expect(button.hidden).toBe(false);
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-busy")).toBe("true");
-    expect(button.querySelector(".loading-spinner-tiny")).not.toBeNull();
     expect(list.getElement().textContent).toContain("Reading source data");
     expect(list.getSelectedItem()).toBeNull();
     await list.selectIndex(1);
     expect(list.getSelectedItem()).toBeNull();
+    const confirm = jasmine.createSpy("confirm");
+    const actions = jasmine.createSpy("actions");
+    list.emitter.on("did-confirm-empty-selection", confirm);
+    list.emitter.on("did-request-actions", actions);
+    list.confirmSelection();
+    list.requestActions();
+    expect(list.canConfirm()).toBe(false);
+    expect(list.hasAvailableActions()).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(actions).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 275));
+    await list.updateComponent();
+    expect(button.querySelector(".loading-spinner-tiny")).not.toBeNull();
+    const continued = list.setQuery("sample42");
+    expect(list.shouldShowFilteringProgress()).toBe(true);
     release();
-    await pending;
+    await Promise.all([pending, continued]);
     expect(list.isFiltering()).toBe(false);
     expect(button.disabled).toBe(false);
     expect(button.querySelector(".loading-spinner-tiny")).toBeNull();
@@ -91,6 +127,36 @@ describe("SelectList worker search", () => {
     expect(list.getMatchCount()).toBeLessThan(values.length);
   });
 
+  it("delays the filtering indicator for 250 ms and preserves it across superseded queries", () => {
+    list = lumine.workspace.buildSelectList(options());
+    spyOn(list, "updateComponent").and.returnValue(Promise.resolve());
+    const clock = require("sinon").useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const pending = () => ({ controller: new AbortController(), promise: Promise.resolve() });
+    try {
+      list.queryWork = pending();
+      list.startFilteringProgress();
+      clock.tick(249);
+      expect(list.shouldShowFilteringProgress()).toBe(false);
+      clock.tick(1);
+      expect(list.shouldShowFilteringProgress()).toBe(true);
+      list.cancelQueryWork(true);
+      list.queryWork = pending();
+      list.startFilteringProgress();
+      expect(list.shouldShowFilteringProgress()).toBe(true);
+      list.cancelQueryWork();
+      expect(list.shouldShowFilteringProgress()).toBe(false);
+      list.queryWork = pending();
+      list.startFilteringProgress();
+      clock.tick(100);
+      list.cancelQueryWork();
+      clock.tick(1000);
+      expect(list.shouldShowFilteringProgress()).toBe(false);
+      expect(list.updateComponent.calls.count()).toBe(1);
+    } finally {
+      clock.restore();
+      list.cancelQueryWork();
+    }
+  });
   it("discards superseded results, replaces the worker with its source and terminates it", async () => {
     list = lumine.workspace.buildSelectList(options());
     await list.setQuery("s");
@@ -141,6 +207,57 @@ describe("SelectList worker search", () => {
     expect(list.getMatchCount()).toBeGreaterThan(0);
     expect(list.workerPreparation).toBe(preparation);
     expect(extract.calls.count()).toBe(values.length);
+  });
+
+  it("keeps session opening with a query on the worker path", async () => {
+    host = lumine.workspace.addSelectList(options());
+    list = host.getModel();
+    spyOn(list, "matchCandidates").and.callThrough();
+    await host.show({ query: "sample" });
+    await list.queryWork?.promise;
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(list.matchCandidates).not.toHaveBeenCalled();
+  });
+
+  it("does not run a constructor query synchronously or show a premature empty result", async () => {
+    const SelectList = require("../src/select-list");
+    spyOn(SelectList.prototype, "matchCandidates").and.callThrough();
+    list = lumine.workspace.buildSelectList({
+      ...options(),
+      query: "sample",
+      emptyMessage: "No matches found",
+    });
+    expect(list.isFiltering()).toBe(true);
+    expect(list.getElement().textContent).not.toContain("No matches found");
+    await list.queryWork.promise;
+    expect(list.getMatchCount()).toBe(values.length);
+    expect(list.matchCandidates).not.toHaveBeenCalled();
+  });
+
+  it("retains selection across source refreshes and honors explicit selection policies", async () => {
+    list = lumine.workspace.buildSelectList(options());
+    await list.setQuery("sample");
+    const chosen = list.getDisplayedItems()[5];
+    await list.selectItem(chosen);
+    await list.update({ items: values.slice() });
+    expect(list.getSelectedItem()).toBe(chosen);
+    await list.update({ selection: { initial: { mode: "none" } } });
+    expect(list.getSelectedItem()).toBeNull();
+    await list.update({ selection: { initial: { id: chosen } } });
+    expect(list.getSelectedItem()).toBe(chosen);
+  });
+
+  it("cancels local filtering when a query source takes ownership", async () => {
+    list = lumine.workspace.buildSelectList(options());
+    await list.setQuery("s");
+    const client = list.workerPreparation.client;
+    const pending = list.setQuery("sample");
+    await list.setSource({ mode: "query", load: () => ["external result"] });
+    await pending;
+    expect(list.model.getQuery()).toBe("");
+    expect(client.closed).toBe(true);
+    await list.reload();
+    expect(list.getFilteredItems()).toEqual(["external result"]);
   });
 
   it("recovers after a main-thread modifier fails without publishing stale worker results", async () => {
