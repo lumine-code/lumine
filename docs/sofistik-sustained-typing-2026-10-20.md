@@ -2,6 +2,8 @@
 
 Windows measurements on 2026-10-20 use a user-supplied document of 8,400,039 bytes and 195,789 rows. The maximum line length is 138 UTF-16 units. Its contents and original path are not distributed. [Raw samples, source hashes and validation](../benchmark/results/sofistik-sustained-typing-2026-10-20.json) identify the measured inputs.
 
+The [follow-up lifecycle investigation](typing-tail-performance-2026-10-20.md) reproduces post-GC pauses, identifies synchronous WASM tree destruction and records disposal scheduling plus adaptive parsing for slow large grammars. The outlier below remains part of this earlier measurement.
+
 ## Findings
 
 The dominant delay was Tree-sitter changed-range comparison over an input block with approximately 196,000 immediate children. Existing hidden groups already accelerated incremental parsing, but changed-range traversal flattened them. Exposing the outer 64-element `program_body_group` lets it skip unchanged subtrees. A diagnostic standalone parse measured about 30 ms for comparison before and 1–2 ms after; this is profiling evidence, separate from the accepted editor timings below.
