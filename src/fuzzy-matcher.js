@@ -1,13 +1,8 @@
-const os = require("os");
-const fuzzyNative = require("@lumine-code/fuzzy-native");
-
-// Leave headroom for the renderer; the native module only fans out across
-// threads for candidate sets of 10000 or more anyway.
-const DEFAULT_NUM_THREADS = Math.max(1, Math.min(8, os.availableParallelism() - 1));
+const fuzzy = require("@lumine-code/fast-fuzzy");
 
 // Cached single-candidate matchers for the one-shot match()/score() helpers,
 // keyed by the construction-time ignoreDiacritics flag, so per-row highlight
-// loops don't allocate a fresh native Matcher on every call.
+// loops share bounded text normalization and prepared-query caches.
 const singleCandidateMatchers = new Map();
 
 /**
@@ -47,11 +42,7 @@ function setCandidates(matcherOrCandidates, candidates, _options) {
     // the options object, if any.
     const opts = candidates || {};
     return new Matcher(
-      new fuzzyNative.Matcher(
-        [...Array(matcherOrCandidates.length).keys()],
-        matcherOrCandidates,
-        opts,
-      ),
+      new fuzzy.Matcher([...Array(matcherOrCandidates.length).keys()], matcherOrCandidates, opts),
     );
   }
 }
@@ -89,11 +80,11 @@ class Matcher {
    *   basename-aware path scoring, and optional query characters. `command-t`
    *   is the path-tuned alternative.
    * @param {Number} [options.maxResults=Infinity] - The maximum number of
-   *   results. This does not affect filtering speed.
+   *   results. Limited requests use bounded selection.
    * @param {Boolean} [options.recordMatchIndexes=false] - Include character
    *   indexes for highlighting.
-   * @param {Number} [options.numThreads] - Worker threads to use. Defaults to
-   *   most available cores, capped at 8.
+   * @param {Number} [options.numThreads] - Legacy option; JavaScript matching
+   *   runs synchronously on the calling thread.
    * @param {Number} [options.maxGap=Infinity] - With `command-t`, the maximum
    *   gap between consecutive letters.
    * @param {Boolean} [options.usePathScoring=true] - With `fuzzaldrin`, blend
@@ -103,10 +94,26 @@ class Matcher {
    * @returns {Array<Object>} Matching candidates ordered by relevance.
    */
   match(query, options = {}) {
-    let { numThreads, algorithm } = options;
-    numThreads ||= DEFAULT_NUM_THREADS;
-    algorithm ||= "fuzzaldrin";
-    return this.fuzzyMatcher.match(query, { ...options, numThreads, algorithm });
+    return this.fuzzyMatcher.match(query, {
+      ...options,
+      algorithm: options.algorithm || "fuzzaldrin",
+    });
+  }
+
+  /** @private Return candidate positions after optional final score adjustment. */
+  matchIds(query, options = {}) {
+    return this.fuzzyMatcher.matchIds(query, {
+      ...options,
+      algorithm: options.algorithm || "fuzzaldrin",
+    });
+  }
+
+  /** @private Highlight a prepared candidate without rebuilding its text. */
+  getMatchIndexes(id, query, options = {}) {
+    return this.fuzzyMatcher.getMatchIndexes(id, query, {
+      ...options,
+      algorithm: options.algorithm || "fuzzaldrin",
+    });
   }
 
   /**
@@ -128,7 +135,7 @@ class Matcher {
  * @public
  * @status essential
  *
- * Fuzzy matching utilities used by autocomplete, file search and the command
+ * Fuzzy matching utilities used by symbol lists, file search and the command
  * palette. Available as `lumine.tools.fuzzyMatcher`.
  *
  * Use {@link .setCandidates} to create a reusable {@link Matcher} for an array
@@ -202,13 +209,14 @@ const fuzzyMatcher = {
   match(candidate, query, opts = {}) {
     const key = !!opts.ignoreDiacritics;
     let matcher = singleCandidateMatchers.get(key);
-    if (matcher) {
-      matcher.setCandidates([candidate]);
-    } else {
-      matcher = setCandidates([candidate], { ignoreDiacritics: key });
+    if (!matcher) {
+      matcher = new fuzzy.Matcher([], [], { ignoreDiacritics: key });
       singleCandidateMatchers.set(key, matcher);
     }
-    return matcher.match(query, opts)[0];
+    return matcher.matchCandidate(candidate, query, {
+      ...opts,
+      algorithm: opts.algorithm || "fuzzaldrin",
+    });
   },
 };
 

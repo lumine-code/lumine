@@ -96,6 +96,7 @@ class SelectList extends InputDialog {
     this.recentBoundaryIndex = -1;
     this.matchIndicesMap = new Map();
     this.filterMatcher = null;
+    this.filterMatcherIds = null;
     this.filterMatcherGeneration = null;
     this.indexMatcher = null;
     this.indexMatcherIgnoresDiacritics = null;
@@ -652,6 +653,7 @@ class SelectList extends InputDialog {
    */
   async destroyNow() {
     this.filterMatcher = null;
+    this.filterMatcherIds = null;
     this.filterMatcherFirst = null;
     this.indexMatcher = null;
     this.overflowResizeObserver?.disconnect();
@@ -1360,21 +1362,19 @@ class SelectList extends InputDialog {
           ignoreDiacritics: !!options.ignoreDiacritics,
         },
       );
+      this.filterMatcherIds = new Map(candidates.map((candidate, index) => [candidate.id, index]));
       this.filterMatcherGeneration = context.generation;
       this.filterMatcherFirst = candidates[0];
     }
     const modifyScore = options.scoreModifier;
-    const results = this.filterMatcher.match(query, { algorithm: options.algorithm });
-    if (modifyScore) {
-      let count = 0;
-      for (const result of results) {
-        result.score = modifyScore(result.score, candidates[result.id].item);
-        if (result.score > 0) results[count++] = result;
-      }
-      results.length = count;
-      results.sort((left, right) => right.score - left.score);
-    }
-    return results.map((result) => candidates[result.id]);
+    return this.filterMatcher
+      .matchIds(query, {
+        algorithm: options.algorithm,
+        scoreModifier: modifyScore
+          ? (score, id) => modifyScore(score, candidates[id].item)
+          : undefined,
+      })
+      .map((id) => candidates[id]);
   }
 
   /** @category Filtering */
@@ -1421,11 +1421,15 @@ class SelectList extends InputDialog {
     // Match the original display text so expanding folds preserve its offsets.
     const ignoreDiacritics = !!this.props.search?.ignoreDiacritics;
     const options = { algorithm: this.props.search?.algorithm, ignoreDiacritics };
-    const indexes =
-      fuzzyMatcher.match(filterKey, matchQuery, {
-        ...options,
-        recordMatchIndexes: true,
-      })?.matchIndexes ?? null;
+    const id = this.filterMatcherIds?.get(itemId);
+    const prepared =
+      id !== undefined &&
+      this.filterMatcherGeneration === this.model.getGeneration() &&
+      filterKey === this.getFilterKey(item);
+    const indexes = prepared
+      ? this.filterMatcher.getMatchIndexes(id, matchQuery, options)
+      : (fuzzyMatcher.match(filterKey, matchQuery, { ...options, recordMatchIndexes: true })
+          ?.matchIndexes ?? null);
     this.matchIndicesMap?.set(itemId, { text: filterKey, indexes });
     return indexes;
   }

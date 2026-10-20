@@ -1,6 +1,8 @@
 # JavaScript fuzzy matching evaluation
 
-Lumine retains `@lumine-code/fuzzy-native`. The standalone [fast-fuzzy](https://github.com/lumine-code/fast-fuzzy) port is implemented and tested, but new Fuzzaldrin query extensions remain slower in JavaScript. Faster repeated queries do not compensate for that regression under the migration's acceptance condition. The editor keeps the independently useful model and consumer improvements.
+This initial evaluation retained `@lumine-code/fuzzy-native`. The later [refinement follow-up](fuzzy-refinement-2026-10-20.md) removes the material query-extension regression and adopts the optimized JavaScript port. The measurements and initial reasoning below are preserved as the baseline.
+
+At this stage, the standalone [fast-fuzzy](https://github.com/lumine-code/fast-fuzzy) port was implemented and tested, but new Fuzzaldrin query extensions remained slower in JavaScript. Faster repeated queries did not compensate for that regression under the migration's acceptance condition. The editor kept the independently useful model and consumer improvements.
 
 ## Implementations and method
 

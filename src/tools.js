@@ -3,7 +3,7 @@
 // candidates, or fold diacritics does not vendor a second implementation of
 // something the editor already carries.
 // Completion matching shares the buffer's JS scoring kernel; fuzzyMatcher is
-// the separate native matcher used by path and general-purpose search tools.
+// the JavaScript matcher used by path and general-purpose search tools.
 //
 // Each is documented where it is defined: the Markdown functions and
 // `removeDiacritics` under Functions in the API reference, and `fuzzyMatcher`

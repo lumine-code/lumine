@@ -73,7 +73,7 @@ describe("Fuzzy search performance", () => {
             : `project-${Math.floor(id / corpus.length)}/${corpus[id % corpus.length]}`,
         distance: 1 + (id % 5),
       }));
-      for (const algorithm of ["command-t", "fuzzaldrin"]) {
+      for (const algorithm of config.algorithms || ["command-t", "fuzzaldrin"]) {
         const times = new Map();
         for (let sample = -2; sample < (config.samples || 9); sample++) {
           const start = performance.now();
@@ -141,15 +141,12 @@ describe("Fuzzy search performance", () => {
         : path.resolve(__dirname, "../src", name + ".js");
       sources[name] = hash(fs.readFileSync(filename));
     }
-    const libraryDirectory =
-      config.javascriptReferenceDirectory &&
-      path.join(config.javascriptReferenceDirectory, "library/lib");
-    const nativeBinary = config.nativeReferenceDirectory
-      ? path.join(config.nativeReferenceDirectory, "native.node")
-      : path.resolve(
-          path.dirname(require.resolve("@lumine-code/fuzzy-native")),
-          "../build/Release/fuzzy-native.node",
-        );
+    const libraryDirectory = config.javascriptReferenceDirectory
+      ? path.join(config.javascriptReferenceDirectory, "library/lib")
+      : !config.nativeReferenceDirectory &&
+          require("../package.json").dependencies["@lumine-code/fast-fuzzy"]
+        ? path.dirname(require.resolve("@lumine-code/fast-fuzzy"))
+        : null;
     const libraryHash = libraryDirectory
       ? hash(
           JSON.stringify(
@@ -159,7 +156,16 @@ describe("Fuzzy search performance", () => {
               .map((name) => [name, hash(fs.readFileSync(path.join(libraryDirectory, name)))]),
           ),
         )
-      : hash(fs.readFileSync(nativeBinary));
+      : hash(
+          fs.readFileSync(
+            config.nativeReferenceDirectory
+              ? path.join(config.nativeReferenceDirectory, "native.node")
+              : path.resolve(
+                  path.dirname(require.resolve("@lumine-code/fuzzy-native")),
+                  "../build/Release/fuzzy-native.node",
+                ),
+          ),
+        );
     fs.writeFileSync(
       config.output,
       JSON.stringify(

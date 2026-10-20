@@ -167,8 +167,6 @@ let options = {
     "!**/node_modules/*.d.ts",
     "!**/node_modules/.bin",
     "!**/node_modules/native-mate",
-    // node_modules of the fuzzy-native package are only required for building it
-    "!node_modules/@lumine-code/fuzzy-native/node_modules",
     "!**/node_modules/@lumine-code/native-spelling/vendor/hunspell/.*",
     "!**/get-parameter-names/node_modules/testla",
     "!**/get-parameter-names/node_modules/.bin/testla",
