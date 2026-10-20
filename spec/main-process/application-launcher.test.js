@@ -141,6 +141,9 @@ describe("Application launcher", () => {
         else process.env.ELECTRON_RUN_AS_NODE = originalRunAsNode;
       }
       assert.isTrue(Number.isInteger(pid) && pid > 0);
+      // The launcher deliberately unrefs GUI applications. This probe instead
+      // owns the child through fixture cleanup and waits for its close event.
+      launched.ref();
 
       const deadline = Date.now() + 5000;
       while (!fs.existsSync(output) && Date.now() < deadline) {
