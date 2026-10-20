@@ -17,6 +17,44 @@ function position(text, index) {
   return { row: prefix.split("\n").length - 1, column: index - prefix.lastIndexOf("\n") - 1 };
 }
 
+test("line lookup cursors stay local to immutable and fragmented snapshots", () => {
+  const next = random(481);
+  let source =
+    "x".repeat(32767) +
+    "\r\n" +
+    Array.from(
+      { length: 2500 },
+      (_, row) => "😀x".repeat(row % 37) + (row % 2 ? "\n" : "\r\n"),
+    ).join("");
+  let tree = new PieceTree(source);
+  const retained = [];
+  for (let edit = 0; edit < 100; edit++) {
+    if (edit % 20 === 0) retained.push([tree, source]);
+    for (const [snapshot, text] of [...retained, [tree, source]]) {
+      const starts = [0];
+      for (let lf = text.indexOf("\n"); lf >= 0; lf = text.indexOf("\n", lf + 1))
+        starts.push(lf + 1);
+      for (const row of [
+        0,
+        starts.length - 1,
+        ...Array.from({ length: 40 }, () => next(starts.length)),
+      ]) {
+        for (let nearby = row; nearby < Math.min(row + 4, starts.length); nearby++) {
+          assert.equal(snapshot.lineStart(nearby), starts[nearby]);
+          assert.equal(snapshot.offsetAt({ row: nearby, column: 0 }), starts[nearby]);
+        }
+      }
+      assert.throws(() => snapshot.lineStart(starts.length), RangeError);
+      assert.throws(() => snapshot.lineStart(0.5), RangeError);
+    }
+    const start = next(source.length + 1);
+    const end = Math.min(source.length, start + next(400));
+    const inserted = ["", "\n\n", "a\r\nb", "\ud800x\udfff"][next(4)];
+    tree = tree.replace(start, end, inserted);
+    source = source.slice(0, start) + inserted + source.slice(end);
+  }
+});
+
 test("line-ending metadata survives edits across piece boundaries and old snapshots", () => {
   const endings = (text) =>
     new Set([

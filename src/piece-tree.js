@@ -25,11 +25,14 @@ function bufferFor(text) {
   const astrals = [];
   const expression = /[\ud800-\udbff][\udc00-\udfff]/g;
   for (let match; (match = expression.exec(text));) astrals.push(match.index + 2);
+  // These indexes address one backing buffer, not the whole document.
+  // Keep the wider representation available if buffer sizing changes.
+  const IndexArray = text.length <= 0xffff ? Uint16Array : Uint32Array;
   return {
     text,
-    starts: Uint32Array.from(starts),
-    crlfs: Uint32Array.from(crlfs),
-    astrals: Uint32Array.from(astrals),
+    starts: IndexArray.from(starts),
+    crlfs: IndexArray.from(crlfs),
+    astrals: IndexArray.from(astrals),
   };
 }
 
@@ -215,6 +218,9 @@ function integer(value, name, max) {
 
 class PieceTree {
   #root;
+  #lineNode = null;
+  #lineNodeRow = 0;
+  #lineNodeOffset = 0;
 
   constructor(text = "") {
     if (typeof text !== "string") throw new TypeError("Document text must be a string");
@@ -422,6 +428,15 @@ class PieceTree {
   lineStart(row) {
     integer(row, "Row", this.lineCount - 1);
     if (row === 0) return 0;
+    const cached = this.#lineNode;
+    if (cached && row > this.#lineNodeRow && row <= this.#lineNodeRow + cached.breaks) {
+      return (
+        this.#lineNodeOffset +
+        cached.buffer.starts[cached.first + row - this.#lineNodeRow - 1] -
+        cached.start
+      );
+    }
+    const requestedRow = row;
     let node = this.#root;
     let offset = 0;
     while (!node.buffer) {
@@ -432,6 +447,11 @@ class PieceTree {
         node = node.right;
       }
     }
+    // Each immutable snapshot owns its cursor. Revisions can share leaves,
+    // but never their absolute row/offset coordinates.
+    this.#lineNode = node;
+    this.#lineNodeRow = requestedRow - row;
+    this.#lineNodeOffset = offset;
     return offset + node.buffer.starts[node.first + row - 1] - node.start;
   }
 
