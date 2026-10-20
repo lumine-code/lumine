@@ -1,6 +1,49 @@
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 describe("Large-buffer syntax update policy", () => {
+  it("does not postpone queued root work on retries and bypasses it in synchronous mode", () => {
+    const mode = Object.create(TreeSitterLanguageMode.prototype);
+    Object.assign(mode, {
+      useAsyncParsing: true,
+      deferLargeBufferUpdates: true,
+      coalesceLargeBufferEdits: true,
+      lastLargeBufferEditAt: performance.now(),
+      buffer: { getLength: () => 600000 },
+    });
+    try {
+      const pending = mode.waitForRootUpdate();
+      const timer = mode.pendingRootUpdateTimer;
+      expect(timer).not.toBeNull();
+      expect(mode.waitForRootUpdate()).toBe(pending);
+      expect(mode.pendingRootUpdateTimer).toBe(timer);
+      mode.useAsyncParsing = false;
+      expect(mode.waitForRootUpdate()).toBeNull();
+    } finally {
+      mode.cancelPendingRootUpdate();
+    }
+  });
+
+  it("cancels queued root work when the editor closes", async () => {
+    jasmine.useRealClock();
+    await lumine.packages.activatePackage("language-javascript");
+    const editor = await lumine.workspace.open();
+    editor.setText("const value = 1;\n".repeat(34000));
+    editor.setGrammar(lumine.grammars.grammarForScopeName("source.js"));
+    await editor.whenGrammarSettled();
+    const mode = editor.getBuffer().getLanguageMode();
+    mode.recordSynchronousUpdate(30);
+    mode.lastLargeBufferEditAt = performance.now();
+    editor.insertText(" ");
+    expect(mode.pendingRootUpdateTimer).not.toBeNull();
+    const parse = spyOn(mode, "parseAsync").and.callThrough();
+    const settled = editor.whenGrammarSettled();
+    editor.destroy();
+    await settled;
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(mode.pendingRootUpdateTimer).toBeNull();
+    expect(parse).not.toHaveBeenCalled();
+  }, 30000);
+
   it("does not capture text for cancelled or superseded coalesced ranges", async () => {
     jasmine.useRealClock();
     let revision = 1;
@@ -85,6 +128,7 @@ describe("Large-buffer syntax update policy", () => {
     editor.undo();
     await editor.whenGrammarSettled();
     const acquire = spyOn(mode, "acquireParserForLanguage").and.callThrough();
+    const parse = spyOn(mode, "parseAsync").and.callThrough();
     for (let i = 0; i < 10; i++) {
       editor.insertText(" ", { autoIndent: false });
       // Let cancellation and update continuations run, without waiting for
@@ -95,6 +139,9 @@ describe("Large-buffer syntax update policy", () => {
       }
     }
     expect(acquire).not.toHaveBeenCalled();
+    // One initial job can already have been submitted by the transaction
+    // boundary. Subsequent edits must share its wait instead of resubmitting.
+    expect(parse.calls.count()).toBeLessThanOrEqual(1);
     expect(mode.publicationPending).toBe(true);
     await editor.whenGrammarSettled();
     expect(acquire).toHaveBeenCalled();

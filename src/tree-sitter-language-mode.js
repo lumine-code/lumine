@@ -364,6 +364,7 @@ class TreeSitterLanguageMode {
   destroy() {
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
+    this.cancelPendingRootUpdate();
     this.document.close();
     this.presentation.destroy();
     this.highlightCache.clear();
@@ -773,6 +774,42 @@ class TreeSitterLanguageMode {
     this.publicationPending = true;
     if (!this.resolveNextTransaction) this.refreshNextTransactionPromise();
     this.updateRootLayer();
+  }
+
+  waitForRootUpdate() {
+    if (
+      this.useAsyncParsing &&
+      this.deferLargeBufferUpdates &&
+      this.coalesceLargeBufferEdits &&
+      this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD
+    ) {
+      const deadline = this.lastLargeBufferEditAt + SLOW_PARSE_COALESCE_MS;
+      const remaining = deadline - performance.now();
+      if (remaining > 0) {
+        // Keep the owning layer transaction alive, but create no new parse
+        // or cancellation scope until edits stop. Recheck after waking: a
+        // later edit can move the deadline without allocating another timer.
+        if (!this.pendingRootUpdatePromise) {
+          this.pendingRootUpdatePromise = new Promise((resolve) => {
+            this.resolvePendingRootUpdate = resolve;
+            this.pendingRootUpdateTimer = scheduleBackgroundTask(
+              () => this.cancelPendingRootUpdate(),
+              remaining,
+            );
+          });
+        }
+        return this.pendingRootUpdatePromise;
+      }
+    }
+    return null;
+  }
+
+  cancelPendingRootUpdate() {
+    if (this.pendingRootUpdateTimer != null) cancelBackgroundTask(this.pendingRootUpdateTimer);
+    this.pendingRootUpdateTimer = null;
+    this.pendingRootUpdatePromise = null;
+    this.resolvePendingRootUpdate?.();
+    this.resolvePendingRootUpdate = null;
   }
 
   rootLanguageRangesChanged() {
@@ -4161,6 +4198,10 @@ class LanguageLayer {
       ) {
         this.requestInjectionParentRetry({ layer: this.marker?.parentLanguageLayer });
         return false;
+      }
+      if (this.depth === 0) {
+        const pending = this.languageMode.waitForRootUpdate();
+        if (pending) return pending.then(run);
       }
       this.updateRequested = false;
       if (this.pendingNodeRangeSet) {
