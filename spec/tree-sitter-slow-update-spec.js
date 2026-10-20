@@ -1,6 +1,28 @@
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 describe("Large-buffer syntax update policy", () => {
+  it("does not capture text for cancelled or superseded coalesced ranges", async () => {
+    jasmine.useRealClock();
+    let revision = 1;
+    const mode = Object.create(TreeSitterLanguageMode.prototype);
+    Object.assign(mode, {
+      deferLargeBufferUpdates: true,
+      coalesceLargeBufferEdits: true,
+      lastLargeBufferEditAt: performance.now(),
+      buffer: { getLength: () => 600000, getTextRevision: () => revision },
+      document: { capture: jasmine.createSpy("capture") },
+    });
+    const controller = new AbortController();
+    const cancelled = mode.parseAsync({}, {}, [], { signal: controller.signal });
+    controller.abort();
+    expect(await cancelled).toBe(null);
+    mode.lastLargeBufferEditAt = performance.now();
+    const superseded = mode.parseAsync({}, {}, []);
+    revision++;
+    expect(await superseded).toBe(null);
+    expect(mode.document.capture).not.toHaveBeenCalled();
+  });
+
   it("requires repeated expensive updates and leaves small buffers synchronous", () => {
     let length = 600000;
     const mode = Object.create(TreeSitterLanguageMode.prototype);
@@ -37,9 +59,27 @@ describe("Large-buffer syntax update policy", () => {
     mode.recordSynchronousUpdate(30);
     expect(mode.shouldParseSynchronously()).toBe(false);
     editor.setCursorBufferPosition([17000, 0]);
-    for (let i = 0; i < 10; i++) editor.insertText(" ", { autoIndent: false });
+    const capture = spyOn(mode.document, "capture").and.callThrough();
+    editor.insertText(" ", { autoIndent: false });
+    // The first edit after a pause still starts immediately.
+    expect(capture).toHaveBeenCalled();
+    await editor.whenGrammarSettled();
+    editor.undo();
+    await editor.whenGrammarSettled();
+    const acquire = spyOn(mode, "acquireParserForLanguage").and.callThrough();
+    for (let i = 0; i < 10; i++) {
+      editor.insertText(" ", { autoIndent: false });
+      // Let cancellation and update continuations run, without waiting for
+      // the quiet-period timer. No obsolete native parse should start.
+      if (i > 0) {
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+    }
+    expect(acquire).not.toHaveBeenCalled();
     expect(mode.publicationPending).toBe(true);
     await editor.whenGrammarSettled();
+    expect(acquire).toHaveBeenCalled();
     expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
     expect(mode.tree.input).toBe(editor.getText());
     for (let i = 0; i < 10; i++) editor.undo();

@@ -42,6 +42,7 @@ const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 const PARSE_JOB_LIMIT_MICROS = 5000;
 const LARGE_BUFFER_ASYNC_THRESHOLD = 512 * 1024;
 const SLOW_SYNCHRONOUS_UPDATE_MS = 12;
+const SLOW_PARSE_COALESCE_MS = 50;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
 // dwarf the parse itself — a whole-buffer prefill of a 15k-line file costs
@@ -717,6 +718,12 @@ class TreeSitterLanguageMode {
   bufferDidFinishTransaction({ changes }) {
     if (!this.rootLanguageLayer) {
       return;
+    }
+    if (this.deferLargeBufferUpdates) {
+      const now = performance.now();
+      this.coalesceLargeBufferEdits =
+        now - (this.lastLargeBufferEditAt ?? -Infinity) < SLOW_PARSE_COALESCE_MS;
+      this.lastLargeBufferEditAt = now;
     }
     this.rebaseFoldCache(changes);
     this.pendingTransactionRanges.addAll(changes.map(({ newRange }) => newRange));
@@ -1465,6 +1472,32 @@ class TreeSitterLanguageMode {
     { scopeName = null, signal, depth = 0, onStart, extraEdits = [] } = {},
   ) {
     if (this.destroyed || signal?.aborted) return null;
+    if (
+      depth === 0 &&
+      oldTree &&
+      this.deferLargeBufferUpdates &&
+      this.coalesceLargeBufferEdits &&
+      this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD
+    ) {
+      // A slow parse cannot finish between repeat-key events. Coalesce them
+      // before copying a tree or capturing a growing revision journal. Ranges
+      // still belong to the submitted revision; never pair them with new text.
+      const revision = this.buffer.getTextRevision();
+      await new Promise((resolve) => {
+        const finish = () => {
+          cancelBackgroundTask(timer);
+          signal?.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = scheduleBackgroundTask(
+          finish,
+          Math.max(0, this.lastLargeBufferEditAt + SLOW_PARSE_COALESCE_MS - performance.now()),
+        );
+        signal?.addEventListener("abort", finish, { once: true });
+      });
+      if (this.destroyed || signal?.aborted || revision !== this.buffer.getTextRevision())
+        return null;
+    }
     // Ranges and compaction edits describe the revision at submission. Capture
     // its input before queuing so a later edit cannot pair them with new text.
     const previous =
