@@ -44,6 +44,25 @@ describe("Large-buffer syntax update policy", () => {
     expect(mode.shouldParseSynchronously()).toBe(true);
   });
 
+  it("defers repeated moderate syntax costs while preserving cheap synchronous updates", () => {
+    let length = 600000;
+    const mode = Object.create(TreeSitterLanguageMode.prototype);
+    Object.assign(mode, {
+      useAsyncParsing: true,
+      synchronousUpdates: true,
+      buffer: { getLength: () => length },
+    });
+    mode.recordSynchronousUpdate(1);
+    expect(mode.shouldParseSynchronously()).toBeTrue();
+    mode.recordSynchronousUpdate(6);
+    expect(mode.shouldParseSynchronously()).toBeFalse();
+    length = 100;
+    expect(mode.shouldParseSynchronously()).toBeTrue();
+    length = 600000;
+    mode.useAsyncParsing = false;
+    expect(mode.shouldParseSynchronously()).toBeTrue();
+  });
+
   it("publishes the latest edited revision and restores it through undo", async () => {
     jasmine.useRealClock();
     await lumine.packages.activatePackage("language-javascript");
@@ -120,6 +139,38 @@ describe("Large-buffer syntax update policy", () => {
       await settle();
       expect(editor.getText()).toBe(original);
       for (let i = 0; i < 12; i++) editor.insertNewline({ groupUndo: true });
+      editor.undo();
+      await settle();
+      expect(editor.getText()).toBe(original);
+    } finally {
+      editor.destroy();
+    }
+  }, 30000);
+
+  it("keeps block indentation when text follows a deferred newline immediately", async () => {
+    jasmine.useRealClock();
+    await lumine.packages.activatePackage("language-python");
+    const editor = await lumine.workspace.open();
+    const original = "value = 1\n".repeat(60000) + "def work():\n    if value:\n";
+    editor.setText(original);
+    editor.setGrammar(lumine.grammars.grammarForScopeName("source.python"));
+    editor.update({ undoGroupingInterval: 10000, autoIndent: true });
+    const settle = async () => {
+      await editor.whenGrammarSettled();
+      await editor.autoIndentAtTransactionEndPromise;
+      await editor.whenGrammarSettled();
+    };
+    try {
+      await settle();
+      const mode = editor.getBuffer().getLanguageMode();
+      mode.recordSynchronousUpdate(6);
+      editor.getBuffer().clearUndoStack();
+      editor.setCursorBufferPosition([60001, 13]);
+      editor.insertNewline({ groupUndo: true });
+      editor.insertText("return value", { groupUndo: true });
+      await settle();
+      expect(editor.lineTextForBufferRow(60002)).toBe("        return value");
+      expect(mode.tree.input).toBe(editor.getText());
       editor.undo();
       await settle();
       expect(editor.getText()).toBe(original);

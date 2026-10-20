@@ -40,9 +40,11 @@ const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 // Large-buffer edits share this allowance from their first update. Fast work
 // publishes synchronously; unfinished work retains its parser for resumption.
 const PARSE_JOB_LIMIT_MICROS = 5000;
-const EDIT_PARSE_LIMIT_MICROS = 8000;
+const EDIT_PARSE_LIMIT_MICROS = 2000;
 const LARGE_BUFFER_ASYNC_THRESHOLD = 512 * 1024;
-const SLOW_SYNCHRONOUS_UPDATE_MS = 12;
+// Parsing is only one subscriber on the input path. Even a completed 5 ms
+// update is too costly to repeat at every key event alongside the package fleet.
+const SLOW_SYNCHRONOUS_UPDATE_MS = 4;
 const SLOW_PARSE_COALESCE_MS = 50;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
