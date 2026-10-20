@@ -37,8 +37,11 @@ const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 // Initial loading shares a task budget and resumes in bounded WASM slices.
-// Once ready, edits publish their syntax and visible scopes synchronously.
+// Fast steady edits publish synchronously. Repeatedly slow large-buffer
+// updates return to the same resumable path instead of blocking every key.
 const PARSE_JOB_LIMIT_MICROS = 5000;
+const LARGE_BUFFER_ASYNC_THRESHOLD = 512 * 1024;
+const SLOW_SYNCHRONOUS_UPDATE_MS = 12;
 // After a parse lands, fold data is prefilled eagerly so the gutter's
 // chevrons don't each pay a query. Beyond this many rows the prefill would
 // dwarf the parse itself — a whole-buffer prefill of a 15k-line file costs
@@ -778,7 +781,15 @@ class TreeSitterLanguageMode {
 
   updateRootLayer() {
     try {
+      const measure =
+        this.shouldParseSynchronously() &&
+        this.rootLanguageLayer.tree &&
+        this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD;
+      const started = measure ? performance.now() : 0;
       const result = this.rootLanguageLayer.update(null);
+      if (measure) {
+        this.recordSynchronousUpdate(performance.now() - started);
+      }
       const finish = (shouldEndTransaction) => {
         if (shouldEndTransaction) this.finishTransactionUpdate();
       };
@@ -2089,11 +2100,21 @@ class TreeSitterLanguageMode {
     return indentLength / tabLength;
   }
 
-  // Ready grammars update in the editing transaction, including injections,
-  // indentation and presentation. Batch indentation shares one syntax plan;
-  // it must not become deferred merely because the task budget was consumed.
+  recordSynchronousUpdate(duration) {
+    this.slowSynchronousUpdates =
+      duration > SLOW_SYNCHRONOUS_UPDATE_MS ? (this.slowSynchronousUpdates ?? 0) + 1 : 0;
+    if (this.slowSynchronousUpdates >= 2) this.deferLargeBufferUpdates = true;
+  }
+
+  // One cold call or GC interruption must not change ordinary editing policy.
+  // Slow large grammars use the existing revision-checked async publication
+  // and indentation paths. Small buffers always retain synchronous updates.
   shouldParseSynchronously() {
-    return !this.useAsyncParsing || this.synchronousUpdates;
+    return (
+      !this.useAsyncParsing ||
+      (this.synchronousUpdates &&
+        !(this.deferLargeBufferUpdates && this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD))
+    );
   }
 
   shouldUseAsyncIndent() {
@@ -2149,7 +2170,12 @@ class TreeSitterLanguageMode {
    */
   suggestedIndentForBufferRow(...args) {
     this.ensureQueriesForLayersSync("indentsQuery");
-    return this.indentResolver.suggestedIndentForBufferRow(...args);
+    const result = this.indentResolver.suggestedIndentForBufferRow(...args);
+    // A newline burst can supersede every individual revision-bound hint.
+    // Keep the transaction-level correction alive so it plans all affected
+    // rows together once the latest syntax has settled.
+    if (result?.then) this.autoIndentRequests++;
+    return result;
   }
 
   // Given a range of buffer rows, retrieves the suggested indent for each one
