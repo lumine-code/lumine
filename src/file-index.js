@@ -27,8 +27,8 @@ const CreatedAdmissionConcurrency = 8;
 const WorkSliceMs = 5;
 const WorkClockCheckInterval = 64;
 
-// A safety valve, not a policy. No real project reaches this; a root pointed at
-// `C:\` or `/` does, and retaining that would take the window down.
+// A safety valve for very large projects or overly broad roots: retaining an
+// unbounded index would take the window down.
 const PathLimitPerRoot = 500000;
 
 // Never indexed, whatever `core.ignoredNames` says. The crawler applies the
@@ -250,6 +250,7 @@ module.exports = class FileIndex {
       cachedPaths: null,
       seeded: false,
       truncated: false,
+      truncationWarningShown: false,
       crawl: null,
       generation: 0,
       staging: null,
@@ -349,7 +350,7 @@ module.exports = class FileIndex {
       didFindPaths: (paths) => {
         // A cancelled crawl still flushes its partial batch, so every handler
         // here has to be generation-guarded. This is a live path, not caution.
-        if (entry.generation !== generation || !entry.staging) return;
+        if (entry.generation !== generation || !entry.staging || entry.truncated) return;
         for (const filePath of paths) {
           if (this.isSuppressed(entry, filePath)) continue;
           if (entry.staging.size >= PathLimitPerRoot) {
@@ -401,6 +402,10 @@ module.exports = class FileIndex {
     if (entry.truncated) return;
     entry.truncated = true;
     if (entry.crawl) entry.crawl.cancel();
+    // The limit applies to every crawl, but its warning belongs to the open
+    // root. Automatic reconciliation and manual refresh must not repeat it.
+    if (entry.truncationWarningShown) return;
+    entry.truncationWarningShown = true;
     const notifications = this.project?.notificationManager;
     notifications?.addWarning("Project is too large to index", {
       description:
@@ -408,7 +413,7 @@ module.exports = class FileIndex {
         "index stopped there. The file finder and path suggestions will not list them all. " +
         (this.getConfig()?.get("core.excludeVcsIgnoredPaths") === false
           ? "VCS-ignored paths are currently included, so dependency or build-output directories may be the cause."
-          : "This usually means a root was opened much higher up the filesystem than intended."),
+          : "Exclude dependency or build-output directories using core.ignoredNames, or open a narrower project root."),
       dismissable: true,
     });
   }

@@ -159,6 +159,15 @@ describe("FileIndex", () => {
     await completeCrawl(paths);
   };
 
+  const exceedPathLimit = (rootPath = ROOT) => {
+    // Keep a real, iterable Set so the cancelled crawl can still settle without
+    // allocating half a million paths in each regression case.
+    Object.defineProperty(index.entries.get(rootPath).staging, "size", { value: 500000 });
+    const crawl = project.crawlFor(rootPath);
+    crawl.didFindPaths([path.join(rootPath, "one-too-many.js")]);
+    return crawl;
+  };
+
   const waitForPendingAdmissions = async () => {
     await index.whenIdle();
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -343,16 +352,94 @@ describe("FileIndex", () => {
 
     it("stops and warns once when a root exceeds the path limit", () => {
       index.attachProject(project);
-      const crawl = project.crawlFor(ROOT);
-
-      // Stand in for a root already holding half a million paths rather than
-      // generating them: the valve reads `staging.size` and nothing else.
-      index.entries.get(ROOT).staging = { size: 500000, add: () => {}, has: () => false };
-      crawl.didFindPaths([under("one-too-many.js")]);
+      const crawl = exceedPathLimit();
       crawl.didFindPaths([under("and-another.js")]);
 
       expect(crawl.isCancelled()).toBe(true);
       expect(project.notificationManager.warnings.length).toBe(1);
+    });
+
+    it("ignores late results from a limit-cancelled crawl even if staging shrinks", () => {
+      index.attachProject(project);
+      const crawl = exceedPathLimit();
+
+      index.entries.get(ROOT).staging = new Set();
+      crawl.didFindPaths([under("late.js")]);
+
+      expect(index.getPaths()).toEqual([]);
+      expect(project.notificationManager.warnings.length).toBe(1);
+    });
+
+    it("keeps cancelling oversized refreshes without repeating the root's warning", async () => {
+      index.attachProject(project);
+      exceedPathLimit();
+      await completeCrawl([]);
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const refresh = index.refresh();
+        const crawl = exceedPathLimit();
+        expect(crawl.isCancelled()).toBe(true);
+        await completeCrawl([]);
+        await refresh;
+      }
+
+      expect(project.notificationManager.warnings.length).toBe(1);
+    });
+
+    it("does not repeat the warning after automatic filesystem reconciliation", async () => {
+      index.attachProject(project);
+      exceedPathLimit();
+      await completeCrawl([]);
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const before = project.crawls.length;
+        project.emitFileEvents([{ action: "updated", path: under(".gitignore") }]);
+        advanceClock(2500);
+        expect(project.crawls.length).toBe(before + 1);
+        expect(exceedPathLimit().isCancelled()).toBe(true);
+        await completeCrawl([]);
+      }
+
+      expect(project.notificationManager.warnings.length).toBe(1);
+    });
+
+    it("does not repeat the warning after an indexing policy change", async () => {
+      index.attachProject(project);
+      exceedPathLimit();
+      await completeCrawl([]);
+
+      config.set("core.ignoredNames", ["generated"]);
+      expect(exceedPathLimit().isCancelled()).toBe(true);
+      await completeCrawl([]);
+
+      expect(project.notificationManager.warnings.length).toBe(1);
+    });
+
+    it("warns independently for each oversized root", () => {
+      const second = under("second");
+      project.setRoots([ROOT, second]);
+      index.attachProject(project);
+
+      expect(exceedPathLimit().isCancelled()).toBe(true);
+      expect(exceedPathLimit(second).isCancelled()).toBe(true);
+
+      const warnings = project.notificationManager.warnings;
+      expect(warnings.length).toBe(2);
+      expect(warnings[0].options.description).toContain(ROOT);
+      expect(warnings[1].options.description).toContain(second);
+    });
+
+    it("can warn again after the oversized root is removed and reopened", async () => {
+      index.attachProject(project);
+      exceedPathLimit();
+      await completeCrawl([]);
+
+      project.setRoots([]);
+      await index.whenIdle();
+      project.setRoots([ROOT]);
+      expect(exceedPathLimit().isCancelled()).toBe(true);
+
+      expect(project.notificationManager.warnings.length).toBe(2);
     });
   });
 
