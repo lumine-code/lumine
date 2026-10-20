@@ -14,25 +14,25 @@ The line-ending status package also performed two document-wide regular-expressi
 
 Values are milliseconds. Each value is the median of two process statistics. P95 is therefore the median of per-process p95s, not a pooled percentile or a confidence bound.
 
-| Position and key | Before median | After median | Before p95 | After p95 |
-|---|---:|---:|---:|---:|
-| Middle: letter | 34.35 | 5.90 | 39.65 | 7.55 |
-| Middle: Enter | 35.45 | 5.20 | 39.50 | 6.25 |
-| Near end, inside body: letter | 34.05 | 5.75 | 38.55 | 7.35 |
-| Near end, inside body: Enter | 33.55 | 5.45 | 37.50 | 6.85 |
-| EOF after block: letter | 4.25 | 4.40 | 5.55 | 5.25 |
-| EOF after block: Enter | 4.10 | 4.15 | 5.00 | 5.25 |
+| Position and key              | Before median | After median | Before p95 | After p95 |
+| ----------------------------- | ------------: | -----------: | ---------: | --------: |
+| Middle: letter                |         34.35 |         5.90 |      39.65 |      7.55 |
+| Middle: Enter                 |         35.45 |         5.20 |      39.50 |      6.25 |
+| Near end, inside body: letter |         34.05 |         5.75 |      38.55 |      7.35 |
+| Near end, inside body: Enter  |         33.55 |         5.45 |      37.50 |      6.85 |
+| EOF after block: letter       |          4.25 |         4.40 |       5.55 |      5.25 |
+| EOF after block: Enter        |          4.10 |         4.15 |       5.00 |      5.25 |
 
 ## Queue and frames
 
-| Position and key | Before maximum backlog | After maximum backlog | Before frame-gap p95 | After frame-gap p95 |
-|---|---:|---:|---:|---:|
-| Middle: letter | 802.66 | 30.37 | 33.40 | 16.70 |
-| Middle: Enter | 1449.46 | 13.82 | 50.00 | 16.70 |
-| Near end, inside body: letter | 741.86 | 32.37 | 33.40 | 16.70 |
-| Near end, inside body: Enter | 1289.56 | 13.30 | 41.65 | 16.70 |
-| EOF after block: letter | 22.43 | 22.87 | 16.75 | 16.75 |
-| EOF after block: Enter | 14.64 | 14.39 | 16.70 | 16.75 |
+| Position and key              | Before maximum backlog | After maximum backlog | Before frame-gap p95 | After frame-gap p95 |
+| ----------------------------- | ---------------------: | --------------------: | -------------------: | ------------------: |
+| Middle: letter                |                 802.66 |                 30.37 |                33.40 |               16.70 |
+| Middle: Enter                 |                1449.46 |                 13.82 |                50.00 |               16.70 |
+| Near end, inside body: letter |                 741.86 |                 32.37 |                33.40 |               16.70 |
+| Near end, inside body: Enter  |                1289.56 |                 13.30 |                41.65 |               16.70 |
+| EOF after block: letter       |                  22.43 |                 22.87 |                16.75 |               16.75 |
+| EOF after block: Enter        |                  14.64 |                 14.39 |                16.70 |               16.75 |
 
 Cold first-letter commands and occasional frame gaps still exceed a 16.7 ms budget. The change removes the sustained backlog in the measured body-edit scenarios; it does not guarantee that every frame or first interaction meets budget. EOF after the block was already fast in the baseline and does not show a steady command-latency gain.
 
@@ -52,14 +52,14 @@ This faster six-case run also exposed isolated pauses outside the edit commands 
 
 A second profiled run repeated all six 90-command scenarios in order. Its EOF Enter maximum backlog was 2.1 ms and maximum frame gap 16.8 ms; it also did not reproduce the isolated pause. Profiling can change collection and scheduling, so these diagnostic runs do not invalidate the unprofiled outlier.
 
-| Position and key | Median command | p95 command | Maximum backlog | Frame-gap p95 |
-|---|---:|---:|---:|---:|
-| Middle: letter | 5.70 | 7.00 | 25.83 | 16.70 |
-| Middle: Enter | 5.90 | 7.40 | 11.67 | 16.80 |
-| Near end, inside body: letter | 5.40 | 6.70 | 12.19 | 16.70 |
-| Near end, inside body: Enter | 5.50 | 6.50 | 11.85 | 16.80 |
-| EOF after block: letter | 4.00 | 5.10 | 113.53 | 16.80 |
-| EOF after block: Enter | 4.50 | 5.80 | 315.02 | 16.70 |
+| Position and key              | Median command | p95 command | Maximum backlog | Frame-gap p95 |
+| ----------------------------- | -------------: | ----------: | --------------: | ------------: |
+| Middle: letter                |           5.70 |        7.00 |           25.83 |         16.70 |
+| Middle: Enter                 |           5.90 |        7.40 |           11.67 |         16.80 |
+| Near end, inside body: letter |           5.40 |        6.70 |           12.19 |         16.70 |
+| Near end, inside body: Enter  |           5.50 |        6.50 |           11.85 |         16.80 |
+| EOF after block: letter       |           4.00 |        5.10 |          113.53 |         16.80 |
+| EOF after block: Enter        |           4.50 |        5.80 |          315.02 |         16.70 |
 
 ## Correctness and reproduction
 

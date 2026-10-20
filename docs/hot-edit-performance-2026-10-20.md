@@ -38,58 +38,58 @@ The final ranking refinement changes only text-store-search.js after the row-edi
 
 ## Repeated keys
 
-| Sequence | Before ms | After ms | Before ms/key | After ms/key | Before process medians | After process medians |
-|---|---:|---:|---:|---:|---|---|
-| type-small-100 | 144.80 | 150.70 | 1.448 | 1.507 | 162.30, 127.30 | 156.90, 144.50 |
-| type-large-100 | 172.05 | 196.25 | 1.720 | 1.962 | 161.70, 182.40 | 197.60, 194.90 |
-| newline-large-30 | 51.60 | 54.70 | 1.720 | 1.823 | 50.00, 53.20 | 55.10, 54.30 |
-| python-indented-enter-30 | 43.10 | 51.10 | 1.437 | 1.703 | 41.90, 44.30 | 48.80, 53.40 |
+| Sequence                 | Before ms | After ms | Before ms/key | After ms/key | Before process medians | After process medians |
+| ------------------------ | --------: | -------: | ------------: | -----------: | ---------------------- | --------------------- |
+| type-small-100           |    144.80 |   150.70 |         1.448 |        1.507 | 162.30, 127.30         | 156.90, 144.50        |
+| type-large-100           |    172.05 |   196.25 |         1.720 |        1.962 | 161.70, 182.40         | 197.60, 194.90        |
+| newline-large-30         |     51.60 |    54.70 |         1.720 |        1.823 | 50.00, 53.20           | 55.10, 54.30          |
+| python-indented-enter-30 |     43.10 |    51.10 |         1.437 |        1.703 | 41.90, 44.30           | 48.80, 53.40          |
 
 ## Editor commands
 
-| Scenario | Operation | Before ms | After ms | Before process medians | After process medians |
-|---|---|---:|---:|---|---|
-| plain-1m-markers | edit | 2.05 | 2.10 | 2.10, 2.00 | 2.10, 2.10 |
-| plain-1m-markers | undo | 6.60 | 6.45 | 6.40, 6.80 | 6.60, 6.30 |
-| plain-1m-markers | redo | 6.60 | 6.30 | 6.30, 6.90 | 6.50, 6.10 |
-| multicursor-1000 | edit | 127.55 | 157.55 | 122.50, 132.60 | 147.70, 167.40 |
-| multicursor-1000 | undo | 90.55 | 100.75 | 87.60, 93.50 | 101.30, 100.20 |
-| multicursor-1000 | redo | 95.05 | 103.70 | 98.80, 91.30 | 107.20, 100.20 |
-| multicursor-newline-1000 | edit | 489.15 | 267.55 | 483.20, 495.10 | 279.90, 255.20 |
-| multicursor-newline-1000 | undo | 170.40 | 100.20 | 168.50, 172.30 | 106.40, 94.00 |
-| multicursor-newline-1000 | redo | 176.95 | 104.95 | 174.60, 179.30 | 111.90, 98.00 |
-| multicursor-paste-1000 | edit | 465.90 | 245.75 | 461.10, 470.70 | 261.00, 230.50 |
-| multicursor-paste-1000 | undo | 172.50 | 101.85 | 170.00, 175.00 | 106.70, 97.00 |
-| multicursor-paste-1000 | redo | 179.55 | 112.35 | 178.70, 180.40 | 117.00, 107.70 |
-| javascript-1m | edit | 74.60 | 70.80 | 76.50, 72.70 | 76.30, 65.30 |
-| javascript-1m | undo | 69.40 | 69.10 | 69.20, 69.60 | 81.40, 56.80 |
-| javascript-1m | redo | 61.20 | 61.70 | 62.40, 60.00 | 69.20, 54.20 |
-| python-crlf-1m | edit | 267.05 | 232.95 | 274.60, 259.50 | 224.40, 241.50 |
-| python-crlf-1m | undo | 265.70 | 240.30 | 285.90, 245.50 | 233.60, 247.00 |
-| python-crlf-1m | redo | 270.60 | 238.35 | 287.10, 254.10 | 225.40, 251.30 |
+| Scenario                 | Operation | Before ms | After ms | Before process medians | After process medians |
+| ------------------------ | --------- | --------: | -------: | ---------------------- | --------------------- |
+| plain-1m-markers         | edit      |      2.05 |     2.10 | 2.10, 2.00             | 2.10, 2.10            |
+| plain-1m-markers         | undo      |      6.60 |     6.45 | 6.40, 6.80             | 6.60, 6.30            |
+| plain-1m-markers         | redo      |      6.60 |     6.30 | 6.30, 6.90             | 6.50, 6.10            |
+| multicursor-1000         | edit      |    127.55 |   157.55 | 122.50, 132.60         | 147.70, 167.40        |
+| multicursor-1000         | undo      |     90.55 |   100.75 | 87.60, 93.50           | 101.30, 100.20        |
+| multicursor-1000         | redo      |     95.05 |   103.70 | 98.80, 91.30           | 107.20, 100.20        |
+| multicursor-newline-1000 | edit      |    489.15 |   267.55 | 483.20, 495.10         | 279.90, 255.20        |
+| multicursor-newline-1000 | undo      |    170.40 |   100.20 | 168.50, 172.30         | 106.40, 94.00         |
+| multicursor-newline-1000 | redo      |    176.95 |   104.95 | 174.60, 179.30         | 111.90, 98.00         |
+| multicursor-paste-1000   | edit      |    465.90 |   245.75 | 461.10, 470.70         | 261.00, 230.50        |
+| multicursor-paste-1000   | undo      |    172.50 |   101.85 | 170.00, 175.00         | 106.70, 97.00         |
+| multicursor-paste-1000   | redo      |    179.55 |   112.35 | 178.70, 180.40         | 117.00, 107.70        |
+| javascript-1m            | edit      |     74.60 |    70.80 | 76.50, 72.70           | 76.30, 65.30          |
+| javascript-1m            | undo      |     69.40 |    69.10 | 69.20, 69.60           | 81.40, 56.80          |
+| javascript-1m            | redo      |     61.20 |    61.70 | 62.40, 60.00           | 69.20, 54.20          |
+| python-crlf-1m           | edit      |    267.05 |   232.95 | 274.60, 259.50         | 224.40, 241.50        |
+| python-crlf-1m           | undo      |    265.70 |   240.30 | 285.90, 245.50         | 233.60, 247.00        |
+| python-crlf-1m           | redo      |    270.60 |   238.35 | 287.10, 254.10         | 225.40, 251.30        |
 
 ## Final completion pipeline
 
-| Scenario | Operation | Before ms | After ms | Before process medians | After process medians |
-|---|---|---:|---:|---|---|
-| repeated-100/cold | sequence | 12.35 | 7.90 | 11.60, 13.10 | 11.30, 4.50 |
-| repeated-100/warm | sequence | 2.20 | 2.55 | 2.30, 2.10 | 3.00, 2.10 |
-| repeated-100/type | sequence | 4.35 | 4.40 | 5.00, 3.70 | 5.20, 3.60 |
-| repeated-6000/cold | sequence | 14.20 | 13.80 | 13.20, 15.20 | 15.00, 12.60 |
-| repeated-6000/warm | sequence | 2.50 | 2.50 | 2.70, 2.30 | 2.70, 2.30 |
-| repeated-6000/type | sequence | 4.60 | 4.30 | 4.80, 4.40 | 4.30, 4.30 |
-| unique-6000/cold | sequence | 32.85 | 32.95 | 34.80, 30.90 | 37.80, 28.10 |
-| unique-6000/warm | sequence | 31.20 | 20.30 | 31.10, 31.30 | 20.20, 20.40 |
-| unique-6000/type | sequence | 32.90 | 25.30 | 33.40, 32.40 | 22.60, 28.00 |
-| window-100000/cold | sequence | 27.50 | 26.35 | 27.30, 27.70 | 25.90, 26.80 |
-| window-100000/warm | sequence | 2.80 | 2.80 | 2.90, 2.70 | 2.90, 2.70 |
-| window-100000/type | sequence | 6.25 | 6.05 | 6.70, 5.80 | 5.80, 6.30 |
+| Scenario           | Operation | Before ms | After ms | Before process medians | After process medians |
+| ------------------ | --------- | --------: | -------: | ---------------------- | --------------------- |
+| repeated-100/cold  | sequence  |     12.35 |     7.90 | 11.60, 13.10           | 11.30, 4.50           |
+| repeated-100/warm  | sequence  |      2.20 |     2.55 | 2.30, 2.10             | 3.00, 2.10            |
+| repeated-100/type  | sequence  |      4.35 |     4.40 | 5.00, 3.70             | 5.20, 3.60            |
+| repeated-6000/cold | sequence  |     14.20 |    13.80 | 13.20, 15.20           | 15.00, 12.60          |
+| repeated-6000/warm | sequence  |      2.50 |     2.50 | 2.70, 2.30             | 2.70, 2.30            |
+| repeated-6000/type | sequence  |      4.60 |     4.30 | 4.80, 4.40             | 4.30, 4.30            |
+| unique-6000/cold   | sequence  |     32.85 |    32.95 | 34.80, 30.90           | 37.80, 28.10          |
+| unique-6000/warm   | sequence  |     31.20 |    20.30 | 31.10, 31.30           | 20.20, 20.40          |
+| unique-6000/type   | sequence  |     32.90 |    25.30 | 33.40, 32.40           | 22.60, 28.00          |
+| window-100000/cold | sequence  |     27.50 |    26.35 | 27.30, 27.70           | 25.90, 26.80          |
+| window-100000/warm | sequence  |      2.80 |     2.80 | 2.90, 2.70             | 2.90, 2.70            |
+| window-100000/type | sequence  |      6.25 |     6.05 | 6.70, 5.80             | 5.80, 6.30            |
 
 ## Repeated requests on one retained unique-word index
 
-| Scenario | Operation | Before ms | After ms | Before process medians | After process medians |
-|---|---|---:|---:|---|---|
-| unique-6000/warm | sequence | 20.55 | 17.25 | 21.00, 20.10 | 18.80, 15.70 |
+| Scenario         | Operation | Before ms | After ms | Before process medians | After process medians |
+| ---------------- | --------- | --------: | -------: | ---------------------- | --------------------- |
+| unique-6000/warm | sequence  |     20.55 |    17.25 | 21.00, 20.10           | 18.80, 15.70          |
 
 ## Active packages
 
@@ -99,38 +99,38 @@ These scenarios exercise selected package integrations. Activation alone does no
 
 ## Validation
 
-| Suite | Specs | Failures |
-|---|---:|---:|
-| node | 112 | 0 |
-| core | 1981 | 0 |
-| autocomplete | 455 | 0 |
-| bracket-matcher | 215 | 0 |
-| code-format | 110 | 0 |
-| highlight-selected | 37 | 0 |
-| language-css | 17 | 0 |
-| language-gfm | 13 | 0 |
-| language-html | 16 | 0 |
-| language-ipython | 125 | 0 |
-| language-javascript | 35 | 0 |
-| language-json | 17 | 0 |
-| language-python | 44 | 0 |
-| language-regex | 6 | 0 |
-| language-text | 12 | 0 |
-| marker | 105 | 0 |
-| minimap | 71 | 0 |
-| scrollmap | 56 | 0 |
-| search-panel | 145 | 0 |
-| snippets | 215 | 0 |
-| sort-lines | 34 | 0 |
-| whitespace | 56 | 0 |
-| cursor-history | 54 | 0 |
-| column-selection | 75 | 0 |
-| breadcrumbs | 81 | 0 |
-| spell-check | 151 | 0 |
-| status-bar | 50 | 0 |
-| grammar-selector | 42 | 0 |
-| line-ending | 58 | 0 |
-| jupyter-cells | 142 | 0 |
+| Suite               | Specs | Failures |
+| ------------------- | ----: | -------: |
+| node                |   112 |        0 |
+| core                |  1981 |        0 |
+| autocomplete        |   455 |        0 |
+| bracket-matcher     |   215 |        0 |
+| code-format         |   110 |        0 |
+| highlight-selected  |    37 |        0 |
+| language-css        |    17 |        0 |
+| language-gfm        |    13 |        0 |
+| language-html       |    16 |        0 |
+| language-ipython    |   125 |        0 |
+| language-javascript |    35 |        0 |
+| language-json       |    17 |        0 |
+| language-python     |    44 |        0 |
+| language-regex      |     6 |        0 |
+| language-text       |    12 |        0 |
+| marker              |   105 |        0 |
+| minimap             |    71 |        0 |
+| scrollmap           |    56 |        0 |
+| search-panel        |   145 |        0 |
+| snippets            |   215 |        0 |
+| sort-lines          |    34 |        0 |
+| whitespace          |    56 |        0 |
+| cursor-history      |    54 |        0 |
+| column-selection    |    75 |        0 |
+| breadcrumbs         |    81 |        0 |
+| spell-check         |   151 |        0 |
+| status-bar          |    50 |        0 |
+| grammar-selector    |    42 |        0 |
+| line-ending         |    58 |        0 |
+| jupyter-cells       |   142 |        0 |
 
 Total: 4530 specs, zero failures.
 

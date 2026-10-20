@@ -21,11 +21,11 @@ Deferred newline hints now register a transaction-level correction: a rapid burs
 Each process opens the 8,400,039-byte, 195,789-row document six times, alternating middle, near-end and EOF positions. Each cycle issues 300 commands at 16.667 ms intervals, first letters with word boundaries, then Enter, and undoes the series before closing. Thirty packages are active. Processes run before/after/after/before. This round measures managed disposal and the tile change before the later adaptive parser policy.
 
 | Run | Variant | Command median ms | Command p95 ms | Maximum frame gap after first cycle ms | Peak sampled RSS MiB | Last sampled RSS MiB |
-|---|---|---:|---:|---:|---:|---:|
-| 1 | before | 5.10 | 6.90 | 116.70 | 1055.20 | 1051.24 |
-| 2 | after | 5.40 | 7.20 | 16.80 | 1057.00 | 1057.00 |
-| 3 | after | 5.30 | 7.10 | 16.80 | 1125.55 | 1125.55 |
-| 4 | before | 4.70 | 6.70 | 183.30 | 1043.92 | 1043.92 |
+| --- | ------- | ----------------: | -------------: | -------------------------------------: | -------------------: | -------------------: |
+| 1   | before  |              5.10 |           6.90 |                                 116.70 |              1055.20 |              1051.24 |
+| 2   | after   |              5.40 |           7.20 |                                  16.80 |              1057.00 |              1057.00 |
+| 3   | after   |              5.30 |           7.10 |                                  16.80 |              1125.55 |              1125.55 |
+| 4   | before  |              4.70 |           6.70 |                                 183.30 |              1043.92 |              1043.92 |
 
 RSS includes reserved WASM memory and process overhead; it is not the live text-model heap or a leak measurement by itself. Samples occur after each typing period. The initial cold interaction remains in raw samples and can exceed a frame.
 
@@ -35,14 +35,14 @@ Ordinary command medians in this short round were slightly higher with managed d
 
 Six cycles alternate the supplied SOFiSTiK file, a generated JavaScript file with 30000 exported functions and Unicode strings, and a generated CRLF Python file with 24000 assignments and Unicode strings. Each cycle issues 120 commands at 16.667 ms intervals and closes the modified in-memory buffer without undo or saving. Added packages are indent-guide, tabs, symbol, symbol-tree-sitter, outline-view, linter and linter-todo. Activation does not exercise every optional command or guarantee that an outline panel is visible. The two before and two after processes are ordered ABBA. Statistics below pool the same number of samples per variant and grammar.
 
-| Grammar | Variant | Command median ms | Command p95 ms | Frame-gap p95 ms | Deferred cases |
-|---|---|---:|---:|---:|---:|
-| source.sofistik | before | 6.00 | 8.60 | 16.80 | 0/4 |
-| source.sofistik | after | 6.20 | 8.00 | 16.80 | 0/4 |
-| source.js | before | 69.20 | 89.70 | 83.40 | 0/4 |
-| source.js | after | 1.60 | 3.70 | 16.80 | 4/4 |
-| source.python | before | 99.50 | 123.70 | 116.70 | 0/4 |
-| source.python | after | 0.70 | 1.00 | 16.80 | 4/4 |
+| Grammar         | Variant | Command median ms | Command p95 ms | Frame-gap p95 ms | Deferred cases |
+| --------------- | ------- | ----------------: | -------------: | ---------------: | -------------: |
+| source.sofistik | before  |              6.00 |           8.60 |            16.80 |            0/4 |
+| source.sofistik | after   |              6.20 |           8.00 |            16.80 |            0/4 |
+| source.js       | before  |             69.20 |          89.70 |            83.40 |            0/4 |
+| source.js       | after   |              1.60 |           3.70 |            16.80 |            4/4 |
+| source.python   | before  |             99.50 |         123.70 |           116.70 |            0/4 |
+| source.python   | after   |              0.70 |           1.00 |            16.80 |            4/4 |
 
 The JS/Python improvement is foreground responsiveness, not a corresponding speedup in total parsing throughput. Two initial slow calls, native range comparison, queries and initial module preparation can still create long frames. New revisions cancel obsolete work and the benchmark waits for grammar settlement before closing each case.
 
@@ -51,9 +51,9 @@ The JS/Python improvement is foreground responsiveness, not a corresponding spee
 The final implementation receives two 3600-command, approximately one-minute streams at 60 commands per second with the original 30 packages. This is a final-only endurance control, not another before/after ratio.
 
 | Cycle | Median command ms | p95 command ms | Maximum frame gap ms | Maximum backlog ms | Sampled RSS MiB |
-|---|---:|---:|---:|---:|---:|
-| 0 | 4.90 | 5.70 | 33.30 | 34.63 | 1461.14 |
-| 1 | 4.90 | 5.60 | 16.80 | 8.75 | 1645.93 |
+| ----- | ----------------: | -------------: | -------------------: | -----------------: | --------------: |
+| 0     |              4.90 |           5.70 |                33.30 |              34.63 |         1461.14 |
+| 1     |              4.90 |           5.60 |                16.80 |               8.75 |         1645.93 |
 
 ## Correctness and limits
 
@@ -61,19 +61,19 @@ The broad regression ran 1983 core specs and 118 Node tests, plus the package su
 
 ESLint and the focused formatting checks pass. Dependency pins and lockfiles are unchanged; no dependency audit or cross-platform CI run was performed for this local source change. The committed lifecycle benchmark also completed a direct smoke run against the supplied file.
 
-| Suite | Tests | Failures |
-|---|---:|---:|
-| node | 118 | 0 |
-| core | 1983 | 0 |
-| autocomplete | 455 | 0 |
-| bracket-matcher | 215 | 0 |
-| language-javascript | 35 | 0 |
-| language-python | 44 | 0 |
-| line-ending | 60 | 0 |
-| symbol-tree-sitter | 55 | 0 |
-| outline-view | 86 | 0 |
-| indent-guide | 28 | 0 |
-| language-sofistik | 86 | 0 |
+| Suite               | Tests | Failures |
+| ------------------- | ----: | -------: |
+| node                |   118 |        0 |
+| core                |  1983 |        0 |
+| autocomplete        |   455 |        0 |
+| bracket-matcher     |   215 |        0 |
+| language-javascript |    35 |        0 |
+| language-python     |    44 |        0 |
+| line-ending         |    60 |        0 |
+| symbol-tree-sitter  |    55 |        0 |
+| outline-view        |    86 |        0 |
+| indent-guide        |    28 |        0 |
+| language-sofistik   |    86 |        0 |
 
 All accepted timing runs are serialized without correctness suites or CPU profiling in parallel. Chrome traces and profiles are diagnostic evidence only. Command duration includes synchronous editor/package work; frame timestamps measure renderer scheduling, not physical display presentation. Timer-driven API commands exercise the editor insertion path rather than OS keyboard dispatch. Grammar readiness, initial scrolling, undo, output serialization and close are outside command durations. Frame recording extends through settlement and a short tail, but a callback arriving after the recording stops is not counted. The original file is never saved and its hash is verified.
 
