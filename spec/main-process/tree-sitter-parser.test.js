@@ -387,3 +387,125 @@ test("changed boundary hints retain incremental reuse when their source coverage
     parser.close();
   }
 });
+
+test("a long local journal stays incremental and matches a fresh tree after undo", () => {
+  const parser = new DocumentParser(language);
+  const fresh = new DocumentParser(language);
+  const document = new DocumentCore('/* before */\r\nconst café = "😀";\r\n'.repeat(100), {
+    historyLimit: 300,
+  });
+  const reader = new TreeSitterDocument(document);
+  const shape = (node) => [
+    node.type,
+    node.startIndex,
+    node.endIndex,
+    node.startPosition,
+    node.endPosition,
+    node.children.map(shape),
+  ];
+  try {
+    const initial = reader.capture();
+    const previous = parser.parseSync(initial.text, initial);
+    const retained = previous.rootNode.namedChild(1);
+    let at = 3;
+    for (let i = 0; i < 200; i++) {
+      const text = i % 11 === 0 ? "😀\r\n" : "x";
+      document.transact((draft) => draft.replace(at, at, text));
+      at += text.length;
+    }
+    const capture = reader.capture(previous);
+    assert.equal(capture.edits.length, 1);
+    const coordinates = capture.edits.map(
+      (edit) =>
+        new Proxy(edit, {
+          get(target, key) {
+            if (key === "newText") throw new Error("Parser must use journal coordinates");
+            return Reflect.get(target, key);
+          },
+        }),
+    );
+    const updated = parser.parseSync(capture.text, { ...capture, edits: coordinates });
+    assert.equal(updated.incremental, true);
+    assert.deepEqual(shape(updated.rootNode), shape(fresh.parseSync(capture.text).rootNode));
+    for (let i = 0; i < 200; i++) document.undo();
+    const undo = reader.capture(updated);
+    assert.equal(undo.edits.length, 1);
+    const restored = parser.parseSync(undo.text, undo);
+    assert.equal(restored.incremental, true);
+    assert.deepEqual(shape(restored.rootNode), shape(previous.rootNode));
+    assert.equal(retained.text, 'const café = "😀";');
+  } finally {
+    reader.close();
+    parser.close();
+    fresh.close();
+  }
+});
+
+test("disjoint journals retain the bulk fallback instead of widening one edit across untouched text", () => {
+  const parser = new DocumentParser(language);
+  const document = new DocumentCore("let a = 1;\n".repeat(300));
+  const reader = new TreeSitterDocument(document);
+  try {
+    const first = reader.capture();
+    const before = parser.parseSync(first.text, first);
+    for (let i = 0; i < 150; i++)
+      document.transact((draft) => draft.replace(i * 11 + 4, i * 11 + 5, "b"));
+    const capture = reader.capture(before);
+    assert.equal(capture.edits.length, 150);
+    const tree = parser.parseSync(capture.text, capture);
+    assert.equal(tree.incremental, false);
+    assert.equal(tree.rootNode.hasError, false);
+  } finally {
+    reader.close();
+    parser.close();
+  }
+});
+
+test("a suspended incremental parse with earlier errors restarts fresh before resuming", async () => {
+  const parser = new DocumentParser(language);
+  const fresh = new DocumentParser(language);
+  try {
+    const prefix = "export function value() { return 1; }\n".repeat(1000);
+    const before = new PieceTree(prefix + "aaexport function last() { return 2; }\n");
+    const previous = parser.parseSync(before);
+    assert.equal(previous.rootNode.hasError, true);
+    const start = prefix.length + 2;
+    const inserted = "aaaa aaaa aaaa aaaa aaaa\n".repeat(400);
+    const text = before.replace(start, start, inserted);
+    const parse = parser.parser.parse.bind(parser.parser);
+    let suspended = false;
+    parser.parser.parse = (input, oldTree, options) =>
+      parse(input, oldTree, {
+        ...options,
+        progressCallback: () => {
+          if (!suspended) {
+            suspended = true;
+            return true;
+          }
+          return false;
+        },
+      });
+    const point = before.positionAt(start);
+    const result = await parser.parse(text, {
+      previous,
+      edits: [
+        {
+          startIndex: start,
+          oldEndIndex: start,
+          newEndIndex: start + inserted.length,
+          startPosition: point,
+          oldEndPosition: point,
+          newEndPosition: text.positionAt(start + inserted.length),
+          newText: inserted,
+        },
+      ],
+    });
+    assert.equal(suspended, true);
+    assert.equal(result.incremental, false);
+    assert.equal(result.rootNode.toString(), fresh.parseSync(text).rootNode.toString());
+    assert.equal(previous.input, before.toString());
+  } finally {
+    parser.close();
+    fresh.close();
+  }
+});

@@ -197,3 +197,76 @@ test("cancelled queued parser jobs never run and errors release capacity", async
   assert.equal(await scheduler.run(() => 42), 42);
   assert.equal(ran, false);
 });
+const { DocumentCore } = require("../../src/document-core");
+const PieceTree = require("../../src/piece-tree");
+
+function verifyReplay(first, capture) {
+  let text = first.text;
+  for (const edit of capture.edits) {
+    assert.deepEqual(edit.startPosition, text.positionAt(edit.startIndex));
+    assert.deepEqual(edit.oldEndPosition, text.positionAt(edit.oldEndIndex));
+    assert.equal(edit.newEndIndex, edit.startIndex + edit.newText.length);
+    text = text.replace(edit.startIndex, edit.oldEndIndex, edit.newText);
+    assert.deepEqual(edit.newEndPosition, text.positionAt(edit.startIndex + edit.newText.length));
+    assert.ok(Object.isFrozen(edit));
+    for (const point of [edit.startPosition, edit.oldEndPosition, edit.newEndPosition])
+      assert.ok(Object.isFrozen(point));
+  }
+  assert.equal(text.toString(), capture.text.toString());
+}
+
+test("long adjacent typing, replacement and backspace journals coalesce without flattening", () => {
+  const buffer = new DocumentCore("prefix\r\nold text\r\nsuffix");
+  const reader = new TreeSitterDocument(buffer);
+  const first = reader.capture();
+  let at = 8;
+  for (let i = 0; i < 240; i++) {
+    const inserted = i % 7 === 0 ? "😀\r\n" : "x";
+    buffer.transact((draft) => draft.replace(at, at, inserted));
+    at += inserted.length;
+  }
+  for (let i = 0; i < 90; i++) buffer.transact((draft) => draft.replace(--at, at + 1, ""));
+  buffer.transact((draft) => draft.replace(6, at + 4, "joined\n"));
+  const flatten = PieceTree.prototype.toString;
+  let capture;
+  try {
+    PieceTree.prototype.toString = () => {
+      throw Error("Unexpected flattening");
+    };
+    capture = reader.capture(first);
+  } finally {
+    PieceTree.prototype.toString = flatten;
+  }
+  assert.equal(capture.edits.length, 1);
+  verifyReplay(first, capture);
+  assert.equal(reader.capture(first).edits, capture.edits);
+  reader.close();
+});
+
+test("coalesced journals replay random multiline edits, disjoint changes and undo exactly", () => {
+  let seed = 0x8fe120;
+  const random = (n) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed % n;
+  };
+  const inserts = ["", "a", "\r", "\n", "\r\n", "😀", "\ud800", "xy\n終"];
+  for (let round = 0; round < 100; round++) {
+    const buffer = new DocumentCore("left\r\n😀middle\nright".repeat(12));
+    const reader = new TreeSitterDocument(buffer);
+    const first = reader.capture();
+    for (let i = 0; i < 180; i++) {
+      if (i % 17 === 16) {
+        buffer.undo();
+        continue;
+      }
+      const length = buffer.getTextSnapshot().length;
+      const start = random(length + 1);
+      const end = start + random(Math.min(10, length - start) + 1);
+      buffer.transact((draft) => draft.replace(start, end, inserts[random(inserts.length)]));
+    }
+    const capture = reader.capture(first);
+    assert.equal(capture.previous, first);
+    verifyReplay(first, capture);
+    reader.close();
+  }
+});

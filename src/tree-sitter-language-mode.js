@@ -942,7 +942,8 @@ class TreeSitterLanguageMode {
           });
         if (reused) {
           this.backgroundSnapshots.add(reused);
-          layer.tree = layer.lastSyntaxTree = layer.backgroundTree = reused;
+          layer.tree = layer.lastSyntaxTree = reused;
+          layer.setBackgroundTree(reused);
           layer.treeIsDirty = false;
           layer.includedRangesAreCurrent = true;
           layer.lastIncludedRanges = ranges;
@@ -1502,7 +1503,22 @@ class TreeSitterLanguageMode {
     // its input before queuing so a later edit cannot pair them with new text.
     const previous =
       oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
-    const capture = this.document.capture(previous);
+    const layer = depth === 0 ? this.rootLanguageLayer : null;
+    const checkpoint =
+      layer?.backgroundHasErrors && oldTree === layer.backgroundTree ? layer.errorFreeTree : null;
+    let capture;
+    let fromCheckpoint = false;
+    if (
+      checkpoint &&
+      checkpoint.language === language &&
+      this.backgroundSnapshots.has(checkpoint)
+    ) {
+      capture = this.document.capture(checkpoint);
+      fromCheckpoint = capture.previous === checkpoint;
+      if (!fromCheckpoint) layer.errorFreeTree = null;
+    }
+    if (!fromCheckpoint) capture = this.document.capture(previous);
+    const comparison = fromCheckpoint ? this.document.capture(previous) : null;
     return parserScheduler
       .run(
         async () => {
@@ -1530,7 +1546,22 @@ class TreeSitterLanguageMode {
             if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
             if (!tree) return null;
             this.backgroundSnapshots.add(tree);
-            this.parseDetails.set(tree, { incremental: tree.incremental });
+            const details = { incremental: tree.incremental && !fromCheckpoint };
+            if (fromCheckpoint && tree.incremental && comparison.previous) {
+              // Parsing uses the healthy checkpoint, but presentation must
+              // compare against the last displayed revision, including errors
+              // repaired back to the checkpoint's original syntax.
+              const edited = TreeSitterParser.prepareTree(comparison.previous, capture.text, {
+                edits: extraEdits.length ? [...comparison.edits, ...extraEdits] : comparison.edits,
+              });
+              try {
+                details.changedRanges = edited.getChangedRanges(tree);
+                details.incremental = true;
+              } finally {
+                edited.delete();
+              }
+            }
+            this.parseDetails.set(tree, details);
             return tree;
           } catch (error) {
             if (error.name === "AbortError" || this.destroyed) return null;
@@ -3474,6 +3505,7 @@ class LanguageLayer {
     this.destroyed = true;
     this.parseAbort?.abort();
     this.backgroundTree = null;
+    this.errorFreeTree = null;
     this.cancelAncillaryQueryLoad?.();
     this.cancelAncillaryQueryLoad = null;
     this.injectionPointVersion++;
@@ -4542,6 +4574,18 @@ class LanguageLayer {
       });
   }
 
+  setBackgroundTree(tree) {
+    this.backgroundTree = tree;
+    if (this.depth !== 0) return;
+    this.backgroundHasErrors = tree.rootNode.hasError;
+    if (this.errorFreeTree?.language !== tree.language) this.errorFreeTree = null;
+    if (this.buffer.getLength() < LARGE_BUFFER_ASYNC_THRESHOLD) {
+      this.errorFreeTree = null;
+    } else if (!this.backgroundHasErrors) {
+      this.errorFreeTree = tree;
+    }
+  }
+
   _applyParsedTree(
     tree,
     { params, nodeRangeSet, includedRanges, rootRangeVersion, generation, revision },
@@ -4564,7 +4608,7 @@ class LanguageLayer {
       this.requestInjectionParentRetry(params.initialInjectionParentSnapshot);
       return;
     }
-    this.backgroundTree = tree;
+    this.setBackgroundTree(tree);
 
     if (includedRanges && !nodeRangeSet.rangesUnchanged) {
       this.setCurrentRanges(includedRanges);
@@ -4597,8 +4641,9 @@ class LanguageLayer {
       this.foldNodesToInvalidateOnChange.clear();
     }
     if (this.lastSyntaxTree) {
-      const rangesWithSyntaxChanges = this.languageMode.parseDetails.get(tree)?.incremental
-        ? tree.changedRanges
+      const details = this.languageMode.parseDetails.get(tree);
+      const rangesWithSyntaxChanges = details?.incremental
+        ? (details.changedRanges ?? tree.changedRanges)
         : [tree.rootNode];
 
       this.lastSyntaxTree = tree;

@@ -129,3 +129,70 @@ describe("Large-buffer syntax update policy", () => {
     }
   }, 30000);
 });
+
+it("replays from one error-free root checkpoint and releases it when history is unavailable", async () => {
+  jasmine.useRealClock();
+  await lumine.packages.activatePackage("language-javascript");
+  const editor = await lumine.workspace.open();
+  const original = "export function value() { return 1; }\n".repeat(18000);
+  editor.setText(original);
+  editor.setGrammar(lumine.grammars.grammarForScopeName("source.js"));
+  editor.update({ autoIndent: false, undoGroupingInterval: 0 });
+  await editor.whenGrammarSettled();
+  const mode = editor.getBuffer().getLanguageMode(),
+    layer = mode.rootLanguageLayer;
+  const first = layer.errorFreeTree;
+  try {
+    expect(first).toBe(mode.tree);
+    expect(first.rootNode.hasError).toBe(false);
+    mode.recordSynchronousUpdate(30);
+    mode.recordSynchronousUpdate(30);
+    editor.setCursorBufferPosition([17000, 0]);
+    editor.insertText("a");
+    await editor.whenGrammarSettled();
+    expect(layer.backgroundHasErrors).toBe(true);
+    expect(layer.errorFreeTree).toBe(first);
+    const capture = spyOn(mode.document, "capture").and.callThrough();
+    for (let i = 0; i < 200; i++) editor.insertText(i % 12 === 11 ? " " : "a");
+    await editor.whenGrammarSettled();
+    expect(capture.calls.allArgs().some((args) => args[0] === first)).toBe(true);
+    expect(mode.tree.incremental).toBe(true);
+    expect(mode.parseDetails.get(mode.tree).incremental).toBe(true);
+    expect(mode.parseDetails.get(mode.tree).changedRanges).toBeDefined();
+    const Parser = require("../src/tree-sitter-parser");
+    const reference = new Parser(mode.tree.language);
+    try {
+      expect(mode.tree.rootNode.toString()).toBe(
+        reference.parseSync(editor.getBuffer().getTextSnapshot()).rootNode.toString(),
+      );
+    } finally {
+      reference.close();
+    }
+    editor.getBuffer().delete([
+      [17000, 0],
+      [17000, 201],
+    ]);
+    await editor.whenGrammarSettled();
+    expect(mode.tree.rootNode.hasError).toBe(false);
+    expect(
+      mode.parseDetails
+        .get(mode.tree)
+        .changedRanges.some(
+          (range) => range.startPosition.row <= 17000 && range.endPosition.row >= 17000,
+        ),
+    ).toBe(true);
+    expect(layer.errorFreeTree).toBe(mode.tree);
+    expect(first.input).toBe(original);
+    editor.setCursorBufferPosition([17000, 0]);
+    editor.insertText("a");
+    await editor.whenGrammarSettled();
+    mode.document.clearHistory();
+    editor.insertText("a");
+    await editor.whenGrammarSettled();
+    expect(layer.errorFreeTree).toBe(null);
+    expect(mode.tree.input).toBe(editor.getText());
+  } finally {
+    editor.destroy();
+  }
+  expect(layer.errorFreeTree).toBe(null);
+}, 30000);

@@ -34,7 +34,10 @@ function isBulkChange(previous, edits) {
   if (!previous) return true;
   if (edits.length >= BULK_EDIT_LIMIT) return true;
   let changed = 0;
-  for (const edit of edits) changed += edit.oldEndIndex - edit.startIndex + edit.newText.length;
+  for (const edit of edits) {
+    const newEndIndex = edit.newEndIndex ?? edit.startIndex + edit.newText.length;
+    changed += edit.oldEndIndex - edit.startIndex + newEndIndex - edit.startIndex;
+  }
   return changed >= 8192 && changed >= sourceOf(previous).length / 2;
 }
 
@@ -66,11 +69,12 @@ function applyEdits(tree, previous, text, edits) {
   let source = sourceOf(previous);
   const replay = edits.some((edit) => !edit.startPosition);
   for (const edit of edits) {
-    const { startIndex, oldEndIndex, newText } = edit;
+    const { startIndex, oldEndIndex } = edit;
     const startPosition = edit.startPosition ?? positionAt(source, startIndex);
     const oldEndPosition = edit.oldEndPosition ?? positionAt(source, oldEndIndex);
     let newEndPosition = edit.newEndPosition;
     if (!newEndPosition) {
+      const { newText } = edit;
       const extent = positionAt(newText, newText.length);
       newEndPosition = {
         row: startPosition.row + extent.row,
@@ -80,18 +84,20 @@ function applyEdits(tree, previous, text, edits) {
     tree.edit({
       startIndex,
       oldEndIndex,
-      newEndIndex: startIndex + newText.length,
+      newEndIndex: edit.newEndIndex ?? startIndex + edit.newText.length,
       startPosition,
       oldEndPosition,
       newEndPosition,
     });
     // Document journals already carry coordinates. Synthetic boundary edits
     // are coordinate-neutral; only callers without coordinates need replay.
-    if (replay)
+    if (replay) {
+      const { newText } = edit;
       source =
         typeof source.replace === "function" && typeof source !== "string"
           ? source.replace(startIndex, oldEndIndex, newText)
           : source.slice(0, startIndex) + newText + source.slice(oldEndIndex);
+    }
   }
   tree.textCallback = nodeTextInput(text);
   return tree;
@@ -263,8 +269,8 @@ class TreeSitterParser {
       signal.throwIfAborted();
     }
     if (!tree) {
-      if (job.oldTree && !job.rangeCoverageChecked) {
-        job.rangeCoverageChecked = true;
+      if (job.oldTree && !job.resumeSafetyChecked) {
+        job.resumeSafetyChecked = true;
         // Parse-boundary hints partition the same source into adjacent ranges.
         // Compare their union, clipped at EOF, so changing those hints does not
         // turn a local edit in a large paragraph into a complete reparse.
@@ -283,11 +289,14 @@ class TreeSitterParser {
               range.endPosition.column === next.endPosition.column
             );
           });
-        if (!sameRanges) {
+        if (!sameRanges || job.previous.rootNode.hasError) {
           // The 0.27.1 runtime clears included-range differences when resuming
           // an incremental parse. It can then reuse an old subtree over newly
           // included source. Keep the fast path if the first slice completes;
           // otherwise restart this changed-range job fresh and resume normally.
+          // Resuming from a tree with existing errors can also change error
+          // recovery depending on the slice boundary. Fresh resumable parsing
+          // avoids carrying those recovery states into the next slice.
           this.parser.reset();
           job.oldTree.delete();
           job.oldTree = null;
