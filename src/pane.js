@@ -327,6 +327,9 @@ module.exports = class Pane {
         subscriptions.remove(subscription);
         subscription.dispose();
       }
+      // Restored siblings can be observed before setContainer reaches them.
+      // did-change-container will bind their activity once ownership is set.
+      if (!this.container) return;
       subscription = this.container.onDidChangeActivePane((activePane) =>
         callback(this === activePane),
       );

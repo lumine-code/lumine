@@ -111,6 +111,43 @@ describe("Pane", () => {
     });
   });
 
+  describe("::onDidChangeActive() before container assignment", () => {
+    it("observes activation after the pane receives its container", () => {
+      const pane = new Pane(paneParams());
+      const container = new PaneContainer(paneParams());
+      const observed = [];
+      const subscription = pane.onDidChangeActive((active) => observed.push(active));
+
+      try {
+        container.setRoot(pane);
+        pane.activate();
+        pane.splitRight();
+
+        expect(observed).toEqual([true, false]);
+      } finally {
+        subscription.dispose();
+        container.destroy();
+      }
+    });
+
+    it("allows disposal before the pane receives its container", () => {
+      const pane = new Pane(paneParams());
+      const container = new PaneContainer(paneParams());
+      const callback = jasmine.createSpy("active changed");
+      const subscription = pane.onDidChangeActive(callback);
+      subscription.dispose();
+
+      try {
+        container.setRoot(pane);
+        pane.activate();
+
+        expect(callback).not.toHaveBeenCalled();
+      } finally {
+        container.destroy();
+      }
+    });
+  });
+
   describe("::activate()", () => {
     let container, pane1, pane2;
 

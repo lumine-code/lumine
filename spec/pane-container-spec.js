@@ -86,6 +86,46 @@ describe("PaneContainer", () => {
       expect(activeStatusesByPane.get(containerB.getPanes()[1])).toEqual([false, false]);
     });
 
+    it("creates every restored pane view when observation starts with the first restored item", () => {
+      const containerB = new PaneContainer(params);
+      const elements = new Map();
+      const unregisteredPanes = [];
+      const initializationErrors = [];
+      const viewProvider = lumine.views.addViewProvider(pane1A.getActiveItem().constructor, () =>
+        document.createElement("div"),
+      );
+      let started = false;
+      let paneSubscription;
+      const itemSubscription = containerB.onDidAddPaneItem(() => {
+        if (started) return;
+        started = true;
+        // Lazy pane decorations start with the first restored item, while
+        // later siblings in the restored tree still have no container.
+        try {
+          paneSubscription = containerB.observePanes((pane) => {
+            if (!pane.getContainer()) unregisteredPanes.push(pane);
+            elements.set(pane, pane.getElement());
+          });
+        } catch (error) {
+          initializationErrors.push(error);
+        }
+      });
+
+      try {
+        containerB.deserialize(containerA.serialize(), lumine.deserializers);
+
+        const panes = containerB.getPanes();
+        expect(initializationErrors).toEqual([]);
+        expect(unregisteredPanes).toEqual(panes.slice(1));
+        expect(panes.map((pane) => elements.get(pane)?.getModel())).toEqual(panes);
+      } finally {
+        itemSubscription.dispose();
+        paneSubscription?.dispose();
+        viewProvider.dispose();
+        containerB.destroy();
+      }
+    });
+
     it("makes the first pane active if no pane exists for the activePaneId", () => {
       pane3A.activate();
       const state = containerA.serialize();
