@@ -153,7 +153,9 @@ describe("Fleet fuzzy interaction performance", () => {
         const host = name === "fuzzy-explorer" ? main.ensureSelectList() : main.ensureFinder();
         const list = host.getModel();
         if (config.worker === false && list.props.search.worker !== false)
-          await list.update({ search: { ...list.props.search, worker: false } });
+          await list.update({
+            search: { ...list.props.search, worker: false, yieldToInput: true },
+          });
         if (config.cold) {
           list.clearWorkerMatcher();
           list.filterMatcher = null;

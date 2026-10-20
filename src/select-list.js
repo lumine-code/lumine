@@ -16,6 +16,7 @@ const $ = etch.dom;
 // matcher knob.
 const DEFAULT_MAX_RESULTS = SelectListModel.DEFAULT_PAGE_SIZE;
 const FILTER_PROGRESS_DELAY = 250;
+const ASYNC_SEARCH_MIN_ITEMS = 2048;
 
 // The component's own last row when matches exceed the cap. Never handed to the
 // consumer's callbacks: confirming it grows the list, selecting it reads as
@@ -59,9 +60,14 @@ let nextSelectListId = 1;
  * loading message. Every match is published together when ready;
  * newer input, source changes and destruction cancel the obsolete request.
  * `setQuery()` resolves after that request's results have rendered.
- * Workers are disabled by default. Add `search.worker: true` to prepare text,
- * score, sort and trace the first page in a dedicated Chromium worker. Lists
- * below 2048 items remain synchronous even with this option enabled.
+ * Built-in fuzzy search uses a dedicated Chromium worker per list by default,
+ * regardless of list size. It prepares text, scores, sorts and traces the first
+ * page. Set `search.worker: false` for a list known to always be small.
+ * A worker starts on the first nonempty query, or during explicit idle
+ * preparation, and is reused until the source changes or the list is destroyed.
+ * Query sources, custom matchers and custom filters retain their own execution
+ * contract. Custom sort callbacks still run on the UI thread after worker
+ * ranking. There is no global backend setting.
  * Pure score modifiers still run on their owning
  * UI thread in yielding batches; only numeric scores cross back to the worker.
  *
@@ -1025,17 +1031,29 @@ class SelectList extends InputDialog {
     }
 
     const changesModel = Object.keys(modelChanges).length > 0;
-    const yielding = changesModel && this.shouldYieldSearch(nextProps, modelChanges.query);
+    // Recents only reorder the resting list. A save from another window must
+    // not clear a filtered selection or restart an in-flight ranking.
+    const recentsOnly =
+      this.model.getQuery() &&
+      this.supportsLocalFuzzySearch(nextProps) &&
+      Object.keys(modelChanges).length === 1 &&
+      "recentIds" in modelChanges;
+    const yielding =
+      changesModel && !recentsOnly && this.shouldYieldSearch(nextProps, modelChanges.query);
     const querySelection = yielding
       ? this.selectionForSearch(modelChanges, previousSelection)
       : null;
     if (changesModel) {
       if (yielding && querySelection.initial) modelChanges.initialSelection = { mode: "none" };
-      this.model._applyUpdate(modelChanges, false, yielding ? [] : undefined);
-      this.cancelQueryWork(yielding);
+      this.model._applyUpdate(
+        modelChanges,
+        false,
+        recentsOnly ? this.model._filteredRecords : yielding ? [] : undefined,
+      );
+      if (!recentsOnly) this.cancelQueryWork(yielding);
       if (this.workerPreparation?.generation !== this.model.getGeneration())
         this.clearWorkerMatcher();
-      if (!yielding) this.cancelMatcherPreparation();
+      if (!yielding && !recentsOnly) this.cancelMatcherPreparation();
     }
     if (resetOverflow) this.overflowSectionsActive = false;
 
@@ -1444,14 +1462,24 @@ class SelectList extends InputDialog {
     const search = props.search;
     return !!(
       query &&
-      (search?.yieldToInput || search?.worker) &&
-      !search.filter &&
-      !search.matcher &&
-      !search.sort &&
-      !props.sections &&
-      props.source?.mode !== "query" &&
-      (props.items?.length ?? this.model?.getItemCount() ?? 0) >= 2048
+      this.supportsLocalFuzzySearch(props) &&
+      (this.usesWorker(props) ||
+        (search?.yieldToInput &&
+          (props.items?.length ?? this.model?.getItemCount() ?? 0) >= ASYNC_SEARCH_MIN_ITEMS))
     );
+  }
+
+  supportsLocalFuzzySearch(props = this.props) {
+    const search = props.search ?? {};
+    return !search.filter && !search.matcher && props.source?.mode !== "query";
+  }
+
+  usesWorker(props = this.props) {
+    if (props.search?.worker === false || !this.supportsLocalFuzzySearch(props)) return false;
+    const count = props.sections
+      ? props.sections.reduce((count, section) => count + section.items.length, 0)
+      : (props.items?.length ?? this.model?.getItemCount() ?? 0);
+    return count > 0;
   }
 
   cancelQueryWork(preserveProgress = false) {
@@ -1482,7 +1510,8 @@ class SelectList extends InputDialog {
     const records = this.model._records;
     const generation = this.model.getGeneration();
     const query = this.model.getQuery();
-    const options = this.props.search;
+    const options = this.props.search ?? {};
+    const useWorker = this.usesWorker();
     const check = () => {
       controller.signal.throwIfAborted();
       if (this.destroyed || this.model.getGeneration() !== generation)
@@ -1494,7 +1523,7 @@ class SelectList extends InputDialog {
       check();
       let ids;
       let highlights;
-      if (options.worker) {
+      if (useWorker) {
         const result = await this.matchInWorker(
           records,
           generation,
@@ -1547,20 +1576,34 @@ class SelectList extends InputDialog {
           { signal: controller.signal },
         );
       }
-      const results = new Array(ids.length);
+      let results = new Array(ids.length);
       const selection = work.selection;
       const preferred = this.model._recordById.get(selection.retainId);
       let retained = false;
       let deadline = performance.now() + 6;
       for (let i = 0; i < ids.length; i++) {
-        results[i] = records[ids[i]];
-        if (results[i] === preferred) retained = true;
+        const record = records[ids[i]];
+        if (record === preferred) retained = true;
+        // Queries flatten declared sections, preserving their source provenance
+        // exactly as SelectListModel's synchronous derivation does.
+        results[i] =
+          record.sectionId === null
+            ? record
+            : Object.freeze({
+                ...record,
+                sourceSectionId: record.sectionId,
+                sectionId: null,
+                sectionIndex: -1,
+                recent: false,
+              });
         if ((i & 1023) === 0 && performance.now() >= deadline) {
           await new Promise((resolve) => setImmediate(resolve));
           check();
           deadline = performance.now() + 6;
         }
       }
+      check();
+      results = this.model._sortPreparedRecords(results);
       check();
       const previousSelection = this.selectionSnapshot();
       this.model._applyUpdate(
@@ -1834,19 +1877,20 @@ class SelectList extends InputDialog {
   /** @private */
   scheduleMatcherPreparation() {
     this.cancelMatcherPreparation();
+    const useWorker = this.usesWorker();
     if (
       this.destroyed ||
       !this.model ||
-      (this.filterMatcher && !this.props.search?.worker) ||
+      (this.filterMatcher && !useWorker) ||
       this.model.getQuery() ||
       this.props.source?.mode === "query" ||
       !this.props.search?.prepareOnIdle ||
       this.props.search.filter ||
       this.props.search.matcher ||
-      this.model._records.length < 2048
+      (this.model._records.length < ASYNC_SEARCH_MIN_ITEMS && !useWorker)
     )
       return;
-    if (this.props.search.worker) {
+    if (useWorker) {
       try {
         this.prepareWorkerCandidates(
           this.model._records,

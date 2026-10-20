@@ -42,7 +42,9 @@ describe("SelectList", () => {
   }
 
   async function nextUpdate() {
+    const ranking = view?.queryWork?.promise;
     await etch.getScheduler().getNextUpdatePromise();
+    await ranking;
   }
 
   beforeEach(() => {
@@ -230,6 +232,7 @@ describe("SelectList", () => {
 
     it("keeps an initial query consistent across the editor, model, and rows", async () => {
       view = textItemView({ query: "tw" });
+      await nextUpdate();
 
       expect(view.getQuery()).toBe("tw");
       expect(view.getDisplayedItems()).toEqual(["two"]);
@@ -733,7 +736,7 @@ describe("SelectList", () => {
     it("filters the natural source and restores overflow sections after clearing the query", async () => {
       await openList(80);
       view.getQueryEditor().setText("t");
-      await view.update({});
+      await nextUpdate();
 
       expect(view.getDisplayedItems()).toEqual(["two", "three", "Auto"]);
       expect(find(".select-list-separator")).toBeNull();
@@ -1638,12 +1641,12 @@ describe("SelectList", () => {
 
     it("resets selection when a fresh show supplies the same query", async () => {
       view = textItemView();
-      addHost().show({ query: "t" });
+      await addHost().show({ query: "t" });
       await view.selectLast();
       expect(view.getSelectedItem()).toBe("three");
       host.hide();
 
-      host.show({ query: "t" });
+      await host.show({ query: "t" });
 
       expect(view.getSelectedItem()).toBe("two");
       expect(view.getSelectedIndex()).toBe(0);
@@ -2362,7 +2365,7 @@ describe("SelectList", () => {
       });
       const scroller = find("ol.list-group");
       scroller.style.cssText = "max-height: 100px; overflow-y: auto";
-      view.setQuery("item");
+      await view.setQuery("item");
       await view.selectItem("item-20");
       await view.runAction("select-list:toggle-keep-open");
       scroller.scrollTop = 0;

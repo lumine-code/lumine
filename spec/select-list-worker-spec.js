@@ -12,33 +12,94 @@ describe("SelectList worker search", () => {
     return {
       items: values,
       search: {
-        worker: true,
         ignoreDiacritics: true,
         algorithm: "command-t",
         ...search,
       },
     };
   }
-  it("keeps workers opt-in and never starts one for a small list", async () => {
+  it("uses a worker by default even for a small list without search options", async () => {
     list = lumine.workspace.buildSelectList({
       items: ["alpha", "beta"],
-      search: { worker: true, prepareOnIdle: true },
     });
+    expect(list.workerPreparation).toBeNull();
     const small = list.setQuery("a");
+    expect(list.isFiltering()).toBe(true);
+    await small;
+    expect(list.getMatchCount()).toBe(2);
+    expect(list.workerPreparation.next).toBe(2);
+    const preparation = list.workerPreparation;
+    await list.setQuery("al");
+    expect(list.getFilteredItems()).toEqual(["alpha"]);
+    expect(list.workerPreparation).toBe(preparation);
+  });
+  it("lets a list explicitly disable the worker", async () => {
+    list = lumine.workspace.buildSelectList({
+      items: ["alpha", "beta"],
+      search: { worker: false, prepareOnIdle: true },
+    });
+    const ordinary = list.setQuery("a");
     expect(list.getMatchCount()).toBe(2);
     expect(list.queryWork).toBeNull();
     expect(list.workerPreparation).toBeNull();
-    await small;
-    await list.destroy();
-    list = lumine.workspace.buildSelectList({
-      items: values,
-      search: { ignoreDiacritics: true, algorithm: "command-t" },
-    });
-    const ordinary = list.setQuery("sample");
-    expect(list.getMatchCount()).toBe(values.length);
+    await ordinary;
+  });
+  it("does not create a worker for an empty source", async () => {
+    list = lumine.workspace.buildSelectList({ items: [], query: "a" });
     expect(list.queryWork).toBeNull();
     expect(list.workerPreparation).toBeNull();
-    await ordinary;
+    await list.update({ items: ["alpha"] });
+    expect(list.getFilteredItems()).toEqual(["alpha"]);
+    expect(list.workerPreparation.next).toBe(1);
+  });
+  it("keeps a custom sort and its context after worker ranking", async () => {
+    const items = [
+      { id: "a", text: "alpha" },
+      { id: "b", text: "alpine" },
+    ];
+    const sort = (left, right, context) => {
+      expect(context.getItemId(left)).toBe(left.id);
+      expect(context.getFilterText(right)).toBe(right.text);
+      return context.query ? right.id.localeCompare(left.id) : 0;
+    };
+    list = lumine.workspace.buildSelectList({
+      items,
+      search: { getFilterText: (item) => item.text, sort },
+    });
+    await list.setQuery("al");
+    expect(list.workerPreparation.next).toBe(2);
+    expect(list.getFilteredItems()).toEqual([items[1], items[0]]);
+    expect(list.getSelectedItem()).toBe(items[1]);
+  });
+  it("closes the worker when explicitly disabled and can enable it again", async () => {
+    list = lumine.workspace.buildSelectList({ items: ["alpha", "beta"] });
+    await list.setQuery("a");
+    const client = list.workerPreparation.client;
+    const expected = list.getFilteredItems();
+    await list.update({ search: { worker: false } });
+    expect(client.closed).toBe(true);
+    expect(list.workerPreparation).toBeNull();
+    expect(list.getFilteredItems()).toEqual(expected);
+    await list.update({ search: {} });
+    expect(list.workerPreparation.client).not.toBe(client);
+    expect(list.getFilteredItems()).toEqual(expected);
+  });
+  it("keeps filtered selection and pending ranking when another window updates recents", async () => {
+    list = lumine.workspace.buildSelectList({ items: ["alpha", "alpine"] });
+    await list.setQuery("al");
+    await list.selectItem("alpine");
+    const results = list.model._filteredRecords;
+    const changed = list.setRecentItemIds(["alpha"]);
+    expect(list.isFiltering()).toBe(false);
+    expect(list.getSelectedItem()).toBe("alpine");
+    expect(list.model._filteredRecords).toBe(results);
+    await changed;
+    const pending = list.setQuery("a");
+    const work = list.queryWork;
+    const recent = list.setRecentItemIds(["alpine"]);
+    expect(list.queryWork).toBe(work);
+    await Promise.all([pending, recent]);
+    expect(list.getMatchCount()).toBe(2);
   });
   for (const algorithm of ["command-t", "fuzzaldrin"]) {
     it(`keeps every adjusted result and visible highlight equivalent with ${algorithm}`, async () => {
@@ -214,9 +275,32 @@ describe("SelectList worker search", () => {
     list = host.getModel();
     spyOn(list, "matchCandidates").and.callThrough();
     await host.show({ query: "sample" });
-    await list.queryWork?.promise;
     expect(list.getMatchCount()).toBe(values.length);
     expect(list.matchCandidates).not.toHaveBeenCalled();
+  });
+
+  it("flattens sectioned matches in a worker and restores sections when cleared", async () => {
+    list = lumine.workspace.buildSelectList({
+      sections: [
+        { id: "first", items: ["alpha", "beta"] },
+        { id: "second", items: ["alpine"] },
+      ],
+      query: "al",
+    });
+    await list.queryWork.promise;
+    expect(list.getFilteredItems()).toEqual(["alpha", "alpine"]);
+    expect(list.workerPreparation.next).toBe(3);
+    expect(list.model._getDisplayedRecords().map((row) => row.sectionId)).toEqual([null, null]);
+    expect(list.model._getDisplayedRecords().map((row) => row.sourceSectionId)).toEqual([
+      "first",
+      "second",
+    ]);
+    await list.setQuery("");
+    expect(list.model._getDisplayedRecords().map((row) => row.sectionId)).toEqual([
+      "first",
+      "first",
+      "second",
+    ]);
   });
 
   it("does not run a constructor query synchronously or show a premature empty result", async () => {

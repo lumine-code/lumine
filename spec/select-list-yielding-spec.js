@@ -4,7 +4,13 @@ describe("SelectList cooperative search", () => {
   function create(search = {}) {
     return lumine.workspace.buildSelectList({
       items: values,
-      search: { yieldToInput: true, ignoreDiacritics: true, algorithm: "command-t", ...search },
+      search: {
+        worker: false,
+        yieldToInput: true,
+        ignoreDiacritics: true,
+        algorithm: "command-t",
+        ...search,
+      },
     });
   }
   beforeEach(() => jasmine.useRealClock());

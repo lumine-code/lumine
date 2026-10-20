@@ -22,6 +22,11 @@ module.exports = class SelectListHost extends InputDialogHost {
     return panel;
   }
 
+  /** @private Await both source publication and the opening query's ranking. */
+  show(options = {}) {
+    return super.show(options).then(() => this.model.queryWork?.promise);
+  }
+
   updateKeepOpenPresentation() {
     this.panel?.getElement().toggleAttribute("keep-open", this.model.isKeepOpen());
   }

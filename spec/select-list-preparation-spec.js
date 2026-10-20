@@ -11,7 +11,13 @@ describe("SelectList idle candidate preparation", () => {
     return lumine.workspace.buildSelectList({
       items,
       source,
-      search: { prepareOnIdle: true, ignoreDiacritics: true, algorithm: "command-t", ...search },
+      search: {
+        worker: false,
+        prepareOnIdle: true,
+        ignoreDiacritics: true,
+        algorithm: "command-t",
+        ...search,
+      },
     });
   }
   beforeEach(() => jasmine.useRealClock());

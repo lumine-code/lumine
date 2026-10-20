@@ -790,6 +790,20 @@ module.exports = class SelectListModel {
     return records.slice().sort((left, right) => state.search.sort(left.item, right.item, context));
   }
 
+  /** @private Apply the owning callback after asynchronous built-in ranking. */
+  _sortPreparedRecords(records) {
+    if (!this._search.sort) return records;
+    return this._sortRecords(records, {
+      search: this._search,
+      query: this._query,
+      generation: this._generation,
+      getItemId: this._getItemId,
+      recordById: this._recordById,
+      recordByItem: this._recordByItem,
+      filterTextCache: this._filterTextCache,
+    });
+  }
+
   _sortRecordsWithinSections(records, state) {
     const groups = [];
     for (const record of records) {
