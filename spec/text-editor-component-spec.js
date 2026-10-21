@@ -649,6 +649,31 @@ describe("TextEditorComponent", () => {
       expect(cursorNodes.length).toBe(0);
     });
 
+    it("does not publish unchanged editor classes while scrolling", () => {
+      const { component, element } = buildComponent({ text: "line\n".repeat(200), height: 100 });
+      component.updateSync();
+      const observer = new MutationObserver(() => {});
+      observer.observe(element, { attributes: true, attributeFilter: ["class"] });
+      try {
+        for (const row of [10, 30, 80, 20]) {
+          component.setScrollTop(row * component.getLineHeight());
+          component.updateSync();
+        }
+        expect(observer.takeRecords().length).toBe(0);
+
+        element.className = "package-class";
+        observer.takeRecords();
+        component.updateSync();
+        expect(element.classList.contains("editor")).toBeTrue();
+        expect(element.classList.contains("package-class")).toBeTrue();
+        expect(observer.takeRecords().length).toBeGreaterThan(0);
+        component.updateSync();
+        expect(observer.takeRecords().length).toBe(0);
+      } finally {
+        observer.disconnect();
+      }
+    });
+
     jasmine.itWithDocumentFocus(
       "blinks cursors when the editor is focused and the cursors are not moving",
       async () => {

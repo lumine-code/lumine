@@ -1566,7 +1566,11 @@ module.exports = class TextEditorComponent {
     }
 
     for (let i = 0; i < newClassList.length; i++) {
-      this.element.classList.add(newClassList[i]);
+      // Adding an existing token still publishes an attribute mutation. Avoid
+      // waking document observers on every scroll, while repairing core classes
+      // if a package replaced className since the last render.
+      const className = newClassList[i];
+      if (!this.element.classList.contains(className)) this.element.classList.add(className);
     }
 
     this.classList = newClassList;
