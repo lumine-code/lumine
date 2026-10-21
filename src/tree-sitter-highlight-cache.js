@@ -70,6 +70,18 @@ class HighlightCache {
     for (const snapshot of this.snapshots) {
       for (const edit of this.edits) {
         if (edit.sequence <= snapshot.sequence) continue;
+        if (snapshot.start.row > edit.oldEnd.row) {
+          // The entire fragment moves by the same number of rows. Keep that
+          // translation on the fragment instead of visiting every cold event
+          // on each Enter. Reads translate only the events they consume.
+          const delta = edit.newEnd.row - edit.oldEnd.row;
+          snapshot.start = shift(snapshot.start, edit);
+          snapshot.end = shift(snapshot.end, edit, true);
+          snapshot.rowOffset = (snapshot.rowOffset ?? 0) + delta;
+          continue;
+        }
+        if (compare(snapshot.end, edit.start) < 0) continue;
+        this.materialize(snapshot);
         snapshot.start = shift(snapshot.start, edit);
         snapshot.end = shift(snapshot.end, edit, true);
         let low = 0,
@@ -90,6 +102,14 @@ class HighlightCache {
     }
     this.edits.length = 0;
   }
+  materialize(snapshot) {
+    if (!snapshot.rowOffset) return;
+    snapshot.events = snapshot.events.map((event) => ({
+      ...event,
+      position: new Point(event.position.row + snapshot.rowOffset, event.position.column),
+    }));
+    snapshot.rowOffset = 0;
+  }
   replace(snapshots, stamp, keep = () => false) {
     this.rebase();
     const retained = new Set();
@@ -105,6 +125,7 @@ class HighlightCache {
         }
         // Keep only the uncovered prefix/suffix. Overlapping whole windows
         // would otherwise accumulate for every narrow update or shifted row.
+        this.materialize(previous);
         const fragments = [];
         if (compare(previous.start, snapshot.start) < 0)
           fragments.push({
@@ -138,13 +159,16 @@ class HighlightCache {
     let events = this.snapshots.reduce((sum, snapshot) => sum + snapshot.events.length, 0);
     // The event allowance evicts old windows, never part of the current view.
     // A dense but bounded batch must not silently lose its highlighting.
+    let evicted = false;
     while (this.snapshots.length > this.maxSnapshots || events > this.maxEvents) {
       const index = this.snapshots.findIndex(
         (snapshot) => !retained.has(snapshot) && !keep(snapshot),
       );
       if (index < 0) break;
+      evicted = true;
       events -= this.snapshots.splice(index, 1)[0].events.length;
     }
+    return evicted;
   }
   covers(start, end, stamp = null) {
     this.rebase();
@@ -243,6 +267,8 @@ class HighlightCache {
     };
   }
   scopesBefore(snapshot, position) {
+    if (snapshot.rowOffset)
+      position = new Point(position.row - snapshot.rowOffset, position.column);
     const events = snapshot.events;
     let low = 0,
       high = events.length;
@@ -308,11 +334,19 @@ class HighlightCache {
       if (snapshot) {
         let { scopes: initial, index } = this.scopesBefore(snapshot, position);
         transition(position, initial);
+        const eventLimit = snapshot.rowOffset
+          ? new Point(limit.row - snapshot.rowOffset, limit.column)
+          : limit;
         while (
           index < snapshot.events.length &&
-          compare(snapshot.events[index].position, limit) < 0
+          compare(snapshot.events[index].position, eventLimit) < 0
         ) {
-          const event = snapshot.events[index++];
+          let event = snapshot.events[index++];
+          if (snapshot.rowOffset)
+            event = {
+              ...event,
+              position: new Point(event.position.row + snapshot.rowOffset, event.position.column),
+            };
           events.push(event);
           applyScopes(scopes, event);
         }

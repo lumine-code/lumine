@@ -939,7 +939,11 @@ class DisplayLayer {
     // Ready scopes can invalidate cached screen lines and notify observers.
     // Finish that work before ScreenLineBuilder captures its mutable state or
     // uncached ranges, including when a subscriber reads another screen line.
-    return languageMode.requestHighlighting(owner, ranges);
+    return languageMode.requestHighlighting(owner, ranges, true, {
+      priority: owner === this ? 0 : owner === this.singleLineHighlightingOwner ? 2 : 1,
+      prefetch: owner !== this.singleLineHighlightingOwner,
+      background: owner === this,
+    });
   }
 
   bufferRowsForScreenRows(startRow, endRow) {

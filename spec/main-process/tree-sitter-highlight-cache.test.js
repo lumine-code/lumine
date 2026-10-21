@@ -76,6 +76,44 @@ test("rebases painted scope boundaries through insert, delete and undo geometry"
   cache.edit({ oldRange: { start: point(0), end: point(1) }, newRange: { end: point(0) } });
   assert.deepEqual(at(cache, point(0, 1)), [1, 3]);
 });
+
+test("shifts cold fragments without visiting their events and resolves later partial edits", () => {
+  const cache = new HighlightCache();
+  let reads = 0;
+  const events = [];
+  for (let row = 100; row < 128; row++) {
+    for (const column of [0, 1])
+      events.push({
+        get position() {
+          reads++;
+          return point(row, column);
+        },
+        open: column === 0 ? [2] : [],
+        close: column === 1 ? [2] : [],
+      });
+  }
+  cache.replace([{ start: point(100), end: point(128), scopes: [1], events }], {});
+  for (const count of [2, 3])
+    cache.edit({
+      oldRange: { start: point(0), end: point(0) },
+      newRange: { end: point(count) },
+    });
+  cache.rebase();
+  assert.equal(reads, 0);
+  assert.deepEqual(at(cache, point(106)), [1, 2]);
+  assert.deepEqual(at(cache, point(106, 1)), [1]);
+  cache.replace([{ start: point(106), end: point(107), scopes: [1, 3], events: [] }], {});
+  assert.deepEqual(at(cache, point(105)), [1, 2]);
+  assert.deepEqual(at(cache, point(106)), [1, 3]);
+  assert.deepEqual(at(cache, point(107)), [1, 2]);
+  cache.edit({
+    oldRange: { start: point(107), end: point(107) },
+    newRange: { end: point(107, 2) },
+  });
+  assert.deepEqual(at(cache, point(107, 2)), [1, 2]);
+  assert.deepEqual(at(cache, point(107, 3)), [1]);
+  assert.deepEqual(at(cache, point(108)), [1, 2]);
+});
 test("uses the newest overlapping paint and retains neighboring cached scopes", () => {
   const cache = new HighlightCache();
   record(cache, point(0), point(10), [1, 2], []);

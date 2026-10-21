@@ -6,6 +6,131 @@ const path = require("node:path");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 
 describe("Syntax worker transport", () => {
+  it("colors mounted lines while a newer scroll destination is still waiting", async () => {
+    jasmine.useRealClock();
+    await lumine.packages.activatePackage("language-javascript");
+    const service = new Service(lumine.grammars);
+    const editor = lumine.workspace.buildTextEditor({ autoHeight: false });
+    editor.setText("const value = 1; // color\n".repeat(3000));
+    lumine.grammars.assignGrammar(
+      editor.getBuffer(),
+      lumine.grammars.grammarForScopeName("source.js"),
+    );
+    const mode = new WorkerMode({
+      buffer: editor.getBuffer(),
+      grammar: lumine.grammars.grammarForScopeName("source.js"),
+      service,
+    });
+    editor.getBuffer().setLanguageMode(mode);
+    const element = editor.getElement();
+    element.style.cssText = "height:200px;width:800px";
+    try {
+      await mode.ready;
+      await mode.refresh();
+      // Hold further worker work so the old viewport and the new destination
+      // can receive their colors independently, in a deterministic order.
+      spyOn(mode, "schedule");
+      jasmine.attachToDOM(element);
+      element.setUpdatedSynchronously(true);
+      const component = element.component;
+      expect(editor.getBuffer().getLanguageMode()).toBe(mode);
+      expect(component.visible).toBeTrue();
+      component.updateSync();
+      const prepared = mode.cache.snapshots.filter((item) => item.start.row < 128);
+      mode.cache.clear();
+      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
+      component.updateSync();
+      expect(element.querySelectorAll(".syntax--keyword").length).toBe(0);
+      const mounted = component.mountedTileStartRow;
+      const transform = component.refs.lineTiles.style.transform;
+      spyOn(component.window, "requestAnimationFrame").and.returnValue(1234567);
+      component.setScrollTop(1000 * component.getLineHeight());
+      component.beginScrollHighlighting();
+      component.updateSync();
+      expect(component.scrollHighlightingFrame).toBeTruthy();
+      mode.cache.replace(prepared, { revision: 0, generation: 0 });
+      const repaint = spyOn(component, "refreshMountedHighlighting");
+      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
+      expect(element.querySelectorAll(".syntax--keyword").length).toBe(0);
+      repaint.and.callThrough();
+      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
+      expect(component.scrollHighlightingFrame).toBeTruthy();
+      expect(component.mountedTileStartRow).toBe(mounted);
+      expect(component.refs.lineTiles.style.transform).toBe(transform);
+      expect(element.querySelectorAll(".syntax--keyword").length).toBeGreaterThan(0);
+    } finally {
+      editor.destroy();
+      element.remove();
+      service.dispose();
+    }
+  });
+
+  it("keeps measurements behind the viewport and bounds background preparation", () => {
+    const HighlightCache = require("../src/tree-sitter-highlight-cache");
+    const buffer = new TextBuffer({ text: "x\n".repeat(10000) });
+    const owner = {},
+      measurement = {};
+    const mode = {
+      buffer,
+      cache: new HighlightCache({ maxSnapshots: 256, maxEvents: 128000 }),
+      folds: new Map(),
+      wantedRanges: WorkerMode.prototype.wantedRanges,
+      requests: new Set(),
+      requestsByOwner: new WeakMap(),
+      defaultOwner: {},
+    };
+    const request = (...args) => WorkerMode.prototype.requestHighlighting.call(mode, ...args);
+    const stamp = { revision: 0, generation: 0, presentation: 0 };
+    try {
+      request(measurement, [[9000, 9000]], false, { priority: 2, prefetch: false });
+      request(owner, [[1024, 1080]], false, { priority: 0, background: true });
+      const wanted = WorkerMode.prototype.wantedRanges.call(mode);
+      expect(wanted[0]).toEqual([1024, 1080]);
+      expect(wanted.filter(([start]) => start >= 9000)).toEqual([[9000, 9000]]);
+      const split = {};
+      request(split, [[5000, 5100]], false, { priority: 0 });
+      expect(WorkerMode.prototype.wantedRanges.call(mode).slice(0, 2)).toEqual([
+        [1024, 1080],
+        [5000, 5100],
+      ]);
+      request(split, [], false);
+      mode.cache.replace(
+        [
+          {
+            start: TextBuffer.Point(1024, 0),
+            end: TextBuffer.Point(1280, 0),
+            scopes: [],
+            events: [],
+          },
+        ],
+        stamp,
+      );
+      expect(WorkerMode.prototype.backgroundRange.call(mode, stamp)).toEqual([896, 1023]);
+      mode.cache.snapshots[0].events = new Array(96000);
+      expect(WorkerMode.prototype.backgroundRange.call(mode, stamp)).toBeUndefined();
+      mode.cache.clear();
+      mode.cache.replace(
+        [
+          {
+            start: TextBuffer.Point(8000, 0),
+            end: TextBuffer.Point(8128, 0),
+            scopes: [],
+            events: new Array(96000),
+          },
+        ],
+        stamp,
+      );
+      mode.folds.set(8000, new TextBuffer.Range([8000, 1], [8001, 1]));
+      expect(WorkerMode.prototype.backgroundRange.call(mode, stamp)).toEqual([1024, 1151]);
+      expect(mode.cache.snapshots.length).toBe(0);
+      expect(mode.folds.size).toBe(0);
+      request(owner, [], false);
+      expect(WorkerMode.prototype.backgroundRange.call(mode, stamp)).toBeUndefined();
+    } finally {
+      buffer.destroy();
+    }
+  });
+
   it("waits at most one frame for scroll colors and does not extend it for more input", () => {
     const Component = require("../src/text-editor-component");
     let ready = false,
@@ -140,7 +265,7 @@ describe("Syntax worker transport", () => {
     expect(component.updateSync).not.toHaveBeenCalled();
   });
 
-  it("prepares bounded future viewports during a rapid thumb movement", () => {
+  it("keeps the current viewport ahead of prefetch during rapid thumb movement", () => {
     const owner = {};
     const mode = {
       buffer: { getLastRow: () => 100000, clipPosition: TextBuffer.Point.fromObject },
@@ -156,11 +281,7 @@ describe("Syntax worker transport", () => {
     expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual([500, 540]);
     request([900, 940]);
     const wanted = WorkerMode.prototype.wantedRanges.call(mode);
-    expect(wanted.slice(0, 3)).toEqual([
-      [1684, 1756],
-      [1284, 1356],
-      [900, 940],
-    ]);
+    expect(wanted[0]).toEqual([900, 940]);
     expect(wanted.every(([first, last]) => last - first < 128)).toBeTrue();
     request([500, 540]);
     expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual([500, 540]);
@@ -240,6 +361,7 @@ describe("Syntax worker transport", () => {
     const changes = [];
     const subscription = editor.displayLayer.onDidChange((value) => changes.push(...value));
     const component = {
+      props: { model: editor },
       mountedTileStartRow: 100,
       mountedTileEndRow: 150,
       scheduleUpdate: jasmine.createSpy("scheduleUpdate"),

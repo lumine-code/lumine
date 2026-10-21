@@ -2714,6 +2714,8 @@ module.exports = class TextEditorComponent {
       this.props.model.setVisible(false);
       this.scrollAnimator.finish();
     }
+    const displayLayer = this.props.model.displayLayer;
+    displayLayer.buffer.getLanguageMode().requestHighlighting?.(displayLayer, [], false);
   }
 
   // Called by TextEditorElement so that focus events can be handled before
@@ -4422,12 +4424,35 @@ module.exports = class TextEditorComponent {
     return this.restoreScrollAnchor(anchor);
   }
 
+  refreshMountedHighlighting(changes) {
+    // A newer scroll destination may still be waiting. Colors arriving for
+    // the text actually on screen must not wait behind that destination.
+    const displayLayer = this.props.model.displayLayer;
+    if (!this.attached || !this.visible || !this.hasInitialMeasurements) return;
+    for (const tile of this.lineTileComponentsById.values()) {
+      const { tileStartRow, tileEndRow } = tile.props;
+      if (
+        !changes.some(
+          ({ newRange }) => newRange.start.row < tileEndRow && newRange.end.row > tileStartRow,
+        )
+      )
+        continue;
+      const screenLines = displayLayer.screenLineBuilder.buildScreenLines(tileStartRow, tileEndRow);
+      tile.update({ ...tile.props, measuredContent: false, screenLines });
+      for (let row = tileStartRow; row < tileEndRow; row++)
+        this.renderedScreenLines[row - this.renderedScreenLinesStartRow] =
+          screenLines[row - tileStartRow];
+    }
+  }
+
   didChangeDisplayLayer(changes) {
     if (changes.length && changes.every((change) => change.origin === "highlight")) {
       if (this.scrollHighlightingFrame && !this.waitForScrollHighlighting()) {
         this.updateSync();
         return;
       }
+      if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax)
+        this.refreshMountedHighlighting(changes);
       // Prepared colors do not change row geometry. Offscreen prefetch only
       // invalidates the display cache; it must not rebuild the visible editor
       // or interrupt the scroll-only path on every worker packet.

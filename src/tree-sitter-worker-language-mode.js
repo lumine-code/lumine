@@ -26,7 +26,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.tokenized = false;
     this.autoIndentRequests = 0;
     this.transactionIndentRequests = 0;
-    this.cache = new HighlightCache({ maxEvents: 128000 });
+    this.cache = new HighlightCache({ maxSnapshots: 256, maxEvents: 128000 });
     this.folds = new Map();
     this.dirtyRanges = new RangeList();
     this.invalidateAll = true;
@@ -235,7 +235,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return result;
   }
 
-  requestHighlighting(owner, ranges, schedule = true) {
+  requestHighlighting(
+    owner,
+    ranges,
+    schedule = true,
+    { priority = 1, prefetch = true, background = false } = {},
+  ) {
     if (this.destroyed) return;
     if (owner !== this.defaultOwner) {
       const initial = this.requestsByOwner.get(this.defaultOwner);
@@ -254,15 +259,6 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       const now = performance.now();
       const elapsed = Math.max(16, now - (request.movedAt ?? now));
       const direction = Math.sign(start - previous);
-      // A scrollbar thumb can skip several tiles per frame. Prepare the
-      // places it will reach, rather than spending its lead on skipped rows.
-      request.predictedDelta =
-        direction === request.direction &&
-        request.movedAt != null &&
-        now - request.movedAt < 50 &&
-        Math.abs(start - previous) > TILE_ROWS
-          ? start - previous
-          : 0;
       request.direction = direction;
       // Cover about 120 ms of travel, with a hard spatial cap. Slow scrolling
       // needs one tile; Alt-wheel needs enough lead to survive a busy worker.
@@ -276,6 +272,9 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       request.movedAt = now;
     }
     request.ranges = ranges;
+    request.priority = priority;
+    request.prefetch = prefetch;
+    request.background = background;
     if (schedule) this.schedule();
     return ranges.every(([first, last]) => {
       const start = this.buffer.clipPosition([first, 0]);
@@ -293,23 +292,26 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         this.requests.delete(request);
         continue;
       }
-      if (request.ranges.length > 1) {
-        // One folded viewport is one view, not a series of independent
-        // windows. Prepare all its visible fragments before any lead, and
-        // never align those fragments into the hidden middle of a fold.
-        const ranges = [];
-        let size = 0;
-        for (const [start, end] of request.ranges) {
-          size += end - start + 1;
-          for (let row = Math.max(0, start); row <= Math.min(last, end); row += TILE_ROWS)
-            ranges.push([row, Math.min(last, end, row + TILE_ROWS - 1)]);
-        }
+      const ranges = [];
+      let size = 0;
+      for (const [start, end] of request.ranges) {
+        size += end - start + 1;
+        for (let row = Math.max(0, start); row <= Math.min(last, end); row += TILE_ROWS)
+          ranges.push([row, Math.min(last, end, row + TILE_ROWS - 1)]);
+      }
+      const visibleCount = ranges.length;
+      if (request.prefetch && visibleCount) {
         const first = Math.floor(request.ranges[0][0] / TILE_ROWS) * TILE_ROWS;
         const final = Math.floor(request.ranges.at(-1)[1] / TILE_ROWS) * TILE_ROWS;
         const direction = request.direction || 1;
         const add = (row) => {
           if (row >= 0 && row <= last) ranges.push([row, Math.min(last, row + TILE_ROWS - 1)]);
         };
+        // A folded view requests only visible fragments, never hidden interiors.
+        if (request.ranges.length === 1) {
+          if (direction > 0) for (let row = first; row <= final; row += TILE_ROWS) add(row);
+          else for (let row = final; row >= first; row -= TILE_ROWS) add(row);
+        }
         for (
           let distance = TILE_ROWS;
           distance <= (request.leadRows ?? TILE_ROWS);
@@ -317,53 +319,82 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         )
           add(direction > 0 ? final + distance : first - distance);
         add(direction > 0 ? first - TILE_ROWS : final + TILE_ROWS);
-        views.push({ ranges, size });
-        continue;
       }
-      for (const [start, end] of request.ranges) {
-        const first = Math.floor(Math.max(0, start) / TILE_ROWS) * TILE_ROWS;
-        const final = Math.floor(Math.min(last, end) / TILE_ROWS) * TILE_ROWS;
-        const rows = [];
-        const ranges = [];
-        // First publish the complete requested viewport, including when it
-        // straddles two cache tiles. A moving thumb must not spend two round
-        // trips coloring mostly offscreen rows before its last lines arrive.
-        if (
-          request.predictedDelta &&
-          performance.now() - request.movedAt < 50 &&
-          end - start < TILE_ROWS
-        ) {
-          const margin = Math.min(16, Math.floor((TILE_ROWS - 1 - (end - start)) / 2));
-          for (const steps of [2, 1]) {
-            const aheadStart = Math.max(0, start + request.predictedDelta * steps - margin);
-            const aheadEnd = Math.min(last, end + request.predictedDelta * steps + margin);
-            if (aheadStart <= aheadEnd) ranges.push([aheadStart, aheadEnd]);
-          }
-        }
-        if (end - start < TILE_ROWS) ranges.push([Math.max(0, start), Math.min(last, end)]);
-        for (let row = first; row <= final; row += TILE_ROWS) rows.push(row);
-        if (request.direction < 0) rows.reverse();
-        // A bounded lead covers transport latency without depending on the
-        // minimap. Prepare the nearest rows in the direction of travel first.
-        const direction = request.direction || 1;
-        for (
-          let distance = TILE_ROWS;
-          distance <= (request.leadRows ?? TILE_ROWS);
-          distance += TILE_ROWS
-        )
-          rows.push(direction > 0 ? final + distance : first - distance);
-        rows.push(direction > 0 ? first - TILE_ROWS : final + TILE_ROWS);
-        for (const row of rows)
-          if (row >= 0 && row <= last) ranges.push([row, Math.min(last, row + TILE_ROWS - 1)]);
-        views.push({ ranges, size: end - start });
-      }
+      views.push({ ranges, visibleCount, size, priority: request.priority });
     }
-    views.sort((a, b) => a.size - b.size);
-    return [
-      ...new Map(
-        views.flatMap((view) => view.ranges).map((range) => [range.join(":"), range]),
-      ).values(),
-    ];
+    views.sort((a, b) => a.priority - b.priority || a.size - b.size);
+    const ranges = [];
+    // Every visible split precedes the lead of another split. Minimap and
+    // measurement owners cannot put auxiliary reads ahead of editor text.
+    for (const priority of new Set(views.map((view) => view.priority))) {
+      const group = views.filter((view) => view.priority === priority);
+      for (const view of group) ranges.push(...view.ranges.slice(0, view.visibleCount));
+      for (const view of group) ranges.push(...view.ranges.slice(view.visibleCount));
+    }
+    return [...new Map(ranges.map((range) => [range.join(":"), range])).values()];
+  }
+
+  backgroundRange(stamp) {
+    // Spend spare worker time on nearby unvisited text, retaining it within
+    // the existing event allowance. Keep headroom for new visible windows.
+    const requests = [...this.requests]
+      .filter((request) => request.background && request.ranges.length && request.owner.deref())
+      .sort((a, b) => a.priority - b.priority);
+    const request = requests[0];
+    if (!request || request.ranges.length !== 1) return;
+    const center = request.ranges[0][0];
+    const first = Math.max(0, Math.floor(center / TILE_ROWS) * TILE_ROWS - 16384);
+    const end = this.buffer.clipPosition([center + 16384, 0]);
+    const gaps = this.cache.uncoveredRanges(new Point(first, 0), end, stamp);
+    gaps.sort(
+      (a, b) =>
+        Math.max(a[0].row - center, center - a[1].row, 0) -
+        Math.max(b[0].row - center, center - b[1].row, 0),
+    );
+    const gap = gaps[0];
+    if (!gap) return;
+    if (
+      this.cache.snapshots.length >= this.cache.maxSnapshots * 0.75 ||
+      this.cache.snapshots.reduce((sum, item) => sum + item.events.length, 0) >=
+        this.cache.maxEvents * 0.75
+    ) {
+      // A full cache must follow a new viewport instead of staying frozen
+      // around the first one. Replace only a strictly more distant fragment,
+      // with two tiles of hysteresis to avoid work oscillating at the edge.
+      const protectedRanges = this.wantedRanges();
+      let distance = Math.max(gap[0].row - center, center - gap[1].row, 0) + 2 * TILE_ROWS;
+      let index = -1;
+      for (let i = 0; i < this.cache.snapshots.length; i++) {
+        const snapshot = this.cache.snapshots[i];
+        const candidate = Math.max(snapshot.start.row - center, center - snapshot.end.row, 0);
+        if (
+          candidate <= distance ||
+          protectedRanges.some(
+            ([first, last]) => snapshot.start.row <= last && snapshot.end.row > first,
+          )
+        )
+          continue;
+        distance = candidate;
+        index = i;
+      }
+      if (index < 0) return;
+      const [removed] = this.cache.snapshots.splice(index, 1);
+      for (const row of this.folds.keys())
+        if (
+          row >= removed.start.row &&
+          (row < removed.end.row || (row === removed.end.row && removed.end.column > 0))
+        )
+          this.folds.delete(row);
+    }
+    const last = gap[1].row - (gap[1].column === 0 ? 1 : 0);
+    const row = Math.max(
+      gap[0].row,
+      Math.min(
+        Math.floor(last / TILE_ROWS) * TILE_ROWS,
+        Math.floor(center / TILE_ROWS) * TILE_ROWS,
+      ),
+    );
+    return [row, Math.min(last, row + TILE_ROWS - 1)];
   }
 
   schedule() {
@@ -401,7 +432,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                 this.buffer.clipPosition([last + 1, 0]),
                 stamp,
               ),
-          );
+          ) ?? this.backgroundRange(stamp);
         const first = nextRange();
         if (!first) {
           this.invalidateAll = false;
@@ -470,23 +501,35 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                       stamp,
                     ))
                       updates.add(new Range(start, end));
-                  const wanted = new Set(this.wantedRanges().map(([row]) => row));
-                  this.cache.replace([tile], stamp, (snapshot) => wanted.has(snapshot.start.row));
+                  const visible = [...this.requests].flatMap((request) => request.ranges);
+                  const evicted = this.cache.replace([tile], stamp, (snapshot) =>
+                    visible.some(
+                      ([first, last]) => snapshot.start.row <= last && snapshot.end.row > first,
+                    ),
+                  );
                   for (const [row, fold] of packet.folds ?? []) {
                     if (Boolean(this.folds.get(row)) !== Boolean(fold))
                       updates.add(new Range([row, 0], this.buffer.clipPosition([row, Infinity])));
-                    this.folds.set(row, fold && Range.fromObject(fold));
+                    if (fold) this.folds.set(row, Range.fromObject(fold));
+                    else this.folds.delete(row);
                   }
-                  for (const row of this.folds.keys())
-                    if (
-                      !this.cache.snapshots.some(
-                        (snapshot) =>
-                          row >= snapshot.start.row &&
-                          (row < snapshot.end.row ||
-                            (row === snapshot.end.row && snapshot.end.column > 0)),
-                      )
-                    )
-                      this.folds.delete(row);
+                  if (evicted) {
+                    const coverage = [...this.cache.snapshots].sort((a, b) =>
+                      a.start.compare(b.start),
+                    );
+                    for (const row of this.folds.keys()) {
+                      let low = 0,
+                        high = coverage.length;
+                      while (low < high) {
+                        const middle = (low + high) >>> 1;
+                        if (coverage[middle].start.row <= row) low = middle + 1;
+                        else high = middle;
+                      }
+                      const end = coverage[low - 1]?.end;
+                      if (!end || row > end.row || (row === end.row && end.column === 0))
+                        this.folds.delete(row);
+                    }
+                  }
                   // A complete tile is useful immediately. Later packets may
                   // belong to a minimap or a viewport that has already moved.
                   for (const update of updates) {
