@@ -1302,7 +1302,9 @@ class SelectList extends InputDialog {
   refresh(options = {}) {
     return "sections" in this.props
       ? this.update({ sections: this.props.sections, itemUpdateOptions: options })
-      : this.setItems(this.props.items, options);
+      : // Explicit refresh invalidates derived text even for immutable items:
+        // getFilterText may depend on caller state outside the snapshot.
+        this.setItems(this.getItems(), options);
   }
 
   /**

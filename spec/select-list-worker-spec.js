@@ -18,6 +18,24 @@ describe("SelectList worker search", () => {
       },
     };
   }
+  for (const worker of [true, false]) {
+    it(`invalidates external filter text on explicit refresh with worker=${worker}`, async () => {
+      let descriptions = false;
+      const items = Object.freeze([Object.freeze({ id: "command", name: "Run" })]);
+      list = lumine.workspace.buildSelectList({
+        items,
+        search: { worker, getFilterText: (item) => item.name + (descriptions ? " zzyzx" : "") },
+      });
+      await list.setQuery("zzyzx");
+      expect(list.getMatchCount()).toBe(0);
+      descriptions = true;
+      await list.refresh();
+      expect(list.getFilteredItems()).toEqual(items);
+      descriptions = false;
+      await list.refresh();
+      expect(list.getMatchCount()).toBe(0);
+    });
+  }
   it("uses a worker by default even for a small list without search options", async () => {
     list = lumine.workspace.buildSelectList({
       items: ["alpha", "beta"],

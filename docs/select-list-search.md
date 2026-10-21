@@ -27,6 +27,8 @@ Recent-item changes reorder only the resting list. While a query is active, a hi
 
 A frozen `items` array opts into immutable snapshot semantics: its entries, item IDs and searchable fields must remain unchanged. Publishing that same array again reuses the source records and worker preparation. Publish a new array and new objects for changed entries when the data changes. Ordinary mutable arrays retain replacement semantics, including callers that mutate an array before submitting it again. Public `getItems()` always returns an independent array.
 
+Explicit `refresh()` always invalidates derived records and search text, including when `getFilterText` reads external state that changed while the items remained identical. Snapshot reuse applies to ordinary source publication, not an explicit request to refresh its derived content.
+
 Large snapshot loaders can call `await list.prepareItems(items, {signal})` before returning `{items}`. This requires a frozen array and prepares identity records in bounded renderer batches without publishing them. Item identity callbacks remain in their owning renderer. Cancellation or invalid IDs leave the current list and selection unchanged; a subsequent update consumes the prepared records. This is source preparation, independent of the two search backends. Unchanged records at unchanged source positions are reused across prepared snapshots.
 
 ```js
