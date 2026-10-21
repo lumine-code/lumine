@@ -199,7 +199,7 @@ class SelectList extends InputDialog {
       ...(selection.initial !== undefined ? { initialSelection: selection.initial } : {}),
     });
 
-    this.props.items = this.model.getItems();
+    this.props.items = this.model._getItemsReference();
     this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
     this.validateOverflowSections(this.props);
     if (searchInWorker) this.model._applyUpdate({ query: initialQuery }, false, []);
@@ -1067,7 +1067,7 @@ class SelectList extends InputDialog {
     if (!this.supportsKeepOpen()) this.changeKeepOpenState(false);
     if ("items" in props) delete this.props.sections;
     if ("sections" in props) this.props.sections = props.sections;
-    if (itemsChanged) this.props.items = this.model.getItems();
+    if (itemsChanged) this.props.items = this.model._getItemsReference();
     if (recentItemIdsChanged) {
       const recentIds = this.model.getRecentIds();
       this.props.recentItemIds = recentIds;
@@ -1154,6 +1154,19 @@ class SelectList extends InputDialog {
    */
   getItems() {
     return this.model.getItems();
+  }
+
+  /**
+   * Prepare an immutable source snapshot without publishing it. Source loaders
+   * may await this before returning {items}; cancellation leaves the list intact.
+   * @public
+   * @status experimental
+   * @param {Array} items - Frozen array whose items and IDs will not be mutated.
+   * @param {Object} options - Optional AbortSignal in `signal`.
+   * @returns {Promise<Array>} The same array, ready for a subsequent update.
+   */
+  prepareItems(items, options) {
+    return this.model.prepareItems(items, options);
   }
 
   /**

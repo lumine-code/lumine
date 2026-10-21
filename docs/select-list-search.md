@@ -23,6 +23,27 @@ All matches are published together, in the same stable order as synchronous matc
 
 Recent-item changes reorder only the resting list. While a query is active, a history update from another window preserves its results, selected item and pending worker request.
 
+## Immutable source snapshots
+
+A frozen `items` array opts into immutable snapshot semantics: its entries, item IDs and searchable fields must remain unchanged. Publishing that same array again reuses the source records and worker preparation. Publish a new array and new objects for changed entries when the data changes. Ordinary mutable arrays retain replacement semantics, including callers that mutate an array before submitting it again. Public `getItems()` always returns an independent array.
+
+Large snapshot loaders can call `await list.prepareItems(items, {signal})` before returning `{items}`. This requires a frozen array and prepares identity records in bounded renderer batches without publishing them. Item identity callbacks remain in their owning renderer. Cancellation or invalid IDs leave the current list and selection unchanged; a subsequent update consumes the prepared records. This is source preparation, independent of the two search backends. Unchanged records at unchanged source positions are reused across prepared snapshots.
+
+```js
+let list;
+list = lumine.workspace.buildSelectList({
+  getItemId: (item) => item.id,
+  source: {
+    mode: "snapshot",
+    async load({ signal }) {
+      const items = await loadImmutableItems(signal);
+      await list.prepareItems(items, { signal });
+      return { items };
+    },
+  },
+});
+```
+
 ## Callback ownership
 
 `getFilterText`, score modifiers and custom sort callbacks remain in the owning renderer; arbitrary closures are not serialized into a worker. On the worker path, candidate extraction and score modification use yielding batches. Worker matching, built-in ordering and first-page highlighting run off the UI thread. A custom sort runs after fuzzy ranking and retains the model's callback context and stable tie order; an expensive custom comparator can still block the renderer. With `worker: false`, candidate preparation, matching and these callbacks run synchronously.

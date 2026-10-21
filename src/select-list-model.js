@@ -5,10 +5,17 @@ const NO_SELECTION = Symbol("no-selection");
 // Private protocol shared only with the built-in SelectList adapter. Public
 // matchers still receive independent candidate arrays and validated results.
 const PreparedRecordMatcher = Symbol("prepared-record-matcher");
+const { setImmediate } = require("node:timers");
 
 // Dense result sets do not need another hash table of every source ID. Resolve
 // an ID through the existing source table and keep only its result position.
 function resultIndex(records, sourceRecords, recordById) {
+  if (records === sourceRecords) {
+    return {
+      get: (id) => recordById.get(id)?.sourceIndex,
+      has: (id) => recordById.has(id),
+    };
+  }
   if (records.length < 2048 || records.length * 8 < sourceRecords.length)
     return new Map(records.map((record, index) => [record.id, index]));
   const positions = new Uint32Array(sourceRecords.length);
@@ -180,7 +187,34 @@ module.exports = class SelectListModel {
 
   /** Returns source items in their declared order, with sections flattened. */
   getItems() {
-    return this._records.map((record) => record.item);
+    return Array.from(this._getItemsReference());
+  }
+
+  // Internal immutable snapshot. Public callers still receive independent arrays.
+  _getItemsReference() {
+    return this._source.kind === "items"
+      ? this._source.items
+      : (this._flatItems ??= Object.freeze(this._records.map((record) => record.item)));
+  }
+
+  // Source loading is asynchronous; identity callbacks must run in the renderer,
+  // but bounded batches let input and rendering proceed between them. This does
+  // not introduce another search backend or change synchronous update semantics.
+  async prepareItems(items, { signal } = {}) {
+    if (!Array.isArray(items) || !Object.isFrozen(items))
+      throw new TypeError("prepareItems requires an immutable items array");
+    signal?.throwIfAborted();
+    if (this._source?.kind === "items" && this._source.items === items) return items;
+    const resolver = this._getItemId;
+    const built = this._recordBuilder(resolver);
+    for (let offset = 0; offset < items.length; offset += 2048) {
+      await new Promise((resolve) => setImmediate(resolve));
+      signal?.throwIfAborted();
+      const end = Math.min(offset + 2048, items.length);
+      for (let index = offset; index < end; index++) built.add(items[index], null, -1, index);
+    }
+    (this._preparedSources ??= new WeakMap()).set(items, { resolver, built });
+    return items;
   }
 
   getItemId(item) {
@@ -403,8 +437,14 @@ module.exports = class SelectListModel {
     let source = this._source;
     let sourceChanged = false;
     if (hasOwn(changes, "items")) {
-      source = this._normalizeItemsSource(changes.items);
-      sourceChanged = true;
+      // Freezing the array explicitly opts into immutable snapshot semantics.
+      // Mutable arrays retain replacement semantics, including in-place edits.
+      sourceChanged = !(
+        source?.kind === "items" &&
+        source.items === changes.items &&
+        Object.isFrozen(changes.items)
+      );
+      if (sourceChanged) source = this._normalizeItemsSource(changes.items);
     } else if (hasOwn(changes, "sections")) {
       source = this._normalizeSectionsSource(changes.sections);
       sourceChanged = true;
@@ -522,6 +562,7 @@ module.exports = class SelectListModel {
     this._matcherCandidates = draft.matcherCandidates;
     this._matcherCandidateSet = draft.matcherCandidateSet;
     this._records = built.records;
+    if (sourceChanged) this._flatItems = null;
     this._recordById = built.recordById;
     this._recordByItem = built.recordByItem;
     this._filteredRecords = filteredRecords;
@@ -532,7 +573,7 @@ module.exports = class SelectListModel {
 
   _normalizeItemsSource(items) {
     if (!Array.isArray(items)) throw new TypeError("items must be an array");
-    return { kind: "items", items: items.slice() };
+    return { kind: "items", items: Object.isFrozen(items) ? items : Object.freeze(items.slice()) };
   }
 
   _normalizeSectionsSource(sections) {
@@ -554,6 +595,22 @@ module.exports = class SelectListModel {
   }
 
   _buildRecords(source, getItemId) {
+    const prepared = source.kind === "items" ? this._preparedSources?.get(source.items) : null;
+    if (prepared?.resolver === getItemId) return prepared.built;
+    const built = this._recordBuilder(getItemId);
+    if (source.kind === "sections") {
+      source.sections.forEach((section, sectionIndex) => {
+        section.items.forEach((item, itemIndex) =>
+          built.add(item, section, sectionIndex, itemIndex),
+        );
+      });
+    } else {
+      source.items.forEach((item, index) => built.add(item, null, -1, index));
+    }
+    return built;
+  }
+
+  _recordBuilder(getItemId) {
     const records = [];
     const recordById = new Map();
     const recordByItem = new Map();
@@ -568,30 +625,30 @@ module.exports = class SelectListModel {
       };
       const id = this._resolveItemId(item, context, getItemId);
       if (recordById.has(id)) throw new Error(`Duplicate item ID: ${String(id)}`);
-      const record = Object.freeze({
-        id,
-        item,
-        sourceIndex: records.length,
-        sectionId: context.sectionId,
-        sourceSectionId: context.sectionId,
-        sectionIndex,
-        itemIndex,
-        recent: false,
-      });
+      const old = getItemId === this._getItemId ? this._recordByItem.get(item) : null;
+      const record =
+        old?.id === id &&
+        old.sourceIndex === records.length &&
+        old.sourceSectionId === context.sectionId &&
+        old.sectionIndex === sectionIndex &&
+        old.itemIndex === itemIndex
+          ? old
+          : Object.freeze({
+              id,
+              item,
+              sourceIndex: records.length,
+              sectionId: context.sectionId,
+              sourceSectionId: context.sectionId,
+              sectionIndex,
+              itemIndex,
+              recent: false,
+            });
       records.push(record);
       recordById.set(id, record);
       recordByItem.set(item, record);
     };
 
-    if (source.kind === "sections") {
-      source.sections.forEach((section, sectionIndex) => {
-        section.items.forEach((item, itemIndex) => add(item, section, sectionIndex, itemIndex));
-      });
-    } else {
-      source.items.forEach((item, index) => add(item, null, -1, index));
-    }
-
-    return { records, recordById, recordByItem };
+    return { records, recordById, recordByItem, add };
   }
 
   _resolveItemId(item, context, resolver = this._getItemId) {

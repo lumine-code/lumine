@@ -3,6 +3,41 @@ const fs = require("@lumine-code/fs-plus");
 const { compile, merge, toRipgrepGlobArgs, toRipgrepGlobs } = require("../src/ignored-names");
 
 describe("ignored names", () => {
+  it("exposes cloneable background rules with the same matching semantics", () => {
+    const matcher = compile([
+      "cache",
+      "*.log",
+      "/dist",
+      "src/**/temp",
+      "[ab].js",
+      "name{one,two}",
+      "!literal",
+    ]);
+    const rules = structuredClone(matcher.rules);
+    for (const input of [
+      "cache/a",
+      "nested/cache/a",
+      "x.log",
+      "UPPER.LOG",
+      "dist/a",
+      "nested/dist/a",
+      "src/a/temp/file",
+      "a.js",
+      "c.js",
+      "nameone",
+      "namethree",
+      "!literal",
+      ".dev/kept",
+    ]) {
+      let prefix = "";
+      const matched = input.split("/").some((part) => {
+        prefix = prefix ? `${prefix}/${part}` : part;
+        return rules.some(({ anchored, regex }) => regex.test(anchored ? prefix : part));
+      });
+      expect(matched).toBe(matcher.matches(input));
+    }
+    expect(matcher.caseInsensitive).toBe(fs.isCaseInsensitive());
+  });
   it("normalizes and deduplicates portable patterns", () => {
     expect(merge(["node_modules", "build\\output/"], ["node_modules", "./dist"])).toEqual([
       "node_modules",

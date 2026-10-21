@@ -1,6 +1,57 @@
 const SelectListModel = require("../src/select-list-model");
 
 describe("SelectListModel", () => {
+  it("reuses immutable snapshots while keeping mutable replacement and public copy semantics", () => {
+    const items = Object.freeze([Object.freeze({ id: "a" }), Object.freeze({ id: "b" })]);
+    const model = new SelectListModel({ items });
+    const records = model._records,
+      generation = model.getGeneration();
+    model.update({ items });
+    expect(model._records).toBe(records);
+    expect(model.getGeneration()).toBe(generation);
+    const publicItems = model.getItems();
+    publicItems.pop();
+    expect(model.getItemCount()).toBe(2);
+    const mutable = [{ id: "c" }];
+    model.update({ items: mutable });
+    mutable.push({ id: "d" });
+    model.update({ items: mutable });
+    expect(model.getItems().map((item) => item.id)).toEqual(["c", "d"]);
+  });
+
+  it("prepares sources without publishing and cancels without changing selection", async () => {
+    jasmine.useRealClock();
+    const model = new SelectListModel({ items: [{ id: "old" }] });
+    const items = Object.freeze(Array.from({ length: 5000 }, (_, id) => Object.freeze({ id })));
+    const controller = new AbortController();
+    const preparation = model.prepareItems(items, { signal: controller.signal });
+    controller.abort();
+    await expectAsync(preparation).toBeRejected();
+    expect(model.getSelectedItem().id).toBe("old");
+    await model.prepareItems(items);
+    expect(model.getItemCount()).toBe(1);
+    spyOn(model, "_recordBuilder").and.callThrough();
+    model.update({ items });
+    expect(model._recordBuilder).not.toHaveBeenCalled();
+    expect(model.getItemCount()).toBe(5000);
+    const invalid = Object.freeze([{ id: "duplicate" }, { id: "duplicate" }]);
+    await expectAsync(model.prepareItems(invalid)).toBeRejected();
+    expect(model.getItemCount()).toBe(5000);
+  });
+
+  it("reuses unaffected records in a prepared incremental snapshot", async () => {
+    jasmine.useRealClock();
+    const a = Object.freeze({ id: "a" }),
+      b = Object.freeze({ id: "b" });
+    const model = new SelectListModel({ items: Object.freeze([a, b]) });
+    const record = model._records[0];
+    const next = Object.freeze([a, Object.freeze({ id: "c" })]);
+    await model.prepareItems(next);
+    model.update({ items: next });
+    expect(model._records[0]).toBe(record);
+    expect(model.getItemById("b")).toBeNull();
+    expect(model.getItems().map((item) => item.id)).toEqual(["a", "c"]);
+  });
   it("retains dense result positions across reordering, sparse matches and mixed primitive IDs", () => {
     const ids = [false, 0, "", 1n, Symbol("row")];
     const items = Array.from({ length: 4096 }, (_, i) => ({

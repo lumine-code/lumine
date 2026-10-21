@@ -62,6 +62,7 @@ function warnInvalidPattern(pattern, error) {
  */
 function compile(patterns = []) {
   const entries = [];
+  const rules = [];
   const validPatterns = [];
 
   for (const pattern of merge(patterns)) {
@@ -70,16 +71,18 @@ function compile(patterns = []) {
     if (!patternForMatcher) continue;
 
     try {
+      const options = {
+        dot: true,
+        nocase: caseInsensitive,
+        noext: true,
+        nonegate: true,
+        strictBrackets: true,
+      };
       entries.push({
         anchored,
-        match: picomatch(patternForMatcher, {
-          dot: true,
-          nocase: caseInsensitive,
-          noext: true,
-          nonegate: true,
-          strictBrackets: true,
-        }),
+        match: picomatch(patternForMatcher, options),
       });
+      rules.push(Object.freeze({ anchored, regex: picomatch.makeRe(patternForMatcher, options) }));
       validPatterns.push(pattern);
     } catch (error) {
       warnInvalidPattern(pattern, error);
@@ -89,6 +92,9 @@ function compile(patterns = []) {
   const frozenPatterns = Object.freeze(validPatterns);
   return Object.freeze({
     patterns: frozenPatterns,
+    // Structured-cloneable rules for consumers preparing paths in a worker.
+    rules: Object.freeze(rules),
+    caseInsensitive,
     matches(relativePath) {
       if (typeof relativePath !== "string" || relativePath.length === 0) return false;
 
