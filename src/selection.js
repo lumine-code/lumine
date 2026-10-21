@@ -1133,7 +1133,8 @@ module.exports = class Selection {
   toggleLineComments(options = {}) {
     if (!this.ensureWritable("toggleLineComments", options)) return;
     let bufferRowRange = this.getBufferRowRange() || [null, null];
-    this.editor.toggleLineCommentsForBufferRows(...bufferRowRange, {
+    return this.editor.toggleLineCommentsForBufferRows(...bufferRowRange, {
+      ...options,
       correctSelection: true,
       selection: this,
     });

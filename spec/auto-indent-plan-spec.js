@@ -19,6 +19,18 @@ describe("Auto-indent plans", () => {
     return editor;
   }
 
+  it("carries preceding indentation through a sparse plain-text plan", async () => {
+    const editor = lumine.workspace.buildTextEditor();
+    editors.push(editor);
+    editor.update({ tabLength: 2, softTabs: true });
+    editor.setText("  first\nsecond\nthird\nuntouched");
+    const before = editor.getText();
+    await editor.autoIndentBufferRowsAtRows([2, 1, 2]);
+    expect(editor.getText()).toBe("  first\n  second\n  third\nuntouched");
+    editor.undo();
+    expect(editor.getText()).toBe(before);
+  });
+
   it("carries absolute indentation between rows while returning additive hints", async () => {
     const editor = await build("if (ok) {\n    foo();\nbar();\n}");
     const mode = editor.getBuffer().getLanguageMode();

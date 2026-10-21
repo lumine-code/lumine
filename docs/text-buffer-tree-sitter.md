@@ -1,6 +1,6 @@
 # Text snapshots and web-tree-sitter
 
-The JavaScript document model remains authoritative. `TreeSitterDocument` captures its immutable text root and exact applied-change journal; `TreeSitterParser` owns private editable trees and resumable WASM parser jobs. Published trees retain their own source snapshot, so nodes held by a consumer keep referring to the correct revision after the buffer changes.
+The JavaScript document model remains authoritative. `TreeSitterDocument` captures its immutable text root and exact applied-change journal; `TreeSitterParser` owns private editable trees and resumable WASM parser jobs. Published trees retain their own source snapshot, so nodes held by an analysis keep referring to the correct revision after the buffer changes. The [worker backend](syntax-worker.md) moves this parser machinery and package analyses into one syntax owner per window; the inline backend remains useful for parser tests and performance comparisons. The budgets below describe the shared parser implementation, not permission to expose worker-owned nodes in the renderer.
 
 ```mermaid
 flowchart LR
@@ -48,7 +48,7 @@ Initial loading keeps its separate 5 ms allowance. If native parsing finishes af
 
 Once a large root has switched to asynchronous updates, consecutive edits less than 50 ms apart wait for a 50 ms quiet period before capturing input or acquiring a parser. Cancellation removes that wait, and a revision check prevents submitted ranges from being paired with newer text. The first edit after a pause starts immediately; cold loads, injection parses, small buffers and fast synchronous grammars do not use this delay. This avoids repeatedly starting work that the next key would cancel, at the cost of deferring fresh syntax until the burst pauses. The quiet period is not a bound on the subsequent parse or publication time.
 
-The [parser interface](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/src/parser.ts) supports progress callbacks and included ranges. Lumine continues parsing in budgeted slices, discards obsolete work, and retains its changed-included-range resume guard for this runtime version. This pass does not replace web-tree-sitter, mutate a published tree, or add a mirrored worker document.
+The [parser interface](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/src/parser.ts) supports progress callbacks and included ranges. Both backends parse in budgeted slices, discard obsolete work, and retain the changed-included-range resume guard for this runtime version. The worker mirror applies the renderer's exact edit journal; it does not replace web-tree-sitter or mutate published trees.
 
 The upstream sources above were reviewed at tag `v0.27.1` on 2026-10-19 alongside the installed implementation. No upstream implementation was copied into the changes.
 

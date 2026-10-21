@@ -19,8 +19,8 @@
 // later spec step — only after every package provisioned, so a failure exports
 // nothing.
 //
-// Known gap: no electron-rebuild pass. None of the packages provisioned today
-// ship native modules; the first one that does needs a rebuild step here.
+// Native dependencies must support the editor's Electron runtime. This helper
+// runs their ordinary install scripts; it does not force an Electron ABI rebuild.
 
 const fs = require("fs");
 const path = require("path");

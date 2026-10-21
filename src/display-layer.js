@@ -265,6 +265,7 @@ class DisplayLayer {
           start: Point(startRow, 0),
           oldExtent: extent,
           newExtent: extent,
+          origin: "highlight",
         });
       },
     );
@@ -887,10 +888,10 @@ class DisplayLayer {
     return this.rightmostScreenPosition;
   }
 
-  getScreenLine(screenRow) {
+  getScreenLine(screenRow, highlightingOwner) {
     // Width measurements and token consumers must not replace the viewport's
     // pending highlighting request while its preparation is yielding.
-    if (!this.cachedScreenLines[screenRow])
+    if (!highlightingOwner && !this.cachedScreenLines[screenRow])
       this.prepareHighlightingForScreenRows(
         screenRow,
         screenRow + 1,
@@ -901,7 +902,7 @@ class DisplayLayer {
       this.screenLineBuilder.buildScreenLines(
         screenRow,
         screenRow + 1,
-        this.singleLineHighlightingOwner,
+        highlightingOwner ?? this.singleLineHighlightingOwner,
       )[0]
     );
   }
@@ -916,7 +917,10 @@ class DisplayLayer {
     if (!languageMode.requestHighlighting) return;
     this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), endRow);
     const lastRow = Math.min(endRow, this.screenLineLengths.length) - 1;
-    if (lastRow < startRow) return;
+    if (lastRow < startRow) {
+      languageMode.requestHighlighting(owner, []);
+      return;
+    }
     let row = this.translateScreenPositionWithSpatialIndex(Point(startRow, 0), "forward", true).row;
     const endBufferRow = this.translateScreenPositionWithSpatialIndex(
       Point(lastRow, this.screenLineLengths[lastRow]),
@@ -935,7 +939,7 @@ class DisplayLayer {
     // Ready scopes can invalidate cached screen lines and notify observers.
     // Finish that work before ScreenLineBuilder captures its mutable state or
     // uncached ranges, including when a subscriber reads another screen line.
-    languageMode.requestHighlighting(owner, ranges);
+    return languageMode.requestHighlighting(owner, ranges);
   }
 
   bufferRowsForScreenRows(startRow, endRow) {

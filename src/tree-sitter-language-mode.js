@@ -35,7 +35,6 @@ const ONE_CHAR_FORWARD_TRAVERSAL = Object.freeze(Point(0, 1));
 const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
-const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 // Initial loading shares a task budget and resumes in bounded WASM slices.
 // Large-buffer edits share this allowance from their first update. Fast work
 // publishes synchronously; unfinished work retains its parser for resumption.
@@ -2809,10 +2808,6 @@ class HighlightIterator {
 
     this.end = end;
     this.iterators = [];
-
-    if (Math.max(start.column, end.column) > LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING) {
-      return [];
-    }
 
     let injectionMarkers = this.languageMode.injectionsMarkerLayer.findMarkers({
       intersectsRange: new Range(start, new Point(endRow + 1, 0)),

@@ -6,6 +6,7 @@ const TreeSitterGrammar = require("./tree-sitter-grammar");
 const NullLanguageMode = require("./null-language-mode");
 const NullGrammar = require("./null-grammar");
 const fs = require("@lumine-code/fs-plus");
+const path = require("path");
 const { Point, Range } = require("./text-buffer");
 const {
   appendLifecycleError,
@@ -26,8 +27,11 @@ const MISSING_FILE_ERRORS = new Set(["ENOENT", "ENOTDIR", "EISDIR"]);
  * An instance of this class is always available as the `lumine.grammars` global.
  */
 module.exports = class GrammarRegistry {
-  constructor({ config, fileWatchClient } = {}) {
+  constructor({ config, fileWatchClient, syntaxExecution = "inline" } = {}) {
+    if (!["inline", "worker"].includes(syntaxExecution))
+      throw new TypeError("Invalid syntax execution owner");
     this.config = config;
+    this.syntaxExecution = syntaxExecution;
     this.fileWatchClient = fileWatchClient;
     this.subscriptions = new CompositeDisposable();
     this.emitter = new Emitter();
@@ -35,6 +39,13 @@ module.exports = class GrammarRegistry {
   }
 
   clear() {
+    const failures = [];
+    captureLifecycleError(failures, () => this.syntaxWorkerService?.dispose());
+    this.syntaxWorkerService = null;
+    for (const entry of this.syntaxModules?.values() ?? [])
+      captureLifecycleError(failures, () => entry.registration.dispose());
+    this.syntaxModules = new Map();
+    this.nextSyntaxModuleId ??= 0;
     this.windowUnloading = false;
     this.grammarSelectionRevision = (this.grammarSelectionRevision ?? 0) + 1;
     this.treeSitterGrammarsById = {};
@@ -51,6 +62,7 @@ module.exports = class GrammarRegistry {
     // Buffers already wired to release themselves, so a repeated assignment
     // does not stack subscriptions.
     this.releasedBuffers = new WeakSet();
+    throwLifecycleErrors(failures, "Unable to clear syntax registry");
   }
 
   /** @private Keep existing language modes while a confirmed window unload releases packages. */
@@ -212,18 +224,41 @@ module.exports = class GrammarRegistry {
    * or an empty array to parse no source. Ranges use buffer coordinates.
    *
    * @param {TextBuffer|TextEditor} buffer - The {@link TextBuffer} whose root language is constrained.
-   * @param {Function} provider - A function receiving the buffer and returning an array of {@link Range}s or `null`.
-   * @param {TextBuffer} provider.buffer - The buffer whose ranges are requested.
+   * @param {Object} provider - A portable policy with an absolute `module` path, exported `method` name and cloneable `params`. The method receives an immutable text snapshot and params, and synchronously returns ranges or `null`. Inline parser tests may also supply a function receiving the buffer.
    * @returns {Disposable} Removes this policy and restores full-buffer parsing, unless a newer policy replaced it.
    */
   setRootLanguageRanges(buffer, provider) {
     if (buffer.getBuffer) buffer = buffer.getBuffer();
-    if (typeof provider !== "function") throw new TypeError("A range provider must be a function");
+    let descriptor = null;
+    if (typeof provider === "function") {
+      if (this.syntaxExecution === "worker" || buffer.getLanguageMode().asynchronousSyntax)
+        throw new TypeError("Worker root ranges require a syntax module descriptor");
+    } else {
+      if (
+        !provider ||
+        typeof provider.module !== "string" ||
+        !path.isAbsolute(provider.module) ||
+        typeof provider.method !== "string"
+      )
+        throw new TypeError("A range policy requires an absolute module path and exported method");
+      descriptor = structuredClone({
+        module: provider.module,
+        method: provider.method,
+        params: provider.params,
+      });
+      const policy = descriptor;
+      provider = (buffer) => {
+        const method = require(policy.module)[policy.method];
+        if (typeof method !== "function")
+          throw new TypeError(`Unknown root range policy: ${policy.method}`);
+        return method(buffer.getTextSnapshot(), structuredClone(policy.params));
+      };
+    }
     if (buffer.isDestroyed()) return new Disposable();
     const previous = this.rootLanguageRangesByBuffer.get(buffer);
     previous?.destroySubscription.dispose();
     if (previous) this.subscriptions.remove(previous.destroySubscription);
-    const registration = { provider, destroySubscription: null };
+    const registration = { provider, descriptor, destroySubscription: null };
     this.rootLanguageRangesByBuffer.set(buffer, registration);
     registration.destroySubscription = buffer.onDidDestroy(() => {
       this.rootLanguageRangesByBuffer.delete(buffer);
@@ -337,6 +372,12 @@ module.exports = class GrammarRegistry {
     }
     if (!(grammar instanceof TreeSitterGrammar)) {
       throw new TypeError("Language modes require a Tree-sitter grammar");
+    }
+    if (this.syntaxExecution === "worker") {
+      const Service = require("./syntax-worker-service");
+      const Mode = require("./tree-sitter-worker-language-mode");
+      this.syntaxWorkerService ??= new Service(this);
+      return new Mode({ grammar, buffer, service: this.syntaxWorkerService });
     }
     return new TreeSitterLanguageMode({
       grammar,
@@ -719,6 +760,69 @@ module.exports = class GrammarRegistry {
 
   /**
    * @public
+   * @status experimental
+   *
+   * Register a syntax-only module in each parser owner. The module exports a
+   * factory receiving this registry followed by serializable arguments, and
+   * returns a disposable registration. It must not access renderer objects.
+   *
+   * @param {String} modulePath - Absolute path to the package's syntax module.
+   * @param {Object} [options]
+   * @param {String} [options.method] - Named factory export; omit for the default export.
+   * @param {Array} [options.args] - Serializable factory arguments.
+   * @returns {Disposable} Removes this module and its injection points.
+   */
+  registerSyntaxModule(modulePath, { method = null, args = [] } = {}) {
+    if (!path.isAbsolute(modulePath)) throw new TypeError("Syntax module path must be absolute");
+    const resolved = require.resolve(modulePath);
+    const module = require(resolved);
+    const factory = method ? module[method] : module;
+    if (typeof factory !== "function") throw new TypeError("Syntax module must export a factory");
+    const argumentsCopy = structuredClone(args);
+    const captured = new CompositeDisposable();
+    const previousCapture = this.capturingSyntaxModule;
+    this.capturingSyntaxModule = captured;
+    let registration;
+    try {
+      const owner = factory(this, ...structuredClone(argumentsCopy));
+      if (typeof owner?.dispose !== "function")
+        throw new TypeError("Syntax module must return a disposable registration");
+      registration = new CompositeDisposable(owner, captured);
+    } catch (error) {
+      const failures = [error];
+      captureLifecycleError(failures, () => captured.dispose());
+      throwLifecycleErrors(failures, "Unable to register syntax module");
+    } finally {
+      this.capturingSyntaxModule = previousCapture;
+    }
+    const id = ++this.nextSyntaxModuleId;
+    const entry = { id, path: resolved, method, args: argumentsCopy, registration };
+    this.syntaxModules.set(id, entry);
+    try {
+      this.emitter.emit("did-change-syntax-modules");
+    } catch (error) {
+      this.syntaxModules.delete(id);
+      const failures = [error];
+      captureLifecycleError(failures, () => registration.dispose());
+      throwLifecycleErrors(failures, "Unable to publish syntax module");
+    }
+    return new Disposable(() => {
+      if (!this.syntaxModules.delete(id)) return;
+      try {
+        registration.dispose();
+      } finally {
+        this.emitter.emit("did-change-syntax-modules");
+      }
+    });
+  }
+
+  /** @private */
+  onDidChangeSyntaxModules(callback) {
+    return this.emitter.on("did-change-syntax-modules", callback);
+  }
+
+  /**
+   * @public
    * @status extended
    *
    * Invoke the given callback when a grammar is removed from the
@@ -760,6 +864,10 @@ module.exports = class GrammarRegistry {
    * @returns {Disposable} A disposable that removes the injection point.
    */
   addInjectionPoint(grammarId, injectionPoint) {
+    if (this.syntaxExecution === "worker" && !this.capturingSyntaxModule)
+      throw new Error(
+        "Register JavaScript injections through registerSyntaxModule so callbacks run in the syntax owner",
+      );
     if (
       injectionPoint.combinedMaxMembers !== undefined &&
       (!Number.isSafeInteger(injectionPoint.combinedMaxMembers) ||
@@ -799,7 +907,7 @@ module.exports = class GrammarRegistry {
         });
     if (loadSubscription) this.subscriptions.add(loadSubscription);
 
-    return new Disposable(() => {
+    const registration = new Disposable(() => {
       loadSubscription?.dispose();
       if (loadSubscription) this.subscriptions.remove(loadSubscription);
       const currentTable = this.treeSitterGrammarsById;
@@ -821,6 +929,8 @@ module.exports = class GrammarRegistry {
         }
       }
     });
+    this.capturingSyntaxModule?.add(registration);
+    return registration;
   }
 
   get nullGrammar() {

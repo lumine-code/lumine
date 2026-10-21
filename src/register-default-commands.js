@@ -950,8 +950,7 @@ module.exports = function ({
         return this.unfoldAll();
       },
       "editor:fold-current-row": function () {
-        this.foldCurrentRow();
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldCurrentRow());
       },
       "editor:unfold-current-row": function () {
         this.unfoldCurrentRow();
@@ -961,44 +960,39 @@ module.exports = function ({
         return this.foldSelectedLines();
       },
       "editor:fold-at-indent-level-1": function () {
-        this.foldAllAtIndentLevel(0);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(0));
       },
       "editor:fold-at-indent-level-2": function () {
-        this.foldAllAtIndentLevel(1);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(1));
       },
       "editor:fold-at-indent-level-3": function () {
-        this.foldAllAtIndentLevel(2);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(2));
       },
       "editor:fold-at-indent-level-4": function () {
-        this.foldAllAtIndentLevel(3);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(3));
       },
       "editor:fold-at-indent-level-5": function () {
-        this.foldAllAtIndentLevel(4);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(4));
       },
       "editor:fold-at-indent-level-6": function () {
-        this.foldAllAtIndentLevel(5);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(5));
       },
       "editor:fold-at-indent-level-7": function () {
-        this.foldAllAtIndentLevel(6);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(6));
       },
       "editor:fold-at-indent-level-8": function () {
-        this.foldAllAtIndentLevel(7);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(7));
       },
       "editor:fold-at-indent-level-9": function () {
-        this.foldAllAtIndentLevel(8);
-        return this.scrollToCursorPosition();
+        return scrollAfterFold(this, this.foldAllAtIndentLevel(8));
       },
       "editor:log-cursor-scope": {
         description: "Show the grammar scopes that apply at the cursor.",
         didDispatch: function () {
+          if (this.getBuffer().getLanguageMode().asynchronousSyntax)
+            return this.getScopeDescriptorsForBufferPositions([
+              this.getCursorBufferPosition(),
+            ]).then((scopes) => scopes && showCursorScope(scopes[0], notificationManager));
           return showCursorScope(this.getCursorScope(), notificationManager);
         },
       },
@@ -1231,6 +1225,13 @@ var showCursorScope = function (descriptor, notificationManager) {
 };
 
 var showSyntaxTree = function (descriptor, notificationManager) {
+  if (descriptor?.then)
+    return descriptor.then(
+      (value) => showSyntaxTree(value, notificationManager),
+      (error) => {
+        if (error.name !== "AbortError") throw error;
+      },
+    );
   let list = descriptor.scopes.toString().split(",");
   list = list.map((item) => `* ${item}`);
   const content = `Syntax tree at Cursor\n${list.join("\n")}`;
@@ -1273,3 +1274,19 @@ var scrollEditorByPage = function (editor, direction) {
     }
   }
 };
+
+function scrollAfterFold(editor, result) {
+  const version = editor.foldRequestVersion;
+  const revision = editor.getBuffer().getTextRevision();
+  const position = editor.getCursorBufferPosition();
+  const scroll = () => {
+    if (
+      !editor.isDestroyed() &&
+      editor.foldRequestVersion === version &&
+      editor.getBuffer().getTextRevision() === revision &&
+      editor.getCursorBufferPosition().isEqual(position)
+    )
+      return editor.scrollToCursorPosition();
+  };
+  return result?.then ? result.then(scroll) : scroll();
+}

@@ -130,6 +130,9 @@ class TreeSitterPresentation {
 
   flush() {
     if (this.closed) return null;
+    // Publishing can synchronously render another view, which requests its
+    // own tiles. Do not recursively enter preparation from that observer.
+    if (this.running) return this.promise;
     if (this.failedGeneration === this.generation) return null;
     if (this.promise) return this.promise;
     const tiles = [...this.tiles.values()]
@@ -191,12 +194,18 @@ class TreeSitterPresentation {
       for (const range of ranges) this.publish(range);
     };
     let result;
+    this.running = true;
     try {
       result = run();
     } catch (error) {
       result = Promise.reject(error);
+    } finally {
+      this.running = false;
     }
-    if (!result?.then) return null;
+    if (!result?.then) {
+      if ([...this.tiles.values()].some((tile) => tile.dirty)) this.schedule();
+      return null;
+    }
     const promise = result
       .catch((error) => {
         this.failedGeneration = generation;

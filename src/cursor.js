@@ -326,8 +326,9 @@ module.exports = class Cursor extends Model {
    * @status public
    *
    * Retrieves the syntax tree scope descriptor for the cursor's current position.
+   * Worker syntax resolves asynchronously.
    *
-   * @returns {ScopeDescriptor}
+   * @returns {ScopeDescriptor|Promise<ScopeDescriptor>}
    */
   getSyntaxTreeScopeDescriptor() {
     return this.editor.syntaxTreeScopeDescriptorForBufferPosition(this.getBufferPosition());
@@ -931,7 +932,7 @@ module.exports = class Cursor extends Model {
    *
    * A paragraph is defined as a block of text surrounded by empty lines or comments.
    *
-   * @returns {Range|undefined} The surrounding paragraph range, or undefined when the cursor is on a blank row.
+   * @returns {Array<Number>|undefined|Promise<Array<Number>|undefined>} Inclusive paragraph row bounds, or undefined on a blank row. Worker syntax resolves asynchronously.
    */
   getCurrentParagraphBufferRange() {
     return this.editor.rowRangeForParagraphAtBufferRow(this.getBufferRow());

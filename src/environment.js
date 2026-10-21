@@ -278,6 +278,7 @@ class Environment {
     this.grammars = new GrammarRegistry({
       config: this.config,
       fileWatchClient: this.fileWatchClient,
+      syntaxExecution: params.syntaxExecution ?? "worker",
     });
 
     /**

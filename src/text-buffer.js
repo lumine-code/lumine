@@ -1066,6 +1066,49 @@ class TextBuffer {
 
   /**
    * @public
+   * @status extended
+   *
+   * Run a read-only analysis in this buffer's syntax owner. The request survives
+   * closing one editor split and is cancelled by text, grammar or buffer disposal.
+   * @param {String} modulePath - Absolute path to the analysis module.
+   * @param {String} method - Named export to execute with a syntax context.
+   * @param {*} params - Serializable analysis parameters.
+   * @param {Object} [options] - Optional signal and streamed-data consumer.
+   * @returns {Promise<*>} Data, or null when the captured revision is invalidated.
+   */
+  analyzeSyntax(modulePath, method, params, options) {
+    return require("./buffer-syntax-analysis")(this, modulePath, method, params, options);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Identify the current settled syntax without exposing parser objects.
+   * Compare tokens by identity; null means syntax is pending or unavailable.
+   * @returns {Object|null} An opaque immutable token for revision-bound caches.
+   */
+  getSyntaxSnapshotToken() {
+    const mode = this.getLanguageMode();
+    if (this.isDestroyed() || mode.destroyed || mode.publicationPending) return null;
+    const revision = this.getTextRevision();
+    const path = this.getPath();
+    const generation = mode.getSyntaxGeneration?.() ?? mode.presentation?.generation ?? 0;
+    const previous = this.syntaxSnapshotToken;
+    if (
+      previous?.mode === mode &&
+      previous.revision === revision &&
+      previous.generation === generation &&
+      previous.path === path
+    )
+      return previous.token;
+    const token = Object.freeze({});
+    this.syntaxSnapshotToken = { mode, revision, generation, path, token };
+    return token;
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Get the revision of the current text state. Revisions increase before
@@ -3471,6 +3514,7 @@ class TextBuffer {
    */
   setLanguageMode(languageMode) {
     if (languageMode !== this.languageMode) {
+      this.syntaxSnapshotToken = null;
       const oldLanguageMode = this.languageMode;
       if (typeof this.languageMode.destroy === "function") {
         this.languageMode.destroy();
@@ -3834,6 +3878,7 @@ class TextBuffer {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.syntaxSnapshotToken = null;
     this.pendingConfirmedSave?.cancel();
     this.emitter.emit("did-destroy");
     this.emitter.clear();

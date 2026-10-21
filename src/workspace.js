@@ -1854,7 +1854,9 @@ module.exports = class Workspace extends Model {
     const editors = this.getTextEditors();
     for (let editor of editors) {
       const languageMode = editor.getBuffer().getLanguageMode();
-      if (languageMode.rootLanguageLayer && languageMode.getAllLanguageLayers) {
+      if (languageMode.getUsedGrammars) {
+        for (const grammar of languageMode.getUsedGrammars()) addGrammar(grammar);
+      } else if (languageMode.rootLanguageLayer && languageMode.getAllLanguageLayers) {
         for (const layer of languageMode.getAllLanguageLayers()) addGrammar(layer.grammar);
       } else {
         addGrammar(editor.getGrammar());

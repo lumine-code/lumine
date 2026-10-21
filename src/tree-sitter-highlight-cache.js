@@ -53,6 +53,7 @@ class HighlightCache {
   }
   clear() {
     this.snapshots = [];
+    this.scopeCheckpoints = new WeakMap();
     this.edits = [];
     this.sequence = 0;
   }
@@ -152,7 +153,9 @@ class HighlightCache {
       ? this.snapshots.filter(
           (snapshot) =>
             snapshot.stamp?.revision === stamp.revision &&
-            snapshot.stamp?.generation === stamp.generation,
+            snapshot.stamp?.generation === stamp.generation &&
+            (stamp.presentation === undefined ||
+              snapshot.stamp?.presentation === stamp.presentation),
         )
       : this.snapshots;
     for (const snapshot of [...snapshots].sort((a, b) => compare(a.start, b.start))) {
@@ -161,6 +164,33 @@ class HighlightCache {
       if (compare(position, end) >= 0) return true;
     }
     return false;
+  }
+  uncoveredRanges(start, end, stamp = null) {
+    this.rebase();
+    const snapshots = this.snapshots
+      .filter(
+        (snapshot) =>
+          !stamp ||
+          (snapshot.stamp?.revision === stamp.revision &&
+            snapshot.stamp?.generation === stamp.generation &&
+            snapshot.stamp?.presentation === stamp.presentation),
+      )
+      .sort((a, b) => compare(a.start, b.start));
+    const ranges = [];
+    let position = start;
+    for (const snapshot of snapshots) {
+      if (compare(position, end) >= 0) break;
+      if (compare(snapshot.end, position) <= 0 || compare(snapshot.start, snapshot.end) >= 0)
+        continue;
+      if (compare(snapshot.start, position) > 0)
+        ranges.push([
+          copy(position),
+          copy(compare(snapshot.start, end) < 0 ? snapshot.start : end),
+        ]);
+      if (compare(snapshot.end, position) > 0) position = snapshot.end;
+    }
+    if (compare(position, end) < 0) ranges.push([copy(position), copy(end)]);
+    return ranges;
   }
   record(iterator, buffer, { complete = false } = {}) {
     const cache = this;
@@ -212,6 +242,36 @@ class HighlightCache {
       },
     };
   }
+  scopesBefore(snapshot, position) {
+    const events = snapshot.events;
+    let low = 0,
+      high = events.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (compare(events[middle].position, position) < 0) low = middle + 1;
+      else high = middle;
+    }
+    // Row-by-row consumers (notably the minimap) must not replay a tile's
+    // entire prefix for every row. Edits move boundaries, but preserve their
+    // scope sequence; replaced/sliced snapshots get their own checkpoints.
+    let saved = this.scopeCheckpoints.get(snapshot);
+    if (!saved || saved.count !== events.length) {
+      saved = { count: events.length, scopes: [[...snapshot.scopes]] };
+      this.scopeCheckpoints.set(snapshot, saved);
+    }
+    const checkpoint = Math.floor(low / 64);
+    if (saved.scopes.length <= checkpoint) {
+      const scopes = [...saved.scopes.at(-1)];
+      for (let i = (saved.scopes.length - 1) * 64; i < checkpoint * 64; i++) {
+        applyScopes(scopes, events[i]);
+        if ((i + 1) % 64 === 0) saved.scopes.push([...scopes]);
+      }
+    }
+    const scopes = [...saved.scopes[checkpoint]];
+    for (let i = checkpoint * 64; i < low; i++) applyScopes(scopes, events[i]);
+    return { scopes, index: low };
+  }
+
   read(start, end, fallback) {
     this.rebase();
     // Pick the newest covering paint at each boundary, so overlapping tiles
@@ -246,13 +306,7 @@ class HighlightCache {
           limit = candidate.start;
       }
       if (snapshot) {
-        const initial = [...snapshot.scopes];
-        let index = 0;
-        while (
-          index < snapshot.events.length &&
-          compare(snapshot.events[index].position, position) < 0
-        )
-          applyScopes(initial, snapshot.events[index++]);
+        let { scopes: initial, index } = this.scopesBefore(snapshot, position);
         transition(position, initial);
         while (
           index < snapshot.events.length &&

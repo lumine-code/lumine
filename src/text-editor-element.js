@@ -221,7 +221,7 @@ class TextEditorElement extends HTMLElement {
 
   setScrollTop(scrollTop) {
     const component = this.getComponent();
-    component.setScrollTop(scrollTop);
+    if (component.setScrollTop(scrollTop)) component.beginScrollHighlighting();
     component.scheduleUpdate();
   }
 

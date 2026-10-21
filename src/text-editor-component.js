@@ -339,6 +339,7 @@ module.exports = class TextEditorComponent {
     // Don't proceed if the model was destroyed (see scheduleUpdate; an
     // already-scheduled update can also land after a synchronous destroy).
     if (this.props.model.isDestroyed()) {
+      this.cancelScrollHighlighting();
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
@@ -350,6 +351,7 @@ module.exports = class TextEditorComponent {
     // display:none ancestor has no layout box and still suppresses updates.
     // Resolve rather than leak an update promise when no update can happen.
     if (!this.visible && !this.canMeasureOffscreenAutoHeight()) {
+      this.cancelScrollHighlighting();
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
@@ -359,6 +361,11 @@ module.exports = class TextEditorComponent {
     // first resize after it expands may arrive while the editor remains
     // outside the viewport, before IntersectionObserver ever calls didShow.
     if (!this.hasInitialMeasurements) this.measureDimensions();
+
+    if (this.waitForScrollHighlighting()) {
+      this.updateScheduled = false;
+      return;
+    }
 
     // Don't proceed if we have to pay for a measurement anyway and detect
     // that we are no longer visible.
@@ -497,6 +504,8 @@ module.exports = class TextEditorComponent {
   // Everything else retains the complete update path as its correctness
   // fallback.
   updateScrollAnimationFrame({ horizontal, vertical }) {
+    if (vertical) this.beginScrollHighlighting();
+    if (this.waitForScrollHighlighting()) return false;
     if (!this.canUpdateForScrollOnly(horizontal, vertical)) {
       this.updateSync({ updateMode: UPDATE_MODE_NORMAL });
       return false;
@@ -518,6 +527,56 @@ module.exports = class TextEditorComponent {
     }
     this.updateOverlayPositions();
     return true;
+  }
+
+  // Give an uncached scroll destination one frame to arrive with its colors.
+  // This never blocks the event loop, and further input cannot extend the
+  // deadline. Once the frame expires, scrolling proceeds even on a slow query.
+  beginScrollHighlighting() {
+    const buffer = this.props.model.getBuffer();
+    this.scrollHighlightingRequested = true;
+    this.scrollHighlightingRevision = buffer.getTextRevision();
+    this.scrollHighlightingMode = buffer.getLanguageMode();
+  }
+
+  waitForScrollHighlighting() {
+    if (!this.scrollHighlightingRequested) return false;
+    const model = this.props.model;
+    if (
+      !this.scrollHighlightingExpired &&
+      this.attached &&
+      this.visible &&
+      this.hasInitialMeasurements &&
+      this.scrollTopPending &&
+      model.getBuffer().getLanguageMode().asynchronousSyntax &&
+      model.displayLayer.prepareHighlightingForScreenRows(
+        this.getRenderedStartRow(),
+        this.getRenderedEndRow(),
+        model.displayLayer,
+      ) === false
+    ) {
+      if (!this.scrollHighlightingFrame) {
+        const frameWindow = this.window;
+        const handle = frameWindow.requestAnimationFrame(() => {
+          this.scrollHighlightingFrame = null;
+          this.scrollHighlightingExpired = true;
+          this.updateSync();
+        });
+        this.scrollHighlightingFrame = { window: frameWindow, handle };
+      }
+      return true;
+    }
+    this.cancelScrollHighlighting();
+    return false;
+  }
+
+  cancelScrollHighlighting(resolvePending = false) {
+    const frame = this.scrollHighlightingFrame;
+    if (frame) frame.window.cancelAnimationFrame(frame.handle);
+    this.scrollHighlightingFrame = null;
+    this.scrollHighlightingRequested = this.scrollHighlightingExpired = false;
+    this.scrollHighlightingMode = this.scrollHighlightingRevision = null;
+    if (frame && resolvePending) this.resolveNextUpdatePromise?.();
   }
 
   canUpdateScrollPositionOnly(horizontal, vertical) {
@@ -2593,6 +2652,7 @@ module.exports = class TextEditorComponent {
   }
 
   didDetach() {
+    this.cancelScrollHighlighting(true);
     if (this.attached) {
       this.scrollAnimator.cancel();
       this.highlightsComponent?.cancelFlashes();
@@ -2648,6 +2708,7 @@ module.exports = class TextEditorComponent {
   }
 
   didHide() {
+    this.cancelScrollHighlighting(true);
     if (this.visible) {
       this.visible = false;
       this.props.model.setVisible(false);
@@ -2781,6 +2842,7 @@ module.exports = class TextEditorComponent {
     if (scrollTopChanged) {
       // The user took over the viewport; stop pinning the inherited anchor.
       this.settlingScrollAnchor = null;
+      this.beginScrollHighlighting();
     }
 
     if (scrollLeftChanged || scrollTopChanged) {
@@ -2858,16 +2920,29 @@ module.exports = class TextEditorComponent {
 
   didScrollDummyScrollbar({ orientation, position }) {
     let scrollPositionChanged = false;
-    if (orientation === "vertical" && !this.scrollTopPending) {
+    if (orientation === "vertical") {
       scrollPositionChanged = this.setScrollTop(position);
       if (scrollPositionChanged) {
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
       }
-    } else if (orientation === "horizontal" && !this.scrollLeftPending) {
+    } else if (orientation === "horizontal") {
       scrollPositionChanged = this.setScrollLeft(position);
     }
-    if (scrollPositionChanged) this.updateSync();
+    if (scrollPositionChanged) {
+      // Begin asynchronous preparation from the input event, before the next
+      // frame builds its lines. Coalesce native thumb events just like wheel
+      // events instead of painting plain text synchronously on every event.
+      if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax) {
+        this.beginScrollHighlighting();
+        this.props.model.displayLayer.prepareHighlightingForScreenRows(
+          this.getRenderedStartRow(),
+          this.getRenderedEndRow(),
+          this.props.model.displayLayer,
+        );
+        this.scheduleUpdate();
+      } else this.updateSync();
+    }
   }
 
   didUpdateStyles() {
@@ -3408,6 +3483,7 @@ module.exports = class TextEditorComponent {
           ? ceilToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio)
           : floorToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio);
       scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta) || scrolled;
+      if (scrolled) this.beginScrollHighlighting();
     }
 
     if (!verticalOnly && xDelta != null) {
@@ -4347,6 +4423,34 @@ module.exports = class TextEditorComponent {
   }
 
   didChangeDisplayLayer(changes) {
+    if (changes.length && changes.every((change) => change.origin === "highlight")) {
+      if (this.scrollHighlightingFrame && !this.waitForScrollHighlighting()) {
+        this.updateSync();
+        return;
+      }
+      // Prepared colors do not change row geometry. Offscreen prefetch only
+      // invalidates the display cache; it must not rebuild the visible editor
+      // or interrupt the scroll-only path on every worker packet.
+      if (
+        this.mountedTileStartRow == null ||
+        changes.some(
+          ({ newRange }) =>
+            newRange.start.row < this.mountedTileEndRow &&
+            newRange.end.row > this.mountedTileStartRow,
+        )
+      ) {
+        this.scheduleUpdate();
+      }
+      return;
+    }
+    if (this.scrollHighlightingRequested) {
+      const buffer = this.props.model.getBuffer();
+      if (
+        buffer.getTextRevision() !== this.scrollHighlightingRevision ||
+        buffer.getLanguageMode() !== this.scrollHighlightingMode
+      )
+        this.cancelScrollHighlighting();
+    }
     // An edit means the settling window is over (and the anchor's buffer
     // position may no longer point at the same content); resume normal
     // capture-on-reflow behavior.
@@ -5171,6 +5275,7 @@ module.exports = class TextEditorComponent {
     if (this.hasInitialMeasurements) {
       const didScroll = this.setScrollTop(this.pixelPositionBeforeBlocksForRow(scrollTopRow));
       if (didScroll && scheduleUpdate) {
+        this.beginScrollHighlighting();
         this.scheduleUpdate();
       }
       return didScroll;

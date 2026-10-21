@@ -39,6 +39,29 @@ function fixture(lastRow = 1000) {
   };
 }
 
+test("queues new view requests made synchronously by a publication observer", async () => {
+  const f = fixture();
+  const owner = {};
+  let nestedPreparations;
+  try {
+    f.presentation.hasBudget = () => true;
+    f.presentation.publish = () => {
+      if (nestedPreparations !== undefined) return;
+      nestedPreparations = f.preparations();
+      f.presentation.requestRanges(owner, [[800, 810]], false);
+      f.presentation.flush();
+      assert.equal(f.preparations(), nestedPreparations);
+    };
+    f.presentation.flush();
+    assert.ok(f.presentation.timer);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(f.preparations() > nestedPreparations);
+    assert.ok(f.cache.covers(new Point(800, 0), new Point(810, 0)));
+  } finally {
+    f.presentation.destroy();
+  }
+});
+
 test("prepares requested fragments cooperatively and publishes only a complete batch", async () => {
   const f = fixture();
   try {

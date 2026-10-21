@@ -1028,7 +1028,8 @@ module.exports = class TextEditor {
   subscribeToDisplayLayer() {
     this.disposables.add(
       this.displayLayer.onDidChange((changes) => {
-        this.mergeIntersectingSelections();
+        if (!changes.every((change) => change.origin === "highlight"))
+          this.mergeIntersectingSelections();
         if (this.component) this.component.didChangeDisplayLayer(changes);
         this.emitter.emit(
           "did-change",
@@ -1134,11 +1135,14 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * Invoke the given callback synchronously when the content of the
-   * buffer changes.
+   * Invoke the callback synchronously when the display changes, including
+   * text edits, folding, wrapping and prepared syntax highlighting. Subscribe
+   * to {@link TextBuffer#onDidChangeText} for changes to source text only.
    *
    * Ranges reported for text changes carry the buffer's `origin`: `edit`,
-   * `undo`, `redo`, `reload`, or `mixed`. For buffer-coordinate transactions, subscribe to
+   * `undo`, `redo`, `reload`, or `mixed`. Color-only display updates use `highlight`.
+   * A complete display reset reports an empty object instead of range changes.
+   * For buffer-coordinate transactions, subscribe to
    * {@link TextBuffer#onDidChange} on {@link #getBuffer} instead.
    *
    * Because observers are invoked synchronously, it's important not to perform
@@ -2140,11 +2144,14 @@ module.exports = class TextEditor {
     }
   }
 
-  tokensForScreenRow(screenRow) {
+  tokensForScreenRow(screenRow, { highlightingOwner, maxTokens = Infinity } = {}) {
     const tokens = [];
+    if (maxTokens <= 0) return tokens;
     let lineTextIndex = 0;
     const currentTokenScopes = [];
-    const { lineText, tags } = this.screenLineForScreenRow(screenRow);
+    const { lineText, tags } = highlightingOwner
+      ? this.displayLayer.getScreenLine(screenRow, highlightingOwner)
+      : this.screenLineForScreenRow(screenRow);
     for (const tag of tags) {
       if (this.displayLayer.isOpenTag(tag)) {
         currentTokenScopes.push(this.displayLayer.classNameForTag(tag));
@@ -2163,9 +2170,26 @@ module.exports = class TextEditor {
           scopes: currentTokenScopes.slice(),
         });
         lineTextIndex += tag;
+        if (tokens.length >= maxTokens) break;
       }
     }
     return tokens;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Request cached highlighting for a rendering surface's complete screen-row
+   * window. Pass its stable owner to tokensForScreenRow while drawing. Empty
+   * windows release that owner's request; completion emits highlighting changes.
+   * @param {Object} owner - The rendering surface that owns this window.
+   * @param {Number} startRow - Inclusive screen row.
+   * @param {Number} endRow - Exclusive screen row.
+   */
+  requestHighlightingForScreenRows(owner, startRow, endRow) {
+    if (!this.isDestroyed())
+      this.displayLayer.prepareHighlightingForScreenRows(startRow, endRow, owner);
   }
 
   screenLineForScreenRow(screenRow) {
@@ -2244,10 +2268,10 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * Get the {@link Range} of the paragraph surrounding the most recently added
-   * cursor.
+   * Get the inclusive buffer-row bounds of the paragraph surrounding the most
+   * recently added cursor.
    *
-   * @returns {Range|undefined} The surrounding paragraph range, or undefined on a blank buffer row.
+   * @returns {Array<Number>|undefined|Promise<Array<Number>|undefined>} Inclusive paragraph row bounds, or undefined on a blank row. Worker syntax resolves asynchronously.
    */
   getCurrentParagraphBufferRange() {
     return this.getLastCursor().getCurrentParagraphBufferRange();
@@ -2306,6 +2330,8 @@ module.exports = class TextEditor {
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
     if (!this.emitWillInsertTextEvent(text)) return false;
+    const pendingNewlineIndent = this.pendingNewlineIndentIntent;
+    const beforeInsertionRevision = this.buffer.getTextRevision();
 
     let groupLastChanges = false;
     if (options.undo === "skip") {
@@ -2321,7 +2347,7 @@ module.exports = class TextEditor {
     const batchNewlineIndent =
       (text === "\n" || text === "\r\n") &&
       options.autoIndentNewline &&
-      this.getSelections().length > 1 &&
+      (this.getSelections().length > 1 || languageMode.asynchronousSyntax) &&
       languageMode.suggestedIndentForBufferRowsAtRows;
     const insertionOptions = batchNewlineIndent
       ? { ...options, autoIndent: false, autoIndentNewline: false }
@@ -2333,7 +2359,12 @@ module.exports = class TextEditor {
       result = this.mutateSelectedText((selection) => {
         const range = selection.insertText(text, insertionOptions);
         if (batchNewlineIndent) {
-          const marker = this.markBufferPosition(range.end);
+          const marker = languageMode.asynchronousSyntax
+            ? this.markBufferRange([range.end, range.end], {
+                exclusive: false,
+                invalidate: "never",
+              })
+            : this.markBufferPosition(range.end);
           indentMarkers.push(marker);
           // Insertion observers may remove whitespace from the previous blank
           // row. Preserve the same baseline that a single cursor sees before
@@ -2352,6 +2383,14 @@ module.exports = class TextEditor {
     }
     if (groupLastChanges) this.buffer.groupLastChanges();
 
+    if (
+      pendingNewlineIndent &&
+      this.pendingNewlineIndentIntent === pendingNewlineIndent &&
+      pendingNewlineIndent.revision === beforeInsertionRevision &&
+      (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent)
+    )
+      pendingNewlineIndent.revision = this.buffer.getTextRevision();
+
     if (batchNewlineIndent) {
       this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines);
     } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
@@ -2361,6 +2400,8 @@ module.exports = class TextEditor {
   }
 
   adjustNewlineIndentation(markers, languageMode, baselines = new Map()) {
+    if (languageMode.asynchronousSyntax)
+      return this.adjustWorkerNewlineIndentation(markers, languageMode, baselines);
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
     const options = {
@@ -2391,16 +2432,18 @@ module.exports = class TextEditor {
           );
       }
       // Plan every cursor against the same committed trees, then edit once.
-      const indents = languageMode.suggestedIndentForBufferRowsAtRows(
+      const planned = languageMode.suggestedIndentForBufferRowsAtRows(
         rows,
         this.getTabLength(),
         options,
       );
-      if (!indents || !isCurrent()) return;
-      this.applyIndentationLevels(indents, options);
-      if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+      return resolveSyntaxResult(planned, (indents) => {
+        if (!indents || !isCurrent()) return;
+        this.applyIndentationLevels(indents, options);
+        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+      });
     };
-    if (!languageMode.publicationPending) {
+    if (!languageMode.publicationPending && !languageMode.asynchronousSyntax) {
       try {
         apply();
       } finally {
@@ -2419,6 +2462,79 @@ module.exports = class TextEditor {
         this.autoIndentAtTransactionEndPromise = null;
     });
     this.autoIndentAtTransactionEndPromise = pending;
+    pending.catch(() => {});
+    return pending;
+  }
+
+  // Keep the intent to indent these new rows across subsequent typing in this
+  // editor. Each actual plan still belongs to one revision. Buffer edits from
+  // other owners, undo and grammar changes invalidate the intent instead.
+  adjustWorkerNewlineIndentation(markers, languageMode, baselines) {
+    const buffer = this.buffer;
+    const previous = this.pendingNewlineIndentIntent;
+    if (previous?.mode === languageMode && previous.revision === buffer.getTextRevision()) {
+      previous.markers.push(...markers);
+      for (const [marker, indent] of baselines) previous.baselines.set(marker, indent);
+      return previous.promise;
+    }
+    const intent = { revision: buffer.getTextRevision(), mode: languageMode, markers, baselines };
+    this.pendingNewlineIndentIntent = intent;
+    const isCurrent = () =>
+      this.pendingNewlineIndentIntent === intent &&
+      canAdjustIndentation(this, buffer, languageMode) &&
+      buffer.getTextRevision() === intent.revision;
+    let pending;
+    const adjustment = (async () => {
+      while (isCurrent()) {
+        const revision = intent.revision;
+        const tabLength = this.getTabLength(),
+          softTabs = this.getSoftTabs();
+        const rows = [
+          ...new Set(
+            markers
+              .filter((marker) => marker.isValid())
+              .map((marker) => marker.getStartBufferPosition().row),
+          ),
+        ].sort((a, b) => a - b);
+        if (!rows.length) return;
+        const options = {
+          preserveLeadingWhitespace: true,
+          skipBlankLines: false,
+          comparisonRowIndents: new Map(),
+        };
+        for (const marker of markers)
+          if (marker.isValid() && baselines.has(marker))
+            options.comparisonRowIndents.set(
+              marker.getStartBufferPosition().row,
+              baselines.get(marker),
+            );
+        let indents;
+        try {
+          indents = await languageMode.suggestedIndentForBufferRowsAtRows(rows, tabLength, options);
+        } catch (error) {
+          if (error.name !== "AbortError") throw error;
+          continue;
+        }
+        if (!isCurrent()) return;
+        if (
+          buffer.getTextRevision() !== revision ||
+          tabLength !== this.getTabLength() ||
+          softTabs !== this.getSoftTabs()
+        )
+          continue;
+        this.applyIndentationLevels(indents, options);
+        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+        return;
+      }
+    })();
+    pending = handleIndentationErrors(adjustment, isCurrent).finally(() => {
+      for (const marker of markers) marker.destroy();
+      if (this.pendingNewlineIndentIntent === intent) this.pendingNewlineIndentIntent = null;
+      if (this.autoIndentAtTransactionEndPromise === pending)
+        this.autoIndentAtTransactionEndPromise = null;
+    });
+    this.autoIndentAtTransactionEndPromise = pending;
+    intent.promise = pending;
     pending.catch(() => {});
     return pending;
   }
@@ -2907,7 +3023,39 @@ module.exports = class TextEditor {
    */
   toggleLineCommentsInSelection(options = {}) {
     if (!this.ensureWritable("toggleLineCommentsInSelection", options)) return;
-    this.mutateSelectedText((selection) => selection.toggleLineComments(options));
+    const mode = this.buffer.getLanguageMode();
+    if (!mode.asynchronousSyntax)
+      return this.mutateSelectedText((selection) => selection.toggleLineComments(options));
+    const revision = this.buffer.getTextRevision();
+    const selections = this.getSelections().map((selection) => ({
+      selection,
+      range: selection.getBufferRange(),
+    }));
+    const rows = [...new Set(selections.map(({ range }) => range.start.row))];
+    return mode
+      .commentStringsForRows(rows)
+      .then((comments) => {
+        if (
+          this.isDestroyed() ||
+          this.buffer.getLanguageMode() !== mode ||
+          this.buffer.getTextRevision() !== revision ||
+          selections.length !== this.getSelections().length ||
+          selections.some(
+            ({ selection, range }) =>
+              selection.destroyed || !selection.getBufferRange().isEqual(range),
+          )
+        )
+          return;
+        this.mutateSelectedText((selection) =>
+          selection.toggleLineComments({
+            ...options,
+            commentStrings: comments.get(selection.getBufferRange().start.row),
+          }),
+        );
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") throw error;
+      });
   }
 
   // Convert multiple lines to a single line.
@@ -4985,6 +5133,40 @@ module.exports = class TextEditor {
     const languageMode = this.buffer.getLanguageMode();
     if (!languageMode.getRangeForSyntaxNodeContainingRange) return;
 
+    if (languageMode.asynchronousSyntax) {
+      const revision = this.buffer.getTextRevision();
+      const selections = this.getSelections().map((selection) => ({
+        selection,
+        range: selection.getBufferRange(),
+      }));
+      return languageMode
+        .syntaxSelectionRanges(selections.map(({ range }) => range))
+        .then((ranges) => {
+          if (
+            this.isDestroyed() ||
+            this.buffer.getLanguageMode() !== languageMode ||
+            this.buffer.getTextRevision() !== revision ||
+            selections.length !== this.getSelections().length ||
+            selections.some(
+              ({ selection, range }) =>
+                selection.destroyed || !selection.getBufferRange().isEqual(range),
+            )
+          )
+            return;
+          const planned = new Map(
+            selections.map(({ selection, range }, i) => [selection, { range, next: ranges[i] }]),
+          );
+          this.expandSelectionsForward((selection) => {
+            const { range, next } = planned.get(selection);
+            if (!next) return;
+            (selection._rangeStack ??= []).push(range);
+            selection.setBufferRange(next);
+          });
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") throw error;
+        });
+    }
     this.expandSelectionsForward((selection) => {
       const currentRange = selection.getBufferRange();
       const newRange = languageMode.getRangeForSyntaxNodeContainingRange(currentRange);
@@ -5535,6 +5717,7 @@ module.exports = class TextEditor {
    */
   usesSoftTabs() {
     const languageMode = this.buffer.getLanguageMode();
+    if (languageMode.getSoftTabsHint) return languageMode.getSoftTabsHint();
     const hasIsRowCommented = languageMode.isRowCommented;
     for (
       let bufferRow = 0, end = Math.min(1000, this.buffer.getLastRow());
@@ -6019,6 +6202,8 @@ module.exports = class TextEditor {
    *
    * Get the syntactic {@link ScopeDescriptor} for the given position in buffer
    * coordinates. Useful with {@link Config#get}.
+   * With worker syntax this is a cached presentation read. Use
+   * {@link #getScopeDescriptorsForBufferPositions} for exact semantic decisions.
    *
    * For example, if called with a position inside the parameter list of an
    * anonymous CoffeeScript function, this method returns a {@link ScopeDescriptor} with
@@ -6037,6 +6222,88 @@ module.exports = class TextEditor {
 
   /**
    * @public
+   * @status extended
+   *
+   * Query exact current syntax scopes for several positions in one analysis.
+   * Returns null if the text or grammar changes before completion.
+   * @param {Array<Point|Array<Number>|Object>} positions - Buffer positions.
+   * @param {Object} [options] - Optional abort signal.
+   * @returns {Promise<Array<ScopeDescriptor>|null>}
+   */
+  async getScopeDescriptorsForBufferPositions(positions, options) {
+    return this.analyzeSyntaxPoints("scopes", positions, options, (scopes) =>
+      Object.freeze(new ScopeDescriptor({ scopes: Object.freeze(scopes) })),
+    );
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Query comment delimiters for several positions against one syntax revision.
+   * @param {Array<Point|Array<Number>|Object>} positions - Buffer positions.
+   * @param {Object} [options] - Optional abort signal.
+   * @returns {Promise<Array<Object|null>|null>} Null when the analysis was invalidated.
+   */
+  getCommentDelimitersForBufferPositions(positions, options) {
+    return this.analyzeSyntaxPoints("comments", positions, options, (value) => {
+      if (value?.block) Object.freeze(value.block);
+      return value && Object.freeze(value);
+    });
+  }
+
+  /** @private */
+  async analyzeSyntaxPoints(kind, positions, { signal } = {}, convert) {
+    if (!positions.length) return [];
+    const revision = this.buffer.getTextRevision(),
+      mode = this.buffer.getLanguageMode();
+    const coordinates = new Float64Array(positions.length * 2);
+    for (let index = 0; index < positions.length; index++) {
+      if (
+        signal?.aborted ||
+        this.isDestroyed() ||
+        this.buffer.getTextRevision() !== revision ||
+        this.buffer.getLanguageMode() !== mode
+      )
+        return null;
+      const point = Point.fromObject(positions[index]);
+      coordinates[index * 2] = point.row;
+      coordinates[index * 2 + 1] = point.column;
+      if (index && index % 4096 === 0) await new Promise((resolve) => setImmediate(resolve));
+    }
+    const result = [],
+      dictionary = [];
+    if (
+      signal?.aborted ||
+      this.isDestroyed() ||
+      this.buffer.getTextRevision() !== revision ||
+      this.buffer.getLanguageMode() !== mode
+    )
+      return null;
+    const summary = await this.analyzeSyntax(
+      require.resolve("./syntax-analysis-operations"),
+      "points",
+      { kind, positions: coordinates },
+      {
+        signal,
+        onChunk: ({ labels, values }) => {
+          for (const value of values) dictionary.push(convert(value));
+          for (const label of labels) {
+            if (label >= dictionary.length)
+              throw new Error("Invalid syntax descriptor dictionary index");
+            result.push(dictionary[label]);
+          }
+        },
+      },
+    );
+    if (summary === null) return null;
+    if (summary.count !== positions.length || result.length !== positions.length)
+      throw new Error("Incomplete syntax descriptor stream");
+    return result;
+  }
+
+  /**
+   * @public
    * @status essential
    *
    * Get the syntactic tree {@link ScopeDescriptor} for the given position in buffer
@@ -6047,7 +6314,7 @@ module.exports = class TextEditor {
    * the following syntax nodes array:
    * `["source.js", "program", "expression_statement", "assignment_expression", "class", "class_body", "method_definition", "formal_parameters", "identifier"]`
    * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`.
-   * @returns {ScopeDescriptor}
+   * @returns {ScopeDescriptor|Promise<ScopeDescriptor>} Worker syntax resolves asynchronously.
    */
   syntaxTreeScopeDescriptorForBufferPosition(bufferPosition) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6071,6 +6338,9 @@ module.exports = class TextEditor {
    *
    * The returned node belongs to the current parse snapshot. Do not retain it
    * after the buffer changes or the grammar reparses; request it again instead.
+   *
+   * Available only to the inline parser backend. Worker syntax requires
+   * moving node access into {@link #analyzeSyntax}; direct calls throw.
    *
    * @param {Point|Array<Number>|Object} bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
@@ -6096,6 +6366,9 @@ module.exports = class TextEditor {
    *
    * The returned node belongs to the current parse snapshot. Do not retain it
    * after the buffer changes or the grammar reparses; request it again instead.
+   *
+   * Available only to the inline parser backend. Worker syntax requires
+   * moving node access into {@link #analyzeSyntax}; direct calls throw.
    *
    * @param {Range|Array|Object} bufferRange - A {@link Range} or `Array` of two `[row, column]` points.
    * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
@@ -6143,6 +6416,9 @@ module.exports = class TextEditor {
    * retain them after the buffer changes or the grammar reparses. Parser-loading
    * and query-execution failures reject the returned promise.
    *
+   * Available only to the inline parser backend. Worker syntax requires
+   * moving node access into {@link #analyzeSyntax}; direct calls throw.
+   *
    * @param {String} queryType - The grammar query property to run, such as `tagsQuery`.
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels this query when aborted.
@@ -6165,6 +6441,54 @@ module.exports = class TextEditor {
       languageMode.getQueryCaptureGroups(queryType, { signal }),
     );
     return groups ?? [];
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Run a package's syntax analysis beside the parser that owns this document.
+   * The module exports a function receiving a read-only document context,
+   * serializable parameters, and `{signal, emit}`. Only data may be returned;
+   * syntax nodes must remain inside the analysis. Stream consumers should stage
+   * their results until this promise resolves with a current revision.
+   *
+   * @param {String} modulePath - Absolute path to the package's analysis module.
+   * @param {String} method - Name of the exported analysis function.
+   * @param {*} params - Serializable analysis parameters.
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels the analysis.
+   * @param {Function} [options.onChunk] - Accepts one streamed data packet; may return a promise.
+   * @returns {Promise<*>} Analysis data, or null when the invocation becomes obsolete.
+   * @category Syntax Trees
+   */
+  async analyzeSyntax(modulePath, method, params, options = {}) {
+    const controller = new AbortController();
+    const subscription = this.onDidDestroy(() => controller.abort());
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal;
+    try {
+      return await require("./buffer-syntax-analysis")(this.buffer, modulePath, method, params, {
+        ...options,
+        signal,
+        settle: this.buffer.getLanguageMode().analyze
+          ? async (signal) => {
+              while (!signal.aborted && !this.isDestroyed()) {
+                const pending = [...(this.pendingIndentationPromises ?? [])];
+                if (this.autoIndentAtTransactionEndPromise)
+                  pending.push(this.autoIndentAtTransactionEndPromise);
+                if (!pending.length) return true;
+                await Promise.all(pending);
+              }
+              return false;
+            }
+          : (signal) => this.whenGrammarSettled({ signal }),
+      });
+    } finally {
+      subscription.dispose();
+      controller.abort();
+    }
   }
 
   /**
@@ -6210,11 +6534,13 @@ module.exports = class TextEditor {
    *
    * Determine whether the first non-whitespace character on the given row has a comment scope.
    * @param {Number} bufferRow - The zero-indexed buffer row.
-   * @returns {Boolean|undefined} Whether the first non-whitespace character has a comment scope, or undefined for a blank row.
+   * @returns {Boolean|undefined|Promise<Boolean|undefined>} Whether the first non-whitespace character has a comment scope, or undefined for a blank row. Worker syntax resolves asynchronously.
    */
   isBufferRowCommented(bufferRow) {
     const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
     if (match) {
+      const mode = this.buffer.getLanguageMode();
+      if (mode.asynchronousSyntax) return mode.builtin("isRowCommented", [bufferRow]);
       return selectorMatchesAnyScope(
         "comment",
         this.scopeDescriptorForBufferPosition([bufferRow, match.index]).scopes,
@@ -6451,7 +6777,7 @@ module.exports = class TextEditor {
         await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
         if (!isCurrent() || !marker.isValid()) return;
         const range = marker.getBufferRange();
-        const indents = languageMode.suggestedIndentForBufferRows?.(
+        const indents = await languageMode.suggestedIndentForBufferRows?.(
           range.start.row,
           range.end.row - (range.end.column === 0 ? 1 : 0),
           this.getTabLength(),
@@ -6540,7 +6866,7 @@ module.exports = class TextEditor {
    * for a fold that contains the given row.
    *
    * @param {Number} bufferRow - A `Number`.
-   * @returns {Range|null} The exact foldable range, or `null` when the row does not start one.
+   * @returns {Range|null|Promise<Range|null>} The exact foldable range, or `null` when the row does not start one. Worker syntax resolves asynchronously.
    */
   getFoldableRangeAtBufferRow(bufferRow) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6559,12 +6885,14 @@ module.exports = class TextEditor {
    */
   foldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
-    return this.withCurrentFoldSyntax((languageMode) => {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
       const range = languageMode.getFoldableRangeContainingPoint?.(
         Point(row, Infinity),
         this.getTabLength(),
       );
-      if (range) return this.displayLayer.foldBufferRange(range);
+      return resolveSyntaxResult(range, (range) => {
+        if (range && isCurrent()) return this.displayLayer.foldBufferRange(range);
+      });
     });
   }
 
@@ -6593,47 +6921,54 @@ module.exports = class TextEditor {
    * @param {Number} bufferRow - A `Number`.
    */
   foldBufferRow(bufferRow) {
-    return this.withCurrentFoldSyntax((languageMode) => {
-      let position = Point(bufferRow, Infinity);
-      while (true) {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
+      const fold = (position) => {
         const foldableRange =
           languageMode.getFoldableRangeContainingPoint &&
           languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
-        if (foldableRange) {
-          const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
-            Range(foldableRange.start, foldableRange.start),
-          );
-          if (existingFolds.length === 0) {
-            this.displayLayer.foldBufferRange(foldableRange);
-          } else {
-            const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(existingFolds[0]);
-            if (firstExistingFoldRange.start.isLessThan(position)) {
-              position = Point(firstExistingFoldRange.start.row, 0);
-              continue;
+        return resolveSyntaxResult(foldableRange, (foldableRange) => {
+          if (!isCurrent()) return;
+          if (foldableRange) {
+            const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
+              Range(foldableRange.start, foldableRange.start),
+            );
+            if (existingFolds.length === 0) {
+              this.displayLayer.foldBufferRange(foldableRange);
+            } else {
+              const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(existingFolds[0]);
+              if (firstExistingFoldRange.start.isLessThan(position)) {
+                return fold(Point(firstExistingFoldRange.start.row, 0));
+              }
             }
           }
-        }
-        break;
-      }
+        });
+      };
+      return fold(Point(bufferRow, Infinity));
     });
   }
 
   withCurrentFoldSyntax(operation) {
     const version = (this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1);
     const mode = this.buffer.getLanguageMode();
-    if (!mode.publicationPending || !mode.atGrammarSettlement) return operation(mode);
     const revision = this.buffer.getTextRevision();
-    return mode.atGrammarSettlement().then((result) => {
-      if (
-        !this.isDestroyed() &&
-        version === this.foldRequestVersion &&
-        this.buffer.getLanguageMode() === mode &&
-        revision === this.buffer.getTextRevision() &&
-        !mode.publicationPending &&
-        !result?.parseError
-      )
-        return operation(mode);
-    });
+    const isCurrent = () =>
+      !this.isDestroyed() &&
+      version === this.foldRequestVersion &&
+      this.buffer.getLanguageMode() === mode &&
+      revision === this.buffer.getTextRevision() &&
+      !mode.publicationPending;
+    const perform = (result) => {
+      if (isCurrent() && !result?.parseError) return operation(mode, isCurrent);
+    };
+    const result =
+      mode.publicationPending && mode.atGrammarSettlement
+        ? mode.atGrammarSettlement().then(perform)
+        : perform();
+    return result?.catch
+      ? result.catch((error) => {
+          if (error.name !== "AbortError") throw error;
+        })
+      : result;
   }
 
   /**
@@ -6669,13 +7004,16 @@ module.exports = class TextEditor {
    * Fold all foldable lines.
    */
   foldAll() {
-    return this.withCurrentFoldSyntax((languageMode) => {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
       const foldableRanges =
         languageMode.getFoldableRanges && languageMode.getFoldableRanges(this.getTabLength());
-      this.displayLayer.destroyAllFolds();
-      for (let range of foldableRanges || []) {
-        this.displayLayer.foldBufferRange(range);
-      }
+      return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
+        if (!isCurrent()) return;
+        this.displayLayer.destroyAllFolds();
+        for (let range of foldableRanges || []) {
+          this.displayLayer.foldBufferRange(range);
+        }
+      });
     });
   }
 
@@ -6701,14 +7039,17 @@ module.exports = class TextEditor {
    * @param {Number} level - A `Number` starting at 0.
    */
   foldAllAtIndentLevel(level) {
-    return this.withCurrentFoldSyntax((languageMode) => {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
       const foldableRanges =
         languageMode.getFoldableRangesAtIndentLevel &&
         languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength());
-      this.displayLayer.destroyAllFolds();
-      for (let range of foldableRanges || []) {
-        this.displayLayer.foldBufferRange(range);
-      }
+      return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
+        if (!isCurrent()) return;
+        this.displayLayer.destroyAllFolds();
+        for (let range of foldableRanges || []) {
+          this.displayLayer.foldBufferRange(range);
+        }
+      });
     });
   }
 
@@ -6721,7 +7062,7 @@ module.exports = class TextEditor {
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
    * @param {Number} bufferRow - A `Number`
-   * @returns {Boolean|undefined} Whether the row is foldable; undefined when the language mode supplies no foldability check.
+   * @returns {Boolean|undefined|Promise<Boolean|undefined>} Whether the row is foldable; undefined when the language mode supplies no foldability check.
    */
   isFoldableAtBufferRow(bufferRow) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6747,7 +7088,7 @@ module.exports = class TextEditor {
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
    * @param {Number} screenRow - A `Number`
-   * @returns {Boolean|undefined} Whether the row is foldable; undefined when the language mode supplies no foldability check.
+   * @returns {Boolean|undefined|Promise<Boolean|undefined>} Whether the row is foldable; undefined when the language mode supplies no foldability check.
    */
   isFoldableAtScreenRow(screenRow) {
     return this.isFoldableAtBufferRow(this.bufferRowForScreenRow(screenRow));
@@ -7483,6 +7824,39 @@ module.exports = class TextEditor {
     return tracked;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Whether this editor has requested indentation that has not finished yet.
+   * @returns {Boolean}
+   */
+  hasPendingIndentation() {
+    return Boolean(this.autoIndentAtTransactionEndPromise || this.pendingIndentationPromises?.size);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Whether an editor-owned indentation correction is being published. Buffer
+   * change observers can distinguish it from independent edits and keep input
+   * intents whose coordinates will be acquired after the correction.
+   * @returns {Boolean}
+   */
+  isApplyingAutomaticIndentation() {
+    return this.automaticIndentationDepth > 0;
+  }
+
+  withAutomaticIndentation(callback) {
+    this.automaticIndentationDepth = (this.automaticIndentationDepth || 0) + 1;
+    try {
+      return callback();
+    } finally {
+      this.automaticIndentationDepth--;
+    }
+  }
+
   // Given a buffer row, indent it.
   //
   // * bufferRow - The row `Number`.
@@ -7506,7 +7880,9 @@ module.exports = class TextEditor {
             if (!isCurrent() || buffer.getTextRevision() !== requestedRevision) return;
             if (Number.isFinite(indentLevel) && indentLevel >= 0) {
               const revision = buffer.getTextRevision();
-              const range = this.setIndentationForBufferRow(bufferRow, indentLevel, options);
+              const range = this.withAutomaticIndentation(() =>
+                this.setIndentationForBufferRow(bufferRow, indentLevel, options),
+              );
               if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
               return range;
             } else if (indentLevel === undefined) {
@@ -7517,7 +7893,9 @@ module.exports = class TextEditor {
         ),
       );
     } else if (Number.isFinite(indentLevel) && indentLevel >= 0) {
-      return this.setIndentationForBufferRow(bufferRow, indentLevel, options);
+      return this.withAutomaticIndentation(() =>
+        this.setIndentationForBufferRow(bufferRow, indentLevel, options),
+      );
     }
   }
 
@@ -7554,45 +7932,123 @@ module.exports = class TextEditor {
       // atomically. Compared to the naive version below, on a hypothetical
       // ten-line range, this will result in only one tree re-parse (after
       // we're done) rather than ten.
-      const indents = languageMode.suggestedIndentForBufferRows(
+      const planned = languageMode.suggestedIndentForBufferRows(
         startRow,
         endRow,
         this.getTabLength(),
         options,
       );
 
-      // The language mode may not be able to indent the whole block
-      // atomically. If not, we'll indent as much as we're able, then fall back
-      // to the costlier approach.
-      if (
-        !canAdjustIndentation(this, buffer, languageMode) ||
-        buffer.getTextRevision() !== revision ||
-        indents === null
-      )
-        return;
-      const valid = new Map(
-        [...indents].filter(
-          ([row, indent]) =>
-            row >= startRow &&
-            row <= endRow &&
-            Number.isInteger(row) &&
-            Number.isFinite(indent) &&
-            indent >= 0,
-        ),
-      );
-      return this.transact(() => {
-        this.applyIndentationLevels(valid, options);
-        if (options.isPastedText) return;
-        for (let row = startRow; row <= endRow; row++) {
-          if (!indents.has(row)) this.autoIndentBufferRow(row, options);
-        }
-      });
+      const apply = (indents) => {
+        // The language mode may not be able to indent the whole block
+        // atomically. If not, we'll indent as much as we're able, then fall back
+        // to the costlier approach.
+        if (
+          !canAdjustIndentation(this, buffer, languageMode) ||
+          buffer.getTextRevision() !== revision ||
+          indents == null
+        )
+          return;
+        const valid = new Map(
+          [...indents].filter(
+            ([row, indent]) =>
+              row >= startRow &&
+              row <= endRow &&
+              Number.isInteger(row) &&
+              Number.isFinite(indent) &&
+              indent >= 0,
+          ),
+        );
+        this.withAutomaticIndentation(() =>
+          this.transact(() => {
+            this.applyIndentationLevels(valid, options);
+            if (options.isPastedText) return;
+            for (let row = startRow; row <= endRow; row++) {
+              if (!indents.has(row)) this.autoIndentBufferRow(row, options);
+            }
+          }),
+        );
+        return {
+          changed: buffer.getTextRevision() !== revision,
+          revision: buffer.getTextRevision(),
+        };
+      };
+      if (planned?.then) {
+        const isCurrent = () =>
+          canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+        return this.trackIndentation(
+          handleIndentationErrors(Promise.resolve(planned).then(apply), isCurrent),
+        );
+      }
+      return apply(planned);
     }
     let row = startRow;
     while (row <= endRow) {
       this.autoIndentBufferRow(row, options);
       row++;
     }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Plan sparse rows together, then apply their whitespace in one transaction.
+   * Call after related text edits so every row belongs to the same revision.
+   * @param {Array<Number>} rows - Buffer rows to indent; duplicates are ignored.
+   * @param {Object} [options] - Indentation options.
+   * @param {Boolean} [options.groupWithPrevious=false] - Include the correction in the preceding undo entry if its captured revision is still current.
+   * @returns {Object|undefined|Promise<Object|undefined>} The changed flag and resulting revision, or undefined when obsolete.
+   */
+  autoIndentBufferRowsAtRows(rows, options = {}) {
+    const buffer = this.buffer;
+    const mode = buffer.getLanguageMode();
+    const revision = buffer.getTextRevision();
+    const tabLength = this.getTabLength(),
+      softTabs = this.getSoftTabs();
+    rows = [...new Set(rows)]
+      .filter((row) => Number.isInteger(row) && row >= 0 && row <= buffer.getLastRow())
+      .sort((a, b) => a - b);
+    if (!rows.length) return;
+    if (!mode.suggestedIndentForBufferRowsAtRows) {
+      if (!canAdjustIndentation(this, buffer, mode)) return;
+      // Plain text derives each row from its predecessor, including the
+      // indentation applied earlier in this same sparse operation.
+      this.withAutomaticIndentation(() =>
+        this.transact(() => {
+          for (const row of rows) this.autoIndentBufferRow(row, options);
+        }),
+      );
+      const changed = buffer.getTextRevision() !== revision;
+      if (changed && options.groupWithPrevious) buffer.groupLastChanges();
+      return { changed, revision: buffer.getTextRevision() };
+    }
+    const wanted = new Set(rows);
+    const isCurrent = () =>
+      canAdjustIndentation(this, buffer, mode) &&
+      buffer.getTextRevision() === revision &&
+      this.getTabLength() === tabLength &&
+      this.getSoftTabs() === softTabs;
+    const apply = (indents) => {
+      if (!indents || !isCurrent()) return;
+      const valid = new Map([...indents].filter(([row]) => wanted.has(row)));
+      this.withAutomaticIndentation(() =>
+        this.transact(() => this.applyIndentationLevels(valid, options)),
+      );
+      const changed = buffer.getTextRevision() !== revision;
+      if (changed && options.groupWithPrevious) buffer.groupLastChanges();
+      return { changed, revision: buffer.getTextRevision() };
+    };
+    const plan = () => mode.suggestedIndentForBufferRowsAtRows(rows, tabLength, options);
+    const planned =
+      mode.publicationPending && !mode.asynchronousSyntax
+        ? Promise.resolve(mode.atGrammarSettlement()).then(() => (isCurrent() ? plan() : null))
+        : plan();
+    return planned?.then
+      ? this.trackIndentation(
+          handleIndentationErrors(Promise.resolve(planned).then(apply), isCurrent),
+        )
+      : apply(planned);
   }
 
   // Apply one revision-bound whitespace plan. In particular, never coerce a
@@ -7620,7 +8076,9 @@ module.exports = class TextEditor {
           text,
         });
     }
-    return buffer.setTextInIndependentRanges(edits, { expectedRevision: revision });
+    return this.withAutomaticIndentation(() =>
+      buffer.setTextInIndependentRanges(edits, { expectedRevision: revision }),
+    );
   }
 
   autoDecreaseIndentForBufferRow(bufferRow) {
@@ -7646,7 +8104,9 @@ module.exports = class TextEditor {
             // that the user doesn't want dedented.
             if (Number.isFinite(indentLevel) && indentLevel >= 0) {
               const revision = buffer.getTextRevision();
-              const range = this.setIndentationForBufferRow(bufferRow, indentLevel);
+              const range = this.withAutomaticIndentation(() =>
+                this.setIndentationForBufferRow(bufferRow, indentLevel),
+              );
               if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
               return range;
             }
@@ -7656,7 +8116,9 @@ module.exports = class TextEditor {
       );
     } else {
       if (Number.isFinite(indentLevel) && indentLevel >= 0)
-        this.setIndentationForBufferRow(bufferRow, indentLevel);
+        this.withAutomaticIndentation(() =>
+          this.setIndentationForBufferRow(bufferRow, indentLevel),
+        );
     }
   }
 
@@ -7677,6 +8139,8 @@ module.exports = class TextEditor {
     const languageMode = buffer.getLanguageMode();
     if (!languageMode.atTransactionEnd) return;
     if (!force && languageMode.shouldParseSynchronously?.()) return;
+    if (!force && languageMode.hasPendingIndentRequests && !languageMode.hasPendingIndentRequests())
+      return;
     if (!languageMode.useAsyncParsing || !languageMode.useAsyncIndent) return;
 
     let pending;
@@ -7684,21 +8148,23 @@ module.exports = class TextEditor {
       this.autoIndentAtTransactionEndPromise === pending &&
       canAdjustIndentation(this, buffer, languageMode);
     const adjustment = handleIndentationErrors(
-      Promise.resolve(languageMode.atTransactionEnd()).then(({ range, autoIndentRequests }) => {
-        if (!isCurrent() || !range || this.didAdjustIndent) return;
-        // When `force` is not `true`, will only try to auto-indent this
-        // transaction's range if the language mode reports that one of its
-        // suggested-indent methods was called during the transaction.
-        if (autoIndentRequests === 0 && !force) return;
+      Promise.resolve(languageMode.atTransactionEnd()).then(
+        async ({ range, autoIndentRequests }) => {
+          if (!isCurrent() || !range || this.didAdjustIndent) return;
+          // When `force` is not `true`, will only try to auto-indent this
+          // transaction's range if the language mode reports that one of its
+          // suggested-indent methods was called during the transaction.
+          if (autoIndentRequests === 0 && !force) return;
 
-        const revision = buffer.getTextRevision();
-        this.transact(() =>
-          this.autoIndentBufferRows(range.start.row, range.end.row, { isReindenting: false }),
-        );
-        if (!isCurrent()) return;
-        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-        if (isCurrent()) this.didAdjustIndent = true;
-      }),
+          const outcome = await this.autoIndentBufferRows(range.start.row, range.end.row, {
+            isReindenting: false,
+          });
+          if (!isCurrent()) return;
+          if (outcome?.changed && outcome.revision === buffer.getTextRevision())
+            buffer.groupLastChanges();
+          if (isCurrent()) this.didAdjustIndent = true;
+        },
+      ),
       isCurrent,
     );
     pending = adjustment.finally(() => {
@@ -7715,15 +8181,34 @@ module.exports = class TextEditor {
   }
 
   toggleLineCommentForBufferRow(row) {
-    this.toggleLineCommentsForBufferRows(row, row);
+    return this.toggleLineCommentsForBufferRows(row, row);
   }
 
   toggleLineCommentsForBufferRows(start, end, options = {}) {
     const languageMode = this.buffer.getLanguageMode();
+    if (languageMode.asynchronousSyntax && !Object.hasOwn(options, "commentStrings")) {
+      const revision = this.buffer.getTextRevision();
+      return languageMode
+        .commentStringsForPosition(new Point(start, 0))
+        .then((commentStrings) => {
+          if (
+            !this.isDestroyed() &&
+            this.buffer.getLanguageMode() === languageMode &&
+            this.buffer.getTextRevision() === revision
+          )
+            return this.transact(() =>
+              this.toggleLineCommentsForBufferRows(start, end, { ...options, commentStrings }),
+            );
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") throw error;
+        });
+    }
     let { commentStartString, commentEndString } =
-      (languageMode.commentStringsForPosition &&
-        languageMode.commentStringsForPosition(new Point(start, 0))) ||
-      {};
+      (Object.hasOwn(options, "commentStrings")
+        ? options.commentStrings
+        : languageMode.commentStringsForPosition &&
+          languageMode.commentStringsForPosition(new Point(start, 0))) || {};
     if (!commentStartString) return;
     commentStartString = commentStartString.trim();
 
@@ -7894,27 +8379,33 @@ module.exports = class TextEditor {
   getCommentDelimitersForBufferPosition(point) {
     point = Point.fromObject(point);
     const languageMode = this.buffer.getLanguageMode();
-    let { commentStartString, commentEndString, commentDelimiters } =
-      languageMode.commentStringsForPosition(point);
-    if (commentDelimiters) {
-      return commentDelimiters;
-    } else {
-      // Build a delimiters object out of the other data we received. The
-      // `commentStartString` and `commentEndString` settings aren't meant to
-      // be comprehensive — they just tell you which delimiter(s) to use to
-      // comment out a given selection — but they're better than nothing.
-      if (commentStartString && commentEndString) {
-        return { block: [commentStartString.trim(), commentEndString.trim()] };
-      } else if (commentStartString && !commentEndString) {
-        return { line: commentStartString.trim() };
-      } else {
-        return null;
-      }
-    }
+    return resolveSyntaxResult(
+      languageMode.commentStringsForPosition(point),
+      ({ commentStartString, commentEndString, commentDelimiters }) => {
+        if (commentDelimiters) {
+          return commentDelimiters;
+        } else {
+          // Build a delimiters object out of the other data we received. The
+          // `commentStartString` and `commentEndString` settings aren't meant to
+          // be comprehensive — they just tell you which delimiter(s) to use to
+          // comment out a given selection — but they're better than nothing.
+          if (commentStartString && commentEndString) {
+            return { block: [commentStartString.trim(), commentEndString.trim()] };
+          } else if (commentStartString && !commentEndString) {
+            return { line: commentStartString.trim() };
+          } else {
+            return null;
+          }
+        }
+      },
+    );
   }
 
   rowRangeForParagraphAtBufferRow(bufferRow) {
-    if (!NON_WHITESPACE_REGEXP.test(this.lineTextForBufferRow(bufferRow))) return;
+    const line = this.lineTextForBufferRow(bufferRow);
+    if (line === undefined || !NON_WHITESPACE_REGEXP.test(line)) return;
+    if (this.buffer.getLanguageMode().asynchronousSyntax)
+      return this.getParagraphRangesForBufferRows([bufferRow]).then((ranges) => ranges?.[0]);
 
     const languageMode = this.buffer.getLanguageMode();
     const isCommented = languageMode.isRowCommented(bufferRow);
@@ -7939,11 +8430,43 @@ module.exports = class TextEditor {
       new Point(endRow, this.buffer.lineLengthForRow(endRow)),
     );
   }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Find paragraph ranges for several rows against one syntax revision.
+   * @param {Array<Number>} rows - Buffer rows; blank rows produce null entries.
+   * @param {Object} [options] - Optional abort signal.
+   * @returns {Promise<Array<Range|null>|null>} Null when invalidated.
+   */
+  async getParagraphRangesForBufferRows(rows, { signal } = {}) {
+    if (!rows.length) return [];
+    const ranges = [];
+    const result = await this.analyzeSyntax(
+      require.resolve("./syntax-analysis-operations"),
+      "paragraphs",
+      { rows },
+      {
+        signal,
+        onChunk: (packet) => {
+          for (const range of packet) ranges.push(range && Range.fromObject(range));
+        },
+      },
+    );
+    if (!result) return null;
+    if (result.count !== ranges.length) throw new Error("Incomplete paragraph range stream");
+    return ranges;
+  }
 };
 
 // Capture the implementation once so later prototype spies or subclass
 // overrides do not inherit the geometry-preserving replacement fast path.
 const standardRatioForCharacter = module.exports.prototype.ratioForCharacter;
+
+function resolveSyntaxResult(result, apply) {
+  return result?.then ? Promise.resolve(result).then(apply) : apply(result);
+}
 
 function canAdjustIndentation(editor, buffer, languageMode) {
   return (

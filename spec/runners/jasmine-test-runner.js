@@ -46,6 +46,7 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
     document,
     configDirPath: lumineHome,
     enablePersistence: false,
+    syntaxExecution: process.env.LUMINE_SYNTAX_EXECUTION || "inline",
   });
 
   // Load general helpers

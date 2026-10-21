@@ -171,7 +171,7 @@ The editor loads portable grammar `.wasm` files through `web-tree-sitter`. Gramm
 
 To build the editor from source, install dependencies with `npm ci --ignore-scripts`, download Electron with `node script/install-electron.js`, then run `npm run build` to rebuild the editor's remaining native modules for Electron.
 
-Initial loading shares a 5 ms synchronous parsing allowance across documents and injection layers in the renderer task. Work that exceeds the allowance resumes in bounded WASM slices after yielding to the event loop. Ready small buffers and fast large grammars update parsing, loaded injections, indentation and visible highlighting synchronously. In buffers of at least 512 Ki UTF-16 units, an 8 ms foreground parsing allowance applies from the first edit. Unfinished committed updates retain their parser/input and resume asynchronously; bounded indentation hints defer instead of bypassing the allowance. Subsequent updates use the asynchronous path after budget exhaustion or a foreground update exceeding 12 ms. A newly required grammar still loads asynchronously. Consumers needing current syntax or completed indentation await `editor.whenGrammarSettled()`. Background symbol queries remain cooperative. This runs on the renderer thread, not a worker; neither the initial allowance nor the adaptive policy is a hard bound on native changed-range comparison or query execution.
+The [worker backend](syntax-worker.md) owns parsing, query compilation, injections and package syntax analyses outside the renderer. Its mirror consumes exact revisioned buffer changes, and only data returns to the UI. Parser jobs still yield between bounded WASM slices so edits, cancellation and other documents can make progress. The inline backend used by parser tests and performance comparisons retains its 5 ms initial allowance and adaptive large-buffer policy described in [text snapshots and web-tree-sitter](text-buffer-tree-sitter.md). Neither backend can interrupt an individual query compilation or changed-range comparison. Renderer packages use `analyzeSyntax` for current semantic results and await `editor.whenGrammarSettled()` when an operation also needs completed automatic indentation.
 
 Once a large root has switched to asynchronous updates, consecutive edits less than 50 ms apart wait for a 50 ms quiet period before capturing input or acquiring a parser. Cancellation removes that wait, and a revision check prevents submitted ranges from being paired with newer text. The first edit after a pause starts immediately; cold loads, injection parses, small buffers and fast synchronous grammars do not use this delay. This avoids repeatedly starting work that the next key would cancel, at the cost of deferring fresh syntax until the burst pauses. The quiet period is not a bound on the subsequent parse or publication time.
 
@@ -187,7 +187,7 @@ Bulk line-comment commands plan their edits from one read of each line. Eligible
 
 Each display view registers its requested buffer fragments, excluding the interiors of folds. Scrolling replaces that view's urgent work while preserving other views of the same buffer. Cached fragments outside those requests remain available as old presentation but are not recomputed on every edit. Display views are weakly referenced and destroyed views are removed from subsequent plans.
 
-Published trees retain their original UTF-16 text and revision. Consumers await `atGrammarSettlement()` to acquire current syntax; they must not edit or delete a published tree. Private indentation snapshots include exact already-applied edits from the open transaction, without delivering change events early. They therefore reuse the preceding tree incrementally instead of reparsing the document from scratch. Missing revision links still require a fresh parse. Parser and node-text callbacks read bounded chunks of the immutable text. Temporary private copies are released explicitly. Retained nodes and cursors keep their published tree owner alive; collected owners enqueue WASM tree disposal between edit bursts, with a pressure threshold and yields between disposal jobs. A single native destructor remains uninterruptible. Query lifetime remains managed by the runtime.
+Published trees retain their original UTF-16 text and revision. Owner-side analyses acquire current syntax after settlement; renderer packages access them through `analyzeSyntax`. Analyses must not edit, delete or retain a published tree beyond their invocation. Private indentation snapshots include exact already-applied edits from the open transaction, without delivering change events early. They therefore reuse the preceding tree incrementally instead of reparsing the document from scratch. Missing revision links still require a fresh parse. Parser and node-text callbacks read bounded chunks of the immutable text. Temporary private copies are released explicitly. Retained nodes and cursors keep their published tree owner alive; collected owners enqueue WASM tree disposal between edit bursts, with a pressure threshold and yields between disposal jobs. A single native destructor remains uninterruptible. Query lifetime remains managed by the runtime.
 
 The pinned 0.27.1 runtime has unsafe automatic cursor cleanup and interleaved cursor copying. A small ownership layer in the editor uses the public `delete()` and `resetTo()` methods to preserve cursor lifetime and state; it does not modify the dependency or its Wasm binary. Retained cursor methods keep their public owner alive and reject calls after explicit disposal. Subprocess regressions force garbage collection while cursors and retained methods are used, copied and released.
 
@@ -205,22 +205,23 @@ Measure opening a file, editing a small range, and collecting symbols separately
 
 The first parse waits for the highlighting query and any declared injection query. Folding and indentation queries already in the grammar cache are reused immediately; cold queries are prepared during idle time after the first highlighting update. An explicit folding or indentation request prepares the query when needed, and completed folding queries invalidate the initial fold cache so gutter markers appear without an edit. Symbol and local-variable queries are compiled on their first asynchronous capture request. Changed optional queries stay uncompiled until requested; queries already in use retain validation and reload behavior. The validation command and CI still compile every declared query.
 
-Upstream Tree-sitter query construction remains synchronous, so a large cold highlights query can still briefly occupy the renderer.
+Upstream Tree-sitter query construction remains synchronous within its owner. In worker mode it can delay other syntax requests, but does not execute on the renderer.
 
 Prefer a field or a leaf pattern to an unbounded sibling sequence. A query containing `(comment)*` before a declaration can reconsider long suffixes even when the caller requests only a small row window. Capture definitions and names directly when documentation is not consumed; when a sequence is required, test its behavior inside a growing parent rather than only on a short fixture.
 
 An injection callback should inspect the node that owns its content. Registering a root node and calling `descendantsOfType` inside the callback performs synchronous work on the entire tree after every edit. The runtime's outer scan budget cannot divide a traversal inside a callback.
 
-Use `combined` when several discovered nodes contribute to one logical child document:
+Register JavaScript injection callbacks in a syntax module, then register that module from package activation with `lumine.grammars.registerSyntaxModule(require.resolve("./injections"))`. The factory receives its owner�s registry. Use `combined` when several discovered nodes contribute to one logical child document:
 
 ```js
-const registration = lumine.grammars.addInjectionPoint("source.example", {
-  type: "documentation_line",
-  language: () => "documentation",
-  content: (node) => node,
-  combined: true,
-  newlinesBetween: true,
-});
+module.exports = (grammars) =>
+  grammars.addInjectionPoint("source.example", {
+    type: "documentation_line",
+    language: () => "documentation",
+    content: (node) => node,
+    combined: true,
+    newlinesBetween: true,
+  });
 ```
 
 The child layer shares its parser and queries while retaining individual owner and content ranges. An edit outside those ranges does not rediscover every member. `combined` can also be a function receiving the owner node: return `false` to parse that owner's content independently when joining it would change its meaning or its error recovery. Dispose the registration with the package or service edge that created it. Test malformed syntax as well as insertion, deletion, prefix shifts, and removal of the last member.
@@ -237,22 +238,30 @@ The synchronous `selectGrammar(filePath, fileContents)` remains available when t
 
 ## Constraining an embedded editor's root language
 
-A host can keep a prefix in an editor's buffer while parsing only its body with the selected language. `lumine.grammars.setRootLanguageRanges(buffer, provider)` installs a policy for that buffer's root language without changing its source text or its assigned grammar. Notebook code cells use this for a visible `%%` header followed by a body parsed with its original language package.
+A host can keep a prefix in an editor's buffer while parsing only its body with the selected language. `lumine.grammars.setRootLanguageRanges(buffer, { module, method, params })` installs a portable policy for that buffer's root language without changing its source text or its assigned grammar.
 
-The provider runs synchronously before each parse and receives the buffer. Return an array of `Range` objects in buffer coordinates, `null` to parse the whole buffer, or `[]` to parse no source. For a host-defined prefix occupying the first line:
+The exported method runs synchronously before each parse and receives an immutable text snapshot and cloneable params. Return ranges in buffer coordinates, `null` to parse the whole buffer, or `[]` to parse no source. For a host-defined prefix occupying the first line:
 
 ```js
-const { Range } = require("lumine");
-
-const registration = lumine.grammars.setRootLanguageRanges(editor.getBuffer(), (buffer) => {
-  if (!buffer.lineForRow(0).startsWith("%%")) return null;
-  return [new Range(buffer.clipPosition([1, 0]), buffer.getEndPosition())];
+// Package activation / document setup.
+const registration = lumine.grammars.setRootLanguageRanges(editor.getBuffer(), {
+  module: require.resolve("./root-ranges"),
+  method: "body",
 });
+```
+
+```js
+// root-ranges.js, executed by the syntax owner.
+exports.body = (snapshot) => {
+  if (!snapshot.lines(0, 1).next().value.startsWith("%%")) return null;
+  const start = snapshot.lineCount > 1 ? snapshot.lineStart(1) : snapshot.length;
+  return [{ start: snapshot.positionAt(start), end: snapshot.positionAt(snapshot.length) }];
+};
 ```
 
 The policy follows the buffer across grammar changes. It is not serialized, so the host recreates it when restoring its editor. Dispose the returned registration when the host releases the buffer; disposing an older registration does not remove a newer policy. Source outside the included ranges stays editable and is still available to save, copy, search, and execution. The host owns any highlighting or decorations for that excluded prefix.
 
-Keep the provider small: use bounded prefix recognition and edit-aware markers or caches instead of rescanning a large body on every parse. The ranges constrain syntax parsing, not the code sent to a kernel or language server; those consumers still need their own source contract.
+Keep the provider small: use bounded prefix recognition and immutable snapshot reads instead of rescanning a large body on every parse. The ranges constrain syntax parsing, not the code sent to a kernel or language server; those consumers still need their own source contract.
 
 ## ABI compatibility
 

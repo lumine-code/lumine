@@ -100,6 +100,9 @@ module.exports = class TreeSitterGrammar {
   }
 
   constructor(registry, grammarPath, params) {
+    // Keep the declarative definition separate from compiled runtime objects.
+    // JavaScript injection callbacks are registered through syntax modules.
+    this.definition = { ...params };
     this.registry = registry;
     this.name = params.name;
     this.type = "tree-sitter";

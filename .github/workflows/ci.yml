@@ -156,6 +156,9 @@ jobs:
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build -- --types prod,optional
+      - name: Install core integration spec packages
+        shell: bash
+        run: node script/install-spec-packages.js --package . --home "${{ runner.temp }}/lumine-core-specs" --github-env "$GITHUB_ENV"
       - name: Test native window lifecycle services
         shell: bash
         run: |

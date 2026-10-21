@@ -4,6 +4,23 @@ const Point = require("../../src/point");
 const HighlightCache = require("../../src/tree-sitter-highlight-cache");
 
 const point = (row, column = 0) => new Point(row, column);
+
+test("subtracts prepared ranges without repainting the middle of a larger tile", () => {
+  const cache = new HighlightCache();
+  const old = { revision: 1, generation: 0, presentation: 0 };
+  const current = { revision: 2, generation: 0, presentation: 1 };
+  cache.replace([{ start: point(0), end: point(128), scopes: [], events: [] }], old);
+  cache.replace([{ start: point(40), end: point(80), scopes: [], events: [] }], current);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(128)), []);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(128), current), [
+    [point(0), point(40)],
+    [point(80), point(128)],
+  ]);
+  assert.deepEqual(cache.uncoveredRanges(point(45), point(70), current), []);
+  assert.deepEqual(cache.uncoveredRanges(point(140), point(150), current), [
+    [point(140), point(150)],
+  ]);
+});
 function record(cache, start, end, scopes, events, complete = false) {
   let index;
   const iterator = cache.record(
@@ -66,6 +83,28 @@ test("uses the newest overlapping paint and retains neighboring cached scopes", 
   assert.deepEqual(at(cache, point(2)), [1, 2]);
   assert.deepEqual(at(cache, point(4)), [1, 3]);
   assert.deepEqual(at(cache, point(6)), [1, 2]);
+});
+
+test("seeks dense scope histories across edits and partial replacements", () => {
+  const cache = new HighlightCache();
+  const events = [];
+  for (let row = 0; row < 400; row++) {
+    const id = (row % 2) + 2;
+    events.push({ position: point(row, 1), open: [id], close: [] });
+    events.push({ position: point(row, 8), open: [], close: [id] });
+  }
+  record(cache, point(0), point(400), [1], events);
+  for (let row = 399; row >= 0; row--) {
+    assert.deepEqual(at(cache, point(row, 3)), [1, (row % 2) + 2]);
+    assert.deepEqual(at(cache, point(row, 9)), [1]);
+  }
+  cache.edit({ oldRange: { start: point(10), end: point(10) }, newRange: { end: point(15) } });
+  for (let row = 15; row < 405; row++)
+    assert.deepEqual(at(cache, point(row, 3)), [1, ((row - 5) % 2) + 2]);
+  cache.replace([{ start: point(150), end: point(160), scopes: [1, 8], events: [] }], {});
+  assert.deepEqual(at(cache, point(149, 3)), [1, 2]);
+  assert.deepEqual(at(cache, point(155, 3)), [1, 8]);
+  assert.deepEqual(at(cache, point(160, 3)), [1, 3]);
 });
 
 test("partial replacements preserve surrounding scopes and do not accumulate shadowed windows", () => {

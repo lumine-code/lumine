@@ -2143,7 +2143,7 @@ describe("DisplayLayer", () => {
         {
           oldRange: Range(Point(1, 0), Point(3, 0)),
           newRange: Range(Point(1, 0), Point(3, 0)),
-          origin: "edit",
+          origin: "highlight",
         },
       ]);
     });
