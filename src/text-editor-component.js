@@ -2244,6 +2244,7 @@ module.exports = class TextEditorComponent {
 
   updateHighlightsToRender() {
     this.decorationsToRender.highlights.length = 0;
+    if (this.decorationsToMeasure.highlights.length === 0) return;
     let originRect = this.refs.lineTiles.getBoundingClientRect();
     for (let i = 0; i < this.decorationsToMeasure.highlights.length; i++) {
       const highlight = this.decorationsToMeasure.highlights[i];

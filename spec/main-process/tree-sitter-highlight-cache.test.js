@@ -5,6 +5,70 @@ const HighlightCache = require("../../src/tree-sitter-highlight-cache");
 
 const point = (row, column = 0) => new Point(row, column);
 
+test("coverage follows replacement, eviction and edits without mixing syntax generations", () => {
+  const cache = new HighlightCache();
+  const old = { revision: 1, generation: 0, presentation: 0 };
+  const current = { revision: 2, generation: 0, presentation: 1 };
+  const tile = (start, end) => ({ start: point(start), end: point(end), scopes: [1], events: [] });
+  cache.replace([tile(40, 50), tile(10, 20)], current);
+  cache.replace([tile(0, 10)], old);
+  assert.equal(cache.covers(point(0), point(20)), true);
+  assert.equal(cache.covers(point(0), point(20), current), false);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(50), current), [
+    [point(0), point(10)],
+    [point(20), point(40)],
+  ]);
+  cache.replace([tile(8, 45)], current);
+  assert.equal(cache.covers(point(8), point(50), current), true);
+  assert.equal(cache.covers(point(8), point(50), { ...current, presentation: 2 }), false);
+  cache.removeSnapshot(cache.snapshots.findIndex((item) => item.start.row === 8));
+  assert.equal(cache.covers(point(0), point(50)), false);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(50)), [[point(8), point(45)]]);
+  cache.edit({ oldRange: { start: point(0), end: point(0) }, newRange: { end: point(1) } });
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(51)), [[point(9), point(46)]]);
+  cache.clear();
+  assert.equal(cache.covers(point(0), point(1)), false);
+});
+
+test("coverage follows a live recording and its eviction limits", () => {
+  const cache = new HighlightCache({ maxSnapshots: 1, maxEvents: 4 });
+  record(cache, point(0), point(1), [1], []);
+  assert.equal(cache.covers(point(0), point(1)), true);
+  let column = 1;
+  const iterator = cache.record(
+    {
+      seek: () => [1],
+      getPosition: () => (column <= 4 ? point(10, column) : Point.INFINITY),
+      getOpenScopeIds: () => [],
+      getCloseScopeIds: () => [],
+      moveToSuccessor: () => column++,
+    },
+    { clipPosition: () => point(11) },
+  );
+  iterator.seek(point(10), 10);
+  assert.equal(cache.covers(point(0), point(1)), false);
+  assert.equal(cache.covers(point(10), point(10, 1)), true);
+  assert.equal(cache.covers(point(10), point(10, 2)), false);
+  iterator.moveToSuccessor();
+  assert.equal(cache.covers(point(10), point(10, 2)), true);
+  iterator.moveToSuccessor();
+  iterator.moveToSuccessor();
+  assert.equal(cache.covers(point(10), point(10, 1)), false);
+});
+
+test("eviction stays visible when the retention callback reads coverage", () => {
+  const cache = new HighlightCache({ maxSnapshots: 2 });
+  const tile = (row) => ({ start: point(row), end: point(row + 1), scopes: [1], events: [] });
+  cache.replace([tile(0), tile(10)], {});
+  cache.replace([tile(20)], {}, () => {
+    assert.equal(cache.covers(point(0), point(1)), true);
+    return false;
+  });
+  assert.equal(cache.covers(point(0), point(1)), false);
+  assert.equal(cache.covers(point(10), point(11)), true);
+  assert.equal(cache.covers(point(20), point(21)), true);
+});
+
 test("subtracts prepared ranges without repainting the middle of a larger tile", () => {
   const cache = new HighlightCache();
   const old = { revision: 1, generation: 0, presentation: 0 };

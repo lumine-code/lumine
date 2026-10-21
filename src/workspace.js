@@ -3522,12 +3522,29 @@ module.exports = class Workspace extends Model {
     // owned by this request. Leave it with its current owner and stop before
     // entering a replaced or destroyed editor factory.
     if (!isCurrent()) return;
+    let editor;
     try {
-      return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
+      editor = this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
     } catch (error) {
       if (openRequest) openRequest.synchronousFailure = { error };
       throw error;
     }
+    const preparation =
+      options.activateItem === false
+        ? null
+        : buffer
+            .getLanguageMode()
+            .prepareInitialHighlighting?.(
+              options.initialLine ?? editor.getCursorBufferPosition().row,
+            );
+    if (preparation) {
+      await preparation;
+      if (!isCurrent()) {
+        editor.destroy();
+        return;
+      }
+    }
+    return editor;
   }
 
   handleGrammarUsed(grammar, { root = true } = {}) {

@@ -53,6 +53,7 @@ class HighlightCache {
   }
   clear() {
     this.snapshots = [];
+    this.orderedSnapshots = null;
     this.scopeCheckpoints = new WeakMap();
     this.edits = [];
     this.sequence = 0;
@@ -67,6 +68,8 @@ class HighlightCache {
     if (this.edits.length >= this.maxEdits) this.rebase();
   }
   rebase() {
+    if (this.edits.length === 0) return;
+    this.orderedSnapshots = null;
     for (const snapshot of this.snapshots) {
       for (const edit of this.edits) {
         if (edit.sequence <= snapshot.sequence) continue;
@@ -75,6 +78,7 @@ class HighlightCache {
           // translation on the fragment instead of visiting every cold event
           // on each Enter. Reads translate only the events they consume.
           const delta = edit.newEnd.row - edit.oldEnd.row;
+          if (delta === 0) continue;
           snapshot.start = shift(snapshot.start, edit);
           snapshot.end = shift(snapshot.end, edit, true);
           snapshot.rowOffset = (snapshot.rowOffset ?? 0) + delta;
@@ -112,6 +116,7 @@ class HighlightCache {
   }
   replace(snapshots, stamp, keep = () => false) {
     this.rebase();
+    this.orderedSnapshots = null;
     const retained = new Set();
     for (const snapshot of snapshots) {
       const remaining = [];
@@ -166,23 +171,30 @@ class HighlightCache {
       );
       if (index < 0) break;
       evicted = true;
-      events -= this.snapshots.splice(index, 1)[0].events.length;
+      events -= this.removeSnapshot(index).events.length;
     }
     return evicted;
   }
-  covers(start, end, stamp = null) {
+  removeSnapshot(index) {
+    this.orderedSnapshots = null;
+    return this.snapshots.splice(index, 1)[0];
+  }
+  getOrderedSnapshots() {
     this.rebase();
+    return (this.orderedSnapshots ??= [...this.snapshots].sort((a, b) =>
+      compare(a.start, b.start),
+    ));
+  }
+  covers(start, end, stamp = null) {
     let position = start;
-    const snapshots = stamp
-      ? this.snapshots.filter(
-          (snapshot) =>
-            snapshot.stamp?.revision === stamp.revision &&
-            snapshot.stamp?.generation === stamp.generation &&
-            (stamp.presentation === undefined ||
-              snapshot.stamp?.presentation === stamp.presentation),
-        )
-      : this.snapshots;
-    for (const snapshot of [...snapshots].sort((a, b) => compare(a.start, b.start))) {
+    for (const snapshot of this.getOrderedSnapshots()) {
+      if (
+        stamp &&
+        (snapshot.stamp?.revision !== stamp.revision ||
+          snapshot.stamp?.generation !== stamp.generation ||
+          (stamp.presentation !== undefined && snapshot.stamp?.presentation !== stamp.presentation))
+      )
+        continue;
       if (compare(snapshot.start, position) > 0) break;
       if (compare(snapshot.end, position) > 0) position = snapshot.end;
       if (compare(position, end) >= 0) return true;
@@ -190,19 +202,16 @@ class HighlightCache {
     return false;
   }
   uncoveredRanges(start, end, stamp = null) {
-    this.rebase();
-    const snapshots = this.snapshots
-      .filter(
-        (snapshot) =>
-          !stamp ||
-          (snapshot.stamp?.revision === stamp.revision &&
-            snapshot.stamp?.generation === stamp.generation &&
-            snapshot.stamp?.presentation === stamp.presentation),
-      )
-      .sort((a, b) => compare(a.start, b.start));
     const ranges = [];
     let position = start;
-    for (const snapshot of snapshots) {
+    for (const snapshot of this.getOrderedSnapshots()) {
+      if (
+        stamp &&
+        (snapshot.stamp?.revision !== stamp.revision ||
+          snapshot.stamp?.generation !== stamp.generation ||
+          snapshot.stamp?.presentation !== stamp.presentation)
+      )
+        continue;
       if (compare(position, end) >= 0) break;
       if (compare(snapshot.end, position) <= 0 || compare(snapshot.start, snapshot.end) >= 0)
         continue;
@@ -236,6 +245,7 @@ class HighlightCache {
           events: [],
         };
         cache.snapshots.push(snapshot);
+        cache.orderedSnapshots = null;
         if (!complete && cache.snapshots.length > cache.maxSnapshots) cache.snapshots.shift();
         cover();
         return scopes;
@@ -252,12 +262,13 @@ class HighlightCache {
           });
           if (!complete && snapshot.events.length > cache.maxRecordEvents) {
             cache.snapshots = cache.snapshots.filter((item) => item !== snapshot);
+            cache.orderedSnapshots = null;
             snapshot = null;
           }
           if (!complete) {
             let total = cache.snapshots.reduce((count, item) => count + item.events.length, 0);
             while (total > cache.maxEvents && cache.snapshots.length > 1)
-              total -= cache.snapshots.shift().events.length;
+              total -= cache.removeSnapshot(0).events.length;
           }
         }
         const result = iterator.moveToSuccessor();

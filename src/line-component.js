@@ -3,6 +3,9 @@ const {
   ZERO_WIDTH_NBSP_CHARACTER,
 } = require("./text-editor-component-helpers");
 
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;" };
+const escapeHTML = (text) => text.replace(/[&<>"\r]/g, (character) => HTML_ESCAPES[character]);
+
 module.exports = class LineComponent {
   constructor(props) {
     const { nodePool, screenRow, screenLine, lineComponentsByScreenLineId, offScreen } = props;
@@ -70,10 +73,56 @@ module.exports = class LineComponent {
     }
 
     this.element.remove();
+    // HTML-built descendants were never borrowed from the pool. Retain only
+    // the line shell, rather than accumulating unused token nodes there.
+    if (this.unpooledContents) this.element.replaceChildren();
     nodePool.release(this.element);
   }
 
   appendContents() {
+    const { screenLine, textDecorations } = this.props;
+    this.unpooledContents =
+      !textDecorations?.length &&
+      screenLine.tags.length >= 8 &&
+      !screenLine.lineText.includes("\0");
+    if (this.unpooledContents) return this.appendHTMLContents();
+    this.appendPooledContents();
+  }
+
+  appendHTMLContents() {
+    const { displayLayer, screenLine } = this.props;
+    const { lineText, tags } = screenLine;
+    let html = "<span>",
+      column = 0,
+      depth = 0;
+    for (const tag of tags) {
+      if (tag === 0) continue;
+      if (displayLayer.isCloseTag(tag)) {
+        html += "</span>";
+        depth--;
+      } else if (displayLayer.isOpenTag(tag)) {
+        // HTML parsers flatten extremely deep markup. Preserve the exact
+        // scope ancestry with DOM construction for such lines.
+        if (++depth > 256) {
+          this.unpooledContents = false;
+          return this.appendPooledContents();
+        }
+        html += `<span class="${escapeHTML(displayLayer.classNameForTag(tag) || "")}">`;
+      } else {
+        html += escapeHTML(lineText.slice(column, column + tag));
+        column += tag;
+      }
+    }
+    html += "</span>";
+    if (column === 0) html += " ";
+    if (lineText.endsWith(displayLayer.foldCharacter)) html += ZERO_WIDTH_NBSP_CHARACTER;
+    this.element.innerHTML = html;
+    this.textNodes.length = 0;
+    const walker = this.element.ownerDocument.createTreeWalker(this.element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) this.textNodes.push(node);
+  }
+
+  appendPooledContents() {
     const { displayLayer, nodePool, screenLine, textDecorations } = this.props;
 
     this.textNodes.length = 0;

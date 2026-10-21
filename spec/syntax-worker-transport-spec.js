@@ -6,6 +6,41 @@ const path = require("node:path");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 
 describe("Syntax worker transport", () => {
+  it("prepares a bounded initial window and releases the wait on paint or timeout", async () => {
+    jasmine.useRealClock();
+    const buffer = new TextBuffer("const value = 1;\n".repeat(300));
+    let ready = false,
+      listener;
+    const dispose = jasmine.createSpy("dispose");
+    const mode = {
+      buffer,
+      defaultOwner: {},
+      cache: { covers: () => ready },
+      onDidChangeHighlighting(fn) {
+        listener = fn;
+        return { dispose };
+      },
+      requestHighlighting: jasmine.createSpy("requestHighlighting"),
+    };
+    try {
+      const waiting = WorkerMode.prototype.prepareInitialHighlighting.call(mode, 9000);
+      expect(mode.requestHighlighting).toHaveBeenCalledWith(mode.defaultOwner, [[268, 300]]);
+      ready = true;
+      listener();
+      await waiting;
+      expect(dispose).toHaveBeenCalledTimes(1);
+      ready = false;
+      await WorkerMode.prototype.prepareInitialHighlighting.call(mode);
+      expect(dispose).toHaveBeenCalledTimes(2);
+      buffer.setText("x".repeat(65537));
+      mode.requestHighlighting.calls.reset();
+      expect(WorkerMode.prototype.prepareInitialHighlighting.call(mode)).toBeUndefined();
+      expect(mode.requestHighlighting).not.toHaveBeenCalled();
+    } finally {
+      buffer.destroy();
+    }
+  });
+
   it("colors mounted lines while a newer scroll destination is still waiting", async () => {
     jasmine.useRealClock();
     await lumine.packages.activatePackage("language-javascript");

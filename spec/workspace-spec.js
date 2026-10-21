@@ -981,7 +981,7 @@ describe("Workspace", () => {
         await workspace.open("../sample-with-many-folds.js");
         editor = workspace.getActiveTextEditor();
         await editor.getBuffer().getLanguageMode().ready;
-        editor.foldBufferRow(2);
+        await editor.foldBufferRow(2);
         expect(editor.isFoldedAtBufferRow(2)).toBe(true);
         expect(editor.isFoldedAtBufferRow(3)).toBe(true);
 
@@ -2209,12 +2209,17 @@ describe("Workspace", () => {
       const javascriptGrammarUsed = jasmine.createSpy("javascript injection");
       const javascriptRootScopeUsed = jasmine.createSpy("javascript root scope");
       let editor;
+      const usedGrammars = () => {
+        const mode = editor.getBuffer().getLanguageMode();
+        return mode.getUsedGrammars
+          ? mode.getUsedGrammars()
+          : mode.getAllInjectionLayers().map((layer) => layer.grammar);
+      };
       lumine.hooks.on("language-javascript:grammar-used", () => {
         javascriptGrammarUsed();
-        const layers = editor.getBuffer().getLanguageMode().getAllInjectionLayers();
-        expect(layers.some((layer) => layer.grammar.packageName === "language-javascript")).toBe(
-          false,
-        );
+        expect(
+          usedGrammars().some((grammar) => grammar.packageName === "language-javascript"),
+        ).toBe(false);
       });
       lumine.hooks.on("source.js:root-scope-used", javascriptRootScopeUsed);
 
@@ -2225,13 +2230,9 @@ describe("Workspace", () => {
 
       expect(javascriptGrammarUsed.calls.count()).toBe(1);
       expect(javascriptRootScopeUsed).not.toHaveBeenCalled();
-      expect(
-        editor
-          .getBuffer()
-          .getLanguageMode()
-          .getAllInjectionLayers()
-          .some((layer) => layer.grammar.packageName === "language-javascript"),
-      ).toBe(true);
+      expect(usedGrammars().some((grammar) => grammar.packageName === "language-javascript")).toBe(
+        true,
+      );
     });
   });
 

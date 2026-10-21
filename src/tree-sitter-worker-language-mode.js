@@ -5,6 +5,10 @@ const Point = require("./point");
 const Range = require("./range");
 const RangeList = require("./tree-sitter-range-list");
 const { PAINT_TILE_ROWS: TILE_ROWS } = require("./syntax-worker-protocol");
+const {
+  setTimeout: scheduleInitialPaint,
+  clearTimeout: cancelInitialPaint,
+} = require("node:timers");
 const STREAMED_BUILTINS = new Set([
   "getFoldableRanges",
   "getFoldableRangesAtIndentLevel",
@@ -110,6 +114,33 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   shouldParseSynchronously() {
     return false;
+  }
+
+  prepareInitialHighlighting(row = 0) {
+    // Keep the previous pane item visible while a small document prepares its
+    // first colors. Parsing/transport remain asynchronous and the wait is
+    // bounded even for a cold grammar, a slow query or a failed worker.
+    if (this.destroyed || this.error || this.buffer.getLength() > 65536) return;
+    row = typeof row === "number" && !Number.isNaN(row) ? Math.max(0, row) : 0;
+    row = Math.min(this.buffer.getLastRow(), Math.floor(row));
+    const first = Math.max(0, row - 32);
+    const last = Math.min(this.buffer.getLastRow(), first + 127);
+    const start = this.buffer.clipPosition([first, 0]);
+    const end = this.buffer.clipPosition([last + 1, 0]);
+    const ready = () => start.isEqual(end) || this.cache.covers(start, end);
+    if (ready()) return;
+    return new Promise((resolve) => {
+      const finish = () => {
+        subscription.dispose();
+        cancelInitialPaint(timer);
+        resolve();
+      };
+      const subscription = this.onDidChangeHighlighting(() => {
+        if (this.destroyed || this.error || ready()) finish();
+      });
+      const timer = scheduleInitialPaint(finish, 32);
+      this.requestHighlighting(this.defaultOwner, [[first, last]]);
+    });
   }
 
   getSyntaxGeneration() {
@@ -378,7 +409,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         index = i;
       }
       if (index < 0) return;
-      const [removed] = this.cache.snapshots.splice(index, 1);
+      const removed = this.cache.removeSnapshot(index);
       for (const row of this.folds.keys())
         if (
           row >= removed.start.row &&
@@ -514,9 +545,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                     else this.folds.delete(row);
                   }
                   if (evicted) {
-                    const coverage = [...this.cache.snapshots].sort((a, b) =>
-                      a.start.compare(b.start),
-                    );
+                    const coverage = this.cache.getOrderedSnapshots();
                     for (const row of this.folds.keys()) {
                       let low = 0,
                         high = coverage.length;
