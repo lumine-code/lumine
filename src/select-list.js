@@ -1157,10 +1157,12 @@ class SelectList extends InputDialog {
   }
 
   /**
-   * Prepare an immutable source snapshot without publishing it. Source loaders
-   * may await this before returning {items}; cancellation leaves the list intact.
    * @public
    * @status experimental
+   *
+   * Prepare an immutable source snapshot without publishing it. Source loaders
+   * may await this before returning {items}; cancellation leaves the list intact.
+   *
    * @param {Array} items - Frozen array whose items and IDs will not be mutated.
    * @param {Object} options - Optional AbortSignal in `signal`.
    * @returns {Promise<Array>} The same array, ready for a subsequent update.
