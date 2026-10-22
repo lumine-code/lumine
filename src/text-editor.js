@@ -7206,6 +7206,8 @@ module.exports = class TextEditor {
    * begin at the first foldable row preceding the given row.
    *
    * @param {Number} bufferRow - A `Number`.
+   * @param {Object} [options] - Options for this operation.
+   * @param {AbortSignal} [options.signal] - Signal that cancels pending folding work.
    */
   foldBufferRow(bufferRow, { signal } = {}) {
     return this.withCurrentFoldSyntax(
