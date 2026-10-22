@@ -750,14 +750,21 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     const Token = require("./token");
     return new Token(await this.builtin("token", [point]));
   }
-  getFoldableRanges(...args) {
-    return this.builtin("getFoldableRanges", args, { convert: rangeFromData });
+  getFoldableRanges(tabLength, options = {}) {
+    return this.builtin("getFoldableRanges", [tabLength], { ...options, convert: rangeFromData });
   }
-  getFoldableRangesAtIndentLevel(...args) {
-    return this.builtin("getFoldableRangesAtIndentLevel", args, { convert: rangeFromData });
+  getFoldableRangesAtIndentLevel(level, tabLength, options = {}) {
+    return this.builtin("getFoldableRangesAtIndentLevel", [level, tabLength], {
+      ...options,
+      convert: rangeFromData,
+    });
   }
-  async getFoldableRangeContainingPoint(...args) {
-    const range = await this.builtin("getFoldableRangeContainingPoint", args);
+  async getFoldableRangeContainingPoint(point, tabLength, options = {}) {
+    const range = await this.builtin(
+      "getFoldableRangeContainingPoint",
+      [point, tabLength],
+      options,
+    );
     return range && Range.fromObject(range);
   }
   async getRangeForSyntaxNodeContainingRange(...args) {

@@ -7162,10 +7162,11 @@ module.exports = class TextEditor {
     const position = cursor.getBufferPosition();
     const { row } = position;
     return this.withCurrentFoldSyntax(
-      (languageMode, isCurrent) => {
+      (languageMode, isCurrent, signal) => {
         const range = languageMode.getFoldableRangeContainingPoint?.(
           Point(row, Infinity),
           this.getTabLength(),
+          { signal },
         );
         return resolveSyntaxResult(range, (range) => {
           if (
@@ -7189,6 +7190,7 @@ module.exports = class TextEditor {
    */
   unfoldCurrentRow() {
     this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
+    this.cancelPendingFoldRequests();
     const { row } = this.getCursorBufferPosition();
     return this.displayLayer.destroyFoldsContainingBufferPositions([Point(row, Infinity)], false);
   }
@@ -7205,13 +7207,13 @@ module.exports = class TextEditor {
    *
    * @param {Number} bufferRow - A `Number`.
    */
-  foldBufferRow(bufferRow) {
+  foldBufferRow(bufferRow, { signal } = {}) {
     return this.withCurrentFoldSyntax(
-      (languageMode, isCurrent) => {
+      (languageMode, isCurrent, signal) => {
         const fold = (position) => {
           const foldableRange =
             languageMode.getFoldableRangeContainingPoint &&
-            languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
+            languageMode.getFoldableRangeContainingPoint(position, this.getTabLength(), { signal });
           return resolveSyntaxResult(foldableRange, (foldableRange) => {
             if (!isCurrent()) return;
             if (foldableRange) {
@@ -7233,20 +7235,34 @@ module.exports = class TextEditor {
         };
         return fold(Point(bufferRow, Infinity));
       },
-      { independent: true },
+      { independent: true, signal },
     );
   }
 
-  withCurrentFoldSyntax(operation, { independent = false } = {}) {
+  cancelPendingFoldRequests() {
+    for (const controller of [...(this.pendingFoldControllers ?? [])]) controller.abort();
+  }
+
+  withCurrentFoldSyntax(operation, { independent = false, signal } = {}) {
+    if (this.isDestroyed() || signal?.aborted) return;
     // Row folds can finish independently. A replacement (fold-all) supersedes
     // earlier work, and a later row action supersedes an unfinished replacement.
     this.foldRequestVersion ??= 0;
-    if (!independent || this.pendingExclusiveFold?.version === this.foldRequestVersion)
+    if (!independent || this.pendingExclusiveFold?.version === this.foldRequestVersion) {
       this.foldRequestVersion++;
+      this.cancelPendingFoldRequests();
+    }
     const version = this.foldRequestVersion;
+    const controller = new AbortController();
+    signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    (this.pendingFoldControllers ??= new Set()).add(controller);
+    const changes = this.buffer.onDidApplyChanges(() => controller.abort());
     const exclusive = independent ? null : { version };
     this.pendingExclusiveFold = exclusive;
     const finish = () => {
+      changes.dispose();
+      this.pendingFoldControllers.delete(controller);
+      controller.abort();
       if (this.pendingExclusiveFold === exclusive) this.pendingExclusiveFold = null;
     };
     const mode = this.buffer.getLanguageMode();
@@ -7255,6 +7271,7 @@ module.exports = class TextEditor {
     const tabLength = this.getTabLength();
     const isCurrent = () =>
       !this.isDestroyed() &&
+      !signal.aborted &&
       version === this.foldRequestVersion &&
       this.buffer.getLanguageMode() === mode &&
       revision === this.buffer.getTextRevision() &&
@@ -7262,7 +7279,7 @@ module.exports = class TextEditor {
       tabLength === this.getTabLength() &&
       !mode.publicationPending;
     const perform = (result) => {
-      if (isCurrent() && !result?.parseError) return operation(mode, isCurrent);
+      if (isCurrent() && !result?.parseError) return operation(mode, isCurrent, signal);
     };
     try {
       const result =
@@ -7270,7 +7287,7 @@ module.exports = class TextEditor {
           ? mode.atGrammarSettlement().then(perform)
           : perform();
       if (result?.then)
-        return runCancellableGrammarOperation(this, mode, null, undefined, () => result)
+        return runCancellableGrammarOperation(this, mode, signal, undefined, () => result)
           .catch((error) => {
             if (error.name !== "AbortError") throw error;
           })
@@ -7293,6 +7310,7 @@ module.exports = class TextEditor {
    */
   unfoldBufferRow(bufferRow) {
     this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
+    this.cancelPendingFoldRequests();
     const position = Point(bufferRow, Infinity);
     return this.displayLayer.destroyFoldsContainingBufferPositions([position]);
   }
@@ -7316,13 +7334,15 @@ module.exports = class TextEditor {
    * Fold all foldable lines.
    */
   foldAll() {
-    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent, signal) => {
       const foldableRanges =
-        languageMode.getFoldableRanges && languageMode.getFoldableRanges(this.getTabLength());
+        languageMode.getFoldableRanges &&
+        languageMode.getFoldableRanges(this.getTabLength(), { signal });
       return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
         if (!isCurrent()) return;
         this.displayLayer.destroyAllFolds();
         for (let range of foldableRanges || []) {
+          if (!isCurrent()) break;
           this.displayLayer.foldBufferRange(range);
         }
       });
@@ -7337,6 +7357,7 @@ module.exports = class TextEditor {
    */
   unfoldAll() {
     this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1;
+    this.cancelPendingFoldRequests();
     const result = this.displayLayer.destroyAllFolds();
     if (result.length > 0) this.scrollToCursorPosition();
     return result;
@@ -7351,14 +7372,15 @@ module.exports = class TextEditor {
    * @param {Number} level - A `Number` starting at 0.
    */
   foldAllAtIndentLevel(level) {
-    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
+    return this.withCurrentFoldSyntax((languageMode, isCurrent, signal) => {
       const foldableRanges =
         languageMode.getFoldableRangesAtIndentLevel &&
-        languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength());
+        languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength(), { signal });
       return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
         if (!isCurrent()) return;
         this.displayLayer.destroyAllFolds();
         for (let range of foldableRanges || []) {
+          if (!isCurrent()) break;
           this.displayLayer.foldBufferRange(range);
         }
       });
@@ -7415,10 +7437,48 @@ module.exports = class TextEditor {
    * @param {Number} bufferRow - The zero-indexed buffer row.
    */
   toggleFoldAtBufferRow(bufferRow) {
-    if (this.isFoldedAtBufferRow(bufferRow)) {
+    const folded = this.isFoldedAtBufferRow(bufferRow);
+    const pending = this.pendingFoldToggles?.get(bufferRow);
+    if (pending) {
+      const current = pending.isCurrent();
+      pending.controller.abort();
+      this.pendingFoldToggles.delete(bufferRow);
+      if (current && !folded) return;
+    }
+    if (folded) {
       return this.unfoldBufferRow(bufferRow);
-    } else {
-      return this.foldBufferRow(bufferRow);
+    }
+    const controller = new AbortController();
+    const mode = this.buffer.getLanguageMode();
+    const epoch = mode.getSyntaxRequestEpoch?.();
+    const revision = this.buffer.getTextRevision();
+    const tabLength = this.getTabLength();
+    const request = {
+      controller,
+      isCurrent: () =>
+        !controller.signal.aborted &&
+        request.version === this.foldRequestVersion &&
+        !this.isDestroyed() &&
+        this.buffer.getLanguageMode() === mode &&
+        mode.getSyntaxRequestEpoch?.() === epoch &&
+        this.buffer.getTextRevision() === revision &&
+        this.getTabLength() === tabLength,
+    };
+    (this.pendingFoldToggles ??= new Map()).set(bufferRow, request);
+    const finish = () => {
+      controller.abort();
+      if (this.pendingFoldToggles.get(bufferRow) === request)
+        this.pendingFoldToggles.delete(bufferRow);
+    };
+    try {
+      const result = this.foldBufferRow(bufferRow, { signal: controller.signal });
+      request.version = this.foldRequestVersion;
+      if (result?.then) return result.finally(finish);
+      finish();
+      return result;
+    } catch (error) {
+      finish();
+      throw error;
     }
   }
 
