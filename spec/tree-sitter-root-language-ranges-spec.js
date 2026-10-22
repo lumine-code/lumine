@@ -81,6 +81,21 @@ describe("Root language ranges", () => {
     expect(languageMode.scopeDescriptorForPosition(new Point(0, 8)).scopes).toContain(scope);
   });
 
+  it("invalidates semantic snapshot tokens when root ranges change at the same text revision", async () => {
+    const { buffer, languageMode } = await mode("ignore();\nconst alpha = 1;\n", null);
+    const token = buffer.getSyntaxSnapshotToken();
+    const revision = buffer.getTextRevision();
+    const registration = registry.setRootLanguageRanges(buffer, () => [
+      new Range([1, 0], buffer.getEndPosition()),
+    ]);
+    registrations.push(registration);
+    await languageMode.atGrammarSettlement();
+
+    expect(buffer.getTextRevision()).toBe(revision);
+    expect(languageMode.tree.rootNode.startPosition.row).toBe(1);
+    expect(buffer.getSyntaxSnapshotToken()).not.toBe(token);
+  });
+
   it("does not reparse when a newly installed or disposed provider is effectively unrestricted", async () => {
     const { buffer, languageMode } = await mode("const alpha = 1;", null);
     const tree = languageMode.tree;

@@ -76,6 +76,28 @@ describe("Tree-sitter static injections", () => {
     registry.clear();
   });
 
+  it("invalidates semantic snapshot tokens when injection topology changes without an edit", async () => {
+    const { buffer, mode } = await start("10");
+    const rootTree = mode.tree;
+    const revision = buffer.getTextRevision();
+    const before = buffer.getSyntaxSnapshotToken();
+    const injection = { type: "integer", language: () => "one", content: (node) => node };
+
+    root.addInjectionPoint(injection);
+    await mode.atGrammarSettlement();
+    expect(layers(mode).length).toBe(1);
+    expect(mode.tree).toBe(rootTree);
+    const added = buffer.getSyntaxSnapshotToken();
+    expect(added).not.toBe(before);
+
+    root.removeInjectionPoint(injection);
+    await mode.atGrammarSettlement();
+    expect(layers(mode).length).toBe(0);
+    expect(mode.tree).toBe(rootTree);
+    expect(buffer.getTextRevision()).toBe(revision);
+    expect(buffer.getSyntaxSnapshotToken()).not.toBe(added);
+  });
+
   it("loads static injections for the first parse and groups one owner's fragments", async () => {
     const { mode } = await start("one(10, 20)\ntwo(30)");
     expect(layers(mode).map((layer) => layer.grammar.scopeName)).toEqual([

@@ -209,6 +209,7 @@ class TreeSitterLanguageMode {
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
     this.synchronousUpdates = false;
+    this.syntaxGeneration = 0;
     this.publicationPending = true;
     this.publicationRanges = new TreeSitterRangeList();
     this.grammar = grammar;
@@ -814,6 +815,7 @@ class TreeSitterLanguageMode {
   rootLanguageRangesChanged() {
     const layer = this.rootLanguageLayer;
     if (this.destroyed || !layer || this.grammarRegistry?.windowUnloading) return;
+    this.invalidateSyntaxSnapshot();
     if (!layer.tree) {
       layer.rootRangePolicyNeedsUpdate = true;
       return;
@@ -1007,6 +1009,7 @@ class TreeSitterLanguageMode {
 
   highlightConfigurationChanged(event) {
     if (this.destroyed) return;
+    this.invalidateSyntaxSnapshot();
     const ranges = new TreeSitterRangeList();
     for (const layer of this.getAllLanguageLayers()) {
       const query = layer?.queries?.highlightsQuery;
@@ -1223,6 +1226,7 @@ class TreeSitterLanguageMode {
     // Grammar removal can arrive before the root is ready or after this mode
     // was destroyed while its buffer still refers to it.
     if (this.destroyed || !this.rootLanguageLayer) return;
+    this.invalidateSyntaxSnapshot();
     // Grammar removal/replacement must cancel any plan holding the old target
     // grammar, including plans that have not published their child layers yet.
     for (const layer of this.getAllLanguageLayers()) layer.injectionPointVersion++;
@@ -1269,6 +1273,16 @@ class TreeSitterLanguageMode {
     const synchronous = this.shouldParseSynchronously();
     this.presentation.requestRanges(owner, ranges, !synchronous);
     if (synchronous) this.presentation.flush();
+  }
+
+  // Semantic caches must survive paint and lazy ancillary-query preparation.
+  // Mutation owners advance this counter without scanning layers on each read.
+  getSyntaxGeneration() {
+    return this.syntaxGeneration;
+  }
+
+  invalidateSyntaxSnapshot() {
+    this.syntaxGeneration++;
   }
 
   capturePresentationVersion() {
@@ -3359,6 +3373,7 @@ class LanguageLayer {
   constructor(marker, languageMode, grammar, depth, injectionPoint) {
     this.marker = marker;
     this.languageMode = languageMode;
+    this.languageMode.invalidateSyntaxSnapshot();
     this.buffer = this.languageMode.buffer;
     this.grammar = grammar;
     this.grammarGeneration = grammar.queryLoadGeneration;
@@ -3397,6 +3412,7 @@ class LanguageLayer {
       // When we add or remove injection points on this grammar, this language
       // layer must repopulate its injections.
       this.injectionPointVersion++;
+      this.languageMode.invalidateSyntaxSnapshot();
       this._populateInjections(MAX_RANGE, null);
     };
 
@@ -3569,6 +3585,7 @@ class LanguageLayer {
       return;
     }
     this.destroyed = true;
+    this.languageMode.invalidateSyntaxSnapshot();
     this.parseAbort?.abort();
     this.backgroundTree = null;
     this.errorFreeTree = null;
@@ -3767,6 +3784,7 @@ class LanguageLayer {
 
   scheduleQueryReload(queryType) {
     if (this.destroyed) return null;
+    this.languageMode.invalidateSyntaxSnapshot();
     this.queryRequestVersions.set(queryType, (this.queryRequestVersions.get(queryType) ?? 0) + 1);
     this.queryLoadFailures.delete(queryType);
     if (OPTIONAL_QUERY_TYPES.has(queryType) && !this.requestedQueryTypes.has(queryType))
@@ -4166,6 +4184,7 @@ class LanguageLayer {
       return false;
     }
     this.updating = true;
+    this.languageMode.invalidateSyntaxSnapshot();
     this.languageMode.publicationPending = true;
     const needsRetry = () =>
       !params.initialInjectionUpdateAborted &&

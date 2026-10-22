@@ -105,6 +105,44 @@ describe("Tree-sitter optional query loading", () => {
     await waitFor(() => layer.queries.indentsQuery);
   });
 
+  it("keeps semantic snapshot tokens through lazy folding paint invalidation", async () => {
+    const languageMode = await mode("function alpha() {\n  return 1;\n}");
+    const buffer = languageMode.buffer;
+    const tree = languageMode.tree;
+    const revision = buffer.getTextRevision();
+    const token = buffer.getSyntaxSnapshotToken();
+    const generation = languageMode.presentation.generation;
+    expect(token).not.toBeNull();
+    expect(languageMode.rootLanguageLayer.queries.foldsQuery).toBeUndefined();
+
+    await languageMode.rootLanguageLayer.ensureQuery("foldsQuery");
+
+    expect(languageMode.presentation.generation).toBeGreaterThan(generation);
+    expect(languageMode.tree).toBe(tree);
+    expect(buffer.getTextRevision()).toBe(revision);
+    expect(buffer.getSyntaxSnapshotToken()).toBe(token);
+    const layers = spyOn(languageMode, "getAllLanguageLayers").and.callThrough();
+    for (let index = 0; index < 100; index++) expect(buffer.getSyntaxSnapshotToken()).toBe(token);
+    expect(layers).not.toHaveBeenCalled();
+  });
+
+  for (const queryType of ["foldsQuery", "tagsQuery"]) {
+    it(`invalidates semantic snapshot tokens when ${queryType} definitions change`, async () => {
+      const languageMode = await mode();
+      const buffer = languageMode.buffer;
+      const tree = languageMode.tree;
+      const revision = buffer.getTextRevision();
+      const token = buffer.getSyntaxSnapshotToken();
+
+      await grammar.setQueryForTest(queryType, "(identifier) @name");
+      await languageMode.atGrammarSettlement();
+
+      expect(buffer.getTextRevision()).toBe(revision);
+      expect(languageMode.tree).toBe(tree);
+      expect(buffer.getSyntaxSnapshotToken()).not.toBe(token);
+    });
+  }
+
   it("answers the first explicit fold and indent requests before idle work runs", async () => {
     // Ordinary JavaScript braces use editor regex indentation settings; give
     // this standalone mode a query whose result proves the cold demand works.

@@ -142,6 +142,19 @@ describe("Tree-sitter configuration-dependent highlighting", () => {
     subscription.dispose();
   });
 
+  it("invalidates semantic snapshot tokens when query configuration changes without parsing", async () => {
+    const { buffer, mode } = await setUp();
+    const token = buffer.getSyntaxSnapshotToken();
+    const tree = mode.tree;
+    const revision = buffer.getTextRevision();
+
+    config.set("syntax.enabled", false);
+
+    expect(buffer.getTextRevision()).toBe(revision);
+    expect(mode.tree).toBe(tree);
+    expect(buffer.getSyntaxSnapshotToken()).not.toBe(token);
+  });
+
   it("discards prepared scopes from a superseded configuration without reparsing", async () => {
     const { editor, mode } = await setUp();
     const original = editor.displayLayer.getScreenLines(0, 1)[0].tags;
