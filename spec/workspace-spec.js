@@ -249,6 +249,21 @@ describe("Workspace", () => {
   });
 
   describe("::open(itemOrURI, options)", () => {
+    it("allows a URI opener to build a text editor without file options", async () => {
+      const filePath = lumine.project.resolvePath("a");
+      const opener = workspace.addOpener((uri) => {
+        if (uri === "lumine://workspace-file-options-spec") return workspace.openTextFile(filePath);
+      });
+      try {
+        const editor = await workspace.open("lumine://workspace-file-options-spec");
+        expect(editor).toBe(workspace.getActiveTextEditor());
+        expect(editor.getPath()).toBe(filePath);
+        expect(editor.getText()).toBe(fs.readFileSync(filePath, "utf8"));
+      } finally {
+        opener.dispose();
+      }
+    });
+
     let openEvents = null;
 
     beforeEach(() => {

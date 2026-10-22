@@ -3482,7 +3482,7 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  async openTextFile(uri, options, openRequest) {
+  async openTextFile(uri, options = {}, openRequest) {
     const generation = this.#layoutGeneration;
     const isCurrent = () =>
       this.isAlive() &&
