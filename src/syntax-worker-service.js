@@ -438,7 +438,14 @@ class SyntaxWorkerService {
       try {
         return await this.request(session, "settle", {}, { signal });
       } catch (error) {
-        if (error.name !== "AbortError" || session.closed || signal?.aborted) throw error;
+        if (
+          error.name !== "AbortError" ||
+          this.closed ||
+          this.terminalError ||
+          session.closed ||
+          signal?.aborted
+        )
+          throw error;
       }
     }
     throw Client.abortError();

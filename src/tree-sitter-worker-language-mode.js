@@ -447,8 +447,18 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return [row, Math.min(last, row + TILE_ROWS - 1)];
   }
 
+  canRefresh() {
+    return (
+      !this.destroyed &&
+      !this.error &&
+      !this.session?.closed &&
+      !this.service.closed &&
+      !this.service.terminalError
+    );
+  }
+
   schedule() {
-    if (this.destroyed || this.error || this.session?.closed || this.service.closed) return;
+    if (!this.canRefresh()) return;
     if (this.timer || this.refreshPromise) return;
     this.timer = setTimeout(
       () => {
@@ -460,11 +470,11 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   async refresh() {
-    if (this.destroyed || this.error || this.session.closed || this.service.closed) return;
+    if (!this.canRefresh()) return;
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       for (;;) {
-        if (this.destroyed || this.error || this.session.closed || this.service.closed) return;
+        if (!this.canRefresh()) return;
         const revision = this.buffer.getTextRevision();
         const generation = this.session.generation;
         const presentation = this.presentationVersion;

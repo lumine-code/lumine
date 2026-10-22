@@ -2404,25 +2404,45 @@ module.exports = class TextEditor {
       pendingNewlineIndent.revision = this.buffer.getTextRevision();
 
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, indentPrefixes);
+      this.adjustNewlineIndentation(
+        indentMarkers,
+        languageMode,
+        indentBaselines,
+        indentPrefixes,
+        options,
+      );
     } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
-      this.scheduleIndentAdjustment();
+      this.scheduleIndentAdjustment(false, options);
     }
     return result;
   }
 
-  adjustNewlineIndentation(markers, languageMode, baselines = new Map(), prefixes = new Map()) {
+  adjustNewlineIndentation(
+    markers,
+    languageMode,
+    baselines = new Map(),
+    prefixes = new Map(),
+    inputOptions = {},
+  ) {
     if (languageMode.asynchronousSyntax)
-      return this.adjustWorkerNewlineIndentation(markers, languageMode, baselines, prefixes);
+      return this.adjustWorkerNewlineIndentation(
+        markers,
+        languageMode,
+        baselines,
+        prefixes,
+        inputOptions,
+      );
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
     const options = {
       preserveLeadingWhitespace: true,
       skipBlankLines: false,
       comparisonRowIndents: new Map(),
+      bypassReadOnly: inputOptions.bypassReadOnly,
     };
     const isCurrent = () =>
-      canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+      canAdjustIndentation(this, buffer, languageMode, options) &&
+      buffer.getTextRevision() === revision;
     const cleanup = () => {
       for (const marker of markers) marker.destroy();
     };
@@ -2481,10 +2501,20 @@ module.exports = class TextEditor {
   // Keep the intent to indent these new rows across subsequent typing in this
   // editor. Each actual plan still belongs to one revision. Buffer edits from
   // other owners, undo and grammar changes invalidate the intent instead.
-  adjustWorkerNewlineIndentation(markers, languageMode, baselines, prefixes) {
+  adjustWorkerNewlineIndentation(
+    markers,
+    languageMode,
+    baselines,
+    prefixes,
+    { bypassReadOnly = false } = {},
+  ) {
     const buffer = this.buffer;
     const previous = this.pendingNewlineIndentIntent;
-    if (previous?.mode === languageMode && previous.revision === buffer.getTextRevision()) {
+    if (
+      previous?.mode === languageMode &&
+      previous.revision === buffer.getTextRevision() &&
+      previous.bypassReadOnly === bypassReadOnly
+    ) {
       previous.markers.push(...markers);
       for (const [marker, indent] of baselines) previous.baselines.set(marker, indent);
       for (const [marker, prefix] of prefixes) previous.prefixes.set(marker, prefix);
@@ -2496,11 +2526,12 @@ module.exports = class TextEditor {
       markers,
       baselines,
       prefixes,
+      bypassReadOnly,
     };
     this.pendingNewlineIndentIntent = intent;
     const isCurrent = () =>
       this.pendingNewlineIndentIntent === intent &&
-      canAdjustIndentation(this, buffer, languageMode) &&
+      canAdjustIndentation(this, buffer, languageMode, intent) &&
       buffer.getTextRevision() === intent.revision;
     let pending;
     const adjustment = (async () => {
@@ -6068,7 +6099,14 @@ module.exports = class TextEditor {
    */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
-    return this.mutateSelectedText((selection) => selection.autoIndentSelectedRows(options));
+    const rows = [];
+    let lastRow = -1;
+    for (const selection of this.getSelectionsOrderedByBufferPosition()) {
+      const [start, end] = selection.getBufferRowRange();
+      for (let row = Math.max(start, lastRow + 1); row <= end; row++) rows.push(row);
+      lastRow = Math.max(lastRow, end);
+    }
+    return this.autoIndentBufferRowsAtRows(rows, options);
   }
 
   // Indent all lines intersecting selections. See {@link Selection#indent} for more
@@ -6076,10 +6114,128 @@ module.exports = class TextEditor {
   //
   // * `options` (optional) `Object`
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor.
+  // Returns a promise when the language mode must plan indentation asynchronously.
   indent(options = {}) {
     if (!this.ensureWritable("indent", options)) return;
     if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndent();
+    if (
+      options.autoIndent &&
+      this.getSelections().some((selection) => selection.canAutoIndentAtCursor())
+    )
+      return this.indentSelections(this.getSelectionsOrderedByBufferPosition(), options);
     this.mutateSelectedText((selection) => selection.indent(options));
+  }
+
+  // Resolve automatic Tab hints before moving cursors or editing any selected
+  // row. Worker hints are promises, and every cursor must use one revision.
+  indentSelections(selections, options) {
+    selections = [...selections];
+    options = { ...options };
+    const previous = this.pendingTabIndentIntent;
+    if (
+      previous?.isCurrent() &&
+      previous.options.autoIndent === options.autoIndent &&
+      previous.options.bypassReadOnly === options.bypassReadOnly &&
+      selections.length === previous.selections.length &&
+      selections.every((selection, index) => selection === previous.selections[index])
+    ) {
+      previous.repeats++;
+      return previous.promise;
+    }
+    previous?.controller.abort();
+    const buffer = this.buffer,
+      mode = buffer.getLanguageMode();
+    const revision = buffer.getTextRevision(),
+      epoch = mode.getSyntaxRequestEpoch?.();
+    const tabLength = this.getTabLength(),
+      softTabs = this.getSoftTabs();
+    const count = this.getSelections().length;
+    const ranges = new Map(selections.map((selection) => [selection, selection.getBufferRange()]));
+    let intent, controller;
+    const isCurrent = () =>
+      canAdjustIndentation(this, buffer, mode, options) &&
+      !controller?.signal.aborted &&
+      (!intent || this.pendingTabIndentIntent === intent) &&
+      buffer.getTextRevision() === revision &&
+      mode.getSyntaxRequestEpoch?.() === epoch &&
+      this.getTabLength() === tabLength &&
+      this.getSoftTabs() === softTabs &&
+      this.getSelections().length === count &&
+      selections.every(
+        (selection) =>
+          !selection.destroyed && selection.getBufferRange().isEqual(ranges.get(selection)),
+      );
+    const rows = [
+      ...new Set(
+        selections
+          .filter((selection) => selection.canAutoIndentAtCursor())
+          .map((selection) => ranges.get(selection).start.row),
+      ),
+    ].sort((a, b) => a - b);
+    const plan = () => {
+      if (mode.suggestedIndentForBufferRowsAtRows)
+        return mode.suggestedIndentForBufferRowsAtRows(rows, tabLength, { isReindenting: false });
+      const hints = new Map();
+      for (const row of rows) {
+        if (!isCurrent()) return null;
+        hints.set(row, mode.suggestedIndentForBufferRow?.(row, tabLength));
+      }
+      return [...hints.values()].some((hint) => hint?.then)
+        ? Promise.all([...hints].map(async ([row, hint]) => [row, await hint])).then(
+            (entries) => new Map(entries),
+          )
+        : hints;
+    };
+    const planned =
+      mode.publicationPending && !mode.asynchronousSyntax
+        ? Promise.resolve(mode.atGrammarSettlement()).then(() => (isCurrent() ? plan() : null))
+        : plan();
+    const apply = (indents) => {
+      if (!isCurrent() || !this.ensureWritable("indent", options)) return;
+      return this.transact(() => {
+        for (let repeat = 0; repeat < (intent?.repeats ?? 1); repeat++) {
+          this.mutateSelectedText((selection) => {
+            const range = ranges.get(selection);
+            if (range)
+              return selection.indent({
+                ...options,
+                suggestedIndent: indents?.get(range.start.row),
+              });
+          });
+        }
+      });
+    };
+    if (!planned?.then) return apply(planned);
+    controller = new AbortController();
+    const subscriptions = new CompositeDisposable(
+      buffer.onDidApplyChanges(() => controller.abort()),
+      this.onDidChangeSelectionRange(() => {
+        if (!isCurrent()) controller.abort();
+      }),
+    );
+    intent = { selections, options, isCurrent, controller, repeats: 1 };
+    this.pendingTabIndentIntent = intent;
+    const adjustment = runCancellableGrammarOperation(
+      this,
+      mode,
+      controller.signal,
+      null,
+      () => planned,
+    )
+      .then((indents) => {
+        subscriptions.dispose();
+        return apply(indents);
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") throw error;
+      });
+    intent.promise = this.trackIndentation(
+      handleIndentationErrors(adjustment, isCurrent).finally(() => {
+        subscriptions.dispose();
+        if (this.pendingTabIndentIntent === intent) this.pendingTabIndentIntent = null;
+      }),
+    );
+    return intent.promise;
   }
 
   // Constructs the string used for indents.
@@ -6817,9 +6973,11 @@ module.exports = class TextEditor {
   // work may adjust only the revision it observed, and always releases markers.
   adjustPastedIndentation(pastes, languageMode) {
     const buffer = this.buffer;
+    const permissions = { bypassReadOnly: pastes.every(({ options }) => options.bypassReadOnly) };
     let revision = buffer.getTextRevision();
     const isCurrent = () =>
-      canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+      canAdjustIndentation(this, buffer, languageMode, permissions) &&
+      buffer.getTextRevision() === revision;
     const adjustment = (async () => {
       for (const { marker, options } of pastes) {
         await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
@@ -7913,7 +8071,7 @@ module.exports = class TextEditor {
     const buffer = this.buffer;
     const requestedRevision = buffer.getTextRevision();
     const languageMode = buffer.getLanguageMode();
-    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
+    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode, options);
     const indentLevel = this.suggestedIndentForBufferRow(bufferRow, options);
     if (indentLevel?.then) {
       // The language mode may go async if it can't answer our question
@@ -7934,7 +8092,7 @@ module.exports = class TextEditor {
               if (isCurrent() && buffer.getTextRevision() !== revision) buffer.groupLastChanges();
               return range;
             } else if (indentLevel === undefined) {
-              this.scheduleIndentAdjustment(true);
+              this.scheduleIndentAdjustment(true, options);
             }
           }),
           isCurrent,
@@ -7963,7 +8121,8 @@ module.exports = class TextEditor {
       languageMode.atGrammarSettlement
     ) {
       const isCurrent = () =>
-        canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+        canAdjustIndentation(this, buffer, languageMode, options) &&
+        buffer.getTextRevision() === revision;
       return this.trackIndentation(
         handleIndentationErrors(
           Promise.resolve(languageMode.atGrammarSettlement()).then(() => {
@@ -7992,7 +8151,7 @@ module.exports = class TextEditor {
         // atomically. If not, we'll indent as much as we're able, then fall back
         // to the costlier approach.
         if (
-          !canAdjustIndentation(this, buffer, languageMode) ||
+          !canAdjustIndentation(this, buffer, languageMode, options) ||
           buffer.getTextRevision() !== revision ||
           indents == null
         )
@@ -8023,7 +8182,8 @@ module.exports = class TextEditor {
       };
       if (planned?.then) {
         const isCurrent = () =>
-          canAdjustIndentation(this, buffer, languageMode) && buffer.getTextRevision() === revision;
+          canAdjustIndentation(this, buffer, languageMode, options) &&
+          buffer.getTextRevision() === revision;
         return this.trackIndentation(
           handleIndentationErrors(Promise.resolve(planned).then(apply), isCurrent),
         );
@@ -8049,6 +8209,7 @@ module.exports = class TextEditor {
    * @returns {Object|undefined|Promise<Object|undefined>} The changed flag and resulting revision, or undefined when obsolete.
    */
   autoIndentBufferRowsAtRows(rows, options = {}) {
+    if (!this.ensureWritable("autoIndentBufferRowsAtRows", options)) return;
     const buffer = this.buffer;
     const mode = buffer.getLanguageMode();
     const revision = buffer.getTextRevision();
@@ -8059,7 +8220,7 @@ module.exports = class TextEditor {
       .sort((a, b) => a - b);
     if (!rows.length) return;
     if (!mode.suggestedIndentForBufferRowsAtRows) {
-      if (!canAdjustIndentation(this, buffer, mode)) return;
+      if (!canAdjustIndentation(this, buffer, mode, options)) return;
       // Plain text derives each row from its predecessor, including the
       // indentation applied earlier in this same sparse operation.
       this.withAutomaticIndentation(() =>
@@ -8073,7 +8234,7 @@ module.exports = class TextEditor {
     }
     const wanted = new Set(rows);
     const isCurrent = () =>
-      canAdjustIndentation(this, buffer, mode) &&
+      canAdjustIndentation(this, buffer, mode, options) &&
       buffer.getTextRevision() === revision &&
       this.getTabLength() === tabLength &&
       this.getSoftTabs() === softTabs;
@@ -8134,11 +8295,11 @@ module.exports = class TextEditor {
     );
   }
 
-  autoDecreaseIndentForBufferRow(bufferRow) {
+  autoDecreaseIndentForBufferRow(bufferRow, options = {}) {
     const buffer = this.buffer;
     const requestedRevision = buffer.getTextRevision();
     const languageMode = buffer.getLanguageMode();
-    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode);
+    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode, options);
     if (!languageMode.suggestedIndentForEditedBufferRow) {
       return;
     }
@@ -8178,7 +8339,7 @@ module.exports = class TextEditor {
   // Called at the end of a multi-change transaction when an auto-indent action
   // was supposed to happen during that transaction. May be called multiple
   // times, but will result in a maximum of one post-transaction adjustment.
-  scheduleIndentAdjustment(force = false) {
+  scheduleIndentAdjustment(force = false, options = {}) {
     // Ensure that we schedule only one indent adjustment per
     // between-transaction interval. It might have already been done, in which
     // case we don't even need to try to schedule it.
@@ -8199,7 +8360,7 @@ module.exports = class TextEditor {
     let pending;
     const isCurrent = () =>
       this.autoIndentAtTransactionEndPromise === pending &&
-      canAdjustIndentation(this, buffer, languageMode);
+      canAdjustIndentation(this, buffer, languageMode, options);
     const adjustment = handleIndentationErrors(
       Promise.resolve(languageMode.atTransactionEnd()).then(
         async ({ range, autoIndentRequests }) => {
@@ -8211,6 +8372,7 @@ module.exports = class TextEditor {
 
           const outcome = await this.autoIndentBufferRows(range.start.row, range.end.row, {
             isReindenting: false,
+            ...(options.bypassReadOnly ? { bypassReadOnly: true } : {}),
           });
           if (!isCurrent()) return;
           if (outcome?.changed && outcome.revision === buffer.getTextRevision())
@@ -8521,9 +8683,10 @@ function resolveSyntaxResult(result, apply) {
   return result?.then ? Promise.resolve(result).then(apply) : apply(result);
 }
 
-function canAdjustIndentation(editor, buffer, languageMode) {
+function canAdjustIndentation(editor, buffer, languageMode, options) {
   return (
     !editor.isDestroyed() &&
+    (options?.bypassReadOnly || !editor.isReadOnly()) &&
     editor.buffer === buffer &&
     !buffer.isDestroyed() &&
     buffer.getLanguageMode() === languageMode &&

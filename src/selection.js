@@ -775,9 +775,10 @@ module.exports = class Selection {
       this.editor.autoIndentBufferRow(newBufferRange.end.row, {
         preserveLeadingWhitespace: true,
         skipBlankLines: false,
+        ...(options.bypassReadOnly ? { bypassReadOnly: true } : {}),
       });
     } else if (options.autoDecreaseIndent && NonWhitespaceRegExp.test(text)) {
-      this.editor.autoDecreaseIndentForBufferRow(newBufferRange.start.row);
+      this.editor.autoDecreaseIndentForBufferRow(newBufferRange.start.row, options);
     }
 
     const autoscroll = options.autoscroll != null ? options.autoscroll : this.isLastSelection();
@@ -1115,7 +1116,7 @@ module.exports = class Selection {
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
     const [start, end] = this.getBufferRowRange();
-    return this.editor.autoIndentBufferRows(start, end);
+    return this.editor.autoIndentBufferRows(start, end, options);
   }
 
   /**
@@ -1296,6 +1297,12 @@ module.exports = class Selection {
     }
   }
 
+  canAutoIndentAtCursor() {
+    if (!this.isEmpty()) return false;
+    const { row, column } = this.cursor.getBufferPosition();
+    return !/[^\t ]/.test(this.editor.lineTextForBufferRow(row).slice(0, column));
+  }
+
   // Indent the current line(s).
   //
   // If the selection is empty, indents the current line if the cursor precedes
@@ -1306,16 +1313,19 @@ module.exports = class Selection {
   //   * `autoIndent` If `true`, the line is indented to an automatically-inferred
   //     level. Otherwise, {@link TextEditor#getTabText} is inserted.
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify text within a read-only editor. (default: false)
-  indent({ autoIndent, bypassReadOnly } = {}) {
+  indent(options = {}) {
+    const { autoIndent, bypassReadOnly } = options;
     if (!this.ensureWritable("indent", { bypassReadOnly })) return;
-    const { row } = this.cursor.getBufferPosition();
 
     if (this.isEmpty()) {
+      const useHint = autoIndent && this.canAutoIndentAtCursor();
+      const hasHint = Object.hasOwn(options, "suggestedIndent");
+      if (useHint && !hasHint) return this.editor.indentSelections([this], options);
+      const desiredIndent = useHint ? options.suggestedIndent : undefined;
       this.cursor.skipLeadingWhitespace();
-      const desiredIndent = this.editor.suggestedIndentForBufferRow(row);
-      let delta = desiredIndent - this.cursor.getIndentLevel();
+      let delta = Number.isFinite(desiredIndent) ? desiredIndent - this.cursor.getIndentLevel() : 0;
 
-      if (autoIndent && delta > 0) {
+      if (useHint && delta > 0) {
         if (!this.editor.getSoftTabs()) delta = Math.max(delta, 1);
         this.insertText(this.editor.buildIndentString(delta), {
           bypassReadOnly,
