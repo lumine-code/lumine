@@ -62,7 +62,7 @@ module.exports = class LinesTileComponent {
     this.element.remove();
   }
 
-  createLines() {
+  createLines(target = this.element) {
     const {
       tileStartRow,
       screenLines,
@@ -86,12 +86,31 @@ module.exports = class LinesTileComponent {
         lineComponentsByScreenLineId,
         horizontalPixelPositionsByScreenLineId,
       });
-      this.element.appendChild(component.element);
+      target.appendChild(component.element);
       this.lineComponents.push(component);
     }
   }
 
   updateLines(oldProps, newProps) {
+    // A distant scroll replaces the entire tile. Detach its old rows together,
+    // then build the replacement off-document so the live tree sees two child
+    // mutations instead of a remove/insert pair per row. Retain the incremental
+    // path for overlapping rows, block items and package-owned DOM children.
+    if (
+      !oldProps.blockDecorations?.size &&
+      !newProps.blockDecorations?.size &&
+      this.element.childNodes.length === this.lineComponents.length &&
+      this.lineComponents.every((line) => line.element.parentNode === this.element) &&
+      !oldProps.screenLines.some((line) => newProps.screenLines.includes(line))
+    ) {
+      this.element.replaceChildren();
+      for (const line of this.lineComponents) line.destroy();
+      const fragment = this.element.ownerDocument.createDocumentFragment();
+      this.createLines(fragment);
+      this.element.appendChild(fragment);
+      return;
+    }
+
     const {
       screenLines,
       tileStartRow,
