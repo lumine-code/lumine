@@ -8,6 +8,7 @@ const test = require("node:test");
 const asar = require("@electron/asar");
 const { getNodeModuleFileMatcher } = require("app-builder-lib/out/fileMatcher");
 const { whatToBuild } = require("./electron-builder");
+const packageWindowsCrashHelper = require("./windows-wer");
 const {
   checkBuiltApp,
   findArchives,
@@ -146,6 +147,7 @@ async function fixture(
       write(resources, entry, "resource");
     }
     for (const entry of [
+      "Lumine_wer.dll",
       "Lumine.VisualElementsManifest.xml",
       "visualElements/Square150x150Logo.png",
       "visualElements/Square70x70Logo.png",
@@ -155,6 +157,38 @@ async function fixture(
   }
   return { archive, repoRoot, buildDir, nativeFile };
 }
+
+test("renames the Windows crash helper to match the packaged executable", async (t) => {
+  const appOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-wer-"));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(appOutDir)), path.resolve(os.tmpdir()));
+    fs.rmSync(appOutDir, { recursive: true, force: true });
+  });
+  const original = path.join(appOutDir, "electron_wer.dll");
+  fs.writeFileSync(original, "crash helper");
+  await packageWindowsCrashHelper({
+    electronPlatformName: "win32",
+    appOutDir,
+    packager: { appInfo: { productFilename: "Lumine" } },
+  });
+  assert.equal(fs.readFileSync(path.join(appOutDir, "Lumine_wer.dll"), "utf8"), "crash helper");
+  assert.equal(fs.existsSync(original), false);
+  assert.equal(whatToBuild().afterPack, "script/windows-wer.js");
+});
+
+test("does not package a WER helper on other platforms", async () => {
+  await packageWindowsCrashHelper({ electronPlatformName: "linux" });
+  await packageWindowsCrashHelper({ electronPlatformName: "darwin" });
+});
+
+test("rejects a Windows package with a missing crash helper", async (t) => {
+  const { archive, repoRoot } = await fixture(t, { platform: "win32" });
+  fs.unlinkSync(path.join(path.dirname(path.dirname(archive)), "Lumine_wer.dll"));
+  assert.throws(
+    () => checkBuiltApp(archive, { repoRoot }),
+    /Missing Windows extra file: Lumine_wer/,
+  );
+});
 
 test("packages exactly one shell launcher for each target platform", () => {
   const config = whatToBuild();

@@ -370,6 +370,7 @@ let options = {
 
   extraMetadata: {},
 
+  afterPack: "script/windows-wer.js",
   afterSign: "script/mac-notarise.js",
   asarUnpack: [
     "node_modules/github/bin/*",

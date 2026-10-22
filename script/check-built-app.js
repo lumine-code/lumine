@@ -376,12 +376,17 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
     }
     const appDir = path.dirname(resources);
     for (const entry of [
+      "Lumine_wer.dll",
       "Lumine.VisualElementsManifest.xml",
       "visualElements/Square150x150Logo.png",
       "visualElements/Square70x70Logo.png",
     ]) {
       expect(fs.existsSync(path.join(appDir, entry)), `Missing Windows extra file: ${entry}`);
     }
+    expect(
+      !fs.existsSync(path.join(appDir, "electron_wer.dll")),
+      "Windows crash helper must use the packaged executable name: Lumine_wer.dll",
+    );
   }
   if (errors.length > 0)
     throw new Error(`${file}:\n${errors.map((error) => `  - ${error}`).join("\n")}`);
