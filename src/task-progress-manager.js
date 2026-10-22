@@ -1,3 +1,5 @@
+const crypto = require("node:crypto");
+
 function assertId(id) {
   if (typeof id !== "string" || !id || id.length > 128)
     throw new TypeError(
@@ -34,37 +36,63 @@ module.exports = class TaskProgressManager {
   constructor({ setBadgeCount }) {
     this.setBadgeCount = setBadgeCount;
     this.owners = new Map();
+    this.generations = new Map();
     this.windows = new Map();
     this.badgeCount = 0;
     this.disposed = false;
   }
 
-  update(owner, id, status) {
+  beginGeneration(owner) {
+    if (this.disposed) throw new Error("Task progress is unavailable after application teardown");
+    this.endGeneration(owner);
+    const token = crypto.randomUUID();
+    const contents = owner.browserWindow.webContents;
+    const end = () => this.endGeneration(owner);
+    const navigate = (_event, _url, inPlace, isMainFrame) => {
+      if (isMainFrame && !inPlace) end();
+    };
+    this.generations.set(owner, { token, contents, end, navigate });
+    contents.on("did-start-navigation", navigate);
+    contents.on("render-process-gone", end);
+    contents.on("destroyed", end);
+    return token;
+  }
+
+  endGeneration(owner) {
+    const record = this.generations.get(owner);
+    if (!record) return;
+    // Invalidate before clearing native state, so queued outgoing IPC cannot
+    // recreate a report while the same BrowserWindow starts its next document.
+    this.generations.delete(owner);
+    record.contents.removeListener("did-start-navigation", record.navigate);
+    record.contents.removeListener("render-process-gone", record.end);
+    record.contents.removeListener("destroyed", record.end);
+    this.clear(owner);
+  }
+
+  update(owner, id, status, generation) {
     assertId(id);
     status = normalizeStatus(status);
     if (this.disposed) throw new Error("Task progress is unavailable after application teardown");
     if (owner.isSpec || owner.offscreen || owner.headless) return;
-    if (status.count === 0) return this.remove(owner, id);
+    if (!generation || this.generations.get(owner)?.token !== generation)
+      throw new Error("The task progress renderer generation has ended");
+    if (owner.unloading || owner.isClosing?.())
+      throw new Error("The task progress renderer is unloading");
+    if (status.count === 0) return this.remove(owner, id, generation);
 
     let record = this.owners.get(owner);
     if (!record) {
-      const contents = owner.browserWindow.webContents;
-      const clear = () => this.clear(owner);
-      const navigate = (_event, _url, inPlace, isMainFrame) => {
-        if (isMainFrame && !inPlace) clear();
-      };
-      record = { reporters: new Map(), contents, clear, navigate };
+      record = { reporters: new Map() };
       this.owners.set(owner, record);
-      contents.on("did-start-navigation", navigate);
-      contents.on("render-process-gone", clear);
-      contents.on("destroyed", clear);
     }
     record.reporters.set(id, status);
     this.refresh(owner);
   }
 
-  remove(owner, id) {
+  remove(owner, id, generation) {
     assertId(id);
+    if (!generation || this.generations.get(owner)?.token !== generation) return;
     const record = this.owners.get(owner);
     if (!record?.reporters.delete(id)) return;
     if (record.reporters.size === 0) return this.clear(owner);
@@ -75,9 +103,6 @@ module.exports = class TaskProgressManager {
     const record = this.owners.get(owner);
     if (!record) return;
     this.owners.delete(owner);
-    record.contents.removeListener("did-start-navigation", record.navigate);
-    record.contents.removeListener("render-process-gone", record.clear);
-    record.contents.removeListener("destroyed", record.clear);
     this.refresh(owner);
   }
 
@@ -122,6 +147,6 @@ module.exports = class TaskProgressManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const owner of this.owners.keys()) this.clear(owner);
+    for (const owner of this.generations.keys()) this.endGeneration(owner);
   }
 };

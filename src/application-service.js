@@ -158,7 +158,10 @@ class ApplicationService {
    * @returns {Object} An owned reporter with `update(status)` and `dispose()` methods.
    */
   createTaskProgress() {
-    return new TaskProgress(this.applicationDelegate);
+    return new TaskProgress(
+      this.applicationDelegate,
+      getWindowLoadSettings().taskProgressGeneration,
+    );
   }
 
   /**
