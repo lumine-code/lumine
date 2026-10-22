@@ -20,6 +20,7 @@ const LEGAL_FILE =
   /^(?:(?:licen[cs]e|copying|notice|copyright)(?:[._-].*)?|third[-_ ]?party[-_ ]?(?:notices|licenses)(?:[._-].*)?)$/i;
 const RUNTIME_ASSETS = [
   "exports/lumine.js",
+  "src/main.js",
   "src/parse-command-line-options.js",
   "static/index.html",
   "static/index.js",
@@ -179,7 +180,17 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
     );
   }
   requireFile(path.posix.normalize(manifest.main || "src/main.js"));
-  for (const asset of RUNTIME_ASSETS) requireFile(asset);
+  for (const asset of RUNTIME_ASSETS) {
+    requireFile(asset);
+    const source = path.join(repoRoot, asset);
+    expect(fs.existsSync(source), `Missing source runtime asset: ${asset}`);
+    if (entries.includes(asset) && fs.existsSync(source)) {
+      expect(
+        asar.extractFile(file, path.normalize(asset)).equals(fs.readFileSync(source)),
+        `Runtime asset differs from its source: ${asset}`,
+      );
+    }
+  }
   for (const name of Object.keys(sourceManifest.dependencies || {})) {
     requireFile(`node_modules/${name}/package.json`);
   }

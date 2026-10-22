@@ -610,8 +610,15 @@ class Environment {
     this.blobStore = params.blobStore;
     this.configDirPath = params.configDirPath;
 
-    const { configFilePath, devMode, safeMode, resourcePath, userSettings, projectSpecification } =
-      this.#getLoadSettings();
+    const {
+      configFilePath,
+      devMode,
+      safeMode,
+      resourcePath,
+      userSettings,
+      projectSpecification,
+      packageResourceGeneration,
+    } = this.#getLoadSettings();
 
     this.stateStore.initialize({
       configDirPath: this.getConfigDirPath(),
@@ -656,6 +663,13 @@ class Environment {
       configDirPath: this.configDirPath,
       resourcePath,
       safeMode,
+      resourceProtocol: packageResourceGeneration
+        ? (request) =>
+            this.applicationDelegate.updatePackageResource({
+              ...request,
+              generation: packageResourceGeneration,
+            })
+        : undefined,
     });
     this.themes.initialize({
       configDirPath: this.configDirPath,
@@ -1065,20 +1079,9 @@ class Environment {
     this.emitter.emit("window-loaded", loadTime);
   }
 
-  // Restore the window to its previous dimensions and show it.
-  //
-  // Restores the full screen and maximized state after the window has resized to
-  // prevent resize glitches.
+  // Geometry and display mode are restored by the native window before loading.
   async displayWindow() {
-    await this.restoreWindowDimensions();
-    const steps = [this.restoreWindowBackground(), this.window.show(), this.window.focus()];
-    if (this.windowDimensions && this.windowDimensions.fullScreen) {
-      steps.push(this.window.setFullScreen(true));
-    }
-    if (this.windowDimensions && this.windowDimensions.maximized && process.platform !== "darwin") {
-      steps.push(this.window.maximize());
-    }
-    await Promise.all(steps);
+    await Promise.all([this.restoreWindowBackground(), this.window.show(), this.window.focus()]);
   }
 
   // Get the dimensions of this window.
@@ -1124,47 +1127,6 @@ class Environment {
     return Promise.all(steps);
   }
 
-  // Returns true if the dimensions are useable, false if they should be ignored.
-  // Work around for https://github.com/atom/atom-shell/issues/473
-  isValidDimensions({ x, y, width, height } = {}) {
-    return width > 0 && height > 0 && x + width > 0 && y + height > 0;
-  }
-
-  async storeWindowDimensions() {
-    this.windowDimensions = await this.getWindowDimensions();
-    if (this.isValidDimensions(this.windowDimensions)) {
-      localStorage.setItem("defaultWindowDimensions", JSON.stringify(this.windowDimensions));
-    }
-  }
-
-  async getDefaultWindowDimensions() {
-    const { windowDimensions } = this.#getLoadSettings();
-    if (windowDimensions) return windowDimensions;
-
-    let dimensions;
-    try {
-      dimensions = JSON.parse(localStorage.getItem("defaultWindowDimensions"));
-    } catch (error) {
-      console.warn("Error parsing default window dimensions", error);
-      localStorage.removeItem("defaultWindowDimensions");
-    }
-
-    if (dimensions && this.isValidDimensions(dimensions)) {
-      return dimensions;
-    } else {
-      const { width, height } = await this.window.getPrimaryDisplayWorkAreaSize();
-      return { x: 0, y: 0, width: Math.min(1024, width), height };
-    }
-  }
-
-  async restoreWindowDimensions() {
-    if (!this.windowDimensions || !this.isValidDimensions(this.windowDimensions)) {
-      this.windowDimensions = await this.getDefaultWindowDimensions();
-    }
-    await this.setWindowDimensions(this.windowDimensions);
-    return this.windowDimensions;
-  }
-
   restoreWindowBackground() {
     const backgroundColor = window.localStorage.getItem("lumine:window-background-color");
     if (backgroundColor) {
@@ -1198,7 +1160,6 @@ class Environment {
     const updateProcessEnvPromise = this.updateProcessEnvAndTriggerHooks();
 
     const loadStatePromise = this.loadState().then(async (state) => {
-      this.windowDimensions = state && state.windowDimensions;
       if (!this.window.isHeadless()) {
         StartupTime.addMarker("window:environment:start-editor-window:display-window");
         await this.displayWindow();
@@ -1369,8 +1330,6 @@ class Environment {
       documentStates: this.packages.serializeSessionState(),
       grammars: this.grammars.serialize(),
       uriHistory: this.uriHandlers.serialize(),
-      fullScreen: Boolean(this.windowDimensions?.fullScreen),
-      windowDimensions: this.windowDimensions,
     };
   }
 
@@ -1753,9 +1712,6 @@ class Environment {
 
   async restoreStateIntoThisEnvironment(state, options, assertCurrent = () => {}) {
     assertCurrent();
-    const fullScreen = await this.window.isFullScreen();
-    assertCurrent();
-    state.fullScreen = fullScreen;
     // The current panes are destroyed by Workspace::deserialize, which carries
     // persistent items over to the restored layout without flicker.
     return this.deserialize(state, options, assertCurrent);
@@ -1874,9 +1830,6 @@ class Environment {
   async deserialize(state, options = {}, assertCurrent = () => {}) {
     assertCurrent();
     if (!state) return Promise.resolve();
-
-    await this.window.setFullScreen(Boolean(state.fullScreen));
-    assertCurrent();
 
     const missingProjectPaths = [];
 

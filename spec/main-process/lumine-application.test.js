@@ -1206,6 +1206,7 @@ describe("LumineApplication", function () {
 
       const result = LumineApplication.handleWindowBootstrap({
         sender: w1.browserWindow.webContents,
+        senderFrame: w1.browserWindow.webContents.mainFrame,
       });
 
       assert.strictEqual(result.loadSettings.windowId, w1.id);
@@ -1279,12 +1280,75 @@ describe("LumineApplication", function () {
       destination.consumeStartupMarkers = () => ({});
       const first = LumineApplication.handleWindowBootstrap({
         sender: destination.browserWindow.webContents,
+        senderFrame: destination.browserWindow.webContents.mainFrame,
       });
       const second = LumineApplication.handleWindowBootstrap({
         sender: destination.browserWindow.webContents,
+        senderFrame: destination.browserWindow.webContents.mainFrame,
       });
       assert.deepEqual(first.loadSettings.paneItemTransfer, descriptor);
       assert.isUndefined(second.loadSettings.paneItemTransfer);
+    });
+
+    it("binds native task reports to the current bootstrapped main-frame generation", async function () {
+      const contents = w1.browserWindow.webContents;
+      const event = { sender: contents, senderFrame: contents.mainFrame };
+      w1.browserWindow.setProgressBar = sinon.spy();
+      app.taskProgress.setBadgeCount = sinon.spy();
+      w1.getLoadSettingsForRenderer = () => w1.loadSettings;
+      w1.consumeStartupMarkers = () => ({});
+      const outgoing =
+        LumineApplication.handleWindowBootstrap(event).loadSettings.taskProgressGeneration;
+      await LumineApplication.handleAppAction(
+        event,
+        "setTaskProgress",
+        "build",
+        { count: 1 },
+        outgoing,
+      );
+      contents.emit("did-start-navigation", {}, "file:///index", false, true);
+      await assert.rejects(
+        LumineApplication.handleAppAction(event, "setTaskProgress", "late", { count: 1 }, outgoing),
+        /generation has ended/,
+      );
+      assert.strictEqual(app.taskProgress.owners.size, 0);
+
+      const incoming =
+        LumineApplication.handleWindowBootstrap(event).loadSettings.taskProgressGeneration;
+      await LumineApplication.handleAppAction(
+        event,
+        "setTaskProgress",
+        "build",
+        { count: 2 },
+        incoming,
+      );
+      await LumineApplication.handleAppAction(event, "removeTaskProgress", "build", outgoing);
+      assert.strictEqual(app.taskProgress.setBadgeCount.lastCall.args[0], 2);
+      const subframe = { sender: contents, senderFrame: { isDestroyed: () => false } };
+      assert.throws(
+        () => LumineApplication.handleWindowBootstrap(subframe),
+        /current workspace frame/,
+      );
+      for (const invalid of [subframe, { sender: contents }]) {
+        await assert.rejects(
+          LumineApplication.handleAppAction(
+            invalid,
+            "setTaskProgress",
+            "late",
+            { count: 1 },
+            incoming,
+          ),
+          /current workspace frame/,
+        );
+      }
+      w1.unloading = true;
+      await assert.rejects(
+        LumineApplication.handleAppAction(event, "setTaskProgress", "late", { count: 1 }, incoming),
+        /unloading/,
+      );
+      await LumineApplication.handleAppAction(event, "removeTaskProgress", "build", incoming);
+      assert.strictEqual(app.taskProgress.setBadgeCount.lastCall.args[0], 0);
+      w1.unloading = false;
     });
 
     it("refuses a new-window transfer claiming another source window", async function () {
@@ -2605,6 +2669,7 @@ class StubWindow extends EventEmitter {
     this.browserWindow = new EventEmitter();
     this.browserWindow.isDestroyed = () => this.closed;
     this.browserWindow.webContents = new EventEmitter();
+    this.browserWindow.webContents.mainFrame = { isDestroyed: () => false };
     this.browserWindow.webContents.send = sinon.spy();
     // Broadcast handlers such as the scrollbar-style listener identify a window
     // by its `webContents` and then relay through `sendToRenderer`, so a stub

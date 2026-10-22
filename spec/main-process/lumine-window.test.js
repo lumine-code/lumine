@@ -13,6 +13,7 @@ const { BrowserWindow, dialog, webContents, ipcMain } = require("electron");
 const LumineWindow = require("../../src/lumine-window");
 const LumineApplication = require("../../src/lumine-application");
 const FileWatchService = require("../../src/file-watch-service");
+const TaskProgressManager = require("../../src/task-progress-manager");
 const { scanBundledPackageNames } = require("../../src/bundled-packages");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
@@ -26,6 +27,7 @@ describe("LumineWindow", function () {
   });
 
   afterEach(async function () {
+    app.taskProgress.dispose();
     await app.fileWatchService.close();
     sinon.restore();
   });
@@ -1570,6 +1572,7 @@ class StubApplication {
   }
   constructor(sinon) {
     this.fileWatchService = new FileWatchService();
+    this.taskProgress = new TaskProgressManager({ setBadgeCount: sinon.spy() });
     this.config = { get: (key) => this.config[key] || null };
     this.configFile = {
       path: "stub-config-path",

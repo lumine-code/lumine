@@ -1,0 +1,29 @@
+# Electron 45
+
+The editor pins Electron 45.0.0, Chromium 156 and Node 24.22.0. The ordinary Node toolchain remains separate from Electron's embedded runtime. Update both Electron selectors in `package.json` and regenerate the lockfile with npm when advancing the runtime.
+
+## Window ownership
+
+Electron owns desktop window geometry through named `windowStatePersistence`. Workspace snapshots retain document layout and persistent window identities, without duplicating native position, size, maximized or fullscreen state in renderer storage. Restarting a workspace in development mode reloads its existing native window; restoring the same auxiliary window identity reuses its presentation. Native window names must never overlap during replacement.
+
+Auxiliary presentations explicitly use `sandbox: false` because they share the opener's models and DOM constructors. Electron 45 otherwise creates a separate sandboxed process and returns no scriptable child from `window.open()`. Notebook output remains in its separate opaque-origin sandbox.
+
+Desktop sessions use persistent workspace partitions, retaining browser storage across restarts while keeping each workspace's package resource map independent. Tests, offscreen windows, captures and driven benchmarks use temporary sessions and disable native window persistence. `LUMINE_DISABLE_WINDOW_STATE_PERSISTENCE=1` applies that policy to an isolated capture process; it does not change the normal profile.
+
+## Resources and tasks
+
+[Package resources](package-resources.md) resolve through the exact loaded package generation. Fixed personal assets use Electron's native directory source. Mutable package routes use the modern protocol handler because replacing a native directory source does not update an already open renderer's source snapshot.
+
+`lumine.application.createTaskProgress()` creates an owned reporter. `update({count, progress})` reports active tasks and an optional completion fraction from zero to one; omitting progress requests an indeterminate indicator. `dispose()` removes that reporter. Native progress is aggregated for the workspace's main and auxiliary windows, while the application badge counts work across workspaces. Renderer generation changes and crashes invalidate old reporters. The busy-signal package projects its existing service registry onto this API.
+
+## Dynamic notebook frames
+
+Chromium 156's `frame-sizing: content-height` and `window.requestResize()` were tested against actual opaque-origin frames on Windows during the migration. Static initial content sized correctly, but dynamic updates remained at the initial height despite repeated resize requests, including requests issued before layout. Notebook widgets initialize and change after the document loads, so the measured MessagePort height bridge remains necessary in this runtime. A renderer regression checks growth, shrinkage and height bounds without granting the child access to its parent document.
+
+An output whose native host has disappeared retires its old iframe browsing context before the surrounding view moves into another window. Frame disposal cancels pending size work before awaiting widget cleanup.
+
+## Packaged application checks
+
+Windows builds rename Electron's WER helper to `Lumine_wer.dll` beside `Lumine.exe` before signing. The built-app check requires the renamed helper and compares critical runtime bytes with the build source, detecting inconsistent ASAR offsets or stale files. Build from a stable source snapshot: changing input sizes while an archive is being assembled can corrupt subsequent entries even when their names remain present.
+
+Validate a packaged application as well as the source checkout. Electron 45's ASAR descriptors are usable through `fs`, but are not native file descriptors for addons, process stdio or transferred file handles. Existing unpack rules keep native binaries, ripgrep and spelling resources outside the archive.

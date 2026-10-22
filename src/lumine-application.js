@@ -9,6 +9,7 @@ const FileWatchService = require("./file-watch-service");
 const FileRecoveryService = require("./file-recovery-service");
 const ProjectStateCoordinator = require("./project-state-coordinator");
 const SessionStateMaintenance = require("./session-state-maintenance");
+const TaskProgressManager = require("./task-progress-manager");
 const XdgShellInvoker = require("./xdg-shell-invoker");
 const applicationLauncher = require("./application-launcher");
 const StartupTime = require("./startup-time");
@@ -180,6 +181,15 @@ function currentLumineWindow(event) {
   return currentApplication().lumineWindowForSender(event.sender);
 }
 
+function assertWorkspaceFrame(event) {
+  if (
+    !event.senderFrame ||
+    event.senderFrame !== event.sender.mainFrame ||
+    event.senderFrame.isDestroyed()
+  )
+    throw new Error("Only the current workspace frame can use this application operation");
+}
+
 function assertString(value, name) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${name} must be a non-empty string`);
@@ -223,6 +233,7 @@ function appPaths() {
 
 const handleWindowBootstrap = (event) => {
   const lumineWindow = currentLumineWindow(event);
+  assertWorkspaceFrame(event);
   const loadSettings = JSON.parse(JSON.stringify(lumineWindow.getLoadSettingsForRenderer()));
   // Startup transfers are consumed by one renderer generation only.
   delete lumineWindow.loadSettings.paneItemTransfer;
@@ -233,11 +244,32 @@ const handleWindowBootstrap = (event) => {
       appPaths: appPaths(),
       appLocale: app.getLocale(),
       fileWatchSession: currentApplication().createFileWatchSession(lumineWindow),
+      taskProgressGeneration: currentApplication().taskProgress.beginGeneration(lumineWindow),
+      packageResourceGeneration: lumineWindow.resourceProtocol?.beginGeneration({
+        resourcePath: lumineWindow.resourcePath,
+        safeMode: lumineWindow.safeMode,
+      }),
     }),
     startupMarkers: lumineWindow.consumeStartupMarkers(),
   };
 };
 ipcMain.handle("lumine:window-bootstrap", handleWindowBootstrap);
+
+const handlePackageResource = (event, request) => {
+  try {
+    const window = currentLumineWindow(event);
+    if (event.senderFrame !== event.sender.mainFrame)
+      throw new Error("Only the workspace can update package resources");
+    if (!window.resourceProtocol) throw new Error("The window resource protocol is unavailable");
+    window.resourceProtocol.updatePackage(request);
+    return { ok: true };
+  } catch (error) {
+    return { error: { message: error.message } };
+  }
+};
+ipcMain.on("lumine:package-resource", (event, request) => {
+  event.returnValue = handlePackageResource(event, request);
+});
 
 ipcMain.handle("lumine:file-watch", async (event, { session, clientId, request } = {}) => {
   try {
@@ -640,6 +672,14 @@ const handleAppAction = async (event, action, ...args) => {
       });
       return destination.id;
     }
+    case "setTaskProgress":
+      assertWorkspaceFrame(event);
+      application.taskProgress.update(currentLumineWindow(event), args[0], args[1], args[2]);
+      return;
+    case "removeTaskProgress":
+      assertWorkspaceFrame(event);
+      application.taskProgress.remove(currentLumineWindow(event), args[0], args[1]);
+      return;
     case "getUserDefault":
       assertString(args[0], "key");
       if (
@@ -887,6 +927,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.waitSessionsByWindow = new Map();
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
+    this.taskProgress = new TaskProgressManager({
+      setBadgeCount: (count) => app.setBadgeCount(count),
+    });
     this.projectStateCoordinator = new ProjectStateCoordinator(this.getAllWindows);
     this.pendingWindowStateIds = new Map();
     this.sessionStateMaintenance =
@@ -941,12 +984,6 @@ module.exports = class LumineApplication extends EventEmitter {
       const MacApplicationMenu = require("./application-menu");
       this.applicationMenu = new MacApplicationMenu(this.version);
     }
-    this.lumineProtocolHandler = new LumineProtocolHandler(
-      this.resourcePath,
-      this.safeMode,
-      (packageName) => this.getPackageManager(this.devMode).resolvePackagePath(packageName),
-    );
-
     let socketServerPromise;
     if (options.test) {
       socketServerPromise = Promise.resolve();
@@ -971,6 +1008,7 @@ module.exports = class LumineApplication extends EventEmitter {
     });
     await Promise.all(windowsClosePromises);
     await this.sessionStateMaintenance.close();
+    this.taskProgress.dispose();
     this.disposable.dispose();
     await this.fileWatchService.close();
   }
@@ -1211,12 +1249,22 @@ module.exports = class LumineApplication extends EventEmitter {
   registerLumineWindow(lumineWindow) {
     const id = lumineWindow?.browserWindow?.webContents?.id;
     if (id != null) this.lumineWindowsByWebContentsId.set(id, lumineWindow);
+    if (!lumineWindow.resourceProtocol && lumineWindow.browserWindow?.webContents?.session) {
+      lumineWindow.resourceProtocol = new LumineProtocolHandler({
+        session: lumineWindow.browserWindow.webContents.session,
+        assetsPath: path.join(process.env.LUMINE_HOME, "assets"),
+        resourcePath: lumineWindow.resourcePath,
+        safeMode: lumineWindow.safeMode,
+      });
+    }
   }
 
   unregisterLumineWindow(lumineWindow) {
     for (const [id, registeredWindow] of this.lumineWindowsByWebContentsId) {
       if (registeredWindow === lumineWindow) this.lumineWindowsByWebContentsId.delete(id);
     }
+    lumineWindow.resourceProtocol?.dispose();
+    lumineWindow.resourceProtocol = null;
   }
 
   showWindow(lumineWindow) {
@@ -1889,8 +1937,8 @@ module.exports = class LumineApplication extends EventEmitter {
     );
   }
 
-  // Replaces the focused window with a development-mode window after its
-  // current state has been saved and the renderer has agreed to unload.
+  // Keep the native window and its persisted identity while replacing only
+  // the renderer generation. Electron window names cannot overlap.
   async restartWindowInDeveloperMode() {
     const sourceWindow = this.focusedWindow();
     if (!sourceWindow) return;
@@ -1903,62 +1951,46 @@ module.exports = class LumineApplication extends EventEmitter {
       return;
     }
     sourceWindow.unloading = true;
-    sourceWindow.windowStateTransferPending = true;
     let canUnload;
     try {
       canUnload = await sourceWindow.prepareToUnload({ reason: "replace" });
     } catch (error) {
       sourceWindow.unloading = false;
-      sourceWindow.windowStateTransferPending = false;
       console.error("Failed to prepare the window for development mode", error);
       return;
     }
     if (!canUnload) {
       sourceWindow.unloading = false;
-      sourceWindow.windowStateTransferPending = false;
       return;
     }
     if (sourceWindow.isClosing()) {
-      sourceWindow.windowStateTransferPending = false;
       return;
     }
 
-    let openedWindow;
+    const previousSettings = { ...sourceWindow.loadSettings };
     try {
-      const projectRoots = sourceWindow.projectRoots || [];
-      const openOptions = {
-        newWindow: true,
-        devMode: true,
-        safeMode: false,
-        windowStateId: sourceWindow.windowStateId,
-      };
-      if (projectRoots.length > 0) {
-        openOptions.foldersToOpen = projectRoots;
-      } else {
-        openOptions.pathsToOpen = [null];
-      }
-
-      openedWindow = await this.openPaths(openOptions);
-      if (!openedWindow) throw new Error("Development-mode window was not created");
-      await openedWindow.loadedPromise;
-      if (sourceWindow.isClosing() || sourceWindow.browserWindow.isDestroyed?.()) {
-        openedWindow.close();
-        sourceWindow.windowStateTransferPending = false;
-        return;
-      }
-    } catch (error) {
-      if (openedWindow && openedWindow !== sourceWindow) {
+      let resourcePath = this.resourcePath;
+      let windowInitializationScript = require.resolve("./initialize-application-window");
+      if (this.devResourcePath) {
         try {
-          openedWindow.close();
-        } catch (closeError) {
-          console.error("Failed to close the incomplete development window", closeError);
+          windowInitializationScript = require.resolve(
+            path.join(this.devResourcePath, "src", "initialize-application-window"),
+          );
+          resourcePath = this.devResourcePath;
+        } catch {
+          // An installed build can enter development mode without a checkout.
         }
       }
-      sourceWindow.windowStateTransferPending = false;
+      await sourceWindow.reload({
+        skipPrepareToUnload: true,
+        loadSettings: { devMode: true, safeMode: false, resourcePath, windowInitializationScript },
+      });
+      if (sourceWindow.isClosing()) return;
+    } catch (error) {
       if (sourceWindow.isClosing() || sourceWindow.browserWindow.isDestroyed?.()) return;
       sourceWindow.unloading = false;
       try {
-        await sourceWindow.reload({ skipPrepareToUnload: true });
+        await sourceWindow.reload({ skipPrepareToUnload: true, loadSettings: previousSettings });
       } catch (reloadError) {
         console.error("Failed to restore the original window", reloadError);
       }
@@ -1966,8 +1998,7 @@ module.exports = class LumineApplication extends EventEmitter {
       return;
     }
 
-    sourceWindow.close();
-    return openedWindow;
+    return sourceWindow;
   }
 
   // Get the platform-specific window offset for new windows.
@@ -2904,6 +2935,7 @@ class WindowStack {
 }
 
 Object.assign(module.exports, {
+  handlePackageResource,
   handleAppAction,
   handleSafeStorageAction,
   handleWindowAction,

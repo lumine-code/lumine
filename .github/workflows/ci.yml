@@ -164,7 +164,7 @@ jobs:
         run: |
           prefix=""
           if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
-          $prefix node --test spec/main-process/auxiliary-window-broker.test.js spec/main-process/file-watch-service.test.js
+          $prefix node --test spec/main-process/auxiliary-window-broker.test.js spec/main-process/file-watch-service.test.js spec/main-process/window-state-persistence.test.js spec/main-process/task-progress.test.js
       - name: Test JavaScript document core
         run: npm run test:document-core
       - name: Test Tree-sitter runtime

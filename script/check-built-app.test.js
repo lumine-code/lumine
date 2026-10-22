@@ -120,7 +120,10 @@ async function fixture(
   if (changeManifest) changeManifest(packedManifest);
   write(source, "package.json", packedManifest);
   write(source, "src/main.js", "module.exports = {};");
-  for (const asset of RUNTIME_ASSETS) write(source, asset, "asset");
+  for (const asset of RUNTIME_ASSETS) {
+    write(source, asset, "asset");
+    write(repoRoot, asset, "asset");
+  }
   for (const [entry, value] of Object.entries(installed)) write(repoRoot, entry, value);
   fs.cpSync(path.join(repoRoot, "node_modules"), path.join(source, "node_modules"), {
     recursive: true,
@@ -380,6 +383,14 @@ test("rejects metadata and declared source fields removed by manifest cleanup", 
     () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
     (error) =>
       /lacks _luminePackages/.test(error.message) && /changed devDependencies/.test(error.message),
+  );
+});
+
+test("rejects runtime bytes corrupted by a source change during packaging", async (t) => {
+  const app = await fixture(t, { add: { "src/main.js": "// wrong archive offset\nasset" } });
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /Runtime asset differs from its source: src\/main.js/,
   );
 });
 
