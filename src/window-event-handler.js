@@ -1,6 +1,5 @@
 const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const listen = require("./delegated-listener");
-const { debounce } = require("@lumine-code/underscore-plus");
 const EmbeddedPaneKeyboardBridge = require("./embedded-pane-keyboard-bridge");
 
 // Handles low-level events related to the `window`.
@@ -10,7 +9,6 @@ module.exports = class WindowEventHandler {
     this.handleFocusNext = this.handleFocusNext.bind(this);
     this.handleFocusPrevious = this.handleFocusPrevious.bind(this);
     this.handleWindowBlur = this.handleWindowBlur.bind(this);
-    this.handleWindowResize = this.handleWindowResize.bind(this);
     this.handleEnterFullScreen = this.handleEnterFullScreen.bind(this);
     this.handleLeaveFullScreen = this.handleLeaveFullScreen.bind(this);
     this.handleWindowBeforeunload = this.handleWindowBeforeunload.bind(this);
@@ -81,7 +79,6 @@ module.exports = class WindowEventHandler {
     this.addEventListener(this.window, "beforeunload", this.handleWindowBeforeunload);
     this.addEventListener(this.window, "focus", this.handleWindowFocus);
     this.addEventListener(this.window, "blur", this.handleWindowBlur);
-    this.addEventListener(this.window, "resize", debounce(this.handleWindowResize, 500));
 
     this.addEventListener(this.document, "keyup", this.handleDocumentKeyEvent);
     this.addEventListener(this.document, "keydown", this.handleDocumentKeyEvent);
@@ -280,15 +277,6 @@ module.exports = class WindowEventHandler {
 
   handleWindowBlur() {
     this.document.body.classList.add("is-blurred");
-    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
-      console.error(error),
-    );
-  }
-
-  handleWindowResize() {
-    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
-      console.error(error),
-    );
   }
 
   handleEnterFullScreen() {
@@ -311,9 +299,6 @@ module.exports = class WindowEventHandler {
       void this.lumineEnvironment.window.hide();
     }
     this.reloadRequested = false;
-    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
-      console.error(error),
-    );
     this.lumineEnvironment.unloadEditorWindow();
     this.lumineEnvironment.destroy();
   }

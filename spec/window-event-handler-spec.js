@@ -273,16 +273,6 @@ describe("WindowEventHandler", () => {
       }));
   });
 
-  describe("resize event", () =>
-    it("calls storeWindowDimensions", (done) => {
-      jasmine.useRealClock();
-
-      spyOn(lumine, "storeWindowDimensions").and.callFake(() => {
-        done();
-      });
-      window.dispatchEvent(new CustomEvent("resize"));
-    }));
-
   describe("window:close event", () =>
     it("closes the window", () => {
       spyOn(lumine.window, "close");
@@ -295,7 +285,6 @@ describe("WindowEventHandler", () => {
 
     beforeEach(() => {
       spyOn(lumine.window, "isSpecMode").and.returnValue(false);
-      spyOn(lumine, "storeWindowDimensions");
       spyOn(lumine, "unloadEditorWindow");
       spyOn(lumine, "destroy");
     });

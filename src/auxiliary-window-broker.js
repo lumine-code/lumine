@@ -1,7 +1,8 @@
 const crypto = require("node:crypto");
-const { screen, dialog } = require("electron");
+const { BrowserWindow, screen, dialog } = require("electron");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 const attachNativeWindowInput = require("./native-window-input");
+const { windowStateOptions } = require("./window-state-persistence");
 
 function assertBounds(bounds) {
   if (!bounds || typeof bounds !== "object") throw new TypeError("Window bounds are required.");
@@ -23,12 +24,14 @@ module.exports = class AuxiliaryWindowBroker {
       displayService = screen,
       dialogService = dialog,
       attachKeyboard = attachEmbeddedKeyboardIpc,
+      windowClass = BrowserWindow,
     } = {},
   ) {
     this.owner = owner;
     this.displayService = displayService;
     this.dialogService = dialogService;
     this.attachKeyboard = attachKeyboard;
+    this.windowClass = windowClass;
     this.pending = new Map();
     this.windows = new Map();
     this.destroyed = false;
@@ -47,16 +50,8 @@ module.exports = class AuxiliaryWindowBroker {
     const existing = [...this.windows.values()].find(
       (entry) => entry.persistentId === persistentId,
     );
-    if (
-      (existing && existing.id !== options.replacesWindowId) ||
-      [...this.pending.values()].some((entry) => entry.persistentId === persistentId)
-    )
+    if (existing || [...this.pending.values()].some((entry) => entry.persistentId === persistentId))
       throw new Error("This editor window identity is already in use.");
-    if (
-      options.replacesWindowId !== undefined &&
-      (!existing || existing.id !== options.replacesWindowId)
-    )
-      throw new Error("A replacement must address this workspace's existing editor window.");
     const bounds = { ...(options.bounds ?? {}) };
     assertBounds(bounds);
     // A saved display can disappear between sessions. Keep the complete
@@ -100,10 +95,16 @@ module.exports = class AuxiliaryWindowBroker {
       action: "allow",
       overrideBrowserWindowOptions: {
         ...request.bounds,
+        ...windowStateOptions(
+          `lumine-presentation-${this.owner.windowStateId}-${request.persistentId}`,
+          { enabled: this.owner.persistWindowState, clear: this.owner.clearWindowState },
+          this.windowClass,
+        ),
         frame: false,
         show: false,
         ...(this.owner.presentationIcon && { icon: this.owner.presentationIcon }),
-        webPreferences: { backgroundThrottling: false },
+        // Presentations share the opener's models and DOM constructors.
+        webPreferences: { backgroundThrottling: false, sandbox: false },
       },
     };
   }
@@ -119,6 +120,7 @@ module.exports = class AuxiliaryWindowBroker {
     const id = -window.webContents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
     this.windows.set(id, record);
+    this.owner.lumineApplication.taskProgress?.refresh(this.owner);
     attachNativeWindowInput(window, (position) =>
       this.owner.sendToRenderer("did-mouse-down-in-window", {
         windowId: id,
@@ -153,6 +155,7 @@ module.exports = class AuxiliaryWindowBroker {
     window.on("closed", () => {
       record.keyboard.dispose();
       this.windows.delete(id);
+      this.owner.lumineApplication.taskProgress?.refresh(this.owner);
       this.updateRuntimeThrottling();
       this.send(id, "closed");
     });
@@ -319,8 +322,12 @@ module.exports = class AuxiliaryWindowBroker {
         return;
       case "close":
         record.closeApproved = true;
-        window.close();
-        return;
+        return new Promise((resolve) => {
+          // The native name is released after the closed callback returns.
+          // A following restore must not create the same name in that callback.
+          window.once("closed", () => setImmediate(resolve));
+          window.close();
+        });
       case "openDevTools":
         window.webContents.openDevTools({ mode: "detach" });
         return;

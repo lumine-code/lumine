@@ -1853,37 +1853,16 @@ describe("Environment", () => {
       ]);
     });
 
-    it("does not resume an old restore into the new project after reset during the fullscreen read", async () => {
+    it("restores documents without reading or overriding the native display mode", async () => {
       const incoming = await savedIncomingState();
-      prepareForReset();
-      spyOn(env, "loadProjectState").and.returnValue(
-        Promise.resolve({ state: incoming, reservationId: null }),
-      );
-      let startFullscreen, finishFullscreen;
-      const fullscreenStarted = new Promise((resolve) => (startFullscreen = resolve));
-      spyOn(env.window, "isFullScreen").and.callFake(() => {
-        startFullscreen();
-        return new Promise((resolve) => (finishFullscreen = resolve));
-      });
+      spyOn(env.window, "isFullScreen").and.callThrough();
+      spyOn(env.window, "setFullScreen").and.callThrough();
       spyOn(env, "deserialize").and.callThrough();
-      const transition = env.project.setState([dirB]).catch((error) => error);
-      await fullscreenStarted;
-      await env.reset();
-      env.config.set("core.openEmptyEditorOnStart", false);
-      env.project.setPaths([dirA]);
-      const editor = await env.workspace.open(fileA);
-      editor.setText("Current generation after reset");
-      const currentHistory = env.uriHandlers.serialize();
-      finishFullscreen(false);
-
-      expect((await transition).code).toBe("ABORT_ERR");
-      expect(env.deserialize).not.toHaveBeenCalled();
-      expect(env.project.getPaths()).toEqual([dirA]);
-      expect(openPaths(env)).toEqual([fileA]);
-      expect(env.workspace.getActiveTextEditor()).toBe(editor);
-      expect(editor.getText()).toBe("Current generation after reset");
-      expect(editor.isDestroyed()).toBe(false);
-      expect(env.uriHandlers.serialize()).toEqual(currentHistory);
+      await env.restoreStateIntoThisEnvironment(incoming);
+      expect(env.deserialize).toHaveBeenCalled();
+      expect(env.window.isFullScreen).not.toHaveBeenCalled();
+      expect(env.window.setFullScreen).not.toHaveBeenCalled();
+      expect(incoming.fullScreen).toBeUndefined();
     });
 
     for (const invalidation of ["reset", "destroy"]) {

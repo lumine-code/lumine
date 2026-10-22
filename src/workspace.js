@@ -1520,13 +1520,17 @@ module.exports = class Workspace extends Model {
     try {
       for (const saved of original?.windows ?? []) {
         try {
+          const existing = prepared.retiring.find((window) => window.persistentId === saved.id);
+          if (existing) {
+            // A logical window retains its native name and geometry while only
+            // its document layout changes. Electron names cannot overlap.
+            prepared.retiring = prepared.retiring.filter((window) => window !== existing);
+            prepared.windows.push({ saved, window: existing, created: false });
+            continue;
+          }
           const openOptions = {
             show: false,
-            bounds: saved.bounds,
             persistentId: saved.id,
-            replacesWindowId: prepared.retiring
-              .find((window) => window.persistentId === saved.id)
-              ?.getId(),
           };
           this.#windowRestoreOpenOptions.add(openOptions);
           let window;
@@ -1535,7 +1539,7 @@ module.exports = class Workspace extends Model {
           } finally {
             this.#windowRestoreOpenOptions.delete(openOptions);
           }
-          prepared.windows.push({ saved, window });
+          prepared.windows.push({ saved, window, created: true });
           guard();
         } catch (error) {
           guard();
@@ -1561,8 +1565,8 @@ module.exports = class Workspace extends Model {
         }
       }
     } catch (error) {
-      for (const { window } of prepared.windows)
-        if (!window.isDestroyed() && !window.getEditorContainer().getPaneItems().length)
+      for (const { window, created } of prepared.windows)
+        if (created && !window.isDestroyed() && !window.getEditorContainer().getPaneItems().length)
           await this.releaseEditorWindow(window);
       throw error;
     }
@@ -1581,8 +1585,6 @@ module.exports = class Workspace extends Model {
       try {
         guard();
         window.getEditorContainer().deserialize(saved.container, deserializers);
-        if (saved.maximized) await window.maximize();
-        if (saved.fullScreen) await window.windowService.setFullScreen(true);
         guard();
         await window.windowService.show();
       } catch (error) {

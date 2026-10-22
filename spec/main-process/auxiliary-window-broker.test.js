@@ -55,7 +55,9 @@ function fixture(dialogService) {
 test("only prepared workspace presentations can open a native child", () => {
   const { broker } = fixture();
   const token = broker.prepare({ bounds: { width: 800, height: 600 } });
-  assert.equal(broker.windowOpenHandler({ url: "about:blank", frameName: token }).action, "allow");
+  const result = broker.windowOpenHandler({ url: "about:blank", frameName: token });
+  assert.equal(result.action, "allow");
+  assert.equal(result.overrideBrowserWindowOptions.webPreferences.sandbox, false);
   assert.equal(
     broker.windowOpenHandler({ url: "https://example.com", frameName: token }).action,
     "deny",
@@ -466,20 +468,51 @@ test("saved presentation identities are valid and cannot alias another host", ()
   broker.destroy();
 });
 
-test("restore may prepare a replacement for its own old host before closing it", async () => {
+test("a native identity cannot be reused until its previous host is destroyed", async () => {
   const { broker, window } = fixture();
   const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
   const token = broker.prepare({ persistentId });
   broker.didCreateWindow(window, { frameName: token });
-  const descriptor = await broker.resolve(token);
+  await broker.resolve(token);
   assert.throws(() => broker.prepare({ persistentId }), /already in use/);
   assert.throws(() => broker.prepare({ persistentId, replacesWindowId: -99 }), /already in use/);
-  const replacement = broker.prepare({ persistentId, replacesWindowId: descriptor.id });
   assert.equal(window.destroyed, undefined);
-  assert.throws(
-    () => broker.prepare({ persistentId, replacesWindowId: descriptor.id }),
-    /already in use/,
-  );
+  window.destroy();
+  const replacement = broker.prepare({ persistentId });
   broker.cancel(replacement);
+  broker.destroy();
+});
+
+test("auxiliary native state is scoped to its workspace and logical presentation", () => {
+  const { broker, owner } = fixture();
+  owner.windowStateId = "11111111-1111-4111-8111-111111111111";
+  owner.persistWindowState = true;
+  const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
+  const token = broker.prepare({ persistentId });
+  const { overrideBrowserWindowOptions: options } = broker.windowOpenHandler({
+    url: "about:blank",
+    frameName: token,
+  });
+  assert.equal(options.name, `lumine-presentation-${owner.windowStateId}-${persistentId}`);
+  assert.equal(options.windowStatePersistence, true);
+  broker.destroy();
+});
+
+test("a close resolves after native destruction has released the presentation name", async () => {
+  const { broker, window } = fixture();
+  const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
+  const token = broker.prepare({ persistentId });
+  broker.didCreateWindow(window, { frameName: token });
+  const { id } = await broker.resolve(token);
+  let settled = false;
+  const closing = broker.invoke(id, "close").then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+  assert.equal(settled, false);
+  window.destroy();
+  assert.equal(settled, false);
+  await closing;
+  assert.ok(broker.prepare({ persistentId }));
   broker.destroy();
 });

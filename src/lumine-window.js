@@ -1,4 +1,12 @@
-const { BrowserWindow, app, dialog, ipcMain, nativeImage, webContents } = require("electron");
+const {
+  BrowserWindow,
+  app,
+  dialog,
+  ipcMain,
+  nativeImage,
+  screen,
+  webContents,
+} = require("electron");
 const { getAppName } = require("./get-app-details.js");
 const path = require("path");
 const fs = require("fs");
@@ -9,6 +17,10 @@ const AuxiliaryWindowBroker = require("./auxiliary-window-broker");
 const StartupTime = require("./startup-time");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 const attachNativeWindowInput = require("./native-window-input");
+const {
+  isWindowStatePersistenceEnabled,
+  windowStateOptions,
+} = require("./window-state-persistence");
 
 // Packaged builds ship the icon under resourcesPath; a source checkout falls
 // back to the repo's own copy. Parameterized by filename rather than a single
@@ -52,6 +64,8 @@ module.exports = class LumineWindow extends EventEmitter {
     this.safeMode = settings.safeMode;
     this.devMode = settings.devMode;
     this.resourcePath = settings.resourcePath;
+    this.persistWindowState = isWindowStatePersistenceEnabled(settings);
+    this.clearWindowState = Boolean(settings.clearWindowState);
 
     const locationsToOpen = settings.locationsToOpen || [];
 
@@ -62,7 +76,19 @@ module.exports = class LumineWindow extends EventEmitter {
       this.resolveClosedPromise = resolve;
     });
 
+    const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
+    const workArea = screen.getPrimaryDisplay().workArea;
     const options = {
+      x: workArea.x,
+      y: workArea.y,
+      width: Math.min(1024, workArea.width),
+      height: workArea.height,
+      ...settings.windowDimensions,
+      ...windowStateOptions(
+        `lumine-workspace-${this.windowStateId}`,
+        { enabled: this.persistWindowState, clear: this.clearWindowState },
+        BrowserWindowConstructor,
+      ),
       frame: false,
       // Keep the native mouse pointer visible while typing on platforms where
       // Electron exposes the window-level auto-hide control. Windows uses the
@@ -72,6 +98,8 @@ module.exports = class LumineWindow extends EventEmitter {
       title: getAppName(),
       tabbingIdentifier: "lumine",
       webPreferences: {
+        // Resource routes belong to this workspace's loaded package generation.
+        partition: `lumine-window-${crypto.randomUUID()}`,
         // Prevent specs from throttling when the window is in the background:
         // this should result in faster CI builds, and an improvement in the
         // local development experience when running specs through the UI (which
@@ -121,7 +149,6 @@ module.exports = class LumineWindow extends EventEmitter {
       options.transparent = true;
     }
 
-    const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
     this.auxiliaryWindowBroker = new AuxiliaryWindowBroker(this);
     this.browserWindow.webContents.setWindowOpenHandler?.((details) =>
@@ -370,6 +397,10 @@ module.exports = class LumineWindow extends EventEmitter {
       "did-start-navigation",
       (_event, _url, inPlace, isMainFrame) => {
         if (isMainFrame && !inPlace) {
+          this.resourceProtocol?.beginGeneration({
+            resourcePath: this.resourcePath,
+            safeMode: this.safeMode,
+          });
           this.auxiliaryWindowBroker.destroy();
           this.auxiliaryWindowBroker = new AuxiliaryWindowBroker(this);
           void this.lumineApplication
@@ -757,7 +788,7 @@ module.exports = class LumineWindow extends EventEmitter {
   // awaits forever. That is silent — `application:open-your-keymap` and the
   // rest of `openPathOnEvent` simply stop doing anything while the renderer
   // itself keeps working normally. Commit to the reload first, latch second.
-  async reload({ skipPrepareToUnload = false } = {}) {
+  async reload({ skipPrepareToUnload = false, loadSettings } = {}) {
     const preparation = skipPrepareToUnload ? null : this.prepareToUnload({ reason: "reload" });
     const request = this.unloadRequest;
     const canUnload = skipPrepareToUnload || (await preparation);
@@ -768,13 +799,45 @@ module.exports = class LumineWindow extends EventEmitter {
     if (request) request.reloadStarted = true;
     this.unloadApproved = true;
 
-    this.loadedPromise = new Promise((resolve) => {
-      this.resolveLoadedPromise = resolve;
-    });
+    if (loadSettings) {
+      Object.assign(this.loadSettings, loadSettings);
+      this.resourcePath = this.loadSettings.resourcePath;
+      this.devMode = this.loadSettings.devMode;
+      this.safeMode = this.loadSettings.safeMode;
+      const iconPath = resolveIconPath(iconFileNameForMode(this.safeMode, this.devMode));
+      this.presentationIcon = nativeImage.createFromPath(iconPath);
+      if (process.platform === "darwin") app.dock.setIcon(iconPath);
+      else this.browserWindow.setIcon?.(this.presentationIcon);
+    }
+
+    // A failed navigation can be retried with the previous configuration.
+    // Keep its latch so paths queued during that failure follow the retry.
+    if (!this.reloadNavigationFailed) {
+      this.loadedPromise = new Promise((resolve) => {
+        this.resolveLoadedPromise = resolve;
+      });
+    }
+    this.reloadNavigationFailed = false;
     // Mark every reload, including main-process requests, before beforeunload
     // can mistake it for a close and hide the focused window from the taskbar.
     this.sendToRenderer("will-reload-window");
-    this.browserWindow.reload();
+    try {
+      if (loadSettings) {
+        await this.browserWindow.loadURL(
+          url.format({
+            protocol: "file",
+            pathname: `${this.resourcePath}/static/index.html`,
+            slashes: true,
+          }),
+        );
+      } else {
+        this.browserWindow.reload();
+      }
+    } catch (error) {
+      if (request) request.reloadStarted = false;
+      this.reloadNavigationFailed = true;
+      throw error;
+    }
     return Promise.race([this.loadedPromise, this.closedPromise]);
   }
 

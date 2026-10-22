@@ -351,6 +351,29 @@ describe("LumineWindow", function () {
       );
     });
 
+    it("keeps queued paths attached to a failed navigation's configuration retry", async () => {
+      const previousSettings = { ...window.loadSettings };
+      const load = sinon.stub(window.browserWindow, "loadURL");
+      load.onFirstCall().rejects(new Error("navigation failed"));
+      load.onSecondCall().resolves();
+      await assert.rejects(
+        window.reload({
+          skipPrepareToUnload: true,
+          loadSettings: { ...previousSettings, devMode: true, resourcePath: "/development" },
+        }),
+        /navigation failed/,
+      );
+      const failedGeneration = window.loadedPromise;
+      const opening = window.openLocations([{ pathToOpen: "retry.js" }]);
+      const retry = window.reload({ skipPrepareToUnload: true, loadSettings: previousSettings });
+      assert.strictEqual(window.loadedPromise, failedGeneration);
+      window.browserWindow.emit("window:loaded");
+      await retry;
+      assert.isTrue(await opening);
+      assert.strictEqual(window.devMode, previousSettings.devMode);
+      assert.isTrue(load.calledTwice);
+    });
+
     it("refuses locations before and after waiting for its renderer when closing", async () => {
       const opening = window.openLocations([{ pathToOpen: "first.js" }]);
       window.prepareToUnload({ reason: "close" });
@@ -1140,6 +1163,8 @@ describe("LumineWindow", function () {
 
       assert.match(w.windowStateId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-/);
       assert.strictEqual(w.loadSettings.windowStateId, w.windowStateId);
+      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${w.windowStateId}`);
+      assert.isTrue(w.browserWindow.options.windowStatePersistence);
     });
 
     it("preserves a restored state identity", function () {
@@ -1151,6 +1176,93 @@ describe("LumineWindow", function () {
 
       assert.strictEqual(w.windowStateId, windowStateId);
       assert.strictEqual(w.getLoadSettingsForRenderer().windowStateId, windowStateId);
+    });
+
+    for (const mode of ["isSpec", "headless", "offscreen"]) {
+      it(`does not persist geometry in ${mode} windows`, function () {
+        const w = new LumineWindow(app, service, {
+          browserWindowConstructor: StubBrowserWindow,
+          [mode]: true,
+          clearWindowState: true,
+        });
+        assert.isUndefined(w.browserWindow.options.name);
+        assert.isUndefined(w.browserWindow.options.windowStatePersistence);
+      });
+    }
+
+    it("clears a restored native identity before constructing its replacement", function () {
+      const windowStateId = "11111111-1111-4111-8111-111111111111";
+      const cleared = [];
+      class ResetWindow extends StubBrowserWindow {
+        static clearPersistedState(name) {
+          cleared.push(name);
+        }
+        constructor(options) {
+          assert.deepEqual(cleared, [options.name]);
+          super(options);
+        }
+      }
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: ResetWindow,
+        windowStateId,
+        clearWindowState: true,
+      });
+      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${windowStateId}`);
+    });
+
+    it("gives native restoration precedence over explicit initial geometry", function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        windowDimensions: { x: 120, y: 240, width: 960, height: 720 },
+      });
+      const { x, y, width, height, windowStatePersistence } = w.browserWindow.options;
+      assert.deepEqual({ x, y, width, height }, { x: 120, y: 240, width: 960, height: 720 });
+      assert.isTrue(windowStatePersistence);
+    });
+
+    it("restores and clears geometry through Electron after the named native window closes", async function () {
+      const name = `lumine-state-spec-${require("node:crypto").randomUUID()}`;
+      const { windowStateOptions } = require("../../src/window-state-persistence");
+      let nativeWindow;
+      try {
+        nativeWindow = new BrowserWindow({
+          ...windowStateOptions(name, { enabled: true }, BrowserWindow),
+          show: false,
+          x: 120,
+          y: 100,
+          width: 720,
+          height: 540,
+        });
+        const saved = nativeWindow.getNormalBounds();
+        const closed = emitterEventPromise(nativeWindow, "closed");
+        nativeWindow.close();
+        await closed;
+        await new Promise(setImmediate);
+
+        nativeWindow = new BrowserWindow({
+          ...windowStateOptions(name, { enabled: true }, BrowserWindow),
+          show: false,
+          width: 320,
+          height: 240,
+        });
+        assert.deepEqual(nativeWindow.getNormalBounds(), saved);
+        const restoredClosed = emitterEventPromise(nativeWindow, "closed");
+        nativeWindow.close();
+        await restoredClosed;
+        await new Promise(setImmediate);
+
+        nativeWindow = new BrowserWindow({
+          ...windowStateOptions(name, { enabled: true, clear: true }, BrowserWindow),
+          show: false,
+          width: 640,
+          height: 480,
+        });
+        const reset = nativeWindow.getSize();
+        assert.deepEqual(reset, [640, 480]);
+      } finally {
+        if (nativeWindow && !nativeWindow.isDestroyed()) nativeWindow.destroy();
+        BrowserWindow.clearPersistedState(name);
+      }
     });
   });
 

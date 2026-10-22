@@ -140,7 +140,6 @@ module.exports = class WorkspaceCenter {
           const window = container.getWindow();
           return {
             id: window.persistentId,
-            ...window.serializeGeometry(),
             container: container.serialize(),
           };
         }),

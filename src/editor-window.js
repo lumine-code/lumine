@@ -422,16 +422,6 @@ module.exports = class EditorWindow {
     return this.windowService.getState();
   }
 
-  /** @private Native state is pushed on geometry events so snapshots remain synchronous. */
-  serializeGeometry() {
-    const state = this.windowService.state;
-    return {
-      bounds: state?.bounds,
-      maximized: !!state?.maximized,
-      fullScreen: !!state?.fullScreen,
-    };
-  }
-
   /** @category Window Management */
 
   /**

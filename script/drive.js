@@ -311,7 +311,11 @@ async function launch({ positional, options }) {
   const child = spawn(require("electron"), argv, {
     detached: true,
     stdio: ["ignore", log, log],
-    env: { ...process.env, LUMINE_HOME: home },
+    env: {
+      ...process.env,
+      LUMINE_HOME: home,
+      LUMINE_DISABLE_WINDOW_STATE_PERSISTENCE: "1",
+    },
   });
   child.unref();
   fs.writeFileSync(path.join(home, "drive.pid"), String(child.pid));
@@ -457,7 +461,11 @@ async function benchmark({ positional, options }) {
 
     const log = fs.openSync(logPath, "a");
     const started = performance.now();
-    const env = { ...process.env, LUMINE_HOME: home };
+    const env = {
+      ...process.env,
+      LUMINE_HOME: home,
+      LUMINE_DISABLE_WINDOW_STATE_PERSISTENCE: "1",
+    };
     if (options.executable) {
       delete env.LUMINE_DEV_MODE;
       delete env.LUMINE_RESOURCE_PATH;

@@ -37,6 +37,35 @@ describe("Auxiliary editor windows", () => {
     });
   });
 
+  it("restores a document layout into its existing native presentation", async () => {
+    const workspace = lumine.workspace;
+    const editor = await workspace.open();
+    editor.setText("restore this document in the same native window");
+    const extra = await workspace.detachPane(workspace.paneForItem(editor));
+    const domWindow = extra.getDOMWindow();
+    const persistentId = extra.persistentId;
+    const state = lumine.serialize({ isUnloading: true });
+    const saved = state.workspace.paneContainers.center.windows[0];
+    expect(saved.id).toBe(persistentId);
+    expect(saved.bounds).toBeUndefined();
+    expect(saved.maximized).toBeUndefined();
+    expect(saved.fullScreen).toBeUndefined();
+    expect(state.windowDimensions).toBeUndefined();
+    expect(state.fullScreen).toBeUndefined();
+    const open = spyOn(workspace, "openEditorWindow").and.callThrough();
+
+    await lumine.deserialize(state);
+
+    expect(open).not.toHaveBeenCalled();
+    expect(extra.isDestroyed()).toBeFalse();
+    expect(extra.getDOMWindow()).toBe(domWindow);
+    expect(extra.persistentId).toBe(persistentId);
+    expect(extra.getEditorContainer().getActivePaneItem().getText()).toBe(
+      "restore this document in the same native window",
+    );
+    expect(workspace.getWindows()).toContain(extra);
+  });
+
   it("uses standards-mode geometry for icon-only lines and inline controls", async () => {
     const workspace = lumine.workspace;
     const extra = await workspace.openEditorWindow({ show: false });
@@ -613,6 +642,7 @@ describe("Auxiliary editor windows", () => {
       editor.setText("preserve a failed host's document");
       const extra = await workspace.detachPane(workspace.paneForItem(editor));
       const state = lumine.serialize({ isUnloading: true });
+      await workspace.discardEditorWindows();
       const notifications = workspace.notificationManager;
       const windowNotifications = jasmine.createSpyObj("window notifications", ["addWarning"]);
       const globalWarning = spyOn(lumine.notifications, "addWarning");
