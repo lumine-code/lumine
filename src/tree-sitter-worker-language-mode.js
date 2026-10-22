@@ -170,6 +170,25 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return count >= 128;
   }
 
+  copyHighlighting(source, target) {
+    const visible = [...this.requests].flatMap((request) => request.ranges);
+    if (
+      this.cache.copyRange(
+        source.start,
+        source.end,
+        target,
+        [this.grammar.idForScope(this.grammar.scopeName)],
+        (snapshot) =>
+          visible.some(([first, last]) => snapshot.start.row <= last && snapshot.end.row > first),
+      )
+    ) {
+      this.emitter.emit(
+        "did-change-highlighting",
+        new Range(target, target.traverse(source.getExtent())),
+      );
+    }
+  }
+
   bufferDidChangeBatch(change) {
     this.bufferDidChange(change);
   }

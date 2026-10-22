@@ -41,9 +41,8 @@ describe("TextEditor", () => {
   });
 
   afterEach(async () => {
-    if (languageMode?.atTransactionEnd) {
-      await languageMode.atTransactionEnd();
-    }
+    // Path/grammar changes can dispose the mode captured in beforeEach.
+    if (!buffer.isDestroyed()) await buffer.getLanguageMode().atTransactionEnd?.();
   });
 
   it("generates unique ids for each editor", async () => {
@@ -9735,8 +9734,8 @@ describe("TextEditor", () => {
   });
 
   describe(".duplicateLines()", () => {
-    it("for each selection, duplicates all buffer lines intersected by the selection", () => {
-      editor.foldBufferRow(4);
+    it("for each selection, duplicates all buffer lines intersected by the selection", async () => {
+      await editor.foldBufferRow(4);
       editor.setCursorBufferPosition([2, 5]);
       editor.addSelectionForBufferRange(
         [
@@ -9796,8 +9795,8 @@ describe("TextEditor", () => {
       );
     });
 
-    it("duplicates all folded lines for empty selections on lines containing folds", () => {
-      editor.foldBufferRow(4);
+    it("duplicates all folded lines for empty selections on lines containing folds", async () => {
+      await editor.foldBufferRow(4);
       editor.setCursorBufferPosition([4, 0]);
 
       editor.duplicateLines();

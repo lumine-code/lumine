@@ -118,6 +118,45 @@ function at(cache, position, end = point(position.row + 1)) {
   }
   return scopes;
 }
+
+test("copied paint follows edits but cannot satisfy current syntax coverage", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(2),
+    [1],
+    [
+      { position: point(0, 2), open: [2], close: [] },
+      { position: point(0, 4), open: [], close: [2] },
+      { position: point(1), open: [3], close: [] },
+      { position: point(1, 4), open: [], close: [3] },
+    ],
+  );
+  const current = { revision: 2, generation: 1, presentation: 1 };
+  assert.equal(cache.copyRange(point(0, 1), point(1, 3), point(5, 2), [1]), true);
+  assert.deepEqual(at(cache, point(5, 3)), [1, 2]);
+  assert.deepEqual(at(cache, point(6, 1)), [1, 3]);
+  assert.equal(cache.covers(point(5, 2), point(6, 3)), true);
+  assert.equal(cache.covers(point(5, 2), point(6, 3), current), false);
+  cache.edit({ oldRange: { start: point(5), end: point(5) }, newRange: { end: point(6) } });
+  assert.deepEqual(at(cache, point(6, 3)), [1, 2]);
+  cache.replace([{ start: point(6, 2), end: point(7, 3), scopes: [1, 4], events: [] }], current);
+  assert.deepEqual(at(cache, point(6, 3)), [1, 4]);
+  assert.deepEqual(at(cache, point(0, 3)), [1, 2]);
+});
+
+test("copying partial paint preserves its gaps and empty copies do not claim coverage", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0), point(1), [1], []);
+  record(cache, point(2), point(3), [1, 2], []);
+  assert.equal(cache.copyRange(point(0), point(3), point(5), [1]), true);
+  assert.equal(cache.copyRange(point(0), point(0), point(5), [1]), false);
+  assert.equal(cache.copyRange(point(20), point(21), point(30), [1]), false);
+  assert.equal(cache.covers(point(5), point(6)), true);
+  assert.equal(cache.covers(point(6), point(7)), false);
+  assert.deepEqual(at(cache, point(7)), [1, 2]);
+});
 test("rebases painted scope boundaries through insert, delete and undo geometry", () => {
   const cache = new HighlightCache();
   record(

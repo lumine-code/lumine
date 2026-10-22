@@ -2883,12 +2883,22 @@ module.exports = class TextEditor {
           [startRow, 0],
           [endRow, 0],
         ]);
-        let textToDuplicate = this.getTextInBufferRange([
+        const sourceRange = this.buffer.clipRange([
           [startRow, 0],
           [endRow, 0],
         ]);
-        if (endRow > this.getLastBufferRow()) textToDuplicate = `\n${textToDuplicate}`;
-        this.buffer.insert([endRow, 0], textToDuplicate);
+        let textToDuplicate = this.getTextInBufferRange(sourceRange);
+        const appendNewline = endRow > this.getLastBufferRow();
+        if (appendNewline) textToDuplicate = `\n${textToDuplicate}`;
+        const insertedRange = this.buffer.insert([endRow, 0], textToDuplicate);
+        // The source is unchanged by this insertion. Reuse its presentation
+        // while asynchronous syntax checks the copy in its new context.
+        this.buffer
+          .getLanguageMode()
+          .copyHighlighting?.(
+            sourceRange,
+            appendNewline ? insertedRange.start.traverse([1, 0]) : insertedRange.start,
+          );
 
         const insertedRowCount = endRow - startRow;
 

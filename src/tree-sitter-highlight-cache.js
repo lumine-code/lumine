@@ -114,6 +114,40 @@ class HighlightCache {
     }));
     snapshot.rowOffset = 0;
   }
+  copyRange(start, end, target, fallback, keep) {
+    if (compare(start, end) >= 0) return false;
+    // Folded/offscreen source text may only be partially cached. Copy its
+    // prepared fragments without claiming coverage for the gaps between them.
+    const ranges = [];
+    for (const snapshot of this.getOrderedSnapshots()) {
+      const first = compare(snapshot.start, start) > 0 ? snapshot.start : start;
+      const last = compare(snapshot.end, end) < 0 ? snapshot.end : end;
+      if (compare(first, last) >= 0) continue;
+      const previous = ranges.at(-1);
+      if (previous && compare(first, previous[1]) <= 0) {
+        if (compare(last, previous[1]) > 0) previous[1] = last;
+      } else ranges.push([first, last]);
+    }
+    if (!ranges.length) return false;
+    const translate = (position) => target.traverse(position.traversalFrom(start));
+    const snapshots = ranges.map(([first, last]) => {
+      const { scopes, iterator } = this.read(first, last, fallback);
+      const events = [];
+      while (compare(iterator.getPosition(), last) < 0) {
+        events.push({
+          position: translate(iterator.getPosition()),
+          open: [...iterator.getOpenScopeIds()],
+          close: [...iterator.getCloseScopeIds()],
+        });
+        iterator.moveToSuccessor();
+      }
+      return { start: translate(first), end: translate(last), scopes, events };
+    });
+    // This is retained paint, never evidence of current syntax. A worker
+    // result must replace it even when the copied text has not changed.
+    this.replace(snapshots, null, keep);
+    return true;
+  }
   replace(snapshots, stamp, keep = () => false) {
     this.rebase();
     this.orderedSnapshots = null;
