@@ -1,6 +1,7 @@
 const getWindowLoadSettings = require("./get-window-load-settings");
 const semver = require("semver");
 const { getReleaseChannel } = require("./get-app-details");
+const TaskProgress = require("./task-progress");
 
 /**
  * @public
@@ -134,6 +135,31 @@ class ApplicationService {
   }
 
   /** @category System Integration */
+
+  /**
+   * @public
+   * @status public
+   *
+   * Create an owned reporter for work shown in the operating system's taskbar
+   * or Dock. Each reporter contributes independently to this workspace's main
+   * and detached windows; the application badge counts work across workspaces
+   * on platforms that support native badges.
+   *
+   * Call `update({count, progress})` with a non-negative task count and an
+   * optional progress fraction between zero and one. Omit progress, or use
+   * `null`, for indeterminate work. A zero count clears this reporter. When
+   * several reporters have known progress, the window displays their average
+   * weighted by task count; any indeterminate work makes it indeterminate.
+   *
+   * Both `update()` and `dispose()` return promises. Dispose the reporter when
+   * its owner unloads. A renderer reload or crash also clears its reports.
+   * After disposal, updates reject; a failed disposal can be retried.
+   *
+   * @returns {Object} An owned reporter with `update(status)` and `dispose()` methods.
+   */
+  createTaskProgress() {
+    return new TaskProgress(this.applicationDelegate);
+  }
 
   /**
    * @public
