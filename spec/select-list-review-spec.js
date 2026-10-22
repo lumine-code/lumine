@@ -7,14 +7,20 @@ describe("SelectList query recovery and reentrant observers", () => {
 
   it("keeps core matcher scoring independent of old caller option objects", () => {
     const values = ["src/main.js", "main.js"];
-    const matcher = lumine.tools.fuzzyMatcher.setCandidates(values);
-    const options = { algorithm: "fuzzaldrin", usePathScoring: true };
-    matcher.getMatchIndexes(0, "ma", options);
-    options.usePathScoring = false;
-    const requested = { algorithm: "fuzzaldrin", usePathScoring: true };
-    expect(matcher.match("ma", requested)).toEqual(
-      lumine.tools.fuzzyMatcher.setCandidates(values).match("ma", requested),
-    );
+    const { Matcher } = require("@lumine-code/fuzzy-search");
+    // Exercise both the installed library and the public wrapper, which already
+    // copies options and therefore masks this regression in older library pins.
+    for (const create of [
+      () => new Matcher([0, 1], values),
+      () => lumine.tools.fuzzyMatcher.setCandidates(values),
+    ]) {
+      const matcher = create();
+      const options = { algorithm: "fuzzaldrin", usePathScoring: true };
+      matcher.getMatchIndexes(0, "ma", options);
+      options.usePathScoring = false;
+      const requested = { algorithm: "fuzzaldrin", usePathScoring: true };
+      expect(matcher.match("ma", requested)).toEqual(create().match("ma", requested));
+    }
   });
 
   it("removes its filtering error after refreshing the same query", async () => {
