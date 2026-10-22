@@ -5,6 +5,18 @@ const {
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;" };
 const escapeHTML = (text) => text.replace(/[&<>"\r]/g, (character) => HTML_ESCAPES[character]);
+const scopeMarkup = new Map();
+function scopeOpeningTag(className) {
+  let html = scopeMarkup.get(className);
+  if (html === undefined) {
+    html = `<span class="${escapeHTML(className)}">`;
+    // Class strings are immutable, unlike scope IDs across grammar changes.
+    // Bound this shared cache so retired grammars cannot accumulate markup.
+    if (scopeMarkup.size === 256) scopeMarkup.delete(scopeMarkup.keys().next().value);
+    scopeMarkup.set(className, html);
+  }
+  return html;
+}
 
 module.exports = class LineComponent {
   constructor(props) {
@@ -125,7 +137,7 @@ module.exports = class LineComponent {
           this.unpooledContents = false;
           return this.appendPooledContents();
         }
-        html += `<span class="${escapeHTML(displayLayer.classNameForTag(tag) || "")}">`;
+        html += scopeOpeningTag(displayLayer.classNameForTag(tag) || "");
       } else {
         html += escapeHTML(lineText.slice(column, column + tag));
         column += tag;

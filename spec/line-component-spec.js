@@ -63,6 +63,19 @@ describe("LineComponent token markup", () => {
     expect(pool.elementsByType.DIV[0][0].childNodes.length).toBe(0);
   });
 
+  it("escapes scope classes and follows changed class mappings when rebuilding markup", () => {
+    const component = build("const value = 123;");
+    const unsafe = 'syntax--keyword" data-injected="yes';
+    component.props.displayLayer.classNameForTag = () => unsafe;
+    component.appendHTMLContents();
+    expect(component.element.querySelector("[data-injected]")).toBeNull();
+    expect(component.element.querySelector("span[class]").className).toBe(unsafe);
+    component.props.displayLayer.classNameForTag = () => "syntax--changed";
+    component.appendHTMLContents();
+    expect(component.element.querySelector("span[class]").className).toBe("syntax--changed");
+    expect(component.element.textContent).toBe("const value = 123;");
+  });
+
   it("collects HTML text nodes only when a measurement first requests them", () => {
     const walk = spyOn(document, "createTreeWalker").and.callThrough();
     const component = build("const value = 123;");
