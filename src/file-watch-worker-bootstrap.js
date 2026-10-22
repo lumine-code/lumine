@@ -1,5 +1,6 @@
 /* eslint n/no-process-exit: off */
 // Plain CommonJS running in Electron's Node mode: no renderer globals or DOM.
+require("./electron-rm-sync-compatibility");
 const { enableCompileCache } = require("module");
 enableCompileCache();
 

@@ -10,6 +10,12 @@ const childProcess = require("node:child_process");
 const parserPath = fs.existsSync(path.join(__dirname, "app.asar"))
   ? path.join(__dirname, "app.asar", "src", "parse-command-line-options")
   : path.join(__dirname, "..", "src", "parse-command-line-options");
+if (
+  process.platform === "win32" &&
+  typeof process.versions.electron === "string" &&
+  process.versions.electron.length > 0
+)
+  require(path.join(path.dirname(parserPath), "electron-rm-sync-compatibility"));
 const parseOptions = require(parserPath);
 const WAITER = "--lumine-cli-waiter";
 const OUTPUT_OPTIONS = [

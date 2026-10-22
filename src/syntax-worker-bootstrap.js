@@ -1,3 +1,4 @@
+require("./electron-rm-sync-compatibility");
 const Module = require("node:module");
 const Point = require("./point");
 const Range = require("./range");

@@ -1,4 +1,5 @@
 // Real application screenshots. No dependency on the local ecosystem manager.
+require("../src/electron-rm-sync-compatibility");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");

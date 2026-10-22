@@ -1,4 +1,5 @@
 const startTime = Date.now();
+require("./electron-rm-sync-compatibility");
 const StartupTime = require("./startup-time");
 StartupTime.setStartTime();
 

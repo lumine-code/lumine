@@ -1,3 +1,4 @@
+require("./electron-rm-sync-compatibility");
 const fs = require("fs");
 // The editor and its Node-mode child both provide the built-in SQLite API.
 // eslint-disable-next-line n/no-unsupported-features/node-builtins

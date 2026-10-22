@@ -152,6 +152,10 @@ jobs:
         run: |
           install() { npm ci --ignore-scripts; }
           install || install || install
+      # Validate the removal walker and child preloads on every OS before any
+      # Electron session can create and clean package/profile junctions.
+      - name: Test filesystem removal and Node child arguments
+        run: node --test script/electron-rm-sync-compatibility.test.js script/buffered-node-process-arguments.test.js
       - name: Download the Electron binary
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron

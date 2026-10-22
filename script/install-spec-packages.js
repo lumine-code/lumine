@@ -22,6 +22,7 @@
 // Native dependencies must support the editor's Electron runtime. This helper
 // runs their ordinary install scripts; it does not force an Electron ABI rebuild.
 
+require("../src/electron-rm-sync-compatibility");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");

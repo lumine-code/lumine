@@ -4,6 +4,7 @@
 // load identically to the renderer), forwards console output to the renderer
 // for diagnostics, and then loads the worker.
 
+require("./electron-rm-sync-compatibility");
 const compileCachePath = process.env.LUMINE_COMPILE_CACHE_PATH;
 const CompileCache = require("./compile-cache");
 if (compileCachePath) CompileCache.setCacheDirectory(compileCachePath);

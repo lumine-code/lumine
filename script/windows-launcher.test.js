@@ -345,9 +345,11 @@ function fixture(t) {
     fs.copyFileSync(path.join(root, "resources", "win", name), path.join(resources, name));
   }
   fs.copyFileSync(helper, path.join(resources, "lumine.js"));
-  const parser = path.join(resources, "app.asar", "src", "parse-command-line-options.js");
-  fs.mkdirSync(path.dirname(parser), { recursive: true });
-  fs.copyFileSync(path.join(root, "src", "parse-command-line-options.js"), parser);
+  const sourceDirectory = path.join(resources, "app.asar", "src");
+  fs.mkdirSync(sourceDirectory, { recursive: true });
+  for (const name of ["parse-command-line-options.js", "electron-rm-sync-compatibility.js"]) {
+    fs.copyFileSync(path.join(root, "src", name), path.join(sourceDirectory, name));
+  }
   const source = path.join(directory, "probe.cs");
   const executable = path.join(install, "Lumine.exe");
   fs.writeFileSync(
@@ -447,6 +449,10 @@ test(
     fs.renameSync(archive, unpacked);
     await asar.createPackage(unpacked, archive);
     t.after(() => asar.uncacheAll());
+    assert.deepEqual(
+      asar.extractFile(archive, "src/electron-rm-sync-compatibility.js"),
+      fs.readFileSync(path.join(root, "src", "electron-rm-sync-compatibility.js")),
+    );
     const args = ["--foreground", "--wait=false", "C:\\Project with spaces\\", "123"];
     const { result, report } = f.invocation(args, { env: { LUMINE_TEST_NODE: electron } });
     assert.equal(result.status, 0, result.stderr);

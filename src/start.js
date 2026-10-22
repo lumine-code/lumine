@@ -1,3 +1,4 @@
+require("./electron-rm-sync-compatibility");
 const { app, crashReporter } = require("electron");
 const path = require("path");
 const temp = require("@lumine-code/fs-temp");

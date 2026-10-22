@@ -25,6 +25,7 @@
   // window:start marker.
   const startWindowTime = Date.now();
 
+  require("../src/electron-rm-sync-compatibility");
   const electron = require("electron");
   const path = require("path");
   const getWindowLoadSettings = require("../src/get-window-load-settings");

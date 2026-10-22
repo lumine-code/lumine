@@ -34,6 +34,7 @@
 // and `fetch` are used deliberately: this must stay dependency-free so it works
 // in a checkout whose `node_modules` is mid-rebuild.
 
+require("../src/electron-rm-sync-compatibility");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const net = require("net");

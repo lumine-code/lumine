@@ -21,6 +21,7 @@ const LEGAL_FILE =
 const RUNTIME_ASSETS = [
   "exports/lumine.js",
   "src/main.js",
+  "src/electron-rm-sync-compatibility.js",
   "src/parse-command-line-options.js",
   "static/index.html",
   "static/index.js",

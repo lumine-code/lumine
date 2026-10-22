@@ -4,6 +4,7 @@
 //
 // Run as `<electron> --ELECTRON_RUN_AS_NODE askpass.js <sockAddr> <prompt>`.
 
+require("./electron-rm-sync-compatibility");
 const net = require("net");
 const { execFile } = require("child_process");
 

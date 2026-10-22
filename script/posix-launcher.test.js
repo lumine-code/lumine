@@ -197,9 +197,11 @@ function fixture(t, platform = "Linux") {
   fs.mkdirSync(resources, { recursive: true });
   fs.copyFileSync(path.join(root, "lumine.sh"), script);
   fs.copyFileSync(path.join(root, "resources", "lumine.js"), path.join(resources, "lumine.js"));
-  const parser = path.join(resources, "app.asar", "src", "parse-command-line-options.js");
-  fs.mkdirSync(path.dirname(parser), { recursive: true });
-  fs.copyFileSync(path.join(root, "src", "parse-command-line-options.js"), parser);
+  const sourceDirectory = path.join(resources, "app.asar", "src");
+  fs.mkdirSync(sourceDirectory, { recursive: true });
+  for (const name of ["parse-command-line-options.js", "electron-rm-sync-compatibility.js"]) {
+    fs.copyFileSync(path.join(root, "src", name), path.join(sourceDirectory, name));
+  }
   const probe = path.join(directory, "probe.js");
   fs.writeFileSync(
     probe,

@@ -416,6 +416,7 @@ test("rejects wrong platform menus, incomplete bundled metadata, and changed pin
 test("rejects missing parser, query, snippets, and package main files", async (t) => {
   const omitted = [
     "src/parse-command-line-options.js",
+    "src/electron-rm-sync-compatibility.js",
     "node_modules/sample/grammars/sample.wasm",
     "node_modules/sample/grammars/sample.scm",
     "node_modules/sample/snippets/main.json",

@@ -1,3 +1,4 @@
+const { isApplicable } = require("./electron-rm-sync-compatibility");
 const BufferedProcess = require("./buffered-process");
 
 /**
@@ -16,6 +17,21 @@ const BufferedProcess = require("./buffered-process");
  * ```
  */
 module.exports = class BufferedNodeProcess extends BufferedProcess {
+  /**
+   * @public
+   * @status extended
+   *
+   * Get a fresh array of runtime arguments for a Node script launched with the
+   * editor's executable. Place these before the script path, or pass them as
+   * `execArgv` to `child_process.fork`. Use these with the editor's
+   * `process.execPath`. The array is empty outside Windows Electron, and
+   * requesting it never changes the process environment.
+   * @returns {Array<String>} Runtime arguments for the current editor process.
+   */
+  static getNodeExecArguments() {
+    return isApplicable() ? ["--require", require.resolve("./electron-rm-sync-compatibility")] : [];
+  }
+
   /**
    * @public
    * @status public
@@ -44,6 +60,7 @@ module.exports = class BufferedNodeProcess extends BufferedProcess {
 
     args = args ? args.slice() : [];
     args.unshift(command);
+    args.unshift(...BufferedNodeProcess.getNodeExecArguments());
     args.unshift("--no-deprecation");
 
     super({
