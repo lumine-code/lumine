@@ -31,6 +31,8 @@ SOFTWARE.
 ----- BEGIN THIRD-PARTY LICENSE: upstream:pulsar-edit_pulsar -----
 Source: https://github.com/pulsar-edit/pulsar
 Revision: 857b0d17a64145205f4db636ff8971a4115c25f6
+Additional port: 5c08daa64af316d8c14c7648a605f451e2101d97 (overlay scrollbar mouse targeting).
+Components: src/dummy-scrollbar-component.js and its regression specifications.
 
 Original file: LICENSE.md
 

@@ -150,12 +150,20 @@ module.exports = class DummyScrollbarComponent {
   }
 
   didMouseDown(event) {
-    let { bottom, right } = this.element.getBoundingClientRect();
-    const clickedOnScrollbar =
-      this.props.orientation === "horizontal"
-        ? event.clientY >= bottom - this.getRealScrollbarHeight()
-        : event.clientX >= right - this.getRealScrollbarWidth();
+    const clickedOnScrollbar = event.target
+      ? event.target === this.element
+      : this.isWithinRealScrollbar(event);
     if (!clickedOnScrollbar) this.props.didMouseDown(event);
+  }
+
+  // Overlay scrollbars occupy no layout space. Native scrollbar clicks target
+  // the scrolling element; clicks through its content target the inner child.
+  // Geometry remains a fallback for synthetic events without a target.
+  isWithinRealScrollbar(event) {
+    let { bottom, right } = this.element.getBoundingClientRect();
+    return this.props.orientation === "horizontal"
+      ? event.clientY >= bottom - this.getRealScrollbarHeight()
+      : event.clientX >= right - this.getRealScrollbarWidth();
   }
 
   getRealScrollbarWidth() {

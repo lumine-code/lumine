@@ -17,6 +17,55 @@ describe("DummyScrollbarComponent", () => {
     { orientation: "horizontal", positionProperty: "scrollLeft" },
   ]) {
     describe(`with a ${orientation} scrollbar`, () => {
+      it("preserves selection when an overlay scrollbar receives a mouse down", () => {
+        const didMouseDown = jasmine.createSpy("didMouseDown");
+        const component = buildComponent(orientation, () => {}, didMouseDown);
+        spyOn(component.element, "getBoundingClientRect").and.returnValue({
+          bottom: 100,
+          right: 100,
+        });
+        spyOn(component, "getRealScrollbarWidth").and.returnValue(0);
+        spyOn(component, "getRealScrollbarHeight").and.returnValue(0);
+
+        component.didMouseDown({ target: component.element, clientX: 75, clientY: 75 });
+
+        expect(didMouseDown).not.toHaveBeenCalled();
+      });
+
+      it("forwards content mouse downs even when geometry overlaps the scrollbar", () => {
+        const didMouseDown = jasmine.createSpy("didMouseDown");
+        const component = buildComponent(orientation, () => {}, didMouseDown);
+        spyOn(component.element, "getBoundingClientRect").and.returnValue({
+          bottom: 100,
+          right: 100,
+        });
+        spyOn(component, "getRealScrollbarWidth").and.returnValue(15);
+        spyOn(component, "getRealScrollbarHeight").and.returnValue(15);
+        const event = { target: component.innerElement, clientX: 95, clientY: 95 };
+
+        component.didMouseDown(event);
+
+        expect(didMouseDown).toHaveBeenCalledOnceWith(event);
+      });
+
+      it("uses measured scrollbar bounds for mouse downs without a target", () => {
+        const didMouseDown = jasmine.createSpy("didMouseDown");
+        const component = buildComponent(orientation, () => {}, didMouseDown);
+        spyOn(component.element, "getBoundingClientRect").and.returnValue({
+          bottom: 100,
+          right: 100,
+        });
+        spyOn(component, "getRealScrollbarWidth").and.returnValue(15);
+        spyOn(component, "getRealScrollbarHeight").and.returnValue(15);
+        component.didMouseDown({ clientX: 95, clientY: 95 });
+        expect(didMouseDown).not.toHaveBeenCalled();
+
+        const contentEvent = { clientX: 50, clientY: 50 };
+        component.didMouseDown(contentEvent);
+
+        expect(didMouseDown).toHaveBeenCalledOnceWith(contentEvent);
+      });
+
       it("ignores native scroll events echoing a quantized programmatic position", () => {
         const didScroll = jasmine.createSpy("didScroll");
         const component = buildComponent(orientation, didScroll);
@@ -126,11 +175,11 @@ describe("DummyScrollbarComponent", () => {
     });
   }
 
-  function buildComponent(orientation, didScroll) {
+  function buildComponent(orientation, didScroll, didMouseDown = () => {}) {
     const component = new DummyScrollbarComponent({
       orientation,
       didScroll,
-      didMouseDown() {},
+      didMouseDown,
       canScroll: true,
       forceScrollbarVisible: false,
       scrollHeight: 11_000_000,
