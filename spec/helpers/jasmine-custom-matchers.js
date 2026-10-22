@@ -331,7 +331,7 @@ exports.register = (jasmineEnv) => {
 
             return {
               pass,
-              message: `Expected '${getElementString(actual)}' to contain '${contained}'`,
+              message: `Expected '${getElementString(actual)}' ${pass ? "not " : ""}to contain '${contained}'`,
             };
           },
         };
