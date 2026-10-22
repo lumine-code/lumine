@@ -12,7 +12,7 @@ module.exports = class LineComponent {
     this.props = props;
     this.element = nodePool.getElement("DIV", this.buildClassName(), null);
     this.element.dataset.screenRow = screenRow;
-    this.textNodes = [];
+    this.cachedTextNodes = null;
 
     if (offScreen) {
       this.element.style.position = "absolute";
@@ -89,6 +89,24 @@ module.exports = class LineComponent {
     this.appendPooledContents();
   }
 
+  get textNodes() {
+    // Painting HTML needs no JavaScript references to each text node. Most
+    // rows scrolled through never participate in cursor or range measurement.
+    if (this.cachedTextNodes == null) this.collectTextNodes();
+    return this.cachedTextNodes;
+  }
+
+  set textNodes(nodes) {
+    this.cachedTextNodes = nodes;
+  }
+
+  collectTextNodes() {
+    const nodes = (this.cachedTextNodes ??= []);
+    nodes.length = 0;
+    const walker = this.element.ownerDocument.createTreeWalker(this.element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
+  }
+
   appendHTMLContents() {
     const { displayLayer, screenLine } = this.props;
     const { lineText, tags } = screenLine;
@@ -117,15 +135,14 @@ module.exports = class LineComponent {
     if (column === 0) html += " ";
     if (lineText.endsWith(displayLayer.foldCharacter)) html += ZERO_WIDTH_NBSP_CHARACTER;
     this.element.innerHTML = html;
-    this.textNodes.length = 0;
-    const walker = this.element.ownerDocument.createTreeWalker(this.element, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) this.textNodes.push(node);
+    // Once exposed, keep the same array current through decoration rebuilds.
+    if (this.cachedTextNodes != null) this.collectTextNodes();
   }
 
   appendPooledContents() {
     const { displayLayer, nodePool, screenLine, textDecorations } = this.props;
 
-    this.textNodes.length = 0;
+    (this.cachedTextNodes ??= []).length = 0;
 
     const { lineText, tags } = screenLine;
     let openScopeNode = nodePool.getElement("SPAN", null, null);

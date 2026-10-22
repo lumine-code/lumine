@@ -62,6 +62,43 @@ describe("LineComponent token markup", () => {
     expect(pool.elementsByType.SPAN).toBeUndefined();
     expect(pool.elementsByType.DIV[0][0].childNodes.length).toBe(0);
   });
+
+  it("collects HTML text nodes only when a measurement first requests them", () => {
+    const walk = spyOn(document, "createTreeWalker").and.callThrough();
+    const component = build("const value = 123;");
+    expect(walk).not.toHaveBeenCalled();
+    const nodes = component.textNodes;
+    expect(nodes.map((node) => node.data).join("")).toBe("const value = 123;");
+    expect(walk).toHaveBeenCalledTimes(1);
+    expect(component.textNodes).toBe(nodes);
+    expect(walk).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an exposed text-node array current through HTML and decorated rebuilds", () => {
+    const component = build("const value = 123;");
+    const nodes = component.textNodes;
+    const originalNodes = [...nodes];
+    component.update({
+      screenRow: 0,
+      textDecorations: [{ column: 0, className: "marked" }, { column: 2 }],
+    });
+    expect(component.textNodes).toBe(nodes);
+    expect(nodes.every((node) => component.element.contains(node))).toBeTrue();
+    expect(originalNodes.some((node) => nodes.includes(node))).toBeFalse();
+    component.update({ screenRow: 0, textDecorations: [] });
+    expect(component.textNodes).toBe(nodes);
+    expect(nodes.map((node) => node.data).join("")).toBe("const value = 123;");
+    expect(nodes.every((node) => component.element.contains(node))).toBeTrue();
+  });
+
+  it("retains a caller-supplied text-node array when rebuilding HTML", () => {
+    const component = build("const value = 123;");
+    const nodes = [];
+    component.textNodes = nodes;
+    component.appendHTMLContents();
+    expect(component.textNodes).toBe(nodes);
+    expect(nodes.map((node) => node.data).join("")).toBe("const value = 123;");
+  });
   it("preserves deeply nested scopes beyond the HTML parser depth limit", () => {
     const component = build("x", [...new Array(600).fill(-1), 1, ...new Array(600).fill(-2)]);
     expect(component.unpooledContents).toBeFalse();
