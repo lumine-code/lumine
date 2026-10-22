@@ -23,6 +23,8 @@ All matches are published together, in the same stable order as synchronous matc
 
 Recent-item changes reorder only the resting list. While a query is active, a history update from another window preserves its results, selected item and pending worker request.
 
+Query and selection observers may synchronously issue another update. The newer request supersedes the earlier request's filtering and initial-selection intent. A successful filtering retry clears the error owned by the previous failed match, including when retrying through `refresh()` or switching to synchronous search; this cleanup preserves a replacement status supplied by the package.
+
 ## Immutable source snapshots
 
 A frozen `items` array opts into immutable snapshot semantics: its entries, item IDs and searchable fields must remain unchanged. Publishing that same array again reuses the source records and worker preparation. Publish a new array and new objects for changed entries when the data changes. Ordinary mutable arrays retain replacement semantics, including callers that mutate an array before submitting it again. Public `getItems()` always returns an independent array.

@@ -1047,6 +1047,15 @@ class SelectList extends InputDialog {
         this.clearWorkerMatcher();
     }
     if (resetOverflow) this.overflowSectionsActive = false;
+    // Query/selection observers may synchronously replace this update. Keep
+    // the state for which its selection was calculated, not just a query string.
+    const pendingSearch = searchInWorker
+      ? {
+          query: this.model.getQuery(),
+          generation: this.model.getGeneration(),
+          records: this.model._records,
+        }
+      : null;
 
     const listProps = [
       "items",
@@ -1081,6 +1090,8 @@ class SelectList extends InputDialog {
     } finally {
       this.suppressModelQueryUpdate = false;
     }
+    if (this.destroyed) return;
+    if (changesModel && !searchInWorker && !recentsOnly) this.clearQueryFailure();
     if (
       itemsChanged ||
       identityChanged ||
@@ -1094,9 +1105,16 @@ class SelectList extends InputDialog {
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
+      if (
+        pendingSearch &&
+        !this.queryWork &&
+        pendingSearch.query === this.model.getQuery() &&
+        pendingSearch.generation === this.model.getGeneration() &&
+        pendingSearch.records === this.model._records
+      )
+        this.startQueryWork(querySelection);
       this.publishSelectionChange(previousSelection, itemsChanged ? "items" : "update");
     }
-    if (searchInWorker) this.startQueryWork(querySelection);
 
     if (itemsChanged) {
       this.emitter.emit("did-change-items", { list: this, items: this.getItems() });
@@ -1494,6 +1512,16 @@ class SelectList extends InputDialog {
     this.stopFilteringProgress();
   }
 
+  clearQueryFailure() {
+    // A package may replace the status while retrying. Only clear the error
+    // owned by this matcher, never an unrelated action or background message.
+    if (this.queryFailureStatus && this.getStatus() === this.queryFailureStatus) {
+      this.clearStatusTimer();
+      this.props.status = null;
+    }
+    this.queryFailureStatus = null;
+  }
+
   selectionForSearch(changes, previous) {
     if ("initialSelection" in changes)
       return { initial: SelectListModel.normalizeInitialSelection(changes.initialSelection) };
@@ -1579,6 +1607,7 @@ class SelectList extends InputDialog {
             indexes,
           });
       this.finishQueryWork(work);
+      this.clearQueryFailure();
       this.publishSelectionChange(previousSelection, "query");
       this.refreshItemActionsIndicator();
       await this.updateComponent();
@@ -1587,7 +1616,8 @@ class SelectList extends InputDialog {
         if (controller.signal.aborted) return;
         this.finishQueryWork(work);
         this.clearWorkerMatcher();
-        void this.setStatus({ type: "error", message: error?.message ?? String(error) });
+        this.queryFailureStatus = { type: "error", message: error?.message ?? String(error) };
+        void this.setStatus(this.queryFailureStatus);
         throw error;
       })
       .finally(() => {
