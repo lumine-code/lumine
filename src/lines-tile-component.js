@@ -95,10 +95,11 @@ module.exports = class LinesTileComponent {
     // A distant scroll replaces the entire tile. Detach its old rows together,
     // then build the replacement off-document so the live tree sees two child
     // mutations instead of a remove/insert pair per row. Retain the incremental
-    // path for overlapping rows, block items and package-owned DOM children.
+    // path for overlapping rows, block items, focused content and extra DOM children.
     if (
       !oldProps.blockDecorations?.size &&
       !newProps.blockDecorations?.size &&
+      !this.element.contains(this.element.ownerDocument.activeElement) &&
       this.element.childNodes.length === this.lineComponents.length &&
       this.lineComponents.every((line) => line.element.parentNode === this.element) &&
       !oldProps.screenLines.some((line) => newProps.screenLines.includes(line))

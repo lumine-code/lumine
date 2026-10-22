@@ -87,6 +87,23 @@ describe("LinesTileComponent row replacement", () => {
     expect(tile.lineComponents[0].element).toBe(element);
   });
 
+  it("keeps incremental replacement when a package has focused content inside a row", () => {
+    tile = new LinesTileComponent(props([line("old one"), line("old two"), line("old three")]));
+    jasmine.attachToDOM(tile.element);
+    const input = document.createElement("input");
+    tile.lineComponents[0].element.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    const observer = new MutationObserver(() => {});
+    observer.observe(tile.element, { childList: true });
+    try {
+      tile.update(props([line("new one"), line("new two"), line("new three")]));
+      expect(observer.takeRecords().length).toBe(6);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   for (const kind of ["element", "text"]) {
     it(`preserves an extra package-owned ${kind} child`, () => {
       tile = new LinesTileComponent(props([line("old one"), line("old two")]));
