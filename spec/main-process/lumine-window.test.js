@@ -1164,6 +1164,10 @@ describe("LumineWindow", function () {
       assert.match(w.windowStateId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-/);
       assert.strictEqual(w.loadSettings.windowStateId, w.windowStateId);
       assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${w.windowStateId}`);
+      assert.strictEqual(
+        w.browserWindow.options.webPreferences.partition,
+        `persist:lumine-workspace-${w.windowStateId}`,
+      );
       assert.isTrue(w.browserWindow.options.windowStatePersistence);
     });
 
@@ -1187,6 +1191,7 @@ describe("LumineWindow", function () {
         });
         assert.isUndefined(w.browserWindow.options.name);
         assert.isUndefined(w.browserWindow.options.windowStatePersistence);
+        assert.isFalse(w.browserWindow.options.webPreferences.partition.startsWith("persist:"));
       });
     }
 
@@ -1262,6 +1267,62 @@ describe("LumineWindow", function () {
       } finally {
         if (nativeWindow && !nativeWindow.isDestroyed()) nativeWindow.destroy();
         BrowserWindow.clearPersistedState(name);
+      }
+    });
+
+    it("preserves browser storage for the same desktop identity and isolates another identity", async function () {
+      const crypto = require("node:crypto");
+      const fixture = nodeFs.mkdtempSync(path.join(os.tmpdir(), "lumine-window-storage-"));
+      const file = path.join(fixture, "index.html");
+      nodeFs.writeFileSync(file, "<!doctype html><title>Window storage</title>");
+      class StorageWindow extends BrowserWindow {
+        loadURL() {
+          return super.loadFile(file);
+        }
+      }
+      const register = app.registerLumineWindow.bind(app);
+      app.registerLumineWindow = (window) => {
+        register(window);
+        LumineApplication.prototype.registerLumineWindow.call(app, window);
+      };
+      const remove = app.removeWindow;
+      app.removeWindow = (window) => {
+        LumineApplication.prototype.unregisterLumineWindow.call(app, window);
+        remove(window);
+      };
+      let window;
+      const open = async (windowStateId) => {
+        window = new LumineWindow(app, service, {
+          browserWindowConstructor: StorageWindow,
+          windowStateId,
+          resourcePath: path.resolve(__dirname, "../.."),
+        });
+        await emitterEventPromise(window.browserWindow.webContents, "did-finish-load");
+        return window.browserWindow.webContents;
+      };
+      const close = async () => {
+        window.browserWindow.destroy();
+        await window.closedPromise;
+        assert.isNull(window.resourceProtocol);
+        await new Promise(setImmediate);
+      };
+      const identity = crypto.randomUUID();
+      try {
+        const first = await open(identity);
+        await first.executeJavaScript('localStorage.setItem("session-cache", "retained")');
+        await close();
+        const reopened = await open(identity);
+        assert.strictEqual(
+          await reopened.executeJavaScript('localStorage.getItem("session-cache")'),
+          "retained",
+        );
+        await close();
+        const independent = await open(crypto.randomUUID());
+        assert.isNull(await independent.executeJavaScript('localStorage.getItem("session-cache")'));
+        await close();
+      } finally {
+        if (window && !window.browserWindow.isDestroyed()) await close();
+        nodeFs.rmSync(fixture, { recursive: true });
       }
     });
   });

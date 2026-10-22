@@ -98,8 +98,11 @@ module.exports = class LumineWindow extends EventEmitter {
       title: getAppName(),
       tabbingIdentifier: "lumine",
       webPreferences: {
-        // Resource routes belong to this workspace's loaded package generation.
-        partition: `lumine-window-${crypto.randomUUID()}`,
+        // Isolate package routes by workspace while retaining browser-backed
+        // caches when the same desktop session is reopened.
+        partition: this.persistWindowState
+          ? `persist:lumine-workspace-${this.windowStateId}`
+          : `lumine-window-${crypto.randomUUID()}`,
         // Prevent specs from throttling when the window is in the background:
         // this should result in faster CI builds, and an improvement in the
         // local development experience when running specs through the UI (which
