@@ -4324,10 +4324,11 @@ describe("TextEditor", () => {
         expect(editor.indentationForBufferRow(1)).toBe(0);
       });
 
-      it("updates the line's indentation when the the autoIndent setting is true", () => {
+      it("updates the line's indentation when the the autoIndent setting is true", async () => {
         editor.update({ autoIndent: true });
         editor.setCursorBufferPosition([1, 0]);
         editor.moveLineUp();
+        expect(await editor.whenGrammarSettled()).toBe(true);
         expect(editor.indentationForBufferRow(0)).toBe(0);
         expect(editor.indentationForBufferRow(1)).toBe(0);
       });
@@ -4938,10 +4939,11 @@ describe("TextEditor", () => {
         expect(editor.indentationForBufferRow(1)).toBe(0);
       });
 
-      it("updates the line's indentation when the editor.autoIndent setting is true", () => {
+      it("updates the line's indentation when the editor.autoIndent setting is true", async () => {
         editor.update({ autoIndent: true });
         editor.setCursorBufferPosition([0, 0]);
         editor.moveLineDown();
+        expect(await editor.whenGrammarSettled()).toBe(true);
         expect(editor.indentationForBufferRow(0)).toBe(1);
         expect(editor.indentationForBufferRow(1)).toBe(2);
       });

@@ -129,6 +129,7 @@
     "jupyter-cells",
     "jupyter-repl",
     "language-blade",
+    "language-latex",
     "language-php",
     "language-ruby",
     "link",
