@@ -33,6 +33,9 @@ module.exports = class LumineProtocolHandler {
     this.packages = new Map();
     this.packageHosts = new Map();
     this.beginGeneration({ resourcePath, safeMode });
+    // Native directory sources resolve their root at registration. A missing
+    // root stays unavailable to that document even if it is created later.
+    fs.mkdirSync(this.assetsPath, { recursive: true });
     session.protocol.registerSource("lumine-assets", {
       routes: [
         {

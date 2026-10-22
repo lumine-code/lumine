@@ -513,6 +513,92 @@ describe("LumineWindow", function () {
       );
     });
 
+    for (const existingAssets of [false, true]) {
+      it(`serves native user assets through the normal application document with ${existingAssets ? "an existing" : "a fresh"} assets directory`, async function () {
+        const register = app.registerLumineWindow.bind(app);
+        app.registerLumineWindow = (window) => {
+          register(window);
+          LumineApplication.prototype.registerLumineWindow.call(app, window);
+        };
+        const remove = app.removeWindow;
+        app.removeWindow = (window) => {
+          LumineApplication.prototype.unregisterLumineWindow.call(app, window);
+          remove(window);
+        };
+        const assetsPath = path.join(lumineHome, "assets");
+        if (existingAssets) {
+          nodeFs.mkdirSync(assetsPath);
+          nodeFs.writeFileSync(path.join(assetsPath, "probe.txt"), "native asset");
+        }
+        const w = new LumineWindow(app, service, {
+          resourcePath,
+          windowInitializationScript,
+          devMode: true,
+          headless: true,
+        });
+        browserWindow = w.browserWindow;
+        await w.getLoadedPromise();
+        assert.isTrue(nodeFs.statSync(assetsPath).isDirectory());
+        nodeFs.writeFileSync(path.join(assetsPath, "probe.txt"), "native asset");
+        nodeFs.writeFileSync(
+          path.join(assetsPath, "probe.svg"),
+          '<svg xmlns="http://www.w3.org/2000/svg" width="3" height="5"></svg>',
+        );
+        nodeFs.writeFileSync(
+          path.join(assetsPath, "probe.css"),
+          ".native-asset-probe { --native-asset-probe: loaded; }",
+        );
+        nodeFs.copyFileSync(
+          path.join(resourcePath, "static", "icons", "octicons.woff"),
+          path.join(assetsPath, "probe.woff"),
+        );
+        const assetURL = "lumine-assets://local/probe.txt";
+        const diagnostic = {};
+        try {
+          diagnostic.main = await (await browserWindow.webContents.session.fetch(assetURL)).text();
+        } catch (error) {
+          diagnostic.main = error.message;
+        }
+        diagnostic.renderer = await browserWindow.webContents.executeJavaScript(
+          `fetch(${JSON.stringify(assetURL)}).then(response => response.text()).catch(error => error.message)`,
+        );
+        assert.deepEqual(diagnostic, { main: "native asset", renderer: "native asset" });
+        const rendered = await browserWindow.webContents.executeJavaScript(`(async () => {
+        const root = "lumine-assets://local/";
+        const image = new Image();
+        const imageReady = new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = () => reject(new Error("Native image failed to load"));
+        });
+        image.src = root + "probe.svg";
+        const font = new FontFace("LumineNativeAssetProbe", "url(" + root + "probe.woff)");
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = root + "probe.css";
+        const stylesheetReady = new Promise((resolve, reject) => {
+          link.onload = resolve;
+          link.onerror = () => reject(new Error("Native stylesheet failed to load"));
+        });
+        const probe = document.createElement("div");
+        probe.className = "native-asset-probe";
+        document.head.append(link);
+        document.body.append(probe);
+        try {
+          await Promise.all([imageReady, font.load(), stylesheetReady]);
+          return {
+            image: [image.naturalWidth, image.naturalHeight],
+            font: font.status,
+            stylesheet: getComputedStyle(probe).getPropertyValue("--native-asset-probe").trim(),
+          };
+        } finally {
+          link.remove();
+          probe.remove();
+        }
+      })()`);
+        assert.deepEqual(rendered, { image: [3, 5], font: "loaded", stylesheet: "loaded" });
+      });
+    }
+
     it("does not hide the focused renderer during a main-process reload", async function () {
       const w = new LumineWindow(app, service, {
         resourcePath,
