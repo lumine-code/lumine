@@ -1,11 +1,13 @@
 const fs = require("@lumine-code/fs-plus");
-const temp = require("@lumine-code/fs-temp");
+const os = require("node:os");
 const path = require("path");
 const resolveSpecPackagePaths = require("./spec-package-paths");
 const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
 const userHome = process.env.LUMINE_HOME || path.join(fs.getHomeDirectory(), ".lumine");
-const lumineHome = temp.mkdirSync({ prefix: "lumine-test-home-" });
+// This home belongs to the entire spec window. Per-spec temp.cleanupSync()
+// must not remove the provisioned package links from underneath later specs.
+const lumineHome = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-test-home-"));
 const { testPaths, resourcePath } = getWindowLoadSettings();
 const specPackages = resolveSpecPackagePaths({
   testPaths,

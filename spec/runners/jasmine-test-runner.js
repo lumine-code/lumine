@@ -40,6 +40,14 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
 
   // Build the Lumine environment.
   const { lumineHome, applicationDelegate } = require("../helpers/build-environment");
+  const cleanupSpecHome = () => {
+    try {
+      fs.removeSync(lumineHome);
+    } catch (error) {
+      console.warn("Unable to remove the spec window's temporary home", error);
+    }
+  };
+  window.addEventListener("unload", cleanupSpecHome, { once: true });
   window.lumine = buildEnvironment({
     applicationDelegate,
     window,
@@ -75,7 +83,7 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
     window.beforeEach(focusTestWindow);
   }
 
-  return loadSpecsAndRunThem(logFile, headless, testPaths)
+  return loadSpecsAndRunThem(logFile, headless, testPaths, cleanupSpecHome)
     .then((result) => {
       reportDocumentFocusSkips();
 
@@ -186,7 +194,7 @@ function disableFocusMethods() {
   }
 }
 
-const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
+const loadSpecsAndRunThem = (logFile, headless, testPaths, cleanupSpecHome) => {
   return new Promise((resolve) => {
     const jasmineEnv = jasmine.getEnv();
     // jasmine 3+ randomizes spec order by default; these specs assume the
@@ -219,7 +227,7 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     // reporter has printed its final summary, but do it synchronously: a
     // renderer retaining native handles can prevent the main event loop from
     // ever reaching a scheduled exit on macOS.
-    if (headless) jasmineEnv.addReporter(buildHeadlessExitReporter());
+    if (headless) jasmineEnv.addReporter(buildHeadlessExitReporter(cleanupSpecHome));
     jasmineEnv.addReporter(buildCompletionReporter(resolve));
 
     // And finally execute the tests
@@ -318,7 +326,7 @@ const buildReporter = ({ logFile, headless }) => {
   }
 };
 
-const buildHeadlessExitReporter = () => {
+const buildHeadlessExitReporter = (cleanupSpecHome) => {
   const failedSpecs = [];
 
   return {
@@ -335,6 +343,8 @@ const buildHeadlessExitReporter = () => {
       })
         ? 1
         : 0;
+      // The immediate headless exit can bypass the window's unload event.
+      cleanupSpecHome();
       process.stderr.write(`LUMINE_TEST_EXIT_STATUS=${status}\n`);
       require("electron").ipcRenderer.sendSync("lumine:test-exit", "exit", status);
     },

@@ -49,6 +49,21 @@ describe("spec package dependencies", () => {
     expect(resolve().packages.get("peer")).toBe(installed);
   });
 
+  it("keeps the spec window's provisioned packages through per-spec temporary cleanup", () => {
+    const { lumineHome, specPackages } = require("./helpers/build-environment");
+    const packageNames = [...specPackages.packages.keys()];
+    expect(packageNames.length).toBeGreaterThan(0);
+
+    temp.cleanupSync();
+
+    expect(fs.existsSync(lumineHome)).toBeTrue();
+    for (const name of packageNames) {
+      const manifestPath = path.join(lumineHome, "packages", name, "package.json");
+      expect(JSON.parse(fs.readFileSync(manifestPath, "utf8")).name).toBe(name);
+      expect(lumine.packages.resolvePackagePath(name)).toBeTruthy();
+    }
+  });
+
   it("uses bundled dependencies when there is no provisioned or source peer", () => {
     const bundled = makePackage(path.join(resourcePath, "node_modules", "peer"), "peer");
     expect(resolve().packages.get("peer")).toBe(bundled);
