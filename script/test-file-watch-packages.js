@@ -164,7 +164,10 @@ async function main() {
       phase("install");
       // Only fixed arguments enter shell mode, which is required for npm.cmd.
       await retryInstall(() =>
-        run("npm ci --ignore-scripts --no-audit --no-fund", [], { ...options, shell: true }),
+        run("npm ci --ignore-scripts --no-audit --no-fund --allow-git=all", [], {
+          ...options,
+          shell: true,
+        }),
       );
       if (result.repo === "native-clip" && process.platform !== "linux") {
         phase("native-build");

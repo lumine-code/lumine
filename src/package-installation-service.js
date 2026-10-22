@@ -137,9 +137,14 @@ class PackageInstallationService {
       }
       try {
         // No package-controlled process executes before all validation above.
-        await this.run(this.npmCommand, ["install", "--omit=dev", "--legacy-peer-deps"], {
-          cwd: stage,
-        });
+        // The selected package may predate the project's npm 12 Git policy.
+        // Consent belongs to this validated install, including its transitive
+        // Git dependencies; lifecycle-script approval stays with npm.
+        await this.run(
+          this.npmCommand,
+          ["install", "--omit=dev", "--legacy-peer-deps", "--allow-git=all"],
+          { cwd: stage },
+        );
       } finally {
         if (temporaryNpmManifest) await this.remove(npmMetadataPath);
       }

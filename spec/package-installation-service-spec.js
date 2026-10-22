@@ -136,6 +136,32 @@ describe("PackageInstallationService", function () {
     expect(fs.existsSync(path.join(installed.target, ".git"))).toBe(false);
   });
 
+  it("allows transitive Git dependencies for validated older refs without a project npm policy", async () => {
+    manifest.dependencies = {
+      "pinned-library": `github:owner/pinned-library#${SHA}`,
+    };
+    const run = service.run;
+    let npmInvocation;
+    service.run = async (command, args, options) => {
+      if (command === "npm") {
+        expect(fs.existsSync(path.join(options.cwd, ".npmrc"))).toBe(false);
+        npmInvocation = { args, cwd: options.cwd };
+      }
+      return run(command, args, options);
+    };
+
+    const installed = await service.install(pack());
+
+    expect(npmInvocation.args).toEqual([
+      "install",
+      "--omit=dev",
+      "--legacy-peer-deps",
+      "--allow-git=all",
+    ]);
+    expect(path.dirname(npmInvocation.cwd)).toBe(root);
+    expect(fs.existsSync(path.join(installed.target, ".npmrc"))).toBe(false);
+  });
+
   it("keeps the hook-owned lifecycle state for afterSwap without using a returned replacement", async () => {
     let state;
     const snapshot = { lifecycleState: "loaded" };
@@ -353,9 +379,15 @@ ${JSON.stringify(manifest, null, 2)}
         () => Promise.reject(new Error("expected rejection")),
         (error) => expect(error.message).toContain("Use Replace"),
       )
-      .finally(() =>
-        fs.rmSync(linkedSource, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
-      );
+      .finally(() => {
+        // Detach the test-owned alias while its synthetic target still exists.
+        try {
+          fs.unlinkSync(path.join(root, "sample-package"));
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        fs.rmSync(linkedSource, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+      });
   });
 
   it("requires uninstall when another ref of the same origin changes its package name", async () => {

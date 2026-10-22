@@ -87,8 +87,8 @@ function clone(name, ref, target) {
 function install(name, directory) {
   const lockfile = fs.existsSync(path.join(directory, "package-lock.json"));
   const args = lockfile
-    ? ["ci", "--omit=dev", "--no-audit", "--no-fund"]
-    : ["install", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock"];
+    ? ["ci", "--omit=dev", "--no-audit", "--no-fund", "--allow-git=all"]
+    : ["install", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock", "--allow-git=all"];
   return withAttempts(`install ${name}`, () => {
     // A single shell command string: shell mode is what makes the npm.cmd shim
     // spawnable on Windows, and the arguments are fixed flags with nothing to
