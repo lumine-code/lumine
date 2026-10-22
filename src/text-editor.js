@@ -2506,6 +2506,8 @@ module.exports = class TextEditor {
     const adjustment = (async () => {
       while (isCurrent()) {
         const revision = intent.revision;
+        const epoch = languageMode.getSyntaxRequestEpoch?.();
+        const generation = languageMode.getSyntaxGeneration?.();
         const tabLength = this.getTabLength(),
           softTabs = this.getSoftTabs();
         const rows = [
@@ -2539,6 +2541,16 @@ module.exports = class TextEditor {
           indents = await languageMode.suggestedIndentForBufferRowsAtRows(rows, tabLength, options);
         } catch (error) {
           if (error.name !== "AbortError") throw error;
+          // Cancellation without a newer revision or syntax owner is final.
+          // Repeating the same cancelled request can starve the event loop,
+          // notably while the worker service is shutting down.
+          if (
+            !isCurrent() ||
+            (buffer.getTextRevision() === revision &&
+              languageMode.getSyntaxRequestEpoch?.() === epoch &&
+              languageMode.getSyntaxGeneration?.() === generation)
+          )
+            return;
           continue;
         }
         if (!isCurrent()) return;
