@@ -4,6 +4,7 @@ module.exports = class DummyScrollbarComponent {
     this.didScroll = this.didScroll.bind(this);
     this.didMouseDown = this.didMouseDown.bind(this);
     this.lastAppliedNativePosition = null;
+    this.pendingNativePosition = null;
 
     const { orientation } = props;
     this.element = document.createElement("div");
@@ -79,6 +80,16 @@ module.exports = class DummyScrollbarComponent {
       forceScrollbarVisible,
     } = this.props;
 
+    if (
+      scrollWidth !== oldProps.scrollWidth ||
+      scrollHeight !== oldProps.scrollHeight ||
+      verticalScrollbarWidth !== oldProps.verticalScrollbarWidth ||
+      horizontalScrollbarHeight !== oldProps.horizontalScrollbarHeight ||
+      canScroll !== oldProps.canScroll ||
+      forceScrollbarVisible !== oldProps.forceScrollbarVisible
+    )
+      this.pendingNativePosition = null;
+
     if (canScroll !== oldProps.canScroll) {
       this.element.style.visibility = canScroll ? "" : "hidden";
     }
@@ -107,6 +118,14 @@ module.exports = class DummyScrollbarComponent {
   }
 
   flushScrollPosition() {
+    const position =
+      this.props.orientation === "horizontal" ? this.props.scrollLeft : this.props.scrollTop;
+    const nativePosition = this.pendingNativePosition;
+    this.pendingNativePosition = null;
+    // A thumb event has already positioned the native scrollbar. Echoing its
+    // exact position after rebuilding rows needlessly forces style and layout.
+    // Consume this acknowledgement once; geometry changes invalidate it.
+    if (nativePosition !== null && position === nativePosition) return;
     // Blink quantizes very large scroll offsets more coarsely than a physical
     // pixel. Read back the value it actually stored so its asynchronous scroll
     // event can be distinguished from real native movement without a tolerance.
@@ -123,9 +142,10 @@ module.exports = class DummyScrollbarComponent {
     const { orientation } = this.props;
     const position =
       orientation === "horizontal" ? this.element.scrollLeft : this.element.scrollTop;
-    // Keep the baseline until the next programmatic write. Duplicate and
-    // coalesced events all read the latest native position and remain no-ops.
+    // Duplicate and coalesced events all read the latest native position.
     if (position === this.lastAppliedNativePosition) return;
+    this.lastAppliedNativePosition = position;
+    this.pendingNativePosition = position;
     this.props.didScroll({ orientation, position });
   }
 

@@ -73,6 +73,56 @@ describe("DummyScrollbarComponent", () => {
 
         expect(didScroll).not.toHaveBeenCalled();
       });
+
+      it("acknowledges native movement without writing it back and ignores duplicate events", () => {
+        const didScroll = jasmine.createSpy("didScroll");
+        const component = buildComponent(orientation, didScroll);
+        const native = emulateNativeQuantization(component.element, positionProperty);
+        component.flushScrollPosition();
+        const write = spyOnProperty(component.element, positionProperty, "set").and.callThrough();
+        const position = native.get() - 64;
+        native.set(position);
+        component.didScroll();
+        component.didScroll();
+        component.update({ ...component.props, [positionProperty]: position });
+        expect(didScroll).toHaveBeenCalledOnceWith({ orientation, position });
+        expect(write).not.toHaveBeenCalled();
+        component.updateScrollPosition(position - 10.2);
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(native.get()).toBe(Math.round(position - 10.2));
+      });
+
+      it("invalidates a native acknowledgement when scrollbar geometry changes", () => {
+        const component = buildComponent(orientation, () => {});
+        const native = emulateNativeQuantization(component.element, positionProperty);
+        component.flushScrollPosition();
+        const write = spyOnProperty(component.element, positionProperty, "set").and.callThrough();
+        const position = native.get() - 64;
+        native.set(position);
+        component.didScroll();
+        component.update({
+          ...component.props,
+          [positionProperty]: position,
+          scrollHeight: 500,
+          scrollWidth: 500,
+        });
+        expect(write).toHaveBeenCalledTimes(1);
+      });
+
+      it("accepts the latest coalesced native movement and consumes its acknowledgement only once", () => {
+        const component = buildComponent(orientation, () => {});
+        const native = emulateNativeQuantization(component.element, positionProperty);
+        component.flushScrollPosition();
+        const write = spyOnProperty(component.element, positionProperty, "set").and.callThrough();
+        native.set(200);
+        component.didScroll();
+        native.set(300);
+        component.didScroll();
+        component.updateScrollPosition(300);
+        expect(write).not.toHaveBeenCalled();
+        component.flushScrollPosition();
+        expect(write).toHaveBeenCalledTimes(1);
+      });
     });
   }
 
