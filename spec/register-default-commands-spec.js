@@ -20,6 +20,26 @@ describe("registerDefaultCommands", () => {
     Object.defineProperty(process, "platform", { value: originalPlatform });
   });
 
+  for (const rejected of [false, true]) {
+    it(`preserves the ${rejected ? "rejection" : "completion"} of an asynchronous editing command`, async () => {
+      const commands = commandsRegisteredOn("win32");
+      const [listener] = commands.get("editor:indent");
+      const result = rejected
+        ? Promise.reject(new Error("Indent failed"))
+        : Promise.resolve("indented");
+      result.catch(() => {});
+      const model = {
+        getUndoGroupingInterval: () => 100,
+        transact: (_interval, fn) => fn(),
+        indent: () => result,
+      };
+      const actual = listener.didDispatch.call({ getModel: () => model }, { stopPropagation() {} });
+      expect(actual).toBe(result);
+      if (rejected) await expectAsync(result).toBeRejectedWithError("Indent failed");
+      else await expectAsync(result).toBeResolvedTo("indented");
+    });
+  }
+
   // Every registration, keyed by command name. A name registered against more
   // than one selector keeps each listener, in registration order, so a spec
   // naming one cannot silently be handed another.

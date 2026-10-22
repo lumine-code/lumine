@@ -1210,7 +1210,9 @@ var stopEventPropagationAndGroupUndo = function (config, commandListeners) {
         function (event) {
           event.stopPropagation();
           const model = this.getModel();
-          model.transact(model.getUndoGroupingInterval(), () => didDispatch.call(model, event));
+          return model.transact(model.getUndoGroupingInterval(), () =>
+            didDispatch.call(model, event),
+          );
         },
     );
   }
