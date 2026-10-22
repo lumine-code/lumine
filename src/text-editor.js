@@ -5232,38 +5232,7 @@ module.exports = class TextEditor {
     if (!languageMode.getRangeForSyntaxNodeContainingRange) return;
 
     if (languageMode.asynchronousSyntax) {
-      const revision = this.buffer.getTextRevision();
-      const selections = this.getSelections().map((selection) => ({
-        selection,
-        range: selection.getBufferRange(),
-      }));
-      return languageMode
-        .syntaxSelectionRanges(selections.map(({ range }) => range))
-        .then((ranges) => {
-          if (
-            this.isDestroyed() ||
-            this.buffer.getLanguageMode() !== languageMode ||
-            this.buffer.getTextRevision() !== revision ||
-            selections.length !== this.getSelections().length ||
-            selections.some(
-              ({ selection, range }) =>
-                selection.destroyed || !selection.getBufferRange().isEqual(range),
-            )
-          )
-            return;
-          const planned = new Map(
-            selections.map(({ selection, range }, i) => [selection, { range, next: ranges[i] }]),
-          );
-          this.expandSelectionsForward((selection) => {
-            const { range, next } = planned.get(selection);
-            if (!next) return;
-            (selection._rangeStack ??= []).push(range);
-            selection.setBufferRange(next);
-          });
-        })
-        .catch((error) => {
-          if (error.name !== "AbortError") throw error;
-        });
+      return this.expandSyntaxSelectionAsync(languageMode);
     }
     this.expandSelectionsForward((selection) => {
       const currentRange = selection.getBufferRange();
@@ -5276,6 +5245,91 @@ module.exports = class TextEditor {
     });
   }
 
+  expandSyntaxSelectionAsync(languageMode) {
+    const previous = this.pendingSyntaxSelection;
+    if (previous?.isCurrent()) {
+      previous.remaining++;
+      return previous.promise;
+    }
+    previous?.controller.abort();
+    const controller = new AbortController();
+    const epoch = languageMode.getSyntaxRequestEpoch?.();
+    // Selecting syntax is allowed in a read-only editor.
+    let currentSelection = this.captureTextMutationGuard({ bypassReadOnly: true });
+    const intent = {
+      controller,
+      remaining: 1,
+      applying: false,
+      isCurrent: () =>
+        !controller.signal.aborted &&
+        this.pendingSyntaxSelection === intent &&
+        currentSelection() &&
+        this.buffer.getLanguageMode() === languageMode &&
+        languageMode.getSyntaxRequestEpoch?.() === epoch,
+    };
+    this.pendingSyntaxSelection = intent;
+    const subscriptions = new CompositeDisposable(
+      this.buffer.onDidApplyChanges(() => controller.abort()),
+      this.onDidChangeSelectionRange(() => {
+        if (!intent.applying && !intent.isCurrent()) controller.abort();
+      }),
+    );
+    intent.promise = runCancellableGrammarOperation(
+      this,
+      languageMode,
+      controller.signal,
+      undefined,
+      async () => {
+        while (intent.remaining > 0 && intent.isCurrent()) {
+          const selections = this.getSelections().map((selection) => ({
+            selection,
+            range: selection.getBufferRange(),
+          }));
+          const ranges = await languageMode.syntaxSelectionRanges(
+            selections.map(({ range }) => range),
+            { signal: controller.signal },
+          );
+          if (!intent.isCurrent()) return;
+          if (!selections.some(({ range }, i) => ranges[i] && !ranges[i].isEqual(range))) return;
+          intent.remaining--;
+          const planned = new Map(
+            selections.map(({ selection, range }, i) => [selection, { range, next: ranges[i] }]),
+          );
+          intent.applying = true;
+          try {
+            this.expandSelectionsForward((selection) => {
+              const { range, next } = planned.get(selection);
+              if (!next) return;
+              (selection._rangeStack ??= []).push(range);
+              selection.setBufferRange(next);
+            });
+          } finally {
+            intent.applying = false;
+          }
+          // A package can move a selection from its change observer. That
+          // movement supersedes queued growth just like a later key press.
+          if (
+            this.getSelections().some((selection) => {
+              const target = planned.get(selection);
+              return !target || !selection.getBufferRange().isEqual(target.next ?? target.range);
+            })
+          )
+            return;
+          currentSelection = this.captureTextMutationGuard({ bypassReadOnly: true });
+        }
+      },
+    )
+      .catch((error) => {
+        if (error.name !== "AbortError") throw error;
+      })
+      .finally(() => {
+        subscriptions.dispose();
+        controller.abort();
+        if (this.pendingSyntaxSelection === intent) this.pendingSyntaxSelection = null;
+      });
+    return intent.promise;
+  }
+
   /**
    * @public
    * @status extended
@@ -5283,6 +5337,7 @@ module.exports = class TextEditor {
    * Undo the effect of a preceding call to {@link #selectLargerSyntaxNode}.
    */
   selectSmallerSyntaxNode() {
+    this.pendingSyntaxSelection?.controller.abort();
     this.expandSelectionsForward((selection) => {
       if (selection._rangeStack) {
         const lastRange = selection._rangeStack[selection._rangeStack.length - 1];
@@ -7114,14 +7169,22 @@ module.exports = class TextEditor {
    * level.
    */
   foldCurrentRow() {
-    const { row } = this.getCursorBufferPosition();
+    const cursor = this.getLastCursor();
+    const position = cursor.getBufferPosition();
+    const { row } = position;
     return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
       const range = languageMode.getFoldableRangeContainingPoint?.(
         Point(row, Infinity),
         this.getTabLength(),
       );
       return resolveSyntaxResult(range, (range) => {
-        if (range && isCurrent()) return this.displayLayer.foldBufferRange(range);
+        if (
+          range &&
+          isCurrent() &&
+          this.getLastCursor() === cursor &&
+          cursor.getBufferPosition().isEqual(position)
+        )
+          return this.displayLayer.foldBufferRange(range);
       });
     });
   }
@@ -7181,11 +7244,15 @@ module.exports = class TextEditor {
     const version = (this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1);
     const mode = this.buffer.getLanguageMode();
     const revision = this.buffer.getTextRevision();
+    const epoch = mode.getSyntaxRequestEpoch?.();
+    const tabLength = this.getTabLength();
     const isCurrent = () =>
       !this.isDestroyed() &&
       version === this.foldRequestVersion &&
       this.buffer.getLanguageMode() === mode &&
       revision === this.buffer.getTextRevision() &&
+      epoch === mode.getSyntaxRequestEpoch?.() &&
+      tabLength === this.getTabLength() &&
       !mode.publicationPending;
     const perform = (result) => {
       if (isCurrent() && !result?.parseError) return operation(mode, isCurrent);
@@ -7194,8 +7261,8 @@ module.exports = class TextEditor {
       mode.publicationPending && mode.atGrammarSettlement
         ? mode.atGrammarSettlement().then(perform)
         : perform();
-    return result?.catch
-      ? result.catch((error) => {
+    return result?.then
+      ? runCancellableGrammarOperation(this, mode, null, undefined, () => result).catch((error) => {
           if (error.name !== "AbortError") throw error;
         })
       : result;

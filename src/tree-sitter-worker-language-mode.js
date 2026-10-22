@@ -707,8 +707,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   validateGrammarQueries() {
     return this.builtin("validateGrammarQueries", []);
   }
-  syntaxSelectionRanges(ranges) {
-    return this.builtin("syntaxSelections", [ranges], { convert: rangeFromData });
+  syntaxSelectionRanges(ranges, options = {}) {
+    return this.builtin("syntaxSelections", [ranges], { ...options, convert: rangeFromData });
   }
   suggestedIndentForBufferRow(...args) {
     this.autoIndentRequests++;
