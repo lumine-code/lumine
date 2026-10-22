@@ -1,4 +1,5 @@
 const path = require("path");
+const { randomUUID } = require("node:crypto");
 const {
   setTimeout: scheduleLifecycleTimeout,
   clearTimeout: cancelLifecycleTimeout,
@@ -123,6 +124,7 @@ module.exports = class PackageManager {
   initialize(params) {
     this.devMode = params.devMode;
     this.resourcePath = params.resourcePath;
+    this.resourceProtocol = params.resourceProtocol;
     if (params.configDirPath != null && !params.safeMode) {
       this.userPackagesPath = path.join(params.configDirPath, "packages");
       this.devPackagesPath = path.join(params.configDirPath, "packages-dev");
@@ -1188,6 +1190,7 @@ module.exports = class PackageManager {
     };
 
     const pack = metadata.theme ? new ThemePackage(options) : new Package(options);
+    this.publishPackageResource(pack);
     pack.load();
     this.loadedPackages[pack.name] = pack;
     this.registerPackageLifecycle(pack);
@@ -1197,6 +1200,31 @@ module.exports = class PackageManager {
     }
     this.emitter.emit("did-load-package", pack);
     return pack;
+  }
+
+  // Publish the selected loaded generation before package bootstrap can start
+  // any resource requests. The synchronous lifecycle boundary is intentional:
+  // loadPackage remains synchronous, while resource requests never use sync IPC.
+  publishPackageResource(pack) {
+    if (!this.resourceProtocol) return;
+    pack.resourceProtocolOwner = randomUUID();
+    this.resourceProtocol({
+      action: "add",
+      name: pack.name,
+      root: pack.path,
+      owner: pack.resourceProtocolOwner,
+    });
+  }
+
+  unpublishPackageResource(pack) {
+    if (!this.resourceProtocol || !pack.resourceProtocolOwner) return;
+    this.resourceProtocol({
+      action: "remove",
+      name: pack.name,
+      root: pack.path,
+      owner: pack.resourceProtocolOwner,
+    });
+    pack.resourceProtocolOwner = null;
   }
 
   // Register declarative light/dark theme packs from a package manifest.
@@ -1298,6 +1326,7 @@ module.exports = class PackageManager {
         deserializerManager: this.deserializerManager,
         viewRegistry: this.viewRegistry,
       });
+      this.publishPackageResource(pack);
       pack.load();
       this.loadedPackages[pack.name] = pack;
       this.registerPackageLifecycle(pack);
@@ -1407,6 +1436,7 @@ module.exports = class PackageManager {
     }
     if (record.unloadPromise) return record.unloadPromise;
 
+    this.unpublishPackageResource(pack);
     record.unloadRequested = true;
     record.generation++;
     // Block load-scope proxies immediately and wait for asynchronous resource

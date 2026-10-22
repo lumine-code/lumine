@@ -17,12 +17,12 @@ if (process.platform !== "darwin") Menu.setApplicationMenu(null);
 // Declare the `lumine://` scheme privileged before the app is ready, so packages
 // can load fonts and use fetch/XHR against lumine:// URLs from the file://
 // renderer (otherwise Chromium blocks them as cross-origin/CORS violations).
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: "lumine",
+protocol.registerSchemesAsPrivileged(
+  ["lumine", "lumine-assets"].map((scheme) => ({
+    scheme,
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-  },
-]);
+  })),
+);
 
 // Parse only enough to select the source tree. Full validation and help output
 // happen in start.js, but using the same lightweight parser avoids constructing

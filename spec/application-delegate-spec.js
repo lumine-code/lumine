@@ -1,6 +1,32 @@
 const ApplicationDelegate = require("../src/application-delegate");
 
 describe("ApplicationDelegate", function () {
+  describe("package resource lifecycle", () => {
+    it("acknowledges resource publication before returning to package bootstrap", () => {
+      const { ipcRenderer } = require("electron");
+      const delegate = new ApplicationDelegate();
+      const request = {
+        action: "add",
+        name: "resource-package",
+        root: "/package",
+        owner: "package-generation",
+        generation: "renderer-generation",
+      };
+      const send = spyOn(ipcRenderer, "sendSync").and.returnValue({ ok: true });
+      delegate.updatePackageResource(request);
+      expect(send).toHaveBeenCalledOnceWith("lumine:package-resource", request);
+    });
+
+    it("reports a rejected resource publication instead of starting an unroutable package", () => {
+      const { ipcRenderer } = require("electron");
+      const delegate = new ApplicationDelegate();
+      spyOn(ipcRenderer, "sendSync").and.returnValue({
+        error: { message: "Rejected package root" },
+      });
+      expect(() => delegate.updatePackageResource({})).toThrowError("Rejected package root");
+    });
+  });
+
   describe("window unload handshake", () => {
     it("forwards the unload request and identifies its completion reply", async () => {
       const { ipcRenderer } = require("electron");

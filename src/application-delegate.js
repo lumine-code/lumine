@@ -25,6 +25,12 @@ module.exports = class ApplicationDelegate {
     return getWindowLoadSettings();
   }
 
+  updatePackageResource(request) {
+    const response = ipcRenderer.sendSync("lumine:package-resource", request);
+    if (response?.ok !== true)
+      throw new Error(response?.error?.message || "Unable to update package resources");
+  }
+
   open(params) {
     return ipcRenderer.send("open", params);
   }
