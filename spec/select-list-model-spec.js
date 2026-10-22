@@ -1,6 +1,22 @@
 const SelectListModel = require("../src/select-list-model");
 
 describe("SelectListModel", () => {
+  it("rejects preparation cancelled by the final identity callback", async () => {
+    jasmine.useRealClock();
+    const controller = new AbortController();
+    const model = new SelectListModel({
+      getItemId: (item) => {
+        if (item.id === "last") controller.abort("cancel from callback");
+        return item.id;
+      },
+    });
+    const items = Object.freeze([{ id: "last" }]);
+    await expectAsync(model.prepareItems(items, { signal: controller.signal })).toBeRejectedWith(
+      "cancel from callback",
+    );
+    expect(model._preparedSources?.has(items) ?? false).toBe(false);
+    expect(model.getItemCount()).toBe(0);
+  });
   it("reuses immutable snapshots while keeping mutable replacement and public copy semantics", () => {
     const items = Object.freeze([Object.freeze({ id: "a" }), Object.freeze({ id: "b" })]);
     const model = new SelectListModel({ items });

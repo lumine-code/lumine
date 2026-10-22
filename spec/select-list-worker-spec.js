@@ -1,4 +1,28 @@
 describe("SelectList worker search", () => {
+  it("uses corrected long-input scoring across worker requests", async () => {
+    const Client = require("../src/fuzzy-search-worker-client");
+    const client = new Client({ ignoreDiacritics: false });
+    try {
+      await client.ready;
+      await client.request("add", { offset: 0, values: ["A".repeat(20) + "b" + "a".repeat(500)] });
+      const options = { algorithm: "command-t", smartCase: true };
+      expect(
+        Array.from(
+          (await client.request("rank", { query: "A".repeat(20), options, highlightCount: 1 }))
+            .order,
+        ),
+      ).toEqual([]);
+      const result = await client.request("rank", {
+        query: "A".repeat(20) + "b",
+        options,
+        highlightCount: 1,
+      });
+      expect(Array.from(result.order)).toEqual([0]);
+      expect(result.highlights[0].indexes).toEqual(Array.from({ length: 21 }, (_, i) => i));
+    } finally {
+      client.close();
+    }
+  });
   let list;
   let host;
   const values = Array.from({ length: 4097 }, (_, i) => `src/Żółć-${i % 17}/sample-${i}.js`);

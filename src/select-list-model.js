@@ -213,6 +213,7 @@ module.exports = class SelectListModel {
       const end = Math.min(offset + 2048, items.length);
       for (let index = offset; index < end; index++) built.add(items[index], null, -1, index);
     }
+    signal?.throwIfAborted();
     (this._preparedSources ??= new WeakMap()).set(items, { resolver, built });
     return items;
   }
