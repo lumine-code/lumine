@@ -21,6 +21,7 @@ class SyntaxWorkerClient {
       const body = source ?? `require(${JSON.stringify(bootstrap)}).connect(self);`;
       this.url = URL.createObjectURL(new Blob([body], { type: "text/javascript" }));
       try {
+        // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Renderer Web Worker, not Node's experimental global.
         this.worker = new globalThis.Worker(this.url);
       } catch (error) {
         URL.revokeObjectURL(this.url);

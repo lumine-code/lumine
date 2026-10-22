@@ -45,6 +45,7 @@ module.exports = class FuzzySearchWorkerClient {
     this.url = URL.createObjectURL(new Blob([workerSource()], { type: "text/javascript" }));
     try {
       // Chromium Worker, without Node integration.
+      // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Renderer Web Worker, not Node's experimental global.
       this.worker = new globalThis.Worker(this.url);
     } catch (error) {
       URL.revokeObjectURL(this.url);
