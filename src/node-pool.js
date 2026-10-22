@@ -22,14 +22,18 @@ module.exports = class NodePool {
 
     if (element) {
       element.className = className || "";
-      element.attributeStyleMap.forEach((value, key) => {
-        if (style && style[key] != null) return;
-        // CSS custom properties are not settable through bracket notation;
-        // they need the removeProperty/setProperty API.
-        if (key.startsWith("--")) element.style.removeProperty(key);
-        else element.style[key] = "";
-      });
-      if (style) this.applyStyle(element, style);
+      // Inspect property names without allocating Typed OM values. Keep
+      // declarations that will be reused, so equal widths do not need a
+      // clear/set pair that dirties layout during every row replacement.
+      if (style) {
+        for (let i = element.style.length - 1; i >= 0; i--) {
+          const key = element.style.item(i);
+          if (style[key] == null) element.style.removeProperty(key);
+        }
+        this.applyStyle(element, style);
+      } else if (element.style.length) {
+        element.style.cssText = "";
+      }
       for (const key in element.dataset) delete element.dataset[key];
       while (element.firstChild) element.firstChild.remove();
       return element;

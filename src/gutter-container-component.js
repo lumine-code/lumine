@@ -401,10 +401,12 @@ class LineNumberGutterComponent {
     const rowCount = tileEndRow - tileStartRow;
     const rowPropsByIndex = new Array(rowCount);
     const newKeys = new Set();
+    let hasRetainedRows = false;
     for (let row = tileStartRow; row < tileEndRow; row++) {
       const indexInTile = row - tileStartRow;
       const j = row - startRow;
       const key = keys[j];
+      if (tile.lineNumbersByKey.has(key)) hasRetainedRows = true;
       const softWrapped = softWrappedFlags[j];
       const foldable = foldableFlags[j];
       const bufferRow = bufferRows[j];
@@ -459,6 +461,27 @@ class LineNumberGutterComponent {
       newKeys.add(key);
     }
 
+    // A distant scroll replaces every numbered row in a tile. Batch the live
+    // child mutations, preserving the ordinary path for retained rows, focus
+    // and package-owned children outside the numbered rows.
+    let replaceRows =
+      tile.lineNumbersByKey.size > 0 &&
+      !hasRetainedRows &&
+      !tile.element.contains(tile.element.ownerDocument.activeElement) &&
+      tile.element.childNodes.length === tile.lineNumbersByKey.size;
+    if (replaceRows) {
+      for (const row of tile.lineNumbersByKey.values()) {
+        if (row.element.parentNode !== tile.element) {
+          replaceRows = false;
+          break;
+        }
+      }
+    }
+    let target = tile.element;
+    if (replaceRows) {
+      tile.element.replaceChildren();
+      target = tile.element.ownerDocument.createDocumentFragment();
+    }
     tile.lineNumbersByKey.forEach((lineNumberComponent, key) => {
       if (!newKeys.has(key)) {
         lineNumberComponent.destroy();
@@ -479,11 +502,12 @@ class LineNumberGutterComponent {
         tile.lineNumbersByKey.set(rowProps.key, lineNumberComponent);
       }
       const element = lineNumberComponent.element;
-      if (element.parentNode !== tile.element || element.nextSibling !== nextElement) {
-        tile.element.insertBefore(element, nextElement);
+      if (element.parentNode !== target || element.nextSibling !== nextElement) {
+        target.insertBefore(element, nextElement);
       }
       nextElement = element;
     }
+    if (replaceRows) tile.element.appendChild(target);
   }
 
   shouldUpdate(newProps) {
