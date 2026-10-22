@@ -3105,24 +3105,21 @@ module.exports = class TextEditor {
     const mode = this.buffer.getLanguageMode();
     if (!mode.asynchronousSyntax)
       return this.mutateSelectedText((selection) => selection.toggleLineComments(options));
-    const revision = this.buffer.getTextRevision();
+    const isCurrent = this.captureTextMutationGuard(options);
+    const epoch = mode.getSyntaxRequestEpoch?.();
     const selections = this.getSelections().map((selection) => ({
       selection,
       range: selection.getBufferRange(),
     }));
     const rows = [...new Set(selections.map(({ range }) => range.start.row))];
-    return mode
-      .commentStringsForRows(rows)
+    return runCancellableGrammarOperation(this, mode, null, null, () =>
+      mode.commentStringsForRows(rows),
+    )
       .then((comments) => {
         if (
-          this.isDestroyed() ||
+          !isCurrent() ||
           this.buffer.getLanguageMode() !== mode ||
-          this.buffer.getTextRevision() !== revision ||
-          selections.length !== this.getSelections().length ||
-          selections.some(
-            ({ selection, range }) =>
-              selection.destroyed || !selection.getBufferRange().isEqual(range),
-          )
+          mode.getSyntaxRequestEpoch?.() !== epoch
         )
           return;
         this.mutateSelectedText((selection) =>
@@ -3479,6 +3476,28 @@ module.exports = class TextEditor {
     }
 
     return true;
+  }
+
+  // Deferred mutations belong to the text and selection that initiated them.
+  // Explicit row operations pass null because their target is not the cursor.
+  captureTextMutationGuard(options, selections = this.getSelections()) {
+    const buffer = this.buffer;
+    const revision = buffer.getTextRevision();
+    const bypassReadOnly = options?.bypassReadOnly;
+    const count = this.getSelections().length;
+    const targets = selections?.map((selection) => [selection, selection.getBufferRange()]);
+    return () =>
+      !this.isDestroyed() &&
+      !buffer.isDestroyed() &&
+      this.buffer === buffer &&
+      (bypassReadOnly || !this.isReadOnly()) &&
+      buffer.getTextRevision() === revision &&
+      (!targets ||
+        (this.getSelections().length === count &&
+          targets.every(
+            ([selection, range]) =>
+              !selection.destroyed && selection.getBufferRange().isEqual(range),
+          )));
   }
 
   /**
@@ -6780,7 +6799,7 @@ module.exports = class TextEditor {
    * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   copySelectedText(clipboard = this.constructor.clipboard) {
-    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
       if (selection.isEmpty()) {
@@ -6802,7 +6821,7 @@ module.exports = class TextEditor {
    * @private
    */
   copyOnlySelectedText(clipboard = this.constructor.clipboard) {
-    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
       if (!selection.isEmpty()) {
@@ -6827,7 +6846,7 @@ module.exports = class TextEditor {
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
     let clipboard = options.clipboard || this.constructor.clipboard;
-    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
       if (selection.isEmpty()) {
@@ -6858,6 +6877,7 @@ module.exports = class TextEditor {
    */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
+    const isCurrent = this.captureTextMutationGuard(options);
     const clipboard = options.clipboard || this.constructor.clipboard;
     options = Object.assign({}, options);
     delete options.clipboard;
@@ -6966,7 +6986,11 @@ module.exports = class TextEditor {
     };
 
     const clipboardData = clipboard.readWithMetadata();
-    return isPromise(clipboardData) ? clipboardData.then(paste) : paste(clipboardData);
+    return isPromise(clipboardData)
+      ? clipboardData.then((data) => {
+          if (isCurrent()) return paste(data);
+        })
+      : paste(clipboardData);
   }
 
   // Each paste owns its range, not the entire transaction's extent. Deferred
@@ -7021,7 +7045,7 @@ module.exports = class TextEditor {
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
     let clipboard = options.clipboard || this.constructor.clipboard;
-    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
     options = { ...options, clipboard };
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
@@ -7047,7 +7071,7 @@ module.exports = class TextEditor {
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
     let clipboard = options.clipboard || this.constructor.clipboard;
-    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
     options = { ...options, clipboard };
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
@@ -8400,16 +8424,22 @@ module.exports = class TextEditor {
   }
 
   toggleLineCommentsForBufferRows(start, end, options = {}) {
+    if (!this.ensureWritable("toggleLineCommentsForBufferRows", options)) return;
     const languageMode = this.buffer.getLanguageMode();
     if (languageMode.asynchronousSyntax && !Object.hasOwn(options, "commentStrings")) {
-      const revision = this.buffer.getTextRevision();
-      return languageMode
-        .commentStringsForPosition(new Point(start, 0))
+      const isCurrent = this.captureTextMutationGuard(
+        options,
+        options.selection ? [options.selection] : null,
+      );
+      const epoch = languageMode.getSyntaxRequestEpoch?.();
+      return runCancellableGrammarOperation(this, languageMode, null, null, () =>
+        languageMode.commentStringsForPosition(new Point(start, 0)),
+      )
         .then((commentStrings) => {
           if (
-            !this.isDestroyed() &&
+            isCurrent() &&
             this.buffer.getLanguageMode() === languageMode &&
-            this.buffer.getTextRevision() === revision
+            languageMode.getSyntaxRequestEpoch?.() === epoch
           )
             return this.transact(() =>
               this.toggleLineCommentsForBufferRows(start, end, { ...options, commentStrings }),

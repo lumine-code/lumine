@@ -95,7 +95,7 @@ module.exports = class Clipboard {
 
   // Batch editor copy/cut operations through a synchronous in-memory clipboard
   // and commit their final text plus metadata with one asynchronous native write.
-  createMemoryClipboard() {
+  createMemoryClipboard(target = this) {
     let state = { text: "" };
     let didWrite = false;
     return {
@@ -105,7 +105,11 @@ module.exports = class Clipboard {
       },
       readWithMetadata: () => state,
       didWrite: () => didWrite,
-      flush: () => (didWrite ? this.write(state.text, state.metadata) : Promise.resolve()),
+      flush: () => {
+        if (!didWrite) return Promise.resolve();
+        const written = target.write(state.text, state.metadata);
+        return isPromise(written) ? written.then(() => target.flush?.()) : target.flush?.();
+      },
     };
   }
 

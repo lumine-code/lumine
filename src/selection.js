@@ -1206,9 +1206,14 @@ module.exports = class Selection {
     clipboard = this.editor.constructor.clipboard,
   ) {
     if (!this.ensureWritable("cut", { bypassReadOnly })) return;
+    const isCurrent = this.editor.captureTextMutationGuard({ bypassReadOnly }, [this]);
     const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
     const removeSelection = () => this.delete({ bypassReadOnly });
-    return isPromise(didCopy) ? didCopy.then(removeSelection) : removeSelection();
+    return isPromise(didCopy)
+      ? didCopy.then(() => {
+          if (isCurrent()) return this.editor.transact(removeSelection);
+        })
+      : removeSelection();
   }
 
   /**
