@@ -5237,11 +5237,7 @@ module.exports = class TextEditor {
     this.expandSelectionsForward((selection) => {
       const currentRange = selection.getBufferRange();
       const newRange = languageMode.getRangeForSyntaxNodeContainingRange(currentRange);
-      if (newRange) {
-        if (!selection._rangeStack) selection._rangeStack = [];
-        selection._rangeStack.push(currentRange);
-        selection.setBufferRange(newRange);
-      }
+      if (newRange) selection.expandSyntaxRange(newRange, languageMode);
     });
   }
 
@@ -5298,10 +5294,9 @@ module.exports = class TextEditor {
           intent.applying = true;
           try {
             this.expandSelectionsForward((selection) => {
-              const { range, next } = planned.get(selection);
+              const { next } = planned.get(selection);
               if (!next) return;
-              (selection._rangeStack ??= []).push(range);
-              selection.setBufferRange(next);
+              selection.expandSyntaxRange(next, languageMode);
             });
           } finally {
             intent.applying = false;
@@ -5339,13 +5334,7 @@ module.exports = class TextEditor {
   selectSmallerSyntaxNode() {
     this.pendingSyntaxSelection?.controller.abort();
     this.expandSelectionsForward((selection) => {
-      if (selection._rangeStack) {
-        const lastRange = selection._rangeStack[selection._rangeStack.length - 1];
-        if (lastRange && selection.getBufferRange().containsRange(lastRange)) {
-          selection._rangeStack.length--;
-          selection.setBufferRange(lastRange);
-        }
-      }
+      selection.shrinkSyntaxRange(this.buffer.getLanguageMode());
     });
   }
 
@@ -7172,21 +7161,24 @@ module.exports = class TextEditor {
     const cursor = this.getLastCursor();
     const position = cursor.getBufferPosition();
     const { row } = position;
-    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
-      const range = languageMode.getFoldableRangeContainingPoint?.(
-        Point(row, Infinity),
-        this.getTabLength(),
-      );
-      return resolveSyntaxResult(range, (range) => {
-        if (
-          range &&
-          isCurrent() &&
-          this.getLastCursor() === cursor &&
-          cursor.getBufferPosition().isEqual(position)
-        )
-          return this.displayLayer.foldBufferRange(range);
-      });
-    });
+    return this.withCurrentFoldSyntax(
+      (languageMode, isCurrent) => {
+        const range = languageMode.getFoldableRangeContainingPoint?.(
+          Point(row, Infinity),
+          this.getTabLength(),
+        );
+        return resolveSyntaxResult(range, (range) => {
+          if (
+            range &&
+            isCurrent() &&
+            this.getLastCursor() === cursor &&
+            cursor.getBufferPosition().isEqual(position)
+          )
+            return this.displayLayer.foldBufferRange(range);
+        });
+      },
+      { independent: true },
+    );
   }
 
   /**
@@ -7214,34 +7206,49 @@ module.exports = class TextEditor {
    * @param {Number} bufferRow - A `Number`.
    */
   foldBufferRow(bufferRow) {
-    return this.withCurrentFoldSyntax((languageMode, isCurrent) => {
-      const fold = (position) => {
-        const foldableRange =
-          languageMode.getFoldableRangeContainingPoint &&
-          languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
-        return resolveSyntaxResult(foldableRange, (foldableRange) => {
-          if (!isCurrent()) return;
-          if (foldableRange) {
-            const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
-              Range(foldableRange.start, foldableRange.start),
-            );
-            if (existingFolds.length === 0) {
-              this.displayLayer.foldBufferRange(foldableRange);
-            } else {
-              const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(existingFolds[0]);
-              if (firstExistingFoldRange.start.isLessThan(position)) {
-                return fold(Point(firstExistingFoldRange.start.row, 0));
+    return this.withCurrentFoldSyntax(
+      (languageMode, isCurrent) => {
+        const fold = (position) => {
+          const foldableRange =
+            languageMode.getFoldableRangeContainingPoint &&
+            languageMode.getFoldableRangeContainingPoint(position, this.getTabLength());
+          return resolveSyntaxResult(foldableRange, (foldableRange) => {
+            if (!isCurrent()) return;
+            if (foldableRange) {
+              const existingFolds = this.displayLayer.foldsIntersectingBufferRange(
+                Range(foldableRange.start, foldableRange.start),
+              );
+              if (existingFolds.length === 0) {
+                this.displayLayer.foldBufferRange(foldableRange);
+              } else {
+                const firstExistingFoldRange = this.displayLayer.bufferRangeForFold(
+                  existingFolds[0],
+                );
+                if (firstExistingFoldRange.start.isLessThan(position)) {
+                  return fold(Point(firstExistingFoldRange.start.row, 0));
+                }
               }
             }
-          }
-        });
-      };
-      return fold(Point(bufferRow, Infinity));
-    });
+          });
+        };
+        return fold(Point(bufferRow, Infinity));
+      },
+      { independent: true },
+    );
   }
 
-  withCurrentFoldSyntax(operation) {
-    const version = (this.foldRequestVersion = (this.foldRequestVersion ?? 0) + 1);
+  withCurrentFoldSyntax(operation, { independent = false } = {}) {
+    // Row folds can finish independently. A replacement (fold-all) supersedes
+    // earlier work, and a later row action supersedes an unfinished replacement.
+    this.foldRequestVersion ??= 0;
+    if (!independent || this.pendingExclusiveFold?.version === this.foldRequestVersion)
+      this.foldRequestVersion++;
+    const version = this.foldRequestVersion;
+    const exclusive = independent ? null : { version };
+    this.pendingExclusiveFold = exclusive;
+    const finish = () => {
+      if (this.pendingExclusiveFold === exclusive) this.pendingExclusiveFold = null;
+    };
     const mode = this.buffer.getLanguageMode();
     const revision = this.buffer.getTextRevision();
     const epoch = mode.getSyntaxRequestEpoch?.();
@@ -7257,15 +7264,23 @@ module.exports = class TextEditor {
     const perform = (result) => {
       if (isCurrent() && !result?.parseError) return operation(mode, isCurrent);
     };
-    const result =
-      mode.publicationPending && mode.atGrammarSettlement
-        ? mode.atGrammarSettlement().then(perform)
-        : perform();
-    return result?.then
-      ? runCancellableGrammarOperation(this, mode, null, undefined, () => result).catch((error) => {
-          if (error.name !== "AbortError") throw error;
-        })
-      : result;
+    try {
+      const result =
+        mode.publicationPending && mode.atGrammarSettlement
+          ? mode.atGrammarSettlement().then(perform)
+          : perform();
+      if (result?.then)
+        return runCancellableGrammarOperation(this, mode, null, undefined, () => result)
+          .catch((error) => {
+            if (error.name !== "AbortError") throw error;
+          })
+          .finally(finish);
+      finish();
+      return result;
+    } catch (error) {
+      finish();
+      throw error;
+    }
   }
 
   /**

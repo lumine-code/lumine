@@ -1483,6 +1483,45 @@ module.exports = class Selection {
     return this.marker.compare(otherSelection.marker);
   }
 
+  syntaxSelectionHistoryIsCurrent(languageMode) {
+    const history = this.syntaxSelectionHistory;
+    return (
+      history &&
+      history.mode === languageMode &&
+      history.epoch === languageMode.getSyntaxRequestEpoch?.() &&
+      history.revision === this.editor.getBuffer().getTextRevision() &&
+      history.range.isEqual(this.getBufferRange())
+    );
+  }
+
+  expandSyntaxRange(range, languageMode) {
+    const previous = this.getBufferRange();
+    if (previous.isEqual(range)) return;
+    if (!this.syntaxSelectionHistoryIsCurrent(languageMode)) {
+      this.syntaxSelectionHistory = {
+        mode: languageMode,
+        epoch: languageMode.getSyntaxRequestEpoch?.(),
+        revision: this.editor.getBuffer().getTextRevision(),
+        ranges: [],
+      };
+    }
+    this.syntaxSelectionHistory.ranges.push(previous);
+    this.syntaxSelectionHistory.range = range;
+    this.setBufferRange(range);
+  }
+
+  shrinkSyntaxRange(languageMode) {
+    if (!this.syntaxSelectionHistoryIsCurrent(languageMode)) {
+      this.syntaxSelectionHistory = null;
+      return;
+    }
+    const range = this.syntaxSelectionHistory.ranges.pop();
+    if (range) {
+      this.syntaxSelectionHistory.range = range;
+      this.setBufferRange(range);
+    }
+  }
+
   /**
    * @category Private Utilities
    */
@@ -1509,6 +1548,20 @@ module.exports = class Selection {
       newTailScreenPosition,
     } = e;
     const { textChanged, origin = "edit" } = e;
+
+    // Own syntax growth/shrink sets its expected range before moving the
+    // marker. Manual movement must discard the chain even if it later returns.
+    if (
+      this.syntaxSelectionHistory &&
+      (textChanged ||
+        ((!oldHeadBufferPosition.isEqual(newHeadBufferPosition) ||
+          !oldTailBufferPosition.isEqual(newTailBufferPosition)) &&
+          !this.syntaxSelectionHistory.range.isEqual(
+            new Range(newHeadBufferPosition, newTailBufferPosition),
+          )))
+    ) {
+      this.syntaxSelectionHistory = null;
+    }
 
     // Marker metadata and an empty marker's tail can change without moving
     // the selection. Keep validity changes observable as they were before.
@@ -1564,6 +1617,7 @@ module.exports = class Selection {
   }
 
   markerDidDestroy() {
+    this.syntaxSelectionHistory = null;
     if (this.editor.isDestroyed()) return;
 
     this.destroyed = true;
