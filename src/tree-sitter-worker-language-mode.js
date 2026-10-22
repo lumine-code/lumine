@@ -495,9 +495,6 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           ) ?? this.backgroundRange(stamp);
         const first = nextRange();
         if (!first) {
-          this.invalidateAll = false;
-          this.dirtyRanges.clear();
-          this.dirtyFromRow = null;
           return;
         }
         const ids = new Map();
@@ -534,23 +531,29 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                   const range = new Range(tile.start, tile.end);
                   const updates = new RangeList();
                   const candidates = new RangeList();
-                  if (this.invalidateAll) candidates.add(range);
-                  else {
-                    for (const [start, end] of this.cache.uncoveredRanges(tile.start, tile.end))
-                      candidates.add(new Range(start, end));
-                    if (this.dirtyFromRow != null)
-                      this.dirtyRanges.add(
-                        new Range([this.dirtyFromRow, 0], this.buffer.getEndPosition()),
-                      );
-                    for (const dirty of this.dirtyRanges)
-                      if (range.intersectsWith(dirty, true))
-                        candidates.add(
-                          new Range(
-                            range.start.isGreaterThan(dirty.start) ? range.start : dirty.start,
-                            range.end.isLessThan(dirty.end) ? range.end : dirty.end,
-                          ),
-                        );
+                  if (this.invalidateAll) {
+                    this.dirtyRanges.add(this.buffer.getRange());
+                    this.invalidateAll = false;
                   }
+                  for (const [start, end] of this.cache.uncoveredRanges(tile.start, tile.end))
+                    candidates.add(new Range(start, end));
+                  if (this.dirtyFromRow != null) {
+                    this.dirtyRanges.add(
+                      new Range([this.dirtyFromRow, 0], this.buffer.getEndPosition()),
+                    );
+                    this.dirtyRanges.remove(
+                      new Range(this.buffer.getEndPosition(), Point.INFINITY),
+                    );
+                    this.dirtyFromRow = null;
+                  }
+                  for (const dirty of this.dirtyRanges)
+                    if (range.intersectsWith(dirty, true))
+                      candidates.add(
+                        new Range(
+                          range.start.isGreaterThan(dirty.start) ? range.start : dirty.start,
+                          range.end.isLessThan(dirty.end) ? range.end : dirty.end,
+                        ),
+                      );
                   // A viewport may have already published the middle of a
                   // larger prefetch tile. Do not invalidate those fresh rows
                   // again just to fill its offscreen prefix and suffix.
@@ -567,6 +570,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                       ([first, last]) => snapshot.start.row <= last && snapshot.end.row > first,
                     ),
                   );
+                  // Completing the current viewport does not repair retained
+                  // paint elsewhere. Keep those invalidations until their own
+                  // tiles arrive, including after scrolling or a file reload.
+                  this.dirtyRanges.remove(range);
                   for (const [row, fold] of packet.folds ?? []) {
                     if (Boolean(this.folds.get(row)) !== Boolean(fold))
                       updates.add(new Range([row, 0], this.buffer.clipPosition([row, Infinity])));

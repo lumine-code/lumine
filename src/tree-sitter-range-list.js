@@ -1,3 +1,5 @@
+const Range = require("./range");
+
 /**
  * Maintains buffer ranges in document order while coalescing intersections.
  *
@@ -32,6 +34,20 @@ module.exports = class TreeSitterRangeList {
         this.ranges.push(range);
       }
     }
+  }
+
+  remove(range) {
+    const remaining = [];
+    for (const current of this.ranges) {
+      if (!current.intersectsWith(range, true)) {
+        remaining.push(current);
+        continue;
+      }
+      if (current.start.isLessThan(range.start))
+        remaining.push(new Range(current.start, range.start));
+      if (current.end.isGreaterThan(range.end)) remaining.push(new Range(range.end, current.end));
+    }
+    this.ranges = remaining;
   }
 
   inspect() {

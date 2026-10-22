@@ -40,4 +40,17 @@ describe("TreeSitterRangeList", () => {
     expect(list.ranges).toBe(ranges);
     expect([...list]).toEqual([]);
   });
+
+  it("removes completed tiles while retaining both unpainted sides and adjacent ranges", () => {
+    const list = new TreeSitterRangeList();
+    list.add(new Range([0, 0], [384, 0]));
+    list.remove(new Range([128, 0], [256, 0]));
+    expect([...list]).toEqual([new Range([0, 0], [128, 0]), new Range([256, 0], [384, 0])]);
+    list.remove(new Range([128, 0], [256, 0]));
+    expect([...list]).toEqual([new Range([0, 0], [128, 0]), new Range([256, 0], [384, 0])]);
+    list.remove(new Range([64, 0], [320, 0]));
+    expect([...list]).toEqual([new Range([0, 0], [64, 0]), new Range([320, 0], [384, 0])]);
+    list.remove(new Range([0, 0], [384, 0]));
+    expect([...list]).toEqual([]);
+  });
 });
