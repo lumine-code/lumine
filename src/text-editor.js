@@ -2354,10 +2354,21 @@ module.exports = class TextEditor {
       : options;
     const indentMarkers = [];
     const indentBaselines = new Map();
+    const indentPrefixes = batchNewlineIndent ? new Map() : null;
     let result;
     try {
       result = this.mutateSelectedText((selection) => {
-        const range = selection.insertText(text, insertionOptions);
+        let prefix = "";
+        if (batchNewlineIndent && languageMode.asynchronousSyntax) {
+          const { start } = selection.getBufferRange();
+          prefix = this.lineTextForBufferRow(start.row)
+            .slice(0, start.column)
+            .match(/^[\t ]*/)[0];
+        }
+        // Publish the newline and its inherited indentation as one edit. The
+        // worker may refine the owned prefix, but paint never sees column zero
+        // merely because the previous line's indentation crossed a thread.
+        const range = selection.insertText(text + prefix, insertionOptions);
         if (batchNewlineIndent) {
           const marker = languageMode.asynchronousSyntax
             ? this.markBufferRange([range.end, range.end], {
@@ -2366,6 +2377,7 @@ module.exports = class TextEditor {
               })
             : this.markBufferPosition(range.end);
           indentMarkers.push(marker);
+          if (prefix) indentPrefixes.set(marker, prefix);
           // Insertion observers may remove whitespace from the previous blank
           // row. Preserve the same baseline that a single cursor sees before
           // those callbacks, while still planning against the final syntax.
@@ -2392,16 +2404,16 @@ module.exports = class TextEditor {
       pendingNewlineIndent.revision = this.buffer.getTextRevision();
 
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines);
+      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, indentPrefixes);
     } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
       this.scheduleIndentAdjustment();
     }
     return result;
   }
 
-  adjustNewlineIndentation(markers, languageMode, baselines = new Map()) {
+  adjustNewlineIndentation(markers, languageMode, baselines = new Map(), prefixes = new Map()) {
     if (languageMode.asynchronousSyntax)
-      return this.adjustWorkerNewlineIndentation(markers, languageMode, baselines);
+      return this.adjustWorkerNewlineIndentation(markers, languageMode, baselines, prefixes);
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
     const options = {
@@ -2469,15 +2481,22 @@ module.exports = class TextEditor {
   // Keep the intent to indent these new rows across subsequent typing in this
   // editor. Each actual plan still belongs to one revision. Buffer edits from
   // other owners, undo and grammar changes invalidate the intent instead.
-  adjustWorkerNewlineIndentation(markers, languageMode, baselines) {
+  adjustWorkerNewlineIndentation(markers, languageMode, baselines, prefixes) {
     const buffer = this.buffer;
     const previous = this.pendingNewlineIndentIntent;
     if (previous?.mode === languageMode && previous.revision === buffer.getTextRevision()) {
       previous.markers.push(...markers);
       for (const [marker, indent] of baselines) previous.baselines.set(marker, indent);
+      for (const [marker, prefix] of prefixes) previous.prefixes.set(marker, prefix);
       return previous.promise;
     }
-    const intent = { revision: buffer.getTextRevision(), mode: languageMode, markers, baselines };
+    const intent = {
+      revision: buffer.getTextRevision(),
+      mode: languageMode,
+      markers,
+      baselines,
+      prefixes,
+    };
     this.pendingNewlineIndentIntent = intent;
     const isCurrent = () =>
       this.pendingNewlineIndentIntent === intent &&
@@ -2501,7 +2520,14 @@ module.exports = class TextEditor {
           preserveLeadingWhitespace: true,
           skipBlankLines: false,
           comparisonRowIndents: new Map(),
+          insertedIndentLengths: new Map(),
         };
+        for (const [marker, prefix] of prefixes) {
+          if (!marker.isValid()) continue;
+          const row = marker.getStartBufferPosition().row;
+          if (this.lineTextForBufferRow(row).startsWith(prefix))
+            options.insertedIndentLengths.set(row, prefix.length);
+        }
         for (const marker of markers)
           if (marker.isValid() && baselines.has(marker))
             options.comparisonRowIndents.set(
@@ -8063,7 +8089,10 @@ module.exports = class TextEditor {
 
   // Apply one revision-bound whitespace plan. In particular, never coerce a
   // missing or deferred hint to zero, and never rebuild display per row.
-  applyIndentationLevels(indents, { preserveLeadingWhitespace = false } = {}) {
+  applyIndentationLevels(
+    indents,
+    { preserveLeadingWhitespace = false, insertedIndentLengths } = {},
+  ) {
     if (!indents) return false;
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
@@ -8074,7 +8103,9 @@ module.exports = class TextEditor {
       if (!Number.isInteger(row) || !Number.isFinite(indent) || indent < 0) continue;
       const line = lineForRow(row);
       if (line === undefined) continue;
-      const endColumn = preserveLeadingWhitespace ? 0 : line.match(/^\s*/)[0].length;
+      const endColumn = preserveLeadingWhitespace
+        ? (insertedIndentLengths?.get(row) ?? 0)
+        : line.match(/^\s*/)[0].length;
       if (!indentStrings.has(indent)) indentStrings.set(indent, this.buildIndentString(indent));
       const text = indentStrings.get(indent);
       if (line.slice(0, endColumn) !== text)

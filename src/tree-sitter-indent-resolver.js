@@ -93,7 +93,8 @@ class IndentResolver {
       // be able to dedent it into the correct position when
       // `preserveLeadingWhitespace` is `true`. This option probably needs to
       // be revisited.
-      existingIndent = this.indentLevelForLine(this.buffer.lineForRow(row), tabLength);
+      const line = this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0);
+      existingIndent = this.indentLevelForLine(line, tabLength);
     }
 
     let comparisonRowIndent = options.comparisonRowIndent ?? options.comparisonRowIndents?.get(row);
@@ -935,7 +936,7 @@ class IndentResolver {
           row,
           options.preserveLeadingWhitespace
             ? this.indentLevelForLine(
-                this.buffer.lineForRow(row),
+                this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0),
                 tabLength,
                 Math.floor(indent * tabLength),
               )
