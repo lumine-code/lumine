@@ -52,7 +52,7 @@
     "dev-live-reload": "github:lumine-code/dev-live-reload#85e11ab5c3b3bf5fd94d0f09ac75c59927559c71",
     "diacritic": "^0.0.2",
     "diff": "^9.0.0",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "encoding-selector": "github:lumine-code/encoding-selector#e0287f4cdfac1db80ffae3271e509ffbd01cfe1d",
     "focus-trap": "8.2.3",
     "git-diff": "github:lumine-code/git-diff#7f6262fd43ebc4355a43a7f879e0bc0cccea26be",
