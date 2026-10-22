@@ -17,6 +17,7 @@ module.exports = class RepositoryDiscovery {
     this.isAvailable = isAvailable;
     this.repositoryPromisesByPath = new Map();
     this.repositoryLookupState = new WeakMap();
+    this.repositoryClaims = new WeakMap();
     this.repositoriesByCachedPath = new Map();
     this.repositoryPromiseKeysByRepository = new Map();
     this.repositoryCacheObservedRepositories = new WeakSet();
@@ -60,8 +61,11 @@ module.exports = class RepositoryDiscovery {
         state?.pending &&
         state.providerGeneration === this.repositoryProviderGeneration &&
         state.discoveryRevision === this.repositoryRegistry?.repositoryDiscoveryRevision
-      )
+      ) {
+        if (state.repository) this.retainRepositoryClaim(state.repository, filePath);
+        else state.consumers++;
         return pending;
+      }
       this.repositoryPromisesByPath.delete(pathKey);
       this.repositoriesByCachedPath.delete(pathKey);
     }
@@ -73,6 +77,8 @@ module.exports = class RepositoryDiscovery {
       const providerGeneration = this.repositoryProviderGeneration;
       const state = {
         pending: true,
+        consumers: 1,
+        repository: null,
         providerGeneration,
         discoveryRevision: this.repositoryRegistry?.repositoryDiscoveryRevision,
       };
@@ -111,6 +117,15 @@ module.exports = class RepositoryDiscovery {
           discoveryAccepted = true;
           selectedProvider = repositories.findIndex((repo) => repo != null);
           const repo = repositories[selectedProvider] || null;
+          state.repository = repo;
+          if (repo) {
+            this.retainRepositoryClaim(
+              repo,
+              filePath,
+              state.consumers,
+              providers[selectedProvider],
+            );
+          }
 
           // If no repository is found, remove the entry for the directory in
           // @repositoryPromisesByPath in case some other RepositoryProvider is
@@ -161,6 +176,10 @@ module.exports = class RepositoryDiscovery {
         });
       lookupState.set(promise, state);
       this.repositoryPromisesByPath.set(pathKey, promise);
+    } else {
+      const state = lookupState.get(promise);
+      if (state?.repository) this.retainRepositoryClaim(state.repository, filePath);
+      else if (state?.pending) state.consumers++;
     }
     return promise;
   }
@@ -174,21 +193,59 @@ module.exports = class RepositoryDiscovery {
   }
 
   commitRepositoryForPath(repository, filePath) {
-    for (const provider of this.repositoryProviders) {
-      provider.commitRepositoryForPath?.(repository, filePath);
-    }
+    this.releaseRepositoryClaim(repository, filePath, { commit: true });
   }
 
   abandonRepositoryForPath(repository, filePath) {
-    let abandoned = false;
-    for (const provider of this.repositoryProviders) {
-      abandoned = provider.abandonRepositoryForPath?.(repository, filePath) === true || abandoned;
-    }
+    const abandoned = this.releaseRepositoryClaim(repository, filePath);
     if (!abandoned) return;
     const pathKey = repositoryPathKey(filePath);
-    this.repositoryPromisesByPath.delete(pathKey);
-    this.repositoriesByCachedPath.delete(pathKey);
-    for (const keys of this.repositoryPromiseKeysByRepository.values()) keys.delete(pathKey);
+    if (this.repositoriesByCachedPath.get(pathKey) === repository) {
+      this.repositoryPromisesByPath.delete(pathKey);
+      this.repositoriesByCachedPath.delete(pathKey);
+      this.repositoryPromiseKeysByRepository.get(repository)?.delete(pathKey);
+    }
+  }
+
+  retainRepositoryClaim(repository, filePath, consumers = 1, provider = null) {
+    let paths = this.repositoryClaims.get(repository);
+    if (!paths) {
+      paths = new Map();
+      this.repositoryClaims.set(repository, paths);
+    }
+    const pathKey = repositoryPathKey(filePath);
+    let claim = paths.get(pathKey);
+    if (!claim) {
+      claim = { consumers: 0, providers: [] };
+      paths.set(pathKey, claim);
+    }
+    claim.consumers += consumers;
+    if (provider) claim.providers.push(provider);
+  }
+
+  releaseRepositoryClaim(repository, filePath, { commit = false } = {}) {
+    const paths = this.repositoryClaims.get(repository);
+    const pathKey = repositoryPathKey(filePath);
+    const claim = paths?.get(pathKey);
+    if (!claim) return false;
+    if (--claim.consumers === 0) {
+      paths.delete(pathKey);
+      if (paths.size === 0) this.repositoryClaims.delete(repository);
+    }
+
+    // One provider lookup can serve several scans, buffers and focus changes.
+    // A stale consumer releases only its own interest; the shared candidate
+    // stays alive until another consumer accepts it or the last one leaves.
+    if (!commit && claim.consumers > 0) return false;
+    let abandoned = false;
+    const providers = claim.providers.splice(0);
+    for (const provider of providers) {
+      if (commit) provider.commitRepositoryForPath?.(repository, filePath);
+      else {
+        abandoned = provider.abandonRepositoryForPath?.(repository, filePath) === true || abandoned;
+      }
+    }
+    return abandoned;
   }
 
   clearRepositoryPathCache({ invalidateProviders = false } = {}) {

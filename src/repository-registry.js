@@ -2044,6 +2044,7 @@ module.exports = class RepositoryRegistry {
       queueMicrotask(() => {
         if (!this.destroyed && generation === this.scanGeneration) {
           this.scanProjectRoots({ generation }).catch((error) => {
+            if (this.destroyed || generation !== this.scanGeneration) return;
             this.notificationManager?.addWarning("Repository scan failed", {
               detail: error.message,
               dismissable: true,
@@ -2800,6 +2801,7 @@ module.exports = class RepositoryRegistry {
   }
 
   discoveredRepositoryChanged(repository, filePath, revision) {
+    if (repository?.isDestroyed?.()) return true;
     if (revision === this.repositoryDiscoveryRevision) return false;
     if (revision < this.repositoryDiscoveryDiscardedThrough) return true;
     const paths = [
