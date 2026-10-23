@@ -812,9 +812,13 @@ class SelectList extends InputDialog {
     if (searchInWorker) this.startQueryWork(selection);
     this.publishSelectionChange(previousSelection, "source");
     const updatePromise = this.updateComponent();
-    return Promise.all([sourcePromise, updatePromise, this.queryWork?.promise]).then(
+    const completion = Promise.all([sourcePromise, updatePromise, this.queryWork?.promise]).then(
       () => undefined,
     );
+    // updateProps and source observers may discard this promise. The list owns
+    // filtering failures while explicit callers still receive their rejection.
+    void completion.catch(() => {});
+    return completion;
   }
 
   modelQuery(query, props = this.props) {

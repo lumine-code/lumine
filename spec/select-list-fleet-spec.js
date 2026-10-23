@@ -76,6 +76,32 @@ describe("SelectList updates from package event handlers", () => {
     });
   }
 
+  for (const update of ["setSource", "update"]) {
+    it(`owns failed filtering after replacing a query source through ${update}`, async () => {
+      list = lumine.workspace.buildSelectList({
+        items: ["alpha"],
+        query: "al",
+        source: { mode: "query", load: () => ["alpha"] },
+        search: {
+          scoreModifier() {
+            throw new Error("replacement ranking failed");
+          },
+        },
+      });
+      const completion =
+        update === "setSource" ? list.setSource(null) : list.update({ source: null });
+      if (update === "update") {
+        await expectAsync(completion).toBeRejectedWithError("replacement ranking failed");
+      }
+      await conditionPromise(() => list.getStatus()?.message === "replacement ranking failed");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+      if (update === "setSource") {
+        await expectAsync(completion).toBeRejectedWithError("replacement ranking failed");
+      }
+    });
+  }
+
   it("blocks previous results when a different query source takes over at the same query", async () => {
     host = lumine.workspace.addSelectList({
       source: { mode: "query", load: () => ["first source"] },
