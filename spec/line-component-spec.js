@@ -7,9 +7,14 @@ describe("LineComponent token markup", () => {
   afterEach(() => {
     for (const component of components.splice(0)) component.destroy();
   });
-  function build(lineText, tags = [-1, -3, 4, -4, 1, -5, lineText.length - 5, -6, -2]) {
+  function build(
+    lineText,
+    tags = [-1, -3, 4, -4, 1, -5, lineText.length - 5, -6, -2],
+    textDecorations,
+  ) {
     const component = new LineComponent({
       screenRow: 0,
+      textDecorations,
       screenLine: { id: ++id, lineText, tags },
       nodePool: new NodePool(),
       lineComponentsByScreenLineId: new Map(),
@@ -135,5 +140,122 @@ describe("LineComponent token markup", () => {
     expect(component.unpooledContents).toBeTrue();
     expect(component.element.querySelector(".marked")).toBeNull();
     expect(component.element.textContent).toBe("const value = 123;");
+  });
+  describe("class-only decoration markup", () => {
+    const text = "const value = '😀<&\r';";
+    const cases = [
+      {
+        name: "inside one token",
+        decorations: [{ column: 1, className: "marked" }, { column: 3 }],
+      },
+      {
+        name: "across nested scope boundaries",
+        decorations: [{ column: 0, className: "marked outer" }, { column: 7 }],
+      },
+      {
+        name: "at token boundaries",
+        decorations: [
+          { column: 4, className: "marked" },
+          { column: 5 },
+          { column: 6, className: "second" },
+        ],
+      },
+      {
+        name: "escaped classes",
+        decorations: [{ column: 0, className: 'marked" data-injected="yes <&' }, { column: 2 }],
+      },
+      { name: "at end of line", decorations: [{ column: text.length, className: "marked" }] },
+      {
+        name: "empty class transitions",
+        decorations: [{ column: 0 }, { column: 2, className: "" }, { column: 6 }],
+      },
+    ];
+    function compare(fast, pooled) {
+      pooled.element.replaceChildren();
+      pooled.unpooledContents = false;
+      pooled.appendPooledContents();
+      expect(fast.element.innerHTML).toBe(pooled.element.innerHTML);
+      expect(fast.textNodes.map((node) => node.data).join("")).toBe(
+        pooled.textNodes.map((node) => node.data).join(""),
+      );
+      expect(fast.element.querySelector("[data-injected],script,img")).toBeNull();
+    }
+    for (const { name, decorations } of cases) {
+      it("matches pooled scope and decoration ancestry " + name, () => {
+        const fast = build(text, undefined, decorations);
+        compare(fast, build(text, undefined, decorations));
+        expect(fast.unpooledContents).toBeTrue();
+      });
+    }
+    it("preserves root-level empty-line and fold measurement placeholders", () => {
+      for (const [line, tags] of [
+        ["", [-1, -3, 0, -4, -5, 0, -6, -2]],
+        ["const value…", undefined],
+      ]) {
+        const decorations = [{ column: 0, className: "marked" }];
+        const fast = build(line, tags, decorations);
+        compare(fast, build(line, tags, decorations));
+        expect(fast.unpooledContents).toBeTrue();
+      }
+    });
+    it("retains empty decorated Text nodes by falling back for duplicate boundaries", () => {
+      const decorations = [
+        { column: 0, className: "first" },
+        { column: 0, className: "second" },
+        { column: 4 },
+      ];
+      const component = build(text, undefined, decorations);
+      expect(component.unpooledContents).toBeFalse();
+      expect(component.element.querySelector(".first").firstChild.nodeType).toBe(Node.TEXT_NODE);
+      expect(component.element.querySelector(".first").firstChild.data).toBe("");
+      compare(component, build(text, undefined, decorations));
+    });
+    it("keeps arbitrary styles and custom properties on the existing pooled path", () => {
+      const decorations = [
+        { column: 0, className: "marked" },
+        { column: 2, style: { "--value": "red", fontWeight: "bold" } },
+        { column: 7 },
+      ];
+      const fast = build(text, undefined, decorations);
+      expect(fast.unpooledContents).toBeFalse();
+      compare(fast, build(text, undefined, decorations));
+      expect(fast.element.querySelector("[style]").style.getPropertyValue("--value")).toBe("red");
+    });
+    it("preserves NUL in decoration classes on the existing DOM path", () => {
+      const className = "marked\0tail";
+      const decorations = [{ column: 0, className }, { column: 2 }];
+      const component = build(text, undefined, decorations);
+      expect(component.unpooledContents).toBeFalse();
+      compare(component, build(text, undefined, decorations));
+      const decorated = [...component.element.querySelectorAll("span")].find((node) =>
+        node.className.includes("marked"),
+      );
+      expect(decorated.className).toBe(className);
+    });
+    it("switches between class-only HTML and styled DOM without retaining old nodes", () => {
+      const component = build(text, undefined, [{ column: 0, className: "first" }]);
+      const nodes = component.textNodes;
+      component.update({ screenRow: 0, textDecorations: [{ column: 0, style: { color: "red" } }] });
+      expect(component.unpooledContents).toBeFalse();
+      expect(component.textNodes).toBe(nodes);
+      component.update({
+        screenRow: 0,
+        textDecorations: [{ column: 0, className: "second" }, { column: 3 }],
+      });
+      expect(component.unpooledContents).toBeTrue();
+      expect(component.textNodes).toBe(nodes);
+      expect(component.element.querySelector(".first,[style]")).toBeNull();
+      expect(nodes.every((node) => component.element.contains(node))).toBeTrue();
+      expect(nodes.map((node) => node.data).join("")).toBe(text);
+    });
+    it("releases HTML decoration descendants rather than adding them to the node pool", () => {
+      const component = build(text, undefined, [{ column: 0, className: "marked" }]);
+      const pool = component.props.nodePool;
+      component.destroy();
+      components.pop();
+      expect(pool.textNodes).toEqual([]);
+      expect(pool.elementsByType.SPAN).toBeUndefined();
+      expect(pool.elementsByType.DIV[0][0].childNodes.length).toBe(0);
+    });
   });
 });

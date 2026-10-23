@@ -94,7 +94,7 @@ module.exports = class LineComponent {
   appendContents() {
     const { screenLine, textDecorations } = this.props;
     this.unpooledContents =
-      !textDecorations?.length &&
+      this.canRenderHTMLDecorations(textDecorations) &&
       screenLine.tags.length >= 8 &&
       !screenLine.lineText.includes("\0");
     if (this.unpooledContents) return this.appendHTMLContents();
@@ -119,12 +119,48 @@ module.exports = class LineComponent {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
   }
 
+  canRenderHTMLDecorations(decorations) {
+    if (!decorations) return true;
+    let previous = -1;
+    for (const { column, style, className } of decorations) {
+      // Keep arbitrary inline styles on the DOM path. Duplicate or malformed
+      // boundaries can produce empty Text nodes that HTML parsing would drop.
+      // HTML also replaces NUL in attributes, unlike a direct className write.
+      if (
+        style ||
+        (className && String(className).includes("\0")) ||
+        !Number.isSafeInteger(column) ||
+        column < 0 ||
+        column <= previous
+      )
+        return false;
+      previous = column;
+    }
+    return true;
+  }
+
   appendHTMLContents() {
-    const { displayLayer, screenLine } = this.props;
+    const { displayLayer, screenLine, textDecorations } = this.props;
+    if (!this.canRenderHTMLDecorations(textDecorations)) {
+      this.unpooledContents = false;
+      return this.appendPooledContents();
+    }
     const { lineText, tags } = screenLine;
     let html = "<span>",
       column = 0,
-      depth = 0;
+      depth = 0,
+      decorationIndex = 0,
+      activeClassName = null;
+    let nextDecoration = textDecorations?.[decorationIndex];
+    if (nextDecoration?.column === 0) {
+      activeClassName = nextDecoration.className;
+      nextDecoration = textDecorations[++decorationIndex];
+    }
+    const appendText = (text) => {
+      html += activeClassName
+        ? scopeOpeningTag(String(activeClassName)) + escapeHTML(text) + "</span>"
+        : escapeHTML(text);
+    };
     for (const tag of tags) {
       if (tag === 0) continue;
       if (displayLayer.isCloseTag(tag)) {
@@ -139,8 +175,23 @@ module.exports = class LineComponent {
         }
         html += scopeOpeningTag(displayLayer.classNameForTag(tag) || "");
       } else {
-        html += escapeHTML(lineText.slice(column, column + tag));
-        column += tag;
+        // Decorated text remains a leaf span inside the current syntax scope;
+        // a decoration crossing scopes is reopened in each scope as before.
+        if (depth >= 256 && (activeClassName || nextDecoration)) {
+          this.unpooledContents = false;
+          return this.appendPooledContents();
+        }
+        const nextTokenColumn = column + tag;
+        while (nextDecoration && nextDecoration.column <= nextTokenColumn) {
+          appendText(lineText.substring(column, nextDecoration.column));
+          column = nextDecoration.column;
+          activeClassName = nextDecoration.className;
+          nextDecoration = textDecorations[++decorationIndex];
+        }
+        if (column < nextTokenColumn) {
+          appendText(lineText.substring(column, nextTokenColumn));
+          column = nextTokenColumn;
+        }
       }
     }
     html += "</span>";
