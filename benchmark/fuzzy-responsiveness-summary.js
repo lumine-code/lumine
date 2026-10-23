@@ -443,6 +443,9 @@ function summarize(resultFiles, { manifestFile = null, series = null } = {}) {
       kind: phase.kind,
       mode: phase.mode,
       query: phase.query,
+      // The sequence visits s and se twice. Keep the first search/refinement
+      // separate from backspace, especially when only the first s is cold.
+      queryOccurrence: phase.kind === "query" ? phase.occurrence : null,
       callerRoute: phase.callerRoute,
     };
     const key = JSON.stringify(identity);
