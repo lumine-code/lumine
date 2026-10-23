@@ -26,9 +26,9 @@
   "license": "MIT",
   "electronVersion": "45.0.0",
   "dependencies": {
-    "@babel/core": "8.0.7",
+    "@babel/core": "8.0.9",
     "@jasminejs/reporters": "1.1.0",
-    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#0286b1971ea80afc993a1a4e15aacaa0e81f2e44",
+    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#eb414fe48f8015a7a5c9a20024510c7ece8e6509",
     "@lumine-code/etch": "github:lumine-code/etch#c415f1685f7b913b137ffbd0b3e7fa983cb24f17",
     "@lumine-code/event-kit": "github:lumine-code/event-kit#5ee6ba2081d4002539bf0febfb9c2f064d3e70e5",
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#2674bc16077c18f6c3bf5a00c2cdb507048ba64e",
@@ -184,7 +184,7 @@
     "benchmark:text-model-renderer": "npm run test:only -- benchmark/text-model-renderer-spec.js"
   },
   "devDependencies": {
-    "@babel/parser": "^8.0.7",
+    "@babel/parser": "^8.0.8",
     "@electron/asar": "4.3.1",
     "@electron/notarize": "^3.1.2",
     "@electron/rebuild": "4.2.1",
