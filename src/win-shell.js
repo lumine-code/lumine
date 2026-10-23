@@ -85,6 +85,8 @@ class ShellOption {
 
 exports.appName = appName;
 
+// The uninstaller matches these keys and literal executable/placeholder values
+// before removing them. Update resources/win/installer.nsh if their shape changes.
 exports.fileHandler = new ShellOption(`\\Software\\Classes\\Applications\\${exeName}`, [
   { key: "shell\\open\\command", name: "", value: `${appPath} "%1"` },
   { key: "shell\\open", name: "FriendlyAppName", value: `${appName}` },

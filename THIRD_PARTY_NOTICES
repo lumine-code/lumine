@@ -35,6 +35,8 @@ Additional port: 5c08daa64af316d8c14c7648a605f451e2101d97 (overlay scrollbar mou
 Components: src/dummy-scrollbar-component.js and its regression specifications.
 Additional ports: 98cf119ff8213a1c3d4b55f576848c2c37f66a3a (bounded shell operations) and ba3a7e9e4155a7462f7ae27b66c3b2072dff5ce5 (system registry executable).
 Components: src/xdg-shell-invoker.js, src/win-registry.js, src/win-shell.js and their regression specifications.
+Additional port: 0d98acb25cac88c234029d7c6a45ef30a81241c1 (installation-owned Windows shell entry removal).
+Components: resources/win/installer.nsh and src/win-shell.js.
 
 Original file: LICENSE.md
 

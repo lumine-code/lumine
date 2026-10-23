@@ -13,7 +13,7 @@ XPStyle on
     ${Case} '' ; Support Windows versions unknown to GetWindowsVersion v4.1.1 (Win11)
       ${Break} ; Do nothing if supported version.
     ${Default}
-      MessageBox MB_OK "Lumine >=v1.131.0 is only supported on Windows 10 or 11."
+      MessageBox MB_OK "Lumine requires Windows 10 or later."
       Quit
       ${Break}
   ${EndSwitch}
@@ -22,6 +22,19 @@ XPStyle on
 !macro customInstall ; Macro called by electron-builder
   ; Set the 'InstallLocation' Registry Key for Lumine
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "InstallLocation" "$INSTDIR"
+!macroend
+
+; Match the literal command written by src/win-shell.js before removing a key.
+; An empty command is a broken registration; another installation's valid
+; command must survive this uninstall. Never remove entries during an update.
+!macro RemoveLumineShellEntry ROOT_KEY COMMAND_SUBKEY ARG
+  ClearErrors
+  ReadRegStr $0 HKCU "${ROOT_KEY}\${COMMAND_SUBKEY}" ""
+  ${if} $0 == ""
+  ${orIf} $0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "${ARG}"'
+    DeleteRegKey HKCU "${ROOT_KEY}"
+  ${endIf}
+  ClearErrors
 !macroend
 
 !macro customUnInstall ; Macro called by electron-builder
@@ -33,59 +46,13 @@ XPStyle on
     ; install steps, ultimately removing Lumine from the PATH
     ${un.EnvVarUpdate} $0 "PATH" "R" "HKCU" "$INSTDIR\resources"
 
-    ; Remove the Explorer context menu and shell entries that Lumine registers
-    ; at runtime (see src/main-process/win-shell.js). Those verbs are keyed on
-    ; the app name, which for non-stable channels gets a suffix (e.g. "Lumine
-    ; Dev", "Lumine Beta") via getAppName(). So we can't just delete "Lumine" —
-    ; we enumerate each container and remove every verb named "Lumine" or
-    ; "Lumine <Channel>".
-    Push "Software\Classes\*\shell"
-    Call un.RemoveLumineShellVerbs
-    Push "Software\Classes\Directory\shell"
-    Call un.RemoveLumineShellVerbs
-    Push "Software\Classes\Directory\background\shell"
-    Call un.RemoveLumineShellVerbs
-
-    ; File handler entry. The executable name has no channel suffix (it follows
-    ; productName), so a single key covers it. DeleteRegKey is a no-op when the
-    ; key is absent.
-    DeleteRegKey HKCU "Software\Classes\Applications\Lumine.exe"
+    ; Key names and command placeholders must match src/win-shell.js.
+    !insertmacro RemoveLumineShellEntry "Software\Classes\*\shell\${PRODUCT_NAME}" "command" "%1"
+    !insertmacro RemoveLumineShellEntry "Software\Classes\Directory\shell\${PRODUCT_NAME}" "command" "%1"
+    !insertmacro RemoveLumineShellEntry "Software\Classes\Directory\background\shell\${PRODUCT_NAME}" "command" "%V"
+    !insertmacro RemoveLumineShellEntry "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}" "shell\open\command" "%1"
   ${endIf}
 !macroend
-
-; Deletes every subkey of the given HKCU container whose name is "Lumine" or
-; begins with "Lumine " (covering channel-suffixed names). Takes the container
-; path (relative to HKCU) on the stack.
-Function un.RemoveLumineShellVerbs
-  Exch $R0 ; container key path
-  Push $R1 ; enumeration index
-  Push $R2 ; current subkey name
-  Push $R3 ; name prefix scratch
-
-  StrCpy $R1 0
-  loop:
-    EnumRegKey $R2 HKCU "$R0" $R1
-    StrCmp $R2 "" done
-    ; Exact "Lumine"?
-    StrCmp $R2 "Lumine" delete
-    ; Channel-suffixed "Lumine <...>"?
-    StrCpy $R3 $R2 7
-    StrCmp $R3 "Lumine " delete
-    ; No match: advance to the next subkey.
-    IntOp $R1 $R1 + 1
-    Goto loop
-  delete:
-    ; Deleting shifts the remaining subkeys down into this index, so re-read
-    ; the same index rather than incrementing.
-    DeleteRegKey HKCU "$R0\$R2"
-    Goto loop
-  done:
-
-  Pop $R3
-  Pop $R2
-  Pop $R1
-  Pop $R0
-FunctionEnd
 
 !macro MUI_PAGE_ADD_TO_PATH ; Define our custom macro
 
