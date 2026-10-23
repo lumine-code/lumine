@@ -2,6 +2,8 @@
 
 The completed file-picker measurements preserve every measured complete ordered result set and show similar elapsed query times before and after the correctness fixes. They do not establish that responsiveness never regressed: several larger-list timer-gap measurements increased, and those increases were not resolved before the task was narrowed to fixing SelectList bugs. No standalone library performance comparison was run.
 
+The subsequent [responsiveness investigation](fuzzy-search-responsiveness-2026-10-23.md) resolves the timer's meaning and reports traced and untraced confirmation. The suspected opening regression did not reproduce; the original measurements below remain unchanged, including their limitations and outliers.
+
 ## Revisions and isolation
 
 The [raw report](../benchmark/results/fuzzy-search-review-2026-10-23.json) retains individual samples, full ordered-ID hashes, source hashes, runtime details and process timestamps. The [launcher](../benchmark/fuzzy-review-run.js) uses the [actual picker harness](../benchmark/fuzzy-fleet-spec.js) and a [coherent snapshot loader](../benchmark/fuzzy-review-snapshot.js).
