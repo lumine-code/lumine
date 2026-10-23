@@ -8273,9 +8273,14 @@ module.exports = class TextEditor {
     );
   }
 
-  trackIndentation(promise) {
+  trackIndentation(promise, languageMode) {
     const pending = (this.pendingIndentationPromises ??= new Set());
-    const tracked = promise.finally(() => pending.delete(tracked));
+    // A retired provider may still be loading or draining a shared parse. Stop
+    // exposing that wait as pending editor work when its owner disappears.
+    const owned = languageMode
+      ? runCancellableGrammarOperation(this, languageMode, null, undefined, () => promise)
+      : promise;
+    const tracked = owned.finally(() => pending.delete(tracked));
     pending.add(tracked);
     tracked.catch(() => {});
     return tracked;
@@ -8348,6 +8353,7 @@ module.exports = class TextEditor {
           }),
           isCurrent,
         ),
+        languageMode,
       );
     } else if (Number.isFinite(indentLevel) && indentLevel >= 0) {
       return this.withAutomaticIndentation(() =>
@@ -8381,6 +8387,7 @@ module.exports = class TextEditor {
           }),
           isCurrent,
         ),
+        languageMode,
       );
     }
     if (languageMode.suggestedIndentForBufferRows) {
@@ -8437,6 +8444,7 @@ module.exports = class TextEditor {
           buffer.getTextRevision() === revision;
         return this.trackIndentation(
           handleIndentationErrors(Promise.resolve(planned).then(apply), isCurrent),
+          languageMode,
         );
       }
       return apply(planned);
@@ -8507,6 +8515,7 @@ module.exports = class TextEditor {
     return planned?.then
       ? this.trackIndentation(
           handleIndentationErrors(Promise.resolve(planned).then(apply), isCurrent),
+          mode,
         )
       : apply(planned);
   }
@@ -8578,6 +8587,7 @@ module.exports = class TextEditor {
           }),
           isCurrent,
         ),
+        languageMode,
       );
     } else {
       if (Number.isFinite(indentLevel) && indentLevel >= 0)
@@ -8633,7 +8643,13 @@ module.exports = class TextEditor {
       ),
       isCurrent,
     );
-    pending = adjustment.finally(() => {
+    pending = runCancellableGrammarOperation(
+      this,
+      languageMode,
+      null,
+      undefined,
+      () => adjustment,
+    ).finally(() => {
       if (this.autoIndentAtTransactionEndPromise === pending) {
         this.autoIndentAtTransactionEndPromise = null;
         this.didAdjustIndent = false;
