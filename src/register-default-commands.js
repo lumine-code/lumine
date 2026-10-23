@@ -1279,12 +1279,16 @@ var scrollEditorByPage = function (editor, direction) {
 
 function scrollAfterFold(editor, result) {
   const version = editor.foldRequestVersion;
+  const mode = editor.getBuffer().getLanguageMode();
+  const epoch = mode.getSyntaxRequestEpoch?.();
   const revision = editor.getBuffer().getTextRevision();
   const position = editor.getCursorBufferPosition();
   const scroll = () => {
     if (
       !editor.isDestroyed() &&
       editor.foldRequestVersion === version &&
+      editor.getBuffer().getLanguageMode() === mode &&
+      mode.getSyntaxRequestEpoch?.() === epoch &&
       editor.getBuffer().getTextRevision() === revision &&
       editor.getCursorBufferPosition().isEqual(position)
     )
