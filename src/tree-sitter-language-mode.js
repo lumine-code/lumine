@@ -2345,6 +2345,36 @@ class TreeSitterLanguageMode {
     return this.indentResolver.suggestedIndentForBufferRows(...args);
   }
 
+  suggestedIndentForPastedRanges(ranges, tabLength) {
+    this.ensureQueriesForLayersSync("indentsQuery");
+    const results = new Map(),
+      indentationLevels = new Map();
+    for (const { startRow, endRow, options = {} } of [...ranges].sort(
+      (a, b) => a.startRow - b.startRow,
+    )) {
+      const plan = this.indentResolver.suggestedIndentForBufferRows(startRow, endRow, tabLength, {
+        ...options,
+        isPastedText: true,
+        indentationLevels,
+      });
+      for (const [row, indent] of plan ?? []) {
+        if (row < startRow || row > endRow || !Number.isFinite(indent) || indent < 0) continue;
+        results.set(row, indent);
+        indentationLevels.set(
+          row,
+          options.preserveLeadingWhitespace
+            ? this.indentResolver.indentLevelForLine(
+                this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0),
+                tabLength,
+                Math.floor(indent * tabLength),
+              )
+            : indent,
+        );
+      }
+    }
+    return results;
+  }
+
   suggestedIndentForBufferRowsAtRows(rows, tabLength, options = {}) {
     this.ensureQueriesForLayersSync("indentsQuery");
     const results = this.indentResolver.suggestedIndentForBufferRows(

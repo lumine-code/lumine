@@ -16,6 +16,7 @@ const STREAMED_BUILTINS = new Set([
   "comments",
   "suggestedIndentForBufferRows",
   "suggestedIndentForBufferRowsAtRows",
+  "suggestedIndentForPastedRanges",
 ]);
 const rangeFromData = (range) => range && Range.fromObject(range);
 
@@ -722,11 +723,19 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   hasPendingIndentRequests() {
     return this.autoIndentRequests > 0 || this.transactionIndentRequests > 0;
   }
-  suggestedIndentForBufferRows(...args) {
-    return this.builtin("suggestedIndentForBufferRows", args);
+  suggestedIndentForBufferRows(startRow, endRow, tabLength, options, requestOptions = {}) {
+    return this.builtin(
+      "suggestedIndentForBufferRows",
+      [startRow, endRow, tabLength, options],
+      requestOptions,
+    );
   }
   suggestedIndentForBufferRowsAtRows(...args) {
     return this.builtin("suggestedIndentForBufferRowsAtRows", args);
+  }
+
+  suggestedIndentForPastedRanges(ranges, tabLength, options = {}) {
+    return this.builtin("suggestedIndentForPastedRanges", [ranges, tabLength], options);
   }
 
   async getFoldRangeForRow(...args) {

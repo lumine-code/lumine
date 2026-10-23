@@ -7042,35 +7042,125 @@ module.exports = class TextEditor {
   adjustPastedIndentation(pastes, languageMode) {
     const buffer = this.buffer;
     const permissions = { bypassReadOnly: pastes.every(({ options }) => options.bypassReadOnly) };
+    const tabLength = this.getTabLength(),
+      softTabs = this.getSoftTabs();
+    const epoch = languageMode.getSyntaxRequestEpoch?.();
+    const controller = new AbortController();
     let revision = buffer.getTextRevision();
+    let applying = false,
+      appliedBatches = 0;
     const isCurrent = () =>
+      !controller.signal.aborted &&
       canAdjustIndentation(this, buffer, languageMode, permissions) &&
-      buffer.getTextRevision() === revision;
-    const adjustment = (async () => {
-      for (const { marker, options } of pastes) {
-        await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
-        if (!isCurrent() || !marker.isValid()) return;
-        const range = marker.getBufferRange();
-        const indents = await languageMode.suggestedIndentForBufferRows?.(
-          range.start.row,
-          range.end.row - (range.end.column === 0 ? 1 : 0),
-          this.getTabLength(),
-          options,
-        );
-        if (!isCurrent()) return;
-        this.applyIndentationLevels(indents, options);
-        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-        revision = buffer.getTextRevision();
-        const currentRange = marker.getBufferRange();
-        this.emitter.emit("did-insert-text", {
-          text: buffer.getTextInRange(currentRange),
-          range: currentRange,
-        });
-      }
-    })().finally(() => {
-      for (const { marker } of pastes) marker.destroy();
+      buffer.getTextRevision() === revision &&
+      languageMode.getSyntaxRequestEpoch?.() === epoch &&
+      this.getTabLength() === tabLength &&
+      this.getSoftTabs() === softTabs;
+    const changes = buffer.onDidApplyChanges(() => {
+      // Accept our whitespace batch, but not a reentrant edit from an observer.
+      if (!applying || ++appliedBatches > 1) controller.abort();
     });
-    return this.trackIndentation(handleIndentationErrors(adjustment, isCurrent));
+    const adjustment = runCancellableGrammarOperation(
+      this,
+      languageMode,
+      controller.signal,
+      undefined,
+      async () => {
+        if (languageMode.suggestedIndentForPastedRanges) {
+          if (!isCurrent()) return;
+          await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
+          if (
+            !isCurrent() ||
+            pastes.some(({ marker }) => marker.isDestroyed() || !marker.isValid())
+          )
+            return;
+          const ranges = pastes.map(({ marker, options }) => {
+            const range = marker.getBufferRange();
+            return {
+              startRow: range.start.row,
+              endRow: range.end.row - (range.end.column === 0 ? 1 : 0),
+              options,
+            };
+          });
+          const indents = await languageMode.suggestedIndentForPastedRanges(ranges, tabLength, {
+            signal: controller.signal,
+          });
+          if (
+            !isCurrent() ||
+            pastes.some(({ marker }) => marker.isDestroyed() || !marker.isValid())
+          )
+            return;
+          applying = true;
+          appliedBatches = 0;
+          try {
+            this.transact(() => {
+              const combined = new Map();
+              const combine = ranges.every(({ options }) => !options.preserveLeadingWhitespace);
+              for (const { startRow, endRow, options } of ranges) {
+                const owned = new Map();
+                for (let row = startRow; row <= endRow; row++)
+                  if (indents?.has(row)) owned.set(row, indents.get(row));
+                if (combine) {
+                  for (const [row, indent] of owned) combined.set(row, indent);
+                } else this.applyIndentationLevels(owned, options);
+              }
+              if (combined.size) this.applyIndentationLevels(combined);
+            });
+          } finally {
+            applying = false;
+          }
+          if (controller.signal.aborted) return;
+          if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+          revision = buffer.getTextRevision();
+          for (const { marker } of pastes) {
+            if (!isCurrent()) return;
+            const range = marker.getBufferRange();
+            this.emitter.emit("did-insert-text", { text: buffer.getTextInRange(range), range });
+          }
+          return;
+        }
+        for (const { marker, options } of pastes) {
+          if (!isCurrent()) return;
+          await (languageMode.atGrammarSettlement?.() ?? languageMode.atTransactionEnd());
+          if (!isCurrent() || marker.isDestroyed() || !marker.isValid()) return;
+          const range = marker.getBufferRange();
+          const endRow = range.end.row - (range.end.column === 0 ? 1 : 0);
+          const indents = await languageMode.suggestedIndentForBufferRows?.(
+            range.start.row,
+            endRow,
+            tabLength,
+            options,
+            { signal: controller.signal },
+          );
+          if (!isCurrent() || marker.isDestroyed() || !marker.isValid()) return;
+          const owned =
+            indents &&
+            new Map([...indents].filter(([row]) => row >= range.start.row && row <= endRow));
+          applying = true;
+          appliedBatches = 0;
+          try {
+            this.applyIndentationLevels(owned, options);
+          } finally {
+            applying = false;
+          }
+          if (controller.signal.aborted) return;
+          if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
+          revision = buffer.getTextRevision();
+          const currentRange = marker.getBufferRange();
+          this.emitter.emit("did-insert-text", {
+            text: buffer.getTextInRange(currentRange),
+            range: currentRange,
+          });
+        }
+      },
+    );
+    return this.trackIndentation(
+      handleIndentationErrors(adjustment, isCurrent).finally(() => {
+        changes.dispose();
+        controller.abort();
+        for (const { marker } of pastes) marker.destroy();
+      }),
+    );
   }
 
   /**

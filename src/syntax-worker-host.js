@@ -558,6 +558,7 @@ class SyntaxWorkerHost {
       "suggestedIndentForBufferRow",
       "suggestedIndentForBufferRows",
       "suggestedIndentForBufferRowsAtRows",
+      "suggestedIndentForPastedRanges",
       "suggestedIndentForEditedBufferRow",
       "getFoldRangeForRow",
       "getFoldableRanges",

@@ -802,7 +802,7 @@ class IndentResolver {
     let results = new Map();
     // Returned values may be additive; references and @match captures need
     // the absolute indentation that previously planned rows will have.
-    const indentationLevels = new Map();
+    const indentationLevels = options.indentationLevels ?? new Map();
     const preservedRows = new Set();
     let previousRow = -1,
       previousComparison = 0;
@@ -858,6 +858,9 @@ class IndentResolver {
 
           let firstLineIdealIndent = this.suggestedIndentForBufferRow(row, tabLength, {
             ...options,
+            comparisonRowIndent:
+              options.comparisonRowIndent ?? indentationLevels.get(comparisonRow),
+            indentationLevels,
             controllingLayer,
             tree,
             treeForLayer,
