@@ -73,11 +73,11 @@ function phaseIdentity(sample, contextPackage) {
       query: null,
       callerRoute,
     };
-  if (parts[1] === "query")
+  if (parts[1] === "query" || parts[1] === "query-cold")
     return {
       package: parts[0],
       kind: "query",
-      mode: null,
+      mode: parts[1] === "query-cold" ? "cold" : null,
       query: parts.slice(3).join("/"),
       callerRoute,
     };
@@ -254,6 +254,17 @@ function summarize(resultFiles, { manifestFile = null, series = null } = {}) {
   for (const { file, result } of selected) {
     const { label, variant, corpus, snapshot } = result.config;
     assert.ok(["before", "after"].includes(variant), `${label}: invalid variant`);
+    assert.equal(
+      result.monitor?.clock?.visibility,
+      "visible",
+      `${label}: measurement window was not visible`,
+    );
+    assert.equal(
+      result.monitor?.clock?.drain?.reason,
+      "frames",
+      `${label}: frame probe did not drain normally`,
+    );
+    assert.ok(result.monitor.clock.drain.frames >= 2, `${label}: incomplete frame drain`);
     const acceptedRun = accepted.get(label);
     if (manifest) {
       assert.ok(acceptedRun, `${label}: run is not accepted by the batch`);
@@ -390,6 +401,8 @@ function summarize(resultFiles, { manifestFile = null, series = null } = {}) {
       snapshotRefs: result.snapshot.refs,
       fingerprintHash: acceptedRun?.fingerprintHash ?? null,
       finishedAt: acceptedRun?.finishedAt ?? null,
+      initialVisibility: result.monitor.clock.visibility,
+      frameDrain: result.monitor.clock.drain,
     };
     runs.push(run);
     result.samples.forEach((sample, index) =>
@@ -491,6 +504,7 @@ function summarize(resultFiles, { manifestFile = null, series = null } = {}) {
       sourceChecks,
       artifactChecks,
       acceptedRunsFingerprintVerified: Boolean(manifest),
+      visibleAndFrameDrainedRuns: runs.length,
       missingSlots: manifest ? [...plan.keys()].filter((slot) => !coveredSlots.has(slot)) : null,
     },
     orderedResults: {

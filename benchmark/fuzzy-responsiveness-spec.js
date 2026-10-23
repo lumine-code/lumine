@@ -84,15 +84,17 @@ describe("Fuzzy renderer responsiveness diagnostics", () => {
     const Client = snapshot.load("lumine/src/fuzzy-search-worker-client.js");
     const request = Client.prototype.request;
     const close = Client.prototype.close;
-    spyOn(Client.prototype, "request").and.callFake(function (type, data, options) {
+    // A Jasmine spy would retain every 1024-string message in its call history,
+    // changing the garbage-collection workload we are trying to measure.
+    Client.prototype.request = function (type, data, options) {
       if (type === "init" || (type === "add" && data.offset === 0))
         workerEvents.push({ at: performance.now(), type });
       return request.call(this, type, data, options);
-    });
-    spyOn(Client.prototype, "close").and.callFake(function (...args) {
+    };
+    Client.prototype.close = function (...args) {
       if (!this.closed) workerEvents.push({ at: performance.now(), type: "close" });
       return close.apply(this, args);
-    });
+    };
     const corpusBytes = fs.readFileSync(config.corpus);
     const corpus = JSON.parse(corpusBytes);
     const activeEditor = await lumine.workspace.open(config.activeFile);
@@ -145,12 +147,22 @@ describe("Fuzzy renderer responsiveness diagnostics", () => {
         await host.show();
         await list.workerPreparation?.promise;
         for (let sample = 0; sample < (config.querySamples ?? 2); sample++) {
-          for (const query of ["s", "se", "sel", "se", "s", ""]) {
+          for (const [index, query] of ["s", "se", "sel", "se", "s", ""].entries()) {
             await frames();
-            await measure(`${name}/query/${sample}/${query || "empty"}`, async () => {
-              await list.setQuery(query);
-              layout();
-            });
+            if (config.coldQueries && index === 0) list.clearWorkerMatcher();
+            const events = workerEvents.length;
+            const phase = config.coldQueries ? "query-cold" : "query";
+            const timing = await measure(
+              `${name}/${phase}/${sample}/${query || "empty"}`,
+              async () => {
+                await list.setQuery(query);
+                layout();
+              },
+            );
+            timing.matchCount = list.getMatchCount();
+            timing.workerEvents = workerEvents.slice(events);
+            expect(list.getQuery()).toBe(query);
+            expect(list.isFiltering()).toBe(false);
           }
         }
         // Full-list arrays/JSON are expensive diagnostic allocations. Keep the
@@ -159,7 +171,8 @@ describe("Fuzzy renderer responsiveness diagnostics", () => {
         result.monitor = await monitor.finish();
         recording = false;
         console.timeStamp("fuzzy-validation:start");
-        for (const query of ["s", "se", "sel", ""]) {
+        if (config.coldQueries) list.clearWorkerMatcher();
+        for (const query of ["s", "se", "sel", "se", "s", ""]) {
           await list.setQuery(query);
           const ordered = list.getFilteredItems().map((item) => list.getItemId(item));
           result.validation.push({
@@ -185,6 +198,8 @@ describe("Fuzzy renderer responsiveness diagnostics", () => {
       while (!globalThis.__fuzzyRelease) await delay(20);
     } finally {
       await monitor.finish();
+      Client.prototype.request = request;
+      Client.prototype.close = close;
       window.removeEventListener("keydown", input, true);
       activeEditor.destroy();
       await lumine.project.setPaths([]);

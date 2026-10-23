@@ -158,7 +158,7 @@ function options() {
     const [name, inline] = args[i].split("=", 2);
     if (!["--sizes", "--pickers", "--series", "--mode"].includes(name))
       throw new Error(
-        "Usage: node benchmark/fuzzy-responsiveness-batch.js [--sizes 100000,500000] [--pickers fuzzy-explorer,fuzzy-files] [--series name] [--mode trace|plain]",
+        "Usage: node benchmark/fuzzy-responsiveness-batch.js [--sizes 100000,500000] [--pickers fuzzy-explorer,fuzzy-files] [--series name] [--mode trace|plain|cold-query|plain-cold-query]",
       );
     result[name.slice(2)] = inline ?? args[++i];
     if (!result[name.slice(2)]) throw new Error(`Missing value for ${name}`);
@@ -171,7 +171,9 @@ async function main() {
   const sizes = (config.sizes || "100000,500000").split(",").map(Number);
   const pickers = (config.pickers || "fuzzy-explorer,fuzzy-files").split(",");
   const mode = config.mode || "trace";
-  if (!["trace", "plain"].includes(mode)) throw new Error("Expected --mode trace or plain");
+  if (!["trace", "plain", "cold-query", "plain-cold-query"].includes(mode))
+    throw new Error("Expected --mode trace, plain, cold-query or plain-cold-query");
+  const traceEnabled = mode === "trace" || mode === "cold-query";
   const series = config.series || `response-${new Date().toISOString().replace(/[^0-9TZ]/g, "")}`;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(series)) throw new Error("Invalid series name");
   const corpus = read(path.join(previous, "corpus.json"));
@@ -259,7 +261,7 @@ async function main() {
         status: "running",
         startedAt: new Date().toISOString(),
         output: stem + ".json",
-        trace: mode === "trace" ? stem + "-trace.json" : null,
+        trace: traceEnabled ? stem + "-trace.json" : null,
         input: stem + "-input.json",
         log: stem + ".log",
         launcherLog: stem + "-launcher.log",

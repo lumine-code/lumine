@@ -19,6 +19,8 @@ async function run() {
     picker = "fuzzy-files",
   ] = process.argv.slice(2);
   if (!["before", "after"].includes(variant)) throw new Error("Expected before or after");
+  const coldQueries = mode === "cold-query" || mode === "plain-cold-query";
+  const tracing = mode !== "plain" && mode !== "plain-cold-query";
   fs.mkdirSync(directory, { recursive: true });
   const corpus = JSON.parse(fs.readFileSync(path.join(previous, "corpus.json")));
   const workload = corpus.workloads.find((value) => value.count === Number(size));
@@ -35,7 +37,8 @@ async function run() {
     label,
     variant,
     count: workload.count,
-    tracing: mode !== "plain",
+    tracing,
+    coldQueries,
     corpus: workload.corpus,
     snapshot: path.join(previous, variant),
     project: corpus.project,
@@ -43,9 +46,10 @@ async function run() {
     ready: stem + "-ready",
     done: stem + "-done",
     output: stem + ".json",
-    calibrationSamples: mode === "calibration" ? 10 : 3,
-    openSamples: mode === "smoke" ? 2 : 20,
-    querySamples: mode === "smoke" ? 1 : 2,
+    calibrationSamples: coldQueries ? 0 : mode === "calibration" ? 10 : 3,
+    openSamples: coldQueries ? 0 : mode === "smoke" ? 2 : 20,
+    querySamples: coldQueries ? 3 : mode === "smoke" ? 1 : 2,
+    ...(coldQueries ? { modes: [] } : {}),
     packages: mode === "calibration" ? [] : [picker],
   };
   const env = {
@@ -98,7 +102,7 @@ async function run() {
   try {
     await waitFile(config.ready);
     client = await require("./fuzzy-trace-client").connect(port);
-    if (mode !== "plain") {
+    if (tracing) {
       await client.start();
       traceStarted = true;
     }
@@ -133,9 +137,7 @@ async function run() {
     await client.evaluate("globalThis.__fuzzyRelease = true");
     const code = await exit;
     if (code !== 0) throw new Error(`Benchmark failed ${code}: ${stem}.log`);
-    console.log(
-      JSON.stringify({ label, output: config.output, trace: mode !== "plain", exitCode: code }),
-    );
+    console.log(JSON.stringify({ label, output: config.output, trace: tracing, exitCode: code }));
   } finally {
     clearInterval(probe);
     if (traceStarted) await client.stop().catch(() => {});
