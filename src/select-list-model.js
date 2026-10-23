@@ -9,6 +9,19 @@ const { setImmediate } = require("node:timers");
 
 // Dense result sets do not need another hash table of every source ID. Resolve
 // an ID through the existing source table and keep only its result position.
+function denseResultIndex(positions, recordById) {
+  return {
+    get(id) {
+      const record = recordById.get(id);
+      const position = record ? positions[record.sourceIndex] : 0;
+      return position ? position - 1 : undefined;
+    },
+    has(id) {
+      return this.get(id) !== undefined;
+    },
+  };
+}
+
 function prepareResultIndex(records, sourceRecords, recordById) {
   const prepared = { records, sourceRecords, recordById, count: 0 };
   if (records.length < 2048 || records.length * 8 < sourceRecords.length) {
@@ -21,16 +34,7 @@ function prepareResultIndex(records, sourceRecords, recordById) {
     return prepared;
   }
   const positions = new Uint32Array(sourceRecords.length);
-  prepared.index = {
-    get(id) {
-      const record = recordById.get(id);
-      const position = record ? positions[record.sourceIndex] : 0;
-      return position ? position - 1 : undefined;
-    },
-    has(id) {
-      return this.get(id) !== undefined;
-    },
-  };
+  prepared.index = denseResultIndex(positions, recordById);
   prepared.add = (record, position) => {
     positions[record.sourceIndex] = position + 1;
     prepared.count++;
@@ -45,9 +49,13 @@ function resultIndex(records, sourceRecords, recordById) {
       has: (id) => recordById.has(id),
     };
   }
-  const prepared = prepareResultIndex(records, sourceRecords, recordById);
-  for (let index = 0; index < records.length; index++) prepared.add(records[index], index);
-  return prepared.index;
+  // Synchronous callers need neither the incremental builder nor its checks.
+  if (records.length < 2048 || records.length * 8 < sourceRecords.length)
+    return new Map(records.map((record, index) => [record.id, index]));
+  const positions = new Uint32Array(sourceRecords.length);
+  for (let index = 0; index < records.length; index++)
+    positions[records[index].sourceIndex] = index + 1;
+  return denseResultIndex(positions, recordById);
 }
 
 function hasOwn(object, key) {
