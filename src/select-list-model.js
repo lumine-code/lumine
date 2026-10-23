@@ -9,19 +9,19 @@ const { setImmediate } = require("node:timers");
 
 // Dense result sets do not need another hash table of every source ID. Resolve
 // an ID through the existing source table and keep only its result position.
-function resultIndex(records, sourceRecords, recordById) {
-  if (records === sourceRecords) {
-    return {
-      get: (id) => recordById.get(id)?.sourceIndex,
-      has: (id) => recordById.has(id),
+function prepareResultIndex(records, sourceRecords, recordById) {
+  const prepared = { records, sourceRecords, recordById, count: 0 };
+  if (records.length < 2048 || records.length * 8 < sourceRecords.length) {
+    const index = new Map();
+    prepared.index = index;
+    prepared.add = (record, position) => {
+      index.set(record.id, position);
+      prepared.count++;
     };
+    return prepared;
   }
-  if (records.length < 2048 || records.length * 8 < sourceRecords.length)
-    return new Map(records.map((record, index) => [record.id, index]));
   const positions = new Uint32Array(sourceRecords.length);
-  for (let index = 0; index < records.length; index++)
-    positions[records[index].sourceIndex] = index + 1;
-  return {
+  prepared.index = {
     get(id) {
       const record = recordById.get(id);
       const position = record ? positions[record.sourceIndex] : 0;
@@ -31,6 +31,23 @@ function resultIndex(records, sourceRecords, recordById) {
       return this.get(id) !== undefined;
     },
   };
+  prepared.add = (record, position) => {
+    positions[record.sourceIndex] = position + 1;
+    prepared.count++;
+  };
+  return prepared;
+}
+
+function resultIndex(records, sourceRecords, recordById) {
+  if (records === sourceRecords) {
+    return {
+      get: (id) => recordById.get(id)?.sourceIndex,
+      has: (id) => recordById.has(id),
+    };
+  }
+  const prepared = prepareResultIndex(records, sourceRecords, recordById);
+  for (let index = 0; index < records.length; index++) prepared.add(records[index], index);
+  return prepared.index;
 }
 
 function hasOwn(object, key) {
@@ -430,7 +447,7 @@ module.exports = class SelectListModel {
     return this._applyUpdate(changes, false);
   }
 
-  _applyUpdate(changes, initial, preparedResults) {
+  _applyUpdate(changes, initial, preparedResults, preparedIndex) {
     if (hasOwn(changes, "items") && hasOwn(changes, "sections")) {
       throw new TypeError("items and sections are alternative list sources");
     }
@@ -510,7 +527,13 @@ module.exports = class SelectListModel {
       ...built,
     };
     const filteredRecords = preparedResults ?? this._deriveFilteredRecords(draft);
-    const filteredIndexById = resultIndex(filteredRecords, built.records, built.recordById);
+    const filteredIndexById =
+      preparedIndex?.records === filteredRecords &&
+      preparedIndex.sourceRecords === built.records &&
+      preparedIndex.recordById === built.recordById &&
+      preparedIndex.count === filteredRecords.length
+        ? preparedIndex.index
+        : resultIndex(filteredRecords, built.records, built.recordById);
 
     let selectedId;
     if (hasOwn(changes, "initialSelection")) {
@@ -860,6 +883,13 @@ module.exports = class SelectListModel {
       recordByItem: this._recordByItem,
       filterTextCache: this._filterTextCache,
     });
+  }
+
+  /** @private Build selection positions alongside the adapter's yielding result loop. */
+  _prepareResultIndex(records) {
+    // A caller's synchronous sort can change the order after preparation.
+    if (this._search.sort) return null;
+    return prepareResultIndex(records, this._records, this._recordById);
   }
 
   _sortRecordsWithinSections(records, state) {

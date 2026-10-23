@@ -1612,6 +1612,7 @@ class SelectList extends InputDialog {
         controller.signal,
       );
       let results = new Array(ids.length);
+      const preparedIndex = this.model._prepareResultIndex(results);
       const selection = work.selection;
       const preferred = this.model._recordById.get(selection.retainId);
       let retained = false;
@@ -1631,6 +1632,7 @@ class SelectList extends InputDialog {
                 sectionIndex: -1,
                 recent: false,
               });
+        preparedIndex?.add(results[i], i);
         if ((i & 1023) === 0 && performance.now() >= deadline) {
           await new Promise((resolve) => setImmediate(resolve));
           check();
@@ -1652,6 +1654,7 @@ class SelectList extends InputDialog {
         },
         false,
         results,
+        preparedIndex,
       );
       this.showMoreSelected = false;
       this.resetRenderedItems();
