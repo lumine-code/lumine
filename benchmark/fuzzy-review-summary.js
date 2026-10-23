@@ -83,8 +83,8 @@ for (const variant of ["before", "after"]) {
   }
 }
 const comparisons = [...groups.values()].map((group) => {
-  assert.equal(group.before.length, 2);
-  assert.equal(group.after.length, 2);
+  assert.equal(group.before.length, group.after.length);
+  assert.ok(group.before.length >= 2);
   const results = group.before[0].results.map(({ id }) => {
     const before = stats(
       group.before.flatMap((entry) => entry.results.find((value) => value.id === id).samples),

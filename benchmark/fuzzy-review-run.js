@@ -26,7 +26,7 @@ const sources = [
 function otherTests() {
   if (process.platform !== "win32") return [];
   const script =
-    "Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('node.exe','electron.exe') } | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress";
+    "Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('node.exe','electron.exe') } | Select-Object ProcessId,ParentProcessId,CommandLine,@{Name='CreatedAt';Expression={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress";
   const values = JSON.parse(
     execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
       encoding: "utf8",
@@ -42,6 +42,8 @@ function otherTests() {
 
 async function quiet(id) {
   const started = Date.now();
+  let lastNotice = 0;
+  let lastJobs = "";
   for (;;) {
     const jobs = otherTests();
     fs.appendFileSync(
@@ -49,11 +51,13 @@ async function quiet(id) {
       JSON.stringify({ id, at: new Date().toISOString(), jobs }) + "\n",
     );
     if (!jobs.length) break;
-    if (Date.now() - started > 600000)
-      throw new Error("Other test jobs did not finish within ten minutes");
-    console.log(
-      JSON.stringify({ waitingForOtherTests: id, processes: jobs.map((job) => job.ProcessId) }),
-    );
+    const processes = jobs.map((job) => job.ProcessId);
+    const signature = JSON.stringify(processes);
+    if (signature !== lastJobs || Date.now() - lastNotice >= 60000) {
+      console.log(JSON.stringify({ waitingForOtherTests: id, processes }));
+      lastNotice = Date.now();
+      lastJobs = signature;
+    }
     await new Promise((resolve) => setTimeout(resolve, 10000));
   }
   const ticks = () =>
@@ -168,12 +172,28 @@ function prepare() {
 async function run(smoke) {
   const corpus = read(path.join(directory, "corpus.json"));
   const electron = require("electron");
-  const workloads = smoke ? corpus.workloads.slice(0, 1) : corpus.workloads;
-  const runs = [];
+  const sizes = process.argv[3]?.split(",").map(Number);
+  const series = process.argv[4] || "balanced";
+  const slots = process.argv[5]?.split(",").map(Number);
+  const workloads = smoke
+    ? corpus.workloads.slice(0, 1)
+    : corpus.workloads.filter((entry) => !sizes || sizes.includes(entry.count));
+  const existingRuns = path.join(directory, "runs.json");
   const runOrder = smoke ? ["before", "after"] : ["before", "after", "after", "before"];
+  const selectedRuns = [...runOrder.entries()].filter(([index]) => !slots || slots.includes(index));
+  const replacing = new Set(
+    workloads.flatMap((workload) =>
+      selectedRuns.map(([index, label]) => `${series}-${workload.count}-${index}-${label}`),
+    ),
+  );
+  const runs =
+    !smoke && fs.existsSync(existingRuns)
+      ? read(existingRuns).filter((run) => !replacing.has(run.label))
+      : [];
   for (const workload of workloads) {
-    for (const [index, label] of runOrder.entries()) {
-      const id = `${smoke ? "smoke" : "balanced"}-${workload.count}-${index}-${label}`;
+    for (let position = 0; position < selectedRuns.length; position++) {
+      const [index, label] = selectedRuns[position];
+      const id = `${smoke ? "smoke" : series}-${workload.count}-${index}-${label}`;
       const output = path.join(directory, `${id}.json`);
       const config = {
         label: id,
@@ -233,16 +253,26 @@ async function run(smoke) {
       result.startedAt = startedAt;
       result.finishedAt = new Date().toISOString();
       result.environmentCheck = environmentCheck;
-      const overlapping = smoke ? [] : otherTests();
+      const resultWrittenAt = fs.statSync(output).mtimeMs;
+      const observedTests = smoke ? [] : otherTests();
+      const overlapping = observedTests.filter(
+        (job) =>
+          !Number.isFinite(Date.parse(job.CreatedAt)) ||
+          Date.parse(job.CreatedAt) <= resultWrittenAt,
+      );
+      result.resultWrittenAt = new Date(resultWrittenAt).toISOString();
+      result.testsStartingAfterOutput = observedTests.length - overlapping.length;
       result.externalTestsAtFinish = overlapping.length;
       fs.appendFileSync(
         path.join(directory, "concurrency-private.jsonl"),
         JSON.stringify({ id, finishedAt: result.finishedAt, jobs: overlapping }) + "\n",
       );
-      if (overlapping.length)
-        throw new Error(
-          `External tests overlapped ${id}; keep its private result and repeat the balanced workload`,
-        );
+      if (overlapping.length) {
+        fs.copyFileSync(output, path.join(directory, `discarded-${id}-${Date.now()}.json`));
+        console.log(JSON.stringify({ discardedOverlap: id, retryAfterQuiet: true }));
+        position--;
+        continue;
+      }
       result.machine = {
         platform: process.platform,
         arch: process.arch,
@@ -264,7 +294,9 @@ async function run(smoke) {
 
 async function libraryRuns() {
   const runs = [];
-  for (const [index, variant] of ["before", "after", "after", "before"].entries()) {
+  const order = ["before", "after", "after", "before"];
+  for (let index = 0; index < order.length; index++) {
+    const variant = order[index];
     const id = `library-${index}-${variant}`;
     const output = path.join(directory, `${id}.json`);
     const environmentCheck = await quiet(id);
@@ -279,14 +311,30 @@ async function libraryRuns() {
       child.on("exit", resolve);
     });
     if (exitCode !== 0) throw new Error(`Failed ${id}`);
-    const overlapping = otherTests();
+    const resultWrittenAt = fs.statSync(output).mtimeMs;
+    const observedTests = otherTests();
+    const overlapping = observedTests.filter(
+      (job) =>
+        !Number.isFinite(Date.parse(job.CreatedAt)) || Date.parse(job.CreatedAt) <= resultWrittenAt,
+    );
     fs.appendFileSync(
       path.join(directory, "concurrency-private.jsonl"),
       JSON.stringify({ id, at: new Date().toISOString(), jobs: overlapping }) + "\n",
     );
-    if (overlapping.length) throw new Error(`External tests overlapped ${id}`);
+    if (overlapping.length) {
+      fs.copyFileSync(output, path.join(directory, `discarded-${id}-${Date.now()}.json`));
+      console.log(JSON.stringify({ discardedOverlap: id, retryAfterQuiet: true }));
+      index--;
+      continue;
+    }
     const result = read(output);
-    Object.assign(result, { startedAt, finishedAt: new Date().toISOString(), environmentCheck });
+    Object.assign(result, {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      environmentCheck,
+      resultWrittenAt: new Date(resultWrittenAt).toISOString(),
+      testsStartingAfterOutput: observedTests.length - overlapping.length,
+    });
     runs.push(result);
     write(path.join(directory, "library-runs.json"), runs);
     console.log(JSON.stringify({ completed: id }));
