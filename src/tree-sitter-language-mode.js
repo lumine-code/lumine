@@ -210,6 +210,7 @@ class TreeSitterLanguageMode {
     this.parseDetails = new WeakMap();
     this.synchronousUpdates = false;
     this.syntaxGeneration = 0;
+    this.syntaxRequestEpoch = 0;
     this.publicationPending = true;
     this.publicationRanges = new TreeSitterRangeList();
     this.grammar = grammar;
@@ -275,6 +276,7 @@ class TreeSitterLanguageMode {
             this.requestDocumentUpdate();
         });
       }),
+      buffer.onDidChangePath(() => this.invalidateSyntaxConfiguration()),
     );
     this.subscriptions.add(this.onDidTokenize(() => (this.tokenized = true)));
 
@@ -364,6 +366,7 @@ class TreeSitterLanguageMode {
   destroy() {
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
+    this.invalidateSyntaxConfiguration();
     this.cancelPendingRootUpdate();
     this.document.close();
     this.presentation.destroy();
@@ -814,8 +817,9 @@ class TreeSitterLanguageMode {
 
   rootLanguageRangesChanged() {
     const layer = this.rootLanguageLayer;
-    if (this.destroyed || !layer || this.grammarRegistry?.windowUnloading) return;
-    this.invalidateSyntaxSnapshot();
+    if (this.destroyed || this.grammarRegistry?.windowUnloading) return;
+    this.invalidateSyntaxConfiguration();
+    if (!layer) return;
     if (!layer.tree) {
       layer.rootRangePolicyNeedsUpdate = true;
       return;
@@ -1009,7 +1013,7 @@ class TreeSitterLanguageMode {
 
   highlightConfigurationChanged(event) {
     if (this.destroyed) return;
-    this.invalidateSyntaxSnapshot();
+    this.invalidateSyntaxConfiguration();
     const ranges = new TreeSitterRangeList();
     for (const layer of this.getAllLanguageLayers()) {
       const query = layer?.queries?.highlightsQuery;
@@ -1200,14 +1204,11 @@ class TreeSitterLanguageMode {
   // Called when any grammar is added or changed, on the off chance that it
   // affects an injection of ours.
   updateInjectionsForGrammar(grammar) {
+    if (this.destroyed || !grammar.injectionNames?.length) return;
+    this.invalidateSyntaxConfiguration();
     if (!this.rootLanguageLayer) {
       // We haven't gotten far enough for this to matter yet. Injections will
       // be handled later.
-      return;
-    }
-    if (!grammar.injectionNames?.length) {
-      // This grammar has no injection aliases, hence there's no way for
-      // another grammar to use it for injection.
       return;
     }
     // Now we'll visit every layer in the document in turn and see if any of
@@ -1225,8 +1226,9 @@ class TreeSitterLanguageMode {
   repopulateInjections() {
     // Grammar removal can arrive before the root is ready or after this mode
     // was destroyed while its buffer still refers to it.
-    if (this.destroyed || !this.rootLanguageLayer) return;
-    this.invalidateSyntaxSnapshot();
+    if (this.destroyed) return;
+    this.invalidateSyntaxConfiguration();
+    if (!this.rootLanguageLayer) return;
     // Grammar removal/replacement must cancel any plan holding the old target
     // grammar, including plans that have not published their child layers yet.
     for (const layer of this.getAllLanguageLayers()) layer.injectionPointVersion++;
@@ -1279,6 +1281,21 @@ class TreeSitterLanguageMode {
   // Mutation owners advance this counter without scanning layers on each read.
   getSyntaxGeneration() {
     return this.syntaxGeneration;
+  }
+
+  // Requests survive parse publication at the same configuration. Grammar,
+  // query, injection and root-range policy changes invalidate them separately.
+  getSyntaxRequestEpoch() {
+    return this.syntaxRequestEpoch;
+  }
+
+  invalidateSyntaxConfiguration() {
+    this.invalidateSyntaxRequestEpoch();
+    this.invalidateSyntaxSnapshot();
+  }
+
+  invalidateSyntaxRequestEpoch() {
+    this.syntaxRequestEpoch++;
   }
 
   invalidateSyntaxSnapshot() {
@@ -3442,7 +3459,7 @@ class LanguageLayer {
       // When we add or remove injection points on this grammar, this language
       // layer must repopulate its injections.
       this.injectionPointVersion++;
-      this.languageMode.invalidateSyntaxSnapshot();
+      this.languageMode.invalidateSyntaxConfiguration();
       this._populateInjections(MAX_RANGE, null);
     };
 
@@ -3808,7 +3825,10 @@ class LanguageLayer {
   // {@link TreeSitterGrammar} to modify a query after initial load.
   observeQueryChanges() {
     this.subscriptions.add(
-      this.grammar.onDidChangeQuery(({ queryType }) => this.scheduleQueryReload(queryType)),
+      this.grammar.onDidChangeQuery(({ queryType }) => {
+        this.languageMode.invalidateSyntaxRequestEpoch();
+        return this.scheduleQueryReload(queryType);
+      }),
     );
   }
 
