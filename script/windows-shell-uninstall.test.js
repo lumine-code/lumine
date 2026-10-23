@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { runNativeFixture } = require("./native-process-fixture");
 
 const root = path.resolve(__dirname, "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -61,6 +62,11 @@ test(
     const directory = fs.realpathSync.native(
       fs.mkdtempSync(path.join(temporaryBase, "lumine-shell-uninstall-")),
     );
+    let pendingNative;
+    const executeNative = (...args) => {
+      pendingNative = runNativeFixture(...args);
+      return pendingNative;
+    };
     const fixtureRoot = `Software\\LumineTests\\ShellUninstall-${randomUUID()}`;
     const registry = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe");
     assert.match(fixtureRoot, /^Software\\LumineTests\\ShellUninstall-[a-f0-9-]+$/);
@@ -79,7 +85,9 @@ test(
       assert.ok(match, result.stdout);
       return (match[1] || "").trimEnd();
     };
-    t.after(() => {
+    t.after(async () => {
+      // Cancellation may start this hook while the body still awaits its child.
+      await Promise.allSettled(pendingNative ? [pendingNative] : []);
       try {
         execute(registry, ["delete", fixtureKey(), "/f", "/reg:32"]);
         assert.equal(query().status, 1, "The exact isolated registry fixture must be gone.");
@@ -175,15 +183,25 @@ test(
         "",
       ].join("\n"),
     );
-    const built = execute(compiler.path, ["/V2", script], {
+    const built = await executeNative(compiler.path, ["/V2", script], {
       env: { ...process.env, ...compiler.env },
       timeout: 60000,
+      signal: t.signal,
+      diagnostic: (message) => t.diagnostic(message),
+      label: "NSIS ownership harness compilation",
     });
+    assert.equal(built.signal, null, built.stderr);
     assert.equal(built.status, 0, built.stdout + built.stderr);
     t.diagnostic(
       `macro SHA256 ${hash(macro)}; compiler SHA256 ${hash(fs.readFileSync(compiler.path))}; harness SHA256 ${hash(fs.readFileSync(executable))}`,
     );
-    const ran = execute(executable, ["/S"]);
+    const ran = await executeNative(executable, ["/S"], {
+      timeout: 30000,
+      signal: t.signal,
+      diagnostic: (message) => t.diagnostic(message),
+      label: "NSIS ownership harness execution",
+    });
+    assert.equal(ran.signal, null, ran.stderr);
     assert.equal(ran.status, 0, ran.stdout + ran.stderr);
     assert.equal(readValue("", "harness-completed"), "yes");
     for (const fixture of cases) {

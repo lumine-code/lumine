@@ -7,6 +7,7 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const { once } = require("node:events");
 const test = require("node:test");
+const { runNativeFixture } = require("./native-process-fixture");
 const parseOptions = require("../src/parse-command-line-options");
 
 const root = path.resolve(__dirname, "..");
@@ -16,27 +17,19 @@ const bash =
     : "/bin/bash";
 let windowsExecutable;
 
-function shellPath(value) {
-  return value
-    .replaceAll("\\", "/")
-    .replace(/^([a-z]):\//i, (_, drive) => `/${drive.toLowerCase()}/`);
-}
+test.before(
+  async (t) => {
+    if (process.platform === "win32") windowsExecutable = await prepareWindowsExecutable(t);
+  },
+  { timeout: 30000 },
+);
 
-function executable(filePath, source) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, source, { mode: 0o755 });
-}
-
-function fakeElectron(filePath, directory) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  if (process.platform !== "win32") {
-    executable(
-      filePath,
-      '#!/bin/bash\nif [ "$ELECTRON_RUN_AS_NODE" = 1 ]; then printf \'{"pid":%s}\\n\' "$$" > "$LUMINE_TEST_BOOTSTRAP"; exec "$LUMINE_TEST_NODE" "$@"; fi\nexec "$LUMINE_TEST_NODE" "$LUMINE_TEST_PROBE" "$@"\n',
-    );
-    return;
-  }
-  if (!windowsExecutable) {
+async function prepareWindowsExecutable(t) {
+  const temporaryBase = fs.realpathSync.native(os.tmpdir());
+  const directory = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(temporaryBase, "lumine native compiler ")),
+  );
+  try {
     const source = path.join(directory, "electron-probe.cs");
     const compiledPath = path.join(directory, "electron-probe.exe");
     fs.writeFileSync(
@@ -92,13 +85,51 @@ class Probe {
       process.env.WINDIR || "C:/Windows",
       "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
     );
-    const result = spawnSync(compiler, ["/nologo", "/target:exe", `/out:${compiledPath}`, source], {
-      encoding: "utf8",
-      windowsHide: true,
-    });
+    const result = await runNativeFixture(
+      compiler,
+      ["/nologo", "/target:exe", `/out:${compiledPath}`, source],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 30000,
+        signal: t.signal,
+        diagnostic: (message) => t.diagnostic(message),
+        label: "POSIX Windows probe compiler",
+      },
+    );
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    windowsExecutable = fs.readFileSync(compiledPath);
+    const bytes = fs.readFileSync(compiledPath);
+
+    return bytes;
+  } finally {
+    assert.equal(path.dirname(directory), temporaryBase);
+    assert.equal(fs.lstatSync(directory).isSymbolicLink(), false);
+    assert.equal(fs.realpathSync.native(directory), directory);
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
+}
+
+function shellPath(value) {
+  return value
+    .replaceAll("\\", "/")
+    .replace(/^([a-z]):\//i, (_, drive) => `/${drive.toLowerCase()}/`);
+}
+
+function executable(filePath, source) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, source, { mode: 0o755 });
+}
+
+function fakeElectron(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (process.platform !== "win32") {
+    executable(
+      filePath,
+      '#!/bin/bash\nif [ "$ELECTRON_RUN_AS_NODE" = 1 ]; then printf \'{"pid":%s}\\n\' "$$" > "$LUMINE_TEST_BOOTSTRAP"; exec "$LUMINE_TEST_NODE" "$@"; fi\nexec "$LUMINE_TEST_NODE" "$LUMINE_TEST_PROBE" "$@"\n',
+    );
+    return;
+  }
+  assert.ok(windowsExecutable, "The bounded Windows probe preparation must complete first.");
   fs.writeFileSync(filePath, windowsExecutable);
   fs.writeFileSync(filePath + ".exe", windowsExecutable);
 }
@@ -241,7 +272,7 @@ console.log("launcher probe");
 process.exitCode = Number(process.env.LUMINE_TEST_EXIT || 0);
 `,
   );
-  fakeElectron(nativeExecutable, directory);
+  fakeElectron(nativeExecutable);
   const bin = path.join(directory, "bin");
   executable(path.join(bin, "uname"), `#!/bin/bash\nprintf '%s\\n' '${platform}'\n`);
   const defaults = path.join(directory, "defaults");

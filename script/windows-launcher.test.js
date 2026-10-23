@@ -7,11 +7,87 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { runNativeFixture } = require("./native-process-fixture");
 const { launch } = require("../resources/lumine");
 const parseOptions = require("../src/parse-command-line-options");
 
 const root = path.resolve(__dirname, "..");
 const helper = path.join(root, "resources", "lumine.js");
+let windowsProbe;
+
+test.before(
+  async (t) => {
+    if (process.platform === "win32") windowsProbe = await prepareWindowsProbe(t);
+  },
+  { timeout: 30000 },
+);
+
+async function prepareWindowsProbe(t) {
+  const temporaryBase = fs.realpathSync.native(os.tmpdir());
+  const directory = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(temporaryBase, "lumine native compiler ")),
+  );
+  try {
+    const source = path.join(directory, "probe.cs");
+    const executable = path.join(directory, "Lumine.exe");
+    fs.writeFileSync(
+      source,
+      String.raw`using System;
+using System.IO;
+using System.Diagnostics;
+class Probe {
+  static string Json(string s) { return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\""; }
+  static string Quote(string s) {
+    string result = "\"", slash = "";
+    foreach (char c in s) {
+      if (c == '\\') slash += "\\";
+      else { result += c == '\"' ? slash + slash + "\\\"" : slash + c; slash = ""; }
+    }
+    return result + slash + slash + "\"";
+  }
+  static int Main(string[] args) {
+    if (Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") == "1") {
+      string[] quoted = new string[args.Length];
+      for (int i = 0; i < args.Length; i++) quoted[i] = Quote(args[i]);
+      var info = new ProcessStartInfo(Environment.GetEnvironmentVariable("LUMINE_TEST_NODE"), String.Join(" ", quoted));
+      info.UseShellExecute = false;
+      using (var child = Process.Start(info)) { child.WaitForExit(); return child.ExitCode; }
+    }
+    string[] values = new string[args.Length];
+    for (int i = 0; i < args.Length; i++) values[i] = Json(args[i]);
+    string report = "{\"argv\":[" + String.Join(",", values) + "],\"cwd\":" + Json(Environment.CurrentDirectory) + ",\"nodeMode\":" + Json(Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") ?? "") + "}";
+    File.WriteAllText(Environment.GetEnvironmentVariable("LUMINE_TEST_REPORT"), report);
+    Console.WriteLine("launcher probe");
+    return Int32.Parse(Environment.GetEnvironmentVariable("LUMINE_TEST_EXIT") ?? "0");
+  }
+}`,
+    );
+    const compiler = path.join(
+      process.env.WINDIR || "C:/Windows",
+      "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
+    );
+    const compiled = await runNativeFixture(
+      compiler,
+      ["/nologo", "/target:exe", `/out:${executable}`, source],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 30000,
+        signal: t.signal,
+        diagnostic: (message) => t.diagnostic(message),
+        label: "Windows launcher probe compiler",
+      },
+    );
+    assert.equal(compiled.status, 0, compiled.stdout + compiled.stderr);
+
+    return fs.readFileSync(executable);
+  } finally {
+    assert.equal(path.dirname(directory), temporaryBase);
+    assert.equal(fs.lstatSync(directory).isSymbolicLink(), false);
+    assert.equal(fs.realpathSync.native(directory), directory);
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  }
+}
 
 function fakeProcess(pid) {
   const child = new EventEmitter();
@@ -350,49 +426,8 @@ function fixture(t) {
   for (const name of ["parse-command-line-options.js", "electron-rm-sync-compatibility.js"]) {
     fs.copyFileSync(path.join(root, "src", name), path.join(sourceDirectory, name));
   }
-  const source = path.join(directory, "probe.cs");
-  const executable = path.join(install, "Lumine.exe");
-  fs.writeFileSync(
-    source,
-    String.raw`using System;
-using System.IO;
-using System.Diagnostics;
-class Probe {
-  static string Json(string s) { return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\""; }
-  static string Quote(string s) {
-    string result = "\"", slash = "";
-    foreach (char c in s) {
-      if (c == '\\') slash += "\\";
-      else { result += c == '\"' ? slash + slash + "\\\"" : slash + c; slash = ""; }
-    }
-    return result + slash + slash + "\"";
-  }
-  static int Main(string[] args) {
-    if (Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") == "1") {
-      string[] quoted = new string[args.Length];
-      for (int i = 0; i < args.Length; i++) quoted[i] = Quote(args[i]);
-      var info = new ProcessStartInfo(Environment.GetEnvironmentVariable("LUMINE_TEST_NODE"), String.Join(" ", quoted));
-      info.UseShellExecute = false;
-      using (var child = Process.Start(info)) { child.WaitForExit(); return child.ExitCode; }
-    }
-    string[] values = new string[args.Length];
-    for (int i = 0; i < args.Length; i++) values[i] = Json(args[i]);
-    string report = "{\"argv\":[" + String.Join(",", values) + "],\"cwd\":" + Json(Environment.CurrentDirectory) + ",\"nodeMode\":" + Json(Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") ?? "") + "}";
-    File.WriteAllText(Environment.GetEnvironmentVariable("LUMINE_TEST_REPORT"), report);
-    Console.WriteLine("launcher probe");
-    return Int32.Parse(Environment.GetEnvironmentVariable("LUMINE_TEST_EXIT") ?? "0");
-  }
-}`,
-  );
-  const compiler = path.join(
-    process.env.WINDIR || "C:/Windows",
-    "Microsoft.NET/Framework64/v4.0.30319/csc.exe",
-  );
-  const compiled = spawnSync(compiler, ["/nologo", "/target:exe", `/out:${executable}`, source], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  assert.equal(compiled.status, 0, compiled.stdout + compiled.stderr);
+  assert.ok(windowsProbe, "The bounded Windows probe preparation must complete first.");
+  fs.writeFileSync(path.join(install, "Lumine.exe"), windowsProbe);
   let serial = 0;
   function invocation(args, { bash = false, async = false, env: extraEnv = {} } = {}) {
     const report = path.join(directory, `report-${serial++}.json`);
