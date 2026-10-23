@@ -68,6 +68,8 @@ jobs:
         run: npm run test:storage
       - name: Test Electron download retries
         run: node --test script/install-electron.test.js
+      - name: Test headless dependency preparation
+        run: node --test script/install-headless-dependencies.test.js
       - name: Test application packaging
         run: node --test script/check-built-app.test.js
       - name: Test demo capture validation
@@ -129,14 +131,10 @@ jobs:
           cache: npm
       - name: Install Linux build and headless-display dependencies
         if: runner.os == 'Linux'
-        # fonts-noto-cjk backs the editor's double-width/half-width/Korean
-        # character measurements in the text-editor-component specs.
-        run: |
-          # A third-party repository on the runner image answering 403 must not
-          # fail the job: the lists this actually needs still fetched, and the
-          # install below stays strict, so a missing package still stops us.
-          sudo apt-get update || true
-          sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
+        timeout-minutes: 15
+        # Preserve native-build headers and the fonts used by renderer specs.
+        # Authenticate and download fully before starting the cached install.
+        run: node script/install-headless-dependencies.js
       # Install sources before rebuilding native modules for Electron.
       #
       # npm records the @lumine-code git forks with ssh URLs, but the runners
