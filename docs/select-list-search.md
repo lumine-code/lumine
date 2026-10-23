@@ -55,3 +55,9 @@ list = lumine.workspace.buildSelectList({
 `getFilterText`, score modifiers and custom sort callbacks remain in the owning renderer; arbitrary closures are not serialized into a worker. On the worker path, candidate extraction and score modification use yielding batches. Worker matching, built-in ordering and first-page highlighting run off the UI thread. A custom sort runs after fuzzy ranking and retains the model's callback context and stable tie order; an expensive custom comparator can still block the renderer. With `worker: false`, candidate preparation, matching and these callbacks run synchronously.
 
 Custom `search.filter` or `search.matcher` callbacks and `source.mode: "query"` providers own their filtering and scheduling. The built-in worker does not wrap or replace their implementations.
+
+## Score invalidation
+
+Built-in search reuses adjusted rankings when a query is revisited with the same candidate snapshot and score modifier. Call `await list.refreshScores()` when state captured by `search.scoreModifier` changes. This invalidates adjusted results and reruns the current query while retaining prepared candidate text and the existing worker. Publishing new items, replacing the search configuration or calling `refresh()` also invalidates the affected scores; a plain `setQuery()` does not signal changed modifier state.
+
+Worker lists retain at most eight adjusted rankings, with up to eight MiB for their order and highlight arrays. These are separate from the worker matcher's prepared-query cache. Failed or superseded requests do not populate the ranking cache. Synchronous lists use the library's versioned modifier cache and its existing eight-MiB query-cache budget.

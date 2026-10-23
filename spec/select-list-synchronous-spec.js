@@ -51,6 +51,7 @@ describe("SelectList synchronous search", () => {
       const reference = lumine.tools.fuzzyMatcher.setCandidates(values, { ignoreDiacritics: true });
       for (const query of ["s", "ss", "zolc", "zolc"]) {
         factor++;
+        await list.refreshScores();
         const pending = list.setQuery(query);
         const expected = reference.match(query, {
           algorithm,

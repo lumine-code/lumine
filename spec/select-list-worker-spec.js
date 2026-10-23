@@ -169,6 +169,7 @@ describe("SelectList worker search", () => {
       const reference = lumine.tools.fuzzyMatcher.setCandidates(values, { ignoreDiacritics: true });
       for (const query of ["s", "sa", "sample42", "zolc", "s"]) {
         factor++;
+        await list.refreshScores();
         await list.setQuery(query);
         const expected = reference.match(query, {
           algorithm,

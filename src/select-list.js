@@ -124,6 +124,8 @@ class SelectList extends InputDialog {
     this.filterMatcherGeneration = null;
     this.filterMatcherRecords = null;
     this.filterMatcherOptions = null;
+    this.filterScoreModifier = null;
+    this.scoreModifierVersion = 0;
     this.queryWork = null;
     this.sourceItemsSource = this.props.source?.mode === "query" ? this.props.source : null;
     this.sourceItemsQuery = this.props.query == null ? "" : String(this.props.query);
@@ -706,6 +708,7 @@ class SelectList extends InputDialog {
     this.filterMatcherIgnoresDiacritics = null;
     this.filterMatcherRecords = null;
     this.filterMatcherOptions = null;
+    this.filterScoreModifier = null;
     this.overflowResizeObserver?.disconnect();
     this.overflowViewport = null;
     try {
@@ -1356,6 +1359,23 @@ class SelectList extends InputDialog {
    * @public
    * @status experimental
    *
+   * Recompute ranking after state captured by search.scoreModifier changes.
+   * Prepared candidate text and the existing worker remain reusable.
+   * @returns {Promise<void>}
+   */
+  refreshScores() {
+    this.scoreModifierVersion++;
+    if (this.workerPreparation) {
+      this.workerPreparation.rankings.clear();
+      this.workerPreparation.rankingBytes = 0;
+    }
+    return this.update({ query: this.getQuery() });
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
    * Returns the stable identifier used by the model for an item. Object
    * items default to their `id` property; primitive items identify themselves.
    * @param {*} item - A source item.
@@ -1571,7 +1591,10 @@ class SelectList extends InputDialog {
     const records = this.model._records;
     const generation = this.model.getGeneration();
     const query = this.model.getQuery();
-    const options = this.props.search ?? {};
+    const options = {
+      ...this.props.search,
+      scoreModifierVersion: this.scoreModifierVersion,
+    };
     const check = () => {
       controller.signal.throwIfAborted();
       if (this.destroyed || this.model.getGeneration() !== generation)
@@ -1681,6 +1704,7 @@ class SelectList extends InputDialog {
       this.filterMatcherGeneration = null;
       this.filterMatcherRecords = null;
       this.filterMatcherOptions = null;
+      this.filterScoreModifier = null;
       const WorkerClient = require("./fuzzy-search-worker-client");
       preparation = this.workerPreparation = {
         generation,
@@ -1688,6 +1712,8 @@ class SelectList extends InputDialog {
         next: 0,
         controller: new AbortController(),
         client: new WorkerClient({ ignoreDiacritics: !!options.ignoreDiacritics }),
+        rankings: new Map(),
+        rankingBytes: 0,
       };
       const { client, controller } = preparation;
       preparation.promise = (async () => {
@@ -1731,6 +1757,22 @@ class SelectList extends InputDialog {
       );
     });
     signal.throwIfAborted();
+    const cached = preparation.rankings.get(query);
+    if (
+      cached &&
+      cached.modifier === options.scoreModifier &&
+      cached.version === options.scoreModifierVersion
+    ) {
+      preparation.rankings.delete(query);
+      preparation.rankings.set(query, cached);
+      return {
+        order: cached.order,
+        highlights: cached.highlights.map(({ id, indexes }) => ({
+          id,
+          indexes: indexes?.slice() ?? null,
+        })),
+      };
+    }
     const matchingOptions = { algorithm: options.algorithm || "fuzzaldrin" };
     let scores;
     if (options.scoreModifier) {
@@ -1751,7 +1793,7 @@ class SelectList extends InputDialog {
       }
     }
     signal.throwIfAborted();
-    return client.request(
+    const result = await client.request(
       "rank",
       {
         query,
@@ -1761,6 +1803,36 @@ class SelectList extends InputDialog {
       },
       { signal, transfer: scores ? [scores.buffer] : [] },
     );
+    signal.throwIfAborted();
+    // Modified rankings otherwise require another round trip, callback pass
+    // and complete sort on every revisit. Keep bounded, revision-owned results.
+    if (options.scoreModifier && query.length <= 256) {
+      const bytes =
+        result.order.byteLength +
+        query.length * 2 +
+        result.highlights.reduce((sum, row) => sum + 8 + (row.indexes?.length ?? 0) * 8, 0);
+      if (bytes <= 8 * 1024 * 1024) {
+        preparation.rankingBytes -= preparation.rankings.get(query)?.bytes ?? 0;
+        preparation.rankings.delete(query);
+        preparation.rankings.set(query, {
+          order: result.order,
+          highlights: result.highlights.map(({ id, indexes }) => ({
+            id,
+            indexes: indexes?.slice() ?? null,
+          })),
+          modifier: options.scoreModifier,
+          version: options.scoreModifierVersion,
+          bytes,
+        });
+        preparation.rankingBytes += bytes;
+        while (preparation.rankings.size > 8 || preparation.rankingBytes > 8 * 1024 * 1024) {
+          const oldest = preparation.rankings.keys().next().value;
+          preparation.rankingBytes -= preparation.rankings.get(oldest).bytes;
+          preparation.rankings.delete(oldest);
+        }
+      }
+    }
+    return result;
   }
 
   didClickItem(itemIndex, event) {
@@ -1858,14 +1930,15 @@ class SelectList extends InputDialog {
       this.filterMatcherGeneration = context.generation;
       this.filterMatcherRecords = candidates;
       this.filterMatcherOptions = options;
+      this.filterScoreModifier = options.scoreModifier
+        ? (score, id) => options.scoreModifier(score, candidates[id].item)
+        : undefined;
     }
-    const modifyScore = options.scoreModifier;
     return this.filterMatcher
       .matchIds(query, {
         algorithm: options.algorithm,
-        scoreModifier: modifyScore
-          ? (score, id) => modifyScore(score, candidates[id].item)
-          : undefined,
+        scoreModifier: this.filterScoreModifier,
+        scoreModifierVersion: this.scoreModifierVersion,
       })
       .map((id) => candidates[id]);
   }
