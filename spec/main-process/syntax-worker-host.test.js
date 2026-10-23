@@ -38,6 +38,12 @@ test("package unload evicts syntax helpers reached through a development link", 
     host.close();
     delete require.cache[entry];
     delete require.cache[dependency];
+    const linkedStat = fs.lstatSync(linked, { throwIfNoEntry: false });
+    if (linkedStat) {
+      assert.equal(linkedStat.isSymbolicLink(), true);
+      assert.equal(fs.realpathSync(linked), fs.realpathSync(source));
+      fs.unlinkSync(linked);
+    }
     assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
     fs.rmSync(directory, { recursive: true, force: true });
   }
