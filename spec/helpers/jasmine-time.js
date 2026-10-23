@@ -1,5 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const { mockDebounce } = require("../helpers/mock-debounce");
+const formatNodeTimer = require("./format-node-timer");
 
 jasmine.useRealClock = function () {
   jasmine.unspy(window, "setTimeout");
@@ -84,6 +85,7 @@ window.advanceClock = function (delta) {
 
 exports.register = (jasmineEnv) => {
   jasmineEnv.beforeEach(() => {
+    jasmineEnv.addCustomObjectFormatter(formatNodeTimer);
     resetTimeouts();
     spyOn(_._, "now").and.callFake(() => now);
     spyOn(Date, "now").and.callFake(() => now);

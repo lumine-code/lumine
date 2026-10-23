@@ -7,6 +7,21 @@ exports.illegalNode = (context) => context.getSyntaxNodeAtBufferPosition([0, 0])
 
 exports.rootChildren = (context) => context.getRootSyntaxNode().namedChildren.map((node) => node.text);
 
+exports.coordinateForest = (context) => {
+  function tree(node) {
+    context.signal.throwIfAborted();
+    return [
+      node.type,
+      node.startIndex,
+      node.endIndex,
+      [node.startPosition.row, node.startPosition.column],
+      [node.endPosition.row, node.endPosition.column],
+      node.children.map(tree),
+    ];
+  }
+  return context.getLanguageLayers().map((layer) => [layer.scopeName, tree(layer.rootNode)]);
+};
+
 exports.structure = async (context) => {
   const { createHash } = require("node:crypto");
   const result = [];

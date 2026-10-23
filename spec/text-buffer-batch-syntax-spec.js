@@ -1,25 +1,17 @@
+const path = require("node:path");
+
 describe("Independent edit batches with syntax layers", () => {
   const editors = [];
+  beforeEach(() => jasmine.useRealClock());
   afterEach(() => {
     for (const editor of editors.splice(0)) editor.destroy();
   });
 
-  function tree(node) {
-    return [
-      node.type,
-      node.startIndex,
-      node.endIndex,
-      [node.startPosition.row, node.startPosition.column],
-      [node.endPosition.row, node.endPosition.column],
-      node.children.map(tree),
-    ];
-  }
   function forest(editor) {
-    return editor
-      .getBuffer()
-      .getLanguageMode()
-      .getAllLanguageLayers()
-      .map((layer) => [layer.grammar.scopeName, tree(layer.tree.rootNode)]);
+    return editor.analyzeSyntax(
+      path.join(__dirname, "fixtures/syntax-worker-analysis.js"),
+      "coordinateForest",
+    );
   }
 
   for (const replacement of ["longer", "longer\r\n"])
@@ -50,7 +42,7 @@ describe("Independent edit batches with syntax layers", () => {
           expect(lumine.grammars.assignLanguageMode(editor.getBuffer(), fixture.scope)).toBe(true);
           await editor.whenGrammarSettled();
         }
-        const originalForest = forest(expected);
+        const originalForest = await forest(expected);
         if (fixture.package === "language-html") expect(originalForest.length).toBeGreaterThan(1);
         const buffer = actual.getBuffer();
         buffer.clearUndoStack();
@@ -83,15 +75,15 @@ describe("Independent edit batches with syntax layers", () => {
         expect(lumine.grammars.assignLanguageMode(expected.getBuffer(), fixture.scope)).toBe(true);
         await actual.whenGrammarSettled();
         await expected.whenGrammarSettled();
-        const changedForest = forest(expected);
-        expect(forest(actual)).toEqual(changedForest);
+        const changedForest = await forest(expected);
+        expect(await forest(actual)).toEqual(changedForest);
         actual.undo();
         await actual.whenGrammarSettled();
         expect(actual.getText()).toBe(source);
-        expect(forest(actual)).toEqual(originalForest);
+        expect(await forest(actual)).toEqual(originalForest);
         actual.redo();
         await actual.whenGrammarSettled();
-        expect(forest(actual)).toEqual(changedForest);
+        expect(await forest(actual)).toEqual(changedForest);
         subscription.dispose();
       });
     }
