@@ -797,6 +797,7 @@ class SelectList extends InputDialog {
     const selection = searchInWorker ? this.selectionForSearch({ query }, previousSelection) : null;
     this.model._applyUpdate({ query }, false, searchInWorker ? [] : undefined);
     this.cancelQueryWork(searchInWorker);
+    if (!searchInWorker) this.clearQueryFailure();
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();

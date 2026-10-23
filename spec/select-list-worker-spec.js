@@ -1,4 +1,22 @@
 describe("SelectList worker search", () => {
+  it("keeps required long-input highlights across the Chromium worker boundary", async () => {
+    const Client = require("../src/fuzzy-search-worker-client");
+    const client = new Client({ ignoreDiacritics: false });
+    try {
+      await client.ready;
+      await client.request("add", { offset: 0, values: ["a".repeat(43000)] });
+      const result = await client.request("rank", {
+        query: "-" + "a".repeat(100),
+        options: { algorithm: "fuzzaldrin" },
+        highlightCount: 1,
+      });
+      expect(Array.from(result.order)).toEqual([0]);
+      expect(result.highlights[0].indexes).toEqual(Array.from({ length: 100 }, (_, i) => i));
+    } finally {
+      client.close();
+    }
+  });
+
   it("uses corrected long-input scoring across worker requests", async () => {
     const Client = require("../src/fuzzy-search-worker-client");
     const client = new Client({ ignoreDiacritics: false });

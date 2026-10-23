@@ -77,6 +77,22 @@ describe("SelectList query recovery and reentrant observers", () => {
     expect(list.getStatus()).toBe(status);
   });
 
+  it("clears a local filtering failure when a query source takes over", async () => {
+    list = lumine.workspace.buildSelectList({
+      items: ["alpha"],
+      search: {
+        scoreModifier: () => {
+          throw new Error("ranking failed");
+        },
+      },
+    });
+    await expectAsync(list.setQuery("alpha")).toBeRejectedWithError("ranking failed");
+    await list.setSource({ mode: "query", load: () => ["external result"] });
+    expect(list.model.getQuery()).toBe("");
+    expect(list.getFilteredItems()).toEqual(["alpha"]);
+    expect(list.getStatus()).toBeNull();
+  });
+
   it("keeps a query chosen by a query-change observer instead of restarting the outer selection", async () => {
     list = lumine.workspace.buildSelectList({ items: ["alpha", "beta"] });
     let redirected = Promise.resolve();
