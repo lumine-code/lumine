@@ -7,11 +7,14 @@ describe("Fleet fuzzy interaction performance", () => {
   it("measures the actual file pickers through layout", async () => {
     jasmine.useRealClock();
     const config = JSON.parse(process.env.LUMINE_FUZZY_FLEET);
-    const library = require("@lumine-code/fuzzy-search");
+    if (config.snapshot && (config.reference || config.library))
+      throw new Error("Coherent snapshots cannot be mixed with historical overrides");
+    const snapshot = config.snapshot ? require("./fuzzy-review-snapshot")(config.snapshot) : null;
+    const library = snapshot?.library ?? require("@lumine-code/fuzzy-search");
     if (config.library) library.Matcher = require(config.library).Matcher;
     const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
-    let matching = lumine.tools.fuzzyMatcher;
-    const sources = {};
+    let matching = snapshot?.load("lumine/src/fuzzy-matcher.js") ?? lumine.tools.fuzzyMatcher;
+    const sources = snapshot?.sources ?? {};
     const compile = (file, original, overrides = {}) => {
       const filename = path.resolve(original);
       const instance = new Module(filename, module);
@@ -57,22 +60,28 @@ describe("Fleet fuzzy interaction performance", () => {
       view.prototype.prepareWorkerOnIdle = function () {};
       view.prototype.shouldSearchInWorker = () => false;
     }
-    for (const name of ["fuzzy-matcher", "select-list", "select-list-model"]) {
+    for (const name of snapshot ? [] : ["fuzzy-matcher", "select-list", "select-list-model"]) {
       const file = config.reference
         ? path.join(config.reference, `${name}-before.js`)
         : path.resolve(__dirname, "../src", `${name}.js`);
       sources[name] = hash(fs.readFileSync(file));
     }
-    for (const name of [
-      "input-dialog",
-      "dialog-actions",
-      "fuzzy-search-worker",
-      "fuzzy-search-worker-client",
-    ])
+    for (const name of snapshot
+      ? [
+          "input-dialog",
+          "dialog-actions",
+          "select-list-component",
+          "select-list-host",
+          "input-dialog-host",
+          "modal-dialog-factory",
+        ]
+      : ["input-dialog", "dialog-actions", "fuzzy-search-worker", "fuzzy-search-worker-client"])
       sources[name] = hash(fs.readFileSync(path.resolve(__dirname, "../src", `${name}.js`)));
-    const libraryDirectory = config.library
-      ? path.join(config.library, "lib")
-      : path.dirname(require.resolve("@lumine-code/fuzzy-search"));
+    const libraryDirectory =
+      snapshot?.libraryDirectory ??
+      (config.library
+        ? path.join(config.library, "lib")
+        : path.dirname(require.resolve("@lumine-code/fuzzy-search")));
     const libraryHash = () =>
       hash(
         JSON.stringify(
@@ -98,11 +107,14 @@ describe("Fleet fuzzy interaction performance", () => {
       });
     };
     if (config.phases) {
+      const model =
+        snapshot?.load("lumine/src/select-list-model.js") ?? require("../src/select-list-model");
+      const view = snapshot?.load("lumine/src/select-list.js") ?? require("../src/select-list");
       wrap(matching, "setCandidates", "prepare");
       wrap(library.Matcher.prototype, "rank", "rank");
-      wrap(require("../src/select-list-model").prototype, "_normalizeSearchResults", "validate");
-      wrap(require("../src/select-list-model").prototype, "_applyUpdate", "model");
-      wrap(require("../src/select-list").prototype, "syncModelState", "project-view");
+      wrap(model.prototype, "_normalizeSearchResults", "validate");
+      wrap(model.prototype, "_applyUpdate", "model");
+      wrap(view.prototype, "syncModelState", "project-view");
     }
     const corpusBytes = fs.readFileSync(config.corpus);
     const corpus = JSON.parse(corpusBytes);
@@ -116,6 +128,10 @@ describe("Fleet fuzzy interaction performance", () => {
     const cases = [];
     const sequence = config.queries || ["s", "se", "sel", "s", "", "a", "ab", "", "m", "ma"];
     for (const name of config.packages || ["fuzzy-explorer", "fuzzy-files"]) {
+      if (snapshot) {
+        const loaded = await lumine.packages.loadPackage(name);
+        loaded.mainModule = snapshot.load(`${name}/lib/main.js`);
+      }
       const pkg = await lumine.packages.activatePackage(name);
       const main = pkg.mainModule;
       if (name === "fuzzy-files" && config.reference) {
@@ -123,7 +139,7 @@ describe("Fleet fuzzy interaction performance", () => {
         const previous = compile(source, path.resolve(__dirname, "../../fuzzy-files/lib/main.js"));
         for (const key of ["addItem", "relativize", "modifyScore"]) main[key] = previous[key];
         sources[name] = hash(fs.readFileSync(source));
-      } else
+      } else if (!snapshot)
         sources[name] = hash(fs.readFileSync(path.resolve(__dirname, `../../${name}/lib/main.js`)));
       if (name === "fuzzy-explorer") {
         spyOn(main, "loadCache").and.returnValue(false);
@@ -138,7 +154,9 @@ describe("Fleet fuzzy interaction performance", () => {
           });
           spyOn(lumine.project, "isIndexing").and.returnValue(false);
         }
-        await main.whenIndexed();
+        // Review runs include the package's first metadata-helper startup and
+        // initial snapshot in the first-open interval.
+        if (!snapshot) await main.whenIndexed();
       }
       const times = new Map();
       const resultSets = [];
@@ -148,7 +166,17 @@ describe("Fleet fuzzy interaction performance", () => {
         times.get(key).push(value);
       };
       let count = 0;
+      let initialOpen = null;
+      let initialQuery = null;
       for (let sample = -(config.warmups ?? 1); sample < (config.samples || 5); sample++) {
+        const firstOpen = initialOpen === null;
+        let lastOpenTick = performance.now();
+        let openGap = 0;
+        const openHeartbeat = setInterval(() => {
+          const now = performance.now();
+          openGap = Math.max(openGap, now - lastOpenTick);
+          lastOpenTick = now;
+        }, 4);
         const started = performance.now();
         const host = name === "fuzzy-explorer" ? main.ensureSelectList() : main.ensureFinder();
         const list = host.getModel();
@@ -166,7 +194,21 @@ describe("Fleet fuzzy interaction performance", () => {
         await host.show();
         if (!list.getItemCount()) await list.reload();
         list.getElement().getBoundingClientRect();
-        record("open", performance.now() - started, sample);
+        const openDuration = performance.now() - started;
+        openGap = Math.max(openGap, performance.now() - lastOpenTick);
+        clearInterval(openHeartbeat);
+        record("open", openDuration, sample);
+        record("open/longest-task-gap", openGap, sample);
+        if (initialOpen === null) initialOpen = { duration: openDuration, longestTaskGap: openGap };
+        // Preserve default startup for the initial open/query pair. Measured
+        // reopen trials cannot inherit speculative preparation from opening.
+        if (config.cold && !config.waitForPreparation && !firstOpen) {
+          list.clearWorkerMatcher();
+          list.filterMatcher = null;
+          list.filterMatcherGeneration = null;
+          list.filterMatcherRecords = null;
+          list.filterMatcherOptions = null;
+        }
         if (config.waitForPreparation && list.workerPreparation) {
           await list.workerPreparation?.promise;
           record("prepared", performance.now() - started, sample);
@@ -188,24 +230,33 @@ describe("Fleet fuzzy interaction performance", () => {
           const synchronous = performance.now() - start;
           await update;
           const rect = list.getElement().getBoundingClientRect();
-          record(`${i}/${query || "(empty)"}`, performance.now() - start, sample);
+          const duration = performance.now() - start;
+          record(`${i}/${query || "(empty)"}`, duration, sample);
           largestGap = Math.max(largestGap, performance.now() - lastTick);
           clearInterval(heartbeat);
           record(`${i}/${query || "(empty)"}/longest-task-gap`, largestGap, sample);
           record(`${i}/${query || "(empty)"}/sync`, synchronous, sample);
+          if (initialQuery === null)
+            initialQuery = { query, duration, synchronous, longestTaskGap: largestGap };
           for (const [phase, duration] of activePhases)
             record(`${i}/${query || "(empty)"}/phase/${phase}`, duration, sample);
           activePhases = null;
           expect(rect.width).toBeGreaterThan(0);
           expect(list.getQuery()).toBe(query);
-          if (sample === 0)
-            resultSets.push({
+          if (snapshot && config.worker !== false && query)
+            // eslint-disable-next-line n/no-unsupported-features/node-builtins -- Chromium Worker, not the Node experimental global.
+            expect(list.workerPreparation?.client.worker instanceof globalThis.Worker).toBe(true);
+          if (sample >= 0) {
+            const result = {
               query,
               count: list.getMatchCount(),
               orderedIdsHash: hash(
                 JSON.stringify(list.getFilteredItems().map((item) => list.getItemId(item))),
               ),
-            });
+            };
+            if (sample === 0) resultSets.push(result);
+            else expect(result).toEqual(resultSets[i]);
+          }
         }
         await list.setQuery("");
         for (let index = 1; index <= 10; index++) {
@@ -221,6 +272,8 @@ describe("Fleet fuzzy interaction performance", () => {
       cases.push({
         package: name,
         count,
+        initialOpen,
+        initialQuery,
         resultSets,
         results: Array.from(times, ([id, samples]) => {
           const ordered = samples.slice().sort((a, b) => a - b);
@@ -235,7 +288,7 @@ describe("Fleet fuzzy interaction performance", () => {
       if (name === "fuzzy-files" && config.captureProjectCorpus)
         fs.writeFileSync(
           config.captureProjectCorpus,
-          JSON.stringify(main.items.map((x) => x.aPath)),
+          JSON.stringify(main.selectList.getItems().map((x) => x.aPath)),
         );
       await lumine.packages.deactivatePackage(name);
     }
@@ -247,8 +300,15 @@ describe("Fleet fuzzy interaction performance", () => {
           runtime: process.versions,
           corpusHash: hash(corpusBytes),
           driverHash: hash(fs.readFileSync(__filename)),
+          snapshotLoaderHash: snapshot
+            ? hash(fs.readFileSync(require.resolve("./fuzzy-review-snapshot")))
+            : null,
           sources,
           libraryHash: beforeLibraryHash,
+          workerLibraryHashes: snapshot?.workerLibraryHashes ?? null,
+          snapshot: config.snapshot
+            ? JSON.parse(fs.readFileSync(path.join(config.snapshot, "manifest.json")))
+            : null,
           coldMatcherEachOpen: !!config.cold,
           waitsForPreparation:
             !!config.waitForPreparation && !config.reference && config.worker !== false,
@@ -269,6 +329,11 @@ describe("Fleet fuzzy interaction performance", () => {
       ),
     );
     expect(libraryHash()).toBe(beforeLibraryHash);
+    if (snapshot && config.worker !== false) {
+      expect(Object.keys(snapshot.workerLibraryHashes).length).toBe(6);
+      for (const [name, actual] of Object.entries(snapshot.workerLibraryHashes))
+        expect(actual).toBe(hash(fs.readFileSync(path.join(libraryDirectory, name))));
+    }
     activeEditor?.destroy();
     if (config.project) await lumine.project.setPaths([]);
   }, 300000);
