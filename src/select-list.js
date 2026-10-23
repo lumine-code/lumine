@@ -1151,9 +1151,11 @@ class SelectList extends InputDialog {
 
   isFiltering() {
     return (
-      this.queryWork != null ||
-      (this.props.source?.mode === "query" &&
-        (this.sourceItemsSource !== this.props.source || this.sourceItemsQuery !== this.getQuery()))
+      !this.destroyed &&
+      (this.queryWork != null ||
+        (this.props.source?.mode === "query" &&
+          (this.sourceItemsSource !== this.props.source ||
+            this.sourceItemsQuery !== this.getQuery())))
     );
   }
 

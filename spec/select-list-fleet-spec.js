@@ -96,5 +96,7 @@ describe("SelectList updates from package event handlers", () => {
     await switching;
     expect(list.isFiltering()).toBe(false);
     expect(list.getSelectedItem()).toBe("second source");
+    await host.destroy();
+    expect(list.isFiltering()).toBe(false);
   });
 });
