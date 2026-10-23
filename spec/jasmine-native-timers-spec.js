@@ -1,15 +1,16 @@
 const timers = require("node:timers");
-const { AsyncLocalStorage } = require("node:async_hooks");
 const formatNodeTimer = require("./helpers/format-node-timer");
 
 describe("Native timer diagnostics", () => {
   it("formats timer identities without reading their async context or other internal properties", () => {
-    const storage = new AsyncLocalStorage();
-    const handles = storage.run({ owner: "syntax" }, () => [
+    // Exercise the renderer's real native handles here. Creating an ALS context
+    // in this renderer aborts Electron before the formatter can run; genuine
+    // ALS coverage lives in main-process/jasmine-native-timers.test.js.
+    const handles = [
       timers.setTimeout(() => {}, 10000),
       timers.setInterval(() => {}, 10000),
       timers.setImmediate(() => {}),
-    ]);
+    ];
     try {
       for (const handle of handles) {
         Object.defineProperty(handle, Symbol("opaque context"), {
@@ -30,7 +31,6 @@ describe("Native timer diagnostics", () => {
       timers.clearTimeout(handles[0]);
       timers.clearInterval(handles[1]);
       timers.clearImmediate(handles[2]);
-      storage.disable();
     }
   });
 });
