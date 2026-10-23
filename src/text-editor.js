@@ -1323,10 +1323,13 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Calls your `callback` after text has been inserted.
+   * Called once per insertion, without waiting for asynchronous indentation.
+   * Later indentation corrections are buffer changes, not new insertions.
    *
    * @param {Function} callback
    * @param {Object} callback.event - event `Object`
-   * @param {String} callback.event.text - text to be inserted
+   * @param {String} callback.event.text - inserted text
+   * @param {Range} callback.event.range - Range at notification time; later edits may move it.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidInsertText(callback) {
@@ -6956,6 +6959,10 @@ module.exports = class TextEditor {
           const indentPastedText =
             (fullLine && selection.isEmpty()) ||
             !/\S/.test(this.buffer.lineForRow(pasteStart.row).slice(0, pasteStart.column));
+          // Blank pasted text has no syntax to reindent. A later correction
+          // would recreate trailing spaces an insertion observer just removed.
+          const autoIndent = options.autoIndent && /\S/.test(text);
+          const insertionOptions = autoIndent ? options : { ...options, autoIndent: false };
           let range;
           if (fullLine && selection.isEmpty()) {
             const oldPosition = selection.getBufferRange().start;
@@ -6963,17 +6970,17 @@ module.exports = class TextEditor {
               [oldPosition.row, 0],
               [oldPosition.row, 0],
             ]);
-            range = selection.insertText(text, options);
+            range = selection.insertText(text, insertionOptions);
             const newPosition = oldPosition.translate([1, 0]);
             selection.setBufferRange([newPosition, newPosition]);
           } else {
-            range = selection.insertText(text, options);
+            range = selection.insertText(text, insertionOptions);
           }
 
           if (
             languageMode.shouldParseSynchronously?.() &&
             indentPastedText &&
-            options.autoIndent &&
+            autoIndent &&
             text.includes("\n")
           ) {
             const marker = this.markBufferRange(range);
@@ -6985,14 +6992,13 @@ module.exports = class TextEditor {
               });
               range = marker.getBufferRange();
               text = this.buffer.getTextInRange(range);
-              this.emitter.emit("did-insert-text", { text, range });
             } finally {
               marker.destroy();
             }
           } else if (
             languageMode.atTransactionEnd &&
             indentPastedText &&
-            options.autoIndent &&
+            autoIndent &&
             text.includes("\n")
           ) {
             // The `autoIndent` option as passed to `Selection#insertText` has no
@@ -7004,9 +7010,8 @@ module.exports = class TextEditor {
             // The good news is that we can wait until the transaction's done;
             // we'll know the extent of the buffer involved in the paste, so we can
             // auto-indent those rows once they're in the buffer and reflected in
-            // the parse tree. This also lets us defer the `did-insert-text` event
-            // until the auto-indent happens, so that the event metadata is more
-            // accurate.
+            // the parse tree. Notify insertion now: cancellation or a failed
+            // indentation query must not hide an edit that already happened.
             //
             // We can also use this technique to format text as required by the
             // `editor:paste-without-reformatting` command. Instead of
@@ -7018,9 +7023,8 @@ module.exports = class TextEditor {
               marker: this.markBufferRange(range),
               options: { ...options, isPastedText: true },
             });
-          } else {
-            this.emitter.emit("did-insert-text", { text, range });
           }
+          this.emitter.emit("did-insert-text", { text, range });
         });
       } catch (error) {
         for (const { marker } of pendingIndents) marker.destroy();
@@ -7111,12 +7115,6 @@ module.exports = class TextEditor {
           }
           if (controller.signal.aborted) return;
           if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-          revision = buffer.getTextRevision();
-          for (const { marker } of pastes) {
-            if (!isCurrent()) return;
-            const range = marker.getBufferRange();
-            this.emitter.emit("did-insert-text", { text: buffer.getTextInRange(range), range });
-          }
           return;
         }
         for (const { marker, options } of pastes) {
@@ -7146,11 +7144,6 @@ module.exports = class TextEditor {
           if (controller.signal.aborted) return;
           if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
           revision = buffer.getTextRevision();
-          const currentRange = marker.getBufferRange();
-          this.emitter.emit("did-insert-text", {
-            text: buffer.getTextInRange(currentRange),
-            range: currentRange,
-          });
         }
       },
     );

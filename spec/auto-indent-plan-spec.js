@@ -231,6 +231,7 @@ describe("Auto-indent plans", () => {
         clipboard: { readWithMetadata: () => ({ text: "foo();\nbar();", metadata: {} }) },
         autoIndent: true,
       });
+      expect(events).toEqual(["foo();\nbar();", "foo();\nbar();"]);
       if (stale) editor.getBuffer().append("// newer");
       await pending;
       await editor.whenGrammarSettled();
@@ -241,7 +242,7 @@ describe("Auto-indent plans", () => {
         expect(editor.getText()).toBe(
           "if (one) {\n    foo();\n    bar();\n}\nif (two) {\n    foo();\n    bar();\n}\n",
         );
-        expect(events).toEqual(["    foo();\n    bar();", "    foo();\n    bar();"]);
+        expect(events).toEqual(["foo();\nbar();", "foo();\nbar();"]);
         editor.undo();
         expect(editor.getText()).toBe(original);
       }
