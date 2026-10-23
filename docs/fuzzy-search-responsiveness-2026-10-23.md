@@ -83,6 +83,8 @@ The corrected publication path demonstrably removes the large synchronous indexi
 
 The final source passed all 266 SelectList specs, including eight new cases for dense mixed IDs, section provenance, custom-sort order, atomic publication, cancellation and stale/incomplete index rejection. ESLint, formatting and API documentation checks passed. No dependency pin changed as part of this fix.
 
+The complete [protected CI run](https://github.com/lumine-code/lumine/actions/runs/40022091601) passed Windows, macOS, Linux and lint at `445393e23523722d66309092ca1b810bcc319206`; its fuzzy source files and new regression spec are byte-identical to `ce822b1eff`. An earlier Windows attempt timed out in two EXE launcher fixtures before reaching editor tests. Those unchanged fixtures subsequently passed locally (153 passed, two expected platform skips), in the Windows retry and in the final complete CI run. Intermediate ordinary pushes cancelled earlier runs; the final manual run stayed pinned to its revision. The fuzzy fix did not change launcher assertions or timeout limits.
+
 ## Reproduction and fixes
 
 The committed harness expects the frozen source graphs and corpus documented in the earlier report under the workspace's local `.dev/fuzzy-performance-review-20261023` directory. The new results go to `.dev/fuzzy-responsiveness-20261023`. Rebuild those inputs with the earlier snapshot tooling when reproducing elsewhere; the compact report is evidence, not a bundled 500000-path corpus.
