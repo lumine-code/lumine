@@ -74,10 +74,11 @@ class SyntaxWorkerService {
 
   focusBuffer(buffer) {
     let id = null;
+    // Constructing a replacement mode acquires its session before destroying
+    // the previous one. Prioritize the newest owner of the active buffer.
     for (const session of this.sessions.values())
       if (session.buffer === buffer) {
         id = session.id;
-        break;
       }
     this.client?.send({ type: "control", operation: "focus", session: id });
   }
@@ -391,6 +392,7 @@ class SyntaxWorkerService {
           },
         );
       }
+      this.focusBuffer(globalThis.lumine?.workspace?.getActiveTextEditor?.()?.getBuffer());
     } catch (failure) {
       this.terminalError = failure;
       this.report(failure);
