@@ -304,6 +304,7 @@ Tooltip.prototype.show = function () {
     (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
     globalThis.document;
   const window = document.defaultView;
+  if (!window) return this.cancel();
   const follow = followState(document);
   if (this.hasContent() && this.enabled) {
     if (this.viewport?.ownerDocument !== document && this.options.viewport) {
@@ -322,6 +323,9 @@ Tooltip.prototype.show = function () {
     if (follow.departing && follow.departing !== this) {
       follow.departing.hide();
     }
+
+    this.removeWindowListeners();
+    this.eventWindow = window;
 
     if (this.hideOnClickOutsideOfTooltip) {
       window.addEventListener("click", this.hideOnClickOutsideOfTooltip, {
@@ -497,28 +501,34 @@ Tooltip.prototype.setContent = function () {
   tip.classList.remove("fade", "in", "top", "bottom", "left", "right");
 };
 
+// Listener ownership survives the target moving to, or closing, another document.
+Tooltip.prototype.removeWindowListeners = function () {
+  const window = this.eventWindow;
+  this.eventWindow = null;
+  if (!window) return;
+
+  if (this.hideOnClickOutsideOfTooltip) {
+    window.removeEventListener("click", this.hideOnClickOutsideOfTooltip, true);
+  }
+  if (this.hideOnKeydownOutsideOfTooltip) {
+    window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
+  }
+  if (this.hideOnTargetScrolledAway) {
+    window.removeEventListener("scroll", this.hideOnTargetScrolledAway, true);
+  }
+};
+
 Tooltip.prototype.hide = function (callback, { followThrough = true } = {}) {
   const document =
     (this.element?.nodeType === 9 ? this.element : this.element?.ownerDocument) ??
     globalThis.document;
-  const window = document.defaultView;
   const follow = followState(document);
   this.inState = {};
 
   if (follow.departing === this) follow.departing = null;
   clearTimeout(this.timeout);
 
-  if (this.hideOnClickOutsideOfTooltip) {
-    window.removeEventListener("click", this.hideOnClickOutsideOfTooltip, true);
-  }
-
-  if (this.hideOnKeydownOutsideOfTooltip) {
-    window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
-  }
-
-  if (this.hideOnTargetScrolledAway) {
-    window.removeEventListener("scroll", this.hideOnTargetScrolledAway, true);
-  }
+  this.removeWindowListeners();
 
   this.tip && this.tip.classList.remove("in");
   this.stopObservingMutations();
@@ -684,6 +694,7 @@ Tooltip.prototype.toggle = function (event) {
 Tooltip.prototype.destroy = function () {
   if (this.destroyed) return;
   this.destroyed = true;
+  this.removeWindowListeners();
   this.mutationUpdate?.dispose();
   this.stopObservingMutations();
   const document =

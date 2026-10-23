@@ -29,6 +29,17 @@ describe("TooltipManager", () => {
     manager.destroy();
   });
 
+  it("disposes a tooltip after its target's auxiliary window closes", async () => {
+    const disposable = manager.add(element, { title: "Title" });
+    const extra = await lumine.workspace.openEditorWindow({ show: false });
+    extra.getElement().append(element);
+    await lumine.workspace.discardEditorWindows();
+
+    expect(element.ownerDocument.defaultView).toBeNull();
+    expect(() => disposable.dispose()).not.toThrow();
+    expect(manager.findTooltips(element)).toEqual([]);
+  });
+
   describe("while a menu suspends tooltips", () => {
     it("cancels visible and pending tooltips without a follow-through after closing", () => {
       manager.add(element, { title: "Title" });
