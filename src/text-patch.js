@@ -18,7 +18,16 @@ const asText = (value) =>
   value == null ? null : value instanceof PieceTree ? value : new PieceTree(value);
 const append = (a, b) => a.replace(a.length, a.length, b);
 
+// Geometry records are immutable once stored in ChangeTree. Lazy suffix shifts
+// create new records, while copied roots can safely share this frozen snapshot.
+// Text-bearing records stay uncached so their lazy flattened strings do not
+// acquire the lifetime of a persistent patch merely because it was queried.
+const geometrySnapshots = new WeakMap();
+
 function snapshot(change) {
+  const geometryOnly = change.oldSource == null && change.newSource == null;
+  const cached = geometryOnly && geometrySnapshots.get(change);
+  if (cached) return cached;
   let oldText, newText;
   const result = {
     oldStart: Object.freeze(point(change.oldStart)),
@@ -35,7 +44,9 @@ function snapshot(change) {
       oldText: { enumerable: true, get: () => (oldText ??= change.oldSource.toString()) },
       newText: { enumerable: true, get: () => (newText ??= change.newSource.toString()) },
     });
-  return Object.freeze(result);
+  Object.freeze(result);
+  if (geometryOnly) geometrySnapshots.set(change, result);
+  return result;
 }
 
 function lowerBound(array, predicate) {

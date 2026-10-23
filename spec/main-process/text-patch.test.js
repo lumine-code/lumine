@@ -103,3 +103,76 @@ test("retained geometry copies survive lazy suffix shifts and independent edits"
   assert.equal(copy.getChanges().at(-1).newStart.row, 10000);
   assert.equal(patch.getChanges().at(-1).newStart.row, 10099);
 });
+test("geometry lookup snapshots are reused until their persistent change record changes", () => {
+  const patch = new Patch({ mergeAdjacentChanges: false });
+  for (let row = 0; row < 128; row++)
+    patch.splice({ row, column: 4 }, { row: 0, column: 0 }, { row: 0, column: 1 });
+  const before = patch.changeForOldPosition({ row: 80, column: 5 });
+  const copy = patch.copy();
+  assert.equal(patch.changeForOldPosition({ row: 80, column: 9 }), before);
+  assert.equal(patch.changeForNewPosition({ row: 80, column: 5 }), before);
+  assert.equal(copy.changeForOldPosition({ row: 80, column: 5 }), before);
+  assert.equal(Object.isFrozen(before), true);
+  for (const field of ["oldStart", "oldEnd", "newStart", "newEnd"])
+    assert.equal(Object.isFrozen(before[field]), true);
+
+  patch.splice({ row: 0, column: 0 }, { row: 0, column: 0 }, { row: 3, column: 0 });
+  const after = patch.changeForOldPosition({ row: 80, column: 5 });
+  assert.notEqual(after, before);
+  assert.deepEqual(after.oldStart, { row: 80, column: 4 });
+  assert.deepEqual(after.newStart, { row: 83, column: 4 });
+  assert.deepEqual(before.newStart, { row: 80, column: 4 });
+  assert.equal(patch.changeForNewPosition({ row: 83, column: 5 }), after);
+  assert.equal(copy.changeForOldPosition({ row: 80, column: 5 }), before);
+});
+
+test("lazy ChangeTree suffix translations replace records without modifying retained identities", () => {
+  const ChangeTree = require("../../src/change-tree");
+  const records = [10, 20, 30].map((row) => ({
+    oldStart: { row, column: 1 },
+    oldEnd: { row, column: 2 },
+    newStart: { row, column: 1 },
+    newEnd: { row, column: 3 },
+    oldSource: null,
+    newSource: null,
+  }));
+  const tree = new ChangeTree(records);
+  const copy = tree.copy();
+  const original = tree.at(1);
+  tree.shiftSuffix(
+    1,
+    { row: 0, column: 0 },
+    { row: 3, column: 0 },
+    { row: 0, column: 0 },
+    { row: 5, column: 0 },
+  );
+  const shifted = tree.at(1);
+  assert.notEqual(shifted, original);
+  assert.deepEqual(shifted.oldStart, { row: 23, column: 1 });
+  assert.deepEqual(shifted.newStart, { row: 25, column: 1 });
+  assert.deepEqual(original.oldStart, { row: 20, column: 1 });
+  assert.deepEqual(original.newStart, { row: 20, column: 1 });
+  assert.equal(copy.at(1), original);
+  assert.equal(tree.at(0), records[0]);
+});
+
+test("text-bearing patch snapshots keep their own lazy text caches", () => {
+  for (const oldText of ["", "a"]) {
+    const patch = new Patch();
+    patch.splice(
+      { row: 0, column: 0 },
+      { row: 0, column: oldText.length },
+      { row: 0, column: 2 },
+      oldText,
+      "bc",
+    );
+    const first = patch.changeForOldPosition({ row: 0, column: 0 });
+    const second = patch.changeForOldPosition({ row: 0, column: 0 });
+    assert.notEqual(first, second);
+    assert.equal(typeof Object.getOwnPropertyDescriptor(first, "oldText").get, "function");
+    assert.equal(first.oldText, oldText);
+    assert.equal(second.newText, "bc");
+    assert.equal(Object.isFrozen(first), true);
+    assert.equal(Object.isFrozen(second), true);
+  }
+});
