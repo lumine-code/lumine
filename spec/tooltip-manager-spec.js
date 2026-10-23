@@ -30,10 +30,19 @@ describe("TooltipManager", () => {
   });
 
   it("disposes a tooltip after its target's auxiliary window closes", async () => {
+    jasmine.useRealClock();
     const disposable = manager.add(element, { title: "Title" });
     const extra = await lumine.workspace.openEditorWindow({ show: false });
+    const child = extra.getDOMWindow();
     extra.getElement().append(element);
     await lumine.workspace.discardEditorWindows();
+
+    // Native close acknowledgement can precede Chromium detaching the retained
+    // document. Exercise disposal after that specific lifecycle transition.
+    await conditionPromise(
+      () => child.closed && element.ownerDocument.defaultView === null,
+      "the closed auxiliary window's document to detach",
+    );
 
     expect(element.ownerDocument.defaultView).toBeNull();
     expect(() => disposable.dispose()).not.toThrow();
