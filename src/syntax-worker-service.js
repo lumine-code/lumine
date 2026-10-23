@@ -114,6 +114,9 @@ class SyntaxWorkerService {
               this.client === client
             ) {
               await yieldTask();
+              // A crash or shutdown can replace this owner during the yield.
+              // Its task must not consume the replacement's dirty flags.
+              if (this.closed || this.client !== client) break;
               const reload = this.environmentDirty;
               this.environmentDirty = false;
               this.configurationDirty = false;
