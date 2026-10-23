@@ -39,6 +39,7 @@ async function run() {
     count: workload.count,
     tracing,
     coldQueries,
+    inputProbeIntervalMs: 8,
     corpus: workload.corpus,
     snapshot: path.join(previous, variant),
     project: corpus.project,
@@ -123,7 +124,7 @@ async function run() {
       operation.catch(() => {});
       probes.push(operation);
     };
-    probe = setInterval(sendProbe, 16);
+    probe = setInterval(sendProbe, config.inputProbeIntervalMs);
     await client.evaluate("globalThis.__fuzzyGo = true");
     await waitFile(config.done);
     clearInterval(probe);
