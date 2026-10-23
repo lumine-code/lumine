@@ -5,6 +5,24 @@ const { watchFile } = require("./file-watch");
 
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
+// Readiness belongs to the shared service/document. Cancel only this waiter,
+// and observe late failures even after its caller has stopped waiting.
+function waitForReadiness(promise, signal) {
+  return new Promise((resolve, reject) => {
+    const finish = (settle, value) => {
+      signal.removeEventListener("abort", abort);
+      settle(value);
+    };
+    const abort = () => finish(reject, signal.reason ?? Client.abortError());
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+    if (signal.aborted) abort();
+  });
+}
+
 class SyntaxWorkerService {
   constructor(grammars, { clientFactory = () => new Client() } = {}) {
     this.grammars = grammars;
@@ -407,8 +425,8 @@ class SyntaxWorkerService {
     if (this.terminalError) throw this.terminalError;
     const syntaxEpoch = this.syntaxEpoch,
       sessionEpoch = session.epoch;
-    await this.ensureEnvironment();
-    await session.chain;
+    await waitForReadiness(this.ensureEnvironment(), combined);
+    await waitForReadiness(session.chain, combined);
     combined.throwIfAborted();
     if (syntaxEpoch !== this.syntaxEpoch || sessionEpoch !== session.epoch)
       throw Client.abortError("Syntax configuration changed");
