@@ -1,6 +1,6 @@
 // A minimal, dependency-free replacement for the `winreg` package, covering only
-// the surface Lumine uses: reading a value, checking whether a key exists, and
-// deleting a key.
+// the surface Lumine uses: reading and writing string values, checking whether
+// a key exists, and deleting a key.
 //
 // The upstream `winreg` spawns `reg.exe` with an argument array *and*
 // `shell: true`, which Node deprecates (DEP0190) because the arguments are
@@ -19,8 +19,9 @@ const ITEM_PATTERN =
   /^(.*)\s(REG_SZ|REG_MULTI_SZ|REG_EXPAND_SZ|REG_DWORD|REG_QWORD|REG_BINARY|REG_NONE)\s+([^\s].*)$/;
 
 function getRegExePath() {
-  if (process.platform === "win32" && process.env.windir) {
-    return path.join(process.env.windir, "system32", "reg.exe");
+  const systemRoot = process.env.SystemRoot || process.env.windir;
+  if (process.platform === "win32" && systemRoot) {
+    return path.join(systemRoot, "System32", "reg.exe");
   }
   return "reg.exe";
 }
@@ -104,6 +105,14 @@ class Registry {
         cb(null, null);
       }
     });
+  }
+
+  setString(name, value, cb) {
+    if (typeof cb !== "function") throw new TypeError("must specify a callback");
+    const args = ["ADD", this.path];
+    args.push(...(name === "" ? ["/ve"] : ["/v", name]));
+    args.push("/t", "REG_SZ", "/d", value, "/f");
+    runReg(args, (err) => cb(err || null));
   }
 
   // Deletes this key and all its subkeys.

@@ -45,7 +45,11 @@ class ShellService {
    *
    * Open a path with its operating system default application.
    *
-   * @returns {Promise<String>} An empty string on success, or an operating-system error message.
+   * Rejects when the path is unavailable, the system refuses the request, or
+   * the operating-system request does not settle within 60 seconds. A timed-out
+   * system operation may still complete later.
+   *
+   * @returns {Promise<void>} that resolves when the request completes.
    * @param {String} filePath - The filesystem path to open.
    */
   openPath(filePath) {
@@ -81,7 +85,8 @@ class ShellService {
    * Open an HTTP, HTTPS, or mailto URL with its operating system default handler.
    *
    * Relative, malformed, and other-scheme URLs are rejected before they reach
-   * the operating system.
+   * the operating system. Requests that do not settle within 60 seconds reject;
+   * the operating-system operation may still complete later.
    *
    * @returns {Promise<void>} that resolves when the request completes.
    * @param {String} url - An absolute HTTP, HTTPS, or mailto URL.

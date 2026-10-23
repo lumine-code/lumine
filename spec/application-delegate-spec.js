@@ -1,6 +1,27 @@
 const ApplicationDelegate = require("../src/application-delegate");
 
 describe("ApplicationDelegate", function () {
+  describe("shell failures", () => {
+    it("reconstructs an Error while preserving the main-process code", async () => {
+      const delegate = new ApplicationDelegate();
+      spyOn(delegate, "invokeApp").and.resolveTo({
+        outcome: "failure",
+        error: { message: "Path is unavailable", code: "ENOENT" },
+      });
+
+      let failure;
+      try {
+        await delegate.openPath("missing");
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure instanceof Error).toBe(true);
+      expect(failure.message).toBe("Path is unavailable");
+      expect(failure.code).toBe("ENOENT");
+    });
+  });
+
   describe("package resource lifecycle", () => {
     it("acknowledges resource publication before returning to package bootstrap", () => {
       const { ipcRenderer } = require("electron");
@@ -134,7 +155,9 @@ describe("ApplicationDelegate", function () {
       const error = { message: "Application does not exist", code: "ENOENT" };
       spyOn(delegate, "invokeApp").and.returnValue(Promise.resolve({ outcome: "failure", error }));
 
-      await expectAsync(delegate.openApplication("/missing/application")).toBeRejectedWith(error);
+      await expectAsync(delegate.openApplication("/missing/application")).toBeRejectedWith(
+        jasmine.objectContaining(error),
+      );
     });
   });
 

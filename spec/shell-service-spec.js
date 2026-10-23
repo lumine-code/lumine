@@ -2,6 +2,14 @@ const ShellService = require("../src/shell-service");
 const path = require("path");
 
 describe("ShellService", () => {
+  it("reports a missing path from the main process without opening a system dialog", async () => {
+    const missingPath = path.join(lumine.getConfigDirPath(), "missing-shell-path-not-present");
+
+    await expectAsync(lumine.shell.openPath(missingPath)).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ENOENT" }),
+    );
+  });
+
   it("routes an application executable and literal arguments through the delegate", async () => {
     const delegate = {
       openApplication: jasmine.createSpy("openApplication").and.returnValue(Promise.resolve(42)),

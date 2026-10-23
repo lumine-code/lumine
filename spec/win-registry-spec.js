@@ -1,5 +1,7 @@
 const ChildProcess = require("child_process");
 const Registry = require("../src/win-registry");
+const path = require("path");
+const winShell = require("../src/win-shell");
 
 // Regression coverage for the winreg replacement. The whole point of this module
 // is to talk to reg.exe *without* `shell: true`, which Node deprecates (DEP0190)
@@ -39,6 +41,92 @@ describe("win-registry", function () {
       expect(Array.isArray(args)).toBe(true);
       expect(options.shell).not.toBe(true);
       expect(options.shell).toBeUndefined();
+      expect(options.windowsHide).toBe(true);
+    });
+
+    if (process.platform === "win32") {
+      it("uses SystemRoot before windir instead of searching PATH", () => {
+        const previousRoot = process.env.SystemRoot;
+        const previousWindir = process.env.windir;
+        try {
+          process.env.SystemRoot = "C:\\Windows Root";
+          process.env.windir = "C:\\Other Windows";
+          execFileSpy.and.callFake((file, args, options, cb) => cb(null, ""));
+
+          new Registry({ key: "\\Software\\Lumine" }).keyExists(() => {});
+
+          expect(lastCall()[0]).toBe(path.join(process.env.SystemRoot, "System32", "reg.exe"));
+          delete process.env.SystemRoot;
+          new Registry({ key: "\\Software\\Lumine" }).keyExists(() => {});
+          expect(lastCall()[0]).toBe(path.join(process.env.windir, "System32", "reg.exe"));
+        } finally {
+          if (previousRoot === undefined) delete process.env.SystemRoot;
+          else process.env.SystemRoot = previousRoot;
+          if (previousWindir === undefined) delete process.env.windir;
+          else process.env.windir = previousWindir;
+        }
+      });
+    }
+
+    it("writes string values with literal quotes, spaces and shell placeholders", () => {
+      execFileSpy.and.callFake((file, args, options, cb) => cb(null, ""));
+      const value = '"C:\\Program Files\\Lumine\\lumine.exe" "%1" & %V';
+      let result;
+
+      new Registry({ key: "\\Software\\Lumine Test" }).setString("", value, (error) => {
+        result = error;
+      });
+
+      expect(lastCall()[1]).toEqual([
+        "ADD",
+        "HKLM\\Software\\Lumine Test",
+        "/ve",
+        "/t",
+        "REG_SZ",
+        "/d",
+        value,
+        "/f",
+      ]);
+      expect(lastCall()[2].shell).not.toBe(true);
+      expect(lastCall()[2].windowsHide).toBe(true);
+      expect(result).toBeNull();
+    });
+
+    it("registers every application and context-menu value through the same writer", () => {
+      execFileSpy.and.callFake((file, args, options, cb) => cb(null, ""));
+
+      for (const option of [
+        winShell.fileHandler,
+        winShell.fileContextMenu,
+        winShell.folderContextMenu,
+        winShell.folderBackgroundContextMenu,
+      ]) {
+        execFileSpy.calls.reset();
+        const callback = jasmine.createSpy("registered");
+        option.register(callback);
+
+        const writes = execFileSpy.calls.allArgs().filter(([, args]) => args[0] === "ADD");
+        expect(writes.length).toBe(option.parts.length);
+        for (const [index, [file, args, options]] of writes.entries()) {
+          const part = option.parts[index];
+          expect(file).toContain("reg.exe");
+          expect(options.windowsHide).toBe(true);
+          expect(options.shell).not.toBe(true);
+          expect(args[args.indexOf("/d") + 1]).toBe(part.value);
+        }
+        expect(callback).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("reports registration failures without claiming success or deleting obsolete keys", () => {
+      const error = Object.assign(new Error("access denied"), { code: 5 });
+      execFileSpy.and.callFake((file, args, options, cb) => cb(error, ""));
+      const callback = jasmine.createSpy("registered");
+
+      winShell.fileContextMenu.register(callback);
+
+      expect(callback).toHaveBeenCalledOnceWith(error);
+      expect(execFileSpy.calls.allArgs().every(([, args]) => args[0] === "ADD")).toBe(true);
     });
 
     it("queries the default value and parses it", function () {
@@ -126,6 +214,27 @@ describe("win-registry", function () {
 
   if (process.platform === "win32") {
     describe("against the real registry (win32)", function () {
+      it("round-trips a literal command in an isolated registry key", async () => {
+        const key = new Registry({
+          hive: "HKCU",
+          key: `\\Software\\LumineTests\\Registry-${process.pid}-${Date.now()}`,
+        });
+        const value = '"C:\\Program Files\\Lumine\\lumine.exe" "%1" & %V';
+        try {
+          await new Promise((resolve, reject) =>
+            key.setString("", value, (error) => (error ? reject(error) : resolve())),
+          );
+          const item = await new Promise((resolve, reject) =>
+            key.get("", (error, item) => (error ? reject(error) : resolve(item))),
+          );
+          expect(item.value).toBe(value);
+        } finally {
+          await new Promise((resolve, reject) =>
+            key.destroy((error) => (error ? reject(error) : resolve())),
+          );
+        }
+      });
+
       it("reports a well-known key as existing and a bogus one as missing", async function () {
         const exists = await new Promise((resolve, reject) =>
           new Registry({ hive: "HKLM", key: "\\SOFTWARE\\Microsoft" }).keyExists((err, e) =>

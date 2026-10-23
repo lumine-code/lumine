@@ -279,7 +279,9 @@ module.exports = class ApplicationDelegate {
       if (outcome === "success") {
         return result;
       } else if (outcome === "failure") {
-        return Promise.reject(error);
+        const failure = new Error(error.message);
+        if (error.code !== undefined) failure.code = error.code;
+        throw failure;
       }
     });
   }

@@ -1,5 +1,4 @@
 const Registry = require("./win-registry.js");
-const { execFile } = require("child_process");
 const Path = require("path");
 const { getAppName } = require("./get-app-details.js");
 const packageMetadata = require("../package.json");
@@ -34,17 +33,15 @@ class ShellOption {
 
   register(callback) {
     let doneCount = this.parts.length;
+    let failure;
     this.parts.forEach((part) => {
-      const keyPath = `HKCU${part.key != null ? `${this.key}\\${part.key}` : this.key}`;
-      const args = ["ADD", keyPath];
-      if (part.name === "") {
-        args.push("/ve");
-      } else {
-        args.push("/v", part.name);
-      }
-      args.push("/t", "REG_SZ", "/d", part.value, "/f");
-      execFile("reg.exe", args, { shell: false }, () => {
-        if (--doneCount === 0) return this.destroyObsoleteKeys(callback);
+      const key = part.key != null ? `${this.key}\\${part.key}` : this.key;
+      new Registry({ hive: "HKCU", key }).setString(part.name, part.value, (error) => {
+        failure ||= error;
+        if (--doneCount === 0) {
+          if (failure) return callback(failure);
+          return this.destroyObsoleteKeys(callback);
+        }
       });
     });
   }
