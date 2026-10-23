@@ -160,7 +160,8 @@ describe("Fleet fuzzy interaction performance", () => {
           list.clearWorkerMatcher();
           list.filterMatcher = null;
           list.filterMatcherGeneration = null;
-          list.filterMatcherFirst = null;
+          list.filterMatcherRecords = null;
+          list.filterMatcherOptions = null;
         }
         await host.show();
         if (!list.getItemCount()) await list.reload();
