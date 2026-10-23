@@ -34,8 +34,6 @@
     "cmd-shift-down": "core:select-to-bottom",
     "cmd-{": "pane:show-previous-item",
     "cmd-}": "pane:show-next-item",
-    "cmd-alt-left": "pane:show-previous-item",
-    "cmd-alt-right": "pane:show-next-item",
     "cmd-1": "pane:show-item-1",
     "cmd-2": "pane:show-item-2",
     "cmd-3": "pane:show-item-3",
