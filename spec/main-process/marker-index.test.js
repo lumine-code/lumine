@@ -150,3 +150,28 @@ test("cached scalar reads retain detached copies and unknown-id errors", () => {
   }
   assert.throws(() => index.getRanges([1, 999]), /Unknown marker/);
 });
+
+test("affinity changes and cached or unresolved removals preserve lazy coordinates", () => {
+  const index = new MarkerIndex();
+  for (let id = 1; id <= 64; id++) index.insert(id, point(id * 2, 1), point(id * 2, 3));
+  assert.equal(index.splicePacked(point(0), point(0), point(2, 5)), null);
+
+  // Neither affinity write needs to materialize the pending row translation.
+  index.setExclusive(32, true);
+  index.setExclusive(33, false);
+  assert.deepEqual(index.getRange(31), { start: point(64, 1), end: point(64, 3) });
+  index.remove(31);
+  index.remove(40);
+  assert.throws(() => index.setExclusive(31, false), /Unknown marker 31/);
+  assert.throws(() => index.setExclusive(999, true), /Unknown marker 999/);
+
+  index.splicePacked(point(66, 1), point(0), point(0, 2));
+  assert.deepEqual(index.getRange(32), { start: point(66, 3), end: point(66, 5) });
+  index.splicePacked(point(68, 1), point(0), point(0, 2));
+  assert.deepEqual(index.getRange(33), { start: point(68, 1), end: point(68, 5) });
+  assert.deepEqual(index.getRange(64), { start: point(130, 1), end: point(130, 3) });
+  assert.deepEqual(
+    [...index.findStartingIn(point(0), point(Infinity, Infinity))],
+    Array.from({ length: 64 }, (_, i) => i + 1).filter((id) => id !== 31 && id !== 40),
+  );
+});

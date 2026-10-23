@@ -260,8 +260,10 @@ class MarkerIndex {
 
   remove(id) {
     if (!this.#nodes.has(id)) return;
-    this.#invalidateReadGeneration();
+    // Callers often just read this range. Resolve its old coordinates before
+    // invalidating cached paths for the structural removal.
     const node = this.#node(id);
+    this.#invalidateReadGeneration();
     this.#root = remove(this.#root, node);
     if (this.#root) this.#root.parent = null;
     this.#nodes.delete(id);
@@ -271,7 +273,11 @@ class MarkerIndex {
     return this.#nodes.has(id);
   }
   setExclusive(id, exclusive) {
-    this.#node(id).exclusive = Boolean(exclusive);
+    // Endpoint affinity does not depend on coordinates. Leave pending suffix
+    // translations lazy instead of walking the ancestry of every new marker.
+    const node = this.#nodes.get(id);
+    if (!node) throw new RangeError(`Unknown marker ${id}`);
+    node.exclusive = Boolean(exclusive);
   }
   getStart(id) {
     return copy(this.#node(id).start);
