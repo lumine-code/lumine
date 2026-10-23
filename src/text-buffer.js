@@ -30,6 +30,9 @@ const getSubstitution = require("./text-substitution");
 const { SaveCancelledError } = require("./save-errors");
 const { confirmSave, sameSavePath } = require("./save-confirmation");
 
+const LARGE_SPARSE_DISPLAY_ROW_SPAN = 32768;
+const MIN_UNCHANGED_DISPLAY_ROWS_PER_CHANGED_ROW = 16;
+
 function textExtent(text) {
   let row = 0,
     last = -1;
@@ -1453,7 +1456,8 @@ class TextBuffer {
    * Text is stored literally unless line-ending normalization is requested. Input order does not matter. All edits are
    * validated before changing text; stale revisions and overlapping ranges reject.
    *
-   * Large batches share unchanged text and update display geometry once.
+   * Dense batches share unchanged text and update display geometry once.
+   * Widely spaced edits in large documents retain local display updates.
    * Custom range trackers retain intermediate-text callbacks.
    * @param {Array<Object>} edits - Objects with a buffer `range` and replacement `text`.
    * @param {Object} [options] - Batch options.
@@ -1546,6 +1550,7 @@ class TextBuffer {
     let offset = 0;
     let endIndex = 0;
     let firstIndex;
+    let affectedRows = 0;
     for (const planned of edits) {
       const { range, text } = planned;
       const oldRange = this.clipRange(range);
@@ -1586,7 +1591,9 @@ class TextBuffer {
       const newStart = previousRange
         ? previousNewEnd.traverse(oldRange.start.traversalFrom(previousRange.end))
         : oldRange.start;
-      const newEnd = newStart.traverse(textExtent(text));
+      const newExtent = textExtent(text);
+      const newEnd = newStart.traverse(newExtent);
+      affectedRows += Math.max(oldRange.end.row - oldRange.start.row, newExtent.row) + 1;
       canonicalChanges.push({
         oldStart: oldRange.start,
         oldEnd: oldRange.end,
@@ -1611,6 +1618,18 @@ class TextBuffer {
       previousNewEnd = newEnd;
       previousOutputLastUnit = text.length ? text.charCodeAt(text.length - 1) : leftUnit;
     }
+
+    // A single display change invalidates every row between the first and last
+    // edit. For large sparse batches that rescans mostly unchanged geometry;
+    // the existing scalar path keeps those local display updates independent.
+    // Count inserted rows too, so large replacements retain storage batching.
+    const oldRowSpan = canonicalChanges.at(-1).oldEnd.row - canonicalChanges[0].oldStart.row + 1;
+    if (
+      oldRowSpan >= LARGE_SPARSE_DISPLAY_ROW_SPAN &&
+      oldRowSpan - affectedRows > MIN_UNCHANGED_DISPLAY_ROWS_PER_CHANGED_ROW * affectedRows &&
+      Object.keys(this.displayLayers).length > 0
+    )
+      return false;
 
     this.emitWillChangeEvent();
     if (requiresIntermediateText()) return false;
