@@ -125,6 +125,8 @@ class SelectList extends InputDialog {
     this.filterMatcherRecords = null;
     this.filterMatcherOptions = null;
     this.queryWork = null;
+    this.sourceItemsSource = this.props.source?.mode === "query" ? this.props.source : null;
+    this.sourceItemsQuery = this.props.query == null ? "" : String(this.props.query);
     this.filteringProgressTimer = null;
     this.filteringProgressVisible = false;
     this.workerPreparation = null;
@@ -697,6 +699,8 @@ class SelectList extends InputDialog {
     this.cancelQueryWork();
     this.clearWorkerMatcher();
     this.renderedItemsTree = null;
+    this.sourceItemsSource = null;
+    this.sourceItemsQuery = null;
     this.filterMatcher = null;
     this.filterMatcherIds = null;
     this.filterMatcherIgnoresDiacritics = null;
@@ -787,6 +791,10 @@ class SelectList extends InputDialog {
   setSource(source) {
     const previousSelection = this.model ? this.selectionSnapshot() : null;
     const sourcePromise = super.setSource(source);
+    if (this.sourceItemsSource !== source) {
+      this.sourceItemsSource = null;
+      this.sourceItemsQuery = null;
+    }
     if (!this.model || this.suppressModelQueryUpdate) return sourcePromise;
 
     const query = this.modelQuery(this.getQuery(), this.props);
@@ -1051,6 +1059,11 @@ class SelectList extends InputDialog {
         this.clearWorkerMatcher();
     }
     if (resetOverflow) this.overflowSectionsActive = false;
+    if (itemsChanged && nextProps.source?.mode === "query") {
+      this.sourceItemsSource = nextProps.source;
+      this.sourceItemsQuery =
+        "query" in props ? (props.query == null ? "" : String(props.query)) : this.getQuery();
+    }
     // Query/selection observers may synchronously replace this update. Keep
     // the state for which its selection was calculated, not just a query string.
     const pendingSearch = searchInWorker
@@ -1132,12 +1145,16 @@ class SelectList extends InputDialog {
   }
 
   renderBody() {
-    if (this.queryWork) return this.renderedItemsTree ?? "";
+    if (this.isFiltering()) return this.renderedItemsTree ?? "";
     return (this.renderedItemsTree = this.renderItems());
   }
 
   isFiltering() {
-    return this.queryWork != null;
+    return (
+      this.queryWork != null ||
+      (this.props.source?.mode === "query" &&
+        (this.sourceItemsSource !== this.props.source || this.sourceItemsQuery !== this.getQuery()))
+    );
   }
 
   shouldShowFilteringProgress() {
