@@ -10,7 +10,10 @@ const { setTimeout: delay } = require("node:timers/promises");
 
 const core = path.resolve(__dirname, "..");
 const root = path.dirname(core);
-const previous = path.join(root, ".dev/fuzzy-performance-review-20261023");
+const defaultSnapshotRoot = path.join(root, ".dev/fuzzy-performance-review-20261023");
+// An explicit alternate comparison family; use a new series rather than
+// replacing the historical snapshots. Pass the resolved path to child runs.
+const previous = path.resolve(process.env.LUMINE_FUZZY_SNAPSHOT_ROOT || defaultSnapshotRoot);
 const directory = path.join(root, ".dev/fuzzy-responsiveness-20261023");
 const read = (file) => JSON.parse(fs.readFileSync(file));
 const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2));
@@ -203,6 +206,7 @@ async function main() {
         schemaVersion: 1,
         series,
         mode,
+        snapshotRoot: previous,
         createdAt: new Date().toISOString(),
         plan: [],
         fingerprint: baseline,
@@ -217,6 +221,8 @@ async function main() {
       };
   if ((batch.mode ?? "trace") !== mode)
     throw new Error("Use a different series for a different trace mode");
+  if (path.resolve(batch.snapshotRoot ?? defaultSnapshotRoot) !== previous)
+    throw new Error("Use a different series for a different snapshot root");
   const save = () => write(manifestFile, batch);
   const assertIdentity = (current) => {
     if (current.hash === batch.fingerprint.hash) return;
@@ -270,7 +276,7 @@ async function main() {
       batch.attempts.push(record);
       save();
       const descriptor = fs.openSync(record.launcherLog, "w");
-      const env = { ...process.env };
+      const env = { ...process.env, LUMINE_FUZZY_SNAPSHOT_ROOT: previous };
       delete env.CI;
       delete env.ELECTRON_RUN_AS_NODE;
       try {

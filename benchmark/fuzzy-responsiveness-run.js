@@ -7,7 +7,11 @@ const { spawn } = require("node:child_process");
 const { setTimeout: delay } = require("node:timers/promises");
 const root = path.resolve(__dirname, "../..");
 const core = path.join(root, "lumine");
-const previous = path.join(root, ".dev/fuzzy-performance-review-20261023");
+// Allow an explicit isolated comparison without modifying historical snapshots.
+const previous = path.resolve(
+  process.env.LUMINE_FUZZY_SNAPSHOT_ROOT ||
+    path.join(root, ".dev/fuzzy-performance-review-20261023"),
+);
 const directory = path.join(root, ".dev/fuzzy-responsiveness-20261023");
 
 async function run() {
