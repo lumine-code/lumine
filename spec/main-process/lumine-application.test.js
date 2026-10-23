@@ -1669,15 +1669,16 @@ describe("LumineApplication", function () {
       assert.isFalse(launch.called);
     });
 
-    it("returns the existing IPC result shape for Electron shell operations", async function () {
+    it("returns shell IPC result envelopes for successful and failed operations", async function () {
       const event = { sender: w1.browserWindow.webContents };
+      const filePath = scenario.convertEditorPath("a/1.md");
       const openPath = sinon.stub(electron.shell, "openPath").resolves("");
       const openError = Object.assign(new Error("could not open"), { code: "OPEN_FAILED" });
       const openExternal = sinon.stub(electron.shell, "openExternal").rejects(openError);
 
-      assert.deepEqual(await LumineApplication.handleAppAction(event, "openPath", "C:\\a.txt"), {
+      assert.deepEqual(await LumineApplication.handleAppAction(event, "openPath", filePath), {
         outcome: "success",
-        result: "",
+        result: undefined,
       });
       assert.deepEqual(
         await LumineApplication.handleAppAction(event, "openExternal", "https://example.test"),
@@ -1686,7 +1687,7 @@ describe("LumineApplication", function () {
           error: { message: "could not open", code: "OPEN_FAILED" },
         },
       );
-      assert.isTrue(openPath.calledWithExactly("C:\\a.txt"));
+      assert.isTrue(openPath.calledWithExactly(filePath));
       assert.isTrue(openExternal.calledWithExactly("https://example.test/"));
     });
 
