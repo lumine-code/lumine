@@ -1484,7 +1484,13 @@ class SelectList extends InputDialog {
     ].some((key) => key in props)
       ? this.queryWork?.promise
       : null;
-    return pending ? Promise.all([rendering, pending]).then(() => undefined) : rendering;
+    if (!pending) return rendering;
+    const completion = Promise.all([rendering, pending]).then(() => undefined);
+    // Matching failures are shown by the list. Registry/configuration events
+    // often publish without awaiting; still return the rejection to callers
+    // that do await, without also raising a global unhandled rejection.
+    void completion.catch(() => {});
+    return completion;
   }
 
   shouldSearchInWorker(props, query = this.model.getQuery()) {
