@@ -71,6 +71,44 @@ describe("DialogSource", () => {
     expect(source.isLoading()).toBe(false);
   });
 
+  it("owns a failed progressive publication while its loader is still pending", async () => {
+    jasmine.useRealClock();
+    const loadingGate = deferred();
+    const failure = new Error("progressive items failed");
+    const unhandled = [];
+    const onRejection = (event) => unhandled.push(event.reason?.message);
+    let publication;
+    window.addEventListener("unhandledrejection", onRejection);
+    try {
+      build(
+        {
+          mode: "snapshot",
+          load({ publish }) {
+            publication = publish(["items"]);
+            return loadingGate.promise;
+          },
+        },
+        {
+          apply: () => {
+            throw failure;
+          },
+        },
+      );
+      const completion = source.open();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+      // Awaiting callers still receive the same rejection.
+      await expectAsync(publication).toBeRejectedWith(failure);
+      loadingGate.resolve();
+      await completion;
+      expect(errors).toEqual([failure]);
+      expect(source.isLoading()).toBe(false);
+    } finally {
+      loadingGate.resolve();
+      window.removeEventListener("unhandledrejection", onRejection);
+    }
+  });
+
   it("accepts progressive publications followed by a final return value", async () => {
     build({
       mode: "snapshot",

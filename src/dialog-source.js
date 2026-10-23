@@ -257,6 +257,9 @@ module.exports = class DialogSource {
       await this._apply(publication);
       return true;
     });
+    // The loader may keep running after publishing. Own a rejection now;
+    // _performLoad reports it when it drains the queue, and callers can still await it.
+    void operation.publications.catch(() => {});
     return operation.publications;
   }
 
