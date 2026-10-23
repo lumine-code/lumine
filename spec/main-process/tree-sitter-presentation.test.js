@@ -100,6 +100,60 @@ test("superseded preparation neither publishes nor replaces the retained present
   }
 });
 
+test("a viewport change discards partly prepared tiles before publishing the new visible ranges", async () => {
+  const f = fixture();
+  try {
+    await f.presentation.flush();
+    const old = [...f.cache.snapshots];
+    const published = f.published.length;
+    const prepared = f.preparations();
+    f.presentation.request(500, 700, false);
+    const obsolete = f.presentation.flush();
+    // Let one tile finish, leaving the rest of this viewport behind a yield.
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(f.preparations(), prepared + 1);
+    f.presentation.request(512, 600, false);
+    await obsolete;
+    assert.deepEqual(f.cache.snapshots, old);
+    assert.equal(f.published.length, published);
+    await f.presentation.flush();
+    assert.ok(f.cache.covers(new Point(512, 0), new Point(600, 0)));
+    assert.equal(f.cache.covers(new Point(704, 0), new Point(720, 0)), false);
+    assert.ok(f.published.slice(published).every((range) => range.end.row <= 640));
+  } finally {
+    f.presentation.destroy();
+  }
+});
+
+test("a query-generation change rejects staged paint even when document text is unchanged", async () => {
+  const f = fixture();
+  let syntaxGeneration = 1;
+  f.presentation.capture = () => ({ revision: 1, generation: syntaxGeneration });
+  f.presentation.isCurrent = (stamp) => stamp.generation === syntaxGeneration;
+  try {
+    await f.presentation.flush();
+    const old = [...f.cache.snapshots];
+    const published = f.published.length;
+    f.presentation.request(500, 700, false);
+    const obsolete = f.presentation.flush();
+    await new Promise((resolve) => setImmediate(resolve));
+    syntaxGeneration++;
+    f.presentation.invalidate();
+    await obsolete;
+    assert.deepEqual(f.cache.snapshots, old);
+    assert.equal(f.published.length, published);
+    await f.presentation.flush();
+    const stamp = { revision: 1, generation: syntaxGeneration };
+    assert.ok(f.cache.covers(new Point(500, 0), new Point(700, 0), stamp));
+    assert.equal(f.cache.covers(new Point(0, 0), new Point(20, 0), stamp), false);
+    f.presentation.request(0, 20, false);
+    await f.presentation.flush();
+    assert.ok(f.cache.covers(new Point(0, 0), new Point(20, 0), stamp));
+  } finally {
+    f.presentation.destroy();
+  }
+});
+
 test("prepares current views while retaining older paints only as a cache", async () => {
   const f = fixture();
   const firstView = {},
