@@ -96,4 +96,43 @@ describe("SelectList synchronous search", () => {
     expect(list.getFilteredItems()).toEqual(["last"]);
     expect(list.getMatchIndices("last")).toEqual([0, 1, 2, 3]);
   });
+
+  it("does not reuse a rejected source when its first record is unchanged", async () => {
+    list = lumine.workspace.buildSelectList({
+      items: ["alpha", "beta"],
+      search: { worker: false },
+    });
+    await list.setQuery("a");
+    expect(() =>
+      list.update({ items: ["alpha", "gamma"], selection: { initial: { id: "missing" } } }),
+    ).toThrowError("No filtered item has ID missing");
+    expect(list.getItems()).toEqual(["alpha", "beta"]);
+    await list.setItems(["alpha", "delta"]);
+    await list.setQuery("g");
+    expect(list.getFilteredItems()).toEqual([]);
+    await list.setQuery("delta");
+    expect(list.getFilteredItems()).toEqual(["delta"]);
+    expect(list.getMatchIndices("delta")).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("does not reuse rejected search text when source records stay unchanged", async () => {
+    const item = { id: "one" };
+    list = lumine.workspace.buildSelectList({
+      items: [item],
+      search: { worker: false, getFilterText: () => "alpha" },
+    });
+    await list.setQuery("a");
+    expect(() =>
+      list.update({
+        search: { worker: false, getFilterText: () => "gamma" },
+        selection: { initial: { id: "missing" } },
+      }),
+    ).toThrowError("No filtered item has ID missing");
+    await list.update({ search: { worker: false, getFilterText: () => "delta" } });
+    await list.setQuery("g");
+    expect(list.getFilteredItems()).toEqual([]);
+    await list.setQuery("delta");
+    expect(list.getFilteredItems()).toEqual([item]);
+    expect(list.getMatchIndices(item)).toEqual([0, 1, 2, 3, 4]);
+  });
 });

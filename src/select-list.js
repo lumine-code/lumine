@@ -122,6 +122,8 @@ class SelectList extends InputDialog {
     this.filterMatcherIds = null;
     this.filterMatcherIgnoresDiacritics = null;
     this.filterMatcherGeneration = null;
+    this.filterMatcherRecords = null;
+    this.filterMatcherOptions = null;
     this.queryWork = null;
     this.filteringProgressTimer = null;
     this.filteringProgressVisible = false;
@@ -698,7 +700,8 @@ class SelectList extends InputDialog {
     this.filterMatcher = null;
     this.filterMatcherIds = null;
     this.filterMatcherIgnoresDiacritics = null;
-    this.filterMatcherFirst = null;
+    this.filterMatcherRecords = null;
+    this.filterMatcherOptions = null;
     this.overflowResizeObserver?.disconnect();
     this.overflowViewport = null;
     try {
@@ -1646,7 +1649,8 @@ class SelectList extends InputDialog {
       this.filterMatcher = null;
       this.filterMatcherIds = null;
       this.filterMatcherGeneration = null;
-      this.filterMatcherFirst = null;
+      this.filterMatcherRecords = null;
+      this.filterMatcherOptions = null;
       const WorkerClient = require("./fuzzy-search-worker-client");
       preparation = this.workerPreparation = {
         generation,
@@ -1804,11 +1808,13 @@ class SelectList extends InputDialog {
   }
 
   matchCandidates(candidates, query, context, options) {
-    // A rejected model transaction may reuse its proposed numeric generation
-    // on the next attempt. Its newly prepared records still have new identities.
+    // Rejected transactions may reuse a proposed generation, source records
+    // or individual rows. Both the full source and search configuration must
+    // belong to this attempt before its prepared texts can be reused.
     if (
       this.filterMatcherGeneration !== context.generation ||
-      this.filterMatcherFirst !== candidates[0]
+      this.filterMatcherRecords !== candidates ||
+      this.filterMatcherOptions !== options
     ) {
       const texts = candidates.map(
         (candidate) => candidate.filterText ?? context.getFilterText(candidate.item),
@@ -1820,7 +1826,8 @@ class SelectList extends InputDialog {
       this.filterMatcherIgnoresDiacritics = ignoreDiacritics;
       this.filterMatcherIds = new Map(candidates.map((candidate, index) => [candidate.id, index]));
       this.filterMatcherGeneration = context.generation;
-      this.filterMatcherFirst = candidates[0];
+      this.filterMatcherRecords = candidates;
+      this.filterMatcherOptions = options;
     }
     const modifyScore = options.scoreModifier;
     return this.filterMatcher
