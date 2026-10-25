@@ -75,7 +75,7 @@ class HighlightCache {
       (!newRange.start || compare(copy(newRange.start), edit.start) === 0)
     ) {
       edit.extendScopes = new Set(extendScopes);
-      edit.extensionScope = extendScopes[extendScopes.length - 1];
+      edit.extensionStack = [...extendScopes];
     }
     this.edits.push(edit);
     if (this.edits.length >= this.maxEdits) this.rebase();
@@ -99,13 +99,22 @@ class HighlightCache {
         }
         if (compare(snapshot.end, edit.start) < 0) continue;
         this.materialize(snapshot);
-        // A following fragment may already describe scopes after this boundary.
-        // Move that fragment behind the insertion so it cannot cover up the
-        // retained prefix. A fragment starting inside the supplied stack stays.
-        const moveStart =
-          edit.extendScopes &&
-          compare(snapshot.start, edit.start) === 0 &&
-          !snapshot.scopes.includes(edit.extensionScope);
+        // A following fragment may already contain the next token's scopes.
+        // Keep only the retained prefix over the insertion and restore that
+        // fragment's suffix with the other postponed boundary openings.
+        const atStart = edit.extendScopes && compare(snapshot.start, edit.start) === 0;
+        const sharesPrefix =
+          atStart && edit.extensionStack.every((id, index) => snapshot.scopes[index] === id);
+        const moveStart = atStart && !sharesPrefix;
+        if (sharesPrefix && snapshot.scopes.length > edit.extensionStack.length) {
+          snapshot.events.unshift({
+            position: copy(edit.start),
+            close: [],
+            open: snapshot.scopes.slice(edit.extensionStack.length),
+          });
+          snapshot.scopes = [...edit.extensionStack];
+          this.scopeCheckpoints.delete(snapshot);
+        }
         snapshot.start = shift(snapshot.start, edit, moveStart);
         snapshot.end = shift(snapshot.end, edit, true);
         let low = 0,
@@ -128,10 +137,26 @@ class HighlightCache {
     this.edits.length = 0;
   }
   extendBoundary(snapshot, start, edit) {
+    if (compare(snapshot.start, edit.start) > 0) return start;
     let end = start;
     while (end < snapshot.events.length && compare(snapshot.events[end].position, edit.start) === 0)
       end++;
-    if (end === start) return start;
+    if (end === start) {
+      // A fragment can end without an explicit closing event. Do not extend
+      // incidental inner scopes (such as TODO) beyond the selected context.
+      const { scopes } = this.scopesBefore(snapshot, edit.start);
+      if (!edit.extensionStack.every((id, index) => scopes[index] === id)) return start;
+      const suffix = scopes.slice(edit.extensionStack.length);
+      if (!suffix.length) return start;
+      snapshot.events.splice(
+        start,
+        0,
+        { position: copy(edit.start), close: [...suffix].reverse(), open: [] },
+        { position: copy(edit.newEnd), close: [], open: suffix },
+      );
+      this.scopeCheckpoints.delete(snapshot);
+      return start + 2;
+    }
     const left = [],
       right = [],
       opened = new Map();
@@ -393,6 +418,69 @@ class HighlightCache {
     const scopes = [...saved.scopes[checkpoint]];
     for (let i = checkpoint * 64; i < low; i++) applyScopes(scopes, events[i]);
     return { scopes, index: low };
+  }
+
+  insertionScopes(position, fallback = []) {
+    position = copy(position);
+    let context;
+    let crossesFragments = false;
+    if (position.column === 0) {
+      this.rebase();
+      // The selected tile already records scopes preceding its first event.
+      // This also works for a cold tile starting inside a multiline string;
+      // borrowing the previous row instead could extend a finished comment.
+      const snapshot = this.snapshots.findLast(
+        (item) => compare(item.start, position) <= 0 && compare(position, item.end) < 0,
+      );
+      if (!snapshot) return { left: [...fallback], continuous: [...fallback] };
+      const { scopes } = this.scopesBefore(snapshot, position);
+      context = this.read(position, position.translate([0, 1]), scopes);
+    } else {
+      const previous = position.translate([0, -1]);
+      if (!this.covers(previous, position)) return null;
+      const covering = (point) =>
+        this.snapshots.findLast(
+          (item) => compare(item.start, point) <= 0 && compare(point, item.end) < 0,
+        );
+      crossesFragments = covering(previous) !== covering(position);
+      context = this.read(previous, position.translate([0, 1]), fallback);
+    }
+    const { scopes, iterator } = context;
+    while (compare(iterator.getPosition(), position) < 0) {
+      applyScopes(scopes, {
+        close: iterator.getCloseScopeIds(),
+        open: iterator.getOpenScopeIds(),
+      });
+      if (!iterator.moveToSuccessor()) break;
+    }
+    const left = [...scopes];
+    let continuousLength = left.length;
+    if (crossesFragments) {
+      // read() merges equal scope IDs at tile boundaries. Equal names cannot
+      // prove that adjacent tiles describe the same occurrence: a close/open
+      // may have been clipped from the first tile's exclusive end boundary.
+      continuousLength = 0;
+      while (
+        continuousLength < left.length &&
+        continuousLength < fallback.length &&
+        left[continuousLength] === fallback[continuousLength]
+      )
+        continuousLength++;
+    }
+    while (compare(iterator.getPosition(), position) === 0) {
+      for (const id of iterator.getCloseScopeIds()) {
+        const index = scopes.lastIndexOf(id);
+        if (index !== -1) {
+          continuousLength = Math.min(continuousLength, index);
+          scopes.splice(index, 1);
+        }
+      }
+      // A newly opened occurrence never restores continuity, even if it has
+      // the same scope ID as the occurrence just closed at this boundary.
+      scopes.push(...iterator.getOpenScopeIds());
+      if (!iterator.moveToSuccessor()) break;
+    }
+    return { left, continuous: left.slice(0, continuousLength) };
   }
 
   read(start, end, fallback) {

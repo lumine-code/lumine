@@ -157,7 +157,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.refreshController?.abort();
     if (!this.publicationPending) this.transactionIndentRequests = 0;
     this.publicationPending = true;
-    this.cache.edit(change, { extendScopes: this.commentScopesForInsertion(change) });
+    this.cache.edit(change, { extendScopes: this.scopesForInsertion(change) });
     const first = Math.max(0, change.newRange.start.row - 1);
     this.dirtyRanges.add(
       new Range([first, 0], this.buffer.clipPosition([change.newRange.end.row + 2, 0])),
@@ -167,37 +167,79 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.folds.clear();
   }
 
-  commentScopesForInsertion({ oldRange, newRange, newText }) {
+  scopesForInsertion({ oldRange, newRange, newText }) {
     const { start } = oldRange;
     if (
       !oldRange.isEmpty() ||
-      start.column === 0 ||
+      typeof newText !== "string" ||
       newRange.end.row !== start.row ||
       newRange.end.column <= start.column ||
-      newRange.end.column !== this.buffer.lineLengthForRow(start.row) ||
       /[\r\n]/.test(newText)
     )
       return;
-    // Read the paint before this insertion. A line comment necessarily keeps
-    // owning appended text until a newline; a closed string or block comment
-    // does not. Only extend that scope and its ancestors, never an inner TODO,
-    // URL or punctuation capture which happened to end at the same position.
-    const previous = start.translate([0, -1]);
-    if (!this.cache.covers(previous, start)) return;
-    const { scopes, iterator } = this.cache.read(previous, start, []);
-    while (iterator.getPosition().compare(previous) <= 0) {
-      for (const id of iterator.getCloseScopeIds()) {
-        const index = scopes.lastIndexOf(id);
-        if (index !== -1) scopes.splice(index, 1);
+    const fallback = [this.grammar.idForScope(this.grammar.scopeName)];
+    const boundary = this.cache.insertionScopes(start, fallback);
+    if (!boundary) return;
+    const { left, continuous } = boundary;
+    const names = left.map((id) => this.grammar.scopeNameForScopeId(id));
+    // Line comments own appended text up to the newline, but an inner TODO or
+    // URL capture ending here does not necessarily own the new characters.
+    if (newRange.end.column === this.buffer.lineLengthForRow(start.row)) {
+      for (let index = names.length - 1; index >= 0; index--) {
+        if (names[index] === "comment.line" || names[index]?.startsWith("comment.line."))
+          return left.slice(0, index + 1);
       }
-      scopes.push(...iterator.getOpenScopeIds());
-      if (!iterator.moveToSuccessor()) break;
     }
-    for (let index = scopes.length - 1; index >= 0; index--) {
-      const name = this.grammar.scopeNameForScopeId(scopes[index]);
-      if (name === "comment.line" || name?.startsWith("comment.line."))
-        return scopes.slice(0, index + 1);
+    // Continue ordinary names/numbers when typing their characters. Keywords,
+    // builtins, escapes and punctuation are not renameable token roles: their
+    // old classification must not bleed into an adjacent new identifier.
+    const previous = start.column
+      ? this.buffer.getTextInRange([[start.row, Math.max(0, start.column - 2)], start])
+      : "";
+    const word = /^[\p{ID_Continue}$]+$/u.test(newText) && /[\p{ID_Continue}$]$/u.test(previous);
+    const number = /^\d+$/.test(newText) && /[\da-fA-F._]$/.test(previous);
+    if (
+      (word || number) &&
+      !names.some((name) => name?.startsWith("punctuation.")) &&
+      (number || !names.some((name) => name?.startsWith("constant.numeric.")))
+    ) {
+      let index = 0;
+      for (; index < names.length; index++) {
+        const name = names[index] ?? "";
+        if (/^(source|text|meta|markup|string)\./.test(name)) continue;
+        if (word && /^(variable\.other|entity\.name)(\.|$)/.test(name)) continue;
+        if (number && /^constant\.numeric(\.|$)/.test(name)) continue;
+        break;
+      }
+      if (index > continuous.length) return left.slice(0, index);
     }
+    // Prefixing an existing name/number continues that token on its right.
+    // Keep its original opening affinity, but never borrow a quote, keyword
+    // or other delimiter merely because it occupies the following character.
+    if (/^[\p{ID_Continue}$]+$/u.test(newText)) {
+      const next = this.buffer.getTextInRange([newRange.end, newRange.end.translate([0, 2])]);
+      if (/^[\p{ID_Continue}$]/u.test(next) && this.cache.covers(start, start.translate([0, 1]))) {
+        const { scopes, iterator } = this.cache.read(start, start.translate([0, 1]), fallback);
+        while (iterator.getPosition().compare(start) <= 0) {
+          for (const id of iterator.getCloseScopeIds()) {
+            const index = scopes.lastIndexOf(id);
+            if (index !== -1) scopes.splice(index, 1);
+          }
+          scopes.push(...iterator.getOpenScopeIds());
+          if (!iterator.moveToSuccessor()) break;
+        }
+        const name = this.grammar.scopeNameForScopeId(scopes.at(-1)) ?? "";
+        if (
+          /^(variable\.other|entity\.name)(\.|$)/.test(name) ||
+          (/^\d+$/.test(newText) && /^constant\.numeric(\.|$)/.test(name))
+        )
+          return;
+      }
+    }
+    // Keep only scope instances actually spanning this boundary. Delimiter
+    // scopes opening at the cursor belong to the existing character to its
+    // right, including the closing quote of an otherwise empty string.
+    return continuous.length ? continuous : fallback;
   }
 
   canBatchTextChanges(count) {

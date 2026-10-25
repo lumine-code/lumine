@@ -475,3 +475,240 @@ test("does not extend scopes for replacement or multiline edits", () => {
     assert.deepEqual(at(cache, point(0, 5)), [1]);
   }
 });
+
+test("insertion scopes retain a string across its begin and end punctuation", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(0, 2),
+    [1, 2, 3],
+    [
+      { position: point(0, 1), close: [3], open: [4] },
+      { position: point(0, 2), close: [4, 2], open: [] },
+    ],
+  );
+  const context = cache.insertionScopes(point(0, 1), [1]);
+  assert.deepEqual(context, { left: [1, 2, 3], continuous: [1, 2] });
+  cache.edit(insertion(0, 1), { extendScopes: context.continuous });
+  assert.deepEqual(at(cache, point(0, 1)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 2)), [1, 2, 4]);
+  context.left.length = context.continuous.length = 0;
+  assert.deepEqual(at(cache, point(0, 1)), [1, 2]);
+});
+
+test("insertion scopes distinguish adjacent literals with the same scope ID", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(0, 6),
+    [1, 2, 4],
+    [{ position: point(0, 3), close: [4, 2], open: [2, 3] }],
+  );
+  assert.deepEqual(cache.insertionScopes(point(0, 3), [1]), {
+    left: [1, 2, 4],
+    continuous: [1],
+  });
+  cache.edit(insertion(0, 3), { extendScopes: [1] });
+  assert.deepEqual(at(cache, point(0, 3)), [1]);
+  assert.deepEqual(at(cache, point(0, 4)), [1, 2, 3]);
+});
+
+test("insertion scopes track every same-position event without mistaking new occurrences for ancestors", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(1),
+    [1, 2, 3],
+    [
+      { position: point(0, 5), close: [3], open: [3] },
+      { position: point(0, 5), close: [3], open: [8] },
+    ],
+  );
+  assert.deepEqual(cache.insertionScopes(point(0, 5), [1]), {
+    left: [1, 2, 3],
+    continuous: [1, 2],
+  });
+});
+
+test("insertion scopes expose leaf affinity without inheriting the following delimiter or comment", () => {
+  for (const next of [7, 8]) {
+    const cache = new HighlightCache();
+    record(
+      cache,
+      point(0),
+      point(1),
+      [1, 2],
+      [{ position: point(0, 3), close: [2], open: [next] }],
+    );
+    assert.deepEqual(cache.insertionScopes(point(0, 3), [1]), {
+      left: [1, 2],
+      continuous: [1],
+    });
+    cache.edit(insertion(0, 3), { extendScopes: [1] });
+    assert.deepEqual(at(cache, point(0, 3)), [1]);
+    assert.deepEqual(at(cache, point(0, 4)), [1, next]);
+  }
+});
+
+test("insertion scopes use detached fallbacks at row start and EOF, and reject uncached left gaps", () => {
+  const cache = new HighlightCache();
+  const fallback = [1];
+  record(cache, point(0, 2), point(0, 5), [1, 2], []);
+  const first = cache.insertionScopes([0, 0], fallback);
+  assert.deepEqual(first, { left: [1], continuous: [1] });
+  first.left.push(9);
+  assert.deepEqual(first.continuous, [1]);
+  assert.deepEqual(fallback, [1]);
+  assert.equal(cache.insertionScopes(point(0, 2), fallback), null);
+  assert.deepEqual(cache.insertionScopes(point(0, 5), fallback), {
+    left: [1, 2],
+    continuous: [1],
+  });
+});
+
+test("a following fragment cannot leak its existing token into a shared root insertion", () => {
+  const cache = new HighlightCache();
+  cache.replace(
+    [
+      { start: point(0), end: point(0, 5), scopes: [1, 2], events: [] },
+      { start: point(0, 5), end: point(1), scopes: [1, 9], events: [] },
+    ],
+    { revision: 1 },
+  );
+  cache.edit(insertion(0, 5), { extendScopes: [1] });
+  assert.deepEqual(at(cache, point(0, 4)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 5)), [1]);
+  assert.deepEqual(at(cache, point(0, 6)), [1, 9]);
+  assert.equal(cache.snapshots.length, 2);
+});
+
+test("an interpolation boundary preserves only continuous enclosing scopes", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(1),
+    [1, 2, 5, 6],
+    [{ position: point(0, 5), close: [6, 5], open: [7] }],
+  );
+  const { continuous } = cache.insertionScopes(point(0, 5), [1]);
+  assert.deepEqual(continuous, [1, 2]);
+  cache.edit(insertion(0, 5), { extendScopes: continuous });
+  assert.deepEqual(at(cache, point(0, 5)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 6)), [1, 2, 7]);
+});
+
+test("repeated typing at a fragment boundary drops incidental inner scopes without growing snapshots or events", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0), point(0, 5), [1, 2, 3], []);
+  for (let column = 5; column < 105; column++) {
+    cache.edit(insertion(0, column), { extendScopes: [1, 2] });
+    assert.deepEqual(at(cache, point(0, column)), [1, 2]);
+  }
+  assert.equal(cache.snapshots.length, 1);
+  assert.equal(cache.snapshots[0].events.length, 2);
+  assert.equal(cache.covers(point(0), point(0, 105)), true);
+  assert.equal(cache.covers(point(0, 105), point(0, 106)), false);
+});
+
+test("scope extension does not manufacture events in a later uncovered fragment", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0, 8), point(0, 12), [1, 9], []);
+  cache.edit(insertion(0, 5), { extendScopes: [1] });
+  assert.deepEqual(at(cache, point(0, 9)), [1, 9]);
+  assert.deepEqual(cache.snapshots[0].events, []);
+  assert.equal(cache.covers(point(0, 5), point(0, 6)), false);
+});
+
+test("row-start insertion retains a multiline string already covering that row", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(4),
+    [1],
+    [
+      { position: point(0, 3), close: [], open: [2] },
+      { position: point(3, 3), close: [2], open: [] },
+    ],
+  );
+  const context = cache.insertionScopes(point(2), [1]);
+  assert.deepEqual(context, { left: [1, 2], continuous: [1, 2] });
+  cache.edit(insertion(2, 0), { extendScopes: context.continuous });
+  assert.deepEqual(at(cache, point(2)), [1, 2]);
+});
+
+test("a cold row-start fragment retains its initial context after a lazy row translation", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(10),
+    point(12),
+    [1, 2],
+    [
+      { position: point(10), close: [], open: [3] },
+      { position: point(10, 1), close: [3], open: [] },
+    ],
+  );
+  cache.edit({ oldRange: { start: point(0), end: point(0) }, newRange: { end: point(2) } });
+  const context = cache.insertionScopes(point(12), [1]);
+  assert.deepEqual(context, { left: [1, 2], continuous: [1, 2] });
+  cache.edit(insertion(12, 0), { extendScopes: context.continuous });
+  assert.deepEqual(at(cache, point(12)), [1, 2]);
+  assert.deepEqual(at(cache, point(12, 1)), [1, 2, 3]);
+  assert.equal(cache.covers(point(11), point(12)), false);
+});
+
+test("row-start insertion does not inherit a preceding comment or a newly opening string", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(3),
+    [1, 2],
+    [
+      { position: point(1), close: [2], open: [3] },
+      { position: point(2), close: [3], open: [] },
+    ],
+  );
+  const context = cache.insertionScopes(point(1), [1]);
+  assert.deepEqual(context, { left: [1, 2], continuous: [1] });
+  cache.edit(insertion(1, 0), { extendScopes: context.continuous });
+  assert.deepEqual(at(cache, point(1)), [1]);
+  assert.deepEqual(at(cache, point(1, 1)), [1, 3]);
+});
+
+test("row-start insertion prefers the newest fragment and never crosses an uncovered gap", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0), point(1), [1, 2], []);
+  record(cache, point(3), point(5), [1, 8], []);
+  record(cache, point(3), point(4), [1, 9], []);
+  assert.deepEqual(cache.insertionScopes(point(1), [1]), { left: [1], continuous: [1] });
+  assert.deepEqual(cache.insertionScopes(point(2), [1]), { left: [1], continuous: [1] });
+  const context = cache.insertionScopes(point(3), [1]);
+  assert.deepEqual(context, { left: [1, 9], continuous: [1, 9] });
+  context.left.push(10);
+  context.continuous.push(11);
+  assert.deepEqual(cache.insertionScopes(point(3), [1]), { left: [1, 9], continuous: [1, 9] });
+});
+
+test("adjacent fragments cannot prove continuity between different literals with the same scope ID", () => {
+  for (const events of [[{ position: point(0, 3), close: [2], open: [2] }], []]) {
+    const cache = new HighlightCache();
+    cache.replace(
+      [
+        { start: point(0), end: point(0, 3), scopes: [1, 2], events },
+        { start: point(0, 3), end: point(0, 6), scopes: [1, 2], events: [] },
+      ],
+      { revision: 1 },
+    );
+    const context = cache.insertionScopes(point(0, 3), [1]);
+    assert.deepEqual(context, { left: [1, 2], continuous: [1] });
+    cache.edit(insertion(0, 3), { extendScopes: context.continuous });
+    assert.deepEqual(at(cache, point(0, 3)), [1]);
+    assert.deepEqual(at(cache, point(0, 4)), [1, 2]);
+  }
+});

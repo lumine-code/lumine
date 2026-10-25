@@ -1,0 +1,261 @@
+[
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = 'abc|'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '|abc'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '|'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = 'a|bc'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = 'abc'|",
+    "insert": " + other"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = 'abc|",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = \"\"\"abc|\"\"\"",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = r'abc|'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = f'abc|{name}'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = f'{name}|tail'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = f'{name:03|}'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "name| = 1",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "print(name|)",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "x = name|",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "x = 123|",
+    "insert": "4"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "x = 12|3",
+    "insert": "4"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "pass|",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "|# note",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "const x = `abc|`;",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "const x = `|`;",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "const x = `abc|${name}`;",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "const x = `a${name}|`;",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "// TODO|",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "/* abc| */",
+    "insert": "x"
+  },
+  {
+    "pack": "language-javascript",
+    "scope": "source.js",
+    "marked": "/* abc|",
+    "insert": "x"
+  },
+  {
+    "pack": "language-json",
+    "scope": "source.json",
+    "marked": "{\"key\": \"abc|\"}",
+    "insert": "x"
+  },
+  {
+    "pack": "language-ruby",
+    "scope": "source.ruby",
+    "marked": "x = \"abc|#{name}\"",
+    "insert": "x"
+  },
+  {
+    "pack": "language-ruby",
+    "scope": "source.ruby",
+    "marked": "x = \"#{name}|\"",
+    "insert": "x"
+  },
+  {
+    "pack": "language-latex",
+    "scope": "text.tex.latex",
+    "marked": "\\textbf{abc|}",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "name| = 1",
+    "insert": "ą"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "|name = 1",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "x = |123",
+    "insert": "4"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = |'abc'",
+    "insert": " "
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "'one'|'two'",
+    "insert": " "
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "x = 12.|",
+    "insert": "4"
+  },
+  {
+    "pack": "language-bibtex",
+    "scope": "text.bibtex",
+    "marked": "@string{acm = \"Association|\"}",
+    "insert": "x"
+  },
+  {
+    "pack": "language-blade",
+    "scope": "text.html.php.blade",
+    "marked": "<x-alert :message=\"$m|\" />",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '\\n|'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '|\\n'",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = |'abc'",
+    "insert": "r",
+    "semanticChange": true
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '''\n|body\n'''",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "value = '''\n|'''",
+    "insert": "x"
+  },
+  {
+    "pack": "language-python",
+    "scope": "source.python",
+    "marked": "# old\n|# next",
+    "insert": "x"
+  }
+]
