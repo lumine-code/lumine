@@ -1023,7 +1023,7 @@ describe("Project", () => {
         expect(await concurrent).toBe(newBuffer);
         expect(project.getBuffers()).toEqual([newBuffer]);
         expect(project.addBuffer).toHaveBeenCalledTimes(1);
-        expect(grammarRegistry.autoAssignLanguageMode).toHaveBeenCalledTimes(1);
+        expect(grammarRegistry.autoAssignLanguageMode).not.toHaveBeenCalled();
         expect(grammarRegistry.maintainLanguageMode).toHaveBeenCalledTimes(1);
         expect(added).toHaveBeenCalledTimes(1);
         expect(added).toHaveBeenCalledWith(newBuffer);
@@ -1068,7 +1068,7 @@ describe("Project", () => {
       expect(await second).toBe(buffer);
       expect(project.getBuffers()).toEqual([buffer]);
       expect(project.addBuffer).toHaveBeenCalledTimes(1);
-      expect(grammarRegistry.autoAssignLanguageMode).toHaveBeenCalledTimes(1);
+      expect(grammarRegistry.autoAssignLanguageMode).not.toHaveBeenCalled();
       expect(grammarRegistry.maintainLanguageMode).toHaveBeenCalledTimes(1);
       expect(added).toHaveBeenCalledTimes(1);
     });

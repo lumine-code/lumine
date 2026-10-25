@@ -556,9 +556,9 @@ describe("GrammarRegistry", () => {
       expect(lumine.grammars.selectGrammar(path.join(temp.dir, ".git", "config")).name).toBe(
         "Git Config",
       ); // based on end of the path (.git/config)
-      expect(lumine.grammars.selectGrammar("Snakefile").name).toBe("Null Grammar");
-      expect(lumine.grammars.selectGrammar("curb").name).toBe("Null Grammar");
-      expect(lumine.grammars.selectGrammar("/hu.git/config").name).toBe("Null Grammar");
+      expect(lumine.grammars.selectGrammar("Snakefile").name).toBe("None");
+      expect(lumine.grammars.selectGrammar("curb").name).toBe("None");
+      expect(lumine.grammars.selectGrammar("/hu.git/config").name).toBe("None");
     });
 
     it("uses the filePath's shebang line if the grammar cannot be determined by the extension or basename", async () => {
@@ -585,9 +585,7 @@ describe("GrammarRegistry", () => {
 
       // A pattern containing a newline needs that many lines before it can
       // match — one line is not enough.
-      expect(lumine.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL").name).toBe(
-        "Null Grammar",
-      );
+      expect(lumine.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL").name).toBe("None");
       expect(
         lumine.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL\nSECOND-LINE").name,
       ).toBe("Two Line Prefix");
@@ -780,13 +778,15 @@ describe("GrammarRegistry", () => {
         );
       });
 
-      it("does not allow a custom file type to select the null fallback", () => {
+      it("allows a custom file type to select None over the plain-text fallback", () => {
         grammarRegistry.loadGrammarSync(require.resolve("./fixtures/grammars/plain-text.json"));
         lumine.config.set("core.customFileTypes", {
           "text.plain.null-grammar": ["emergency"],
         });
 
-        expect(grammarRegistry.selectGrammar("example.emergency").scopeName).toBe("text.plain");
+        expect(grammarRegistry.selectGrammar("example.emergency").scopeName).toBe(
+          "text.plain.null-grammar",
+        );
       });
     });
 
@@ -803,7 +803,7 @@ describe("GrammarRegistry", () => {
         require.resolve("language-javascript/grammars/javascript.json"),
       );
 
-      expect(grammarRegistry.selectGrammar("test", "").name).toBe("Null Grammar");
+      expect(grammarRegistry.selectGrammar("test", "").name).toBe("None");
     });
 
     describe("tree-sitter grammars with content regexes", () => {
@@ -875,7 +875,7 @@ describe("GrammarRegistry", () => {
         `,
         );
 
-        expect(grammar.name).toBe("Null Grammar");
+        expect(grammar.name).toBe("None");
       });
 
       it("recognizes shell scripts with shebang lines", () => {
@@ -1695,11 +1695,13 @@ describe("GrammarRegistry", () => {
       expect(buffer2Copy.getLanguageMode().getLanguageId()).toBe("source.js");
     });
 
-    it("does not persist the emergency null override", () => {
+    it("persists the explicit None override", () => {
       const buffer = createBuffer();
       expect(grammarRegistry.assignLanguageMode(buffer, "text.plain.null-grammar")).toBe(true);
 
-      expect(grammarRegistry.serialize().languageOverridesByBufferId[buffer.id]).toBeUndefined();
+      expect(grammarRegistry.serialize().languageOverridesByBufferId[buffer.id]).toBe(
+        "text.plain.null-grammar",
+      );
 
       const copy = new GrammarRegistry({ config: lumine.config });
       copy.deserialize({
@@ -1707,7 +1709,7 @@ describe("GrammarRegistry", () => {
           [buffer.id]: "text.plain.null-grammar",
         },
       });
-      expect(copy.getAssignedLanguageId(buffer)).toBeUndefined();
+      expect(copy.getAssignedLanguageId(buffer)).toBe("text.plain.null-grammar");
     });
   });
 

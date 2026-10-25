@@ -1,5 +1,5 @@
 module.exports = {
-  name: "Null Grammar",
+  name: "None",
   scopeName: "text.plain.null-grammar",
   fileTypes: [],
 };

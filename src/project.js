@@ -1339,8 +1339,6 @@ module.exports = class Project extends Model {
       };
       try {
         assertCurrent();
-        this.grammarRegistry.autoAssignLanguageMode(buffer);
-        assertCurrent();
         return this.addBuffer(buffer, {}, assertCurrent);
       } catch (error) {
         if (error?.code !== "ABORT_ERR" && error?.errors?.[0]?.code !== "ABORT_ERR") {

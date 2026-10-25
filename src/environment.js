@@ -277,6 +277,7 @@ class Environment {
      */
     this.grammars = new GrammarRegistry({
       config: this.config,
+      notificationManager: this.notifications,
       fileWatchClient: this.fileWatchClient,
       syntaxExecution: params.syntaxExecution ?? "worker",
     });
@@ -1842,6 +1843,11 @@ class Environment {
     assertCurrent();
     this.uriHandlers.deserialize(state.uriHistory);
 
+    // Apply explicit choices before project restoration maintains its buffers.
+    // In particular, None must never briefly construct a parser during restore.
+    if (state.grammars) this.grammars.deserialize(state.grammars);
+    assertCurrent();
+
     let startTime = Date.now();
     if (state.project) {
       try {
@@ -1862,9 +1868,6 @@ class Environment {
 
     assertCurrent();
     this.deserializeTimings.project = Date.now() - startTime;
-
-    if (state.grammars) this.grammars.deserialize(state.grammars);
-    assertCurrent();
 
     startTime = Date.now();
     if (state.workspace) {

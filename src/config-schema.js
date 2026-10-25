@@ -160,6 +160,14 @@ const configSchema = {
         type: "number",
         default: 40,
       },
+      grammarLoadLimit: {
+        title: "Grammar Load Limit",
+        description:
+          "Open files at or above this size in megabytes with the None grammar, without syntax analysis. A warning offers to enable the detected grammar. Explicit grammar choices are preserved when restoring a session. Set to 0 for no limit.",
+        type: "number",
+        minimum: 0,
+        default: 100,
+      },
       maxTextEditors: {
         title: "Maximum Open Editors",
         description:

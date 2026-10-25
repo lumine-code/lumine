@@ -27,12 +27,13 @@ const MISSING_FILE_ERRORS = new Set(["ENOENT", "ENOTDIR", "EISDIR"]);
  * An instance of this class is always available as the `lumine.grammars` global.
  */
 module.exports = class GrammarRegistry {
-  constructor({ config, fileWatchClient, syntaxExecution = "inline" } = {}) {
+  constructor({ config, fileWatchClient, notificationManager, syntaxExecution = "inline" } = {}) {
     if (!["inline", "worker"].includes(syntaxExecution))
       throw new TypeError("Invalid syntax execution owner");
     this.config = config;
     this.syntaxExecution = syntaxExecution;
     this.fileWatchClient = fileWatchClient;
+    this.notificationManager = notificationManager;
     this.subscriptions = new CompositeDisposable();
     this.emitter = new Emitter();
     this.clear();
@@ -40,6 +41,8 @@ module.exports = class GrammarRegistry {
 
   clear() {
     const failures = [];
+    for (const notification of this.largeFileNotificationsByBuffer?.values() ?? [])
+      captureLifecycleError(failures, () => notification.dismiss());
     captureLifecycleError(failures, () => this.syntaxWorkerService?.dispose());
     this.syntaxWorkerService = null;
     for (const entry of this.syntaxModules?.values() ?? [])
@@ -59,6 +62,7 @@ module.exports = class GrammarRegistry {
     this.rootLanguageRangesByBuffer = new WeakMap();
     this.grammarScoresByBuffer = new Map();
     this.languageModeMaintenanceByBuffer = new WeakMap();
+    this.largeFileNotificationsByBuffer = new Map();
     // Buffers already wired to release themselves, so a repeated assignment
     // does not stack subscriptions.
     this.releasedBuffers = new WeakSet();
@@ -73,9 +77,7 @@ module.exports = class GrammarRegistry {
   serialize() {
     const languageOverridesByBufferId = {};
     this.languageOverridesByBufferId.forEach((languageId, bufferId) => {
-      if (languageId !== NullGrammar.scopeName) {
-        languageOverridesByBufferId[bufferId] = languageId;
-      }
+      languageOverridesByBufferId[bufferId] = languageId;
     });
     return { languageOverridesByBufferId };
   }
@@ -83,9 +85,7 @@ module.exports = class GrammarRegistry {
   deserialize(params) {
     for (const bufferId in params.languageOverridesByBufferId || {}) {
       const languageId = params.languageOverridesByBufferId[bufferId];
-      if (languageId !== NullGrammar.scopeName) {
-        this.languageOverridesByBufferId.set(bufferId, languageId);
-      }
+      this.languageOverridesByBufferId.set(bufferId, languageId);
     }
   }
 
@@ -128,15 +128,6 @@ module.exports = class GrammarRegistry {
     // one that deletes the same two entries.
     this.releasedBuffers.add(buffer);
 
-    const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
-    if (languageOverride) {
-      if (!this.assignLanguageMode(buffer, languageOverride)) {
-        this.assignFallbackLanguageMode(buffer);
-      }
-    } else {
-      this.autoAssignLanguageMode(buffer);
-    }
-
     maintenance.pathChangeSubscription = buffer.onDidChangePath(() => {
       this.grammarScoresByBuffer.delete(buffer);
       if (!this.languageOverridesByBufferId.has(buffer.id)) {
@@ -151,12 +142,22 @@ module.exports = class GrammarRegistry {
       this.rootLanguageRangesByBuffer.delete(buffer);
       this.releasedBuffers.delete(buffer);
       this.languageModeMaintenanceByBuffer.delete(buffer);
+      this.dismissLargeFileNotification(buffer);
       maintenance.tokens.clear();
       this.subscriptions.remove(maintenance.destroySubscription);
       this.subscriptions.remove(maintenance.pathChangeSubscription);
     });
 
     this.subscriptions.add(maintenance.pathChangeSubscription, maintenance.destroySubscription);
+
+    const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
+    if (languageOverride) {
+      if (!this.assignLanguageMode(buffer, languageOverride)) {
+        this.assignFallbackLanguageMode(buffer);
+      }
+    } else if (!this.assignLargeFileLanguageMode(buffer)) {
+      this.autoAssignLanguageMode(buffer);
+    }
 
     return new Disposable(() =>
       this.releaseLanguageModeMaintenance(buffer, maintenance, maintenanceToken),
@@ -175,6 +176,7 @@ module.exports = class GrammarRegistry {
     this.languageModeMaintenanceByBuffer.delete(buffer);
     this.grammarScoresByBuffer.delete(buffer);
     this.languageOverridesByBufferId.delete(buffer.id);
+    this.dismissLargeFileNotification(buffer);
     // No longer claimed: a later assignment must be free to register its own
     // one-shot release for a buffer that outlives being maintained.
     this.releasedBuffers.delete(buffer);
@@ -203,6 +205,7 @@ module.exports = class GrammarRegistry {
 
     const grammar = this.grammarForId(languageId);
     if (!grammar || !grammar.scopeName) return false;
+    this.dismissLargeFileNotification(buffer);
     this.languageOverridesByBufferId.set(buffer.id, languageId);
 
     this.grammarScoresByBuffer.set(buffer, null);
@@ -289,6 +292,7 @@ module.exports = class GrammarRegistry {
   assignGrammar(buffer, grammar) {
     if (!grammar) return false;
     if (buffer.getBuffer) buffer = buffer.getBuffer();
+    this.dismissLargeFileNotification(buffer);
     this.languageOverridesByBufferId.set(buffer.id, grammar.scopeName || null);
     this.grammarScoresByBuffer.set(buffer, null);
     this.releaseBufferOnDestroy(buffer);
@@ -348,10 +352,54 @@ module.exports = class GrammarRegistry {
       getGrammarSelectionContent(buffer),
     );
     this.languageOverridesByBufferId.delete(buffer.id);
+    this.dismissLargeFileNotification(buffer);
     this.grammarScoresByBuffer.set(buffer, result.score);
     if (result.grammar !== buffer.getLanguageMode().grammar) {
       buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(result.grammar, buffer));
     }
+  }
+
+  // Only initial automatic selection is limited. An explicit selection, including
+  // Auto Detect, is the user's permission to enable syntax for this buffer.
+  assignLargeFileLanguageMode(buffer) {
+    const limit = this.config?.get("core.grammarLoadLimit");
+    if (!(limit > 0) || !buffer.getPath()) return false;
+    const fileSize = fs.getSizeSync(buffer.getPath());
+    if (!(fileSize >= limit * 1048576)) return false;
+
+    this.assignLanguageMode(buffer, NullGrammar.scopeName);
+    if (!this.notificationManager) return true;
+    const notification = this.notificationManager.addWarning(
+      "Large file opened without a grammar",
+      {
+        detail: `${buffer.getPath()}\nSize: ${(fileSize / 1048576).toFixed(1)} MB. Syntax analysis is disabled to reduce resource usage.`,
+        dismissable: true,
+        buttons: [
+          {
+            text: "Enable Grammar",
+            onDidClick: () => {
+              if (!buffer.isDestroyed()) {
+                const grammar = this.selectGrammar(
+                  buffer.getPath(),
+                  getGrammarSelectionContent(buffer),
+                );
+                this.assignGrammar(buffer, grammar);
+              }
+              notification.dismiss();
+            },
+          },
+        ],
+      },
+    );
+    if (buffer.isDestroyed()) notification.dismiss();
+    else this.largeFileNotificationsByBuffer.set(buffer, notification);
+    return true;
+  }
+
+  dismissLargeFileNotification(buffer) {
+    const notification = this.largeFileNotificationsByBuffer.get(buffer);
+    this.largeFileNotificationsByBuffer.delete(buffer);
+    notification?.dismiss();
   }
 
   fallbackGrammar() {
@@ -488,7 +536,12 @@ module.exports = class GrammarRegistry {
     customFileTypes = this.config?.get("core.customFileTypes") ?? null,
   ) {
     let bestMatch = NullGrammar;
-    let highestScore = this.scoreGrammarWithContents(NullGrammar, filePath, fileContents);
+    let highestScore = this.scoreGrammarWithContents(
+      NullGrammar,
+      filePath,
+      fileContents,
+      customFileTypes,
+    );
     let plainTextGrammar = null;
     let plainTextScore = -Infinity;
     for (const grammar of this.getGrammars()) {
@@ -505,7 +558,7 @@ module.exports = class GrammarRegistry {
     }
     // The null sentinel is the unmatched baseline. Prefer the registered
     // plain-text grammar when no more specific grammar matched.
-    if (bestMatch === NullGrammar && plainTextGrammar) {
+    if (bestMatch === NullGrammar && highestScore <= 0 && plainTextGrammar) {
       return { grammar: plainTextGrammar, score: plainTextScore };
     }
     return { grammar: bestMatch, score: highestScore };
@@ -548,10 +601,13 @@ module.exports = class GrammarRegistry {
   }
 
   scoreGrammarWithContents(grammar, filePath, contents, customFileTypes) {
-    // The null grammar is a last-resort sentinel, not a configurable language.
-    // Keep its score fixed so a custom file-type entry cannot make it win over
-    // a registered grammar.
-    if (grammar === NullGrammar) return filePath ? 0 : -1;
+    // None remains the unmatched baseline unless the user explicitly maps a
+    // file type to it, in which case it competes like any other chosen grammar.
+    if (
+      grammar === NullGrammar &&
+      this.getGrammarPathScore(grammar, filePath, customFileTypes) <= 0
+    )
+      return filePath ? 0 : -1;
 
     // Initially identify matching grammars based on the filename and the first
     // line of the file.

@@ -2140,8 +2140,8 @@ describe("PackageManager", () => {
     it("removes the package's grammars", async () => {
       await lumine.packages.activatePackage("package-with-grammars");
       await lumine.packages.deactivatePackage("package-with-grammars");
-      expect(lumine.grammars.selectGrammar("a.alot").name).toBe("Null Grammar");
-      expect(lumine.grammars.selectGrammar("a.alittle").name).toBe("Null Grammar");
+      expect(lumine.grammars.selectGrammar("a.alot").name).toBe("None");
+      expect(lumine.grammars.selectGrammar("a.alittle").name).toBe("None");
     });
 
     it("removes the package's keymaps", async () => {
