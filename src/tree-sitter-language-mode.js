@@ -4079,7 +4079,9 @@ class LanguageLayer {
         if (range.start.isLessThan(from)) {
           // If we get this far, we know that the base language scope was open
           // when our range began.
-          alreadyOpenScopes.set(range.start, languageScopeIds);
+          // setBoundary(root: true) prepends each scope while streaming, so
+          // reconstruct that same outer-to-inner order when seeking mid-range.
+          alreadyOpenScopes.set(range.start, [...languageScopeIds].reverse());
         } else {
           // Range start must be between `from` and `to`, or else equal `from`
           // exactly.
