@@ -44,6 +44,8 @@ The observer owns discovery delivery, repository retention, routing changes and 
 
 Status entries expose `headBlobOid` and `indexBlobOid`, with `null` when the corresponding baseline has no file. Use the index identity when caching unstaged line diffs: staging new contents can change `indexBlobOid` while the status remains `MM` and the editor buffer stays unchanged. Subscribe to `onDidChangeStatusSnapshot`, include the relevant baseline identities in the cache key, and validate them before applying an asynchronous result. Dispose the subscription and cancel outstanding requests with the owning view.
 
+The shared status snapshot verifies ordinary worktree modifications against the index using Git's clean filters and line-ending rules. A file whose normalized content and mode still match the index has no unstaged change, even when Git's cached checkout size reports one. Staged changes remain independent. Background verification and patch reads do not refresh or lock the index; failed verification or a concurrent file or index change preserves the original dirty status.
+
 ## Execute a complete workflow
 
 Use named methods on `repository.getOperations()` for writes. Multi-step actions use one workflow, so another interface cannot insert a write between staging and committing.

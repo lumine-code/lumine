@@ -269,6 +269,8 @@ describe("repository diff", () => {
       });
 
       expect(calls[0].args.slice(2)).toEqual([
+        "-c",
+        "diff.autoRefreshIndex=false",
         "diff",
         "--patch",
         "--no-ext-diff",
@@ -389,6 +391,46 @@ describe("repository diff", () => {
       expect(patch).toContain("staged.txt");
       expect(fs.existsSync(repositoryObject)).toBe(false);
       repository.destroy();
+    });
+
+    it("does not refresh the index when reading a metadata-only worktree change", async () => {
+      const operationProvider = new GitRepositoryOperationProvider();
+      const workingDirectory = temp.mkdirSync("metadata-only-read-only-diff");
+      await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
+      await runFixtureGit(
+        operationProvider,
+        ["config", "core.autocrlf", "false"],
+        workingDirectory,
+      );
+      await runFixtureGit(
+        operationProvider,
+        ["config", "diff.autoRefreshIndex", "true"],
+        workingDirectory,
+      );
+      const filePath = path.join(workingDirectory, "file.txt");
+      fs.writeFileSync(filePath, "unchanged\n");
+      await runFixtureGit(operationProvider, ["add", "--", "file.txt"], workingDirectory);
+      const previousTimestamp = new Date("2000-01-01T00:00:00Z");
+      fs.utimesSync(filePath, previousTimestamp, previousTimestamp);
+      const dirtyPaths = () =>
+        runFixtureGit(
+          operationProvider,
+          ["diff-files", "--raw", "--", "file.txt"],
+          workingDirectory,
+        );
+      expect(await dirtyPaths()).toContain("M\tfile.txt");
+      const indexPath = path.join(workingDirectory, ".git", "index");
+      const indexBefore = fs.readFileSync(indexPath);
+
+      const realProvider = new GitRepositoryDiffProvider();
+      const patch = await realProvider.getDiffPatch(workingDirectory, {
+        from: { type: "index" },
+        to: { type: "worktree" },
+      });
+
+      expect(patch).toBe("");
+      expect(fs.readFileSync(indexPath)).toEqual(indexBefore);
+      expect(await dirtyPaths()).toContain("M\tfile.txt");
     });
 
     it("does not replace a diff result when temporary ODB cleanup fails", async () => {

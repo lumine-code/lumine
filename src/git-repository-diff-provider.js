@@ -88,6 +88,10 @@ module.exports = class GitRepositoryDiffProvider {
     const args = [
       "-c",
       "core.quotePath=false",
+      // Git's porcelain diff refreshes the index even with optional locks
+      // disabled. Reading a patch must not rewrite repository metadata.
+      "-c",
+      "diff.autoRefreshIndex=false",
       "diff",
       "--patch",
       "--no-ext-diff",

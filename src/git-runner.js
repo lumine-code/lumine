@@ -184,9 +184,9 @@ class GitRunner {
       LC_ALL: "C",
       // Background commands never take git's optional locks: a debounced
       // status refresh holding .git/index.lock would otherwise make a
-      // concurrent user `git add` fail with "index.lock exists". The trade-off
-      // (background statuses stop refreshing the index stat cache) is bounded,
-      // because the interactive post-operation refresh still does.
+      // concurrent user `git add` fail with "index.lock exists". The status
+      // provider verifies normalized worktree content without relying on an
+      // index stat-cache refresh to clear false modifications.
       ...(priority === "background" && !options.allowPrompt ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
       ...options.env,
     };
