@@ -330,7 +330,7 @@ module.exports = class GrammarRegistry {
    * the given buffer, if any.
    *
    * @param {TextBuffer} buffer
-   * @returns {String|null|undefined} The explicit language id, `null` for a null-grammar assignment, or `undefined` when none is assigned.
+   * @returns {String|null|undefined} The explicit language id, including `text.plain.null-grammar` for None, or `null`/`undefined` when no id is assigned.
    */
   getAssignedLanguageId(buffer) {
     return this.languageOverridesByBufferId.get(buffer.id);
