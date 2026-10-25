@@ -38,6 +38,9 @@ describe("Large file grammar policy", () => {
     const editor = await lumine.workspace.open("sample.js");
 
     expect(lumine.applicationDelegate.confirm).toHaveBeenCalledTimes(1);
+    expect(lumine.applicationDelegate.confirm.calls.mostRecent().args[0].detail).toContain(
+      "100.0 MB",
+    );
     expect(editor.getGrammar()).toBe(lumine.grammars.nullGrammar);
     expect(editor.getBuffer().getLanguageMode().constructor).toBe(NullLanguageMode);
     expect(createMode).not.toHaveBeenCalled();

@@ -3507,8 +3507,8 @@ module.exports = class Workspace extends Model {
     if (fileSize >= this.config.get("core.warnOnLargeFileLimit") * 1048576) {
       // 40MB by default
       const response = await this.applicationDelegate.confirm({
-        message: "Lumine will be unresponsive during the loading of very large files.",
-        detail: "Do you still want to load this file?",
+        message: "Open this large file?",
+        detail: `This file is ${(fileSize / 1048576).toFixed(1)} MB. Loading it may take time and use substantial memory.`,
         buttons: ["Proceed", "Cancel"],
       });
       if (!isCurrent()) return;
