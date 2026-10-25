@@ -214,6 +214,31 @@ test("a timed-out parse resumes, can be cancelled, and leaves the parser reusabl
   }
 });
 
+test("resuming a parse preserves its native input callback while reattaching the source", async (t) => {
+  const parser = new DocumentParser(language);
+  const text = new PieceTree("const value = 1;\n".repeat(1000));
+  const nativeParse = parser.parser.parse.bind(parser.parser);
+  const inputs = [];
+  t.mock.method(parser.parser, "parse", (input, previous, options) => {
+    inputs.push(input);
+    return nativeParse(input, previous, {
+      ...options,
+      progressCallback: inputs.length === 1 ? () => true : options.progressCallback,
+    });
+  });
+  try {
+    assert.equal(parser.tryParseSync(text, { deadline: Infinity }), null);
+    const tree = await parser.parse(text);
+    assert.ok(inputs.length > 1);
+    assert.ok(inputs.every((input) => input === inputs[0]));
+    assert.equal(tree.rootNode.endIndex, text.length);
+    assert.equal(tree.rootNode.firstNamedChild.text, "const value = 1;");
+    assert.equal(inputs[0](0), "");
+  } finally {
+    parser.close();
+  }
+});
+
 test("closing a suspended parse settles without publishing a tree", async () => {
   const parser = new DocumentParser(language);
   const pending = parser.parse("const value = 1;\n".repeat(1000));

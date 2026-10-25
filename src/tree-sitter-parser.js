@@ -18,11 +18,15 @@ const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 // web-tree-sitter 0.27 retains its module-global callbacks when parsing throws.
 // Keep their closure separate from the parse frame and detach every captured
 // resource even on failure. A returned tree receives its own text reader.
-function parseCallbacks(state) {
+function parseCallbacks() {
+  let state = null;
   return {
     input: (index, position) => state?.input(index, position) ?? "",
     progress: () => state?.progress() ?? true,
     log: (...args) => state?.logger(...args),
+    attach(next) {
+      state = next;
+    },
     release() {
       state = null;
     },
@@ -288,7 +292,10 @@ class TreeSitterParser {
     signal?.throwIfAborted();
     let tree = job.parsedTree;
     if (!tree) {
-      const callbacks = parseCallbacks({
+      // Resumption keeps the same input callback, but it owns the source only
+      // while the native call is executing.
+      const callbacks = (job.callbacks ??= parseCallbacks());
+      callbacks.attach({
         input: job.input,
         progress: () => this.closed || signal?.aborted || performance.now() >= deadline,
         logger: this.logger,
