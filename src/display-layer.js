@@ -217,7 +217,16 @@ class DisplayLayer {
     this.foldsMarkerLayer.destroy();
     this.displayMarkerLayersById.forEach((layer) => layer.destroy());
     if (this.languageModeDisposable) this.languageModeDisposable.dispose();
+    this.languageModeDisposable = null;
     delete this.buffer.displayLayers[this.id];
+
+    // Error stacks and other consumers can retain a destroyed view. Detach
+    // its geometry instead of clearing arrays shared with a surviving split.
+    this.clearSpatialIndex();
+    this.screenLineBuilder = new ScreenLineBuilder(this);
+    this.changesSinceLastEvent = new Patch();
+    this.changeOriginsSinceLastEvent.clear();
+    this.emitter.dispose();
   }
 
   isDestroyed() {

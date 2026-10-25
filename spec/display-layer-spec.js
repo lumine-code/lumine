@@ -77,6 +77,50 @@ describe("DisplayLayer", () => {
   });
 
   describe("destroy", function () {
+    it("releases geometry even when destroyed views remain reachable", () => {
+      const { spawnSync } = require("node:child_process");
+      const path = require("node:path");
+      const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+      delete env.CI;
+      const result = spawnSync(
+        process.execPath,
+        ["--expose-gc", path.join(__dirname, "fixtures/display-layer-destroy-gc.js")],
+        { env, encoding: "utf8", windowsHide: true, timeout: 30000 },
+      );
+      if (result.error) throw result.error;
+      expect(result.status).withContext(result.stderr).toBe(0);
+      expect(result.stdout).toContain("Destroyed views release geometry while live splits keep it");
+    });
+
+    it("keeps the surviving split's geometry and edits intact", () => {
+      const buffer = new TextBuffer({ text: "\talpha beta gamma\nlast line" });
+      const first = buffer.addDisplayLayer({ softWrapColumn: 12 });
+      const text = first.getText();
+      const second = first.copy();
+      const shared = first.layoutState;
+      const position = second.translateBufferPosition([1, 4]);
+      first.destroy();
+      try {
+        expect(first.layoutState).not.toBe(shared);
+        expect(second.layoutState).toBe(shared);
+        expect(second.getText()).toBe(text);
+        expect(second.translateBufferPosition([1, 4])).toEqual(position);
+        buffer.insert([0, 0], "prefix\n");
+        const fresh = buffer.addDisplayLayer({ softWrapColumn: 12 });
+        try {
+          expect(second.getText()).toBe(fresh.getText());
+          expect(second.translateBufferPosition([2, 4])).toEqual(
+            fresh.translateBufferPosition([2, 4]),
+          );
+        } finally {
+          fresh.destroy();
+        }
+      } finally {
+        second.destroy();
+        buffer.destroy();
+      }
+    });
+
     it("does not throw exceptions when queried after destruction", function () {
       const buffer = new TextBuffer({ text: "hi" });
 
