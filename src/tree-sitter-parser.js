@@ -15,6 +15,20 @@ const nodeTextInput = (text) => textInput(text, NODE_TEXT_UNITS);
 const sourceOf = (tree) => metadata.get(tree)?.text ?? tree.input;
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
+// web-tree-sitter 0.27 retains its module-global callbacks when parsing throws.
+// Keep their closure separate from the parse frame and detach every captured
+// resource even on failure. A returned tree receives its own text reader.
+function parseCallbacks(state) {
+  return {
+    input: (index, position) => state?.input(index, position) ?? "",
+    progress: () => state?.progress() ?? true,
+    log: (...args) => state?.logger(...args),
+    release() {
+      state = null;
+    },
+  };
+}
+
 function positionAt(text, index) {
   if (typeof text.positionAt === "function") return text.positionAt(index);
   let row = 0,
@@ -162,6 +176,7 @@ class TreeSitterParser {
     this.running = false;
     this.executing = false;
     this.disposed = false;
+    this.logger = null;
   }
 
   static isBulkChange(previous, edits) {
@@ -273,13 +288,22 @@ class TreeSitterParser {
     signal?.throwIfAborted();
     let tree = job.parsedTree;
     if (!tree) {
+      const callbacks = parseCallbacks({
+        input: job.input,
+        progress: () => this.closed || signal?.aborted || performance.now() >= deadline,
+        logger: this.logger,
+      });
       this.executing = true;
       try {
-        tree = this.parser.parse(job.input, job.oldTree, {
+        if (this.logger) this.parser.setLogger(callbacks.log);
+        tree = this.parser.parse(callbacks.input, job.oldTree, {
           includedRanges: job.includedRanges,
-          progressCallback: () => this.closed || signal?.aborted || performance.now() >= deadline,
+          progressCallback: callbacks.progress,
         });
+        if (tree) tree.textCallback = nodeTextInput(job.text);
       } finally {
+        callbacks.release();
+        this.parser.setLogger(this.logger);
         this.executing = false;
         if (this.closed) {
           tree?.delete();
@@ -423,13 +447,14 @@ class TreeSitterParser {
   }
 
   getLogger() {
-    return this.closed ? null : this.parser.getLogger();
+    return this.closed ? null : this.logger;
   }
 
   setLogger(logger) {
     if (this.running || this.closed)
       throw new Error("Cannot change the logger of an active or closed parser");
     this.parser.setLogger(logger);
+    this.logger = this.parser.getLogger();
     return this;
   }
 
@@ -437,6 +462,8 @@ class TreeSitterParser {
     if (this.disposed) return;
     this.resetPending();
     this.parser.delete();
+    this.parser.setLogger(null);
+    this.logger = null;
     this.disposed = true;
   }
 
