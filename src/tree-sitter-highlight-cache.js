@@ -58,13 +58,26 @@ class HighlightCache {
     this.edits = [];
     this.sequence = 0;
   }
-  edit({ oldRange, newRange }) {
-    this.edits.push({
+  edit({ oldRange, newRange }, { extendScopes } = {}) {
+    const edit = {
       sequence: ++this.sequence,
       start: copy(oldRange.start),
       oldEnd: copy(oldRange.end),
       newEnd: copy(newRange.end),
-    });
+    };
+    // An optional ordered stack describes retained presentation at an insertion
+    // boundary. It does not infer syntax or change normal edit affinity.
+    if (
+      extendScopes?.length &&
+      compare(edit.start, edit.oldEnd) === 0 &&
+      edit.start.row === edit.newEnd.row &&
+      edit.newEnd.column > edit.start.column &&
+      (!newRange.start || compare(copy(newRange.start), edit.start) === 0)
+    ) {
+      edit.extendScopes = new Set(extendScopes);
+      edit.extensionScope = extendScopes[extendScopes.length - 1];
+    }
+    this.edits.push(edit);
     if (this.edits.length >= this.maxEdits) this.rebase();
   }
   rebase() {
@@ -86,7 +99,14 @@ class HighlightCache {
         }
         if (compare(snapshot.end, edit.start) < 0) continue;
         this.materialize(snapshot);
-        snapshot.start = shift(snapshot.start, edit);
+        // A following fragment may already describe scopes after this boundary.
+        // Move that fragment behind the insertion so it cannot cover up the
+        // retained prefix. A fragment starting inside the supplied stack stays.
+        const moveStart =
+          edit.extendScopes &&
+          compare(snapshot.start, edit.start) === 0 &&
+          !snapshot.scopes.includes(edit.extensionScope);
+        snapshot.start = shift(snapshot.start, edit, moveStart);
         snapshot.end = shift(snapshot.end, edit, true);
         let low = 0,
           high = snapshot.events.length;
@@ -95,6 +115,7 @@ class HighlightCache {
           if (compare(snapshot.events[middle].position, edit.start) < 0) low = middle + 1;
           else high = middle;
         }
+        if (edit.extendScopes) low = this.extendBoundary(snapshot, low, edit);
         const sameRows = edit.oldEnd.row === edit.newEnd.row;
         for (let i = low; i < snapshot.events.length; i++) {
           const event = snapshot.events[i];
@@ -105,6 +126,37 @@ class HighlightCache {
       snapshot.sequence = this.sequence;
     }
     this.edits.length = 0;
+  }
+  extendBoundary(snapshot, start, edit) {
+    let end = start;
+    while (end < snapshot.events.length && compare(snapshot.events[end].position, edit.start) === 0)
+      end++;
+    if (end === start) return start;
+    const left = [],
+      right = [],
+      opened = new Map();
+    for (let index = start; index < end; index++) {
+      const event = snapshot.events[index],
+        closeLeft = [],
+        closeRight = [];
+      for (const id of event.close) {
+        const count = opened.get(id) || 0;
+        // An empty scope opened and closed at the same boundary must move as
+        // one unit, otherwise its delayed opening would leak into later text.
+        if (edit.extendScopes.has(id) || count) closeRight.push(id);
+        else closeLeft.push(id);
+        if (count) opened.set(id, count - 1);
+      }
+      for (const id of event.open) opened.set(id, (opened.get(id) || 0) + 1);
+      if (closeLeft.length) left.push({ position: copy(edit.start), close: closeLeft, open: [] });
+      if (closeRight.length || event.open.length)
+        right.push({ position: copy(edit.newEnd), close: closeRight, open: [...event.open] });
+    }
+    snapshot.events.splice(start, end - start, ...left, ...right);
+    // Splitting/reordering boundaries changes scope prefixes even when the
+    // number of events happens to remain identical.
+    this.scopeCheckpoints.delete(snapshot);
+    return start + left.length + right.length;
   }
   materialize(snapshot) {
     if (!snapshot.rowOffset) return;

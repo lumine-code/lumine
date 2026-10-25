@@ -157,7 +157,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.refreshController?.abort();
     if (!this.publicationPending) this.transactionIndentRequests = 0;
     this.publicationPending = true;
-    this.cache.edit(change);
+    this.cache.edit(change, { extendScopes: this.commentScopesForInsertion(change) });
     const first = Math.max(0, change.newRange.start.row - 1);
     this.dirtyRanges.add(
       new Range([first, 0], this.buffer.clipPosition([change.newRange.end.row + 2, 0])),
@@ -165,6 +165,39 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     if (change.oldRange.end.row !== change.newRange.end.row)
       this.dirtyFromRow = Math.min(this.dirtyFromRow ?? Infinity, first);
     this.folds.clear();
+  }
+
+  commentScopesForInsertion({ oldRange, newRange, newText }) {
+    const { start } = oldRange;
+    if (
+      !oldRange.isEmpty() ||
+      start.column === 0 ||
+      newRange.end.row !== start.row ||
+      newRange.end.column <= start.column ||
+      newRange.end.column !== this.buffer.lineLengthForRow(start.row) ||
+      /[\r\n]/.test(newText)
+    )
+      return;
+    // Read the paint before this insertion. A line comment necessarily keeps
+    // owning appended text until a newline; a closed string or block comment
+    // does not. Only extend that scope and its ancestors, never an inner TODO,
+    // URL or punctuation capture which happened to end at the same position.
+    const previous = start.translate([0, -1]);
+    if (!this.cache.covers(previous, start)) return;
+    const { scopes, iterator } = this.cache.read(previous, start, []);
+    while (iterator.getPosition().compare(previous) <= 0) {
+      for (const id of iterator.getCloseScopeIds()) {
+        const index = scopes.lastIndexOf(id);
+        if (index !== -1) scopes.splice(index, 1);
+      }
+      scopes.push(...iterator.getOpenScopeIds());
+      if (!iterator.moveToSuccessor()) break;
+    }
+    for (let index = scopes.length - 1; index >= 0; index--) {
+      const name = this.grammar.scopeNameForScopeId(scopes[index]);
+      if (name === "comment.line" || name?.startsWith("comment.line."))
+        return scopes.slice(0, index + 1);
+    }
   }
 
   canBatchTextChanges(count) {

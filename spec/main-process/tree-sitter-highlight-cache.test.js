@@ -323,3 +323,155 @@ test("evicts old windows without truncating a dense current presentation batch",
   assert.deepEqual(at(cache, point(2, 8)), [1, 2]);
   assert.deepEqual(at(cache, point(2, 9)), [1]);
 });
+
+const insertion = (row, column, length = 1) => ({
+  oldRange: { start: point(row, column), end: point(row, column) },
+  newRange: { start: point(row, column), end: point(row, column + length) },
+});
+
+test("extends only the requested closing stack and postpones boundary openings", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(1),
+    [1, 2, 3],
+    [{ position: point(0, 5), close: [3, 2, 1], open: [9] }],
+  );
+  const stack = [1, 2];
+  cache.edit(insertion(0, 5, 2), { extendScopes: stack });
+  stack.length = 0;
+  assert.deepEqual(at(cache, point(0, 4)), [1, 2, 3]);
+  assert.deepEqual(at(cache, point(0, 5)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 6)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 7)), [9]);
+  assert.deepEqual(cache.snapshots[0].events, [
+    { position: point(0, 5), close: [3], open: [] },
+    { position: point(0, 7), close: [2, 1], open: [9] },
+  ]);
+});
+
+test("without the option insertion keeps the existing left boundary affinity", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(1),
+    [1, 2, 3],
+    [{ position: point(0, 5), close: [3, 2], open: [9] }],
+  );
+  cache.edit(insertion(0, 5, 2));
+  assert.deepEqual(at(cache, point(0, 5)), [1, 9]);
+  assert.deepEqual(cache.snapshots[0].events[0].position, point(0, 5));
+});
+
+test("accepts array coordinates when extending an insertion boundary", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0), point(1), [1, 2], [{ position: point(0, 5), close: [2], open: [] }]);
+  cache.edit(
+    { oldRange: { start: [0, 5], end: [0, 5] }, newRange: { start: [0, 5], end: [0, 7] } },
+    { extendScopes: [1, 2] },
+  );
+  assert.deepEqual(at(cache, point(0, 6)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 7)), [1]);
+});
+
+test("keeps zero-width scopes together when several events share the boundary", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0),
+    point(1),
+    [1, 2, 3],
+    [
+      { position: point(0, 5), close: [3], open: [4] },
+      { position: point(0, 5), close: [4, 2], open: [9] },
+    ],
+  );
+  cache.edit(insertion(0, 5), { extendScopes: [1, 2] });
+  assert.deepEqual(at(cache, point(0, 5)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 6)), [1, 9]);
+  assert.deepEqual(
+    cache.snapshots[0].events.map((event) => event.position.column),
+    [5, 6, 6],
+  );
+});
+
+test("extends cached coverage at a fragment end without borrowing a following fragment's scopes", () => {
+  const cache = new HighlightCache();
+  const stamp = { revision: 1, generation: 1 };
+  cache.replace(
+    [
+      { start: point(0), end: point(0, 5), scopes: [1, 2], events: [] },
+      { start: point(0, 5), end: point(1), scopes: [1, 9], events: [] },
+    ],
+    stamp,
+  );
+  cache.edit(insertion(0, 5, 2), { extendScopes: [1, 2] });
+  assert.deepEqual(at(cache, point(0, 6)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 7)), [1, 9]);
+  assert.equal(cache.covers(point(0), point(1)), true);
+  assert.equal(cache.covers(point(0, 5), point(0, 7), { revision: 2, generation: 1 }), false);
+  assert.deepEqual(cache.snapshots[1].start, point(0, 7));
+});
+
+test("keeps a fragment beginning inside the retained stack and leaves uncached gaps uncovered", () => {
+  const cache = new HighlightCache();
+  record(
+    cache,
+    point(0, 5),
+    point(0, 8),
+    [1, 2, 3],
+    [{ position: point(0, 5), close: [3, 2], open: [9] }],
+  );
+  cache.edit(insertion(0, 5, 2), { extendScopes: [1, 2] });
+  assert.deepEqual(at(cache, point(0, 5)), [1, 2]);
+  assert.deepEqual(at(cache, point(0, 7)), [1, 9]);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(0, 10)), [[point(0), point(0, 5)]]);
+});
+
+test("deleting inserted paint rolls back the boundary and current worker paint replaces it", () => {
+  const cache = new HighlightCache();
+  record(cache, point(0), point(0, 5), [1, 2], [{ position: point(0, 5), close: [2], open: [] }]);
+  cache.edit(insertion(0, 5, 2), { extendScopes: [1, 2] });
+  assert.deepEqual(at(cache, point(0, 6)), [1, 2]);
+  cache.edit({
+    oldRange: { start: point(0, 5), end: point(0, 7) },
+    newRange: { end: point(0, 5) },
+  });
+  assert.equal(cache.covers(point(0), point(0, 5)), true);
+  assert.equal(cache.covers(point(0, 5), point(0, 6)), false);
+  assert.deepEqual(cache.snapshots[0].events[0].position, point(0, 5));
+  cache.replace([{ start: point(0), end: point(1), scopes: [1, 8], events: [] }], { revision: 3 });
+  assert.deepEqual(at(cache, point(0, 4)), [1, 8]);
+});
+
+test("invalidates dense scope checkpoints after boundary splitting with unchanged event count", () => {
+  const cache = new HighlightCache();
+  const events = [];
+  for (let row = 0; row < 40; row++) {
+    events.push({ position: point(row, 0), open: [2, 3], close: [] });
+    events.push({ position: point(row, 5), open: [], close: [3] });
+    events.push({ position: point(row, 5), open: [], close: [2] });
+  }
+  record(cache, point(0), point(40), [1], events);
+  assert.deepEqual(at(cache, point(39, 6)), [1]);
+  cache.edit({ oldRange: { start: point(0), end: point(0) }, newRange: { end: point(2) } });
+  cache.edit(insertion(23, 5, 2), { extendScopes: [1, 2] });
+  assert.deepEqual(at(cache, point(23, 5)), [1, 2]);
+  assert.deepEqual(at(cache, point(23, 7)), [1]);
+  assert.deepEqual(at(cache, point(41, 3)), [1, 2, 3]);
+  assert.deepEqual(at(cache, point(41, 6)), [1]);
+});
+
+test("does not extend scopes for replacement or multiline edits", () => {
+  for (const change of [
+    { oldRange: { start: point(0, 5), end: point(0, 6) }, newRange: { end: point(0, 7) } },
+    { oldRange: { start: point(0, 5), end: point(0, 5) }, newRange: { end: point(1) } },
+  ]) {
+    const cache = new HighlightCache();
+    record(cache, point(0), point(2), [1, 2], [{ position: point(0, 5), close: [2], open: [] }]);
+    cache.edit(change, { extendScopes: [1, 2] });
+    assert.deepEqual(at(cache, point(0, 5)), [1]);
+  }
+});
