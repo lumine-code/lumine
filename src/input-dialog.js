@@ -7,6 +7,7 @@ const DialogSource = require("./dialog-source");
 const InputDialogComponent = require("./input-dialog-component");
 require("./input-dialog-element");
 const $ = etch.dom;
+const MAX_SELECTION_QUERY_LENGTH = 4096;
 
 // A status is coloured with the theme's existing text utilities rather than
 // with colours of its own, so it matches every other severity in the editor.
@@ -1633,7 +1634,9 @@ class InputDialog {
    * @public
    * @status experimental
    *
-   * Use the active editor's single-line selection as the query.
+   * Use the active editor's last selection as the query when it occupies one
+   * buffer line and contains at most 4,096 UTF-16 units. Otherwise keep the
+   * current query without reading the selection's text.
    * @returns {Boolean}
    */
   setQueryFromSelection() {
@@ -1641,6 +1644,12 @@ class InputDialog {
       this.host?.window.getEditorContainer().getActiveTextEditor() ??
       this.services.workspace.getActiveTextEditor();
     if (!editor) return false;
+    const range = editor.getSelectedBufferRange();
+    if (range.isEmpty() || range.start.row !== range.end.row) return false;
+    const buffer = editor.getBuffer();
+    const length =
+      buffer.characterIndexForPosition(range.end) - buffer.characterIndexForPosition(range.start);
+    if (length > MAX_SELECTION_QUERY_LENGTH) return false;
     const text = editor.getSelectedText();
     if (!text || /\n/.test(text)) return false;
     this.queryEditor.setText(text);

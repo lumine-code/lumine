@@ -7931,6 +7931,99 @@ describe("TextEditorComponent", () => {
         }
       });
 
+      it("bounds automatic Linux PRIMARY reads and cancels an older pending gesture", async () => {
+        const { component, editor } = buildComponent({ platform: "linux", text: "short text" });
+        const write = spyOn(TextEditor.clipboard, "writeSelectionText").and.returnValue(
+          Promise.resolve(),
+        );
+        editor.setSelectedBufferRange([
+          [0, 0],
+          [0, 5],
+        ]);
+        expect(component.selectionClipboardImmediateId).not.toBeNull();
+        spyOn(editor.getBuffer(), "characterIndexForPosition").and.callFake((point) =>
+          point.column === 0 ? 0 : 512 * 1024 * 1024,
+        );
+        const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+
+        component.didChangeSelectionRange({});
+        await new Promise(setImmediate);
+
+        expect(read).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+        expect(component.selectionClipboardImmediateId).toBeNull();
+      });
+
+      it("keeps the automatic Linux PRIMARY limit inclusive without constructing large fixtures", async () => {
+        const { component, editor } = buildComponent({ platform: "linux", text: "short text" });
+        editor.setSelectedBufferRange([
+          [0, 0],
+          [0, 5],
+        ]);
+        const write = spyOn(TextEditor.clipboard, "writeSelectionText").and.returnValue(
+          Promise.resolve(),
+        );
+        const offset = spyOn(editor.getBuffer(), "characterIndexForPosition").and.callFake(
+          (point) => (point.column === 0 ? 0 : 1024 * 1024),
+        );
+        const read = spyOn(editor, "getSelectedText").and.callThrough();
+        component.didChangeSelectionRange({});
+        await new Promise(setImmediate);
+        expect(read).toHaveBeenCalledTimes(1);
+        expect(write).toHaveBeenCalledOnceWith("short");
+
+        read.calls.reset();
+        write.calls.reset();
+        offset.and.callFake((point) => (point.column === 0 ? 0 : 1024 * 1024 + 1));
+        component.didChangeSelectionRange({});
+        await new Promise(setImmediate);
+        expect(read).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+      });
+
+      it("captures exact Unicode and CRLF text from only the last Linux PRIMARY selection", async () => {
+        const { editor } = buildComponent({
+          platform: "linux",
+          text: "ignored\r\nZażółć😀\r\ne\u0301nd",
+        });
+        const write = spyOn(TextEditor.clipboard, "writeSelectionText").and.returnValue(
+          Promise.resolve(),
+        );
+        editor.setSelectedBufferRanges([
+          [
+            [0, 0],
+            [0, 7],
+          ],
+          [
+            [1, 0],
+            [2, 3],
+          ],
+        ]);
+        editor.setSelectedBufferRange([
+          [1, 0],
+          [2, 4],
+        ]);
+        await new Promise(setImmediate);
+        expect(write).toHaveBeenCalledOnceWith("Zażółć😀\r\ne\u0301nd");
+      });
+
+      it("cancels a pending Linux PRIMARY gesture when the selection becomes empty", async () => {
+        const { component, editor } = buildComponent({ platform: "linux", text: "short text" });
+        const write = spyOn(TextEditor.clipboard, "writeSelectionText").and.returnValue(
+          Promise.resolve(),
+        );
+        editor.setSelectedBufferRange([
+          [0, 0],
+          [0, 5],
+        ]);
+        const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+        editor.setCursorBufferPosition([0, 5]);
+        await new Promise(setImmediate);
+        expect(read).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+        expect(component.selectionClipboardImmediateId).toBeNull();
+      });
+
       it("pastes the previously selected text when clicking the middle mouse button on Linux", async () => {
         spyOn(electron.ipcRenderer, "send").and.callFake(function (eventName, selectedText) {
           if (eventName === "write-text-to-selection-clipboard") {

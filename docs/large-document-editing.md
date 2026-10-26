@@ -18,6 +18,8 @@ Very long unwrapped rows render bounded horizontal windows. Logical buffer/scree
 
 Gutter foldability checks in None read bounded indentation prefixes instead of entire lines. Pathological whitespace prefixes or long gaps can omit a fold indicator during incidental rendering; explicit indentation-fold commands retain exact semantics.
 
+Automatic selection consumers check range metadata before reading text. `InputDialog.setQueryFromSelection()` uses the last selection only when it stays on one buffer line and contains at most 4,096 UTF-16 units; otherwise the existing query remains unchanged. On Linux, automatic PRIMARY clipboard updates accept at most 1 Mi UTF-16 units from the last selection. A larger gesture cancels an older pending update and preserves the existing PRIMARY contents. These limits do not change explicit Copy commands or the selected document content.
+
 ## Search and bulk edits
 
 [Large document search](large-document-search.md) documents snapshot queries, progress, cancellation, bounded result presentation, atomic replacements and regex limits. Counts and navigation are separate from presentation markers. A partial count is not an exact total, and a presentation limit must never become an implicit Replace All limit.

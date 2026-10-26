@@ -27,6 +27,9 @@ let TextEditorElement;
 
 const DEFAULT_ROWS_PER_TILE = 6;
 const NORMAL_WIDTH_CHARACTER = "x";
+// PRIMARY updates happen on every selection gesture, without an explicit Copy
+// command. Bound their materialization and IPC cost to one Mi UTF-16 units.
+const MAX_SELECTION_CLIPBOARD_LENGTH = 1024 * 1024;
 
 function isPromise(value) {
   return value != null && typeof value.then === "function";
@@ -5063,6 +5066,14 @@ module.exports = class TextEditorComponent {
         clearImmediate(this.selectionClipboardImmediateId);
         this.selectionClipboardImmediateId = null;
       }
+
+      // Match getSelectedText's last-selection contract. Cancel an older
+      // pending gesture even when the new selection cannot be copied cheaply.
+      const range = model.getSelectedBufferRange();
+      const buffer = model.getBuffer();
+      const length =
+        buffer.characterIndexForPosition(range.end) - buffer.characterIndexForPosition(range.start);
+      if (length === 0 || length > MAX_SELECTION_CLIPBOARD_LENGTH) return;
 
       // Capture the selection gesture's text now. A reload can arrive before
       // the deferred write without changing what the user selected.

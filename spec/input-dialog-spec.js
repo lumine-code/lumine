@@ -38,6 +38,84 @@ describe("InputDialog", () => {
     view = null;
   });
 
+  describe("bounded selection prefills", () => {
+    let editor;
+
+    beforeEach(() => {
+      editor = lumine.workspace.buildTextEditor();
+      spyOn(lumine.workspace, "getActiveTextEditor").and.returnValue(editor);
+      view = createInputDialog({});
+      view.setQuery("previous query");
+    });
+
+    afterEach(() => editor.destroy());
+
+    it("rejects multiline CRLF selections before reading their text", () => {
+      editor.setText("first\r\nsecond");
+      editor.selectAll();
+      const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+
+      expect(view.setQueryFromSelection()).toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      expect(view.getQuery()).toBe("previous query");
+    });
+
+    it("rejects oversized single-line selection metadata without materialization", () => {
+      editor.setText("short");
+      editor.selectAll();
+      spyOn(editor.getBuffer(), "characterIndexForPosition").and.callFake((point) =>
+        point.column === 0 ? 0 : 512 * 1024 * 1024,
+      );
+      const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+
+      expect(view.setQueryFromSelection()).toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      expect(view.getQuery()).toBe("previous query");
+    });
+
+    it("accepts the inclusive UTF-16 budget and preserves Unicode exactly", () => {
+      const text = `${"x".repeat(4092)}😀e\u0301`;
+      editor.setText(text);
+      editor.selectAll();
+
+      expect(view.setQueryFromSelection()).toBe(true);
+      expect(view.getQuery()).toBe(text);
+      expect(view.getQueryEditor().getSelectedText()).toBe(text);
+
+      editor.insertText(`${text}x`);
+      editor.selectAll();
+      const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+      expect(view.setQueryFromSelection()).toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      expect(view.getQuery()).toBe(text);
+    });
+
+    it("prefills from the last selection even when an earlier selection exceeds the budget", () => {
+      const text = `${"x".repeat(4097)}\r\nZażółć😀`;
+      editor.setText(text);
+      editor.setSelectedBufferRanges([
+        [
+          [0, 0],
+          [0, 4097],
+        ],
+        [
+          [1, 0],
+          [1, 8],
+        ],
+      ]);
+
+      expect(view.setQueryFromSelection()).toBe(true);
+      expect(view.getQuery()).toBe("Zażółć😀");
+    });
+
+    it("keeps the query for an empty selection without reading text", () => {
+      const read = spyOn(editor, "getSelectedText").and.throwError("unexpected text read");
+      expect(view.setQueryFromSelection()).toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      expect(view.getQuery()).toBe("previous query");
+    });
+  });
+
   describe("public model API", () => {
     it("lazily materializes a detached element and registers its query editor only while connected", async () => {
       const panelCount = lumine.workspace.getModalPanels().length;
