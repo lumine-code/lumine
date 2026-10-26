@@ -1,3 +1,4 @@
+const { UnwrappedTextMetrics, UnwrappedPixelMetrics } = require("./unwrapped-text-metrics");
 const { TextPatch: Patch } = require("./text-model");
 const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
@@ -939,26 +940,44 @@ class DisplayLayer {
     const signature = [" ", "我", "한", "ｱ"]
       .map((character) => this.ratioForCharacter(character))
       .join(":");
+    const metrics = this.layoutState.unwrappedMetrics;
+    if (
+      this.unwrappedPixelMetrics?.metrics !== metrics ||
+      this.unwrappedPixelRatio !== this.ratioForCharacter ||
+      this.unwrappedPixelSignature !== signature
+    ) {
+      this.unwrappedPixelMetrics = new UnwrappedPixelMetrics(
+        metrics,
+        (...args) => measureUnwrappedPixelColumns(this, ...args),
+        this.ratioForCharacter(" "),
+      );
+      this.unwrappedPixelRatio = this.ratioForCharacter;
+      this.unwrappedPixelSignature = signature;
+    }
     if (row.pixelRatio === this.ratioForCharacter && row.pixelRatioSignature === signature)
       return row;
-    const firstRow = this.translateScreenPositionWithSpatialIndex(Point(screenRow, 0)).row;
-    const source = this.buffer.getTextSnapshot();
     let pixel = 0;
+    let previousCode = NaN;
     for (const run of row.runs) {
       run.pixelColumn = pixel;
-      const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
-      const text = run.fold ? this.foldCharacter : source.slice(offset, offset + run.textLength);
-      const result = measureUnwrappedPixelColumns(
-        this,
-        text,
-        run.screenColumn,
-        pixel,
-        source.charCodeAt(offset - 1),
-        Infinity,
-        Infinity,
-      );
-      pixel = result.pixel;
+      // Hidden text cannot provide the predecessor of a visible surrogate.
+      // Preserve the same scalar context as the actual rendered sequence.
+      run.previousCode = previousCode;
+      if (run.fold)
+        pixel = measureUnwrappedPixelColumns(
+          this,
+          this.foldCharacter,
+          run.screenColumn,
+          pixel,
+          previousCode,
+          Infinity,
+          Infinity,
+        ).pixel;
+      else pixel += this.unwrappedPixelMetrics.width(run.node, run.screenColumn, previousCode);
       run.pixelEndColumn = pixel;
+      previousCode = run.fold
+        ? this.foldCharacter.charCodeAt(this.foldCharacter.length - 1)
+        : run.node.lastUnit;
     }
     row.pixelLength = pixel;
     row.pixelRatio = this.ratioForCharacter;
@@ -976,26 +995,36 @@ class DisplayLayer {
 
   translateUnwrappedPixelColumn(screenRow, target, fromPixel) {
     const row = this.getUnwrappedRowPixelGeometry(screenRow);
-    const key = fromPixel ? "pixelColumn" : "screenColumn";
     let low = 0;
     let high = row.runs.length;
     while (low < high) {
       const middle = (low + high) >>> 1;
-      if (row.runs[middle][key] <= target) low = middle + 1;
+      // Fold boundaries obey the same leftmost-pixel tie rule as subtree
+      // boundaries. A preceding visible segment may end in combining marks.
+      const before = fromPixel
+        ? row.runs[middle].pixelEndColumn < target
+        : row.runs[middle].screenColumn <= target;
+      if (before) low = middle + 1;
       else high = middle;
     }
-    const run = row.runs[Math.max(0, low - 1)];
+    const run = row.runs[fromPixel ? Math.min(low, row.runs.length - 1) : Math.max(0, low - 1)];
     if (!run) return 0;
-    const firstRow = this.translateScreenPositionWithSpatialIndex(Point(screenRow, 0)).row;
-    const source = this.buffer.getTextSnapshot();
-    const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
-    const text = run.fold ? this.foldCharacter : source.slice(offset, offset + run.textLength);
+    const leaf = run.fold
+      ? null
+      : this.unwrappedPixelMetrics.findLeaf(
+          run.node,
+          target,
+          run.screenColumn,
+          run.pixelColumn,
+          run.previousCode,
+          fromPixel,
+        );
     const result = measureUnwrappedPixelColumns(
       this,
-      text,
-      run.screenColumn,
-      run.pixelColumn,
-      source.charCodeAt(offset - 1),
+      leaf ? leaf.node.text : this.foldCharacter,
+      leaf ? leaf.column : run.screenColumn,
+      leaf ? leaf.pixel : run.pixelColumn,
+      leaf ? leaf.previousCode : run.previousCode,
       fromPixel ? Infinity : target,
       fromPixel ? target : Infinity,
     );
@@ -1012,6 +1041,16 @@ class DisplayLayer {
     return (
       this.layoutState.unwrappedRows.get(screenRow) ??
       measureUnwrappedRow(this.layoutState, screenRow)
+    );
+  }
+
+  trailingWhitespaceStartForBufferRow(row) {
+    const source = this.buffer.getTextSnapshot(),
+      start = source.lineStart(row);
+    return (
+      this.layoutState.unwrappedMetrics.measure(
+        source.subtext(start, start + this.buffer.lineLengthForRow(row)),
+      ).lastNonWhitespace + 1
     );
   }
 
@@ -2320,6 +2359,7 @@ function copyLayoutState(state) {
     indexedBufferRowCount: state.indexedBufferRowCount,
     unwrapped: state.unwrapped,
     unwrappedRows: state.unwrappedRows.copy(),
+    unwrappedMetrics: state.unwrappedMetrics,
   };
   if (state.unwrapped) configureUnwrappedMetrics(copy, state.buffer, state.tabLength);
   return copy;
@@ -2328,6 +2368,8 @@ function copyLayoutState(state) {
 function configureUnwrappedMetrics(state, buffer, tabLength) {
   state.buffer = buffer;
   state.tabLength = tabLength;
+  if (state.unwrappedMetrics?.tabLength !== tabLength)
+    state.unwrappedMetrics = new UnwrappedTextMetrics(tabLength);
   state.screenLineLengths.resolve = (row) => measureUnwrappedRow(state, row).length;
   state.tabCounts.resolve = (row) => measureUnwrappedRow(state, row).tabs;
   state.screenLineStartFlags.resolve = () => SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
@@ -2342,7 +2384,7 @@ function measureUnwrappedRow(state, screenRow) {
   const startBufferRow = position.row;
   const folds = state.spatialIndex.getChangesInNewRange(start, Point(screenRow + 1, 0));
   const source = state.buffer.getTextSnapshot();
-  const reader = source.reader(32768);
+  const metrics = state.unwrappedMetrics;
   let length = 0;
   let tabs = 0;
   let rawLength = 0;
@@ -2351,36 +2393,25 @@ function measureUnwrappedRow(state, screenRow) {
   let longSourceLine = false;
   const append = (from, to) => {
     if (state.buffer.lineLengthForRow(from.row) > 10000) longSourceLine = true;
-    let offset = source.lineStart(from.row) + from.column;
-    let column = from.column;
+    const offset = source.lineStart(from.row) + from.column;
     const end = source.lineStart(to.row) + to.column;
-    while (offset < end) {
-      const part = reader(offset).slice(0, end - offset);
-      if (firstNonWhitespaceRawColumn === Infinity) {
-        const first = part.search(/[^ \t]/);
-        if (first >= 0) firstNonWhitespaceRawColumn = rawLength + first;
-      }
-      const run = {
-        rowDelta: from.row - startBufferRow,
-        column,
-        rawColumn: rawLength,
-        screenColumn: length,
-        textLength: part.length,
-      };
-      let previous = 0;
-      for (let tab = part.indexOf("\t"); tab >= 0; tab = part.indexOf("\t", previous)) {
-        length += tab - previous;
-        length += state.tabLength - (length % state.tabLength);
-        tabs++;
-        previous = tab + 1;
-      }
-      length += part.length - previous;
-      run.screenEndColumn = length;
-      runs.push(run);
-      rawLength += part.length;
-      column += part.length;
-      offset += part.length;
-    }
+    if (offset === end) return;
+    const node = metrics.measure(source.subtext(offset, end));
+    if (firstNonWhitespaceRawColumn === Infinity)
+      firstNonWhitespaceRawColumn = rawLength + node.firstNonWhitespace;
+    const run = {
+      node,
+      rowDelta: from.row - startBufferRow,
+      column: from.column,
+      rawColumn: rawLength,
+      screenColumn: length,
+      textLength: node.length,
+    };
+    length = metrics.advance(node, length);
+    run.screenEndColumn = length;
+    runs.push(run);
+    tabs += node.tabs;
+    rawLength += node.length;
   };
   for (const fold of folds) {
     if (fold.newStart.row !== screenRow) continue;
@@ -2403,7 +2434,34 @@ function measureUnwrappedRow(state, screenRow) {
   append(position, Point(position.row, state.buffer.lineLengthForRow(position.row)));
   state.screenLineLengths.set(screenRow, length);
   state.tabCounts.set(screenRow, tabs);
-  const result = { length, tabs, rawLength, runs, firstNonWhitespaceRawColumn, longSourceLine };
+  const result = {
+    length,
+    tabs,
+    rawLength,
+    runs,
+    firstNonWhitespaceRawColumn,
+    longSourceLine,
+    *runsInRange(start, end) {
+      for (const run of runs) {
+        if (run.screenEndColumn <= start) continue;
+        if (run.screenColumn >= end) break;
+        if (run.fold) {
+          yield run;
+          continue;
+        }
+        for (const leaf of metrics.runs(run.node, run.screenColumn, start, end))
+          yield {
+            ...run,
+            column: run.column + leaf.offset,
+            rawColumn: run.rawColumn + leaf.offset,
+            screenColumn: leaf.column,
+            screenEndColumn: leaf.endColumn,
+            textLength: leaf.node.length,
+            text: leaf.node.text,
+          };
+      }
+    },
+  };
   // Ordinary rows need only their two numeric summaries. Large rows retain
   // bounded-chunk checkpoints so navigation and windows start near the target.
   if (rawLength > 8192 || longSourceLine) state.unwrappedRows.set(screenRow, result);
@@ -2478,11 +2536,8 @@ function translateUnwrappedTabs(layer, target, expanding, clipDirection) {
     let raw = 0;
     let screen = 0;
     let tabs = row.tabs;
-    const firstRow = layer.translateScreenPositionWithSpatialIndex(Point(target.row, 0)).row;
-    const source = layer.buffer.getTextSnapshot();
-    for (const run of row.runs) {
-      const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
-      const text = run.fold ? layer.foldCharacter : source.slice(offset, offset + run.textLength);
+    for (const run of row.runsInRange(0, Infinity)) {
+      const text = run.fold ? layer.foldCharacter : run.text;
       for (const character of text.split("")) {
         if (screen === target.column || tabs === 0)
           return Point(target.row, raw + target.column - screen);
@@ -2515,12 +2570,17 @@ function translateUnwrappedTabs(layer, target, expanding, clipDirection) {
   }
   const run = row.runs[Math.max(0, low - 1)];
   if (!run) return target;
-  let raw = run.rawColumn;
-  let screen = run.screenColumn;
-  const startBufferRow = layer.translateScreenPositionWithSpatialIndex(Point(target.row, 0)).row;
-  const source = layer.buffer.getTextSnapshot();
-  const offset = source.lineStart(startBufferRow + run.rowDelta) + run.column;
-  const text = run.fold ? layer.foldCharacter : source.slice(offset, offset + run.textLength);
+  const leaf = run.fold
+    ? null
+    : layer.layoutState.unwrappedMetrics.findLeaf(
+        run.node,
+        expanding ? target.column - run.rawColumn : target.column,
+        run.screenColumn,
+        !expanding,
+      );
+  let raw = run.rawColumn + (leaf?.offset ?? 0);
+  let screen = leaf ? leaf.column : run.screenColumn;
+  const text = leaf ? leaf.node.text : layer.foldCharacter;
   let previous = 0;
   for (let tab = text.indexOf("\t"); tab >= 0; tab = text.indexOf("\t", previous)) {
     const distance = tab - previous;

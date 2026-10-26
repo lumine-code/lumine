@@ -44,7 +44,7 @@ module.exports = class ScreenLineBuilder {
       layer.translateBufferPositionWithSpatialIndex(start).column <=
       metrics.firstNonWhitespaceRawColumn;
     let trailingColumn = null;
-    for (const run of metrics.runs) {
+    for (const run of metrics.runsInRange(startColumn, endColumn)) {
       if (run.screenEndColumn <= startColumn) continue;
       if (run.screenColumn >= endColumn) break;
       const row = firstBufferRow + run.rowDelta;
@@ -61,7 +61,7 @@ module.exports = class ScreenLineBuilder {
         continue;
       }
       const offset = source.lineStart(row) + run.column;
-      const text = source.slice(offset, offset + run.textLength);
+      const text = run.text ?? source.slice(offset, offset + run.textLength);
       let expanded = run.screenColumn;
       for (let index = 0; index < text.length && expanded < endColumn; index++) {
         const character = text[index];
@@ -79,21 +79,7 @@ module.exports = class ScreenLineBuilder {
         this.emitDecorationBoundaries(iterator);
         if (character !== " " && character !== "\t") leading = false;
         if ((character === " " || character === "\t") && trailingColumn == null) {
-          // Only inspect the suffix if a visible whitespace token needs this
-          // distinction. Bounded reads avoid forming the whole source line.
-          let column = layer.buffer.lineLengthForRow(row);
-          const base = source.lineStart(row);
-          while (column > 0) {
-            const from = Math.max(0, column - 32768);
-            const suffix = source.slice(base + from, base + column);
-            const nonWhitespace = /[^ \t](?=[ \t]*$)/.exec(suffix);
-            if (nonWhitespace) {
-              column = from + nonWhitespace.index + 1;
-              break;
-            }
-            column = from;
-          }
-          trailingColumn = column;
+          trailingColumn = layer.trailingWhitespaceStartForBufferRow(row);
         }
         let flags = 0;
         if (character === " " || character === "\t") {
