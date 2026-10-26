@@ -3,6 +3,7 @@
 const TextBuffer = require("../src/text-buffer");
 const fs = require("node:fs");
 const path = require("node:path");
+const v8 = require("node:v8");
 const clipboardBridge = require("../src/clipboard-bridge");
 const { nativeImage } = require("electron");
 const { MAX_STRING_LENGTH } = require("node:buffer").constants;
@@ -136,6 +137,8 @@ async function runBenchmark(config = {}) {
   const act = async (name, callback) => {
     const start = performance.now();
     const entry = { name, status: "running" };
+    const measureMemory = /temporary-copy|temporary-edit/.test(name);
+    if (measureMemory) entry.memoryBefore = process.memoryUsage();
     trace.push(entry);
     progress();
     try {
@@ -148,6 +151,7 @@ async function runBenchmark(config = {}) {
       throw error;
     } finally {
       entry.completeMs = performance.now() - start;
+      if (measureMemory) entry.memoryAfter = process.memoryUsage();
       progress();
     }
   };
@@ -268,6 +272,8 @@ async function runBenchmark(config = {}) {
     editor.getElement().focus();
     await settle();
     original = buffer.getTextSnapshot();
+    report.memoryAtOpen = process.memoryUsage();
+    report.heapLimit = v8.getHeapStatistics().heap_size_limit;
     report.input = {
       units: original.length,
       lines: original.lineCount,

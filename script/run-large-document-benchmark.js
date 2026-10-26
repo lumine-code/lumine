@@ -200,6 +200,7 @@ async function stopApplication(
 ) {
   const result = { closeAcknowledged: false, forced: false, exited: isExited() };
   if (client) {
+    client.beginShutdown?.();
     result.closeAcknowledged = await completesWithin(
       () => client.evaluate("setTimeout(() => lumine.window.close(), 0); true"),
       requestMs,
@@ -290,74 +291,126 @@ function freePort() {
   });
 }
 
-async function connect(port, timeoutMs) {
-  const deadline = Date.now() + 90000;
-  let target;
-  while (Date.now() < deadline) {
-    const targets = await fetch(`http://127.0.0.1:${port}/json/list`)
-      .then((response) => response.json())
-      .catch(() => []);
-    target = targets.find(
-      (item) =>
-        item.type === "page" &&
-        item.url.includes("index.html") &&
-        !item.url.startsWith("devtools://"),
-    );
-    if (target) break;
-    await sleep(100);
-  }
-  if (!target) throw new Error("BENCHMARK_WINDOW_START_TIMEOUT");
-  const socket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener(
-      "error",
-      () => reject(new Error("BENCHMARK_PROTOCOL_CONNECTION_FAILED")),
-      { once: true },
-    );
-  });
-  let sequence = 0;
+function protocolFailure(message, targetId, inspectorEvents = true) {
+  const params = message.params || {};
+  if (inspectorEvents && message.method === "Inspector.targetCrashed")
+    return { code: "BENCHMARK_RENDERER_CRASHED", event: message.method, reason: "CRASHED" };
+  if (inspectorEvents && message.method === "Inspector.detached")
+    return {
+      code: "BENCHMARK_RENDERER_DETACHED",
+      event: message.method,
+      reason: params.reason === "replaced_with_devtools" ? "REPLACED_WITH_DEVTOOLS" : "DETACHED",
+    };
+  if (!targetId || params.targetId !== targetId) return null;
+  if (message.method === "Target.targetDestroyed")
+    return { code: "BENCHMARK_RENDERER_DESTROYED", event: message.method, reason: "DESTROYED" };
+  if (message.method !== "Target.targetCrashed") return null;
+  const reasons = new Set([
+    "crashed",
+    "oom",
+    "killed",
+    "normal",
+    "abnormal",
+    "launch-failed",
+    "integrity-failure",
+    "memory-eviction",
+  ]);
+  return {
+    code: "BENCHMARK_RENDERER_CRASHED",
+    event: message.method,
+    reason: reasons.has(params.status)
+      ? params.status.toUpperCase().replaceAll("-", "_")
+      : "UNKNOWN",
+    ...(Number.isSafeInteger(params.errorCode) ? { exitCode: params.errorCode } : {}),
+  };
+}
+
+function createProtocolClient(
+  socket,
+  { timeoutMs, targetId, inspectorEvents = true, onFailure } = {},
+) {
+  let sequence = 0,
+    fatalError,
+    failure,
+    shuttingDown = false;
   const pending = new Map();
-  socket.addEventListener("message", ({ data }) => {
-    const message = JSON.parse(data),
-      request = pending.get(message.id);
+  const rejectPending = (error) => {
+    for (const request of pending.values()) {
+      clearTimeout(request.timer);
+      request.reject(error);
+    }
+    pending.clear();
+  };
+  const abort = (info) => {
+    const error = Object.assign(new Error(info.code), { code: info.code });
+    if (shuttingDown) {
+      rejectPending(error);
+      return;
+    }
+    if (!failure || info.code === "BENCHMARK_RENDERER_CRASHED") failure = info;
+    fatalError ??= error;
+    rejectPending(fatalError);
+    onFailure?.(info);
+  };
+  const onMessage = ({ data }) => {
+    let message;
+    try {
+      message = JSON.parse(data);
+      if (!message || typeof message !== "object" || Array.isArray(message)) throw new Error();
+    } catch {
+      abort({ code: "BENCHMARK_PROTOCOL_INVALID_MESSAGE", event: "message" });
+      return;
+    }
+    const info = protocolFailure(message, targetId, inspectorEvents);
+    if (info) {
+      abort(info);
+      return;
+    }
+    const request = pending.get(message.id);
     if (!request) return;
     pending.delete(message.id);
     clearTimeout(request.timer);
     if (message.error) request.reject(new Error("BENCHMARK_PROTOCOL_REQUEST_FAILED"));
     else request.resolve(message.result);
-  });
-  const rejectPending = () => {
-    for (const request of pending.values()) {
-      clearTimeout(request.timer);
-      request.reject(new Error("BENCHMARK_PROTOCOL_CLOSED"));
-    }
-    pending.clear();
   };
-  socket.addEventListener("close", rejectPending);
-  const send = (method, params = {}) =>
-    new Promise((resolve, reject) => {
+  const onClose = () => abort({ code: "BENCHMARK_PROTOCOL_CLOSED", event: "close" });
+  const onError = () => abort({ code: "BENCHMARK_PROTOCOL_FAILED", event: "error" });
+  socket.addEventListener("message", onMessage);
+  socket.addEventListener("close", onClose);
+  socket.addEventListener("error", onError);
+  const send = (method, params = {}, requestTimeout = timeoutMs) => {
+    if (fatalError) return Promise.reject(fatalError);
+    return new Promise((resolve, reject) => {
       const id = ++sequence;
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error("BENCHMARK_PROTOCOL_TIMEOUT"));
-      }, timeoutMs);
+      }, requestTimeout);
       pending.set(id, { resolve, reject, timer });
       try {
         socket.send(JSON.stringify({ id, method, params }));
       } catch {
-        pending.delete(id);
-        clearTimeout(timer);
-        reject(new Error("BENCHMARK_PROTOCOL_CLOSED"));
+        abort({ code: "BENCHMARK_PROTOCOL_CLOSED", event: "send" });
       }
     });
+  };
   return {
-    targetId: target.id,
+    targetId,
     send,
-    close: () => {
-      // Release request timers immediately, even if a hung renderer never
-      // completes the WebSocket closing handshake.
-      rejectPending();
+    abort,
+    beginShutdown() {
+      shuttingDown = true;
+    },
+    getDiagnostics: () => ({ ...(failure ? { failure: { ...failure } } : {}) }),
+    close() {
+      shuttingDown = true;
+      fatalError ??= new Error("BENCHMARK_PROTOCOL_CLOSED");
+      rejectPending(fatalError);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      socket.removeEventListener("error", onError);
+      // Consume a late socket error during the asynchronous closing handshake.
+      socket.addEventListener("error", () => {}, { once: true });
       socket.close();
     },
     async evaluate(expression) {
@@ -376,6 +429,146 @@ async function connect(port, timeoutMs) {
       return result.result.value;
     },
   };
+}
+
+async function openProtocolSocket(url) {
+  const socket = new WebSocket(url);
+  await new Promise((resolve, reject) => {
+    const done = (error) => {
+      clearTimeout(timer);
+      socket.removeEventListener("open", opened);
+      socket.removeEventListener("error", failed);
+      socket.removeEventListener("close", failed);
+      if (error) {
+        socket.addEventListener("error", () => {}, { once: true });
+        socket.close();
+        reject(error);
+      } else resolve();
+    };
+    const opened = () => done();
+    const failed = () => done(new Error("BENCHMARK_PROTOCOL_CONNECTION_FAILED"));
+    const timer = setTimeout(failed, 10000);
+    socket.addEventListener("open", opened, { once: true });
+    socket.addEventListener("error", failed, { once: true });
+    socket.addEventListener("close", failed, { once: true });
+  });
+  return socket;
+}
+
+function createStderrHints() {
+  let tail = "";
+  const hints = new Set();
+  return {
+    accept(chunk) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      for (let offset = 0; offset < bytes.length; offset += 4096) {
+        const text = tail + bytes.subarray(offset, offset + 4096).toString("utf8");
+        if (
+          /FATAL ERROR:[^\r\n]{0,256}(?:heap out of memory|Reached heap limit|Ineffective mark-compacts)/i.test(
+            text,
+          )
+        )
+          hints.add("V8_HEAP_OUT_OF_MEMORY");
+        if (/FATAL[^\r\n]{0,256}(?:OutOfMemory|out.of.memory)/i.test(text))
+          hints.add("NATIVE_OUT_OF_MEMORY");
+        if (/std::bad_alloc/.test(text)) hints.add("NATIVE_ALLOCATION_FAILURE");
+        tail = text.slice(-512);
+      }
+    },
+    snapshot: () => [...hints].sort(),
+  };
+}
+
+async function connect(
+  port,
+  timeoutMs,
+  { fetchImpl = fetch, openSocket = openProtocolSocket, monitorTimeoutMs = 5000 } = {},
+) {
+  const deadline = Date.now() + 90000;
+  let target;
+  while (Date.now() < deadline) {
+    const targets = await fetchImpl(`http://127.0.0.1:${port}/json/list`)
+      .then((response) => response.json())
+      .catch(() => []);
+    target = targets.find(
+      (item) =>
+        item.type === "page" &&
+        item.url.includes("index.html") &&
+        !item.url.startsWith("devtools://"),
+    );
+    if (target) break;
+    await sleep(100);
+  }
+  if (!target) throw new Error("BENCHMARK_WINDOW_START_TIMEOUT");
+  const client = createProtocolClient(await openSocket(target.webSocketDebuggerUrl), {
+    timeoutMs,
+    targetId: target.id,
+  });
+  let browser;
+  const monitoring = { inspector: false, browserTargets: false };
+  try {
+    // The browser survives a renderer OOM and reports the target's exit status.
+    // This independently covers a page socket that disappears with its process.
+    try {
+      const version = await fetchImpl(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(monitorTimeoutMs),
+      }).then((response) => response.json());
+      browser = createProtocolClient(await openSocket(version.webSocketDebuggerUrl), {
+        timeoutMs: monitorTimeoutMs,
+        targetId: target.id,
+        inspectorEvents: false,
+        onFailure: (info) => client.abort(info),
+      });
+      await browser.send("Target.setDiscoverTargets", { discover: true });
+      monitoring.browserTargets = true;
+      const { targetInfos } = await browser.send("Target.getTargets");
+      if (!targetInfos?.some((info) => info.targetId === target.id))
+        client.abort({
+          code: "BENCHMARK_RENDERER_DESTROYED",
+          event: "Target.getTargets",
+          reason: "MISSING_BEFORE_MONITOR_START",
+        });
+    } catch {
+      monitoring.browserTargets = false;
+      browser?.close();
+      browser = null;
+    }
+    try {
+      await client.send("Inspector.enable", {}, monitorTimeoutMs);
+      monitoring.inspector = true;
+    } catch {
+      // A page already dead before either subscription cannot replay its old
+      // crash event. A short owned-page handshake prevents entering a long
+      // Runtime.evaluate timeout for that stale target.
+      const info = client.getDiagnostics().failure ?? {
+        code: "BENCHMARK_RENDERER_UNAVAILABLE_DURING_MONITOR_START",
+        event: "Inspector.enable",
+        reason: "NO_HANDSHAKE",
+      };
+      client.abort(info);
+      throw Object.assign(new Error(info.code), { code: info.code });
+    }
+    if (!monitoring.inspector && !monitoring.browserTargets)
+      throw new Error("BENCHMARK_CRASH_MONITOR_UNAVAILABLE");
+    const close = client.close,
+      beginShutdown = client.beginShutdown,
+      diagnostics = client.getDiagnostics;
+    client.beginShutdown = () => {
+      browser?.beginShutdown();
+      beginShutdown();
+    };
+    client.close = () => {
+      browser?.close();
+      close();
+    };
+    client.getDiagnostics = () => ({ ...diagnostics(), monitoring });
+    return client;
+  } catch (error) {
+    error.rendererDiagnostics = { ...client.getDiagnostics(), monitoring };
+    browser?.close();
+    client.close();
+    throw error;
+  }
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -518,8 +711,9 @@ async function main(argv = process.argv.slice(2)) {
   );
   // App logs may contain local paths or document text. Do not persist or include
   // them in the shareable report; failures use bounded symbolic error codes.
+  const stderrHints = createStderrHints();
   child.stdout.resume();
-  child.stderr.resume();
+  child.stderr.on("data", (chunk) => stderrHints.accept(chunk));
   let exited = false,
     client;
   const childExit = new Promise((resolve) => {
@@ -574,6 +768,7 @@ async function main(argv = process.argv.slice(2)) {
   } catch (error) {
     report.status = "failed";
     report.failure = { code: symbolicCode(error) };
+    if (error.rendererDiagnostics) report.rendererDiagnostics = error.rendererDiagnostics;
     recoverProgress(report, config.progressFile);
   } finally {
     report.cleanup = await stopApplication({ client, child, childExit, isExited: () => exited });
@@ -587,6 +782,10 @@ async function main(argv = process.argv.slice(2)) {
     // Verification is evidence even when the renderer rejected or crashed.
     // Run it after shutdown so deferred save/teardown work cannot escape it.
     await finalizeEvidence(report, { inputFile: config.inputFile, inputBefore, sourceLocations });
+    report.rendererDiagnostics = {
+      ...(client?.getDiagnostics() ?? report.rendererDiagnostics),
+      stderrHints: stderrHints.snapshot(),
+    };
     if (report.status !== "complete") process.exitCode = 1;
     const temporaryResult = resultFile + ".tmp";
     fs.writeFileSync(temporaryResult, JSON.stringify(report, null, 2) + "\n");
@@ -610,4 +809,8 @@ module.exports = {
   captureInputState,
   finalizeEvidence,
   stopApplication,
+  protocolFailure,
+  createProtocolClient,
+  createStderrHints,
+  connect,
 };
