@@ -230,6 +230,7 @@ module.exports = class GitRepository {
     this.snapshotRefreshCoalescer = { flight: null, trailing: null };
     this.snapshotRefreshTimer = null;
     this.scheduledSnapshotKinds = new Set();
+    this.debouncedSnapshotWaiters = new Map();
     this.backgroundSnapshotWarningShown = false;
     this.repositoryUnavailableError = null;
     this.repositoryReadControllers = new Set();
@@ -259,6 +260,9 @@ module.exports = class GitRepository {
     this.repositoryReadControllers.clear();
     this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.flight, pendingError);
     this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.trailing, pendingError);
+    for (const kind of this.debouncedSnapshotWaiters.keys()) {
+      for (const waiter of this.takeDebouncedSnapshotWaiters(kind)) waiter.reject(pendingError);
+    }
     this.descriptor = null;
     this.operations = null;
     this.gitHostClient = null;
@@ -1009,19 +1013,6 @@ module.exports = class GitRepository {
     if (options.signal?.aborted) return Promise.reject(snapshotAbortError());
     const state = this.snapshotRefreshCoalescer;
 
-    const merge = (request, requestedKind, requestedOptions) => {
-      request.mask.add(requestedKind);
-      if (requestedKind === "status") {
-        const includeIgnored = requestedOptions.includeIgnored !== false;
-        request.statusIncludeIgnored =
-          request.statusIncludeIgnored == null
-            ? includeIgnored
-            : request.statusIncludeIgnored || includeIgnored;
-        request.options.includeIgnored = request.statusIncludeIgnored;
-      }
-      if (requestedOptions.priority === "interactive") request.options.priority = "interactive";
-    };
-
     const begin = (request) => {
       state.flight = request;
       request.promise = Promise.resolve()
@@ -1067,7 +1058,7 @@ module.exports = class GitRepository {
     }
 
     if (!state.flight.started) {
-      merge(state.flight, kind, options);
+      this.mergeSnapshotRefreshOptions(state.flight, kind, options);
       const result = this.waitForSnapshotRequest(state.flight, kind, options.signal);
       this.absorbScheduledSnapshotRefresh(state.flight, kind);
       return result;
@@ -1086,7 +1077,7 @@ module.exports = class GitRepository {
         promise: null,
       };
     } else {
-      merge(state.trailing, kind, options);
+      this.mergeSnapshotRefreshOptions(state.trailing, kind, options);
     }
 
     const result = this.waitForSnapshotRequest(state.trailing, kind, options.signal);
@@ -1094,27 +1085,107 @@ module.exports = class GitRepository {
     return result;
   }
 
+  mergeSnapshotRefreshOptions(request, kind, options) {
+    request.mask.add(kind);
+    if (kind === "status") {
+      const includeIgnored = options.includeIgnored !== false;
+      request.statusIncludeIgnored =
+        request.statusIncludeIgnored == null
+          ? includeIgnored
+          : request.statusIncludeIgnored || includeIgnored;
+      request.options.includeIgnored = request.statusIncludeIgnored;
+    }
+    if (options.priority === "interactive") request.options.priority = "interactive";
+  }
+
+  debounceSnapshotRefresh(kind, options) {
+    if (options.signal?.aborted) return Promise.reject(snapshotAbortError());
+    if (this.repositoryUnavailableError) return Promise.reject(this.repositoryUnavailableError);
+    if (this.isDestroyed()) return Promise.reject(repositoryDestroyedError());
+    return new Promise((resolve, reject) => {
+      let waiters = this.debouncedSnapshotWaiters.get(kind);
+      if (!waiters) {
+        waiters = new Set();
+        this.debouncedSnapshotWaiters.set(kind, waiters);
+      }
+      const { debounce: _debounce, signal, ...requestOptions } = options;
+      const waiter = { resolve, reject, signal, options: requestOptions, onAbort: null };
+      waiter.onAbort = () => {
+        if (!waiters.delete(waiter)) return;
+        signal.removeEventListener("abort", waiter.onAbort);
+        if (waiters.size === 0) this.debouncedSnapshotWaiters.delete(kind);
+        this.cancelUnneededSnapshotRefreshTimer();
+        reject(snapshotAbortError());
+      };
+      waiters.add(waiter);
+      signal?.addEventListener("abort", waiter.onAbort, { once: true });
+      this.ensureSnapshotRefreshTimer(
+        kind === "status" ? this.statusSnapshotDebounceMs : this.refsSnapshotDebounceMs,
+      );
+    });
+  }
+
+  takeDebouncedSnapshotWaiters(kind) {
+    const waiters = this.debouncedSnapshotWaiters.get(kind);
+    if (!waiters) return new Set();
+    this.debouncedSnapshotWaiters.delete(kind);
+    for (const waiter of waiters) {
+      waiter.signal?.removeEventListener("abort", waiter.onAbort);
+    }
+    return waiters;
+  }
+
+  dispatchDebouncedSnapshotRefresh(kind) {
+    const waiters = this.debouncedSnapshotWaiters.get(kind);
+    const waiter = waiters?.values().next().value;
+    if (!waiter) return;
+    waiters.delete(waiter);
+    if (waiters.size === 0) this.debouncedSnapshotWaiters.delete(kind);
+    waiter.signal?.removeEventListener("abort", waiter.onAbort);
+    // The first caller starts or joins the coordinator; it absorbs the other
+    // deferred callers synchronously, before worker dispatch can begin.
+    this.coalesceSnapshotRefresh(kind, { ...waiter.options, signal: waiter.signal }).then(
+      waiter.resolve,
+      waiter.reject,
+    );
+  }
+
   // An explicit refresh already starts after the pending background trigger,
   // so it can fulfill that trigger without another run when the timer fires.
   // Keep background interest as its own waiter: aborting the explicit caller
   // must not cancel the update that existing snapshot subscribers requested.
   absorbScheduledSnapshotRefresh(request, kind) {
-    if (!this.scheduledSnapshotKinds.has(kind)) return;
+    const backgroundRequested = this.scheduledSnapshotKinds.has(kind);
+    const waiters = this.takeDebouncedSnapshotWaiters(kind);
+    if (!backgroundRequested && waiters.size === 0) return;
     this.cancelScheduledSnapshotRefresh(kind);
-    if (kind === "status") {
-      request.statusIncludeIgnored = true;
-      request.options.includeIgnored = true;
+    if (backgroundRequested && kind === "status") {
+      this.mergeSnapshotRefreshOptions(request, kind, { includeIgnored: true });
     }
-    this.waitForSnapshotRequest(request, kind).catch((error) => {
-      if (request.backgroundErrorReported) return;
-      request.backgroundErrorReported = true;
-      this.reportBackgroundSnapshotError(error);
-    });
+    for (const waiter of waiters) {
+      this.mergeSnapshotRefreshOptions(request, kind, waiter.options);
+      this.waitForSnapshotRequest(request, kind, waiter.signal).then(waiter.resolve, waiter.reject);
+    }
+    if (backgroundRequested) {
+      this.waitForSnapshotRequest(request, kind).catch((error) => {
+        if (request.backgroundErrorReported) return;
+        request.backgroundErrorReported = true;
+        this.reportBackgroundSnapshotError(error);
+      });
+    }
   }
 
   cancelScheduledSnapshotRefresh(kind) {
     this.scheduledSnapshotKinds.delete(kind);
-    if (this.scheduledSnapshotKinds.size === 0 && this.snapshotRefreshTimer != null) {
+    this.cancelUnneededSnapshotRefreshTimer();
+  }
+
+  cancelUnneededSnapshotRefreshTimer() {
+    if (
+      this.scheduledSnapshotKinds.size === 0 &&
+      this.debouncedSnapshotWaiters.size === 0 &&
+      this.snapshotRefreshTimer != null
+    ) {
       clearTimeout(this.snapshotRefreshTimer);
       this.snapshotRefreshTimer = null;
     }
@@ -1159,15 +1230,26 @@ module.exports = class GitRepository {
 
   scheduleSnapshotRefresh(kind, debounceMs) {
     this.scheduledSnapshotKinds.add(kind);
+    this.ensureSnapshotRefreshTimer(debounceMs);
+  }
+
+  ensureSnapshotRefreshTimer(debounceMs) {
     if (this.snapshotRefreshTimer != null) return;
     this.snapshotRefreshTimer = setTimeout(() => {
       this.snapshotRefreshTimer = null;
       if (this.isDestroyed()) return;
-      const kinds = this.scheduledSnapshotKinds;
-      this.scheduledSnapshotKinds = new Set();
+      const kinds = new Set([
+        ...this.scheduledSnapshotKinds,
+        ...this.debouncedSnapshotWaiters.keys(),
+      ]);
       const refreshes = [];
-      if (kinds.has("status")) refreshes.push(this.refreshStatusSnapshot());
-      if (kinds.has("refs")) refreshes.push(this.refreshRefsSnapshot());
+      for (const kind of kinds) {
+        if (this.scheduledSnapshotKinds.delete(kind)) {
+          refreshes.push(this.coalesceSnapshotRefresh(kind));
+        } else {
+          this.dispatchDebouncedSnapshotRefresh(kind);
+        }
+      }
       Promise.all(refreshes).catch((error) => this.reportBackgroundSnapshotError(error));
     }, debounceMs);
   }
@@ -1481,9 +1563,11 @@ module.exports = class GitRepository {
    * @param {Object} [options] - Snapshot read options.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @param {Boolean} [options.includeIgnored=true] - Include ignored paths in the status snapshot.
+   * @param {Boolean} [options.debounce=false] - Coalesce filesystem triggers through the background debounce window while awaiting a fresh snapshot.
    * @returns {Promise<Object>} The refreshed immutable status snapshot.
    */
   refreshStatusSnapshot(options = {}) {
+    if (options.debounce) return this.debounceSnapshotRefresh("status", options);
     return this.coalesceSnapshotRefresh("status", options);
   }
 
@@ -1588,9 +1672,11 @@ module.exports = class GitRepository {
    * at most one in-flight and one trailing worker request.
    * @param {Object} [options] - Snapshot read options.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @param {Boolean} [options.debounce=false] - Coalesce filesystem triggers through the background debounce window while awaiting a fresh snapshot.
    * @returns {Promise<Object>} The refreshed immutable refs snapshot.
    */
   refreshRefsSnapshot(options = {}) {
+    if (options.debounce) return this.debounceSnapshotRefresh("refs", options);
     return this.coalesceSnapshotRefresh("refs", options);
   }
 
