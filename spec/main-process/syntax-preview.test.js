@@ -361,12 +361,18 @@ test("a real bounded JavaScript preview preserves local scope coordinates and le
     grammar,
     grammars: host.grammars,
     config: host.config,
+    queryBudget: { now: () => 0 },
   });
   source.setLanguageMode(exact);
   const previews = new SyntaxPreview({
     grammars: host.grammars,
     config: host.config,
     timeoutMs: 1000,
+    createMode: (options) =>
+      new LanguageMode({
+        ...options,
+        queryBudget: { ...options.queryBudget, now: () => 0 },
+      }),
   });
   try {
     await exact.ready;
@@ -430,12 +436,18 @@ test("real HTML previews keep JavaScript injections inside their private local d
     grammar,
     grammars: host.grammars,
     config: host.config,
+    queryBudget: { now: () => 0 },
   });
   source.setLanguageMode(exact);
   const previews = new SyntaxPreview({
     grammars: host.grammars,
     config: host.config,
     timeoutMs: 1000,
+    createMode: (options) =>
+      new LanguageMode({
+        ...options,
+        queryBudget: { ...options.queryBudget, now: () => 0 },
+      }),
   });
   try {
     await exact.ready;

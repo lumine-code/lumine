@@ -295,6 +295,9 @@ test("real JavaScript indentation gives the same plan through synchronous and st
     await host.dispatch("initialize", data);
     await host.dispatch("settle", data);
     const { mode, buffer } = host.sessions.get(1);
+    // Compare exact plans independently of OS scheduling; query timeout and
+    // native-interruption behavior has separate advancing-clock tests.
+    mode.queryBudget = { now: () => 0 };
     mode.ensureQueriesForLayersSync("indentsQuery");
     assert.ok(
       mode.rootLanguageLayer.queries.indentsQuery,

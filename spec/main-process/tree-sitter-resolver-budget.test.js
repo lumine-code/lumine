@@ -38,7 +38,7 @@ function fixture(text, querySource, budget = {}) {
     getExtent: () => buffer.getRange(),
     foldNodesToInvalidateOnChange: new Set(),
     scopeResolver: { reset() {}, store: () => true, shouldInvalidateFoldOnChange: () => true },
-    languageMode: { queryBudget: { timeoutMs: 1000, ...budget } },
+    languageMode: { queryBudget: { now: () => 0, ...budget } },
   };
   return {
     buffer,
@@ -208,7 +208,7 @@ test("custom indent predicate failures reset scope state and emit no suggestion"
 });
 
 test("indent budget wrappers preserve synchronous answers and deferred parse promises", async () => {
-  const resolver = new IndentResolver({}, { queryBudget: { timeoutMs: 1000 } });
+  const resolver = new IndentResolver({}, { queryBudget: { now: () => 0 } });
   let events = 0;
   resolver.emitter.on("did-suggest-indent", () => events++);
   resolver.computeSuggestedIndentForBufferRow = () => {

@@ -30,7 +30,9 @@ async function fixture(text = "[1,2,3]", language = "json") {
   await host.dispatch("initialize", data);
   await host.dispatch("settle", data);
   const { buffer, mode } = host.sessions.get(1);
-  mode.queryBudget = { timeoutMs: 1000 };
+  // Structural/semantic fixtures use a deterministic clock. Timeout tests
+  // below replace it with an advancing clock and retain the real WASM hooks.
+  mode.queryBudget = { now: () => 0 };
   const layer = mode.rootLanguageLayer;
   const queries = [];
   return {

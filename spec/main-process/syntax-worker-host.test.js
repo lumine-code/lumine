@@ -49,12 +49,12 @@ test("package unload evicts syntax helpers reached through a development link", 
   }
 });
 
-test("large fold and indentation replies stream bounded packets and stop on invalidation", async (t) => {
+test("large fold and indentation replies stream bounded packets and stop on invalidation", async () => {
   const { host, data } = await setup("function example() {\n  work();\n}\n".repeat(300));
   try {
     await host.dispatch("settle", data);
     // Keep transport invariants independent of a loaded CI runner's clock.
-    t.mock.method(performance, "now", () => 0);
+    host.sessions.get(data.session).mode.queryBudget = { now: () => 0 };
     for (const [method, args, kind] of [
       ["getFoldableRanges", [2], "array"],
       ["suggestedIndentForBufferRows", [0, 899, 2], "map"],
@@ -130,13 +130,13 @@ test("multipart edits remain invisible until commit and closing releases waiting
   }
 });
 
-test("dense highlighting is transferred in bounded packets and obsolete streams stop", async (t) => {
+test("dense highlighting is transferred in bounded packets and obsolete streams stop", async () => {
   const { host, data } = await setup("const value = 1;".repeat(300));
   try {
     await host.dispatch("settle", data);
     // This checks packet cardinality and invalidation, not machine speed.
     // Query deadline behavior has its own deterministic clock-driven tests.
-    t.mock.method(performance, "now", () => 0);
+    host.sessions.get(data.session).mode.queryBudget = { now: () => 0 };
     let packets = 0,
       events = 0;
     const qualities = [];
@@ -243,6 +243,7 @@ test("indentation iterators preserve virtual indentation across acknowledged wor
   try {
     await host.dispatch("settle", data);
     const session = host.sessions.get(data.session);
+    session.mode.queryBudget = { now: () => 0 };
     const expected = session.mode.suggestedIndentForBufferRows(0, 299, 2);
     const packets = [];
     const reply = await host.dispatch(
@@ -287,6 +288,13 @@ test("provisional view packets remain separate from exact semantics and yield to
     await host.dispatch("settle", data);
     const session = host.sessions.get(data.session);
     const mode = session.mode;
+    mode.queryBudget = { now: () => 0 };
+    const createPreview = host.previews.createMode;
+    host.previews.createMode = (options) =>
+      createPreview({
+        ...options,
+        queryBudget: { ...options.queryBudget, now: () => 0 },
+      });
     let settle;
     const settlement = new Promise((resolve) => {
       settle = resolve;
@@ -342,6 +350,9 @@ test("session invalidation releases indentation waiting for an unacknowledged pa
     delivered = resolve;
   });
   try {
+    await host.dispatch("settle", data);
+    const session = host.sessions.get(data.session);
+    session.mode.queryBudget = { now: () => 0 };
     const pending = host.dispatch(
       "indent",
       { ...data, ranges: [[0, 2]], tabLength: 2, options: { batchSize: 1 } },
@@ -354,7 +365,6 @@ test("session invalidation releases indentation waiting for an unacknowledged pa
     );
     const rejection = assert.rejects(pending, { name: "AbortError" });
     await firstPacket;
-    const session = host.sessions.get(data.session);
     host.abortJobs(session);
     await rejection;
     assert.equal(session.jobs.size, 0);

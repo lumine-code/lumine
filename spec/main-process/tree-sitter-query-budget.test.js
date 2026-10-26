@@ -11,6 +11,9 @@ const {
 } = require("../../src/tree-sitter-query-budget");
 
 let language;
+// Semantic and structural-limit tests do not measure host scheduling. Tests
+// for elapsed budgets below provide their own advancing clocks explicitly.
+const semanticClock = () => 0;
 before(async () => {
   await Parser.init();
   language = await Language.load(
@@ -40,7 +43,7 @@ for (const method of ["captures", "matches"]) {
       (query, tree) => {
         const expected = query[method](tree.rootNode);
         const predicates = query.textPredicates;
-        const actual = runQuery(query, tree.rootNode, {}, { method, timeoutMs: 1000 });
+        const actual = runQuery(query, tree.rootNode, {}, { method, now: semanticClock });
         assert.equal(actual.complete, true);
         assert.deepEqual(actual.results, expected);
         assert.equal(query.textPredicates, predicates);
@@ -57,7 +60,7 @@ for (const method of ["captures", "matches"]) {
         throw new Error("oversized predicate must not read text");
       };
       const predicates = query.textPredicates;
-      const actual = runQuery(query, tree.rootNode, {}, { method, timeoutMs: 1000 });
+      const actual = runQuery(query, tree.rootNode, {}, { method, now: semanticClock });
       assert.equal(actual.complete, false);
       assert.equal(actual.reason, "predicate-text-limit");
       assert.equal(actual.results, null);
@@ -78,7 +81,7 @@ for (const method of ["captures", "matches"]) {
           assert.ok(index <= 5, "only the small key is read");
           return originalRead(index, ...args);
         };
-        const result = runQuery(query, tree.rootNode, {}, { method, timeoutMs: 1000 });
+        const result = runQuery(query, tree.rootNode, {}, { method, now: semanticClock });
         assert.equal(result.complete, true);
         assert.ok(reads > 0);
         assert.equal(result.captureCount, 3);
@@ -102,14 +105,14 @@ for (const method of ["captures", "matches"]) {
         throw failure;
       };
       assert.throws(
-        () => runQuery(query, tree.rootNode, {}, { method, timeoutMs: 1000 }),
+        () => runQuery(query, tree.rootNode, {}, { method, now: semanticClock }),
         (error) => error === failure,
       );
       assert.equal(predicateReturned, true);
       assert.equal(query.textPredicates, predicates);
       tree.textCallback = originalRead;
       assert.equal(
-        runQuery(query, tree.rootNode, {}, { method, timeoutMs: 1000 }).results.length,
+        runQuery(query, tree.rootNode, {}, { method, now: semanticClock }).results.length,
         1,
       );
     });
@@ -121,7 +124,7 @@ test("in-progress match limits do not cap returned captures", () => {
     `[${Array.from({ length: 100 }, (_, index) => index).join(",")}]`,
     "(number) @n",
     (query, tree) => {
-      const result = runQuery(query, tree.rootNode, { matchLimit: 1 }, { timeoutMs: 1000 });
+      const result = runQuery(query, tree.rootNode, { matchLimit: 1 }, { now: semanticClock });
       assert.equal(result.complete, true);
       assert.equal(result.captureCount, 100);
       assert.equal(query.didExceedMatchLimit(), false);
@@ -134,7 +137,7 @@ test("a real match-limit overflow cannot masquerade as a complete query", () => 
     `[${Array.from({ length: 30 }, (_, index) => index).join(",")}]`,
     "(array (number) @a (number) @b)",
     (query, tree) => {
-      const result = runQuery(query, tree.rootNode, { matchLimit: 1 }, { timeoutMs: 1000 });
+      const result = runQuery(query, tree.rootNode, { matchLimit: 1 }, { now: semanticClock });
       assert.equal(query.didExceedMatchLimit(), true);
       assert.equal(result.complete, false);
       assert.equal(result.reason, "match-limit");
@@ -148,14 +151,14 @@ test("capture limits distinguish incomplete exact answers from explicitly partia
     `[${Array.from({ length: 1000 }, (_, index) => index).join(",")}]`,
     "(number) @n",
     (query, tree) => {
-      const exact = runQuery(query, tree.rootNode, {}, { maxCaptures: 20, timeoutMs: 1000 });
+      const exact = runQuery(query, tree.rootNode, {}, { maxCaptures: 20, now: semanticClock });
       assert.equal(exact.results, null);
       assert.equal(exact.reason, "capture-limit");
       const painting = runQuery(
         query,
         tree.rootNode,
         {},
-        { maxCaptures: 20, timeoutMs: 1000, allowPartial: true },
+        { maxCaptures: 20, now: semanticClock, allowPartial: true },
       );
       assert.equal(painting.complete, false);
       assert.equal(painting.results.length, 20);
@@ -170,7 +173,7 @@ test("a match remains atomic when it contains too many captures", () => {
       query,
       tree.rootNode,
       {},
-      { method: "matches", maxCaptures: 1, timeoutMs: 1000, allowPartial: true },
+      { method: "matches", maxCaptures: 1, now: semanticClock, allowPartial: true },
     );
     assert.equal(result.complete, false);
     assert.equal(result.reason, "capture-limit");
@@ -184,7 +187,7 @@ test("result limits are independent of capture limits", () => {
       query,
       tree.rootNode,
       {},
-      { maxResults: 2, maxCaptures: 10, timeoutMs: 1000, allowPartial: true },
+      { maxResults: 2, maxCaptures: 10, now: semanticClock, allowPartial: true },
     );
     assert.equal(result.reason, "result-limit");
     assert.equal(result.results.length, 2);
@@ -197,7 +200,7 @@ test("filtered candidates after an exact result limit do not falsely mark comple
       query,
       tree.rootNode,
       {},
-      { maxResults: 1, maxCaptures: 1, timeoutMs: 1000 },
+      { maxResults: 1, maxCaptures: 1, now: semanticClock },
     );
     assert.equal(result.complete, true);
     assert.equal(result.results.length, 1);
@@ -230,7 +233,7 @@ test("native query progress stops on cancellation and defers callback failures",
             return true;
           },
         },
-        { timeoutMs: 1000 },
+        { now: semanticClock },
       );
       assert.ok(progress > 0);
       assert.equal(cancelled.reason, "cancelled");
@@ -253,7 +256,7 @@ test("native query progress stops on cancellation and defers callback failures",
                 throw error;
               },
             },
-            { timeoutMs: 1000 },
+            { now: semanticClock },
           ),
         (value) => value === error,
       );
@@ -466,25 +469,32 @@ test("custom predicate budgets preserve exact semantics and restore nested conte
       checkPredicateTextLength(20);
       const inner = withPredicateTextBudget(() => checkPredicateTextLength(20), {
         maxPredicateTextLength: 10,
+        now: semanticClock,
       });
       assert.equal(inner.complete, false);
       assert.equal(inner.reason, "predicate-text-limit");
       checkPredicateTextLength(20);
       return false;
     },
-    { maxPredicateTextLength: 30 },
+    { maxPredicateTextLength: 30, now: semanticClock },
   );
   assert.deepEqual(outer, { value: false, complete: true, reason: null });
   checkPredicateTextLength(Number.MAX_SAFE_INTEGER);
   const error = new Error("broken custom predicate");
   assert.throws(
     () =>
-      withPredicateTextBudget(() => {
-        throw error;
-      }),
+      withPredicateTextBudget(
+        () => {
+          throw error;
+        },
+        { now: semanticClock },
+      ),
     (value) => value === error,
   );
-  assert.throws(() => withPredicateTextBudget(() => Promise.resolve()), /synchronous/);
+  assert.throws(
+    () => withPredicateTextBudget(() => Promise.resolve(), { now: semanticClock }),
+    /synchronous/,
+  );
 });
 
 test("budget validation rejects accidental unbounded execution", () => {
