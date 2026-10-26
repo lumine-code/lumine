@@ -1,6 +1,6 @@
 # Large files and grammars
 
-Lumine checks file opening and automatic grammar loading separately. `core.warnOnLargeFileLimit` asks before opening a text file at or above 40 MB by default. Cancelling leaves that file unopened. `core.grammarLoadLimit` defaults to 100 MB: after opening is accepted, a file at or above this second limit uses **None** without constructing a Tree-sitter parser or sending its contents to the syntax worker. These settings measure a megabyte as 1,048,576 bytes; setting the grammar limit to `0` disables automatic grammar suppression.
+Lumine checks file opening and automatic grammar loading separately. Both limits default to 40 MB. `core.warnOnLargeFileLimit` asks before opening a text file at or above that size. Cancelling leaves that file unopened. After opening is accepted, `core.grammarLoadLimit` selects **None** for a file at or above its limit, without constructing a Tree-sitter parser or sending its contents to the syntax worker. The settings remain independent and measure a megabyte as 1,048,576 bytes; setting the grammar limit to `0` disables automatic grammar suppression.
 
 The warning's **Enable Grammar** button selects the detected grammar for that buffer. The grammar selector also offers **None**, **Auto Detect**, and **Plain Text**. None disables syntax analysis; Plain Text is a Tree-sitter grammar and can provide text syntax and embedded language features. Auto Detect explicitly returns to automatic language selection, including for the currently open large file.
 

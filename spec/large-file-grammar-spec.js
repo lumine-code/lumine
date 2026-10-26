@@ -15,7 +15,7 @@ describe("Large file grammar policy", () => {
       const pkg = await lumine.packages.activatePackage(name);
       await pkg.resourceLoadPromise;
     }
-    fileSize = 100 * megabyte;
+    fileSize = 40 * megabyte;
     actualGetSize = fs.getSizeSync.bind(fs);
     spyOn(fs, "getSizeSync").and.callFake((filePath) =>
       filePath?.endsWith("sample.js") ? fileSize : actualGetSize(filePath),
@@ -28,9 +28,9 @@ describe("Large file grammar policy", () => {
       .getNotifications()
       .find((notification) => notification.getMessage() === "Large file opened without a grammar");
 
-  it("keeps separate 40 MB opening and 100 MB grammar defaults", () => {
+  it("keeps independent opening and grammar limits with 40 MB defaults", () => {
     expect(lumine.config.get("core.warnOnLargeFileLimit")).toBe(40);
-    expect(lumine.config.get("core.grammarLoadLimit")).toBe(100);
+    expect(lumine.config.get("core.grammarLoadLimit")).toBe(40);
   });
 
   it("selects None before creating any syntax mode at the grammar limit", async () => {
@@ -39,7 +39,7 @@ describe("Large file grammar policy", () => {
 
     expect(lumine.applicationDelegate.confirm).toHaveBeenCalledTimes(1);
     expect(lumine.applicationDelegate.confirm.calls.mostRecent().args[0].detail).toContain(
-      "100.0 MB",
+      "40.0 MB",
     );
     expect(editor.getGrammar()).toBe(lumine.grammars.nullGrammar);
     expect(editor.getBuffer().getLanguageMode().constructor).toBe(NullLanguageMode);
@@ -48,7 +48,7 @@ describe("Large file grammar policy", () => {
       lumine.grammars.nullGrammar.scopeName,
     );
     expect(warning().getType()).toBe("warning");
-    expect(warning().getDetail()).toContain("100.0 MB");
+    expect(warning().getDetail()).toContain("40.0 MB");
     const count = lumine.notifications.getNotifications().length;
     const split = lumine.workspace.buildTextEditor({ buffer: editor.getBuffer() });
     try {
@@ -61,8 +61,17 @@ describe("Large file grammar policy", () => {
     }
   });
 
-  it("parses files below the grammar limit after opening confirmation", async () => {
+  it("parses files immediately below the default limits without an opening warning", async () => {
     fileSize--;
+    const editor = await lumine.workspace.open("sample.js");
+    expect(lumine.applicationDelegate.confirm).not.toHaveBeenCalled();
+    expect(editor.getGrammar().scopeName).toBe("source.js");
+    expect(warning()).toBeUndefined();
+  });
+
+  it("can set the grammar limit independently above the opening limit", async () => {
+    lumine.config.set("core.grammarLoadLimit", 80);
+    fileSize = 60 * megabyte;
     const editor = await lumine.workspace.open("sample.js");
     expect(lumine.applicationDelegate.confirm).toHaveBeenCalledTimes(1);
     expect(editor.getGrammar().scopeName).toBe("source.js");
