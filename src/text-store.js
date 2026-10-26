@@ -20,34 +20,82 @@ function encodingName(value) {
   return encoding;
 }
 
-async function readSource(source, encoding) {
-  const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
-  let text = new PieceTree();
-  const stream = typeof source === "string" ? fs.createReadStream(source) : source;
-  for await (const chunk of stream) {
-    const decoded = decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    if (decoded) text = text.replace(text.length, text.length, decoded);
-  }
-  const tail = decoder.end();
-  if (tail) text = text.replace(text.length, text.length, tail);
-  return text;
+function snapshotMatcher(snapshot) {
+  const read = snapshot.reader(32768);
+  return (text, offset) => {
+    if (offset + text.length > snapshot.length) return false;
+    let index = 0;
+    while (index < text.length) {
+      const expected = read(offset + index);
+      if (!expected) return false;
+      const count = Math.min(expected.length, text.length - index);
+      if (expected.slice(0, count) !== text.slice(index, index + count)) return false;
+      index += count;
+    }
+    return true;
+  };
 }
 
-function readSourceSync(filePath, encoding) {
+// Decode once, retaining the saved immutable backing buffers wherever the new
+// stream matches them. An unchanged reload must not allocate a third complete
+// document while the old base, current edit and undo history remain alive.
+function sourceAccumulator(reference) {
+  const matches = snapshotMatcher(reference);
+  let offset = 0,
+    text = null;
+  return {
+    append(decoded) {
+      if (!decoded) return;
+      const end = offset + decoded.length;
+      const same = matches(decoded, offset);
+      if (!same && text === null) text = reference.subtext(0, offset);
+      if (text !== null)
+        text = text.replace(
+          text.length,
+          text.length,
+          same ? reference.subtext(offset, end) : decoded,
+        );
+      offset = end;
+    },
+    finish() {
+      return text ?? (offset === reference.length ? reference : reference.subtext(0, offset));
+    },
+  };
+}
+
+function* decodeSourceChunk(decoder, chunk) {
+  const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  // Custom streams need not honor fs.createReadStream's default chunk size.
+  // Bound each decoded string before allocating it, preserving decoder state
+  // across byte boundaries inside multibyte characters.
+  for (let offset = 0; offset < bytes.length; offset += 65536)
+    yield decoder.write(bytes.subarray(offset, offset + 65536));
+}
+
+async function readSource(source, encoding, reference) {
+  const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
+  const accumulator = sourceAccumulator(reference);
+  const stream = typeof source === "string" ? fs.createReadStream(source) : source;
+  for await (const chunk of stream)
+    for (const decoded of decodeSourceChunk(decoder, chunk)) accumulator.append(decoded);
+  accumulator.append(decoder.end());
+  return accumulator.finish();
+}
+
+function readSourceSync(filePath, encoding, reference) {
   const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
   const chunk = Buffer.allocUnsafe(64 * 1024);
   const fd = fs.openSync(filePath, "r");
-  let text = new PieceTree();
+  const accumulator = sourceAccumulator(reference);
   try {
     for (;;) {
       const count = fs.readSync(fd, chunk, 0, chunk.length, null);
       if (!count) break;
       const decoded = decoder.write(chunk.subarray(0, count));
-      if (decoded) text = text.replace(text.length, text.length, decoded);
+      accumulator.append(decoded);
     }
-    const tail = decoder.end();
-    if (tail) text = text.replace(text.length, text.length, tail);
-    return text;
+    accumulator.append(decoder.end());
+    return accumulator.finish();
   } finally {
     fs.closeSync(fd);
   }
@@ -56,24 +104,16 @@ function readSourceSync(filePath, encoding) {
 async function sourceMatchesSnapshot(source, encoding, snapshot) {
   const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
   const stream = typeof source === "string" ? fs.createReadStream(source) : source;
-  const read = snapshot.reader(32768);
+  const matches = snapshotMatcher(snapshot);
   let offset = 0;
-  const matches = (text) => {
-    let index = 0;
-    while (index < text.length) {
-      const expected = read(offset);
-      if (!expected) return false;
-      const count = Math.min(expected.length, text.length - index);
-      if (expected.slice(0, count) !== text.slice(index, index + count)) return false;
-      index += count;
-      offset += count;
-    }
+  const accept = (text) => {
+    if (!matches(text, offset)) return false;
+    offset += text.length;
     return true;
   };
-  for await (const chunk of stream) {
-    if (!matches(decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))) return false;
-  }
-  return matches(decoder.end() || "") && offset === snapshot.length;
+  for await (const chunk of stream)
+    for (const decoded of decodeSourceChunk(decoder, chunk)) if (!accept(decoded)) return false;
+  return accept(decoder.end() || "") && offset === snapshot.length;
 }
 
 function* encode(snapshot, encoding) {
@@ -448,11 +488,13 @@ class TextStore {
   }
   reset(text) {
     this.#wordIndex?.clear();
-    this.#base = asText(text);
+    const base = asText(text),
+      digest = base === this.#base ? this.#digest : null;
+    this.#base = base;
     this.#document = new DocumentCore(this.#base, { historyLimit: 0 });
     this.#invalidateLines();
     this.#changes = livePatch();
-    this.#digest = null;
+    this.#digest = digest;
     this.#revision++;
     this.#resetGeneration++;
   }
@@ -490,7 +532,7 @@ class TextStore {
     }
     if (!options.force && this.isModified()) return null;
     const before = this.#text;
-    const text = await readSource(source, options.encoding);
+    const text = await readSource(source, options.encoding, this.#base);
     if (!options.force && (this.isModified() || !this.#text.equals(before))) return null;
     const patch = options.patch === false ? null : diff(this.#text, text);
     let error;
@@ -506,7 +548,7 @@ class TextStore {
   }
   loadSync(filePath, encoding = "utf8", progress) {
     if (this.isModified()) return undefined;
-    const text = readSourceSync(filePath, encoding);
+    const text = readSourceSync(filePath, encoding, this.#base);
     const patch = diff(this.#text, text);
     let error;
     try {

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { PassThrough, Writable } = require("node:stream");
+const { PassThrough, Writable, Readable } = require("node:stream");
 const { spawnSync } = require("node:child_process");
 const TextStore = require("../../src/text-store");
 const Patch = require("../../src/text-patch");
@@ -50,6 +50,161 @@ test("synchronous load closes its descriptor and leaves prior text intact on rea
   assert.equal(store.getText(), "previous");
   assert.equal(close.mock.callCount(), 1);
   assert.deepEqual(close.mock.calls[0].arguments, [123]);
+});
+
+test("unchanged reload reuses the exact saved root and digest across decoder boundaries", async (t) => {
+  const iconv = require("iconv-lite");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-reload-root-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const text = "\ufeff" + "a".repeat(32765) + "😀\r\nżółć\rtail\ufeff";
+  for (const encoding of ["utf8", "utf16le", "utf16be"]) {
+    const bytes = iconv.encode(text, encoding);
+    const expected = iconv.decode(bytes, encoding, { stripBOM: false });
+    const store = new TextStore(expected),
+      base = store.getTextSnapshot();
+    const digest = store.baseTextDigest();
+    store.setTextInRange({ start: { row: 0, column: 0 }, end: { row: 0, column: 0 } }, "UNSAVED");
+    const chunks = function* () {
+      for (let offset = 0; offset < bytes.length; offset += 7)
+        yield bytes.subarray(offset, offset + 7);
+    };
+    const patch = await store.load(Readable.from(chunks()), { force: true, encoding });
+    assert.equal(store.getTextSnapshot(), base);
+    assert.equal(store.getText(), expected);
+    assert.equal(store.isModified(), false);
+    assert.equal(patch.getChangeCount(), 1);
+    const file = path.join(directory, encoding);
+    fs.writeFileSync(file, bytes);
+    store.loadSync(file, encoding);
+    assert.equal(store.getTextSnapshot(), base);
+    const hash = t.mock.method(require("node:crypto"), "createHash", () => {
+      throw Error("Unchanged saved base was rehashed");
+    });
+    assert.equal(store.baseTextDigest(), digest);
+    hash.mock.restore();
+  }
+});
+
+test("custom streams cannot allocate unbounded decoder strings during load or saved-base comparison", async (t) => {
+  const iconv = require("iconv-lite");
+  const getDecoder = iconv.getDecoder;
+  let largest = 0;
+  t.mock.method(iconv, "getDecoder", (...args) => {
+    const decoder = getDecoder(...args),
+      write = decoder.write;
+    decoder.write = (bytes) => {
+      largest = Math.max(largest, bytes.length);
+      assert.ok(bytes.length <= 65536, `Unbounded decoder input: ${bytes.length}`);
+      return write.call(decoder, bytes);
+    };
+    return decoder;
+  });
+  const text = "\ufeff" + ("a".repeat(65530) + "😀\r\nżółć\rtail").repeat(32);
+  for (const encoding of ["utf8", "utf16le", "utf16be"]) {
+    const bytes = iconv.encode(text, encoding),
+      store = new TextStore();
+    assert.ok(bytes.length > 1024 * 1024);
+    await store.load(Readable.from([bytes]), { encoding });
+    const base = store.getTextSnapshot();
+    assert.equal(store.getText(), text);
+    store.setTextInRange({ start: { row: 0, column: 0 }, end: { row: 0, column: 0 } }, "local");
+    await store.load(Readable.from([bytes]), { force: true, encoding });
+    assert.equal(store.getTextSnapshot(), base);
+    assert.equal(await store.baseTextMatchesFile(Readable.from([bytes]), encoding), true);
+    const changed = Buffer.from(bytes);
+    changed[changed.length - 1] ^= 1;
+    assert.equal(await store.baseTextMatchesFile(Readable.from([changed]), encoding), false);
+  }
+  assert.equal(largest, 65536);
+});
+
+test("reload shares matching backing leaves while retaining every changed, truncated and appended unit", async () => {
+  const before = "x".repeat(1024 * 1024),
+    store = new TextStore(before);
+  const base = store.getTextSnapshot(),
+    known = new WeakMap();
+  for (const node of base.snapshotNodes(known)) known.set(node.identity, true);
+  const changed = before.slice(0, 300000) + "Z" + before.slice(300001);
+  const chunks = function* () {
+    for (let offset = 0; offset < changed.length; offset += 65536)
+      yield Buffer.from(changed.slice(offset, offset + 65536));
+  };
+  await store.load(Readable.from(chunks()), { force: true });
+  assert.equal(store.getText(), changed);
+  let newLeafUnits = 0;
+  for (const node of store.getTextSnapshot().snapshotNodes(known))
+    if (node.text) newLeafUnits += node.text.length;
+  assert.ok(newLeafUnits <= 65536, `Unexpected newly allocated source span: ${newLeafUnits}`);
+  for (const text of [
+    changed.slice(0, 123456),
+    changed + "\r\n😀",
+    "",
+    "entirely different\rsource\n",
+  ]) {
+    await store.load(Readable.from([Buffer.from(text)]), { force: true });
+    assert.equal(store.getText(), text);
+    assert.equal(await store.baseTextMatchesFile(Readable.from([Buffer.from(text)]), "utf8"), true);
+    assert.equal(
+      await store.baseTextMatchesFile(Readable.from([Buffer.from(text + "!")]), "utf8"),
+      false,
+    );
+  }
+});
+
+test("reference reuse never publishes a partial failed stream or overwrites an intervening edit", async () => {
+  const original = "head\r\n" + "x".repeat(131072),
+    store = new TextStore(original);
+  const base = store.getTextSnapshot();
+  const failure = new Error("read failed after an unchanged prefix");
+  async function* broken() {
+    yield Buffer.from(original.slice(0, 65536));
+    throw failure;
+  }
+  await assert.rejects(
+    store.load(Readable.from(broken()), { force: true }),
+    (error) => error === failure,
+  );
+  assert.equal(store.getTextSnapshot(), base);
+  const stream = new PassThrough(),
+    loading = store.load(stream);
+  stream.write(original.slice(0, 65536));
+  store.setTextInRange({ start: { row: 0, column: 0 }, end: { row: 0, column: 0 } }, "local");
+  stream.end(original.slice(65536));
+  assert.equal(await loading, null);
+  assert.equal(store.getText(), "local" + original);
+  assert.equal(store.isModified(), true);
+});
+
+test("reload stays within a fixed child heap while two full document sources remain alive", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-reload-heap-"));
+  t.after(() =>
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }),
+  );
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+  delete env.CI;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--expose-gc",
+      "--max-old-space-size=224",
+      path.join(__dirname, "../fixtures/reload-memory-probe.cjs"),
+      directory,
+    ],
+    { encoding: "utf8", env, windowsHide: true, timeout: 60000 },
+  );
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const measurements = result.stdout
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const before = measurements.find((entry) => entry.phase === "before-reload"),
+    after = measurements.find((entry) => entry.phase === "after-reload");
+  assert.equal(after.reusedBase, true);
+  assert.ok(
+    after.heapUsed - before.heapUsed < 16 * 1024 * 1024,
+    `Reload retained ${(after.heapUsed - before.heapUsed) / 1024 / 1024} MiB`,
+  );
 });
 
 test("diff marks deadline fallbacks as coarse while retaining common prefix and suffix", (t) => {

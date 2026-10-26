@@ -62,6 +62,8 @@ Session capture retains immutable text roots. [Session storage](session-state.md
 
 Fine-grained diffs have allocation and computation budgets. A large difference can use exact shared text in a coarser patch rather than flattening both documents before reaching a timeout. Recovery and reload must preserve the distinction between a saved base, current text and an external file change; a cheaper diff is not permission to lose content or silently overwrite the file.
 
+Reload compares decoded chunks with the captured saved base during a single read. Equal ranges at the same offsets reuse immutable source fragments, and an unchanged file reuses the complete saved root and its cached digest. This avoids retaining another full copy during an unchanged reload alongside the original, current edits and undo history. Insertions or deletions in the external file can shift subsequent ranges and require new backing storage. Equality is checked against the actual decoded content rather than inferred from file timestamps or size; read failures and edits made during a non-forced load retain their existing protection.
+
 ## Validation
 
 Structural tests cover sparse multi-million-row edits, persistent sequence invariants, split geometry, folds, CRLF and surrogate boundaries. Renderer tests exercise physical CSS limits on both axes, long-line selections/cursors/IME, Unicode window transitions and direct hit testing. Search tests include documents exceeding the runtime's maximum string length, dense counts, cancellation, regex deadlines, actual replacement geometry and observer failures. Recovery tests include interrupted publication, concurrent references, lease cleanup, corrupt metadata, file conflicts and large undo history.
