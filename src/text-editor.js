@@ -1030,6 +1030,12 @@ module.exports = class TextEditor {
 
   subscribeToBuffer() {
     this.buffer.retain();
+    this.disposables.add(
+      require("./text-buffer-marker-finalizers").register(this.buffer, () => {
+        if (!this.isDestroyed() && !this.suppressSelectionMerging && this.selections.length > 1)
+          this.mergeIntersectingSelections();
+      }),
+    );
     this.disposables.add(this.buffer.onDidChangeText(() => this.notifySoftWrapState()));
     this.disposables.add(
       this.buffer.onDidChangeLanguageMode(this.handleLanguageModeChange.bind(this)),
@@ -1086,9 +1092,10 @@ module.exports = class TextEditor {
       this.selectionsMarkerLayer.onDidCreateMarker(this.addSelection.bind(this)),
     );
     return this.disposables.add(
-      this.selectionsMarkerLayer.onDidUpdate(() =>
-        this.component != null ? this.component.didUpdateSelections() : undefined,
-      ),
+      this.selectionsMarkerLayer.onDidUpdate(() => {
+        this.restoreSelectionCreationOrder();
+        if (this.component != null) this.component.didUpdateSelections();
+      }),
     );
   }
 
@@ -2730,8 +2737,8 @@ module.exports = class TextEditor {
    * @returns {Array<*>|undefined} The callback result for each selection, or undefined when the transaction is aborted.
    */
   mutateSelectedText(fn, groupingInterval = 0) {
-    return this.mergeIntersectingSelections(() => {
-      return this.transact(groupingInterval, () => {
+    return this.transact(groupingInterval, () => {
+      return this.mergeIntersectingSelections(() => {
         const selections = this.getSelectionsOrderedByBufferPosition();
         const mutate = () => selections.map((selection, index) => fn(selection, index));
         return selections.length >= 64 ? this.buffer.batchMarkerHistory(mutate) : mutate();
@@ -5714,7 +5721,18 @@ module.exports = class TextEditor {
       this.suppressSelectionMerging = false;
     }
     this.createLastSelectionIfNeeded();
+    this.restoreSelectionCreationOrder();
     return result;
+  }
+
+  // Marker IDs retain their creation order through undo/redo. A revived older
+  // marker is appended by the layer's create event; restore its original place
+  // before publishing the final selection state and active (last) cursor.
+  restoreSelectionCreationOrder() {
+    if (!this.selectionOrderNeedsRestore) return;
+    this.selections.sort((a, b) => a.marker.id - b.marker.id);
+    this.cursors.sort((a, b) => a.marker.id - b.marker.id);
+    this.selectionOrderNeedsRestore = false;
   }
 
   mergeSelections(...args) {
@@ -5740,7 +5758,11 @@ module.exports = class TextEditor {
         this.suppressSelectionMerging = false;
       }
 
-      const selections = this.getSelectionsOrderedByBufferPosition();
+      let selections = this.getSelectionsOrderedByBufferPosition();
+      // Coordinated publication defers marker-destroy events. The marker layer
+      // already excludes these markers while their view objects await cleanup.
+      if (this.buffer.atomicEditContext)
+        selections = selections.filter((selection) => !selection.marker.isDestroyed());
       let lastSelection = selections.shift();
       for (const selection of selections) {
         if (mergePredicate(lastSelection, selection)) {
@@ -5763,6 +5785,8 @@ module.exports = class TextEditor {
   addSelection(marker, options = {}) {
     const cursor = this.addCursor(marker);
     let selection = new Selection(Object.assign({ editor: this, marker, cursor }, options));
+    if (this.selections.length && this.selections.at(-1).marker.id > marker.id)
+      this.selectionOrderNeedsRestore = true;
     this.selections.push(selection);
     const selectionBufferRange = selection.getBufferRange();
     this.mergeIntersectingSelections({ preserveFolds: options.preserveFolds });
@@ -5790,8 +5814,13 @@ module.exports = class TextEditor {
       _.remove(this.selections, selection);
       this.cursorsByMarkerId.delete(selection.cursor.marker.id);
     }
-    this.emitter.emit("did-remove-cursor", selection.cursor);
-    return this.emitter.emit("did-remove-selection", selection);
+    return require("./complete-cleanup")(
+      [
+        () => this.emitter.emit("did-remove-cursor", selection.cursor),
+        () => this.emitter.emit("did-remove-selection", selection),
+      ],
+      "Selection removal observers failed",
+    );
   }
 
   // Reduce one or more selections to a single empty selection based on the most

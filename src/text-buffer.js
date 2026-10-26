@@ -1447,7 +1447,7 @@ class TextBuffer {
    * @param {String|PieceTree} text - The new buffer contents as a string or immutable snapshot.
    */
   setTextViaDiff(text) {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     const patch = this.buffer.diff(text);
     const changes = patch.getChanges();
     if (changes.length === 0) return;
@@ -1757,6 +1757,7 @@ class TextBuffer {
             markerPlan,
           });
           options.didCommit?.();
+          require("./text-buffer-marker-finalizers").run(this);
           committed = true;
         });
       };
@@ -2457,7 +2458,7 @@ class TextBuffer {
    */
 
   setHistoryProvider(historyProvider) {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     this.historyProvider = historyProvider;
   }
 
@@ -2575,6 +2576,7 @@ class TextBuffer {
    * @returns {*} The callback result, or undefined when the transaction is aborted.
    */
   transact(options, fn) {
+    if (this.finalizingTransactionMarkers) this.assertCanEdit();
     if (this.atomicEditContext && options?.atomicToken !== this.atomicEditContext.token)
       this.assertCanEdit();
     let groupingInterval, result, selectionsMarkerLayer;
@@ -2600,6 +2602,12 @@ class TextBuffer {
     try {
       this.transactCallDepth++;
       result = fn();
+      if (
+        this.transactCallDepth === 1 &&
+        this.getTextRevision() !== revisionBefore &&
+        !this.atomicEditContext?.selectionFinalizersHandled
+      )
+        require("./text-buffer-marker-finalizers").run(this);
     } catch (exception) {
       aborted = true;
       this.revertToCheckpoint(checkpointBefore, { deleteCheckpoint: true });
@@ -2672,7 +2680,7 @@ class TextBuffer {
    * Clear the undo stack.
    */
   clearUndoStack() {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     return this.historyProvider.clearUndoStack();
   }
 
@@ -2683,7 +2691,7 @@ class TextBuffer {
    * Clear the redo stack without changing text or the undo stack.
    */
   clearRedoStack() {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     return this.historyProvider.clearRedoStack();
   }
 
@@ -4280,6 +4288,7 @@ class TextBuffer {
           );
         }
 
+        attempt(() => require("./text-buffer-marker-finalizers").run(this));
         const markersSnapshot = this.createMarkerSnapshot();
         this.historyProvider.groupChangesSinceCheckpoint(checkpoint, {
           markers: markersSnapshot,
@@ -4352,7 +4361,7 @@ class TextBuffer {
    */
 
   destroy() {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     if (this.destroyed) return;
     this.destroyed = true;
     this.syntaxSnapshotToken = null;
@@ -4412,7 +4421,7 @@ class TextBuffer {
   }
 
   release() {
-    if (this.atomicEditContext) this.assertCanEdit();
+    if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     this.refcount--;
     if (this.refcount <= 0) this.destroy();
     return this;
@@ -4929,6 +4938,10 @@ class TextBuffer {
   }
 
   assertCanEdit(atomicToken) {
+    if (this.finalizingTransactionMarkers)
+      throw Object.assign(new Error("Document edits are not allowed during marker finalization"), {
+        code: "ERR_MARKER_FINALIZER_REENTRANCY",
+      });
     if (this.atomicEditContext && atomicToken !== this.atomicEditContext.token) {
       throw Object.assign(
         new Error("Document edits are locked during atomic multi-buffer publication"),

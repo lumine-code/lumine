@@ -233,6 +233,9 @@ function commitPlans(prepared, options = {}) {
             attempt(() => entry.buffer.updateDisplayLayersForChange(entry.event));
           }
         }
+        for (const buffer of buffers)
+          errors.push(...require("./text-buffer-marker-finalizers").run(buffer, true));
+        context.selectionFinalizersHandled = true;
       } catch (error) {
         failure = error;
       }

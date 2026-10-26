@@ -936,12 +936,18 @@ class MarkerLayer {
       this.historyProperties?.delete(marker.id);
       this.markersWithChangeListeners.delete(marker);
       this.markersWithDestroyListeners.delete(marker);
-      this.displayMarkerLayers.forEach(function (displayMarkerLayer) {
-        displayMarkerLayer.destroyMarker(marker.id);
-      });
-      if (!suppressMarkerLayerUpdateEvents) {
-        this.delegate.markersUpdated(this);
-      }
+      require("./complete-cleanup")(
+        [
+          ...Array.from(
+            this.displayMarkerLayers,
+            (displayMarkerLayer) => () => displayMarkerLayer.destroyMarker(marker.id),
+          ),
+          () => {
+            if (!suppressMarkerLayerUpdateEvents) this.delegate.markersUpdated(this);
+          },
+        ],
+        "Marker layer destruction observers failed",
+      );
     }
   }
 

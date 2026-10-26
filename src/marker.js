@@ -537,9 +537,14 @@ class Marker {
       this.destroyStackTrace = new Error().stack;
     }
 
-    this.layer.destroyMarker(this, suppressMarkerLayerUpdateEvents);
-    this.emitter.emit("did-destroy");
-    return this.emitter.clear();
+    return require("./complete-cleanup")(
+      [
+        () => this.layer.destroyMarker(this, suppressMarkerLayerUpdateEvents),
+        () => this.emitter.emit("did-destroy"),
+        () => this.emitter.clear(),
+      ],
+      "Marker destruction observers failed",
+    );
   }
 
   /**

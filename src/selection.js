@@ -3,6 +3,7 @@ const { pick } = require("@lumine-code/underscore-plus");
 const { Emitter } = require("@lumine-code/event-kit");
 
 const { rangeIsBlank, leadingIndentation } = require("./text-source-helpers");
+const completeCleanup = require("./complete-cleanup");
 const NonWhitespaceRegExp = /\S/;
 let nextId = 0;
 
@@ -1240,6 +1241,7 @@ module.exports = class Selection {
     clipboard = this.editor.constructor.clipboard,
   ) {
     if (!this.ensureWritable("cut", { bypassReadOnly })) return;
+    if (this.isEmpty()) return;
     const isCurrent = this.editor.captureTextMutationGuard({ bypassReadOnly }, [this]);
     const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
     const removeSelection = () => {
@@ -1676,13 +1678,16 @@ module.exports = class Selection {
     this.destroyed = true;
     this.cursor.destroyed = true;
 
-    this.editor.removeSelection(this);
-
-    this.cursor.emitter.emit("did-destroy");
-    this.emitter.emit("did-destroy");
-
-    this.cursor.emitter.dispose();
-    this.emitter.dispose();
+    completeCleanup(
+      [
+        () => this.editor.removeSelection(this),
+        () => this.cursor.emitter.emit("did-destroy"),
+        () => this.emitter.emit("did-destroy"),
+        () => this.cursor.emitter.dispose(),
+        () => this.emitter.dispose(),
+      ],
+      "Selection destruction observers failed",
+    );
   }
 
   finalize() {

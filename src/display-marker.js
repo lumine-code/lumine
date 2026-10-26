@@ -1,6 +1,7 @@
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const { isEqual } = require("@lumine-code/underscore-plus");
 const Range = require("./range");
+const completeCleanup = require("./complete-cleanup");
 
 /**
  * @public
@@ -74,10 +75,15 @@ class DisplayMarker {
   }
 
   didDestroyBufferMarker() {
-    this.emitter.emit("did-destroy");
-    this.layer.didDestroyMarker(this);
-    this.emitter.dispose();
-    this.bufferMarkerSubscription?.dispose();
+    completeCleanup(
+      [
+        () => this.emitter.emit("did-destroy"),
+        () => this.layer.didDestroyMarker(this),
+        () => this.emitter.dispose(),
+        () => this.bufferMarkerSubscription?.dispose(),
+      ],
+      "Display marker destruction observers failed",
+    );
   }
 
   /**
