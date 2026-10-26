@@ -20,6 +20,22 @@ describe("TextEditorElement", () => {
     return element;
   }
 
+  it("exposes viewport row geometry before blocks without scanning document layout", () => {
+    const element = buildTextEditorElement({ attach: false });
+    const component = element.getComponent();
+    component.lineTopIndex.setDefaultLineHeight(20);
+    component.lineTopIndex.insertBlock("before", 2, 30);
+    component.lineTopIndex.insertBlock("after", 2, 10, true);
+    spyOn(component, "getScrollTop").and.returnValue(85);
+    spyOn(element.getModel(), "getScreenLineCount").and.throwError("No full layout scan");
+    expect(element.pixelPositionBeforeBlocksForScreenRow(2)).toBe(40);
+    expect(element.pixelPositionBeforeBlocksForScreenRow(3, { viewport: true })).toBe(15);
+    component.getScrollTop.and.returnValue(250608700);
+    expect(element.pixelPositionBeforeBlocksForScreenRow(12530436, { viewport: true })).toBe(60);
+    expect(() => element.pixelPositionBeforeBlocksForScreenRow(Infinity)).toThrowError(RangeError);
+    element.getModel().destroy();
+  });
+
   it("honors the 'mini' attribute", () => {
     jasmineContent.innerHTML = "<lumine-text-editor mini>";
     const element = jasmineContent.firstChild;
