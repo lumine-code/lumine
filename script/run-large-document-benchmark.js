@@ -22,6 +22,7 @@ const HELP = `Usage: node script/run-large-document-benchmark.js [options]
   --dense PATTERN       Dense regex (default: .)
   --dense-flags FLAGS   Dense regex flags (default: gu)
   --timeout-ms NUMBER   Overall renderer deadline (default: 600000)
+  --workflows           Run editing/selection/clipboard/search correctness sequences
   --plan                Validate arguments and report the sanitized plan without launching
   --help                Show this help
 
@@ -47,7 +48,7 @@ function parse(argv) {
   ]);
   for (let index = 0; index < argv.length; index++) {
     const key = argv[index].replace(/^--/, "");
-    if (["help", "plan"].includes(key)) {
+    if (["help", "plan", "workflows"].includes(key)) {
       options[key] = true;
       continue;
     }
@@ -78,6 +79,151 @@ async function digestInput(file, encoding) {
   return { bytesSha256: bytes.digest("hex"), decodedUtf16leSha256: text.digest("hex") };
 }
 
+function symbolicCode(error, fallback = "BENCHMARK_FAILED") {
+  for (const value of [error?.code, error?.message])
+    if (typeof value === "string" && /^[A-Z][A-Z0-9_]{1,127}$/.test(value)) return value;
+  return fallback;
+}
+
+function recoverProgress(report, file) {
+  if (!file || report.measurements) return;
+  try {
+    if (fs.statSync(file).size > 16 * 1024 * 1024) throw new Error("BENCHMARK_PROGRESS_TOO_LARGE");
+    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!value || typeof value !== "object" || !Array.isArray(value.cases))
+      throw new Error("BENCHMARK_PROGRESS_INVALID");
+    report.measurements = value;
+  } catch (error) {
+    report.progressReadFailure = { code: symbolicCode(error, "BENCHMARK_PROGRESS_UNREADABLE") };
+  }
+}
+
+async function captureInputState(file, hashBefore = false) {
+  if (!file) return null;
+  const stat = fs.statSync(file);
+  // A cold performance run deliberately does not warm the filesystem cache.
+  return { stat, sha256: hashBefore ? await digestFile(file) : null };
+}
+
+async function finalizeEvidence(
+  report,
+  { inputFile, inputBefore, sourceLocations },
+  sourceFingerprint = fingerprint,
+) {
+  const fail = (error) => {
+    const failure = { code: symbolicCode(error, "BENCHMARK_VERIFICATION_FAILED") };
+    report.status = "failed";
+    report.failure ??= failure;
+    (report.validationFailures ??= []).push(failure);
+  };
+  if (inputFile && inputBefore) {
+    report.input = {
+      bytes: inputBefore.stat.size,
+      sha256Before: inputBefore.sha256,
+      sha256: null,
+      statUnchanged: null,
+      rawBytesUnchanged: null,
+      exactDecodedTextUnchanged: null,
+    };
+    try {
+      const encoding = report.measurements?.settings?.encoding;
+      const snapshotDigest = report.measurements?.input?.snapshotUtf16leSha256;
+      const digest = encoding && snapshotDigest ? await digestInput(inputFile, encoding) : null;
+      const hash = digest?.bytesSha256 ?? (await digestFile(inputFile));
+      const after = fs.statSync(inputFile);
+      const before = inputBefore.stat;
+      Object.assign(report.input, {
+        bytesAfter: after.size,
+        sha256: hash,
+        statUnchanged:
+          before.size === after.size &&
+          before.mtimeMs === after.mtimeMs &&
+          before.ino === after.ino &&
+          before.dev === after.dev,
+        rawBytesUnchanged: inputBefore.sha256 ? inputBefore.sha256 === hash : null,
+        exactDecodedTextUnchanged: digest ? digest.decodedUtf16leSha256 === snapshotDigest : null,
+      });
+      if (
+        !report.input.statUnchanged ||
+        report.input.rawBytesUnchanged === false ||
+        report.input.exactDecodedTextUnchanged === false
+      )
+        fail(new Error("BENCHMARK_INPUT_CHANGED"));
+    } catch (error) {
+      report.input.verificationFailure = {
+        code: symbolicCode(error, "BENCHMARK_INPUT_VERIFICATION_FAILED"),
+      };
+      fail(error);
+    }
+  }
+  report.sourceStable = true;
+  report.sourcesAfter = [];
+  for (const [index, source] of sourceLocations.entries()) {
+    try {
+      const after = await sourceFingerprint(source.directory, source.name);
+      report.sourcesAfter.push(after);
+      const before = report.sources[index];
+      if (before.sourceSha256 !== after.sourceSha256 || before.revision !== after.revision)
+        report.sourceStable = false;
+    } catch (error) {
+      report.sourceStable = false;
+      report.sourcesAfter.push({
+        name: source.name,
+        verificationFailure: { code: symbolicCode(error) },
+      });
+      fail(error);
+    }
+  }
+  if (!report.sourceStable) fail(new Error("BENCHMARK_SOURCES_CHANGED_DURING_RUN"));
+}
+
+async function completesWithin(operation, milliseconds) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(operation)
+        .then(
+          () => true,
+          () => false,
+        ),
+      new Promise((resolve) => (timer = setTimeout(() => resolve(false), milliseconds))),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function stopApplication(
+  { client, child, childExit, isExited },
+  { requestMs = 1500, exitMs = 1500, killMs = 1500 } = {},
+) {
+  const result = { closeAcknowledged: false, forced: false, exited: isExited() };
+  if (client) {
+    result.closeAcknowledged = await completesWithin(
+      () => client.evaluate("setTimeout(() => lumine.window.close(), 0); true"),
+      requestMs,
+    );
+    try {
+      client.close();
+    } catch (error) {
+      result.protocolCloseFailure = { code: symbolicCode(error) };
+    }
+  }
+  if (!isExited()) await completesWithin(() => childExit, exitMs);
+  if (!isExited()) {
+    result.forced = true;
+    try {
+      child.kill("SIGKILL");
+    } catch (error) {
+      result.killFailure = { code: symbolicCode(error) };
+    }
+    await completesWithin(() => childExit, killMs);
+  }
+  result.exited = isExited();
+  return result;
+}
+
 async function fingerprint(directory, name) {
   const git = (...args) =>
     execFileSync("git", args, {
@@ -104,6 +250,7 @@ async function fingerprint(directory, name) {
   if (directory === ROOT)
     roots.push(
       "benchmark/large-document-benchmark-spec.js",
+      "benchmark/large-document-workflows.js",
       "script/run-large-document-benchmark.js",
     );
   const files = [
@@ -180,13 +327,14 @@ async function connect(port, timeoutMs) {
     if (message.error) request.reject(new Error("BENCHMARK_PROTOCOL_REQUEST_FAILED"));
     else request.resolve(message.result);
   });
-  socket.addEventListener("close", () => {
+  const rejectPending = () => {
     for (const request of pending.values()) {
       clearTimeout(request.timer);
       request.reject(new Error("BENCHMARK_PROTOCOL_CLOSED"));
     }
     pending.clear();
-  });
+  };
+  socket.addEventListener("close", rejectPending);
   const send = (method, params = {}) =>
     new Promise((resolve, reject) => {
       const id = ++sequence;
@@ -195,12 +343,23 @@ async function connect(port, timeoutMs) {
         reject(new Error("BENCHMARK_PROTOCOL_TIMEOUT"));
       }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
-      socket.send(JSON.stringify({ id, method, params }));
+      try {
+        socket.send(JSON.stringify({ id, method, params }));
+      } catch {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(new Error("BENCHMARK_PROTOCOL_CLOSED"));
+      }
     });
   return {
     targetId: target.id,
     send,
-    close: () => socket.close(),
+    close: () => {
+      // Release request timers immediately, even if a hung renderer never
+      // completes the WebSocket closing handshake.
+      rejectPending();
+      socket.close();
+    },
     async evaluate(expression) {
       const result = await send("Runtime.evaluate", {
         expression,
@@ -266,6 +425,7 @@ async function main(argv = process.argv.slice(2)) {
   if (new Set(links.map((item) => item.name)).size !== links.length)
     throw new Error("DUPLICATE_LINKED_PACKAGE_NAME");
   const plan = {
+    scenario: options.workflows ? "workflows" : "performance",
     input: config.inputFile ? "external-read-only" : "generated-smoke",
     samplesPerLocation: config.inputCount,
     inputIntervalMs: config.intervalMs,
@@ -290,6 +450,11 @@ async function main(argv = process.argv.slice(2)) {
   );
   fs.mkdirSync(output, { recursive: true });
   const resultFile = path.join(output, "results.json");
+  if (options.workflows) {
+    config.progressFile = path.join(output, "workflows-progress.json");
+    config.scratchDirectory = path.join(output, "scratch");
+    if (fs.existsSync(config.progressFile)) throw new Error("BENCHMARK_PROGRESS_MUST_BE_FRESH");
+  }
   if (fs.existsSync(resultFile)) throw new Error("BENCHMARK_RESULT_ALREADY_EXISTS");
   const home = path.join(output, "profile");
   if (fs.existsSync(home)) throw new Error("BENCHMARK_PROFILE_MUST_BE_FRESH");
@@ -326,7 +491,7 @@ async function main(argv = process.argv.slice(2)) {
   const sources = [];
   for (const source of sourceLocations)
     sources.push(await fingerprint(source.directory, source.name));
-  const inputBefore = config.inputFile ? fs.statSync(config.inputFile) : null;
+  const inputBefore = await captureInputState(config.inputFile, Boolean(options.workflows));
   const port = await freePort();
   const env = {
     ...process.env,
@@ -362,7 +527,10 @@ async function main(argv = process.argv.slice(2)) {
       exited = true;
       resolve();
     });
-    child.once("error", resolve);
+    child.once("error", () => {
+      exited = true;
+      resolve();
+    });
   });
   const report = {
     version: 1,
@@ -396,60 +564,50 @@ async function main(argv = process.argv.slice(2)) {
       report.nativeWindowSizing = false;
     }
     report.measurements = await client.evaluate(
-      `require(${JSON.stringify(path.join(ROOT, "benchmark", "large-document-benchmark-spec.js"))}).runBenchmark(${JSON.stringify(config)})`,
+      `require(${JSON.stringify(path.join(ROOT, "benchmark", options.workflows ? "large-document-workflows.js" : "large-document-benchmark-spec.js"))}).runBenchmark(${JSON.stringify(config)})`,
     );
     if (report.measurements.status !== "complete")
       throw Object.assign(new Error("BENCHMARK_RENDERER_VALIDATION_FAILED"), {
         code: report.measurements.failure?.code,
       });
-    if (config.inputFile) {
-      const digest = await digestInput(config.inputFile, report.measurements.settings.encoding);
-      const after = fs.statSync(config.inputFile);
-      report.input = {
-        bytes: inputBefore.size,
-        sha256: digest.bytesSha256,
-        statUnchanged: inputBefore.size === after.size && inputBefore.mtimeMs === after.mtimeMs,
-        exactDecodedTextUnchanged:
-          digest.decodedUtf16leSha256 === report.measurements.input.snapshotUtf16leSha256,
-      };
-      if (!report.input.statUnchanged || !report.input.exactDecodedTextUnchanged)
-        throw new Error("BENCHMARK_INPUT_CHANGED");
-    }
-    const afterSources = [];
-    for (const source of sourceLocations)
-      afterSources.push(await fingerprint(source.directory, source.name));
-    report.sourceStable = sources.every(
-      (source, index) =>
-        source.sourceSha256 === afterSources[index].sourceSha256 &&
-        source.revision === afterSources[index].revision,
-    );
-    if (!report.sourceStable) throw new Error("BENCHMARK_SOURCES_CHANGED_DURING_RUN");
     report.status = "complete";
   } catch (error) {
     report.status = "failed";
-    report.failure = {
-      code: error.code || (/^[A-Z_]+$/.test(error.message) ? error.message : "BENCHMARK_FAILED"),
-    };
-    process.exitCode = 1;
+    report.failure = { code: symbolicCode(error) };
+    recoverProgress(report, config.progressFile);
   } finally {
-    if (client) {
-      await client.evaluate("setTimeout(() => lumine.window.close(), 0); true").catch(() => {});
-      client.close();
+    report.cleanup = await stopApplication({ client, child, childExit, isExited: () => exited });
+    if (!report.cleanup.exited) {
+      report.status = "failed";
+      report.failure ??= { code: "BENCHMARK_PROCESS_DID_NOT_EXIT" };
+      child.unref();
+      child.stdout.destroy();
+      child.stderr.destroy();
     }
-    await Promise.race([childExit, sleep(5000)]);
-    if (!exited) child.kill();
-    fs.writeFileSync(resultFile, JSON.stringify(report, null, 2) + "\n");
+    // Verification is evidence even when the renderer rejected or crashed.
+    // Run it after shutdown so deferred save/teardown work cannot escape it.
+    await finalizeEvidence(report, { inputFile: config.inputFile, inputBefore, sourceLocations });
+    if (report.status !== "complete") process.exitCode = 1;
+    const temporaryResult = resultFile + ".tmp";
+    fs.writeFileSync(temporaryResult, JSON.stringify(report, null, 2) + "\n");
+    fs.renameSync(temporaryResult, resultFile);
   }
   console.log(`Benchmark ${report.status}; results: ${resultFile}`);
 }
 
 if (require.main === module)
   main().catch((error) => {
-    console.error(
-      /^[A-Z_]+$/.test(error.message)
-        ? error.message
-        : "Benchmark configuration or startup failed; check the supplied options.",
-    );
+    console.error(symbolicCode(error, "BENCHMARK_CONFIGURATION_OR_STARTUP_FAILED"));
     process.exitCode = 1;
   });
-module.exports = { main, parse, digestInput, fingerprint };
+module.exports = {
+  main,
+  parse,
+  digestInput,
+  fingerprint,
+  symbolicCode,
+  recoverProgress,
+  captureInputState,
+  finalizeEvidence,
+  stopApplication,
+};

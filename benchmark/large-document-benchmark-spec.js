@@ -536,7 +536,7 @@ async function runBenchmark(options = {}) {
   }
 }
 
-module.exports = { runBenchmark };
+module.exports = { runBenchmark, frame, settle, snapshotDigest, inspectViewport, invariant };
 
 if (typeof describe === "function") {
   describe("Large document benchmark", () => {
