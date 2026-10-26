@@ -52,9 +52,19 @@ class IndentResolver {
     this.activeScopeResolvers = resolvers;
     let result;
     try {
-      // A deferred parse is returned as a value, not awaited inside this
-      // synchronous context. Its continuation re-enters the public method.
-      result = withPredicateTextBudget(() => ({ value: callback() }), this.queryBudget);
+      for (let attempt = 0; ; attempt++) {
+        // A deferred parse is returned as a value, not awaited inside this
+        // synchronous context. Its continuation re-enters the public method.
+        result = withPredicateTextBudget(() => ({ value: callback() }), this.queryBudget);
+        for (const resolver of resolvers) resolver.reset();
+        resolvers.clear();
+        if (result.complete || result.reason !== "timeout" || attempt === 2) break;
+        // A cold query or scheduler pause can consume one small slice. Retry
+        // the exact operation with fresh scope state, keeping warm indentation
+        // synchronous. Never publish events or partial results from a failed
+        // attempt; persistent and structural budget failures remain errors.
+        events.length = 0;
+      }
     } finally {
       this.pendingSuggestionEvents = previousEvents;
       this.activeScopeResolvers = previousResolvers;

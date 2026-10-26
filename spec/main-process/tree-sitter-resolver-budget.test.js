@@ -8,6 +8,7 @@ const Point = require("../../src/point");
 const FoldResolver = require("../../src/tree-sitter-fold-resolver");
 const IndentResolver = require("../../src/tree-sitter-indent-resolver");
 const captureQuery = require("../../src/tree-sitter-query-cache");
+const { checkPredicateTextLength } = require("../../src/tree-sitter-query-budget");
 
 let language;
 before(async () => {
@@ -221,6 +222,48 @@ test("indent budget wrappers preserve synchronous answers and deferred parse pro
   const result = resolver.suggestedIndentForBufferRow(1, 2);
   assert.ok(result instanceof Promise);
   assert.equal(await result, 4);
+});
+
+test("a preempted indent query retries exact work and emits only its complete suggestion", () => {
+  let clock = 0,
+    calls = 0,
+    events = 0,
+    resets = 0;
+  const resolver = new IndentResolver({}, { queryBudget: { now: () => clock, timeoutMs: 25 } });
+  const scopes = { reset: () => resets++, store: () => true };
+  resolver.emitter.on("did-suggest-indent", () => events++);
+  resolver.computeSuggestedIndentForBufferRow = () => {
+    calls++;
+    resolver.storeScope(scopes, {});
+    resolver.emitIndentSuggestion("did-suggest-indent", { finalIndent: 4 });
+    if (calls === 1) clock += 30;
+    checkPredicateTextLength(0);
+    return 4;
+  };
+  assert.equal(resolver.suggestedIndentForBufferRow(1, 4), 4);
+  assert.equal(calls, 2);
+  assert.equal(events, 1);
+  assert.equal(resets, 2);
+});
+
+test("persistent indent timeouts remain bounded and emit no suggestion", () => {
+  let clock = 0,
+    calls = 0,
+    events = 0;
+  const resolver = new IndentResolver({}, { queryBudget: { now: () => clock, timeoutMs: 25 } });
+  resolver.emitter.on("did-suggest-indent", () => events++);
+  resolver.computeSuggestedIndentForBufferRow = () => {
+    calls++;
+    resolver.emitIndentSuggestion("did-suggest-indent", { finalIndent: 4 });
+    clock += 30;
+    checkPredicateTextLength(0);
+  };
+  assert.throws(() => resolver.suggestedIndentForBufferRow(1, 4), {
+    code: "ERR_SYNTAX_QUERY_BUDGET",
+    reason: "timeout",
+  });
+  assert.equal(calls, 3);
+  assert.equal(events, 0);
 });
 
 test("huge indentation rows fail before scanning or reading their text", () => {
