@@ -269,7 +269,7 @@ class InputDialogHost {
    */
   restoreQuery() {
     this.assertAlive();
-    if (!this.lastQuery) return false;
+    if (!this.lastQuery?.length) return false;
     this.model.setQuery(this.lastQuery, { select: true });
     return true;
   }
@@ -563,7 +563,7 @@ class InputDialogHost {
 
   didHidePanel({ visibilityChanged = true, generation = this.panelLifecycleGeneration } = {}) {
     this.model.endSession();
-    this.lastQuery = this.model.getQuery();
+    this.lastQuery = this.model.getQueryEditor().getBuffer().getTextSnapshot();
     this.model.cancelSource("dialog-hidden");
     this.model.didChangeHostVisible(false);
     if (visibilityChanged) {
@@ -576,7 +576,7 @@ class InputDialogHost {
   finalizeSession(reason) {
     if (!this.model) return;
     this.model.endSession();
-    this.lastQuery = this.model.getQuery();
+    this.lastQuery = this.model.getQueryEditor().getBuffer().getTextSnapshot();
     this.model.cancelSource(reason);
     this.model.didChangeHostVisible(false);
   }

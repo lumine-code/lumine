@@ -128,7 +128,7 @@ class SelectList extends InputDialog {
     this.scoreModifierVersion = 0;
     this.queryWork = null;
     this.sourceItemsSource = this.props.source?.mode === "query" ? this.props.source : null;
-    this.sourceItemsQuery = this.props.query == null ? "" : String(this.props.query);
+    this.sourceItemsQuery = this.getQueryStatus().available ? this.getQuery() : null;
     this.filteringProgressTimer = null;
     this.filteringProgressVisible = false;
     this.workerPreparation = null;
@@ -777,6 +777,8 @@ class SelectList extends InputDialog {
    * @category Query
    */
   getParsedQuery() {
+    if (!this.getQueryStatus().available)
+      return Object.freeze({ text: "", data: null, unavailable: true });
     return this.parseQuery(this.getQuery());
   }
 
@@ -798,7 +800,8 @@ class SelectList extends InputDialog {
       this.sourceItemsSource = null;
       this.sourceItemsQuery = null;
     }
-    if (!this.model || this.suppressModelQueryUpdate) return sourcePromise;
+    if (!this.model || this.suppressModelQueryUpdate || !this.getQueryStatus().available)
+      return sourcePromise;
 
     const query = this.modelQuery(this.getQuery(), this.props);
     if (this.props.source?.mode === "query") this.clearWorkerMatcher();
@@ -825,6 +828,7 @@ class SelectList extends InputDialog {
   }
 
   modelQuery(query, props = this.props) {
+    if (query?.length > (props.maxQueryLength ?? 65536)) return "";
     return props.source?.mode === "query" ? "" : this.parseQuery(query, props).text;
   }
 
@@ -1036,8 +1040,9 @@ class SelectList extends InputDialog {
       modelChanges.initialSelection = props.itemUpdateOptions.selection;
     }
     if ("query" in props || searchChanged || "source" in props) {
-      const query = "query" in props ? props.query : this.getQuery();
-      modelChanges.query = this.modelQuery(query == null ? "" : String(query), nextProps);
+      const query =
+        "query" in props ? props.query : this.getQueryStatus().available ? this.getQuery() : "";
+      modelChanges.query = this.modelQuery(query, nextProps);
     }
 
     const changesModel = Object.keys(modelChanges).length > 0;
@@ -1068,8 +1073,10 @@ class SelectList extends InputDialog {
     if (resetOverflow) this.overflowSectionsActive = false;
     if (itemsChanged && nextProps.source?.mode === "query") {
       this.sourceItemsSource = nextProps.source;
+      const query =
+        "query" in props ? props.query : this.getQueryStatus().available ? this.getQuery() : null;
       this.sourceItemsQuery =
-        "query" in props ? (props.query == null ? "" : String(props.query)) : this.getQuery();
+        query != null && query.length <= (nextProps.maxQueryLength ?? 65536) ? String(query) : null;
     }
     // Query/selection observers may synchronously replace this update. Keep
     // the state for which its selection was calculated, not just a query string.
@@ -1152,11 +1159,14 @@ class SelectList extends InputDialog {
   }
 
   renderBody() {
+    if (!this.getQueryStatus().available) return "";
     if (this.isFiltering()) return this.renderedItemsTree ?? "";
     return (this.renderedItemsTree = this.renderItems());
   }
 
   isFiltering() {
+    if (this.destroyed) return false;
+    if (!this.getQueryStatus().available) return true;
     return (
       !this.destroyed &&
       (this.queryWork != null ||
@@ -1369,6 +1379,7 @@ class SelectList extends InputDialog {
       this.workerPreparation.rankings.clear();
       this.workerPreparation.rankingBytes = 0;
     }
+    if (!this.getQueryStatus().available) return this.updateComponent();
     return this.update({ query: this.getQuery() });
   }
 
@@ -1489,6 +1500,16 @@ class SelectList extends InputDialog {
   }
 
   didChangeQuery() {
+    if (!this.getQueryStatus().available) {
+      this.cancelQueryWork(false);
+      if (this.model) {
+        this.model._applyUpdate({ query: "" }, false, []);
+        this.syncModelState();
+        this.resetRenderedItems();
+      }
+      super.didChangeQuery();
+      return;
+    }
     let previousSelection = null;
     if (this.model && !this.suppressModelQueryUpdate) {
       previousSelection = this.selectionSnapshot();
@@ -1995,6 +2016,7 @@ class SelectList extends InputDialog {
    * @returns {Array<Number>|null}
    */
   getMatchIndices(item, filterKey) {
+    if (!this.getQueryStatus().available) return null;
     const itemId = this.getItemId(item);
     // Use provided filterKey or get from item
     if (!filterKey) {

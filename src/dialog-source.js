@@ -67,6 +67,7 @@ module.exports = class DialogSource {
     this._generation = 0;
     this._operation = null;
     this._debounceTimer = null;
+    this._available = true;
     this._opened = false;
     this._suspended = false;
     this._dirtyWhileSuspended = false;
@@ -83,7 +84,7 @@ module.exports = class DialogSource {
   setSource(source) {
     this._assertAlive();
     const normalized = normalizeSource(source);
-    const shouldReload = this._opened && !this._suspended && normalized !== null;
+    const shouldReload = this._opened && this._available && !this._suspended && normalized !== null;
     this._invalidate("source-changed", { keepLoading: shouldReload });
     this._source = normalized;
     if (this._opened && this._suspended) this._dirtyWhileSuspended = normalized !== null;
@@ -104,6 +105,15 @@ module.exports = class DialogSource {
     this._suspended = false;
     this._dirtyWhileSuspended = false;
     return this._startLoad("open");
+  }
+
+  setAvailable(available) {
+    available = Boolean(available);
+    if (this._available === available) return false;
+    this._available = available;
+    this._invalidate("query-availability");
+    if (available && this._opened && !this._suspended) void this._startLoad("query-available");
+    return true;
   }
 
   suspend() {
@@ -135,7 +145,7 @@ module.exports = class DialogSource {
    */
   queryChanged() {
     this._assertAlive();
-    if (!this._opened || this._source?.mode !== "query") return false;
+    if (!this._available || !this._opened || this._source?.mode !== "query") return false;
     if (this._suspended) {
       this._dirtyWhileSuspended = true;
       return true;
@@ -203,7 +213,7 @@ module.exports = class DialogSource {
   }
 
   _startLoad(reason, { detached = false } = {}) {
-    if ((!this._opened && !detached) || this._source == null) {
+    if (!this._available || (!this._opened && !detached) || this._source == null) {
       this._invalidate(reason);
       return Promise.resolve();
     }

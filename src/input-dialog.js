@@ -4,10 +4,21 @@ const { Disposable, CompositeDisposable, Emitter } = require("@lumine-code/event
 const etch = require("@lumine-code/etch");
 const DialogActions = require("./dialog-actions");
 const DialogSource = require("./dialog-source");
+const { PieceTree } = require("./text-model");
+const normalizeQuery = (value) =>
+  value instanceof PieceTree ? value : value == null ? "" : String(value);
 const InputDialogComponent = require("./input-dialog-component");
 require("./input-dialog-element");
 const $ = etch.dom;
 const MAX_SELECTION_QUERY_LENGTH = 4096;
+const DEFAULT_QUERY_LIMIT = 65536;
+const MAX_QUERY_LIMIT = 1024 * 1024;
+function queryLimit(props) {
+  const value = props.maxQueryLength ?? DEFAULT_QUERY_LIMIT;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_QUERY_LIMIT)
+    throw new RangeError("maxQueryLength must be an integer from 1 to 1048576 UTF-16 units.");
+  return value;
+}
 
 // A status is coloured with the theme's existing text utilities rather than
 // with colours of its own, so it matches every other severity in the editor.
@@ -39,6 +50,10 @@ const SEVERITY_CLASSES = {
  * Custom DOM can be hosted through `headerElement` (above the query editor)
  * and `contentElement` (below the messages).
  *
+ * Query processing is limited to 65536 UTF-16 units by default. Set maxQueryLength
+ * from 1 to 1048576 for a different protocol budget. Oversized drafts remain
+ * intact; sources and actions resume after the query fits again.
+ *
  * The query is the dialog's own state. A modal host decides when a new session
  * resets it, preserves it across modal-flow steps, and restores a previous
  * session on request.
@@ -46,6 +61,7 @@ const SEVERITY_CLASSES = {
 class InputDialog {
   constructor(props, services) {
     this.props = { ...(props ?? {}) };
+    queryLimit(this.props);
     this.services = services;
     this.emitter = new Emitter();
     this.statusTimer = null;
@@ -90,7 +106,7 @@ class InputDialog {
     this.queryEditor = this.services.textEditorFactory.build({ mini: true });
     this.disposables.add(this.services.textEditorFactory.maintainConfig(this.queryEditor));
     if (Object.prototype.hasOwnProperty.call(this.props, "query")) {
-      this.queryEditor.setText(this.props.query == null ? "" : String(this.props.query));
+      this.queryEditor.setText(normalizeQuery(this.props.query));
     }
     if (this.props.placeholderText) {
       this.queryEditor.setPlaceholderText(this.props.placeholderText);
@@ -99,6 +115,8 @@ class InputDialog {
     // tab-width changes. Only edits to the query text invalidate its status,
     // selection and source, so observe completed buffer transactions directly.
     this.disposables.add(this.queryEditor.getBuffer().onDidChangeText(() => this.didChangeQuery()));
+    this.queryBudgetUnavailable = !this.getQueryStatus().available;
+    this.dialogSource.setAvailable(!this.queryBudgetUnavailable);
     this.initializeState();
     this.component = null;
     this.scheduleStatusExpiry();
@@ -607,8 +625,8 @@ class InputDialog {
       dialog: this,
       item: null,
       itemId: null,
-      query: this.getQuery(),
-      parsedQuery: this.getParsedQuery(),
+      query: this.getQueryStatus().available ? this.getQuery() : null,
+      parsedQuery: this.getQueryStatus().available ? this.getParsedQuery() : null,
       opener: this.host?.getOpenerElement() ?? null,
       source,
       sessionId: this.sessionId,
@@ -707,6 +725,7 @@ class InputDialog {
    * @returns {Boolean}
    */
   hasAvailableActions(context = this.getActionContext()) {
+    if (!this.getQueryStatus().available) return false;
     return !this.isFiltering() && this.dialogActions.hasAvailable(context);
   }
 
@@ -727,6 +746,7 @@ class InputDialog {
    * @returns {Array<Object>}
    */
   getAvailableActions(context = this.getActionContext()) {
+    if (!this.getQueryStatus().available) return [];
     context = this.currentActionContext(context);
     // Availability and presentation share one command lookup per action.
     // Nested queries restore their caller's cache when they finish.
@@ -743,11 +763,14 @@ class InputDialog {
   }
 
   getActionAvailability(command, context = this.getActionContext()) {
+    if (!this.getQueryStatus().available)
+      return Promise.resolve({ command, status: "disabled", reason: this.queryBudgetMessage() });
     return this.dialogActions.getAvailability(command, context);
   }
 
   /** @private Synchronous effective state for command forwarders. */
   isActionAvailable(command, context = this.getActionContext()) {
+    if (!this.getQueryStatus().available) return false;
     context = this.currentActionContext(context);
     if (!this.dialogActions.isLocallyAvailable(command, context)) return false;
     const action = this.dialogActions.actionsByCommand.get(command).action;
@@ -780,6 +803,7 @@ class InputDialog {
   }
 
   isDialogActionAvailable(action, context) {
+    if (!this.getQueryStatus().available) return false;
     const target = this.commandTargetForAction(action, context);
     const previous = this.evaluatingActionCommand;
     this.evaluatingActionCommand = action.command;
@@ -892,6 +916,8 @@ class InputDialog {
    * @returns {Promise<Object>} An action completion record with command, action, context, signal and status; optional reason/value/error describe the outcome. Unknown commands throw synchronously; action failures reject.
    */
   runAction(command, { source = "api", context = null } = {}) {
+    if (!this.getQueryStatus().available)
+      return Promise.resolve({ command, status: "disabled", reason: this.queryBudgetMessage() });
     const actionContext = context ?? this.getActionContext(source);
     const sessionId = actionContext.sessionId ?? this.sessionId;
     return this.dialogActions
@@ -1037,6 +1063,7 @@ class InputDialog {
 
   /** @private Confirm follows the declared primary action when one applies. */
   canConfirm() {
+    if (!this.getQueryStatus().available) return false;
     if (this.isFiltering()) return false;
     const context = this.currentActionContext(this.getActionContext("primary"));
     const primary = this.dialogActions.applicableRecords(context).find((entry) => entry.primary)
@@ -1058,6 +1085,7 @@ class InputDialog {
    * @returns {Promise<Object>|undefined} The primary action completion promise, or undefined after emitting onDidConfirm.
    */
   confirm() {
+    if (!this.getQueryStatus().available) return;
     if (this.isFiltering()) return;
     const primary = this.dialogActions.getPrimary(this.getActionContext("primary"));
     if (primary) return this.runAction(primary.command, { source: "primary" });
@@ -1071,7 +1099,8 @@ class InputDialog {
    *
    * Update one or more documented dialog options.
    * @param {Object} [props] - Partial dialog options. SelectList also accepts the list options described by {@link Workspace#addSelectList}.
-   * @param {*} [props.query] - Replace the query text.
+   * @param {*} [props.query] - Replace the query text or immutable snapshot.
+   * @param {Number} [props.maxQueryLength=65536] - Query protocol limit in UTF-16 units, from 1 to 1048576. Oversized drafts remain in the editor while processing and actions are unavailable.
    * @param {Boolean} [props.selectQuery] - Select or clear the query selection.
    * @param {Object|null} [props.status] - Status as accepted by setStatus.
    * @param {*} [props.infoMessage] - Resting message content.
@@ -1101,6 +1130,7 @@ class InputDialog {
     if (!props || typeof props !== "object" || Array.isArray(props)) {
       throw new TypeError("Dialog updates must be objects.");
     }
+    if ("maxQueryLength" in props) queryLimit(props);
     if ("actions" in props) {
       this.dialogActions.validate(this.actionsForCatalog(props.actions ?? []));
     }
@@ -1291,10 +1321,15 @@ class InputDialog {
    * @private
    */
   updateProps(props) {
+    const limitChanged =
+      "maxQueryLength" in props && props.maxQueryLength !== this.props.maxQueryLength;
+    if (limitChanged) this.props.maxQueryLength = props.maxQueryLength;
     if ("query" in props) {
-      this.queryEditor.setText(props.query == null ? "" : String(props.query));
+      this.queryEditor.setText(normalizeQuery(props.query));
       // setText triggers didChangeQuery, so derived state refreshes itself
     }
+
+    if (limitChanged && !("query" in props)) this.didChangeQuery();
 
     if ("selectQuery" in props) {
       if (props.selectQuery) {
@@ -1520,6 +1555,11 @@ class InputDialog {
    * @private
    */
   renderMessageLine() {
+    if (!this.getQueryStatus().available)
+      return $.div(
+        { className: "message-line status text-warning", role: "status" },
+        this.queryBudgetMessage(),
+      );
     if (this.props.loadingMessage) {
       return $.div(
         { className: "message-line loading" },
@@ -1565,10 +1605,14 @@ class InputDialog {
    * @public
    * @status experimental
    *
-   * Return the raw query editor text.
+   * Return the complete raw query text. Throws ERR_DIALOG_QUERY_TOO_LARGE when processing is unavailable; the draft remains accessible through the query editor snapshot.
    * @returns {String}
    */
   getQuery() {
+    if (!this.getQueryStatus().available)
+      throw Object.assign(new Error(this.queryBudgetMessage()), {
+        code: "ERR_DIALOG_QUERY_TOO_LARGE",
+      });
     return this.queryEditor.getText();
   }
 
@@ -1576,8 +1620,26 @@ class InputDialog {
    * @public
    * @status experimental
    *
-   * Set the query text and optionally select it.
-   * @param {*} query - Query text, converted to a string; null clears it.
+   * Return query availability and UTF-16 length metadata without reading text.
+   * @returns {Object} A frozen {available, length, maxLength} record.
+   */
+  getQueryStatus() {
+    const length = this.queryEditor.getBuffer().getLength(),
+      maxLength = queryLimit(this.props);
+    return Object.freeze({ available: length <= maxLength, length, maxLength });
+  }
+
+  /** @private */
+  queryBudgetMessage() {
+    return `Query exceeds ${this.getQueryStatus().maxLength} UTF-16 units. Shorten it to resume.`;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the query text or immutable snapshot and optionally select it.
+   * @param {*} query - Query text or an immutable snapshot; other values are converted to strings and null clears it.
    * @param {Object} [options] - Selection options.
    * @param {Boolean} [options.select=false] - Select the complete query after setting it.
    * @returns {Promise<void>}
@@ -1658,6 +1720,15 @@ class InputDialog {
   }
 
   didChangeQuery() {
+    const available = this.getQueryStatus().available;
+    const resumed = this.queryBudgetUnavailable && available;
+    this.queryBudgetUnavailable = !available;
+    this.dialogSource.setAvailable(available);
+    if (!available) {
+      this.refreshItemActionsIndicator();
+      void this.updateComponent();
+      return;
+    }
     // A status answers the query it was raised for. Leaving it up under the
     // next one is how "Enter a value." ends up sitting below a filled field —
     // every dialog that got this right was clearing it by hand. A status the
@@ -1673,7 +1744,7 @@ class InputDialog {
       query: this.getQuery(),
       parsedQuery: this.getParsedQuery(),
     });
-    this.dialogSource.queryChanged();
+    if (!resumed) this.dialogSource.queryChanged();
     this.refreshItemActionsIndicator();
   }
 }
