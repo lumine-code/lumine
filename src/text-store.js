@@ -404,6 +404,7 @@ class TextStore {
       if (!active) throw new Error("Prepared edit is closed");
     };
     return {
+      snapshot: after,
       getChange: () => {
         check();
         return change;

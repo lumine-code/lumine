@@ -34,6 +34,7 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
       let batch = [];
       const input = edits[Symbol.asyncIterator] ? edits : synchronousBatches(edits);
       for await (const entry of input) {
+        check();
         const entries = Array.isArray(entry) ? entry : [entry];
         if (entries.length > 1024)
           throw new RangeError("Text edit batches are limited to 1024 entries");

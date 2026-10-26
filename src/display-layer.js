@@ -1299,7 +1299,7 @@ class DisplayLayer {
     };
   }
 
-  prepareProjectionForChange(change) {
+  prepareProjectionForChange(change, nextSnapshot) {
     if (!this.resolveSoftWrapColumn) return;
     let delta = change.newEndIndex - change.oldEndIndex;
     if (!Number.isFinite(delta)) {
@@ -1312,11 +1312,16 @@ class DisplayLayer {
     const length = this.buffer.getLength() + (Number.isFinite(delta) ? delta : 0);
     const lineCount =
       this.buffer.getLineCount() + change.newRange.end.row - change.oldRange.end.row;
-    const softWrapColumn = this.resolveSoftWrapColumn({ length, lineCount });
+    const softWrapColumn = this.resolveSoftWrapColumn({
+      length,
+      lineCount,
+      maxLineSpan: nextSnapshot?.maxLineSpan,
+    });
     this.pendingProjection = null;
     const previousColumn = this.resolveSoftWrapColumn({
       length: this.buffer.getLength(),
       lineCount: this.buffer.getLineCount(),
+      maxLineSpan: this.buffer.getTextSnapshot().maxLineSpan,
     });
     if (softWrapColumn === previousColumn) return;
     if (softWrapColumn === this.softWrapColumn) return;

@@ -6038,19 +6038,34 @@ module.exports = class TextEditor {
    * @returns {Boolean}
    */
   isSoftWrapped() {
+    if (this.usesBoundedAutoSize() || this.requiresUnwrappedSource()) return false;
     return this.usesLargeDocumentView() ? this.largeDocumentWrapEnabled : this.softWrapped;
   }
 
-  usesLargeDocumentView(size = this.buffer) {
+  usesBoundedAutoSize(size = this.buffer) {
     return (
-      this.largeFileOptimizations &&
-      !this.mini &&
-      !this.getAutoHeight() &&
+      (this.mini || this.getAutoHeight() || this.getAutoWidth()) &&
       require("./document-cost-policy").shouldUseLargeDocumentView(
         size,
         this.largeDocumentCostActive,
       )
     );
+  }
+
+  usesLargeDocumentView(size = this.buffer) {
+    if (this.requiresUnwrappedSource(size)) return true;
+    return (
+      (this.largeFileOptimizations || this.usesBoundedAutoSize(size)) &&
+      require("./document-cost-policy").shouldUseLargeDocumentView(
+        size,
+        this.largeDocumentCostActive,
+      )
+    );
+  }
+
+  requiresUnwrappedSource(size = this.buffer) {
+    const span = size.maxLineSpan ?? size.getTextSnapshot?.().maxLineSpan;
+    return span > require("node:buffer").constants.MAX_STRING_LENGTH;
   }
 
   /**
@@ -6179,6 +6194,8 @@ module.exports = class TextEditor {
   }
 
   softWrapColumnForDocumentSize(documentSize) {
+    if (this.usesBoundedAutoSize(documentSize) || this.requiresUnwrappedSource(documentSize))
+      return Infinity;
     // An auto-width editor derives its viewport from its content, so wrapping
     // that content to the current viewport creates a self-reinforcing narrow
     // width. Treat auto-width like a mini editor here: retain the configured

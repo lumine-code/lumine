@@ -72,10 +72,11 @@ describe("Large document view policy", () => {
     expect(copy.displayLayer.ratioForCharacter("界")).toBe(3);
   });
 
-  it("refreshes projection when autoHeight changes the policy", () => {
+  it("retains a bounded projection when large documents request automatic height", () => {
     const editor = build();
     editor.update({ autoHeight: true });
-    expect(editor.isSoftWrapped()).toBe(true);
+    expect(editor.getAutoHeight()).toBe(true);
+    expect(editor.isSoftWrapped()).toBe(false);
     expect(editor.displayLayer.softWrapColumn).toBe(editor.getSoftWrapColumn());
     editor.update({ autoHeight: false });
     expect(editor.isSoftWrapped()).toBe(false);

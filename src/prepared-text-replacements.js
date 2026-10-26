@@ -165,7 +165,7 @@ function commitPlans(prepared, options = {}) {
           entry.change = entry.edit.getChange();
           entry.patch = entry.edit.createPatch();
           entry.event = entry.buffer.changeEventForPreparedEdit(entry.change, "edit");
-          entry.buffer.prepareDisplayLayersForChange(entry.event);
+          entry.buffer.prepareDisplayLayersForChange(entry.event, entry.edit.snapshot);
           entry.markerPlan?.preparePublication(entry.snapshot);
         }
         check();

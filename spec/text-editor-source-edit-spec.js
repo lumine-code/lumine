@@ -141,6 +141,24 @@ describe("Snapshot-backed editor operations", () => {
       subscription.dispose();
     }
   });
+  it("cancels empty edit batches before consuming the rest of a no-match scan", async () => {
+    const buffer = new TextBuffer("unchanged");
+    editor = new TextEditor({ buffer });
+    const controller = new AbortController();
+    let visited = 0;
+    async function* batches() {
+      for (let i = 0; i < 10000; i++) {
+        visited++;
+        controller.abort();
+        yield [];
+      }
+    }
+    await expectAsync(
+      buffer.applyTextEdits(batches(), { signal: controller.signal }),
+    ).toBeRejectedWith(jasmine.objectContaining({ name: "AbortError" }));
+    expect(visited).toBe(1);
+    expect(buffer.getText()).toBe("unchanged");
+  });
   it("applies a source diff whose exact inserted span exceeds the native string limit", () => {
     const source = hugeSource();
     const buffer = new TextBuffer("prefix\n");

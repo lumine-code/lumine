@@ -1913,7 +1913,7 @@ class TextBuffer {
         },
         origin,
       };
-      this.prepareDisplayLayersForChange(displayChange);
+      this.prepareDisplayLayersForChange(displayChange, edit.snapshot);
       const patch = recordHistory
         ? (TextPatch.fromIndependentChanges(canonicalChanges) ?? patchFromChanges(changes))
         : null;
@@ -2062,7 +2062,7 @@ class TextBuffer {
       const oldExtent = oldRange.getExtent();
       const newExtent = newRange.getExtent();
       const changeEvent = this.changeEventForPreparedEdit(change, origin);
-      if (!skipDisplayPreparation) this.prepareDisplayLayersForChange(changeEvent);
+      if (!skipDisplayPreparation) this.prepareDisplayLayersForChange(changeEvent, edit.snapshot);
       markerPlan?.verify();
       const patch = recordHistory ? edit.createPatch() : null;
       edit.commit();
@@ -2187,9 +2187,9 @@ class TextBuffer {
     }
   }
 
-  prepareDisplayLayersForChange(changeEvent) {
+  prepareDisplayLayersForChange(changeEvent, nextSnapshot) {
     for (const layer of Object.values(this.displayLayers))
-      layer.prepareProjectionForChange(changeEvent);
+      layer.prepareProjectionForChange(changeEvent, nextSnapshot);
     for (const group of this.groupDisplayLayersByLayout()) {
       const source = this.mostCompletelyIndexedDisplayLayer(group);
       source.bufferWillChange(changeEvent);

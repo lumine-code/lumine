@@ -53,6 +53,11 @@ function piece(buffer, start = 0, end = buffer.text.length) {
   if (start === end) return null;
   const first = upperBound(buffer.starts, start);
   const last = upperBound(buffer.starts, end);
+  const head = last > first ? buffer.starts[first] - start - 1 : end - start;
+  const tail = last > first ? end - buffer.starts[last - 1] : end - start;
+  let maxLineSpan = Math.max(head, tail);
+  for (let index = first + 1; index < last; index++)
+    maxLineSpan = Math.max(maxLineSpan, buffer.starts[index] - buffer.starts[index - 1] - 1);
   return {
     buffer,
     start,
@@ -67,7 +72,9 @@ function piece(buffer, start = 0, end = buffer.text.length) {
       upperBound(buffer.crlfs, start + 1) +
       upperBound(buffer.bareCRs, end) -
       upperBound(buffer.bareCRs, start),
-    tail: last > first ? end - buffer.starts[last - 1] : end - start,
+    head,
+    tail,
+    maxLineSpan,
     height: 1,
     pieces: 1,
     firstUnit: buffer.text.charCodeAt(start),
@@ -88,6 +95,8 @@ function branch(left, right) {
     crlfs: left.crlfs + right.crlfs + (left.lastUnit === 13 && right.firstUnit === 10 ? 1 : 0),
     crs: left.crs + right.crs,
     tail: right.breaks ? right.tail : left.tail + right.length,
+    head: left.breaks ? left.head : left.length + right.head,
+    maxLineSpan: Math.max(left.maxLineSpan, right.maxLineSpan, left.tail + right.head),
     height: 1 + Math.max(left.height, right.height),
     pieces: left.pieces + right.pieces,
     firstUnit: left.firstUnit,
@@ -445,6 +454,12 @@ class PieceTree {
     return this.#root?.length ?? 0;
   }
 
+  // Longest span between LF boundaries, including a possible CR before LF.
+  // This conservative materialization bound is maintained along edit paths.
+  get maxLineSpan() {
+    return this.#root?.maxLineSpan ?? 0;
+  }
+
   canMaterialize(maxLength = Infinity) {
     if (typeof maxLength !== "number" || Number.isNaN(maxLength) || maxLength < 0)
       throw new RangeError("Text materialization budget must be a non-negative number");
@@ -562,6 +577,15 @@ class PieceTree {
     integer(endRow, "End row", this.lineCount);
     if (endRow < startRow) throw new RangeError("End row precedes start row");
     if (startRow === endRow) return;
+    if (this.maxLineSpan > MAX_STRING_LENGTH) {
+      for (let row = startRow; row < endRow; row++) {
+        const start = this.lineStart(row);
+        let end = row + 1 < this.lineCount ? this.lineStart(row + 1) - 1 : this.length;
+        if (row + 1 < this.lineCount && this.charCodeAt(end - 1) === 13) end--;
+        yield this.slice(start, end);
+      }
+      return;
+    }
     const start = this.lineStart(startRow);
     const end = endRow === this.lineCount ? this.length : this.lineStart(endRow);
     let pending = "";
@@ -723,7 +747,16 @@ class PieceTree {
         visit(node.left);
         visit(node.right);
         const expected = branch(node.left, node.right);
-        for (const key of ["length", "breaks", "crlfs", "tail", "height", "pieces"])
+        for (const key of [
+          "length",
+          "breaks",
+          "crlfs",
+          "head",
+          "tail",
+          "maxLineSpan",
+          "height",
+          "pieces",
+        ])
           if (node[key] !== expected[key]) throw new Error(`Invalid ${key} summary`);
         if (Math.abs(node.left.height - node.right.height) > 1)
           throw new Error("Unbalanced document tree");

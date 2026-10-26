@@ -1080,12 +1080,12 @@ module.exports = class TextEditorComponent {
         const scrollbarHeight = this.canScrollHorizontally()
           ? this.getHorizontalScrollbarHeight()
           : 0;
-        clientContainerHeight = this.getContentHeight() + scrollbarHeight + "px";
+        clientContainerHeight = this.getAutoSizedContentHeight() + scrollbarHeight + "px";
       }
       if (model.getAutoWidth()) {
         const scrollbarWidth = this.canScrollVertically() ? this.getVerticalScrollbarWidth() : 0;
         clientContainerWidth =
-          this.getGutterContainerWidth() + this.getContentWidth() + scrollbarWidth + "px";
+          this.getGutterContainerWidth() + this.getAutoSizedContentWidth() + scrollbarWidth + "px";
       }
     }
 
@@ -4167,7 +4167,17 @@ module.exports = class TextEditorComponent {
 
   measureLongestLineWidth() {
     if (this.longestLineToMeasure) {
-      const lineComponent = this.lineComponentsByScreenLineId.get(this.longestLineToMeasure.id);
+      const line = this.longestLineToMeasure;
+      this.longestLineToMeasure = null;
+      const lineComponent = this.lineComponentsByScreenLineId.get(line.id);
+      const content = lineComponent?.element?.firstChild;
+      // A gutter teardown or reflow can retire a queued line between rendering
+      // and measurement. Keep the last valid width and let the next query
+      // request the current line again instead of poisoning every later frame.
+      if (!content?.getBoundingClientRect) {
+        if (this.previousLongestLine === line) this.previousLongestLine = null;
+        return;
+      }
       // This width must live on the same pixel grid as the horizontal
       // positions (see measureHorizontalPositionsOnLine): `.lines` width is
       // derived from it and the width specs assert it against the measured
@@ -4178,11 +4188,10 @@ module.exports = class TextEditorComponent {
       // here (raw fractional or plain offsetWidth) — that desyncs the paths
       // and shifts `getContentWidth` by a pixel.
       this.measurements.longestLineWidth = roundToPhysicalPixelBoundary(
-        lineComponent.element.firstChild.getBoundingClientRect().width +
-          (this.longestLineToMeasure.startPixelColumn || 0) * this.getBaseCharacterWidth(),
+        content.getBoundingClientRect().width +
+          (line.startPixelColumn || 0) * this.getBaseCharacterWidth(),
         this.window.devicePixelRatio,
       );
-      this.longestLineToMeasure = null;
     }
   }
 
@@ -5323,7 +5332,7 @@ module.exports = class TextEditorComponent {
       // Mirrors updateClientContainerElement: the container grows by the
       // scrollbar's width only when a vertical scrollbar can appear.
       const scrollbarWidth = this.canScrollVertically() ? this.getVerticalScrollbarWidth() : 0;
-      return this.getScrollWidth() + scrollbarWidth;
+      return this.getAutoSizedContentWidth() + scrollbarWidth;
     } else {
       return this.getClientContainerWidth() - this.getGutterContainerWidth();
     }
@@ -5336,7 +5345,7 @@ module.exports = class TextEditorComponent {
       const scrollbarHeight = this.canScrollHorizontally()
         ? this.getHorizontalScrollbarHeight()
         : 0;
-      return this.getScrollHeight() + scrollbarHeight;
+      return this.getAutoSizedContentHeight() + scrollbarHeight;
     } else {
       return this.getClientContainerHeight();
     }
@@ -5348,7 +5357,7 @@ module.exports = class TextEditorComponent {
       // only when one shows — either way the content's share is the scroll
       // width itself. Resolve that share directly so this getter cannot form a
       // cycle with getScrollWidth when soft wrap is enabled.
-      return this.getContentWidth();
+      return this.getAutoSizedContentWidth();
     }
     return this.getScrollContainerWidth() - this.getVerticalScrollbarWidth();
   }
@@ -5357,7 +5366,7 @@ module.exports = class TextEditorComponent {
     if (this.props.model.getAutoHeight()) {
       // Same shape as getScrollContainerClientWidth: content height, whether
       // or not a horizontal scrollbar happens to be shown below it.
-      return this.getScrollHeight();
+      return this.getAutoSizedContentHeight();
     }
     const scrollbarHeight = this.canScrollHorizontally() ? this.getHorizontalScrollbarHeight() : 0;
     return this.getScrollContainerHeight() - scrollbarHeight;
@@ -5365,8 +5374,7 @@ module.exports = class TextEditorComponent {
 
   canScrollVertically() {
     const { model } = this.props;
-    if (model.isMini()) return false;
-    if (model.getAutoHeight()) return false;
+    if ((model.isMini() || model.getAutoHeight()) && !model.usesBoundedAutoSize()) return false;
     // Compare against getScrollHeight(), not getContentHeight(), so the
     // scroll-past-end padding counts as scrollable area. Otherwise a file
     // shorter than the viewport with scrollPastEnd enabled is scrollable
@@ -5376,10 +5384,23 @@ module.exports = class TextEditorComponent {
 
   canScrollHorizontally() {
     const { model } = this.props;
-    if (model.isMini()) return false;
-    if (model.getAutoWidth()) return false;
+    if ((model.isMini() || model.getAutoWidth()) && !model.usesBoundedAutoSize()) return false;
     if (model.isSoftWrapped()) return false;
     return this.getContentWidth() > this.getScrollContainerClientWidth();
+  }
+
+  getAutoSizedContentHeight() {
+    const height = this.getContentHeight();
+    return this.props.model.usesBoundedAutoSize()
+      ? Math.min(height, Math.max(this.getLineHeight(), Math.min(400, this.window.innerHeight / 2)))
+      : height;
+  }
+
+  getAutoSizedContentWidth() {
+    const width = this.getContentWidth();
+    return this.props.model.usesBoundedAutoSize()
+      ? Math.min(width, Math.max(1, Math.min(1024, this.window.innerWidth)))
+      : width;
   }
 
   getPhysicalScrollHeight() {
