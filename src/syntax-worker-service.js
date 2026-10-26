@@ -87,18 +87,62 @@ class SyntaxWorkerService {
     this.syntaxEpoch++;
     this.environmentDirty = true;
     for (const session of this.sessions.values()) session.listener({ event: "pending" });
-    if (this.sessions.size) void this.ensureEnvironment().catch((error) => this.report(error));
+    this.synchronizeEnvironment();
+  }
+
+  synchronizeEnvironment() {
+    if (!this.sessions.size) return;
+    const client = this.client;
+    try {
+      void this.ensureEnvironment().catch((error) => {
+        if (client === this.client) this.report(error);
+      });
+    } catch (error) {
+      this.report(error);
+    }
   }
 
   report(error) {
-    for (const session of this.sessions.values()) session.listener({ event: "failure", error });
+    for (const session of [...this.sessions.values()])
+      this.disableSession(session, {
+        code: "worker-failure",
+        fatal: false,
+        message: error.message,
+        stack: error.stack,
+      });
+  }
+
+  disableSession(session, failure) {
+    if (session.closed || session.failure) return;
+    session.failure = Object.freeze({
+      scopeName: session.grammar.scopeName,
+      revision: session.buffer.getTextRevision(),
+      bufferLength: session.buffer.getLength(),
+      ...failure,
+    });
+    session.controller.abort(Client.abortError("Syntax analysis is unavailable"));
+    try {
+      session.listener({ event: "unavailable", failure: session.failure });
+    } finally {
+      this.release(session);
+    }
+  }
+
+  runtimeFailed(client, failure) {
+    if (this.closed || this.client !== client) return;
+    const culprit = this.sessions.get(failure.session);
+    if (culprit) this.disableSession(culprit, failure);
+    else for (const session of [...this.sessions.values()]) this.disableSession(session, failure);
+    // Discard the poisoned module before any other document can use it. A
+    // known culprit is quarantined, so reopening survivors cannot replay it.
+    this.recover(client, Client.abortError("Syntax runtime was replaced"), Boolean(culprit));
   }
 
   invalidateConfiguration() {
     this.syntaxEpoch++;
     this.configurationDirty = true;
     for (const session of this.sessions.values()) session.listener({ event: "pending" });
-    if (this.sessions.size) void this.ensureEnvironment().catch((error) => this.report(error));
+    this.synchronizeEnvironment();
   }
 
   ensureEnvironment() {
@@ -147,8 +191,24 @@ class SyntaxWorkerService {
 
   receive(event) {
     if (this.closed) return;
+    if (event.event === "runtime-failure") {
+      this.runtimeFailed(this.client, event.failure);
+      return;
+    }
     const session = this.sessions.get(event.session);
     if (session) {
+      if (event.event === "failure") {
+        this.disableSession(
+          session,
+          event.failure ?? {
+            code: "analysis-failure",
+            fatal: false,
+            message: event.message,
+          },
+        );
+        return;
+      }
+      if (session.failure) return;
       if (event.generation !== undefined) session.generation = event.generation;
       session.listener(event);
       return;
@@ -198,7 +258,6 @@ class SyntaxWorkerService {
     const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer);
     if (policy && !policy.descriptor)
       throw new TypeError("Worker root ranges require a syntax module descriptor");
-    this.connect();
     const controller = new AbortController();
     const session = {
       id: ++this.nextSession,
@@ -210,15 +269,30 @@ class SyntaxWorkerService {
       closed: false,
     };
     this.sessions.set(session.id, session);
+    try {
+      this.openSession(session);
+    } catch (error) {
+      session.chain = Promise.resolve();
+      // Let the caller install its mode before publishing startup failure.
+      queueMicrotask(() =>
+        this.disableSession(session, {
+          code: "worker-failure",
+          fatal: false,
+          message: error.message,
+          stack: error.stack,
+        }),
+      );
+    }
     this.focusBuffer(globalThis.lumine?.workspace?.getActiveTextEditor?.()?.getBuffer());
-    this.openSession(session);
     session.subscription = new CompositeDisposable(
       buffer.onDidApplyChanges((batch) => {
+        if (session.failure) return;
         const client = session.client;
         session.chain = session.chain.then(() => this.sendEdits(client, session, batch));
         this.observeChain(session, client);
       }),
       buffer.onDidChangePath(() => {
+        if (session.failure) return;
         session.epoch++;
         session.listener({ event: "pending" });
         const client = session.client;
@@ -235,7 +309,12 @@ class SyntaxWorkerService {
   observeChain(session, client) {
     void session.chain.catch((error) => {
       if (!session.closed && this.client === client && !client.closed)
-        session.listener({ event: "failure", error });
+        this.disableSession(session, {
+          code: "worker-failure",
+          fatal: false,
+          message: error.message,
+          stack: error.stack,
+        });
     });
   }
 
@@ -327,6 +406,18 @@ class SyntaxWorkerService {
   }
 
   openSession(session) {
+    if (session.failure || session.closed) return;
+    if (this.terminalError) {
+      session.chain = Promise.resolve();
+      queueMicrotask(() =>
+        this.disableSession(session, {
+          code: "worker-failure",
+          fatal: false,
+          message: this.terminalError.message,
+        }),
+      );
+      return;
+    }
     const { buffer, grammar, controller } = session;
     const client = this.connect();
     session.client = client;
@@ -366,20 +457,22 @@ class SyntaxWorkerService {
     this.observeChain(session, client);
   }
 
-  recover(client, error) {
+  recover(client, error, quarantined = false) {
     if (this.closed || this.client !== client) return;
     this.disconnect();
-    if (!this.sessions.size) return;
+    if (![...this.sessions.values()].some((session) => !session.failure)) return;
     // A broken package or bootstrap must not create a worker crash loop.
-    if (this.recoveryAttempted) {
+    if (!quarantined && this.recoveryAttempted) {
       this.terminalError = error;
       this.report(error);
       return;
     }
-    this.recoveryAttempted = true;
-    for (const session of this.sessions.values()) session.listener({ event: "recovering" });
+    if (!quarantined) this.recoveryAttempted = true;
+    for (const session of this.sessions.values())
+      if (!session.failure) session.listener({ event: "recovering" });
     try {
       for (const session of this.sessions.values()) {
+        if (session.failure) continue;
         this.openSession(session);
         const replacement = session.client;
         void session.chain.then(
@@ -400,6 +493,7 @@ class SyntaxWorkerService {
   }
 
   updateRootRanges(session) {
+    if (session.failure) return;
     session.epoch++;
     session.listener({ event: "pending" });
     const descriptor = this.grammars.rootLanguageRangesByBuffer.get(session.buffer)?.descriptor;
@@ -417,7 +511,18 @@ class SyntaxWorkerService {
     this.observeChain(session, client);
   }
 
-  async request(
+  async request(session, operation, data = {}, options = {}) {
+    const client = this.client;
+    try {
+      return await this.requestCurrent(session, operation, data, options);
+    } catch (error) {
+      if (session.failure || session.closed || client !== this.client)
+        throw Client.abortError("Syntax analysis is unavailable or was replaced");
+      throw error;
+    }
+  }
+
+  async requestCurrent(
     session,
     operation,
     data = {},

@@ -12,7 +12,7 @@ module.exports = async function analyzeBufferSyntax(
     throw new TypeError("Syntax analysis module path must be absolute");
   if (buffer.isDestroyed() || signal?.aborted) return null;
   const mode = buffer.getLanguageMode();
-  if (mode.grammar === NullGrammar) return null;
+  if (mode.grammar === NullGrammar || mode.syntaxAvailability?.available === false) return null;
   const revision = buffer.getTextRevision();
   const epoch = mode.getSyntaxRequestEpoch?.();
   const check = () => {
@@ -77,7 +77,8 @@ module.exports = async function analyzeBufferSyntax(
     check();
     return buffer.getTextRevision() === revision ? result : null;
   } catch (error) {
-    if (combined.aborted || error.name === "AbortError") return null;
+    if (combined.aborted || error.name === "AbortError" || mode.getSyntaxRequestEpoch?.() !== epoch)
+      return null;
     throw error;
   } finally {
     subscriptions.dispose();

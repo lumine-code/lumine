@@ -8,7 +8,17 @@ The editor manifest declares the optional packages used by integration specs in 
 
 A document opens from an immutable text snapshot, sent in strings of at most 65536 UTF-16 code units. Subsequent edits preserve their exact offsets and source revision. Small transactions take one message; larger transactions use acknowledged packets containing at most 128 changes and 65536 inserted code units. A large individual insertion is split into text packets. The worker applies the complete transaction atomically and keeps analyses waiting until it commits. Its mirror does not retain editor undo history.
 
-Responses identify the source revision and syntax generation. Grammar, query, configuration, path and root-range-policy changes invalidate pending requests even when the text is unchanged. Closing a document cancels its streams and releases its worker session. A worker failure permits one recovery from authoritative renderer snapshots; repeated failure is reported instead of entering a restart loop. The idle worker terminates after the last document has been released.
+Responses identify the source revision and syntax generation. Grammar, query, configuration, path and root-range-policy changes invalidate pending requests even when the text is unchanged. Closing a document cancels its streams and releases its worker session. An unexpected worker crash permits one recovery from authoritative renderer snapshots; another crash disables analysis instead of entering a restart loop. The idle worker terminates after the last document has been released.
+
+## Analysis failures
+
+Parser initialization and settlement failures quarantine the affected document. Its selected grammar and language settings remain intact, but the replacement language mode owns no syntax session, highlighting or syntax folds. Editing and saving remain available. Pending analyses finish with `null`, and subsequent requests return `null` without queuing work. Package programming errors still reject; a valid analysis returning an empty array remains distinct from unavailable analysis.
+
+An Emscripten abort or WebAssembly runtime trap poisons the entire worker runtime. The worker reports a structured diagnostic with the current document, operation, revision, grammar and available memory measurements. The renderer quarantines the responsible document, terminates the worker and restores the other documents from current text snapshots. When attribution is unavailable, all affected documents are disabled rather than replaying unknown failing work. A memory-limit diagnostic means the runtime stopped with its linear memory at the configured maximum; it is not inferred from the text `Aborted()` alone. Runtime stderr is retained in bounded diagnostics rather than printed repeatedly.
+
+Each quarantined document receives one warning with diagnostic details and a Retry Analysis action. Edits, scrolling and configuration updates do not retry it automatically. `editor.retrySyntaxAnalysis()` explicitly restarts from current text and returns whether a retry was started; changing to another grammar also replaces the failed mode. Closing or replacing that mode dismisses its warning.
+
+`editor.getSyntaxAvailability()` returns `{available: true}` when analysis is enabled, `{available: false, reason: "none"}` for None, or `{available: false, reason: "failure", failure}` after an infrastructure failure. Enabled analysis may still be parsing; use `whenGrammarSettled()` for readiness. `editor.onDidChangeSyntaxAvailability(callback)` observes language-mode replacements. Consumers must cancel pending UI work and clear decorations or staged stream output when availability becomes false. This contract applies to every split sharing the document.
 
 ## Package analyses
 

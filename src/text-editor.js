@@ -6334,6 +6334,49 @@ module.exports = class TextEditor {
     return (languageMode.getGrammar && languageMode.getGrammar()) || NullGrammar;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Report whether syntax analysis is enabled, independently of parse readiness.
+   * A disabled language reports reason `none`; a failed analysis reports reason
+   * `failure` and a diagnostic object. The selected grammar is preserved on failure.
+   * @returns {Object} Availability with an `available` boolean and optional `reason` and `failure`.
+   */
+  getSyntaxAvailability() {
+    const mode = this.buffer.getLanguageMode();
+    return (
+      mode.syntaxAvailability ??
+      Object.freeze(
+        mode.grammar === NullGrammar ? { available: false, reason: "none" } : { available: true },
+      )
+    );
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Observe syntax availability when the document's language mode is replaced.
+   * Consumers should clear staged results and decorations when analysis becomes unavailable.
+   * @param {Function} callback - Receives the current availability object.
+   * @returns {Disposable} Subscription to language-mode availability changes.
+   */
+  onDidChangeSyntaxAvailability(callback) {
+    return this.buffer.onDidChangeLanguageMode(() => callback(this.getSyntaxAvailability()));
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Explicitly retry failed syntax analysis using the current document text.
+   * @returns {Boolean} Whether a new analysis was started.
+   */
+  retrySyntaxAnalysis() {
+    return this.buffer.getLanguageMode().retrySyntaxAnalysis?.() ?? false;
+  }
+
   // Deprecated: Set the current Tree-sitter grammar of this editor.
   //
   // Assigning a grammar will cause the editor to re-tokenize based on the new
@@ -6729,7 +6772,7 @@ module.exports = class TextEditor {
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels the analysis.
    * @param {Function} [options.onChunk] - Accepts one streamed data packet; may return a promise.
-   * @returns {Promise<*>} Analysis data, or null when None disables analysis or the invocation becomes obsolete.
+   * @returns {Promise<*>} Analysis data, or null when analysis is unavailable, disabled by None, or the invocation becomes obsolete. Errors in package analysis code still reject.
    * @category Syntax Trees
    */
   async analyzeSyntax(modulePath, method, params, options = {}) {

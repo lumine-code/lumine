@@ -1,4 +1,5 @@
 const { Parser } = require("web-tree-sitter");
+const runtime = require("./tree-sitter-runtime");
 require("./tree-sitter-cursor");
 const ownTree = require("./tree-sitter-tree");
 
@@ -192,7 +193,8 @@ class TreeSitterParser {
     try {
       return applyEdits(tree, previous, text, edits);
     } catch (error) {
-      tree.delete();
+      runtime.observe(error);
+      if (!runtime.failure) tree.delete();
       throw error;
     }
   }
@@ -249,6 +251,11 @@ class TreeSitterParser {
   }
 
   begin(text, options) {
+    return runtime.run(options.runtimeContext, () => this.beginCurrent(text, options));
+  }
+
+  beginCurrent(text, options) {
+    runtime.assertHealthy();
     if (this.closed) throw new Error("Parser is closed");
     const { previous = null, edits = [], revision = 0, includedRanges, comparison } = options;
     if (this.pending) {
@@ -285,10 +292,15 @@ class TreeSitterParser {
       comparison,
       oldTree,
       incremental,
+      runtimeContext: options.runtimeContext,
     });
   }
 
   step(job, deadline, signal) {
+    return runtime.run(job.runtimeContext, () => this.stepCurrent(job, deadline, signal));
+  }
+
+  stepCurrent(job, deadline, signal) {
     signal?.throwIfAborted();
     let tree = job.parsedTree;
     if (!tree) {
@@ -308,12 +320,15 @@ class TreeSitterParser {
           progressCallback: callbacks.progress,
         });
         if (tree) tree.textCallback = nodeTextInput(job.text);
+      } catch (error) {
+        runtime.observe(error);
+        throw error;
       } finally {
         callbacks.release();
-        this.parser.setLogger(this.logger);
+        if (!runtime.failure) this.parser.setLogger(this.logger);
         this.executing = false;
         if (this.closed) {
-          tree?.delete();
+          if (!runtime.failure) tree?.delete();
           this.dispose();
         }
       }
@@ -380,11 +395,14 @@ class TreeSitterParser {
       const changed = comparisonTree ? comparisonTree.getChangedRanges(tree) : [];
       return publish(tree, job.text, job.revision, job.incremental, changed, baseRevision);
     } catch (error) {
-      tree.delete();
+      runtime.observe(error);
+      if (!runtime.failure) tree.delete();
       throw error;
     } finally {
-      if (comparisonTree && comparisonTree !== job.oldTree) comparisonTree.delete();
-      job.oldTree?.delete();
+      if (!runtime.failure) {
+        if (comparisonTree && comparisonTree !== job.oldTree) comparisonTree.delete();
+        job.oldTree?.delete();
+      }
       this.pending = null;
     }
   }
@@ -447,6 +465,10 @@ class TreeSitterParser {
   }
 
   resetPending() {
+    if (runtime.failure) {
+      this.pending = null;
+      return;
+    }
     if (!this.disposed) this.parser.reset();
     this.pending?.oldTree?.delete();
     this.pending?.parsedTree?.delete();
@@ -468,8 +490,10 @@ class TreeSitterParser {
   dispose() {
     if (this.disposed) return;
     this.resetPending();
-    this.parser.delete();
-    this.parser.setLogger(null);
+    if (!runtime.failure) {
+      this.parser.delete();
+      this.parser.setLogger(null);
+    }
     this.logger = null;
     this.disposed = true;
   }

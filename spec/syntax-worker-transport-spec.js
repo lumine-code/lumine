@@ -486,7 +486,7 @@ describe("Syntax worker transport", () => {
     }
   });
 
-  it("recovers a failed grammar generation after its definition is repaired", async () => {
+  it("quarantines a failed grammar until explicitly retried after repair", async () => {
     jasmine.useRealClock();
     await lumine.packages.activatePackage("language-javascript");
     const service = new Service(lumine.grammars);
@@ -501,16 +501,19 @@ describe("Syntax worker transport", () => {
       await mode.ready;
       grammar.definition.treeSitter.grammar = "missing-syntax-worker-test.wasm";
       service.invalidateEnvironment();
-      await conditionPromise(() => mode.error);
-      expect(console.error).toHaveBeenCalled();
+      await conditionPromise(() => !editor.getSyntaxAvailability().available);
+      expect(editor.getSyntaxAvailability().reason).toBe("failure");
+      expect(editor.getGrammar()).toBe(grammar);
+      expect(await editor.whenGrammarSettled()).toBeFalse();
+      expect(console.error).not.toHaveBeenCalled();
       grammar.definition.treeSitter.grammar = wasm;
       service.invalidateEnvironment();
-      await service.ensureEnvironment();
-      await service.settle(mode.session);
-      await mode.ready;
-      await mode.refresh();
-      expect(mode.error).toBeFalsy();
-      expect(mode.tokenized).toBeTrue();
+      expect(editor.retrySyntaxAnalysis()).toBeTrue();
+      const replacement = editor.getBuffer().getLanguageMode();
+      await replacement.ready;
+      await replacement.refresh();
+      expect(editor.getSyntaxAvailability().available).toBeTrue();
+      expect(replacement.tokenized).toBeTrue();
       const result = await editor.analyzeSyntax(
         path.join(__dirname, "fixtures/syntax-worker-analysis.js"),
         "summary",
@@ -811,7 +814,10 @@ describe("Syntax worker transport", () => {
       expect(events).toContain("recovering");
       expect(events).toContain("recovered");
       service.client.close(new Error("repeated worker crash"));
-      await expectAsync(service.settle(session)).toBeRejectedWithError("repeated worker crash");
+      await expectAsync(service.settle(session)).toBeRejectedWith(
+        jasmine.objectContaining({ name: "AbortError" }),
+      );
+      expect(events).toContain("unavailable");
       expect(service.client).toBeNull();
     } finally {
       service.release(session);

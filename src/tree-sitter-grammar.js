@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const { Language, Parser, Query } = require("web-tree-sitter");
+const { Language, Query } = require("web-tree-sitter");
+const runtime = require("./tree-sitter-runtime");
 const TreeSitterParser = require("./tree-sitter-parser");
 const { createHash } = require("node:crypto");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
@@ -14,18 +15,8 @@ const {
 } = require("./package-lifecycle-errors");
 
 // Read runtime bytes with Node: Electron cannot fetch file:// Wasm on every OS.
-let parserInitPromise;
 function initializeParser() {
-  if (!parserInitPromise) {
-    parserInitPromise = fs.promises
-      .readFile(require.resolve("web-tree-sitter/web-tree-sitter.wasm"))
-      .then((wasmBinary) => Parser.init({ wasmBinary }))
-      .catch((error) => {
-        parserInitPromise = null;
-        throw error;
-      });
-  }
-  return parserInitPromise;
+  return runtime.initialize();
 }
 
 // QueryError kinds supplied by web-tree-sitter.

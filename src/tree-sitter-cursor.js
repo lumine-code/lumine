@@ -15,7 +15,7 @@ if (!Node.prototype[installed]) {
   const dispose = (state) => {
     if (state.closed) return;
     state.closed = true;
-    deleteCursor.call(state.cursor);
+    if (!require("./tree-sitter-runtime").failure) deleteCursor.call(state.cursor);
   };
   const finalizer = new FinalizationRegistry(dispose);
 

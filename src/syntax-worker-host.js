@@ -6,6 +6,7 @@ const GrammarRegistry = require("./grammar-registry");
 const TreeSitterGrammar = require("./tree-sitter-grammar");
 const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
 const TextBuffer = require("./text-buffer");
+const runtime = require("./tree-sitter-runtime");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
 const { PAINT_TILE_ROWS, PAINT_PACKET_EVENTS } = require("./syntax-worker-protocol");
@@ -32,6 +33,9 @@ function waitFor(promise, signal) {
 class SyntaxWorkerHost {
   constructor({ notify = () => {} } = {}) {
     this.notify = notify;
+    this.runtimeSubscription = runtime.onDidFail((failure) => {
+      this.notify({ event: "runtime-failure", failure });
+    });
     this.config = new Config();
     this.sessions = new Map();
     this.modules = [];
@@ -207,6 +211,12 @@ class SyntaxWorkerHost {
   }
 
   installMode(session) {
+    return runtime.run(this.contextFor(session, "initialize"), () =>
+      this.installModeCurrent(session),
+    );
+  }
+
+  installModeCurrent(session) {
     const grammar = this.grammars.grammarForScopeName(session.scopeName);
     if (!grammar || grammar.type !== "tree-sitter")
       throw new Error(`Unavailable grammar: ${session.scopeName}`);
@@ -248,8 +258,41 @@ class SyntaxWorkerHost {
     );
     void mode.ready.catch((error) => {
       if (this.sessions.get(session.id) === session && session.mode === mode)
-        this.notify({ event: "failure", session: session.id, message: error.message });
+        this.failSession(session, error);
     });
+  }
+
+  contextFor(session, operation) {
+    return (
+      session && {
+        session: session.id,
+        scopeName: session.scopeName,
+        revision: session.revision,
+        bufferLength: session.buffer.getLength(),
+        operation,
+      }
+    );
+  }
+
+  failSession(session, error) {
+    if (runtime.failure) {
+      runtime.observe(error, this.contextFor(session, "parse"));
+      return;
+    }
+    if (session.failure || error.name === "AbortError") return;
+    session.failure = true;
+    this.notify({
+      event: "failure",
+      session: session.id,
+      failure: {
+        ...this.contextFor(session, "parse"),
+        code: "analysis-failure",
+        fatal: false,
+        message: error.message,
+        stack: error.stack,
+      },
+    });
+    this.closeSession(session.id);
   }
 
   closeSession(id) {
@@ -262,6 +305,12 @@ class SyntaxWorkerHost {
   }
 
   async dispatch(operation, data, { signal, emit } = {}) {
+    return runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
+      this.dispatchOperation(operation, data, { signal, emit }),
+    );
+  }
+
+  async dispatchOperation(operation, data, { signal, emit } = {}) {
     if (operation === "environment") {
       this.environmentReady = this.environmentReady
         .catch(() => {})
@@ -289,6 +338,7 @@ class SyntaxWorkerHost {
         jobs: new Set(),
       };
       this.sessions.set(data.session, session);
+      runtime.registerBuffer(buffer, () => this.contextFor(session));
       if (data.rootRanges)
         session.rootRanges = this.grammars.setRootLanguageRanges(buffer, data.rootRanges);
       return { revision: session.revision, generation: session.generation };
@@ -467,14 +517,18 @@ class SyntaxWorkerHost {
     };
     try {
       if (!session.initialized) throw new Error("Syntax document is not initialized");
-      const transaction = await waitFor(mode.atGrammarSettlement(), combined);
+      let transaction;
+      try {
+        transaction = await waitFor(mode.atGrammarSettlement(), combined);
+      } catch (error) {
+        this.failSession(session, error);
+        throw error;
+      }
       current();
       const syntaxReady = !(transaction.parseError || mode.lastTransactionParseError);
-      if (operation !== "settle" && !syntaxReady) {
-        if (operation === "analyze") return { revision, generation, value: null, syntaxReady };
-        throw Object.assign(new Error("Syntax is unavailable after a parser failure"), {
-          name: "SyntaxUnavailableError",
-        });
+      if (!syntaxReady) {
+        this.failSession(session, transaction.parseError ?? mode.lastTransactionParseError);
+        throw aborted("Syntax analysis is unavailable");
       }
       let value;
       if (operation === "settle") {
@@ -731,6 +785,7 @@ class SyntaxWorkerHost {
   }
 
   close() {
+    this.runtimeSubscription.dispose();
     for (const id of [...this.sessions.keys()]) this.closeSession(id);
     for (const module of this.modules.splice(0)) module.dispose?.();
     for (const grammar of this.grammars.getGrammars()) grammar.destroy?.();

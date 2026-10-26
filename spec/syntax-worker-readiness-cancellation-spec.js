@@ -21,6 +21,7 @@ describe("Syntax requests waiting for readiness", () => {
         epoch: 1,
         buffer: { getTextRevision: () => 1 },
       };
+      Object.setPrototypeOf(service, Service.prototype);
       const pending = Service.prototype.request
         .call(service, session, "analyze", {}, { signal: controller.signal })
         .catch((error) => error);
@@ -60,6 +61,7 @@ describe("Syntax requests waiting for readiness", () => {
           },
         };
         const controller = new AbortController();
+        Object.setPrototypeOf(service, Service.prototype);
         const pending = Service.prototype.request
           .call(service, first, "analyze", {}, { signal: controller.signal })
           .then(

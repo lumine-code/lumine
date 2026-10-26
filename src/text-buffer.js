@@ -1077,7 +1077,7 @@ class TextBuffer {
    * @param {String} method - Named export to execute with a syntax context.
    * @param {*} params - Serializable analysis parameters.
    * @param {Object} [options] - Optional signal and streamed-data consumer.
-   * @returns {Promise<*>} Data, or null when None disables analysis or the captured revision is invalidated.
+   * @returns {Promise<*>} Data, or null when analysis is unavailable, disabled by None, or the captured revision is invalidated.
    */
   analyzeSyntax(modulePath, method, params, options) {
     return require("./buffer-syntax-analysis")(this, modulePath, method, params, options);
@@ -1093,7 +1093,13 @@ class TextBuffer {
    */
   getSyntaxSnapshotToken() {
     const mode = this.getLanguageMode();
-    if (this.isDestroyed() || mode.destroyed || mode.publicationPending) return null;
+    if (
+      this.isDestroyed() ||
+      mode.destroyed ||
+      mode.publicationPending ||
+      mode.syntaxAvailability?.available === false
+    )
+      return null;
     const revision = this.getTextRevision();
     const path = this.getPath();
     const generation = mode.getSyntaxGeneration?.() ?? mode.presentation?.generation ?? 0;

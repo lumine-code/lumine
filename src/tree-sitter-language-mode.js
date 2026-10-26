@@ -1,4 +1,5 @@
 const { Node } = require("web-tree-sitter");
+const runtime = require("./tree-sitter-runtime");
 const TreeSitterParser = require("./tree-sitter-parser");
 const HighlightCache = require("./tree-sitter-highlight-cache");
 const TreeSitterPresentation = require("./tree-sitter-presentation");
@@ -433,7 +434,9 @@ class TreeSitterLanguageMode {
     if (!grammar) {
       throw new Error("Cannot create a Tree-sitter parser for an unregistered language");
     }
-    return grammar.createParser(language);
+    return runtime.run(runtime.contextForBuffer(this.buffer, grammar.scopeName), () =>
+      grammar.createParser(language),
+    );
   }
 
   getOrCreateParserForLanguage(language) {
@@ -1600,6 +1603,7 @@ class TreeSitterLanguageMode {
           try {
             signal?.throwIfAborted();
             const options = {
+              runtimeContext: runtime.contextForBuffer(this.buffer, scopeName),
               deadlineForSlice: () => parserScheduler.deadline(4000),
               previous: capture.previous,
               edits: extraEdits.length
@@ -1668,6 +1672,7 @@ class TreeSitterLanguageMode {
     const parser = this.acquireParserForLanguage(language);
     const options = {
       signal,
+      runtimeContext: runtime.contextForBuffer(this.buffer, scopeName),
       deadlineForSlice: () => parserScheduler.deadline(4000),
       previous: capture.previous,
       edits: extraEdits.length ? Object.freeze([...capture.edits, ...extraEdits]) : capture.edits,

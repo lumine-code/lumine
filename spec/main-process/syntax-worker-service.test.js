@@ -59,6 +59,34 @@ async function enterEnvironmentYield() {
   await Promise.resolve();
 }
 
+test("a fatal fault without an owner disables all affected sessions without replaying them", async () => {
+  const { service, clients } = setup();
+  const buffers = [new TextBuffer("one"), new TextBuffer("two")];
+  const events = [];
+  const sessions = buffers.map((buffer) =>
+    service.acquire(buffer, { scopeName: "source.js" }, (event) => events.push(event)),
+  );
+  try {
+    await Promise.all(sessions.map((session) => session.chain));
+    service.receive({
+      event: "runtime-failure",
+      failure: { code: "wasm-failure", fatal: true, message: "unattributed trap" },
+    });
+    assert.equal(service.client, null);
+    assert.equal(service.sessions.size, 0);
+    assert.equal(clients.length, 1);
+    assert.equal(clients[0].closed, true);
+    assert.equal(events.filter((event) => event.event === "unavailable").length, 2);
+    for (const session of sessions)
+      await assert.rejects(service.settle(session), { name: "AbortError" });
+    for (const buffer of buffers) buffer.append(" edited");
+    assert.equal(clients.length, 1);
+  } finally {
+    for (const buffer of buffers) buffer.destroy();
+    service.dispose();
+  }
+});
+
 test("a retired environment task cannot clear a replacement worker's pending configuration", async () => {
   const { service, clients } = setup();
   try {
@@ -112,7 +140,7 @@ test("disposing during an environment yield does not send to the retired worker"
   assert.equal(service.client, null);
 });
 
-for (const change of ["replacement", "recovery"])
+for (const change of ["initialization", "replacement", "recovery"])
   test(`the active buffer keeps parser priority after grammar session ${change}`, async () => {
     const previous = globalThis.lumine;
     const buffer = new TextBuffer({ text: "const value = 1;" });
@@ -126,7 +154,7 @@ for (const change of ["replacement", "recovery"])
       if (change === "replacement") {
         current = service.acquire(buffer, grammar, () => {});
         service.release(original);
-      } else clients[0].close();
+      } else if (change === "recovery") clients[0].close();
       await current.chain;
       assert.equal(
         clients.at(-1).controls.findLast((message) => message.operation === "focus")?.session,

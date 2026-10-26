@@ -63,12 +63,35 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   failed(error) {
     if (this.destroyed || error.name === "AbortError") return;
-    if (!this.error) console.error("Syntax worker failed", error);
-    this.error = error;
+    this.service.disableSession(this.session, {
+      code: "analysis-failure",
+      fatal: false,
+      message: error.message,
+      stack: error.stack,
+    });
   }
 
   receive(event) {
     if (this.destroyed) return;
+    if (event.event === "unavailable") {
+      this.error = event.failure;
+      if (this.buffer.getLanguageMode() !== this) return;
+      const UnavailableMode = require("./unavailable-syntax-language-mode");
+      const { buffer, grammar, service } = this;
+      const fallback = new UnavailableMode({
+        buffer,
+        grammar,
+        failure: event.failure,
+        retry: () => {
+          service.terminalError = null;
+          service.recoveryAttempted = false;
+          buffer.setLanguageMode(new TreeSitterWorkerLanguageMode({ buffer, grammar, service }));
+        },
+      });
+      buffer.setLanguageMode(fallback);
+      fallback.notify();
+      return;
+    }
     if (event.event === "settled") {
       if (event.revision === this.buffer.getTextRevision()) this.publicationPending = false;
       return;

@@ -4,7 +4,9 @@ const { idleDisposals } = require("./idle-disposal-queue");
 // A native finalizer drains every unreachable tree in one renderer task.
 // Retain the raw Tree until its public owner (including nodes and cursors)
 // is collected, then release trees in small batches through the public API.
-const dispose = (tree) => Tree.prototype.delete.call(tree);
+const dispose = (tree) => {
+  if (!require("./tree-sitter-runtime").failure) Tree.prototype.delete.call(tree);
+};
 const finalizer = new FinalizationRegistry((tree) => {
   idleDisposals.add(tree, dispose);
 });
