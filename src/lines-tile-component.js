@@ -206,7 +206,11 @@ module.exports = class LinesTileComponent {
             });
             this.element.insertBefore(
               newScreenLineComponent.element,
-              this.getFirstElementForScreenLine(oldProps, oldScreenLine),
+              this.getFirstElementForScreenLine(
+                oldProps,
+                oldScreenLine,
+                this.lineComponents[lineComponentIndex],
+              ),
             );
             newScreenLineComponents.push(newScreenLineComponent);
 
@@ -252,7 +256,7 @@ module.exports = class LinesTileComponent {
     }
   }
 
-  getFirstElementForScreenLine(oldProps, screenLine) {
+  getFirstElementForScreenLine(oldProps, screenLine, lineComponent) {
     const blockDecorations = oldProps.blockDecorations
       ? oldProps.blockDecorations.get(screenLine.id)
       : null;
@@ -268,6 +272,7 @@ module.exports = class LinesTileComponent {
       for (let i = 0; i < blockDecorationElementsBeforeOldScreenLine.length; i++) {
         const blockDecorationElement = blockDecorationElementsBeforeOldScreenLine[i];
         if (
+          blockDecorationElement.parentNode === this.element &&
           !blockDecorationElementsBeforeOldScreenLine.includes(
             blockDecorationElement.previousSibling,
           )
@@ -277,7 +282,10 @@ module.exports = class LinesTileComponent {
       }
     }
 
-    return oldProps.lineComponentsByScreenLineId.get(screenLine.id).element;
+    // Another tile may already have created the same screen line while rows
+    // shift between tiles. The shared lookup then names that replacement;
+    // insertion still belongs before this tile's existing component.
+    return lineComponent.element;
   }
 
   updateBlockDecorations(oldProps, newProps) {

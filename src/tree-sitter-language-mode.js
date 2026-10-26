@@ -64,7 +64,7 @@ const FOLD_PREFILL_MAX_ROWS = 400;
 // Row and code-unit windows keep each traversal bounded while preserving
 // document order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
-const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
+const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 4096;
 // Warm ordinary documents can finish one guarded query synchronously. Larger
 // populations still use the smaller cooperative windows above.
 const SYNCHRONOUS_INJECTION_QUERY_UNITS = 64 * 1024;

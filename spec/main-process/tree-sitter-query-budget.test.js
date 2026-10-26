@@ -7,6 +7,7 @@ const {
   runQuery,
   boundedQueryRange,
   withPredicateTextBudget,
+  withoutPredicateTextBudget,
   checkPredicateTextLength,
 } = require("../../src/tree-sitter-query-budget");
 
@@ -14,6 +15,66 @@ let language;
 // Semantic and structural-limit tests do not measure host scheduling. Tests
 // for elapsed budgets below provide their own advancing clocks explicitly.
 const semanticClock = () => 0;
+
+test("required parsing does not consume a later predicate's time slice", () => {
+  let clock = 0;
+  const result = withPredicateTextBudget(
+    () => {
+      withoutPredicateTextBudget(() => {
+        clock += 100;
+      });
+      clock += 20;
+      checkPredicateTextLength(1);
+      return "complete";
+    },
+    { now: () => clock, timeoutMs: 25 },
+  );
+  assert.equal(result.complete, true);
+  assert.equal(result.value, "complete");
+});
+
+test("parsing preserves spent predicate time and does not bypass cancellation", () => {
+  let clock = 0;
+  const result = withPredicateTextBudget(
+    () => {
+      clock += 20;
+      withoutPredicateTextBudget(() => {
+        clock += 100;
+      });
+      clock += 10;
+      checkPredicateTextLength(1);
+    },
+    { now: () => clock, timeoutMs: 25 },
+  );
+  assert.equal(result.complete, false);
+  assert.equal(result.reason, "timeout");
+  const controller = new AbortController();
+  const cancelled = withPredicateTextBudget(
+    () => {
+      withoutPredicateTextBudget(() => controller.abort());
+      checkPredicateTextLength(1);
+    },
+    { now: semanticClock, signal: controller.signal },
+  );
+  assert.equal(cancelled.reason, "cancelled");
+});
+
+test("a failed parse restores the surrounding predicate's text limit", () => {
+  const result = withPredicateTextBudget(
+    () => {
+      assert.throws(
+        () =>
+          withoutPredicateTextBudget(() => {
+            throw new Error("parse failed");
+          }),
+        /parse failed/,
+      );
+      checkPredicateTextLength(5);
+    },
+    { now: semanticClock, maxPredicateTextLength: 4 },
+  );
+  assert.equal(result.reason, "predicate-text-limit");
+});
 before(async () => {
   await Parser.init();
   language = await Language.load(

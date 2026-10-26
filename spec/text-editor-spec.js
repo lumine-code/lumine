@@ -10070,7 +10070,12 @@ describe("TextEditor", () => {
       // complicated than they used to be, but in order to make this test
       // happy, we'll make the editor height a bit shorter so that we don't try
       // to make six rows instead of five.
-      element.style.height = Math.floor(element.component.getLineHeight() * 5) + "px";
+      element.measureDimensions();
+      const scrollbarHeight = element.component.canScrollHorizontally()
+        ? element.component.getHorizontalScrollbarHeight()
+        : 0;
+      element.style.height =
+        Math.floor(element.component.getLineHeight() * 5) + scrollbarHeight + "px";
       element.measureDimensions();
 
       expect(editor.getCursorBufferPosition().row).toBe(0);
@@ -10101,7 +10106,12 @@ describe("TextEditor", () => {
       // complicated than they used to be, but in order to make this test
       // happy, we'll make the editor height a bit shorter so that we don't try
       // to make six rows instead of five.
-      element.style.height = Math.floor(element.component.getLineHeight() * 5) + "px";
+      element.measureDimensions();
+      const scrollbarHeight = element.component.canScrollHorizontally()
+        ? element.component.getHorizontalScrollbarHeight()
+        : 0;
+      element.style.height =
+        Math.floor(element.component.getLineHeight() * 5) + scrollbarHeight + "px";
       element.measureDimensions();
 
       expect(editor.getCursorBufferPosition().row).toBe(0);

@@ -7,6 +7,7 @@ const { scanSuggestedIndentation } = require("./tree-sitter-indentation-stream")
 const {
   runQuery,
   withPredicateTextBudget,
+  withoutPredicateTextBudget,
   checkPredicateTextLength,
   QueryBudgetExceeded,
 } = require("./tree-sitter-query-budget");
@@ -299,10 +300,14 @@ class IndentResolver {
         // `get` path) or that we're willing to spend the time to do a
         // synchronous reparse (the `parse` path). Either way, we'll be able to
         // deliver a synchronous answer to the question.
-        indentTree = controllingLayer.getOrParseTree({
-          bounded:
-            !options.forceTreeParse && languageMode.useAsyncParsing && languageMode.useAsyncIndent,
-        });
+        indentTree = withoutPredicateTextBudget(() =>
+          controllingLayer.getOrParseTree({
+            bounded:
+              !options.forceTreeParse &&
+              languageMode.useAsyncParsing &&
+              languageMode.useAsyncIndent,
+          }),
+        );
       }
       if (!indentTree) {
         // We can't answer this yet because we don't yet have a new syntax
@@ -552,12 +557,14 @@ class IndentResolver {
         scopeResolver.reset();
         indentTree = options.treeForLayer
           ? options.treeForLayer(dedentControllingLayer)
-          : dedentControllingLayer.getOrParseTree({
-              bounded:
-                !options.forceTreeParse &&
-                languageMode.useAsyncParsing &&
-                languageMode.useAsyncIndent,
-            });
+          : withoutPredicateTextBudget(() =>
+              dedentControllingLayer.getOrParseTree({
+                bounded:
+                  !options.forceTreeParse &&
+                  languageMode.useAsyncParsing &&
+                  languageMode.useAsyncIndent,
+              }),
+            );
         if (!indentTree && options.treeForLayer) return null;
         if (!indentTree)
           return this.deferIndentSuggestion(row, tabLength, rawOptions, {
@@ -916,7 +923,10 @@ class IndentResolver {
     const treeForLayer = (layer) => {
       if (!trees.has(layer)) {
         if (trees.size >= 32) trees.delete(trees.keys().next().value);
-        trees.set(layer, layer.getOrParseTree());
+        trees.set(
+          layer,
+          withoutPredicateTextBudget(() => layer.getOrParseTree()),
+        );
       }
       return trees.get(layer);
     };
@@ -1165,7 +1175,7 @@ class IndentResolver {
         !languageMode.useAsyncIndent ||
         !languageMode.useAsyncParsing
       ) {
-        indentTree = controllingLayer.getOrParseTree();
+        indentTree = withoutPredicateTextBudget(() => controllingLayer.getOrParseTree());
       } else {
         return languageMode.atTransactionEnd().then(({ changeCount, parseError }) => {
           if (

@@ -566,6 +566,10 @@ describe("WorkspaceElement", () => {
       });
 
       it(`switches hit testing between the ${location} dock toggle and an intersecting pane resize handle`, async () => {
+        // The full suite also exercises native window resizing. Keep the hit
+        // test inside the current viewport even when it is narrower than 600px.
+        workspaceElement.style.width = Math.min(600, window.innerWidth) + "px";
+        workspaceElement.style.height = Math.min(300, window.innerHeight) + "px";
         const pane = lumine.workspace.getActivePane();
         if (location === "bottom") pane.splitRight();
         else pane.splitDown();

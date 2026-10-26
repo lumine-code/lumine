@@ -87,6 +87,27 @@ describe("LinesTileComponent row replacement", () => {
     expect(tile.lineComponents[0].element).toBe(element);
   });
 
+  it("inserts before the local row while another tile has registered its replacement", () => {
+    const retained = line("retained row");
+    const shared = props([retained]);
+    tile = new LinesTileComponent(shared);
+    const neighbor = new LinesTileComponent({ ...shared, screenLines: [line("old neighbor")] });
+    const retainedElement = tile.lineComponents[0].element;
+    try {
+      neighbor.update({ ...shared, screenLines: [retained] });
+      const inserted = line("new row");
+      tile.update({ ...shared, screenLines: [inserted, retained] });
+      expect([...tile.element.children].map((node) => node.textContent)).toEqual([
+        "new row",
+        "retained row",
+      ]);
+      expect(tile.lineComponents[1].element).toBe(retainedElement);
+      expect(neighbor.lineComponents[0].element.parentNode).toBe(neighbor.element);
+    } finally {
+      neighbor.destroy();
+    }
+  });
+
   it("keeps incremental replacement when a package has focused content inside a row", () => {
     tile = new LinesTileComponent(props([line("old one"), line("old two"), line("old three")]));
     jasmine.attachToDOM(tile.element);

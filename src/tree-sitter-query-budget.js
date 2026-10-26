@@ -39,6 +39,21 @@ function checkPredicateTextLength(length) {
   predicateTextBudget.check();
 }
 
+// A required syntax parse has its own scheduling policy. Time spent producing
+// its tree is not time spent evaluating query predicates on that tree.
+function withoutPredicateTextBudget(callback) {
+  const previous = predicateTextBudget;
+  if (!previous) return callback();
+  const start = previous.now();
+  predicateTextBudget = null;
+  try {
+    return callback();
+  } finally {
+    previous.extendDeadline(Math.max(0, previous.now() - start));
+    predicateTextBudget = previous;
+  }
+}
+
 // Synchronous only: a scope-resolver pass must finish before the context can be
 // released. A caller discards the window if complete is false; no predicate is
 // ever evaluated against a truncated prefix or assigned a guessed truth value.
@@ -50,14 +65,19 @@ function withPredicateTextBudget(callback, budget = {}) {
     0,
   );
   const now = budget.now ?? (() => performance.now());
-  const deadline = now() + limit(budget.timeoutMs, DEFAULTS.timeoutMs, "timeoutMs", 0);
+  let deadline = now() + limit(budget.timeoutMs, DEFAULTS.timeoutMs, "timeoutMs", 0);
   const previous = predicateTextBudget;
   const check = (checkTime = true) => {
     if (budget.signal?.aborted || budget.isCancelled?.())
       throw new QueryBudgetExceeded("cancelled");
     if (checkTime && now() >= deadline) throw new QueryBudgetExceeded("timeout");
   };
-  predicateTextBudget = { maxLength, check };
+  predicateTextBudget = {
+    maxLength,
+    check,
+    now,
+    extendDeadline: (elapsed) => (deadline += elapsed),
+  };
   try {
     check();
     const value = callback();
@@ -268,6 +288,7 @@ module.exports = {
   runQuery,
   boundedQueryRange,
   withPredicateTextBudget,
+  withoutPredicateTextBudget,
   checkPredicateTextLength,
   QueryBudgetExceeded,
   DEFAULTS,
