@@ -2715,10 +2715,10 @@ describe("DisplayLayer", () => {
       const displayLayer = buffer.addDisplayLayer({});
       expect(displayLayer.getApproximateRightmostScreenPosition()).toEqual(Point.ZERO);
       displayLayer.translateBufferPosition(Point(1, 0));
-      expect(displayLayer.indexedBufferRowCount).toBe(2);
+      expect(displayLayer.indexedBufferRowCount).toBe(4);
       expect(displayLayer.getApproximateRightmostScreenPosition()).toEqual(Point(1, 7));
       displayLayer.translateBufferPosition(Point(2, 0));
-      expect(displayLayer.indexedBufferRowCount).toBe(3);
+      expect(displayLayer.indexedBufferRowCount).toBe(4);
       expect(displayLayer.getApproximateRightmostScreenPosition()).toEqual(Point(2, 11));
       displayLayer.translateBufferPosition(Point(3, 0));
       expect(displayLayer.indexedBufferRowCount).toBe(4);
@@ -2740,7 +2740,7 @@ describe("DisplayLayer", () => {
         text: "yo\n".repeat(100),
       });
 
-      const displayLayer = buffer.addDisplayLayer({});
+      const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 80 });
       expect(displayLayer.doBackgroundWork(fakeDeadline(11))).toBe(true);
       expect(displayLayer.indexedBufferRowCount).toBeGreaterThan(0);
       expect(displayLayer.indexedBufferRowCount).toBeLessThan(buffer.getLineCount());
@@ -2964,7 +2964,7 @@ describe("DisplayLayer", () => {
       const initialLines = displayLayer.getScreenLines(0, 15);
 
       for (const row of [3, 4, 5, 9, 10, 11]) {
-        displayLayer.cachedScreenLines[row] = undefined;
+        displayLayer.cachedScreenLines.set(row, undefined);
       }
       seekCalls.length = 0;
 
@@ -2990,14 +2990,14 @@ describe("DisplayLayer", () => {
       buffer.setLanguageMode(languageMode);
       const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 4 });
       const initialText = displayLayer.getText();
-      const cachedSuffixId = displayLayer.cachedScreenLines[2].id;
+      const cachedSuffixId = displayLayer.cachedScreenLines.get(2).id;
 
-      displayLayer.cachedScreenLines[1] = undefined;
+      displayLayer.cachedScreenLines.set(1, undefined);
       seekCalls.length = 0;
 
       expect(displayLayer.getText()).toBe(initialText);
       expect(seekCalls).toEqual([{ start: Point(0, 4), endRow: 0 }]);
-      expect(displayLayer.cachedScreenLines[2].id).toBe(cachedSuffixId);
+      expect(displayLayer.cachedScreenLines.get(2).id).toBe(cachedSuffixId);
     });
 
     it("uses the uncached range's buffer end for queries that cross a fold", () => {

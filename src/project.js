@@ -287,19 +287,19 @@ module.exports = class Project extends Model {
     }
   }
 
-  serialize(options = {}) {
+  serialize() {
     return {
       deserializer: "Project",
       paths: this.getPaths(),
       buffers: _.compact(
         this.buffers.map(function (buffer) {
           if (buffer.isRetained()) {
-            const isUnloading = options.isUnloading === true;
             return buffer.serialize({
               // Session documents refer to persistent layers by ID, including
               // in autosaves used after an unexpected shutdown.
               markerLayers: true,
-              history: isUnloading,
+              history: true,
+              textSnapshots: true,
             });
           }
         }),

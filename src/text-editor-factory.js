@@ -16,6 +16,7 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["editor.softWrapDebounceInterval", "softWrapDebounceInterval"],
   ["editor.preferredLineLength", "preferredLineLength"],
   ["editor.maxScreenLineLength", "maxScreenLineLength"],
+  ["editor.largeFileOptimizations", "largeFileOptimizations"],
   ["editor.autoIndent", "autoIndent"],
   ["editor.autoIndentOnPaste", "autoIndentOnPaste"],
   ["editor.scrollPastEnd", "scrollPastEnd"],

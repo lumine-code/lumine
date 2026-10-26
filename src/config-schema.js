@@ -554,6 +554,13 @@ const configSchema = {
         minimum: 500,
         default: 500,
       },
+      largeFileOptimizations: {
+        title: "Optimize Large Document Views",
+        description:
+          "Open documents with at least 32 Mi characters or 300,000 lines without wrapping. Toggle Soft Wrap explicitly to enable wrapping in an individual document.",
+        type: "boolean",
+        default: true,
+      },
       softWrapDebounceInterval: {
         scopeResolution: "grammar",
         title: "Soft Wrap Debounce Interval",

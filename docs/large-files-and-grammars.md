@@ -6,6 +6,8 @@ The warning's **Enable Grammar** button selects the detected grammar for that bu
 
 None has its own settings scope, `.text.plain.null-grammar`. A `core.customFileTypes` entry keyed by `text.plain.null-grammar` can also associate file types with None when those files should normally open without syntax analysis.
 
+The independent [large-document view and storage policy](large-document-editing.md) handles row geometry, long lines, search and recovery. A document can use those mechanisms with either None or a real grammar; choosing a grammar does not force expensive wrapping or bypass service-specific text budgets.
+
 An explicit grammar choice, including None, belongs to the buffer and applies to all its split views. Session restoration applies that choice before creating a parser. Closing the document removes its choice with the buffer; opening the file again evaluates the limits again. There is no separate remembered permission for a path. Newly loaded grammars and path changes do not replace an explicit None choice.
 
 Document analysis packages skip None buffers, retire pending work, and clear their results when a document switches to None. Selecting a real grammar lets them resume. Basic text editing, saving, navigation, and file operations remain available. None reduces syntax and package analysis costs; the text buffer, rendering, explicitly requested text operations, and loading the file still require resources.

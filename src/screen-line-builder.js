@@ -1,4 +1,5 @@
 const Point = require("./point");
+const { compare } = require("./point-helpers");
 
 const HARD_TAB = 1 << 0;
 const LEADING_WHITESPACE = 1 << 2;
@@ -13,6 +14,129 @@ let nextScreenLineId = 1;
 module.exports = class ScreenLineBuilder {
   constructor(displayLayer) {
     this.displayLayer = displayLayer;
+  }
+
+  buildScreenLineWindow(screenRow, startColumn, endColumn, highlightingOwner) {
+    const layer = this.displayLayer;
+    const metrics = layer.getUnwrappedRow(screenRow);
+    startColumn = Math.max(0, Math.min(metrics.length, Math.floor(startColumn)));
+    endColumn = Math.max(startColumn, Math.min(metrics.length, Math.ceil(endColumn)));
+    const start = layer.translateScreenPosition(Point(screenRow, startColumn), {
+      clipDirection: "backward",
+    });
+    const end = layer.translateScreenPosition(Point(screenRow, endColumn), {
+      clipDirection: "forward",
+    });
+    startColumn = layer.translateBufferPosition(start, { clipDirection: "backward" }).column;
+    endColumn = layer.translateBufferPosition(end, { clipDirection: "forward" }).column;
+    const firstBufferRow = layer.translateScreenPositionWithSpatialIndex(Point(screenRow, 0)).row;
+    const languageMode = layer.buffer.languageMode;
+    const iterator = languageMode.buildPresentationHighlightIterator
+      ? languageMode.buildPresentationHighlightIterator(highlightingOwner)
+      : languageMode.buildHighlightIterator();
+    this.containingScopeIds = [];
+    this.scopeIdsToReopen = iterator.seek(start, end.row) || [];
+    this.beginLine();
+    this.screenColumn = startColumn;
+    this.bufferPosition = { row: start.row, column: start.column };
+    const source = layer.buffer.getTextSnapshot();
+    let leading =
+      layer.translateBufferPositionWithSpatialIndex(start).column <=
+      metrics.firstNonWhitespaceRawColumn;
+    let trailingColumn = null;
+    for (const run of metrics.runs) {
+      if (run.screenEndColumn <= startColumn) continue;
+      if (run.screenColumn >= endColumn) break;
+      const row = firstBufferRow + run.rowDelta;
+      if (run.fold) {
+        this.emitTokenBoundary();
+        this.closeContainingScopes();
+        this.scopeIdsToReopen.length = 0;
+        this.emitOpenTag(this.getBuiltInScopeId(FOLD));
+        this.emitText(layer.foldCharacter);
+        this.emitCloseTag(this.getBuiltInScopeId(FOLD));
+        this.bufferPosition = { row: firstBufferRow + run.endRowDelta, column: run.endColumn };
+        this.scopeIdsToReopen = iterator.seek(this.bufferPosition, end.row) || [];
+        trailingColumn = null;
+        continue;
+      }
+      const offset = source.lineStart(row) + run.column;
+      const text = source.slice(offset, offset + run.textLength);
+      let expanded = run.screenColumn;
+      for (let index = 0; index < text.length && expanded < endColumn; index++) {
+        const character = text[index];
+        const width = character === "\t" ? layer.tabLength - (expanded % layer.tabLength) : 1;
+        if (expanded < startColumn) {
+          expanded += width;
+          continue;
+        }
+        this.bufferPosition = { row, column: run.column + index };
+        if (compare(this.bufferPosition, iterator.getPosition()) > 0) {
+          this.emitTokenBoundary();
+          this.closeContainingScopes();
+          this.scopeIdsToReopen = iterator.seek(this.bufferPosition, end.row) || [];
+        }
+        this.emitDecorationBoundaries(iterator);
+        if (character !== " " && character !== "\t") leading = false;
+        if ((character === " " || character === "\t") && trailingColumn == null) {
+          // Only inspect the suffix if a visible whitespace token needs this
+          // distinction. Bounded reads avoid forming the whole source line.
+          let column = layer.buffer.lineLengthForRow(row);
+          const base = source.lineStart(row);
+          while (column > 0) {
+            const from = Math.max(0, column - 32768);
+            const suffix = source.slice(base + from, base + column);
+            const nonWhitespace = /[^ \t](?=[ \t]*$)/.exec(suffix);
+            if (nonWhitespace) {
+              column = from + nonWhitespace.index + 1;
+              break;
+            }
+            column = from;
+          }
+          trailingColumn = column;
+        }
+        let flags = 0;
+        if (character === " " || character === "\t") {
+          if (leading) flags |= LEADING_WHITESPACE;
+          if (this.bufferPosition.column >= trailingColumn) flags |= TRAILING_WHITESPACE;
+          if (character === "\t") flags |= HARD_TAB;
+          if (
+            (character === "\t" && layer.invisibles.tab) ||
+            (character === " " && layer.invisibles.space && flags)
+          )
+            flags |= INVISIBLE_CHARACTER;
+        }
+        const scope = this.getBuiltInScopeId(flags);
+        if (scope) this.emitOpenTag(scope);
+        if (character === "\t") this.emitHardTab();
+        else
+          this.emitText(
+            character === " " && flags & INVISIBLE_CHARACTER ? layer.invisibles.space : character,
+          );
+        if (scope) this.emitCloseTag(scope);
+        expanded += width;
+      }
+    }
+    this.emitTokenBoundary();
+    if (endColumn === metrics.length) {
+      const eolInvisible = layer.eolInvisibles[layer.buffer.lineEndingForRow(end.row)];
+      if (eolInvisible) {
+        const scope = this.getBuiltInScopeId(INVISIBLE_CHARACTER | LINE_ENDING);
+        this.emitOpenTag(scope);
+        this.emitText(eolInvisible, false);
+        this.emitCloseTag(scope);
+      }
+    }
+    this.closeContainingScopes();
+    if (this.currentScreenLineTags.length === 0) this.currentScreenLineTags.push(0);
+    return {
+      id: nextScreenLineId++,
+      lineText: this.currentScreenLineText,
+      tags: this.currentScreenLineTags,
+      softWrapIndent: -1,
+      startScreenColumn: startColumn,
+      totalScreenLineLength: metrics.length,
+    };
   }
 
   buildScreenLines(startScreenRow, endScreenRow, highlightingOwner = this.displayLayer) {
@@ -92,7 +216,7 @@ module.exports = class ScreenLineBuilder {
     // up screen lines based on the contents of the spatial index and the
     // buffer.
     screenRowLoop: while (this.screenRow < endScreenRow) {
-      var cachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow];
+      var cachedScreenLine = this.displayLayer.cachedScreenLines.get(this.screenRow);
       if (cachedScreenLine) {
         this.pushScreenLine(cachedScreenLine);
         decorationIteratorNeedsSeek = true;
@@ -134,7 +258,7 @@ module.exports = class ScreenLineBuilder {
       if (this.bufferPosition.row > this.displayLayer.buffer.getLastRow()) break;
       this.loadBufferLine();
       this.inLeadingWhitespace =
-        (this.displayLayer.screenLineStartFlags[this.screenRow] &
+        (this.displayLayer.screenLineStartFlags.get(this.screenRow) &
           SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE) !==
         0;
       this.inTrailingWhitespace = false;
@@ -148,7 +272,7 @@ module.exports = class ScreenLineBuilder {
           decorationIterator.seek(this.bufferPosition, decorationIteratorEndBufferRow) || [];
       }
 
-      var prevCachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow - 1];
+      var prevCachedScreenLine = this.displayLayer.cachedScreenLines.get(this.screenRow - 1);
       if (prevCachedScreenLine && prevCachedScreenLine.softWrapIndent >= 0) {
         if (prevCachedScreenLine.softWrapIndent > 0) {
           this.emitIndentWhitespace(prevCachedScreenLine.softWrapIndent);
@@ -303,18 +427,18 @@ module.exports = class ScreenLineBuilder {
 
     let screenRow = startScreenRow;
     while (screenRow < endScreenRow) {
-      if (cachedScreenLines[screenRow]) {
+      if (cachedScreenLines.get(screenRow)) {
         screenRow++;
         continue;
       }
 
       const rangeStartScreenRow = screenRow;
-      while (screenRow < endScreenRow && !cachedScreenLines[screenRow]) {
+      while (screenRow < endScreenRow && !cachedScreenLines.get(screenRow)) {
         screenRow++;
       }
 
       const lastScreenRow = screenRow - 1;
-      const endOfLastScreenLine = Point(lastScreenRow, screenLineLengths[lastScreenRow]);
+      const endOfLastScreenLine = Point(lastScreenRow, screenLineLengths.get(lastScreenRow));
       ranges.push({
         startScreenRow: rangeStartScreenRow,
         endScreenRow: screenRow,
@@ -458,7 +582,7 @@ module.exports = class ScreenLineBuilder {
       softWrapIndent,
     };
     this.pushScreenLine(screenLine);
-    this.displayLayer.cachedScreenLines[this.screenRow] = screenLine;
+    this.displayLayer.cachedScreenLines.set(this.screenRow, screenLine);
     this.screenRow++;
     this.beginLine();
   }

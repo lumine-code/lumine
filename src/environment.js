@@ -8,6 +8,7 @@ const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("source-map-support");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
+const { cloneSessionSnapshot } = require("./serialized-text");
 const PackageStorage = require("./package-storage");
 const { SESSION_STATE_VERSION } = require("./session-state-schema");
 const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
@@ -1749,9 +1750,12 @@ class Environment {
           state,
           this.projectStateIndex,
           projectKey,
+          { beforeCommit: assertCurrent },
         );
       } else {
-        const saved = await this.stateStore.save(windowProjectKey, state);
+        const saved = await this.stateStore.save(windowProjectKey, state, {
+          beforeCommit: assertCurrent,
+        });
         if (saved == null) throw new Error("Session storage is unavailable");
       }
     }
@@ -2259,12 +2263,6 @@ function firstStackFrame(stack) {
     const match = STACK_FRAME.exec(frame);
     if (match) return { source: match[1], line: Number(match[2]), column: Number(match[3]) };
   }
-}
-
-function cloneSessionSnapshot(state) {
-  return JSON.parse(JSON.stringify(state), (_key, value) =>
-    value?.type === "Buffer" ? Buffer.from(value.data) : value,
-  );
 }
 
 Environment.version = SESSION_STATE_VERSION;

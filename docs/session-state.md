@@ -4,6 +4,12 @@ Lumine keeps an independent snapshot for each window and set of project roots. S
 
 Session schema version 2 stores snapshots and indexes in its own database tables. It has no reader or migration for the earlier package-state format; earlier tables are left untouched.
 
+Large buffer contents and undo patches use a separate versioned text store in the same SQLite database. A session record contains small root references; immutable rope nodes hold exact UTF-16 text in blobs of at most 64 KiB, including unpaired surrogates, mixed line endings and NUL. Unchanged subtrees are shared across revisions and history. Capturing the state retains immutable roots without copying document text, so an edit made during a pending save belongs to the next capture rather than altering the one being written.
+
+Bulk node writes run in a short-lived Node child with one acknowledged batch in flight. The session record, its latest-project index and its live text roots publish in one transaction only after every referenced node is durable. A failed or interrupted write leaves the previous complete session available. Restoration verifies node hashes, text sizes, tree structure and root metadata; missing or damaged text rejects restoration rather than substituting empty contents. Older inline text and base64 patch records remain readable.
+
+`TextBuffer.serialize({textSnapshots: true})` returns an in-process state containing immutable text roots for the session store. Default serialization keeps small text inline and returns a segmented `textSnapshot` for large contents, with similarly segmented large history patches. Consumers exporting such state outside the session store must stream it rather than building one document-sized JSON string. `getHistory()` exposes an immutable `baseTextSnapshot`; its compatible `baseText` property materializes text only when read. Explicit string reads exceeding the runtime string limit reject before allocation with `ERR_TEXT_MATERIALIZATION_LIMIT`; callers can read smaller ranges or iterate snapshot chunks instead.
+
 Separate snapshots let two windows keep their own pane layout and documents. An active window's snapshots for other projects remain available when it switches back, and restoring previous windows reuses their saved identities. Sessions without project folders are durable too: their private key uses the window identity, so unrelated empty windows do not share a snapshot.
 
 ## Project changes
@@ -34,6 +40,8 @@ An identical recovery snapshot can be removed only while the current indexed sna
 
 Deletion runs in small transactions. Freed SQLite pages are reused by later saves; cleanup does not run a foreground database vacuum.
 
+Text nodes remain reachable while any saved session references them. The maintenance child removes unreferenced nodes only when no live snapshot writer or reader holds a lease. Leases left by an exited process are reclaimable; a live or inaccessible process is conservatively protected, without a time-based expiry that could lose data during suspension or slow I/O. A collection generation invalidates in-memory persistence caches before another save, so a root still held by an editor can be written again after its old durable references were retired.
+
 ## Package storage
 
 Package preferences and histories use the lifecycle context's `context.globalState` and `context.workspaceState` stores. Both are loaded before synchronous `initialize(context)` and `activate(context)` run. Core scopes keys to the owning package; global values are shared across the profile, while project values are shared by windows with the same project roots. Empty projects use the restored window identity. See [Package storage](package-storage.md) for the API and concurrency contract.
@@ -46,4 +54,4 @@ A package that owns document recovery data implements synchronous `serializeSess
 
 Use this document contract for unsaved notebook cells, image pixels, table models, marker-layer references and document provenance. Preferences and histories belong exclusively in scoped storage. Packages with asynchronous snapshot preparation implement `prepareToSerialize(options)`; core awaits it before the synchronous document capture. Any failure rejects the snapshot rather than silently discarding unsaved work.
 
-Every session snapshot includes persistent buffer marker layers, so references such as bookmark layer IDs remain recoverable from periodic autosaves as well as orderly shutdown snapshots. Ephemeral marker layers are excluded. Undo history is included only when capturing an unloading session.
+Every session snapshot includes persistent buffer marker layers and undo/redo history, so references such as bookmark layer IDs and edit history remain recoverable from periodic autosaves as well as orderly shutdown snapshots. Ephemeral marker layers are excluded. If the backing file changed on disk, a recovered modern dirty snapshot retains its matching undo history and markers while the buffer reports a conflict; recovery never overwrites the external file.

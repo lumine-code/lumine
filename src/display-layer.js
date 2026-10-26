@@ -6,14 +6,11 @@ const DisplayMarkerLayer = require("./display-marker-layer");
 const { traverse, traversal, compare, max, isEqual } = require("./point-helpers");
 const isCharacterPair = require("./is-character-pair");
 const ScreenLineBuilder = require("./screen-line-builder");
-const { spliceArray } = require("./helpers");
+const RowSequence = require("./row-sequence");
+const ScreenLineCache = require("./screen-line-cache");
 const { MAX_BUILT_IN_SCOPE_ID } = require("./constants");
 const { isWrapBoundary: defaultIsWrapBoundary } = require("./text-utils");
 
-// Row count per entry of `screenLineBlocks`, the coarse per-block maxima of
-// `screenLineLengths` that lets `findRightmostScreenPosition` avoid a full
-// scan of every screen row.
-const SCREEN_LINE_BLOCK_SIZE = 1024;
 const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
 const HARD_TAB_RUN_MIN_LENGTH = 64;
 const ASCII_WRAP_BOUNDARY_NONE = 0;
@@ -38,23 +35,12 @@ class DisplayLayer {
     this.id = id;
     this.buffer = buffer;
     this.layoutGroupId = params.layoutGroupId ?? nextLayoutGroupId++;
-    this.layoutState =
-      params.layoutState ||
-      (params.spatialIndex
-        ? {
-            spatialIndex: params.spatialIndex,
-            tabCounts: params.tabCounts,
-            screenLineStartFlags: params.screenLineStartFlags || [],
-            screenLineLengths: params.screenLineLengths,
-            screenLineBlocks: params.screenLineBlocks,
-            rightmostScreenPosition: params.rightmostScreenPosition,
-            indexedBufferRowCount: params.indexedBufferRowCount,
-          }
-        : createEmptyLayoutState());
+    this.layoutState = params.layoutState || createEmptyLayoutState();
     this.emitter = new Emitter();
     this.screenLineBuilder = new ScreenLineBuilder(this);
     this.singleLineHighlightingOwner = {};
-    this.cachedScreenLines = [];
+    this.cachedScreenLines = new ScreenLineCache();
+    this.cachedScreenLines.length = this.screenLineLengths.length;
     this.builtInScopeIdsByFlags = new Map();
     this.builtInClassNamesByScopeId = new Map();
     this.nextBuiltInScopeId = 1;
@@ -63,6 +49,7 @@ class DisplayLayer {
     this.changesSinceLastEvent = new Patch();
     this.changeOriginsSinceLastEvent = new Set();
     this.mappingGeneration = 0;
+    this.windowGeneration = 0;
     this.pendingGeometryStableChange = null;
 
     this.invisibles = params.invisibles != null ? params.invisibles : {};
@@ -77,6 +64,7 @@ class DisplayLayer {
     this.isWrapBoundary = params.isWrapBoundary != null ? params.isWrapBoundary : isWordStart;
     this.foldCharacter = params.foldCharacter != null ? params.foldCharacter : "⋯";
     this.atomicSoftTabs = params.atomicSoftTabs != null ? params.atomicSoftTabs : true;
+    this.resolveSoftWrapColumn = params.resolveSoftWrapColumn ?? null;
 
     this.eolInvisibles = {
       "\r": this.invisibles.cr,
@@ -141,15 +129,13 @@ class DisplayLayer {
     this.layoutState.screenLineLengths = value;
   }
 
-  get screenLineBlocks() {
-    return this.layoutState.screenLineBlocks;
-  }
-
-  set screenLineBlocks(value) {
-    this.layoutState.screenLineBlocks = value;
-  }
-
   get rightmostScreenPosition() {
+    if (this.layoutState.unwrapped) {
+      const position = this.findRightmostScreenPosition();
+      if (!isEqual(position, this.layoutState.rightmostScreenPosition)) {
+        this.layoutState.rightmostScreenPosition = position;
+      }
+    }
     return this.layoutState.rightmostScreenPosition;
   }
 
@@ -203,6 +189,7 @@ class DisplayLayer {
       isWrapBoundary: this.isWrapBoundary,
       foldCharacter: this.foldCharacter,
       atomicSoftTabs: this.atomicSoftTabs,
+      resolveSoftWrapColumn: this.resolveSoftWrapColumn,
       layoutGroupId: this.layoutGroupId,
     });
     this.buffer.displayLayers[copyId] = copy;
@@ -252,6 +239,7 @@ class DisplayLayer {
   }
 
   bufferDidChangeLanguageMode() {
+    this.windowGeneration++;
     this.cachedScreenLines.length = 0;
     if (this.languageModeDisposable) this.languageModeDisposable.dispose();
     this.languageModeDisposable = this.buffer.languageMode.onDidChangeHighlighting(
@@ -269,7 +257,7 @@ class DisplayLayer {
           "backward",
         ).row;
         const extent = Point(endRow - startRow, 0);
-        spliceArray(this.cachedScreenLines, startRow, extent.row, new Array(extent.row));
+        this.cachedScreenLines.spliceRows(startRow, extent.row, extent.row);
         this.didChange({
           start: Point(startRow, 0),
           oldExtent: extent,
@@ -455,7 +443,7 @@ class DisplayLayer {
       bufferPosition,
       clipDirection,
     );
-    const tabCount = this.tabCounts[screenPosition.row];
+    const tabCount = this.tabCounts.get(screenPosition.row);
     if (tabCount > 0) {
       screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
         ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, true)
@@ -537,7 +525,7 @@ class DisplayLayer {
         hunk.newEnd.column = changes[offset + 8];
         screenPosition = bufferPositionThroughHunk(position, hunk, clipDirection);
       }
-      const tabCount = this.tabCounts[screenPosition.row];
+      const tabCount = this.tabCounts.get(screenPosition.row);
       if (tabCount > 0) {
         screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
           ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, true)
@@ -563,7 +551,7 @@ class DisplayLayer {
     const skipSoftWrapIndentation = options && options.skipSoftWrapIndentation;
     this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), screenPosition.row + 1);
     screenPosition = this.constrainScreenPosition(screenPosition, clipDirection);
-    const tabCount = this.tabCounts[screenPosition.row];
+    const tabCount = this.tabCounts.get(screenPosition.row);
     if (tabCount > 0) {
       screenPosition = shouldSkipHardTabRuns(this, screenPosition, tabCount)
         ? translateHardTabsWithRunSkipping(this, screenPosition, tabCount, false, clipDirection)
@@ -646,14 +634,14 @@ class DisplayLayer {
 
     const maxRow = this.screenLineLengths.length - 1;
     if (row > maxRow) {
-      return new Point(maxRow, this.screenLineLengths[maxRow]);
+      return new Point(maxRow, this.screenLineLengths.get(maxRow));
     }
 
     if (column < 0) {
       return new Point(row, 0);
     }
 
-    const maxColumn = this.screenLineLengths[row];
+    const maxColumn = this.screenLineLengths.get(row);
     if (column > maxColumn) {
       if (clipDirection === "forward" && row < maxRow) {
         return new Point(row + 1, 0);
@@ -666,6 +654,7 @@ class DisplayLayer {
   }
 
   expandHardTabs(targetScreenPosition, targetBufferPosition, tabCount) {
+    if (this.layoutState.unwrapped) return translateUnwrappedTabs(this, targetScreenPosition, true);
     const screenRowStart = Point(targetScreenPosition.row, 0);
     const hunks = this.spatialIndex.getChangesInNewRange(screenRowStart, targetScreenPosition);
     let hunkIndex = 0;
@@ -720,10 +709,12 @@ class DisplayLayer {
   }
 
   collapseHardTabs(targetScreenPosition, tabCount, clipDirection) {
+    if (this.layoutState.unwrapped)
+      return translateUnwrappedTabs(this, targetScreenPosition, false, clipDirection);
     const screenRowStart = Point(targetScreenPosition.row, 0);
     const screenRowEnd = Point(
       targetScreenPosition.row,
-      this.screenLineLengths[targetScreenPosition.row],
+      this.screenLineLengths.get(targetScreenPosition.row),
     );
 
     const hunks = this.spatialIndex.getChangesInNewRange(screenRowStart, screenRowEnd);
@@ -830,15 +821,16 @@ class DisplayLayer {
 
     // Read a long indentation once per cursor movement, then scan the string
     // without repeating buffer lookups for every preceding space.
-    const line = this.buffer.lineForRow(row);
-    for (let index = column - 1; index >= 0; index--) {
-      if (line[index] !== " ") return 0;
-    }
-
-    // If there is a non-whitespace character before the next tab stop,
-    // don't this whitespace as a soft tab
-    for (let index = column + 1; index < nextTabStop; index++) {
-      if (line[index] !== " ") return 0;
+    const source = this.buffer.getTextSnapshot();
+    const lineStart = source.lineStart(row);
+    if (nextTabStop > this.buffer.lineLengthForRow(row)) return 0;
+    // Inspect nearby text first. Most spaces far into a giant generated line
+    // are not indentation; never materialize that line to answer this query.
+    let end = nextTabStop;
+    while (end > 0) {
+      const start = Math.max(0, end - 32768);
+      if (/[^ ]/.test(source.slice(lineStart + start, lineStart + end))) return 0;
+      end = start;
     }
 
     let clippedColumn;
@@ -865,7 +857,7 @@ class DisplayLayer {
 
   lineLengthForScreenRow(screenRow) {
     this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), screenRow + 1);
-    return this.screenLineLengths[screenRow];
+    return this.screenLineLengths.get(screenRow);
   }
 
   getLastScreenRow() {
@@ -890,6 +882,11 @@ class DisplayLayer {
 
   getRightmostScreenPosition() {
     this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), Infinity);
+    // Exact width is deliberately distinct from the viewport's approximate
+    // query. Row positions and counts never require measuring unseen lines.
+    if (this.layoutState.unwrapped) {
+      for (let row = 0; row < this.screenLineLengths.length; row++) this.screenLineLengths.get(row);
+    }
     return this.rightmostScreenPosition;
   }
 
@@ -900,14 +897,14 @@ class DisplayLayer {
   getScreenLine(screenRow, highlightingOwner) {
     // Width measurements and token consumers must not replace the viewport's
     // pending highlighting request while its preparation is yielding.
-    if (!highlightingOwner && !this.cachedScreenLines[screenRow])
+    if (!highlightingOwner && !this.cachedScreenLines.get(screenRow))
       this.prepareHighlightingForScreenRows(
         screenRow,
         screenRow + 1,
         this.singleLineHighlightingOwner,
       );
     return (
-      this.cachedScreenLines[screenRow] ||
+      this.cachedScreenLines.get(screenRow) ||
       this.screenLineBuilder.buildScreenLines(
         screenRow,
         screenRow + 1,
@@ -921,6 +918,103 @@ class DisplayLayer {
     return this.screenLineBuilder.buildScreenLines(screenStartRow, screenEndRow);
   }
 
+  getScreenLineWindow(screenRow, startScreenColumn, endScreenColumn, highlightingOwner) {
+    this.populateSpatialIndexIfNeeded(Infinity, screenRow + 1);
+    if (!this.layoutState.unwrapped)
+      throw new Error("Horizontal windows require an unwrapped layout");
+    this.prepareHighlightingForScreenRows(screenRow, screenRow + 1, highlightingOwner ?? this);
+    const line = this.screenLineBuilder.buildScreenLineWindow(
+      screenRow,
+      startScreenColumn,
+      endScreenColumn,
+      highlightingOwner ?? this,
+    );
+    line.startPixelColumn = this.pixelColumnForScreenColumn(screenRow, line.startScreenColumn);
+    line.totalPixelColumns = this.getUnwrappedRowPixelGeometry(screenRow).pixelLength;
+    return line;
+  }
+
+  getUnwrappedRowPixelGeometry(screenRow) {
+    const row = this.getUnwrappedRow(screenRow);
+    const signature = [" ", "我", "한", "ｱ"]
+      .map((character) => this.ratioForCharacter(character))
+      .join(":");
+    if (row.pixelRatio === this.ratioForCharacter && row.pixelRatioSignature === signature)
+      return row;
+    const firstRow = this.translateScreenPositionWithSpatialIndex(Point(screenRow, 0)).row;
+    const source = this.buffer.getTextSnapshot();
+    let pixel = 0;
+    for (const run of row.runs) {
+      run.pixelColumn = pixel;
+      const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
+      const text = run.fold ? this.foldCharacter : source.slice(offset, offset + run.textLength);
+      const result = measureUnwrappedPixelColumns(
+        this,
+        text,
+        run.screenColumn,
+        pixel,
+        source.charCodeAt(offset - 1),
+        Infinity,
+        Infinity,
+      );
+      pixel = result.pixel;
+      run.pixelEndColumn = pixel;
+    }
+    row.pixelLength = pixel;
+    row.pixelRatio = this.ratioForCharacter;
+    row.pixelRatioSignature = signature;
+    return row;
+  }
+
+  pixelColumnForScreenColumn(screenRow, column) {
+    return this.translateUnwrappedPixelColumn(screenRow, column, false);
+  }
+
+  screenColumnForPixelColumn(screenRow, pixel) {
+    return this.translateUnwrappedPixelColumn(screenRow, pixel, true);
+  }
+
+  translateUnwrappedPixelColumn(screenRow, target, fromPixel) {
+    const row = this.getUnwrappedRowPixelGeometry(screenRow);
+    const key = fromPixel ? "pixelColumn" : "screenColumn";
+    let low = 0;
+    let high = row.runs.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (row.runs[middle][key] <= target) low = middle + 1;
+      else high = middle;
+    }
+    const run = row.runs[Math.max(0, low - 1)];
+    if (!run) return 0;
+    const firstRow = this.translateScreenPositionWithSpatialIndex(Point(screenRow, 0)).row;
+    const source = this.buffer.getTextSnapshot();
+    const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
+    const text = run.fold ? this.foldCharacter : source.slice(offset, offset + run.textLength);
+    const result = measureUnwrappedPixelColumns(
+      this,
+      text,
+      run.screenColumn,
+      run.pixelColumn,
+      source.charCodeAt(offset - 1),
+      fromPixel ? Infinity : target,
+      fromPixel ? target : Infinity,
+    );
+    return fromPixel ? result.column : result.pixel;
+  }
+
+  requiresScreenLineWindow(screenRow) {
+    if (this.softWrapColumn !== Infinity) return false;
+    const length = this.lineLengthForScreenRow(screenRow);
+    return length > 10000 || this.layoutState.unwrappedRows.get(screenRow)?.longSourceLine === true;
+  }
+
+  getUnwrappedRow(screenRow) {
+    return (
+      this.layoutState.unwrappedRows.get(screenRow) ??
+      measureUnwrappedRow(this.layoutState, screenRow)
+    );
+  }
+
   prepareHighlightingForScreenRows(startRow, endRow, owner) {
     const languageMode = this.buffer.languageMode;
     if (!languageMode.requestHighlighting) return;
@@ -932,7 +1026,7 @@ class DisplayLayer {
     }
     let row = this.translateScreenPositionWithSpatialIndex(Point(startRow, 0), "forward", true).row;
     const endBufferRow = this.translateScreenPositionWithSpatialIndex(
-      Point(lastRow, this.screenLineLengths[lastRow]),
+      Point(lastRow, this.screenLineLengths.get(lastRow)),
       "forward",
       false,
     ).row;
@@ -1034,7 +1128,7 @@ class DisplayLayer {
         row < 0 ||
         row > maxRow ||
         rowTouchesHunk ||
-        this.tabCounts[row] > 0
+        this.tabCounts.get(row) > 0
       ) {
         const bufferRange = Range(
           this.translateScreenPosition(Point(row, startColumn)),
@@ -1048,7 +1142,7 @@ class DisplayLayer {
       }
 
       const bufferRow = baseBufferRow + (row - baseScreenRow);
-      const lineLength = this.screenLineLengths[row];
+      const lineLength = this.screenLineLengths.get(row);
       let column1 = startColumn < 0 ? 0 : Math.min(startColumn, lineLength);
       let column2 = endColumn < 0 ? 0 : Math.min(endColumn, lineLength);
       if (column1 < lineLength) {
@@ -1143,7 +1237,11 @@ class DisplayLayer {
     const isWrapBoundary = this.isWrapBoundary;
     const lineCount = this.buffer.getLineCount();
     let endRow = change.oldRange.end.row;
-    while (endRow + 1 < lineCount && this.buffer.lineLengthForRow(endRow + 1) === 0) {
+    while (
+      this.softWrapColumn !== Infinity &&
+      endRow + 1 < lineCount &&
+      this.buffer.lineLengthForRow(endRow + 1) === 0
+    ) {
       endRow++;
     }
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
@@ -1157,6 +1255,7 @@ class DisplayLayer {
       !isEqual(oldRange.end, newRange.end)
     )
       return;
+    if (change.oldTextSource?.length > 64 || change.newTextSource?.length > 64) return;
     const { oldText, newText } = change;
     if (
       ratioForCharacter !== this.ratioForCharacter ||
@@ -1198,6 +1297,35 @@ class DisplayLayer {
     };
   }
 
+  prepareProjectionForChange(change) {
+    if (!this.resolveSoftWrapColumn) return;
+    let delta = change.newEndIndex - change.oldEndIndex;
+    if (!Number.isFinite(delta)) {
+      const extentLength = (range) =>
+        range.start.row === range.end.row ? range.end.column - range.start.column : undefined;
+      delta =
+        (change.newTextSource?.length ?? extentLength(change.newRange)) -
+        (change.oldTextSource?.length ?? extentLength(change.oldRange));
+    }
+    const length = this.buffer.getLength() + (Number.isFinite(delta) ? delta : 0);
+    const lineCount =
+      this.buffer.getLineCount() + change.newRange.end.row - change.oldRange.end.row;
+    const softWrapColumn = this.resolveSoftWrapColumn({ length, lineCount });
+    this.pendingProjection = null;
+    const previousColumn = this.resolveSoftWrapColumn({
+      length: this.buffer.getLength(),
+      lineCount: this.buffer.getLineCount(),
+    });
+    if (softWrapColumn === previousColumn) return;
+    if (softWrapColumn === this.softWrapColumn) return;
+    if (this.softWrapColumn === Infinity && softWrapColumn !== Infinity) {
+      // A large deletion must not first wrap the old, still-large document.
+      // Apply the cheaper projection while reading the old text, then rebuild
+      // the small result after commit. Siblings adopt that same final reset.
+      this.pendingProjection = { softWrapColumn, oldScreenLineCount: this.getScreenLineCount() };
+    } else this.reset({ softWrapColumn });
+  }
+
   hasStandardCharacterWidth() {
     return (
       this.ratioForCharacter === unitRatio ||
@@ -1211,6 +1339,20 @@ class DisplayLayer {
   }
 
   bufferDidChange(change) {
+    if (this.pendingProjection) {
+      const { softWrapColumn, oldScreenLineCount } = this.pendingProjection;
+      this.pendingProjection = null;
+      this.reset({ softWrapColumn });
+      const layoutChange = {
+        start: Point(0, 0),
+        oldExtent: Point(oldScreenLineCount, 0),
+        newExtent: Point(this.getScreenLineCount(), 0),
+        softWrapColumn,
+        origin: change.origin ?? "edit",
+      };
+      this.didChange(layoutChange);
+      return layoutChange;
+    }
     const preparedChange = this.pendingGeometryStableChange;
     this.pendingGeometryStableChange = null;
     const { oldRange, newRange } = change;
@@ -1236,7 +1378,7 @@ class DisplayLayer {
         row < end;
         row++
       ) {
-        this.cachedScreenLines[row] = undefined;
+        this.cachedScreenLines.set(row, undefined);
       }
       const extent = Point(rowCount, 0);
       layoutChange = { start: Point(startScreenRow, 0), oldExtent: extent, newExtent: extent };
@@ -1254,12 +1396,17 @@ class DisplayLayer {
 
     if (layoutChange == null) return;
 
+    if (Object.hasOwn(layoutChange, "softWrapColumn")) {
+      this.pendingProjection = null;
+      this.softWrapColumn = layoutChange.softWrapColumn;
+      this.layoutGroupId = source.layoutGroupId;
+    }
+
     if (layoutChange.start.row <= this.cachedScreenLines.length) {
-      spliceArray(
-        this.cachedScreenLines,
+      this.cachedScreenLines.spliceRows(
         layoutChange.start.row,
         layoutChange.oldExtent.row,
-        new Array(layoutChange.newExtent.row),
+        layoutChange.newExtent.row,
       );
     }
     // A sibling can be farther through background indexing than this layer.
@@ -1271,6 +1418,7 @@ class DisplayLayer {
   }
 
   didChange({ start, oldExtent, newExtent, origin = "edit" }) {
+    this.windowGeneration++;
     this.changesSinceLastEvent.splice(start, oldExtent, newExtent);
     this.changeOriginsSinceLastEvent.add(origin);
     if (this.buffer.transactCallDepth === 0) this.emitDeferredChangeEvents();
@@ -1313,6 +1461,9 @@ class DisplayLayer {
     endScreenRow,
     deadline = NullDeadline,
   ) {
+    if (this.softWrapColumn === Infinity) {
+      return this.updateUnwrappedSpatialIndex(startBufferRow, oldEndBufferRow, newEndBufferRow);
+    }
     const originalOldEndBufferRow = oldEndBufferRow;
     startBufferRow = this.findBoundaryPrecedingBufferRow(startBufferRow);
     oldEndBufferRow = this.findBoundaryFollowingBufferRow(oldEndBufferRow);
@@ -1772,9 +1923,8 @@ class DisplayLayer {
 
     const oldScreenRowCount = oldEndScreenRow - startScreenRow;
     this.spliceScreenLineLengths(startScreenRow, oldScreenRowCount, insertedScreenLineLengths);
-    spliceArray(this.tabCounts, startScreenRow, oldScreenRowCount, insertedTabCounts);
-    spliceArray(
-      this.screenLineStartFlags,
+    this.tabCounts.spliceRows(startScreenRow, oldScreenRowCount, insertedTabCounts);
+    this.screenLineStartFlags.spliceRows(
       startScreenRow,
       oldScreenRowCount,
       insertedScreenLineStartFlags,
@@ -1789,11 +1939,10 @@ class DisplayLayer {
       this.rightmostScreenPosition = this.findRightmostScreenPosition();
     }
 
-    spliceArray(
-      this.cachedScreenLines,
+    this.cachedScreenLines.spliceRows(
       startScreenRow,
       oldScreenRowCount,
-      new Array(insertedScreenLineLengths.length),
+      insertedScreenLineLengths.length,
     );
 
     return {
@@ -1804,78 +1953,22 @@ class DisplayLayer {
   }
 
   spliceScreenLineLengths(startRow, oldRowCount, insertedLengths) {
-    oldRowCount = Math.min(oldRowCount, this.screenLineLengths.length - startRow);
-    spliceArray(this.screenLineLengths, startRow, oldRowCount, insertedLengths);
-
-    // Locate the run of blocks overlapping the replaced rows. When appending
-    // past the last block, back up to include it so trailing blocks grow to
-    // SCREEN_LINE_BLOCK_SIZE instead of accumulating as fragments.
-    const blocks = this.screenLineBlocks;
-    let firstBlockIndex = 0;
-    let firstBlockStartRow = 0;
-    while (
-      firstBlockIndex < blocks.length &&
-      firstBlockStartRow + blocks[firstBlockIndex].rowCount <= startRow
-    ) {
-      firstBlockStartRow += blocks[firstBlockIndex].rowCount;
-      firstBlockIndex++;
-    }
-    if (firstBlockIndex === blocks.length && firstBlockIndex > 0) {
-      firstBlockIndex--;
-      firstBlockStartRow -= blocks[firstBlockIndex].rowCount;
-    }
-
-    const endRow = startRow + oldRowCount;
-    let mergedBlockCount = 0;
-    let mergedRowCount = 0;
-    while (
-      firstBlockIndex + mergedBlockCount < blocks.length &&
-      (mergedBlockCount === 0 || firstBlockStartRow + mergedRowCount < endRow)
-    ) {
-      mergedRowCount += blocks[firstBlockIndex + mergedBlockCount].rowCount;
-      mergedBlockCount++;
-    }
-
-    // Rebuild the merged region into SCREEN_LINE_BLOCK_SIZE-row blocks,
-    // computing each block's max from the freshly spliced lengths.
-    const replacementBlocks = [];
-    const regionEnd = firstBlockStartRow + mergedRowCount - oldRowCount + insertedLengths.length;
-    let row = firstBlockStartRow;
-    while (row < regionEnd) {
-      const rowCount = Math.min(SCREEN_LINE_BLOCK_SIZE, regionEnd - row);
-      let max = 0;
-      for (let i = row, end = row + rowCount; i < end; i++) {
-        if (this.screenLineLengths[i] > max) max = this.screenLineLengths[i];
-      }
-      replacementBlocks.push({ rowCount, max });
-      row += rowCount;
-    }
-    blocks.splice(firstBlockIndex, mergedBlockCount, ...replacementBlocks);
+    this.screenLineLengths.spliceRows(startRow, oldRowCount, insertedLengths);
   }
 
   findRightmostScreenPosition() {
-    // Take the first block whose max strictly exceeds the running max, then
-    // the first row inside it with that length — the same position the old
-    // full scan of `screenLineLengths` produced.
-    const blocks = this.screenLineBlocks;
-    let maxColumn = 0;
-    let maxBlockStartRow = -1;
-    let blockStartRow = 0;
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      if (block.max > maxColumn) {
-        maxColumn = block.max;
-        maxBlockStartRow = blockStartRow;
-      }
-      blockStartRow += block.rowCount;
-    }
-    if (maxBlockStartRow < 0) return Point(0, 0);
-    let row = maxBlockStartRow;
-    while (this.screenLineLengths[row] < maxColumn) row++;
-    return Point(row, maxColumn);
+    return Point(this.screenLineLengths.maximumIndex, this.screenLineLengths.maximum);
   }
 
   populateSpatialIndexIfNeeded(endBufferRow, endScreenRow, deadline = NullDeadline) {
+    if (this.softWrapColumn === Infinity) {
+      if (!this.layoutState.unwrapped) {
+        this.layoutState.unwrapped = true;
+        configureUnwrappedMetrics(this.layoutState, this.buffer, this.tabLength);
+        this.updateUnwrappedSpatialIndex(0, 0, this.buffer.getLineCount());
+      }
+      return;
+    }
     endBufferRow = Math.min(this.buffer.getLineCount(), endBufferRow);
     if (endBufferRow > this.indexedBufferRowCount && endScreenRow > this.screenLineLengths.length) {
       this.updateSpatialIndex(
@@ -1886,6 +1979,48 @@ class DisplayLayer {
         deadline,
       );
     }
+  }
+
+  // With wrapping disabled only folds change row geometry. Build the patch
+  // from those exceptions and leave all ordinary row metrics unmaterialized.
+  // A jump across ten million rows is therefore the same operation as a jump
+  // across ten; edit cost depends on changed folds and measured blocks only.
+  updateUnwrappedSpatialIndex(startBufferRow, oldEndBufferRow, newEndBufferRow) {
+    const originalOldEnd = oldEndBufferRow;
+    startBufferRow = this.findBoundaryPrecedingBufferRow(startBufferRow);
+    oldEndBufferRow = this.findBoundaryFollowingBufferRow(oldEndBufferRow);
+    newEndBufferRow += oldEndBufferRow - originalOldEnd;
+    const start = Point(startBufferRow, 0);
+    const oldEnd = Point(oldEndBufferRow, 0);
+    const startScreenRow = this.translateBufferPositionWithSpatialIndex(start, "backward").row;
+    const oldEndScreenRow = this.translateBufferPositionWithSpatialIndex(oldEnd, "backward").row;
+    this.spatialIndex.spliceOld(
+      start,
+      Point(oldEndBufferRow - startBufferRow, 0),
+      Point(newEndBufferRow - startBufferRow, 0),
+    );
+    const folds = sortedFoldEvents(
+      this.computeFoldsInBufferRowRange(startBufferRow, newEndBufferRow),
+    );
+    let insertedRowCount = newEndBufferRow - startBufferRow;
+    for (const fold of folds) {
+      const foldStart = Point(fold.bufferRow, fold.bufferColumn);
+      const screenStart = this.translateBufferPositionWithSpatialIndex(foldStart, "backward");
+      this.spatialIndex.splice(screenStart, traversal(fold.end, foldStart), Point(0, 1));
+      insertedRowCount -= fold.end.row - fold.bufferRow;
+    }
+    const removedRowCount = oldEndScreenRow - startScreenRow;
+    this.screenLineLengths.spliceRows(startScreenRow, removedRowCount, insertedRowCount);
+    this.tabCounts.spliceRows(startScreenRow, removedRowCount, insertedRowCount);
+    this.screenLineStartFlags.spliceRows(startScreenRow, removedRowCount, insertedRowCount);
+    this.layoutState.unwrappedRows.spliceRows(startScreenRow, removedRowCount, insertedRowCount);
+    this.cachedScreenLines.spliceRows(startScreenRow, removedRowCount, insertedRowCount);
+    this.indexedBufferRowCount = this.buffer.getLineCount();
+    return {
+      start: Point(startScreenRow, 0),
+      oldExtent: Point(removedRowCount, 0),
+      newExtent: Point(insertedRowCount, 0),
+    };
   }
 
   findBoundaryPrecedingBufferRow(bufferRow) {
@@ -1919,7 +2054,7 @@ class DisplayLayer {
       } else {
         const endOfScreenRow = Point(
           screenPosition.row,
-          this.screenLineLengths[screenPosition.row],
+          this.screenLineLengths.get(screenPosition.row),
         );
         bufferRow =
           this.translateScreenPositionWithSpatialIndex(endOfScreenRow, "forward", false).row + 1;
@@ -2003,6 +2138,9 @@ class DisplayLayer {
 
   setParams(params) {
     let paramsChanged = false;
+    if (Object.hasOwn(params, "resolveSoftWrapColumn")) {
+      this.resolveSoftWrapColumn = params.resolveSoftWrapColumn;
+    }
     if (Object.hasOwn(params, "tabLength") && params.tabLength !== this.tabLength) {
       paramsChanged = true;
       this.tabLength = params.tabLength;
@@ -2069,7 +2207,8 @@ function shouldSkipHardTabRuns(layer, position, tabCount) {
   // Dense rows and short queries keep the scalar loop: searching a succession
   // of tiny runs costs more than advancing their individual characters.
   return (
-    layer.screenLineLengths[position.row] >= tabCount * HARD_TAB_RUN_MIN_LENGTH &&
+    !layer.layoutState.unwrapped &&
+    layer.screenLineLengths.get(position.row) >= tabCount * HARD_TAB_RUN_MIN_LENGTH &&
     position.column >= HARD_TAB_RUN_MIN_LENGTH &&
     Number.isInteger(position.column) &&
     Number.isInteger(layer.tabLength) &&
@@ -2079,7 +2218,9 @@ function shouldSkipHardTabRuns(layer, position, tabCount) {
 
 function translateHardTabsWithRunSkipping(layer, target, tabCount, expanding, clipDirection) {
   const screenRowStart = Point(target.row, 0);
-  const screenRowEnd = expanding ? target : Point(target.row, layer.screenLineLengths[target.row]);
+  const screenRowEnd = expanding
+    ? target
+    : Point(target.row, layer.screenLineLengths.get(target.row));
   const hunks = layer.spatialIndex.getChangesInNewRange(screenRowStart, screenRowEnd);
   let hunkIndex = 0;
   let unexpandedColumn = 0;
@@ -2153,25 +2294,251 @@ function createEmptyLayoutState() {
     spatialIndex: new Patch({
       mergeAdjacentChanges: false,
     }),
-    tabCounts: [],
-    screenLineStartFlags: [],
-    screenLineLengths: [],
-    screenLineBlocks: [],
+    tabCounts: new RowSequence(),
+    screenLineStartFlags: new RowSequence(),
+    screenLineLengths: new RowSequence(),
     rightmostScreenPosition: Point(0, 0),
     indexedBufferRowCount: 0,
+    unwrappedRows: new RowSequence(),
   };
 }
 
 function copyLayoutState(state) {
-  return {
+  const copy = {
     spatialIndex: state.spatialIndex.copy(),
-    tabCounts: state.tabCounts.slice(),
-    screenLineStartFlags: state.screenLineStartFlags.slice(),
-    screenLineLengths: state.screenLineLengths.slice(),
-    screenLineBlocks: state.screenLineBlocks.map(({ rowCount, max }) => ({ rowCount, max })),
+    tabCounts: state.tabCounts.copy(),
+    screenLineStartFlags: state.screenLineStartFlags.copy(),
+    screenLineLengths: state.screenLineLengths.copy(),
     rightmostScreenPosition: state.rightmostScreenPosition.copy(),
     indexedBufferRowCount: state.indexedBufferRowCount,
+    unwrapped: state.unwrapped,
+    unwrappedRows: state.unwrappedRows.copy(),
   };
+  if (state.unwrapped) configureUnwrappedMetrics(copy, state.buffer, state.tabLength);
+  return copy;
+}
+
+function configureUnwrappedMetrics(state, buffer, tabLength) {
+  state.buffer = buffer;
+  state.tabLength = tabLength;
+  state.screenLineLengths.resolve = (row) => measureUnwrappedRow(state, row).length;
+  state.tabCounts.resolve = (row) => measureUnwrappedRow(state, row).tabs;
+  state.screenLineStartFlags.resolve = () => SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
+}
+
+function measureUnwrappedRow(state, screenRow) {
+  const start = Point(screenRow, 0);
+  const prior = state.spatialIndex.changeForNewPosition(start);
+  let position = prior ? traverse(prior.oldEnd, traversal(start, prior.newEnd)) : start;
+  // A fold beginning at column zero still displays its fold character.
+  if (prior && compare(start, prior.newEnd) < 0) position = prior.oldStart;
+  const startBufferRow = position.row;
+  const folds = state.spatialIndex.getChangesInNewRange(start, Point(screenRow + 1, 0));
+  const source = state.buffer.getTextSnapshot();
+  const reader = source.reader(32768);
+  let length = 0;
+  let tabs = 0;
+  let rawLength = 0;
+  let firstNonWhitespaceRawColumn = Infinity;
+  const runs = [];
+  let longSourceLine = false;
+  const append = (from, to) => {
+    if (state.buffer.lineLengthForRow(from.row) > 10000) longSourceLine = true;
+    let offset = source.lineStart(from.row) + from.column;
+    let column = from.column;
+    const end = source.lineStart(to.row) + to.column;
+    while (offset < end) {
+      const part = reader(offset).slice(0, end - offset);
+      if (firstNonWhitespaceRawColumn === Infinity) {
+        const first = part.search(/[^ \t]/);
+        if (first >= 0) firstNonWhitespaceRawColumn = rawLength + first;
+      }
+      const run = {
+        rowDelta: from.row - startBufferRow,
+        column,
+        rawColumn: rawLength,
+        screenColumn: length,
+        textLength: part.length,
+      };
+      let previous = 0;
+      for (let tab = part.indexOf("\t"); tab >= 0; tab = part.indexOf("\t", previous)) {
+        length += tab - previous;
+        length += state.tabLength - (length % state.tabLength);
+        tabs++;
+        previous = tab + 1;
+      }
+      length += part.length - previous;
+      run.screenEndColumn = length;
+      runs.push(run);
+      rawLength += part.length;
+      column += part.length;
+      offset += part.length;
+    }
+  };
+  for (const fold of folds) {
+    if (fold.newStart.row !== screenRow) continue;
+    append(position, fold.oldStart);
+    runs.push({
+      rawColumn: rawLength,
+      screenColumn: length,
+      screenEndColumn: length + 1,
+      fold: true,
+      rowDelta: fold.oldStart.row - startBufferRow,
+      column: fold.oldStart.column,
+      textLength: 1,
+      endRowDelta: fold.oldEnd.row - startBufferRow,
+      endColumn: fold.oldEnd.column,
+    });
+    rawLength++;
+    length++;
+    position = fold.oldEnd;
+  }
+  append(position, Point(position.row, state.buffer.lineLengthForRow(position.row)));
+  state.screenLineLengths.set(screenRow, length);
+  state.tabCounts.set(screenRow, tabs);
+  const result = { length, tabs, rawLength, runs, firstNonWhitespaceRawColumn, longSourceLine };
+  // Ordinary rows need only their two numeric summaries. Large rows retain
+  // bounded-chunk checkpoints so navigation and windows start near the target.
+  if (rawLength > 8192 || longSourceLine) state.unwrappedRows.set(screenRow, result);
+  return result;
+}
+
+// Stable prefix estimates are computed once per chunk, independent of the
+// viewport window. DOM measurements refine visible glyph positions; changing
+// the window must never redefine the coordinate of an already-known prefix.
+function measureUnwrappedPixelColumns(
+  layer,
+  text,
+  column,
+  pixel,
+  previousCode,
+  targetColumn,
+  targetPixel,
+) {
+  const asciiEvents = /[\t\u0080-\uffff]/g;
+  const standard = layer.hasStandardCharacterWidth();
+  for (let index = 0; index < text.length;) {
+    if (column >= targetColumn || pixel >= targetPixel) break;
+    const code = text.charCodeAt(index);
+    let columns = 1;
+    let width;
+    if (standard && code < 128 && code !== 9) {
+      asciiEvents.lastIndex = index;
+      const end = asciiEvents.exec(text)?.index ?? text.length;
+      columns = end - index;
+      width = columns;
+    } else if (code === 9) {
+      columns = layer.tabLength - (column % layer.tabLength);
+      width = columns * layer.ratioForCharacter(" ");
+    } else if (
+      (code >= 0xdc00 && code <= 0xdfff && previousCode >= 0xd800 && previousCode <= 0xdbff) ||
+      code === 0x200d ||
+      (code >= 0x0300 && code <= 0x036f) ||
+      (code >= 0x1ab0 && code <= 0x1aff) ||
+      (code >= 0x1dc0 && code <= 0x1dff) ||
+      (code >= 0x20d0 && code <= 0x20ff) ||
+      (code >= 0xfe00 && code <= 0xfe0f) ||
+      (code >= 0xfe20 && code <= 0xfe2f)
+    ) {
+      width = 0;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      width = 2 * layer.ratioForCharacter(" ");
+    } else width = layer.ratioForCharacter(text[index]);
+    if (!Number.isFinite(width) || width < 0) width = columns;
+    const fraction = Math.max(
+      0,
+      Math.min(1, (targetColumn - column) / columns, width > 0 ? (targetPixel - pixel) / width : 1),
+    );
+    column += columns * fraction;
+    pixel += width * fraction;
+    if (fraction < 1) break;
+    const consumed = standard && code < 128 && code !== 9 ? columns : 1;
+    previousCode = text.charCodeAt(index + consumed - 1);
+    index += consumed;
+  }
+  return { column, pixel };
+}
+
+function translateUnwrappedTabs(layer, target, expanding, clipDirection) {
+  const row = layer.getUnwrappedRow(target.row);
+  // Preserve the legacy fractional-column contract: its scalar traversal can
+  // only stop at an exactly equal buffer column, so a fractional target visits
+  // every tab before applying the residual offset.
+  if (expanding && !Number.isInteger(target.column)) {
+    return Point(target.row, row.length + target.column - row.rawLength);
+  }
+  if (!expanding && (!Number.isInteger(target.column) || !Number.isInteger(layer.tabLength))) {
+    let raw = 0;
+    let screen = 0;
+    let tabs = row.tabs;
+    const firstRow = layer.translateScreenPositionWithSpatialIndex(Point(target.row, 0)).row;
+    const source = layer.buffer.getTextSnapshot();
+    for (const run of row.runs) {
+      const offset = source.lineStart(firstRow + run.rowDelta) + run.column;
+      const text = run.fold ? layer.foldCharacter : source.slice(offset, offset + run.textLength);
+      for (const character of text.split("")) {
+        if (screen === target.column || tabs === 0)
+          return Point(target.row, raw + target.column - screen);
+        if (character === "\t") {
+          const next = screen + layer.tabLength - (screen % layer.tabLength);
+          if (next > target.column)
+            return Point(
+              target.row,
+              raw +
+                (clipDirection === "forward" ||
+                (clipDirection !== "backward" && target.column > Math.ceil((screen + next) / 2))
+                  ? 1
+                  : 0),
+            );
+          screen = next;
+          tabs--;
+        } else screen++;
+        raw++;
+      }
+    }
+    return Point(target.row, raw + target.column - screen);
+  }
+  const key = expanding ? "rawColumn" : "screenColumn";
+  let low = 0;
+  let high = row.runs.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (row.runs[middle][key] <= target.column) low = middle + 1;
+    else high = middle;
+  }
+  const run = row.runs[Math.max(0, low - 1)];
+  if (!run) return target;
+  let raw = run.rawColumn;
+  let screen = run.screenColumn;
+  const startBufferRow = layer.translateScreenPositionWithSpatialIndex(Point(target.row, 0)).row;
+  const source = layer.buffer.getTextSnapshot();
+  const offset = source.lineStart(startBufferRow + run.rowDelta) + run.column;
+  const text = run.fold ? layer.foldCharacter : source.slice(offset, offset + run.textLength);
+  let previous = 0;
+  for (let tab = text.indexOf("\t"); tab >= 0; tab = text.indexOf("\t", previous)) {
+    const distance = tab - previous;
+    if (target.column < (expanding ? raw : screen) + distance) break;
+    raw += distance;
+    screen += distance;
+    if (!expanding && target.column === screen) return Point(target.row, raw);
+    const next = screen + layer.tabLength - (screen % layer.tabLength);
+    if (expanding) {
+      if (target.column <= raw) break;
+    } else if (target.column < next) {
+      return Point(
+        target.row,
+        raw +
+          (clipDirection === "forward" ||
+          (clipDirection !== "backward" && target.column > Math.ceil((screen + next) / 2))
+            ? 1
+            : 0),
+      );
+    }
+    screen = next;
+    raw++;
+    previous = tab + 1;
+  }
+  return Point(target.row, expanding ? screen + target.column - raw : raw + target.column - screen);
 }
 
 function bufferPositionThroughHunk(bufferPosition, hunk, clipDirection) {

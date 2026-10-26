@@ -526,7 +526,18 @@ class MarkerLayer {
       try {
         const result = this.trackRanges(
           Object.freeze(ranges),
-          Object.freeze({ oldRange, newRange, newText }),
+          Object.freeze(
+            Object.defineProperties(
+              {
+                oldRange,
+                newRange,
+                get newText() {
+                  return typeof newText === "string" ? newText : newText.toString();
+                },
+              },
+              { newTextSource: { value: typeof newText === "string" ? undefined : newText } },
+            ),
+          ),
         );
         trackedRanges = validateTrackedRanges(result, touched);
       } catch (error) {

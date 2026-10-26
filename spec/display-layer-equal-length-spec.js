@@ -481,7 +481,7 @@ describe("DisplayLayer geometry-preserving replacements", () => {
       }
       expect(update).not.toHaveBeenCalled();
       for (let row = 0; row < previousLines.length - 1; row++) {
-        expect(pair.actual.cachedScreenLines[row]).toBeUndefined();
+        expect(pair.actual.cachedScreenLines.get(row)).toBeUndefined();
       }
       expect(pair.actual.cachedScreenLines.at(-1)).toBe(previousLines.at(-1));
       expectEquivalentLayouts(pair.actual, pair.expected);
@@ -497,7 +497,6 @@ function captureGeometry(layer) {
     screenLineLengths: layer.screenLineLengths,
     tabCounts: layer.tabCounts,
     screenLineStartFlags: layer.screenLineStartFlags,
-    screenLineBlocks: layer.screenLineBlocks,
     rightmostScreenPosition: layer.rightmostScreenPosition,
     indexedBufferRowCount: layer.indexedBufferRowCount,
   };
@@ -510,7 +509,6 @@ function expectGeometryRetained(layer, previous) {
     "screenLineLengths",
     "tabCounts",
     "screenLineStartFlags",
-    "screenLineBlocks",
     "rightmostScreenPosition",
     "indexedBufferRowCount",
   ]) {
@@ -523,10 +521,10 @@ function expectCachedRowsInvalidated(layer, previous, firstRow, lastRow) {
   expect(layer.cachedScreenLines.length).toBe(previous.length);
   for (let row = 0; row < previous.length; row++) {
     if (row >= firstRow && row <= lastRow) {
-      expect(layer.cachedScreenLines[row]).toBeUndefined();
+      expect(layer.cachedScreenLines.get(row)).toBeUndefined();
     } else {
-      expect(layer.cachedScreenLines[row]).toBe(previous[row]);
-      expect(layer.cachedScreenLines[row].id).toBe(previous[row].id);
+      expect(layer.cachedScreenLines.get(row)).toBe(previous[row]);
+      expect(layer.cachedScreenLines.get(row).id).toBe(previous[row].id);
     }
   }
 }
@@ -535,13 +533,8 @@ function expectEquivalentLayouts(actual, expected) {
   expect(actual.getScreenLines().map(({ lineText, tags }) => ({ lineText, tags }))).toEqual(
     expected.getScreenLines().map(({ lineText, tags }) => ({ lineText, tags })),
   );
-  for (const property of [
-    "screenLineLengths",
-    "screenLineStartFlags",
-    "tabCounts",
-    "screenLineBlocks",
-  ]) {
-    expect(actual[property]).toEqual(expected[property]);
+  for (const property of ["screenLineLengths", "screenLineStartFlags", "tabCounts"]) {
+    expect(actual[property].slice()).toEqual(expected[property].slice());
   }
   expect(pointArray(actual.getRightmostScreenPosition())).toEqual(
     pointArray(expected.getRightmostScreenPosition()),
@@ -559,7 +552,7 @@ function expectEquivalentLayouts(actual, expected) {
     }
   }
   for (let row = 0; row < actual.screenLineLengths.length; row++) {
-    for (let column = 0; column <= actual.screenLineLengths[row]; column++) {
+    for (let column = 0; column <= actual.screenLineLengths.get(row); column++) {
       for (const clipDirection of ["forward", "backward", "closest"]) {
         expect(
           pointArray(actual.translateScreenPosition([row, column], { clipDirection })),

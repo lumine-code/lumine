@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const TextStore = require("./text-store");
+const { INLINE_TEXT_LIMIT, serializeText, deserializeText } = require("./serialized-text");
 const { TextPatch } = require("./text-model");
 const { idleDisposals } = require("./idle-disposal-queue");
 const Point = require("./point");
@@ -48,7 +49,11 @@ function textChangesOnlyPatch(patch) {
   // A file load can invert an edit and rollback into an identical replacement.
   // Applying that replacement to marker layers would still move their ranges.
   const changes = patch.getChanges();
-  const textChanges = changes.filter((change) => change.oldText !== change.newText);
+  const textChanges = changes.filter((change) =>
+    change.oldTextSource && change.newTextSource
+      ? !change.oldTextSource.equals(change.newTextSource)
+      : change.oldText !== change.newText,
+  );
   return textChanges.length === changes.length ? patch : patchFromChanges(textChanges);
 }
 
@@ -57,16 +62,6 @@ function textChangesOnlyPatch(patch) {
 function indexForPatchPoint(buffer, point) {
   const clipped = buffer.clipPosition(point);
   return buffer.characterIndexForPosition(clipped) + point.column - clipped.column;
-}
-
-function textForPatchRange(buffer, range) {
-  const start = buffer.clipPosition(range.start);
-  const end = buffer.clipPosition(range.end);
-  const startOffset = range.start.column - start.column;
-  const endOffset = range.end.column - end.column;
-  const readEnd = endOffset ? new Point(end.row + 1, 0) : end;
-  const text = buffer.getTextInRange(new Range(start, readEnd));
-  return text.slice(startOffset, text.length - (endOffset ? 2 - endOffset : 0));
 }
 
 function fileChangesWithWholeLineEndings(text, changes) {
@@ -341,6 +336,8 @@ class TextBuffer {
 
     params = { ...params };
     delete params.load;
+    const textSnapshot = params.textSnapshot == null ? null : deserializeText(params.textSnapshot);
+    if (textSnapshot) params.text = textSnapshot;
 
     let buffer;
     let fileContentsChanged = false;
@@ -369,7 +366,7 @@ class TextBuffer {
           buffer.buffer.setText(params.text);
           buffer._textRevision++;
         }
-        fileContentsChanged = hadBackingFile;
+        fileContentsChanged = hadBackingFile && !textSnapshot;
         if (hadBackingFile) {
           buffer.didHaveFileOnDisk = true;
           buffer.setFileState("removed");
@@ -388,7 +385,9 @@ class TextBuffer {
       } else if (serializedDirty && params.text != null) {
         buffer.buffer.setText(params.text);
         buffer._textRevision++;
-        fileContentsChanged = true;
+        // The recovered in-memory snapshot still has exactly the contents its
+        // undo stack and markers describe, even when the disk base changed.
+        fileContentsChanged = !textSnapshot;
         buffer.setFileState("conflicted");
       } else {
         fileContentsChanged = true;
@@ -451,6 +450,7 @@ class TextBuffer {
    * @param {Object} [options] - Serialization options.
    * @param {Boolean} [options.markerLayers=true] - Include persistent marker layers.
    * @param {Boolean} [options.history=true] - Include undo and redo history.
+   * @param {Boolean} [options.textSnapshots=false] - Keep immutable text roots for the session store. Other callers receive segmented text for large payloads; stream their JSON instead of constructing one document-sized string.
    * @returns {Object} State accepted by {@link TextBuffer.deserialize}.
    * @category Serialization
    */
@@ -503,11 +503,18 @@ class TextBuffer {
       result.filePath = filePath;
       result.digestWhenLastPersisted = this.digestWhenLastPersisted;
       // Session snapshots pass through JSON; keep binary patches out of its byte-array form.
-      result.outstandingChanges = this.buffer.serializeChanges().toString("base64");
+      const changes = this.buffer.serializeChanges(options);
+      result.outstandingChanges = Buffer.isBuffer(changes) ? changes.toString("base64") : changes;
       result.fileState = this.fileState;
-      if (this.fileState !== "unmodified") result.text = this.getText();
+      if (this.fileState !== "unmodified") {
+        if (options.textSnapshots || this.getLength() > INLINE_TEXT_LIMIT)
+          result.textSnapshot = serializeText(this.getTextSnapshot(), options.textSnapshots);
+        else result.text = this.getText();
+      }
     } else {
-      result.text = this.getText();
+      if (options.textSnapshots || this.getLength() > INLINE_TEXT_LIMIT)
+        result.textSnapshot = serializeText(this.getTextSnapshot(), options.textSnapshots);
+      else result.text = this.getText();
       result.fileState = this.fileState;
     }
 
@@ -1050,6 +1057,22 @@ class TextBuffer {
    * @public
    * @status extended
    *
+   * Check a full-text allocation budget without reading or copying the text.
+   * The runtime's maximum string length remains an upper bound even when the
+   * supplied budget is larger. Use snapshots and chunk readers for other work.
+   *
+   * @param {Number} [maxLength=Infinity] - Maximum UTF-16 units to materialize.
+   * @returns {Boolean} Whether this document fits both limits.
+   * @category Reading Text
+   */
+  canMaterializeText(maxLength = Infinity) {
+    return this.getTextSnapshot().canMaterialize(maxLength);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Capture immutable text without copying the document. The snapshot remains
    * valid after edits, undo and buffer destruction. Its read interface exposes
    * `length`, `lineCount`, `slice(start, end)`, `charCodeAt(index)`, `chunks()`,
@@ -1348,7 +1371,22 @@ class TextBuffer {
     // A bounded diff may replace unchanged interior lines after its deadline.
     // Recompute by lines without that deadline to preserve their markers.
     if (patch.isCoarse) {
-      return this.setTextViaLineDiff(text);
+      if (this.getLength() + text.length <= 2097152) return this.setTextViaLineDiff(text);
+      // The coarse patch exists specifically to avoid flattening large text.
+      // Retain its shared sources instead of retrying an unbounded line diff.
+      return this.transact(() => {
+        for (let i = changes.length - 1; i >= 0; i--) {
+          const change = changes[i];
+          this.emitWillChangeEvent();
+          this.applyChange(
+            this.buffer.prepareEdit(
+              new Range(change.oldStart, change.oldEnd),
+              change.newTextSource ?? change.newText,
+            ),
+            { recordHistory: true },
+          );
+        }
+      });
     }
 
     const changeOptions = { normalizeLineEndings: false };
@@ -1736,7 +1774,14 @@ class TextBuffer {
   }
 
   applyHistoryUpdates(changes, origin = "edit") {
-    if (changes.length >= 64) {
+    if (
+      changes.length >= 64 &&
+      !changes.some(
+        (change) =>
+          (change.oldTextSource?.length ?? 0) > 1024 * 1024 ||
+          (change.newTextSource?.length ?? 0) > 1024 * 1024,
+      )
+    ) {
       const edits = changes.map((change) => ({
         range: new Range(change.oldStart, change.oldEnd),
         text: change.newText,
@@ -1783,39 +1828,42 @@ class TextBuffer {
 
   // All synchronous mutations commit a prepared text edit. History receives
   // the same immutable text blocks; notifications receive only value snapshots.
-  applyChange(edit, { recordHistory = false, origin = "edit" } = {}) {
+  applyChange(edit, { recordHistory = false, origin = "edit", markerPlan } = {}) {
     const wasApplying = this.applyingEdit;
     try {
       this.assertCanEdit();
       this.applyingEdit = true;
       const change = edit.getChange();
-      const {
-        oldStart,
-        oldEnd,
-        newStart,
-        newEnd,
-        oldText,
-        newText,
-        startIndex,
-        oldEndIndex,
-        newEndIndex,
-      } = change;
+      const { oldStart, oldEnd, newStart, newEnd, startIndex, oldEndIndex, newEndIndex } = change;
       const oldRange = new Range(oldStart, oldEnd).freeze();
       const newRange = new Range(newStart, newEnd).freeze();
       const oldExtent = oldRange.getExtent();
       const newExtent = newRange.getExtent();
-      const changeEvent = Object.freeze({
-        oldRange,
-        newRange,
-        oldText,
-        newText,
-        origin,
-        startIndex,
-        oldEndIndex,
-        newEndIndex,
-      });
+      const changeEvent = Object.freeze(
+        Object.defineProperties(
+          {
+            oldRange,
+            newRange,
+            get oldText() {
+              return change.oldText;
+            },
+            get newText() {
+              return change.newText;
+            },
+            origin,
+            startIndex,
+            oldEndIndex,
+            newEndIndex,
+          },
+          {
+            oldTextSource: { value: change.oldTextSource },
+            newTextSource: { value: change.newTextSource },
+          },
+        ),
+      );
 
       this.prepareDisplayLayersForChange(changeEvent);
+      markerPlan?.verify();
       const patch = recordHistory ? edit.createPatch() : null;
       edit.commit();
       // The public text revision advances before any observer reads parser input.
@@ -1828,10 +1876,16 @@ class TextBuffer {
       this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
       this.recordAppliedChange(changeEvent);
 
-      if (this.markerLayers) {
+      if (markerPlan) markerPlan.publish(this.getTextSnapshot());
+      else if (this.markerLayers) {
         for (const id in this.markerLayers) {
           const markerLayer = this.markerLayers[id];
-          markerLayer.splice(oldRange.start, oldExtent, newExtent, newText);
+          markerLayer.splice(
+            oldRange.start,
+            oldExtent,
+            newExtent,
+            change.newTextSource ?? change.newText,
+          );
           this.markerLayersWithPendingUpdateEvents.add(markerLayer);
         }
       }
@@ -1854,7 +1908,9 @@ class TextBuffer {
   recordAppliedChange(change) {
     if (this.emitter.listenerCountForEventName("did-apply-changes") > 0) {
       if (!this.appliedChanges?.length) this.appliedChangesBeforeRevision = this._textRevision - 1;
-      (this.appliedChanges ||= []).push(Object.freeze({ ...change }));
+      (this.appliedChanges ||= []).push(
+        Object.freeze(Object.defineProperties({}, Object.getOwnPropertyDescriptors(change))),
+      );
     }
   }
 
@@ -1904,6 +1960,8 @@ class TextBuffer {
   }
 
   prepareDisplayLayersForChange(changeEvent) {
+    for (const layer of Object.values(this.displayLayers))
+      layer.prepareProjectionForChange(changeEvent);
     for (const group of this.groupDisplayLayersByLayout()) {
       const source = this.mostCompletelyIndexedDisplayLayer(group);
       source.bufferWillChange(changeEvent);
@@ -2197,12 +2255,16 @@ class TextBuffer {
       }
     }
 
-    return {
-      baseText: baseTextBuffer.getText(),
+    const result = {
+      get baseText() {
+        return baseTextBuffer.getText();
+      },
       undoStack: snapshot.undoStack,
       redoStack: snapshot.redoStack,
       nextCheckpointId: snapshot.nextCheckpointId,
     };
+    Object.defineProperty(result, "baseTextSnapshot", { value: baseTextBuffer.getTextSnapshot() });
+    return result;
   }
 
   /**
@@ -2228,8 +2290,7 @@ class TextBuffer {
       this.transactCallDepth--;
     }
     this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "undo");
-    const origin = this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(pop.markers, origin);
+    this.emitDidChangeTextAndMarkerEvents(pop.markers);
     return true;
   }
 
@@ -2256,8 +2317,7 @@ class TextBuffer {
       this.transactCallDepth--;
     }
     this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "redo");
-    const origin = this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(pop.markers, origin);
+    this.emitDidChangeTextAndMarkerEvents(pop.markers);
     return true;
   }
 
@@ -2317,8 +2377,7 @@ class TextBuffer {
     } finally {
       this.transactCallDepth--;
       if (aborted && this.transactCallDepth === 0 && !this.isDestroyed()) {
-        const origin = this.emitDidChangeTextEvent();
-        this.emitMarkerChangeEvents(null, origin);
+        this.emitDidChangeTextAndMarkerEvents(null);
       }
     }
 
@@ -2333,8 +2392,7 @@ class TextBuffer {
       this.historyProvider.applyGroupingInterval(groupingInterval);
     }
     this.historyProvider.enforceUndoStackSizeLimit();
-    const origin = this.emitDidChangeTextEvent();
-    this.emitMarkerChangeEvents(endMarkerSnapshot, origin);
+    this.emitDidChangeTextAndMarkerEvents(endMarkerSnapshot);
     return result;
   }
 
@@ -2622,20 +2680,15 @@ class TextBuffer {
       // and allocating every other match in the range before that callback.
       return scanFirstMatchInRange(this, regex, range, options, callback);
     }
-    const matchRanges = this.findAllInRangeSync(regex, range);
-    let startIndex = 0;
-    let endIndex = matchRanges.length;
-    let increment = 1;
+    const search = this.buffer.createSearch(regex, range);
+    const ranges = function* () {
+      for (const match of search.scan()) if (match) yield search.range(match);
+    };
+    const matchRanges = reverse ? Array.from(ranges()).reverse() : ranges();
     let previousRow = -1;
     let replacementColumnDelta = 0;
-    if (reverse) {
-      startIndex = matchRanges.length - 1;
-      endIndex = -1;
-      increment = -1;
-    }
 
-    for (let i = startIndex; i !== endIndex; i += increment) {
-      const matchRange = matchRanges[i];
+    for (const matchRange of matchRanges) {
       if (range.end.isEqual(matchRange.start) && range.end.column > 0) continue;
       if (matchRange.start.row !== previousRow) {
         replacementColumnDelta = 0;
@@ -2773,6 +2826,120 @@ class TextBuffer {
     });
 
     return replacements.length;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Search an immutable revision without flattening the document. The returned
+   * session provides cancellable iteration, exact counting, sparse navigation
+   * checkpoints and a separately bounded list of presentation ranges.
+   * @param {RegExp} regex - Expression to search for.
+   * @param {Object} [options] - Optional range and AbortSignal.
+   * @returns {Object} Revision-bound search session.
+   */
+  createSearch(regex, { range, ...options } = {}) {
+    const revision = this.getTextRevision();
+    return this.buffer.createSearch(regex, range && Range.fromObject(range), {
+      ...options,
+      revision,
+      isCurrent: () => !this.isDestroyed() && this.getTextRevision() === revision,
+    });
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Prepare all replacements against one snapshot, then commit atomically as
+   * one undo operation. Cancellation or concurrent edits discard the plan.
+   * @param {RegExp} regex - Expression to replace.
+   * @param {String} replacement - ECMAScript replacement template.
+   * @param {Object} [options] - Ranges, signal, literalReplacement and transformReplacement.
+   * @returns {Promise<Number>} Number of replaced matches.
+   */
+  async replaceAllMatches(regex, replacement, options = {}) {
+    this.assertCanEdit();
+    const { buildReplacement } = require("./document-search");
+    const revision = this.getTextRevision();
+    const snapshot = this.getTextSnapshot();
+    const ranges = (options.ranges ?? [this.getRange()])
+      .map((range) => this.clipRange(Range.fromObject(range)))
+      .sort((a, b) => a.start.compare(b.start));
+    const merged = [];
+    for (const range of ranges) {
+      const last = merged.at(-1);
+      if (last && last.end.compare(range.start) >= 0) merged[merged.length - 1] = last.union(range);
+      else merged.push(range);
+    }
+    const sessions = merged.map((range) =>
+      this.createSearch(regex, { range, signal: options.signal }),
+    );
+    const ReplacementMarkerPlan = require("./replacement-marker-plan");
+    const markerPlan = options.onlyMatch ? null : new ReplacementMarkerPlan(this, snapshot);
+    const result = await buildReplacement(snapshot, sessions, replacement, {
+      ...options,
+      onReplacement: (start, end, length, boundaries) =>
+        markerPlan?.splice(start, end, length, boundaries),
+    });
+    for (const session of sessions) session.check();
+    if (!result.count) return 0;
+    if (revision !== this.getTextRevision())
+      throw Object.assign(new Error("The document changed during replacement"), {
+        code: "ERR_STALE_EDIT",
+      });
+    this.assertCanEdit();
+    markerPlan?.verify();
+    const range = options.onlyMatch
+      ? new Range(
+          snapshot.positionAt(options.onlyMatch.start),
+          snapshot.positionAt(options.onlyMatch.end),
+        )
+      : this.getRange();
+    const inserted = options.onlyMatch
+      ? result.snapshot.subtext(
+          options.onlyMatch.start,
+          result.snapshot.length - (snapshot.length - options.onlyMatch.end),
+        )
+      : result.snapshot;
+    if (
+      options.onlyMatch &&
+      inserted.length > require("node:buffer").constants.MAX_STRING_LENGTH &&
+      Object.values(this.markerLayers).some((layer) => layer.trackRanges && layer.getMarkerCount())
+    )
+      throw Object.assign(
+        new Error(
+          "This replacement is too large for a custom range tracker. Use a smaller replacement.",
+        ),
+        { code: "ERR_REPLACE_RANGE_TRACKER" },
+      );
+    const previousCapture = this.captureAllMarkerLayers;
+    this.captureAllMarkerLayers = Boolean(markerPlan) || previousCapture;
+    let committed = false;
+    try {
+      this.transact(() => {
+        this.emitWillChangeEvent();
+        this.applyChange(this.buffer.prepareEdit(range, inserted), {
+          recordHistory: true,
+          markerPlan,
+        });
+        committed = true;
+      });
+    } catch (error) {
+      if (committed)
+        throw Object.assign(
+          new Error(
+            `All ${result.count} replacements were committed, but a change listener failed: ${error.message}`,
+            { cause: error },
+          ),
+          { code: "ERR_REPLACE_OBSERVER_FAILED", committed: true, replacementCount: result.count },
+        );
+      throw error;
+    } finally {
+      this.captureAllMarkerLayers = previousCapture;
+    }
+    return result.count;
   }
 
   /**
@@ -3787,67 +3954,90 @@ class TextBuffer {
 
     this.digestWhenLastPersisted = this.buffer.baseTextDigest();
     this.cachedText = null;
-
-    if (this.loaded && patch && patch.getChangeCount() > 0) {
-      const changes = patch.getChanges();
-
-      if (options && options.clearHistory) {
-        this.historyProvider.clearUndoStack();
-      } else {
-        this.historyProvider.pushPatch(patch);
+    let failure;
+    const attempt = (callback) => {
+      try {
+        callback();
+      } catch (error) {
+        failure ??= error;
       }
+    };
+    try {
+      if (this.loaded && patch && patch.getChangeCount() > 0) {
+        const changes = patch.getChanges();
 
-      if (changes) {
-        this.changesSinceLastDidChangeTextEvent.push(...changes);
-        this.changesSinceLastStoppedChangingEvent.push(...changes);
-        this.changeOriginsSinceLastDidChangeTextEvent.add("reload");
-      }
-
-      for (const change of changes) {
-        if (this.markerLayers != null) {
-          for (const id in this.markerLayers) {
-            const markerLayer = this.markerLayers[id];
-            markerLayer.splice(
-              change.newStart,
-              traversal(change.oldEnd, change.oldStart),
-              traversal(change.newEnd, change.newStart),
-              change.newText,
-            );
-          }
+        if (options && options.clearHistory) {
+          this.historyProvider.clearUndoStack();
+        } else {
+          this.historyProvider.pushPatch(patch);
         }
-        const start = Point.fromObject(change.newStart);
-        const startIndex = indexForPatchPoint(this, start);
-        this.recordAppliedChange({
-          startIndex,
-          oldEndIndex: startIndex + change.oldText.length,
-          newEndIndex: startIndex + change.newText.length,
-          oldRange: Range(
-            start,
-            traverse(start, traversal(change.oldEnd, change.oldStart)),
-          ).freeze(),
-          newRange: Range(start, change.newEnd).freeze(),
-          oldText: change.oldText,
-          newText: change.newText,
-          origin: "reload",
+
+        if (changes) {
+          this.changesSinceLastDidChangeTextEvent.push(...changes);
+          this.changesSinceLastStoppedChangingEvent.push(...changes);
+          this.changeOriginsSinceLastDidChangeTextEvent.add("reload");
+        }
+
+        for (const change of changes) {
+          if (this.markerLayers != null) {
+            for (const id in this.markerLayers) {
+              const markerLayer = this.markerLayers[id];
+              markerLayer.splice(
+                change.newStart,
+                traversal(change.oldEnd, change.oldStart),
+                traversal(change.newEnd, change.newStart),
+                change.newTextSource ?? change.newText,
+              );
+            }
+          }
+          const start = Point.fromObject(change.newStart);
+          const startIndex = indexForPatchPoint(this, start);
+          this.recordAppliedChange(
+            Object.defineProperties(
+              {
+                startIndex,
+                oldEndIndex: startIndex + (change.oldTextSource?.length ?? change.oldText.length),
+                newEndIndex: startIndex + (change.newTextSource?.length ?? change.newText.length),
+                oldRange: Range(
+                  start,
+                  traverse(start, traversal(change.oldEnd, change.oldStart)),
+                ).freeze(),
+                newRange: Range(start, change.newEnd).freeze(),
+                get oldText() {
+                  return change.oldText;
+                },
+                get newText() {
+                  return change.newText;
+                },
+                origin: "reload",
+              },
+              {
+                oldTextSource: { value: change.oldTextSource },
+                newTextSource: { value: change.newTextSource },
+              },
+            ),
+          );
+        }
+
+        const markersSnapshot = this.createMarkerSnapshot();
+        this.historyProvider.groupChangesSinceCheckpoint(checkpoint, {
+          markers: markersSnapshot,
+          deleteCheckpoint: true,
+          returnChanges: false,
         });
+
+        attempt(() => this.emitDidChangeEvent(new ChangeEvent(this, changes, "reload")));
+        attempt(() => this.updateFileStateFromBuffer({ resolveStickyState: true }));
+        attempt(() => this.emitDidChangeTextAndMarkerEvents(markersSnapshot));
       }
-
-      const markersSnapshot = this.createMarkerSnapshot();
-      this.historyProvider.groupChangesSinceCheckpoint(checkpoint, {
-        markers: markersSnapshot,
-        deleteCheckpoint: true,
-        returnChanges: false,
-      });
-
-      this.emitDidChangeEvent(new ChangeEvent(this, changes, "reload"));
-      this.updateFileStateFromBuffer({ resolveStickyState: true });
-      const origin = this.emitDidChangeTextEvent();
-      this.emitMarkerChangeEvents(markersSnapshot, origin);
+    } catch (error) {
+      failure ??= error;
+    } finally {
+      this.loaded = true;
+      attempt(() => this.updateFileStateFromBuffer({ resolveStickyState: true }));
+      attempt(() => this.emitter.emit("did-reload"));
     }
-
-    this.loaded = true;
-    this.updateFileStateFromBuffer({ resolveStickyState: true });
-    this.emitter.emit("did-reload");
+    if (failure) throw failure;
     return this;
   }
 
@@ -4367,7 +4557,7 @@ class TextBuffer {
     const snapshot = {};
     for (const markerLayerId in this.markerLayers) {
       const markerLayer = this.markerLayers[markerLayerId];
-      if (!markerLayer.maintainHistory) continue;
+      if (!markerLayer.maintainHistory && !this.captureAllMarkerLayers) continue;
       if (
         selectionsMarkerLayer &&
         markerLayer.getRole() === "selections" &&
@@ -4470,12 +4660,40 @@ class TextBuffer {
     }
   }
 
+  emitDidChangeTextAndMarkerEvents(snapshot) {
+    let origin = changeOrigin(this.changeOriginsSinceLastDidChangeTextEvent),
+      failure;
+    try {
+      origin = this.emitDidChangeTextEvent();
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      this.emitMarkerChangeEvents(snapshot, origin);
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure) throw failure;
+    return origin;
+  }
+
   emitDidChangeTextEvent() {
     this.cachedHasAstral = null;
     const origin = changeOrigin(this.changeOriginsSinceLastDidChangeTextEvent);
-    if (this.transactCallDepth === 0) {
+    if (this.transactCallDepth !== 0) return origin;
+    let failure,
+      changed = false;
+    const attempt = (callback) => {
+      try {
+        callback();
+      } catch (error) {
+        failure ??= error;
+      }
+    };
+    try {
       this._emittedWillChangeEvent = false;
       if (this.changesSinceLastDidChangeTextEvent.length > 0) {
+        changed = true;
         this.changeOriginsSinceLastDidChangeTextEvent.clear();
         const appliedChanges = this.appliedChanges;
         const beforeRevision = this.appliedChangesBeforeRevision;
@@ -4495,21 +4713,24 @@ class TextBuffer {
             ),
           }),
         );
-        if (appliedChanges?.length) this.emitAppliedChanges(appliedChanges, origin, beforeRevision);
+        if (appliedChanges?.length)
+          attempt(() => this.emitAppliedChanges(appliedChanges, origin, beforeRevision));
         if (compactedChanges.length > 0) {
           idleDisposals.didEdit();
           const changeEvent = new ChangeEvent(this, compactedChanges, origin);
-          this.languageMode.bufferDidFinishTransaction(changeEvent);
-          this.emitter.emit("did-change-text", changeEvent);
+          attempt(() => this.languageMode.bufferDidFinishTransaction(changeEvent));
+          attempt(() => this.emitter.emit("did-change-text", changeEvent));
         }
-        this.debouncedEmitDidStopChangingEvent();
       }
-      for (const id in this.displayLayers) {
-        const displayLayer = this.displayLayers[id];
-        displayLayer.emitDeferredChangeEvents();
-      }
-      this.updateFileStateFromBuffer();
+    } catch (error) {
+      failure ??= error;
+    } finally {
+      if (changed) attempt(() => this.debouncedEmitDidStopChangingEvent());
+      for (const displayLayer of Object.values(this.displayLayers))
+        attempt(() => displayLayer.emitDeferredChangeEvents());
+      attempt(() => this.updateFileStateFromBuffer());
     }
+    if (failure) throw failure;
     return origin;
   }
 
@@ -4643,39 +4864,33 @@ class ChangeEvent {
       value: indexForPatchPoint(buffer, this.newRange.start),
     });
 
-    let oldText = null;
-    let newText = null;
-
-    Object.defineProperty(this, "oldText", {
-      enumerable: false,
-      get() {
-        if (oldText == null) {
-          const currentText = this.newText || "";
-          const parts = [];
-          let end = 0;
-          // Normalized patch changes are ordered and disjoint in the final
-          // text. Reconstruct once instead of copying the whole span for each
-          // splice when a package reads a bulk transaction's oldText.
-          for (const change of changes) {
-            const offset = indexForPatchPoint(buffer, change.newStart) - this.startIndex;
-            parts.push(currentText.slice(end, offset), change.oldText);
-            end = offset + change.newText.length;
-          }
-          parts.push(currentText.slice(end));
-          oldText = parts.join("");
-        }
-        return oldText;
-      },
-    });
-
-    Object.defineProperty(this, "newText", {
-      enumerable: false,
-      get() {
-        if (newText == null) {
-          newText = textForPatchRange(buffer, this.newRange);
-        }
-        return newText;
-      },
+    const single =
+      changes.length === 1 && changes[0].oldTextSource && changes[0].newTextSource
+        ? changes[0]
+        : null;
+    const newTextSource =
+      single?.newTextSource ??
+      buffer
+        .getTextSnapshot()
+        .subtext(this.startIndex, indexForPatchPoint(buffer, this.newRange.end));
+    const inverse = single
+      ? null
+      : changes.map((change) => {
+          const start = indexForPatchPoint(buffer, change.newStart) - this.startIndex;
+          return {
+            start,
+            end: start + (change.newTextSource?.length ?? change.newText.length),
+            text: change.oldTextSource ?? change.oldText,
+          };
+        });
+    let oldTextSource = single?.oldTextSource,
+      oldText,
+      newText;
+    Object.defineProperties(this, {
+      newTextSource: { value: newTextSource },
+      oldTextSource: { get: () => (oldTextSource ??= newTextSource.replaceAll(inverse)) },
+      newText: { get: () => (newText ??= newTextSource.toString()) },
+      oldText: { get: () => (oldText ??= this.oldTextSource.toString()) },
     });
   }
 

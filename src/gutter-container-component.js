@@ -44,6 +44,7 @@ module.exports = class GutterContainerComponent {
   shouldUpdate(props) {
     return (
       !props.measuredContent ||
+      props.renderOriginTop !== this.props.renderOriginTop ||
       props.lineNumberGutterWidth !== this.props.lineNumberGutterWidth ||
       props.activeBufferRow !== this.props.activeBufferRow
     );
@@ -85,7 +86,10 @@ module.exports = class GutterContainerComponent {
           name: gutter.name,
           visible: gutter.isVisible(),
           height: scrollHeight,
-          decorations: decorationsToRender.customGutter.get(gutter.name),
+          decorations: decorationsToRender.customGutter.get(gutter.name)?.map((decoration) => ({
+            ...decoration,
+            top: decoration.top - (this.props.renderOriginTop || 0),
+          })),
         };
         if (gutterComponent) {
           gutterComponent.update(gutterProps);
@@ -117,7 +121,7 @@ module.exports = class GutterContainerComponent {
   // window still covers the viewport.
   updateScrollTop(scrollTop) {
     this.props.scrollTop = scrollTop;
-    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop, this.element.ownerDocument.defaultView.devicePixelRatio)}px)`;
+    const transform = `translateY(${(this.props.renderOriginTop || 0) - roundToPhysicalPixelBoundary(scrollTop, this.element.ownerDocument.defaultView.devicePixelRatio)}px)`;
     if (transform !== this.lastTransform) {
       this.innerElement.style.transform = transform;
       this.lastTransform = transform;
@@ -333,8 +337,12 @@ class LineNumberGutterComponent {
           this.tilesById.set(tileId, tile);
         }
 
-        const tileTop = rootComponent.pixelPositionBeforeBlocksForRow(tileStartRow);
-        const tileBottom = rootComponent.pixelPositionBeforeBlocksForRow(tileEndRow);
+        const tileTop =
+          rootComponent.pixelPositionBeforeBlocksForRow(tileStartRow) -
+          (rootComponent.renderOriginTop || 0);
+        const tileBottom =
+          rootComponent.pixelPositionBeforeBlocksForRow(tileEndRow) -
+          (rootComponent.renderOriginTop || 0);
         const tileHeight = tileBottom - tileTop;
         const tileWidth = width != null && width > 0 ? width + "px" : "";
         if (tile.height !== tileHeight) {

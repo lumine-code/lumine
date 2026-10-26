@@ -46,7 +46,7 @@ describe("DisplayLayer long-line fast paths", () => {
     ]);
   });
 
-  it("retains the general path for Unicode text with custom character widths", () => {
+  it("does not measure irrelevant character widths when wrapping is disabled", () => {
     const line = `${"我".repeat(4096)}🐲\tb`;
     let ratioCallCount = 0;
     const { displayLayer } = buildDisplayLayer(line, {
@@ -63,7 +63,7 @@ describe("DisplayLayer long-line fast paths", () => {
     expect(toArray(displayLayer.getRightmostScreenPosition())).toEqual([0, 4101]);
     expect(toArray(displayLayer.translateBufferPosition(Point(0, 4098)))).toEqual([0, 4098]);
     expect(toArray(displayLayer.translateBufferPosition(Point(0, 4099)))).toEqual([0, 4100]);
-    expect(ratioCallCount).toBeGreaterThan(4096);
+    expect(ratioCallCount).toBeLessThan(16);
   });
 
   it("emits regular hard-wrap hunks without visiting every character", () => {
@@ -199,8 +199,8 @@ function expectEquivalentLayouts(actual, expected, bufferPositions) {
   actual.populateSpatialIndexIfNeeded(Infinity, Infinity);
   expected.populateSpatialIndexIfNeeded(Infinity, Infinity);
 
-  expect(actual.screenLineLengths).toEqual(expected.screenLineLengths);
-  expect(actual.tabCounts).toEqual(expected.tabCounts);
+  expect(actual.screenLineLengths.slice()).toEqual(expected.screenLineLengths.slice());
+  expect(actual.tabCounts.slice()).toEqual(expected.tabCounts.slice());
   expect(toArray(actual.getRightmostScreenPosition())).toEqual(
     toArray(expected.getRightmostScreenPosition()),
   );

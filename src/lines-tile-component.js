@@ -46,6 +46,12 @@ module.exports = class LinesTileComponent {
         this.element.style.marginTop = newProps.top + "px";
       }
 
+      if (
+        newProps.renderOriginLeft !== oldProps.renderOriginLeft ||
+        newProps.baseCharacterWidth !== oldProps.baseCharacterWidth
+      ) {
+        for (const line of this.lineComponents) line.updateHorizontalPosition(newProps);
+      }
       if (!newProps.measuredContent) {
         this.updateLines(oldProps, newProps);
         this.updateBlockDecorations(oldProps, newProps);
@@ -77,6 +83,8 @@ module.exports = class LinesTileComponent {
     this.lineComponents = [];
     for (let i = 0, length = screenLines.length; i < length; i++) {
       const component = new LineComponent({
+        renderOriginLeft: this.props.renderOriginLeft,
+        baseCharacterWidth: this.props.baseCharacterWidth,
         screenLine: screenLines[i],
         screenRow: tileStartRow + i,
         lineDecoration: lineDecorations[i],
@@ -140,6 +148,8 @@ module.exports = class LinesTileComponent {
 
       if (oldScreenLineIndex >= oldScreenLinesEndIndex) {
         var newScreenLineComponent = new LineComponent({
+          renderOriginLeft: this.props.renderOriginLeft,
+          baseCharacterWidth: this.props.baseCharacterWidth,
           screenLine: newScreenLine,
           screenRow: tileStartRow + newScreenLineIndex,
           lineDecoration: lineDecorations[newScreenLineIndex],
@@ -162,6 +172,8 @@ module.exports = class LinesTileComponent {
       } else if (oldScreenLine === newScreenLine) {
         const lineComponent = this.lineComponents[lineComponentIndex];
         lineComponent.update({
+          renderOriginLeft: this.props.renderOriginLeft,
+          baseCharacterWidth: this.props.baseCharacterWidth,
           screenRow: tileStartRow + newScreenLineIndex,
           lineDecoration: lineDecorations[newScreenLineIndex],
           textDecorations: textDecorations[newScreenLineIndex],
@@ -181,6 +193,8 @@ module.exports = class LinesTileComponent {
           while (newScreenLineIndex < oldScreenLineIndexInNewScreenLines) {
             // eslint-disable-next-line no-redeclare
             var newScreenLineComponent = new LineComponent({
+              renderOriginLeft: this.props.renderOriginLeft,
+              baseCharacterWidth: this.props.baseCharacterWidth,
               screenLine: newScreenLines[newScreenLineIndex],
               screenRow: tileStartRow + newScreenLineIndex,
               lineDecoration: lineDecorations[newScreenLineIndex],
@@ -215,6 +229,8 @@ module.exports = class LinesTileComponent {
           const oldScreenLineComponent = this.lineComponents[lineComponentIndex];
           // eslint-disable-next-line no-redeclare
           var newScreenLineComponent = new LineComponent({
+            renderOriginLeft: this.props.renderOriginLeft,
+            baseCharacterWidth: this.props.baseCharacterWidth,
             screenLine: newScreenLines[newScreenLineIndex],
             screenRow: tileStartRow + newScreenLineIndex,
             lineDecoration: lineDecorations[newScreenLineIndex],
@@ -320,6 +336,11 @@ module.exports = class LinesTileComponent {
   }
 
   shouldUpdate(newProps) {
+    if (
+      newProps.renderOriginLeft !== this.props.renderOriginLeft ||
+      newProps.baseCharacterWidth !== this.props.baseCharacterWidth
+    )
+      return true;
     const oldProps = this.props;
     if (oldProps.top !== newProps.top) return true;
     if (oldProps.height !== newProps.height) return true;

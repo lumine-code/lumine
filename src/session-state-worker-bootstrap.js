@@ -4,6 +4,7 @@ const fs = require("fs");
 // eslint-disable-next-line n/no-unsupported-features/node-builtins
 const { DatabaseSync } = require("node:sqlite");
 const { collectRetiredSnapshots, pruneRetiredSnapshots } = require("./session-state-retention");
+const { pruneUnreferencedText } = require("./text-snapshot-store");
 
 let database = null;
 let candidates = null;
@@ -31,6 +32,7 @@ process.on("message", (message) => {
       const result = pruneRetiredSnapshots(database, candidates, {
         protectedWindowIds: message.protectedWindowIds,
       });
+      Object.assign(result, pruneUnreferencedText(database));
       finish({ type: "complete", result });
     }
   } catch (error) {

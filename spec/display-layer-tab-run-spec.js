@@ -31,7 +31,9 @@ describe("DisplayLayer tab translation across text runs", () => {
     expect(pointArray(layer.translateScreenPosition([0, 133]))).toEqual([0, 129]);
     expect(pointArray(layer.translateScreenPosition([0, 269]))).toEqual([0, 258]);
     expect(pointArray(layer.translateScreenPosition([0, 270]))).toEqual([0, 259]);
-    expect(pointArray(layer.collapseHardTabs(Point(0, 133), layer.tabCounts[0]))).toEqual([0, 129]);
+    expect(pointArray(layer.collapseHardTabs(Point(0, 133), layer.tabCounts.get(0)))).toEqual([
+      0, 129,
+    ]);
     expect(
       pointArray(layer.translateScreenPosition([0, 130], { clipDirection: "forward" })),
     ).toEqual([0, 129]);
@@ -197,7 +199,7 @@ function expectMatchesScalar(layer, context = "", fractional = false) {
     }
   }
   for (let row = 0; row < layer.screenLineLengths.length; row++) {
-    for (const column of sampleColumns(layer.screenLineLengths[row], fractional)) {
+    for (const column of sampleColumns(layer.screenLineLengths.get(row), fractional)) {
       screenPositions.push([row, column]);
     }
   }
@@ -243,7 +245,7 @@ function scalarBufferTranslation(layer, position, clipDirection) {
   const delta = layer.getClipColumnDelta(position, clipDirection);
   if (delta !== 0) position = Point(position.row, position.column + delta);
   let screen = layer.translateBufferPositionWithSpatialIndex(position, clipDirection);
-  const tabCount = layer.tabCounts[screen.row];
+  const tabCount = layer.tabCounts.get(screen.row);
   if (tabCount > 0) screen = scalarTabTranslation(layer, screen, tabCount, null, false);
   return Point.fromObject(screen);
 }
@@ -253,7 +255,7 @@ function scalarScreenTranslation(layer, position, clipDirection) {
   Point.assertValid(position);
   layer.populateSpatialIndexIfNeeded(layer.buffer.getLineCount(), position.row + 1);
   position = layer.constrainScreenPosition(position, clipDirection);
-  const tabCount = layer.tabCounts[position.row];
+  const tabCount = layer.tabCounts.get(position.row);
   if (tabCount > 0) position = scalarTabTranslation(layer, position, tabCount, clipDirection, true);
   const buffer = layer.translateScreenPositionWithSpatialIndex(position, clipDirection);
   const delta = layer.getClipColumnDelta(buffer, clipDirection);
@@ -283,7 +285,7 @@ function sampleColumns(length, fractional) {
 // Keep its equality checks and clipping arithmetic, including fractional inputs.
 function scalarTabTranslation(layer, target, tabCount, clipDirection, collapse) {
   const rowStart = Point(target.row, 0);
-  const rangeEnd = collapse ? Point(target.row, layer.screenLineLengths[target.row]) : target;
+  const rangeEnd = collapse ? Point(target.row, layer.screenLineLengths.get(target.row)) : target;
   const hunks = layer.spatialIndex.getChangesInNewRange(rowStart, rangeEnd);
   let hunkIndex = 0;
   let unexpanded = 0;

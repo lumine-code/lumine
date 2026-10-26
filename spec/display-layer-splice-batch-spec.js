@@ -78,8 +78,8 @@ describe("DisplayLayer geometry splice batching", () => {
 function expectEquivalentLayout(actual, expected) {
   actual.populateSpatialIndexIfNeeded(Infinity, Infinity);
   expected.populateSpatialIndexIfNeeded(Infinity, Infinity);
-  expect(actual.screenLineLengths).toEqual(expected.screenLineLengths);
-  expect(actual.tabCounts).toEqual(expected.tabCounts);
+  expect(actual.screenLineLengths.slice()).toEqual(expected.screenLineLengths.slice());
+  expect(actual.tabCounts.slice()).toEqual(expected.tabCounts.slice());
   expect(actual.getText()).toBe(expected.getText());
   expect(serializeChanges(actual.spatialIndex.getChanges())).toEqual(
     serializeChanges(expected.spatialIndex.getChanges()),

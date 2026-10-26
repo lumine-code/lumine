@@ -3,6 +3,7 @@ const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
+const { originForOffset, physicalExtent } = require("./scroll-coordinate-space");
 const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
 const NodePool = require("./node-pool");
@@ -388,6 +389,7 @@ module.exports = class TextEditorComponent {
     }
 
     if (this.remeasureCharacterDimensions) {
+      this.screenLineWindows?.clear();
       const originalLineHeight = this.getLineHeight();
       const originalBaseCharacterWidth = this.getBaseCharacterWidth();
       const scrollTopRow = this.getScrollTopRow();
@@ -601,6 +603,9 @@ module.exports = class TextEditorComponent {
   // normal update path must refresh every retained tile as well.
   canUpdateForScrollOnly(horizontal, vertical) {
     if (
+      originForOffset(this.getScrollTop()) !== (this.renderOriginTop || 0) ||
+      originForOffset(this.getScrollLeft()) !== (this.renderOriginLeft || 0) ||
+      (horizontal && this.renderedScreenLines.some((line) => line.startScreenColumn != null)) ||
       !this.attached ||
       !this.visible ||
       this.suppressUpdates ||
@@ -757,6 +762,23 @@ module.exports = class TextEditorComponent {
     if (this.pendingAutoscroll) {
       let { screenRange, options } = this.pendingAutoscroll;
       this.autoscrollVertically(screenRange, options);
+      const target = options?.reversed === false ? screenRange.end : screenRange.start;
+      const length = this.props.model.lineLengthForScreenRow(target.row);
+      if (this.props.model.displayLayer.softWrapColumn === Infinity && length > 10000) {
+        const width = this.getBaseCharacterWidth();
+        this.measurements.longestLineWidth = Math.max(
+          this.measurements.longestLineWidth,
+          this.props.model.displayLayer.getUnwrappedRowPixelGeometry(target.row).pixelLength *
+            width,
+        );
+        this.derivedDimensionsCache = {};
+        const left =
+          this.props.model.displayLayer.pixelColumnForScreenColumn(target.row, target.column) *
+          width;
+        if (left < this.getScrollLeft() || left > this.getScrollRight()) {
+          this.setScrollLeft(Math.max(0, left - this.getScrollContainerClientWidth() / 2));
+        }
+      }
       this.requestHorizontalMeasurement(screenRange.start.row, screenRange.start.column);
       this.requestHorizontalMeasurement(screenRange.end.row, screenRange.end.column);
     }
@@ -796,6 +818,7 @@ module.exports = class TextEditorComponent {
     const wasHorizontalScrollbarVisible =
       this.canScrollHorizontally() && this.getHorizontalScrollbarHeight() > 0;
 
+    this.stabilizeHorizontalWindows();
     this.measureLongestLineWidth();
     this.measureHorizontalPositions();
     this.updateAbsolutePositionedDecorations();
@@ -818,7 +841,10 @@ module.exports = class TextEditorComponent {
     this.measuredContent = true;
 
     return (
-      gutterDimensionsChanged || wasHorizontalScrollbarVisible !== isHorizontalScrollbarVisible
+      gutterDimensionsChanged ||
+      wasHorizontalScrollbarVisible !== isHorizontalScrollbarVisible ||
+      originForOffset(this.getScrollLeft()) !== (this.renderOriginLeft || 0) ||
+      this.horizontalWindowMissesViewport()
     );
   }
 
@@ -971,6 +997,8 @@ module.exports = class TextEditorComponent {
   // in the same top-down order the diff used so that event and lifecycle
   // timing are unchanged.
   renderSync(updateMode = UPDATE_MODE_NORMAL) {
+    this.renderOriginTop = originForOffset(this.getScrollTop());
+    this.renderOriginLeft = originForOffset(this.getScrollLeft());
     this.updateRootElement();
     this.updateClientContainerElement();
     this.syncGutterContainer(updateMode);
@@ -1084,7 +1112,8 @@ module.exports = class TextEditorComponent {
         hasInitialMeasurements: this.hasInitialMeasurements,
         measuredContent: this.measuredContent,
         scrollTop: this.getScrollTop(),
-        scrollHeight: this.getScrollHeight(),
+        scrollHeight: this.getPhysicalScrollHeight(),
+        renderOriginTop: this.renderOriginTop,
         lineNumberGutterWidth: this.getLineNumberGutterWidth(),
         lineHeight: this.getLineHeight(),
         renderedStartRow: this.getRenderedStartRow(),
@@ -1152,9 +1181,11 @@ module.exports = class TextEditorComponent {
       const style = this.refs.content.style;
 
       const width =
-        ceilToPhysicalPixelBoundary(this.getScrollWidth(), this.window.devicePixelRatio) + "px";
+        ceilToPhysicalPixelBoundary(this.getPhysicalScrollWidth(), this.window.devicePixelRatio) +
+        "px";
       const height =
-        ceilToPhysicalPixelBoundary(this.getScrollHeight(), this.window.devicePixelRatio) + "px";
+        ceilToPhysicalPixelBoundary(this.getPhysicalScrollHeight(), this.window.devicePixelRatio) +
+        "px";
 
       if (width !== cache.width) {
         style.width = width;
@@ -1188,7 +1219,7 @@ module.exports = class TextEditorComponent {
         this.getScrollTop(),
         this.window.devicePixelRatio,
       );
-      const transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
+      const transform = `translate(${(this.renderOriginLeft || 0) - scrollLeft}px, ${(this.renderOriginTop || 0) - scrollTop}px)`;
       if (transform !== cache.transform) {
         this.refs.content.style.transform = transform;
         this.contentCache.transform = transform;
@@ -1202,8 +1233,8 @@ module.exports = class TextEditorComponent {
     if (this.hasInitialMeasurements) {
       const cache = this.lineTilesCache;
       const style = this.refs.lineTiles.style;
-      const width = this.getScrollWidth() + "px";
-      const height = this.getScrollHeight() + "px";
+      const width = this.getPhysicalScrollWidth() + "px";
+      const height = this.getPhysicalScrollHeight() + "px";
       if (width !== cache.width) {
         style.width = width;
         cache.width = width;
@@ -1219,8 +1250,9 @@ module.exports = class TextEditorComponent {
     return {
       hasInitialMeasurements: this.hasInitialMeasurements,
       highlightDecorations: this.decorationsToRender.highlights.slice(),
-      width: this.getScrollWidth(),
-      height: this.getScrollHeight(),
+      width: this.getPhysicalScrollWidth(),
+      height: this.getPhysicalScrollHeight(),
+      renderOriginTop: this.renderOriginTop,
       lineHeight: this.getLineHeight(),
     };
   }
@@ -1241,8 +1273,10 @@ module.exports = class TextEditorComponent {
       didCompositionEnd: this.didCompositionEnd,
       measuredContent: this.measuredContent,
       lineHeight: this.getLineHeight(),
-      scrollHeight: this.getScrollHeight(),
-      scrollWidth: this.getScrollWidth(),
+      scrollHeight: this.getPhysicalScrollHeight(),
+      renderOriginTop: this.renderOriginTop,
+      renderOriginLeft: this.renderOriginLeft,
+      scrollWidth: this.getPhysicalScrollWidth(),
       decorationsToRender: this.decorationsToRender,
       cursorsBlinkedOff: this.cursorsBlinkedOff,
       hiddenInputPosition: this.hiddenInputPosition,
@@ -1266,7 +1300,7 @@ module.exports = class TextEditorComponent {
       const startRow = this.getRenderedStartRow();
       const endRow = this.getRenderedEndRow();
       const rowsPerTile = this.getRowsPerTile();
-      const tileWidth = this.getScrollWidth();
+      const tileWidth = this.getPhysicalScrollWidth();
 
       for (let i = 0; i < this.renderedTileStartRows.length; i++) {
         const tileStartRow = this.renderedTileStartRows[i];
@@ -1281,8 +1315,10 @@ module.exports = class TextEditorComponent {
           measuredContent: this.measuredContent,
           height: tileHeight,
           width: tileWidth,
-          top: this.pixelPositionBeforeBlocksForRow(tileStartRow),
+          top: this.pixelPositionBeforeBlocksForRow(tileStartRow) - this.renderOriginTop,
           lineHeight: this.getLineHeight(),
+          renderOriginLeft: this.renderOriginLeft,
+          baseCharacterWidth: this.getBaseCharacterWidth(),
           renderedStartRow: startRow,
           tileStartRow,
           tileEndRow,
@@ -1322,6 +1358,8 @@ module.exports = class TextEditorComponent {
 
           const lineProps = {
             offScreen: true,
+            renderOriginLeft: this.renderOriginLeft,
+            baseCharacterWidth: this.getBaseCharacterWidth(),
             screenLine,
             screenRow,
             displayLayer: this.props.model.displayLayer,
@@ -1437,6 +1475,7 @@ module.exports = class TextEditorComponent {
 
       const verticalScrollbarProps = {
         orientation: "vertical",
+        viewportExtent: this.getScrollContainerClientHeight(),
         didScroll: this.didScrollDummyScrollbar,
         didMouseDown: this.didMouseDownOnContent,
         canScroll: canScrollVertically,
@@ -1447,6 +1486,7 @@ module.exports = class TextEditorComponent {
       };
       const horizontalScrollbarProps = {
         orientation: "horizontal",
+        viewportExtent: this.getScrollContainerClientWidth(),
         didScroll: this.didScrollDummyScrollbar,
         didMouseDown: this.didMouseDownOnContent,
         canScroll: canScrollHorizontally,
@@ -1579,23 +1619,203 @@ module.exports = class TextEditorComponent {
   queryScreenLinesToRender() {
     const { model } = this.props;
     const startRow = this.getRenderedStartRow();
-    this.renderedScreenLines = model.displayLayer.getScreenLines(
-      startRow,
-      this.getRenderedEndRow(),
-    );
+    const endRow = this.getRenderedEndRow();
+    model.displayLayer.prepareHighlightingForScreenRows(startRow, endRow, model.displayLayer);
+    this.renderedScreenLines = this.screenLinesForRendering(startRow, endRow);
     this.renderedScreenLinesStartRow = startRow;
+  }
+
+  screenLinesForRendering(startRow, endRow) {
+    const layer = this.props.model.displayLayer;
+    if (layer.softWrapColumn !== Infinity) {
+      return layer.screenLineBuilder.buildScreenLines(startRow, endRow);
+    }
+    const lines = [];
+    let batchStart = startRow;
+    for (let row = startRow; row < endRow; row++) {
+      if (!layer.requiresScreenLineWindow(row)) continue;
+      if (batchStart < row)
+        lines.push(...layer.screenLineBuilder.buildScreenLines(batchStart, row));
+      let preferredColumn;
+      if (this.pendingAutoscroll) {
+        const { screenRange, options } = this.pendingAutoscroll;
+        const target = options?.reversed === false ? screenRange.end : screenRange.start;
+        if (target.row === row) preferredColumn = target.column;
+      }
+      const line = this.screenLineForRendering(row, preferredColumn);
+      if (line) lines.push(line);
+      batchStart = row + 1;
+    }
+    if (batchStart < endRow)
+      lines.push(...layer.screenLineBuilder.buildScreenLines(batchStart, endRow));
+    return lines;
   }
 
   queryLongestLine() {
     const { model } = this.props;
 
     const longestLineRow = model.getApproximateLongestScreenRow();
+    const length = model.lineLengthForScreenRow(longestLineRow);
+    if (model.displayLayer.requiresScreenLineWindow(longestLineRow)) {
+      if (this.longestWindowLength !== length) {
+        this.measurements.longestLineWidth =
+          model.displayLayer.getUnwrappedRowPixelGeometry(longestLineRow).pixelLength *
+          this.getBaseCharacterWidth();
+        this.longestWindowLength = length;
+      }
+      const line =
+        this.renderedScreenLineForRow(longestLineRow) ||
+        this.screenLineForRendering(longestLineRow);
+      if (line.startScreenColumn + line.lineText.length >= length) {
+        this.requestLineToMeasure(longestLineRow, line);
+        this.longestLineToMeasure = line;
+      } else this.longestLineToMeasure = null;
+      return;
+    }
+    this.longestWindowLength = null;
     const longestLine = model.screenLineForScreenRow(longestLineRow);
     if (longestLine !== this.previousLongestLine || this.remeasureCharacterDimensions) {
       this.requestLineToMeasure(longestLineRow, longestLine);
       this.longestLineToMeasure = longestLine;
       this.previousLongestLine = longestLine;
     }
+  }
+
+  screenLineForRendering(row, preferredColumn) {
+    const layer = this.props.model.displayLayer;
+    const length = layer.lineLengthForScreenRow(row);
+    if (length == null) return null;
+    if (!layer.requiresScreenLineWindow(row)) return layer.getScreenLine(row, layer);
+    const characterWidth = this.getBaseCharacterWidth() || 1;
+    const cache = (this.screenLineWindows ??= new Map());
+    const previous = cache.get(row);
+    const generation = `${layer.mappingGeneration}:${layer.windowGeneration}`;
+    const correction =
+      previous?.generation === generation
+        ? previous.line.startPixelColumn -
+          layer.pixelColumnForScreenColumn(row, previous.line.startScreenColumn)
+        : 0;
+    let column = preferredColumn;
+    if (
+      column == null &&
+      previous?.generation === generation &&
+      this.renderedScreenLineForRow(row) === previous.line
+    ) {
+      const oldComponent = this.lineComponentsByScreenLineId.get(previous.line.id);
+      if (oldComponent) {
+        const bounds = boundingClientRectForTextNodes(oldComponent.textNodes);
+        const target =
+          this.refs.lineTiles.getBoundingClientRect().left +
+          this.getScrollLeft() -
+          (this.renderOriginLeft || 0);
+        // A small scroll stays within already-shaped text. Use that measured
+        // geometry to choose the next window, including joined emoji and
+        // proportional advances that a prefix estimate cannot predict.
+        if (target >= bounds.left && target <= bounds.right) {
+          column = this.screenPositionForPixelPosition({
+            top: this.pixelPositionAfterBlocksForRow(row),
+            left: this.getScrollLeft(),
+          }).column;
+        }
+      }
+    }
+    column ??= layer.screenColumnForPixelColumn(
+      row,
+      this.getScrollLeft() / characterWidth - correction,
+    );
+    const count = Math.max(
+      4096,
+      Math.ceil(this.getScrollContainerClientWidth() / characterWidth) + 2048,
+    );
+    const start = Math.max(0, Math.min(length - count, Math.floor(column / 1024) * 1024 - 1024));
+    const end = Math.min(length, start + count);
+    const key = `${generation}:${start}:${end}`;
+    if (previous?.key === key) return previous.line;
+    const line = layer.getScreenLineWindow(row, start, end);
+    line.startPixelColumn += correction;
+    if (previous?.generation === generation) {
+      const oldLine = previous.line;
+      const oldComponent = this.lineComponentsByScreenLineId.get(oldLine.id);
+      const overlapStart = Math.max(oldLine.startScreenColumn, line.startScreenColumn);
+      const overlapEnd = Math.min(
+        oldLine.startScreenColumn + oldLine.lineText.length,
+        line.startScreenColumn + line.lineText.length,
+      );
+      if (oldComponent && overlapEnd > overlapStart) {
+        const anchorColumn = layer.clipScreenPosition([
+          row,
+          Math.floor((overlapStart + overlapEnd) / 2),
+        ]).column;
+        const positions = new Map();
+        this.measureHorizontalPositionsOnLine(
+          oldComponent.element,
+          oldComponent.textNodes,
+          [anchorColumn],
+          positions,
+          oldLine,
+          row,
+        );
+        line.horizontalAnchor = { column: anchorColumn, pixel: positions.get(anchorColumn) };
+      }
+    }
+    cache.delete(row);
+    cache.set(row, { key, generation, line });
+    while (cache.size > 256) cache.delete(cache.keys().next().value);
+    return line;
+  }
+
+  stabilizeHorizontalWindows() {
+    const lines = [...this.renderedScreenLines, ...this.extraRenderedScreenLines.values()];
+    for (const line of lines) {
+      const anchor = line.horizontalAnchor;
+      if (!anchor || !Number.isFinite(anchor.pixel)) continue;
+      const component = this.lineComponentsByScreenLineId.get(line.id);
+      if (!component) continue;
+      const positions = new Map();
+      this.measureHorizontalPositionsOnLine(
+        component.element,
+        component.textNodes,
+        [anchor.column],
+        positions,
+        line,
+        component.props.screenRow,
+      );
+      const correction = anchor.pixel - positions.get(anchor.column);
+      if (Number.isFinite(correction) && correction !== 0) {
+        line.startPixelColumn += correction / this.getBaseCharacterWidth();
+        component.updateHorizontalPosition({});
+        this.horizontalPixelPositionsByScreenLineId.delete(line.id);
+      }
+      delete line.horizontalAnchor;
+    }
+  }
+
+  horizontalWindowMissesViewport() {
+    if (!this.canScrollHorizontally()) return false;
+    if (this.horizontalRefinementTarget !== this.getScrollLeft()) {
+      this.horizontalRefinementTarget = this.getScrollLeft();
+      this.horizontalRefinementCount = 0;
+    }
+    const origin = this.refs.lineTiles.getBoundingClientRect().left;
+    for (const line of this.renderedScreenLines) {
+      if (line.startScreenColumn == null) continue;
+      const component = this.lineComponentsByScreenLineId.get(line.id);
+      if (!component) continue;
+      const bounds = boundingClientRectForTextNodes(component.textNodes);
+      const left = bounds.left - origin + (this.renderOriginLeft || 0);
+      const right = bounds.right - origin + (this.renderOriginLeft || 0);
+      if (
+        (line.startScreenColumn > 0 && left > this.getScrollLeft()) ||
+        (line.startScreenColumn + line.lineText.length < line.totalScreenLineLength &&
+          right < this.getScrollRight())
+      ) {
+        // Broken/zero-advance custom fonts must not turn a refinement into an
+        // unbounded synchronous render loop. Subsequent input can remeasure.
+        return ++this.horizontalRefinementCount <= 3;
+      }
+    }
+    this.horizontalRefinementCount = 0;
+    return false;
   }
 
   queryExtraScreenLinesToRender() {
@@ -2237,6 +2457,13 @@ module.exports = class TextEditorComponent {
       decorationStarts = [];
       this.decorationsToRender.text[row - renderedStartRow] = decorationStarts;
     }
+    const line = this.renderedScreenLineForRow(row);
+    if (line?.startScreenColumn != null) {
+      column -= line.startScreenColumn;
+      if (column > line.lineText.length) return;
+      column = Math.max(0, column);
+      if (decorationStarts.at(-1)?.column === column) decorationStarts.pop();
+    }
     decorationStarts.push({ column, className, style });
   }
 
@@ -2271,15 +2498,25 @@ module.exports = class TextEditorComponent {
 
       let startClientRects;
       let endClientRects = null;
+      const startColumn = Math.max(0, start.column - (screenLineStart.startScreenColumn || 0));
+      const endColumn = Math.max(0, end.column - (screenLineEnd.startScreenColumn || 0));
       if (start.row !== end.row) {
         startClientRects = clientRectsForTextNodes(
           startTextNodes,
-          start.column,
+          Math.min(startColumn, screenLineStart.lineText.length),
           Math.max(0, screenLineStart.lineText.length),
         );
-        endClientRects = clientRectsForTextNodes(endTextNodes, 0, end.column);
+        endClientRects = clientRectsForTextNodes(
+          endTextNodes,
+          0,
+          Math.min(endColumn, screenLineEnd.lineText.length),
+        );
       } else {
-        startClientRects = clientRectsForTextNodes(startTextNodes, start.column, end.column);
+        startClientRects = clientRectsForTextNodes(
+          startTextNodes,
+          Math.min(startColumn, screenLineStart.lineText.length),
+          Math.min(endColumn, screenLineStart.lineText.length),
+        );
       }
 
       highlight.startPixelTop = this.pixelPositionAfterBlocksForRow(start.row);
@@ -2306,6 +2543,13 @@ module.exports = class TextEditorComponent {
     this.decorationsToMeasure.cursors.forEach((cursor) => {
       const { screenPosition, className, style } = cursor;
       const { row, column } = screenPosition;
+      const windowLine = this.renderedScreenLineForRow(row);
+      if (
+        windowLine?.startScreenColumn != null &&
+        (column < windowLine.startScreenColumn ||
+          column > windowLine.startScreenColumn + windowLine.lineText.length)
+      )
+        return;
 
       const pixelTop = this.pixelPositionAfterBlocksForRow(row);
       const pixelLeft = this.pixelLeftForRowAndColumn(row, column);
@@ -2350,9 +2594,15 @@ module.exports = class TextEditorComponent {
     const { element, screenPosition, avoidOverflow } = decoration;
     const { row, column } = screenPosition;
     const belowWrapperTop =
-      contentClientRect.top + this.pixelPositionAfterBlocksForRow(row) + this.getLineHeight();
+      contentClientRect.top +
+      this.pixelPositionAfterBlocksForRow(row) -
+      this.renderOriginTop +
+      this.getLineHeight();
     let wrapperTop = belowWrapperTop;
-    let wrapperLeft = contentClientRect.left + this.pixelLeftForRowAndColumn(row, column);
+    let wrapperLeft =
+      contentClientRect.left +
+      this.pixelLeftForRowAndColumn(row, column) -
+      (this.renderOriginLeft || 0);
     const clientRect = element.getBoundingClientRect();
 
     const anchorLeft = wrapperLeft;
@@ -3527,8 +3777,8 @@ module.exports = class TextEditorComponent {
       roundToPhysicalPixelBoundary(this.getScrollTop(), this.window.devicePixelRatio) -
       this.renderedScrollTop;
     return {
-      top: clientY - linesRect.top + pendingScrollTop,
-      left: clientX - linesRect.left + pendingScrollLeft,
+      top: clientY - linesRect.top + pendingScrollTop + this.renderOriginTop,
+      left: clientX - linesRect.left + pendingScrollLeft + (this.renderOriginLeft || 0),
     };
   }
 
@@ -3922,7 +4172,8 @@ module.exports = class TextEditorComponent {
       // here (raw fractional or plain offsetWidth) — that desyncs the paths
       // and shifts `getContentWidth` by a pixel.
       this.measurements.longestLineWidth = roundToPhysicalPixelBoundary(
-        lineComponent.element.firstChild.getBoundingClientRect().width,
+        lineComponent.element.firstChild.getBoundingClientRect().width +
+          (this.longestLineToMeasure.startPixelColumn || 0) * this.getBaseCharacterWidth(),
         this.window.devicePixelRatio,
       );
       this.longestLineToMeasure = null;
@@ -3934,7 +4185,7 @@ module.exports = class TextEditorComponent {
   }
 
   requestHorizontalMeasurement(row, column) {
-    const screenLine = this.props.model.screenLineForScreenRow(row);
+    const screenLine = this.renderedScreenLineForRow(row) || this.screenLineForRendering(row);
     if (screenLine) {
       this.requestLineToMeasure(row, screenLine);
 
@@ -3982,19 +4233,41 @@ module.exports = class TextEditorComponent {
         textNodes,
         columnsToMeasure,
         positionsForLine,
+        screenLine,
+        row,
       );
     });
     this.horizontalPositionsToMeasure.clear();
   }
 
-  measureHorizontalPositionsOnLine(lineNode, textNodes, columnsToMeasure, positions) {
+  measureHorizontalPositionsOnLine(
+    lineNode,
+    textNodes,
+    columnsToMeasure,
+    positions,
+    screenLine,
+    screenRow,
+  ) {
     let lineNodeClientLeft = -1;
-    let textNodeStartColumn = 0;
+    const startColumn = screenLine?.startScreenColumn || 0;
+    let textNodeStartColumn = startColumn;
     let textNodesIndex = 0;
     let lastTextNodeRight = null;
 
     columnLoop: for (let columnsIndex = 0; columnsIndex < columnsToMeasure.length; columnsIndex++) {
       const nextColumnToMeasure = columnsToMeasure[columnsIndex];
+      if (
+        screenLine?.startScreenColumn != null &&
+        (nextColumnToMeasure < startColumn ||
+          nextColumnToMeasure > startColumn + screenLine.lineText.length)
+      ) {
+        positions.set(
+          nextColumnToMeasure,
+          this.props.model.displayLayer.pixelColumnForScreenColumn(screenRow, nextColumnToMeasure) *
+            this.getBaseCharacterWidth(),
+        );
+        continue;
+      }
       while (textNodesIndex < textNodes.length) {
         if (positions.has(nextColumnToMeasure)) continue columnLoop;
         const textNode = textNodes[textNodesIndex];
@@ -4028,7 +4301,7 @@ module.exports = class TextEditorComponent {
           positions.set(
             nextColumnToMeasure,
             roundToPhysicalPixelBoundary(
-              clientPixelPosition - lineNodeClientLeft,
+              clientPixelPosition - lineNodeClientLeft + (this.renderOriginLeft || 0),
               this.window.devicePixelRatio,
             ),
           );
@@ -4055,7 +4328,7 @@ module.exports = class TextEditorComponent {
       positions.set(
         nextColumnToMeasure,
         roundToPhysicalPixelBoundary(
-          lastTextNodeRight - lineNodeClientLeft,
+          lastTextNodeRight - lineNodeClientLeft + (this.renderOriginLeft || 0),
           this.window.devicePixelRatio,
         ),
       );
@@ -4096,8 +4369,17 @@ module.exports = class TextEditorComponent {
       );
       if (horizontalPositionsByColumn) {
         let result = horizontalPositionsByColumn.get(column);
-        return result;
+        if (result != null) return result;
       }
+      if (
+        screenLine.startScreenColumn != null &&
+        (column < screenLine.startScreenColumn ||
+          column > screenLine.startScreenColumn + screenLine.lineText.length)
+      )
+        return (
+          this.props.model.displayLayer.pixelColumnForScreenColumn(row, column) *
+          this.getBaseCharacterWidth()
+        );
     }
   }
 
@@ -4107,18 +4389,25 @@ module.exports = class TextEditorComponent {
 
     let screenLine = this.renderedScreenLineForRow(row);
     if (!screenLine) {
-      this.requestLineToMeasure(row, model.screenLineForScreenRow(row));
+      const preferredColumn = model.displayLayer.requiresScreenLineWindow(row)
+        ? model.displayLayer.screenColumnForPixelColumn(
+            row,
+            left / (this.getBaseCharacterWidth() || 1),
+          )
+        : undefined;
+      this.requestLineToMeasure(row, this.screenLineForRendering(row, preferredColumn));
       this.updateSyncBeforeMeasuringContent();
       this.measureContentDuringUpdateSync();
       screenLine = this.renderedScreenLineForRow(row);
     }
     let rowLength = model.lineLengthForScreenRow(row);
+    const startColumn = screenLine.startScreenColumn || 0;
 
     let { textNodes } = this.lineComponentsByScreenLineId.get(screenLine.id);
 
     let linesClientRect = this.refs.lineTiles.getBoundingClientRect();
-    let targetClientLeft = linesClientRect.left + Math.max(0, left);
-    let targetClientTop = linesClientRect.top + Math.max(0, top);
+    let targetClientLeft = linesClientRect.left + Math.max(0, left) - (this.renderOriginLeft || 0);
+    let targetClientTop = linesClientRect.top + Math.max(0, top) - this.renderOriginTop;
 
     // STRATEGY 1:
     //
@@ -4150,7 +4439,7 @@ module.exports = class TextEditorComponent {
       // to the fallback approach.
       let { top, bottom } = inherentRange.getBoundingClientRect();
       if (targetClientTop >= top && targetClientTop <= bottom) {
-        return Point(row, column);
+        return Point(row, startColumn + column);
       }
     }
 
@@ -4177,10 +4466,42 @@ module.exports = class TextEditorComponent {
       // bounds of the text nodes’ bounding box. These should be clamped, in
       // effect, to the beginning and end of the line.
       if (targetClientLeft < boundingClientRect.left) {
-        return Point(row, 0);
+        return Point(
+          row,
+          screenLine.startScreenColumn == null
+            ? 0
+            : Math.max(
+                0,
+                Math.min(
+                  rowLength,
+                  Math.round(
+                    model.displayLayer.screenColumnForPixelColumn(
+                      row,
+                      left / this.getBaseCharacterWidth(),
+                    ),
+                  ),
+                ),
+              ),
+        );
       }
       if (targetClientLeft > boundingClientRect.right) {
-        return Point(row, rowLength);
+        return Point(
+          row,
+          screenLine.startScreenColumn == null
+            ? rowLength
+            : Math.max(
+                0,
+                Math.min(
+                  rowLength,
+                  Math.round(
+                    model.displayLayer.screenColumnForPixelColumn(
+                      row,
+                      left / this.getBaseCharacterWidth(),
+                    ),
+                  ),
+                ),
+              ),
+        );
       }
 
       // If we get this far, we effectively will have guaranteed that one of
@@ -4382,7 +4703,7 @@ module.exports = class TextEditorComponent {
           textNodeStartColumn += textNodes[i].length;
         }
         const column = textNodeStartColumn + characterIndex;
-        return Point(row, column);
+        return Point(row, startColumn + column);
       }
     }
   }
@@ -4432,7 +4753,6 @@ module.exports = class TextEditorComponent {
   refreshMountedHighlighting(changes) {
     // A newer scroll destination may still be waiting. Colors arriving for
     // the text actually on screen must not wait behind that destination.
-    const displayLayer = this.props.model.displayLayer;
     if (!this.attached || !this.visible || !this.hasInitialMeasurements) return;
     for (const tile of this.lineTileComponentsById.values()) {
       const { tileStartRow, tileEndRow } = tile.props;
@@ -4442,7 +4762,7 @@ module.exports = class TextEditorComponent {
         )
       )
         continue;
-      const screenLines = displayLayer.screenLineBuilder.buildScreenLines(tileStartRow, tileEndRow);
+      const screenLines = this.screenLinesForRendering(tileStartRow, tileEndRow);
       tile.update({ ...tile.props, measuredContent: false, screenLines });
       for (let row = tileStartRow; row < tileEndRow; row++)
         this.renderedScreenLines[row - this.renderedScreenLinesStartRow] =
@@ -5046,6 +5366,14 @@ module.exports = class TextEditorComponent {
     if (model.getAutoWidth()) return false;
     if (model.isSoftWrapped()) return false;
     return this.getContentWidth() > this.getScrollContainerClientWidth();
+  }
+
+  getPhysicalScrollHeight() {
+    return physicalExtent(this.getScrollHeight(), this.renderOriginTop || 0);
+  }
+
+  getPhysicalScrollWidth() {
+    return physicalExtent(this.getScrollWidth(), this.renderOriginLeft || 0);
   }
 
   getScrollHeight() {

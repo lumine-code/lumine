@@ -1,3 +1,5 @@
+const { scrollbarExtent, scrollbarPosition } = require("./scroll-coordinate-space");
+
 module.exports = class DummyScrollbarComponent {
   constructor(props) {
     this.props = props;
@@ -43,7 +45,11 @@ module.exports = class DummyScrollbarComponent {
     this.updateStyles(oldProps);
 
     const shouldFlushScrollPosition =
-      newProps.scrollTop !== oldProps.scrollTop || newProps.scrollLeft !== oldProps.scrollLeft;
+      newProps.scrollTop !== oldProps.scrollTop ||
+      newProps.scrollLeft !== oldProps.scrollLeft ||
+      newProps.scrollHeight !== oldProps.scrollHeight ||
+      newProps.scrollWidth !== oldProps.scrollWidth ||
+      newProps.viewportExtent !== oldProps.viewportExtent;
     if (shouldFlushScrollPosition) this.flushScrollPosition();
   }
 
@@ -86,7 +92,8 @@ module.exports = class DummyScrollbarComponent {
       verticalScrollbarWidth !== oldProps.verticalScrollbarWidth ||
       horizontalScrollbarHeight !== oldProps.horizontalScrollbarHeight ||
       canScroll !== oldProps.canScroll ||
-      forceScrollbarVisible !== oldProps.forceScrollbarVisible
+      forceScrollbarVisible !== oldProps.forceScrollbarVisible ||
+      this.props.viewportExtent !== oldProps.viewportExtent
     )
       this.pendingNativePosition = null;
 
@@ -102,7 +109,7 @@ module.exports = class DummyScrollbarComponent {
         this.element.style.overflowX = forceScrollbarVisible ? "scroll" : "auto";
       }
       if (scrollWidth !== oldProps.scrollWidth) {
-        this.innerElement.style.width = (scrollWidth || 0) + "px";
+        this.innerElement.style.width = scrollbarExtent(scrollWidth) + "px";
       }
     } else {
       if (horizontalScrollbarHeight !== oldProps.horizontalScrollbarHeight) {
@@ -112,7 +119,7 @@ module.exports = class DummyScrollbarComponent {
         this.element.style.overflowY = forceScrollbarVisible ? "scroll" : "auto";
       }
       if (scrollHeight !== oldProps.scrollHeight) {
-        this.innerElement.style.height = (scrollHeight || 0) + "px";
+        this.innerElement.style.height = scrollbarExtent(scrollHeight) + "px";
       }
     }
   }
@@ -126,14 +133,15 @@ module.exports = class DummyScrollbarComponent {
     // exact position after rebuilding rows needlessly forces style and layout.
     // Consume this acknowledgement once; geometry changes invalidate it.
     if (nativePosition !== null && position === nativePosition) return;
+    const physicalPosition = this.toNativePosition(position);
     // Blink quantizes very large scroll offsets more coarsely than a physical
     // pixel. Read back the value it actually stored so its asynchronous scroll
     // event can be distinguished from real native movement without a tolerance.
     if (this.props.orientation === "horizontal") {
-      this.element.scrollLeft = this.props.scrollLeft;
+      this.element.scrollLeft = physicalPosition;
       this.lastAppliedNativePosition = this.element.scrollLeft;
     } else {
-      this.element.scrollTop = this.props.scrollTop;
+      this.element.scrollTop = physicalPosition;
       this.lastAppliedNativePosition = this.element.scrollTop;
     }
   }
@@ -145,8 +153,27 @@ module.exports = class DummyScrollbarComponent {
     // Duplicate and coalesced events all read the latest native position.
     if (position === this.lastAppliedNativePosition) return;
     this.lastAppliedNativePosition = position;
-    this.pendingNativePosition = position;
-    this.props.didScroll({ orientation, position });
+    const logicalPosition = this.fromNativePosition(position);
+    this.pendingNativePosition = logicalPosition;
+    this.props.didScroll({ orientation, position: logicalPosition });
+  }
+
+  toNativePosition(position) {
+    const horizontal = this.props.orientation === "horizontal";
+    const extent = (horizontal ? this.props.scrollWidth : this.props.scrollHeight) || 0;
+    const viewport =
+      this.props.viewportExtent ??
+      (horizontal ? this.element.clientWidth : this.element.clientHeight);
+    return scrollbarPosition(position || 0, extent, scrollbarExtent(extent), viewport);
+  }
+
+  fromNativePosition(position) {
+    const horizontal = this.props.orientation === "horizontal";
+    const extent = (horizontal ? this.props.scrollWidth : this.props.scrollHeight) || 0;
+    const viewport =
+      this.props.viewportExtent ??
+      (horizontal ? this.element.clientWidth : this.element.clientHeight);
+    return scrollbarPosition(position || 0, scrollbarExtent(extent), extent, viewport);
   }
 
   didMouseDown(event) {

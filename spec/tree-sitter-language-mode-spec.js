@@ -3541,7 +3541,7 @@ describe("TreeSitterLanguageMode", () => {
 
         const initialScreenLines = editor.displayLayer.getScreenLines(0, 3);
         const expectedTags = initialScreenLines[1].tags;
-        editor.displayLayer.cachedScreenLines[1] = undefined;
+        editor.displayLayer.cachedScreenLines.set(1, undefined);
 
         const buildHighlightIterator =
           languageMode.buildPresentationHighlightIterator.bind(languageMode);

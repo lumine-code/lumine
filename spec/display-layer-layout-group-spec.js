@@ -101,9 +101,8 @@ describe("DisplayLayer layout groups", () => {
 
 function expectEquivalentSpatialState(left, right) {
   expect(right.indexedBufferRowCount).toBe(left.indexedBufferRowCount);
-  expect(right.screenLineLengths).toEqual(left.screenLineLengths);
-  expect(right.tabCounts).toEqual(left.tabCounts);
-  expect(right.screenLineBlocks).toEqual(left.screenLineBlocks);
+  expect(right.screenLineLengths.slice()).toEqual(left.screenLineLengths.slice());
+  expect(right.tabCounts.slice()).toEqual(left.tabCounts.slice());
   expect([right.rightmostScreenPosition.row, right.rightmostScreenPosition.column]).toEqual([
     left.rightmostScreenPosition.row,
     left.rightmostScreenPosition.column,

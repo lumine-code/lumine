@@ -1,5 +1,5 @@
 const fs = require("@lumine-code/fs-plus");
-const { isDeepStrictEqual } = require("node:util");
+const { sessionSnapshotsEqual } = require("./serialized-text");
 const { getProjectStateKey } = require("./project-state-keys");
 
 // Docks belong to the window. A project transition replaces only its center.
@@ -196,7 +196,7 @@ module.exports = class ProjectStateController {
         await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
         this.assertCurrent(generation);
         outgoingState = this.serializeCurrent({ isUnloading: true });
-        const needsFinalWrite = !isDeepStrictEqual(savedState, outgoingState);
+        const needsFinalWrite = !sessionSnapshotsEqual(savedState, outgoingState);
         outgoingProjectFile = this.config.projectFile;
         outgoingProjectSettings = {
           "*": this.config.projectSettings,

@@ -10,7 +10,6 @@ const distance = (a, b) => ({
   row: a.row - b.row,
   column: a.row === b.row ? a.column - b.column : a.column,
 });
-const compare = (a, b) => a.row - b.row || a.column - b.column;
 const asText = (text) => (text instanceof PieceTree ? text : new PieceTree(text));
 const extent = (text) => text.positionAt(text.length);
 const livePatch = () => new Patch({ discardIdentityChanges: true });
@@ -19,25 +18,6 @@ function encodingName(value) {
   const encoding = value || "utf8";
   if (!iconv.encodingExists(encoding)) throw new Error(`Invalid encoding name: ${encoding}`);
   return encoding;
-}
-
-function searchPattern(pattern, endIsLineBoundary, unicodeSets) {
-  let result = "",
-    depth = 0;
-  for (let index = 0; index < pattern.length; index++) {
-    const character = pattern[index];
-    if (character === "\\") {
-      result += character + (pattern[++index] ?? "");
-      continue;
-    }
-    if (character === "[" && (!depth || unicodeSets)) depth++;
-    if (character === "]" && depth) depth--;
-    if (!depth && character === "^") result += "(?<![^\\n])";
-    else if (!depth && character === "$")
-      result += endIsLineBoundary ? "(?=\\r?\\n|$)" : "(?=\\r?\\n)";
-    else result += character;
-  }
-  return result;
 }
 
 async function readSource(source, encoding) {
@@ -51,6 +31,29 @@ async function readSource(source, encoding) {
   const tail = decoder.end();
   if (tail) text = text.replace(text.length, text.length, tail);
   return text;
+}
+
+async function sourceMatchesSnapshot(source, encoding, snapshot) {
+  const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
+  const stream = typeof source === "string" ? fs.createReadStream(source) : source;
+  const read = snapshot.reader(32768);
+  let offset = 0;
+  const matches = (text) => {
+    let index = 0;
+    while (index < text.length) {
+      const expected = read(offset);
+      if (!expected) return false;
+      const count = Math.min(expected.length, text.length - index);
+      if (expected.slice(0, count) !== text.slice(index, index + count)) return false;
+      index += count;
+      offset += count;
+    }
+    return true;
+  };
+  for await (const chunk of stream) {
+    if (!matches(decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))) return false;
+  }
+  return matches(decoder.end() || "") && offset === snapshot.length;
 }
 
 function* encode(snapshot, encoding) {
@@ -110,7 +113,9 @@ function diff(before, after) {
   const oldMiddle = before.subtext(start, before.length - end),
     newMiddle = after.subtext(start, after.length - end);
   let parts = null;
-  if (oldMiddle.length && newMiddle.length) {
+  // Check before constructing either string. A timeout inside diff cannot
+  // protect allocations already performed by its caller.
+  if (oldMiddle.length && newMiddle.length && oldMiddle.length + newMiddle.length <= 2097152) {
     const oldValue = oldMiddle.toString(),
       newValue = newMiddle.toString();
     if (oldMiddle.length + newMiddle.length < 262144)
@@ -473,8 +478,10 @@ class TextStore {
     }
     return this.#digest;
   }
-  serializeChanges() {
-    return this.#changes.serialize();
+  serializeChanges(options = {}) {
+    return options.textSnapshots || this.#changes.getTextSize() > 1048576
+      ? this.#changes.serializeSnapshot(options.textSnapshots === true)
+      : this.#changes.serialize();
   }
   deserializeChanges(bytes) {
     const patch = Patch.deserialize(bytes);
@@ -523,7 +530,7 @@ class TextStore {
   }
   async baseTextMatchesFile(source, encoding) {
     const base = this.#base;
-    return base.equals(await readSource(source, encoding));
+    return sourceMatchesSnapshot(source, encoding, base);
   }
   async save(destination, encoding = "utf8") {
     encoding = encodingName(encoding);
@@ -553,66 +560,23 @@ class TextStore {
     }
   }
 
-  *#matches(regex, range) {
+  createSearch(regex, range, options = {}) {
+    const { DocumentSearch } = require("./document-search");
     const snapshot = this.#text;
-    const start = range ? this.characterIndexForPosition(range.start) : 0;
-    const end = range ? this.characterIndexForPosition(range.end) : snapshot.length;
-    const contextStart = Math.max(0, start - 1);
-    const text = snapshot.slice(contextStart, end);
-    const pattern = typeof regex === "string" ? regex : regex.source;
-    const flags =
-      typeof regex === "string"
-        ? "gm"
-        : [...new Set(regex.flags.replace(/[gmy]/g, "") + "g")].join("");
-    const endPosition = snapshot.positionAt(end);
-    const endIsLineBoundary =
-      end === snapshot.length || endPosition.column === this.lineLengthForRow(endPosition.row);
-    const expression = new RegExp(
-      searchPattern(pattern, endIsLineBoundary, flags.includes("v")),
-      flags.replace("m", ""),
+    return new DocumentSearch(
+      snapshot,
+      regex,
+      range && {
+        start: this.characterIndexForPosition(range.start),
+        end: this.characterIndexForPosition(range.end),
+      },
+      options,
     );
-    expression.lastIndex = start - contextStart;
-    let previous;
-    const initialPosition = snapshot.positionAt(contextStart);
-    let row = initialPosition.row,
-      lineStart = -initialPosition.column,
-      nextNewline = text.indexOf("\n");
-    // RegExp results are ordered and non-overlapping. Advance one line cursor
-    // rather than searching the piece tree again for every match endpoint.
-    const positionAt = (offset) => {
-      while (nextNewline >= 0 && nextNewline < offset) {
-        row++;
-        lineStart = nextNewline + 1;
-        nextNewline = text.indexOf("\n", lineStart);
-      }
-      const point = { row, column: offset - lineStart };
-      if (text.charCodeAt(offset) === 10 && text.charCodeAt(offset - 1) === 13) point.column--;
-      return point;
-    };
-    for (let match; (match = expression.exec(text));) {
-      // V8 may move a Unicode lastIndex backwards when it splits a surrogate
-      // pair. Context retained for anchors must never become a range result.
-      if (match.index < start - contextStart) {
-        const width =
-          (expression.unicode || expression.unicodeSets) && text.codePointAt(match.index) > 0xffff
-            ? 2
-            : 1;
-        expression.lastIndex = match.index + Math.max(match[0].length, width);
-        continue;
-      }
-      const a = positionAt(match.index),
-        b = positionAt(match.index + match[0].length);
-      // Do not publish the unaddressable boundary between CR and LF twice.
-      if (!previous || compare(previous.start, a) || compare(previous.end, b)) {
-        previous = { start: a, end: b };
-        yield previous;
-      }
-      if (!match[0].length) {
-        const code = text.codePointAt(expression.lastIndex);
-        expression.lastIndex +=
-          (expression.unicode || expression.unicodeSets) && code > 0xffff ? 2 : 1;
-      }
-    }
+  }
+
+  *#matches(regex, range) {
+    const search = this.createSearch(regex, range);
+    for (const match of search.scan()) if (match) yield search.range(match);
   }
   findSync(regex) {
     return this.#matches(regex, null).next().value ?? null;
@@ -626,33 +590,25 @@ class TextStore {
   findAllInRangeSync(regex, range) {
     return Array.from(this.#matches(regex, range));
   }
-  async find(regex) {
-    return this.#asyncFind(regex, null, false);
+  async find(regex, options) {
+    return this.#asyncFind(regex, null, false, options);
   }
-  async findAll(regex) {
-    return this.#asyncFind(regex, null, true);
+  async findAll(regex, options) {
+    return this.#asyncFind(regex, null, true, options);
   }
-  async findInRange(regex, range) {
-    return this.#asyncFind(regex, range, false);
+  async findInRange(regex, range, options) {
+    return this.#asyncFind(regex, range, false, options);
   }
-  async findAllInRange(regex, range) {
-    return this.#asyncFind(regex, range, true);
+  async findAllInRange(regex, range, options) {
+    return this.#asyncFind(regex, range, true, options);
   }
 
-  async #asyncFind(regex, range, all) {
-    const snapshot = new TextStore(this.#text);
-    const pattern = typeof regex === "string" ? regex : new RegExp(regex.source, regex.flags);
-    const bounds = range && { start: { ...range.start }, end: { ...range.end } };
-    await new Promise((resolve) => setImmediate(resolve));
+  async #asyncFind(regex, range, all, options) {
+    const search = this.createSearch(regex, range, options);
     const result = [];
-    let deadline = performance.now() + 4;
-    for (const match of snapshot.#matches(pattern, bounds)) {
-      if (!all) return match;
-      result.push(match);
-      if (result.length % 512 === 0 && performance.now() >= deadline) {
-        await new Promise((resolve) => setImmediate(resolve));
-        deadline = performance.now() + 4;
-      }
+    for await (const match of search.matches()) {
+      if (!all) return search.range(match);
+      result.push(search.range(match));
     }
     return all ? result : null;
   }

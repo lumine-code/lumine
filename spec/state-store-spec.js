@@ -41,6 +41,18 @@ describe("StateStore", () => {
       expect(await store.count()).toBe(0);
     });
 
+    it("persists text snapshots through the background writer without flattening renderer state", async () => {
+      const PieceTree = require("../src/piece-tree");
+      const store = createStore(`${databaseName}-text`, version);
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
+      const text = new PieceTree("row 😀\r\n\ud800".repeat(200000));
+      spyOn(text.constructor.prototype, "toString").and.throwError("Unexpected text flatten");
+      await store.save("text", { text });
+      const restored = await store.load("text");
+      expect(restored.text.equals(text)).toBe(true);
+      await store.delete("text");
+    });
+
     it("resolves with null when a non-existent key is loaded", () => {
       const store = createStore(databaseName, version);
       store.initialize({ configDirPath: lumine.getConfigDirPath() });

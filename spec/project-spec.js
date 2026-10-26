@@ -481,7 +481,7 @@ describe("Project", () => {
       }
     });
 
-    it("preserves persistent markers in every snapshot and history only when unloading", async () => {
+    it("preserves persistent markers and undo history in autosave and unloading snapshots", async () => {
       await lumine.workspace.open("a");
 
       let bufferA = lumine.project.getBuffers()[0];
@@ -509,7 +509,7 @@ describe("Project", () => {
           ?.getMarker(markerA.id)
           ?.getStartPosition(),
       ).toEqual(markerA.getStartPosition());
-      expect(notQuittingProject.getBuffers()[0].undo()).toBe(false);
+      expect(notQuittingProject.getBuffers()[0].undo()).toBe(true);
       quittingProject = buildProject({
         notificationManager: lumine.notifications,
         packageManager: lumine.packages,

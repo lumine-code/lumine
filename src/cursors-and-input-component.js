@@ -83,8 +83,9 @@ module.exports = class CursorsAndInputComponent {
 
       const cursorStyle = {
         height: cursorHeight,
-        width: Math.min(pixelWidth, scrollWidth - pixelLeft) + "px",
-        transform: `translate(${pixelLeft}px, ${pixelTop}px)`,
+        width:
+          Math.min(pixelWidth, scrollWidth - pixelLeft + (this.props.renderOriginLeft || 0)) + "px",
+        transform: `translate(${pixelLeft - (this.props.renderOriginLeft || 0)}px, ${pixelTop - (this.props.renderOriginTop || 0)}px)`,
       };
       if (extraCursorStyle) Object.assign(cursorStyle, extraCursorStyle);
 
@@ -168,8 +169,8 @@ module.exports = class CursorsAndInputComponent {
 
     let top, left;
     if (hiddenInputPosition) {
-      top = hiddenInputPosition.pixelTop;
-      left = hiddenInputPosition.pixelLeft;
+      top = hiddenInputPosition.pixelTop - (this.props.renderOriginTop || 0);
+      left = hiddenInputPosition.pixelLeft - (this.props.renderOriginLeft || 0);
     } else {
       top = 0;
       left = 0;

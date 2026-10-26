@@ -238,11 +238,16 @@ module.exports = class TextEditor {
       delete state.selectionsMarkerLayerId;
       const editor = new TextEditor(state);
       const sameText =
-        retained.state.text != null
-          ? retained.state.text === editor.getText()
-          : retained.state.fileState === "unmodified" &&
-            editor.getFileState() === "unmodified" &&
-            retained.state.digestWhenLastPersisted === editor.buffer.digestWhenLastPersisted;
+        retained.state.textSnapshot != null
+          ? editor
+              .getBuffer()
+              .getTextSnapshot()
+              .equals(require("./serialized-text").deserializeText(retained.state.textSnapshot))
+          : retained.state.text != null
+            ? editor.getBuffer().getTextSnapshot().equals(retained.state.text)
+            : retained.state.fileState === "unmodified" &&
+              editor.getFileState() === "unmodified" &&
+              retained.state.digestWhenLastPersisted === editor.buffer.digestWhenLastPersisted;
       if (sameText) {
         for (const range of folds) editor.foldBufferRange(range);
       }
@@ -348,6 +353,14 @@ module.exports = class TextEditor {
       this.buffer = new TextBuffer({ fileWatchClient: params.fileWatchClient });
     }
 
+    this.largeFileOptimizations = params.largeFileOptimizations !== false;
+    this.largeDocumentWrapEnabled = params.largeDocumentWrapEnabled === true;
+    this.largeDocumentCostActive = require("./document-cost-policy").shouldUseLargeDocumentView(
+      this.buffer,
+      params.largeDocumentCostActive === true,
+    );
+    this.lastNotifiedSoftWrapped = this.isSoftWrapped();
+
     const languageMode = this.buffer.getLanguageMode();
     this.languageModeSubscription =
       languageMode.onDidTokenize &&
@@ -358,9 +371,16 @@ module.exports = class TextEditor {
 
     if (params.displayLayer) {
       this.displayLayer = params.displayLayer;
+      const ratioForCharacter = this.ratioForCharacter.bind(this);
+      this.displayLayer.reset({
+        ratioForCharacter,
+        standardRatioForCharacter:
+          this.ratioForCharacter === standardRatioForCharacter ? ratioForCharacter : null,
+      });
     } else {
       const ratioForCharacter = this.ratioForCharacter.bind(this);
       const displayLayerParams = {
+        resolveSoftWrapColumn: (size) => this.softWrapColumnForDocumentSize(size),
         invisibles: this.getInvisibles(),
         softWrapColumn: this.getSoftWrapColumn(),
         atomicSoftTabs: params.atomicSoftTabs != null ? params.atomicSoftTabs : true,
@@ -384,6 +404,10 @@ module.exports = class TextEditor {
         this.displayLayer = this.buffer.addDisplayLayer(displayLayerParams);
       }
     }
+
+    // A copied/restored display layer belongs to this view's wrapping choice,
+    // even when its persistent geometry is shared with another editor split.
+    this.displayLayer.resolveSoftWrapColumn = (size) => this.softWrapColumnForDocumentSize(size);
 
     this.backgroundWorkHandle = requestBackgroundWork(this.doBackgroundWork);
     this.disposables.add(
@@ -482,6 +506,11 @@ module.exports = class TextEditor {
       const value = params[param];
 
       switch (param) {
+        case "largeFileOptimizations":
+          this.largeFileOptimizations = value !== false;
+          displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
+          this.notifySoftWrapState();
+          break;
         case "autoIndent":
           this.updateAutoIndent(value, false);
           break;
@@ -603,7 +632,7 @@ module.exports = class TextEditor {
           break;
 
         case "autoHeight":
-          this.updateAutoHight(value, false);
+          this.updateAutoHight(value, false, displayLayerParams);
           break;
 
         case "autoWidth":
@@ -715,7 +744,7 @@ module.exports = class TextEditor {
     if (value !== this.softWrapped) {
       this.softWrapped = value;
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
-      this.emitter.emit("did-change-soft-wrapped", this.isSoftWrapped());
+      this.notifySoftWrapState();
     }
     if (finish) this.finishUpdate(displayLayerParams);
   }
@@ -864,11 +893,13 @@ module.exports = class TextEditor {
     if (finish) this.finishUpdate();
   }
 
-  updateAutoHight(value, finish) {
+  updateAutoHight(value, finish, displayLayerParams = {}) {
     if (value !== this.autoHeight) {
       this.autoHeight = value;
+      displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
+      this.notifySoftWrapState();
     }
-    if (finish) this.finishUpdate();
+    if (finish) this.finishUpdate(displayLayerParams);
   }
 
   updateAutoWidth(value, finish, displayLayerParams = {}) {
@@ -904,6 +935,9 @@ module.exports = class TextEditor {
       bufferId: this.buffer.id,
       softTabs: this.softTabs,
       softWrapped: this.softWrapped,
+      largeFileOptimizations: this.largeFileOptimizations,
+      largeDocumentWrapEnabled: this.largeDocumentWrapEnabled,
+      largeDocumentCostActive: this.largeDocumentCostActive,
       softWrapAtPreferredLineLength: this.softWrapAtPreferredLineLength,
       preferredLineLength: this.preferredLineLength,
       mini: this.mini,
@@ -993,6 +1027,7 @@ module.exports = class TextEditor {
 
   subscribeToBuffer() {
     this.buffer.retain();
+    this.disposables.add(this.buffer.onDidChangeText(() => this.notifySoftWrapState()));
     this.disposables.add(
       this.buffer.onDidChangeLanguageMode(this.handleLanguageModeChange.bind(this)),
     );
@@ -1556,6 +1591,7 @@ module.exports = class TextEditor {
       assert: this.assert,
       displayLayer,
       grammar: this.getGrammar(),
+      editorWidthInChars: this.getEditorWidthInChars(),
       autoWidth: this.autoWidth,
       autoHeight: this.autoHeight,
       // Inherit scrollPastEnd so a copy scrolled into the past-end zone has the
@@ -1566,6 +1602,11 @@ module.exports = class TextEditor {
       // position even though the copied display layer was wrapped.
       softWrapped: this.softWrapped,
       softWrapAtPreferredLineLength: this.softWrapAtPreferredLineLength,
+      largeFileOptimizations: this.largeFileOptimizations,
+      largeDocumentWrapEnabled: this.largeDocumentWrapEnabled,
+      largeDocumentCostActive: this.largeDocumentCostActive,
+      maxScreenLineLength: this.maxScreenLineLength,
+      preferredLineLength: this.preferredLineLength,
     });
   }
 
@@ -5913,7 +5954,19 @@ module.exports = class TextEditor {
    * @returns {Boolean}
    */
   isSoftWrapped() {
-    return this.softWrapped;
+    return this.usesLargeDocumentView() ? this.largeDocumentWrapEnabled : this.softWrapped;
+  }
+
+  usesLargeDocumentView(size = this.buffer) {
+    return (
+      this.largeFileOptimizations &&
+      !this.mini &&
+      !this.getAutoHeight() &&
+      require("./document-cost-policy").shouldUseLargeDocumentView(
+        size,
+        this.largeDocumentCostActive,
+      )
+    );
   }
 
   /**
@@ -5926,8 +5979,22 @@ module.exports = class TextEditor {
    * @returns {Boolean}
    */
   setSoftWrapped(softWrapped) {
-    this.updateSoftWrapped(softWrapped, true);
+    this.largeDocumentWrapEnabled = Boolean(softWrapped);
+    this.softWrapped = Boolean(softWrapped);
+    this.notifySoftWrapState();
+    this.finishUpdate({ softWrapColumn: this.getSoftWrapColumn() });
     return this.isSoftWrapped();
+  }
+
+  notifySoftWrapState() {
+    this.largeDocumentCostActive = require("./document-cost-policy").shouldUseLargeDocumentView(
+      this.buffer,
+      this.largeDocumentCostActive,
+    );
+    const current = this.isSoftWrapped();
+    if (current === this.lastNotifiedSoftWrapped) return;
+    this.lastNotifiedSoftWrapped = current;
+    this.emitter.emit("did-change-soft-wrapped", current);
   }
 
   getPreferredLineLength() {
@@ -6024,18 +6091,24 @@ module.exports = class TextEditor {
    * @category Soft Wrap Behavior
    */
   getSoftWrapColumn() {
+    return this.softWrapColumnForDocumentSize(this.buffer);
+  }
+
+  softWrapColumnForDocumentSize(documentSize) {
     // An auto-width editor derives its viewport from its content, so wrapping
     // that content to the current viewport creates a self-reinforcing narrow
     // width. Treat auto-width like a mini editor here: retain the configured
     // soft-wrap preference, but use only the large-line safety limit.
-    if (this.isSoftWrapped() && !this.mini && !this.getAutoWidth()) {
+    const largeDocument = this.usesLargeDocumentView(documentSize);
+    const softWrapped = largeDocument ? this.largeDocumentWrapEnabled : this.softWrapped;
+    if (softWrapped && !this.mini && !this.getAutoWidth()) {
       if (this.softWrapAtPreferredLineLength) {
         return Math.min(this.getEditorWidthInChars(), this.preferredLineLength);
       } else {
         return this.getEditorWidthInChars();
       }
     } else {
-      return this.maxScreenLineLength;
+      return largeDocument ? Infinity : this.maxScreenLineLength;
     }
   }
 

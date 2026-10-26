@@ -20,16 +20,17 @@ module.exports = class StateStore {
     return this._getOrCreateImplementation().connect();
   }
 
-  save(key, value) {
-    return this._getOrCreateImplementation().save(key, value);
+  save(key, value, options) {
+    return this._getOrCreateImplementation().save(key, value, options);
   }
 
-  saveWithIndex(key, value, indexStore, indexKey) {
+  saveWithIndex(key, value, indexStore, indexKey, options) {
     return this._getOrCreateImplementation().saveWithIndex(
       key,
       value,
       indexStore._getOrCreateImplementation(),
       indexKey,
+      options,
     );
   }
 

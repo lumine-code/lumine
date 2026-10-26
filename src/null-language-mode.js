@@ -17,7 +17,9 @@ module.exports = class NullLanguageMode {
     this.tokenized = true;
   }
 
-  bufferDidChange() {}
+  bufferDidChange() {
+    this.indentationCache?.clear();
+  }
   bufferDidFinishTransaction() {}
   buildHighlightIterator() {
     return new NullHighlightIterator();
@@ -58,9 +60,9 @@ module.exports = class NullLanguageMode {
   }
   suggestedIndentForLineAtBufferRow(_row, line, tabLength) {
     if (!NON_WHITESPACE_REGEX.test(line) && this.buffer) {
-      const precedingRow = this.buffer.previousNonBlankRow(_row);
+      const precedingRow = this.previousNonBlankRow(_row, tabLength);
       if (precedingRow != null) {
-        return this.indentLevelForLine(this.buffer.lineForRow(precedingRow), tabLength);
+        return this.indentationForRow(precedingRow, tabLength).level;
       }
     }
     let columns = 0;
@@ -76,12 +78,28 @@ module.exports = class NullLanguageMode {
     return columns / tabLength;
   }
   suggestedIndentForBufferRow(row, tabLength) {
-    const precedingRow = this.buffer?.previousNonBlankRow(row);
+    const precedingRow = this.previousNonBlankRow(row, tabLength);
     if (precedingRow == null) return 0;
-    return this.indentLevelForLine(this.buffer.lineForRow(precedingRow), tabLength);
+    return this.indentationForRow(precedingRow, tabLength).level;
   }
   isFoldableAtRow(row) {
     return this.endRowForFoldAtRow(row, 1, true) != null;
+  }
+  isFoldableAtRowForRendering(row) {
+    // A gutter query must not scan a pathological whitespace prefix or an
+    // unbounded run of blank lines. Explicit fold commands retain exact reads.
+    const first = this.indentationForRow(row, 1, 8192);
+    if (!first || first.blank || !first.complete) return false;
+    for (
+      let next = row + 1, end = Math.min(this.buffer.getLineCount(), row + 65);
+      next < end;
+      next++
+    ) {
+      const info = this.indentationForRow(next, 1, 8192);
+      if (!info.complete) return false;
+      if (!info.blank) return info.level > first.level;
+    }
+    return false;
   }
   getFoldRangeForRow(row, tabLength) {
     const endRow = this.endRowForFoldAtRow(row, tabLength);
@@ -105,7 +123,7 @@ module.exports = class NullLanguageMode {
     const result = [];
     let row = 0;
     while (row < this.buffer.getLineCount()) {
-      if (this.indentLevelForLine(this.buffer.lineForRow(row), tabLength) === indentLevel) {
+      if (this.indentationForRow(row, tabLength).level === indentLevel) {
         const endRow = this.endRowForFoldAtRow(row, tabLength);
         if (endRow != null) {
           result.push(Range(Point(row, Infinity), Point(endRow, Infinity)));
@@ -126,14 +144,14 @@ module.exports = class NullLanguageMode {
     return result;
   }
   endRowForFoldAtRow(row, tabLength, existenceOnly = false) {
-    const line = this.buffer.lineForRow(row);
-    if (!NON_WHITESPACE_REGEX.test(line)) return;
-    const startIndentLevel = this.indentLevelForLine(line, tabLength);
+    const line = this.indentationForRow(row, tabLength);
+    if (!line || line.blank) return;
+    const startIndentLevel = line.level;
     let foldEndRow;
     for (let nextRow = row + 1; nextRow < this.buffer.getLineCount(); nextRow++) {
-      const nextLine = this.buffer.lineForRow(nextRow);
-      if (!NON_WHITESPACE_REGEX.test(nextLine)) continue;
-      const indentation = this.indentLevelForLine(nextLine, tabLength);
+      const nextLine = this.indentationForRow(nextRow, tabLength);
+      if (nextLine.blank) continue;
+      const indentation = nextLine.level;
       if (indentation <= startIndentLevel) break;
       foldEndRow = nextRow;
       if (existenceOnly) break;
@@ -142,6 +160,53 @@ module.exports = class NullLanguageMode {
   }
   indentLevelForLine(line, tabLength) {
     return this.suggestedIndentForLineAtBufferRow(0, line, tabLength);
+  }
+  indentationForRow(row, tabLength, maxUnits = Infinity) {
+    if (!this.buffer || row < 0 || row >= this.buffer.getLineCount()) return null;
+    const key = `${row}:${tabLength}`;
+    this.indentationCache ??= new Map();
+    const cached = this.indentationCache.get(key);
+    if (cached) return cached;
+    const source = this.buffer.getTextSnapshot();
+    let offset = source.offsetAt({ row, column: 0 });
+    const end = offset + this.buffer.lineLengthForRow(row);
+    const limit = Math.min(end, offset + maxUnits);
+    const read = source.reader(4096);
+    let columns = 0,
+      prefix = true,
+      blank = true;
+    while (offset < limit) {
+      const part = read(offset).slice(0, limit - offset);
+      if (prefix)
+        for (const character of part) {
+          if (character === " ") columns++;
+          else if (character === "\t") columns += tabLength - (columns % tabLength);
+          else {
+            prefix = false;
+            break;
+          }
+        }
+      offset += part.length;
+      if (NON_WHITESPACE_REGEX.test(part)) {
+        blank = false;
+        break;
+      }
+    }
+    const result = { level: columns / tabLength, blank, complete: !blank || offset === end };
+    if (result.complete) {
+      if (this.indentationCache.size >= 512)
+        this.indentationCache.delete(this.indentationCache.keys().next().value);
+      this.indentationCache.set(key, result);
+    }
+    return result;
+  }
+  previousNonBlankRow(row, tabLength) {
+    if (!this.buffer) return null;
+    row = Math.min(row, this.buffer.getLastRow());
+    for (let previous = row - 1; previous >= 0; previous--) {
+      if (!this.indentationForRow(previous, tabLength).blank) return previous;
+    }
+    return null;
   }
   destroy() {
     this.emitter.dispose();

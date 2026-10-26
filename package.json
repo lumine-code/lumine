@@ -170,7 +170,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test": "npm run test:document-core && npm run test:tree-sitter-runtime && npm run test:editor && npm run test:main && npm run test:launchers",
-    "test:document-core": "node --test spec/main-process/document-core.test.js spec/main-process/text-store.test.js spec/main-process/text-patch.test.js spec/main-process/marker-index.test.js spec/main-process/completion-matcher.test.js spec/main-process/word-index.test.js spec/main-process/text-model-boundary.test.js",
+    "test:document-core": "node --test spec/main-process/document-core.test.js spec/main-process/document-search.test.js spec/main-process/text-store.test.js spec/main-process/text-patch.test.js spec/main-process/marker-index.test.js spec/main-process/completion-matcher.test.js spec/main-process/word-index.test.js spec/main-process/text-model-boundary.test.js spec/main-process/row-sequence.test.js spec/main-process/scroll-coordinate-space.test.js spec/main-process/text-snapshot-store.test.js",
     "test:tree-sitter-runtime": "node --test spec/main-process/tree-sitter-*.test.js spec/main-process/syntax-worker-*.test.js",
     "test:editor": "npm run test:only -- spec",
     "test:main": "npm run test:only -- --main-process spec/main-process",

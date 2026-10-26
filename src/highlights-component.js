@@ -34,7 +34,10 @@ module.exports = class HighlightsComponent {
       if (highlightDecorations) {
         for (let i = 0; i < highlightDecorations.length; i++) {
           const highlightDecoration = highlightDecorations[i];
-          const highlightProps = Object.assign({ lineHeight }, highlightDecorations[i]);
+          const highlightProps = Object.assign(
+            { lineHeight, renderOriginTop: newProps.renderOriginTop || 0 },
+            highlightDecorations[i],
+          );
 
           let highlightComponent = this.highlightComponentsByKey.get(highlightDecoration.key);
           if (highlightComponent) {
@@ -67,6 +70,7 @@ module.exports = class HighlightsComponent {
     if (oldProps.width !== newProps.width) return true;
     if (oldProps.height !== newProps.height) return true;
     if (oldProps.lineHeight !== newProps.lineHeight) return true;
+    if (oldProps.renderOriginTop !== newProps.renderOriginTop) return true;
     if (!oldProps.highlightDecorations && newProps.highlightDecorations) return true;
     if (oldProps.highlightDecorations && !newProps.highlightDecorations) return true;
     if (oldProps.highlightDecorations && newProps.highlightDecorations) {
@@ -169,8 +173,9 @@ class HighlightComponent {
   // only written when its computed value changes so that in-progress flash
   // classes added by performFlash survive unrelated updates.
   renderRegions() {
-    const { className, screenRange, lineHeight, startPixelTop, startRects, endPixelTop, endRects } =
-      this.props;
+    const { className, screenRange, lineHeight, startRects, endRects } = this.props;
+    const startPixelTop = this.props.startPixelTop - (this.props.renderOriginTop || 0);
+    const endPixelTop = this.props.endPixelTop - (this.props.renderOriginTop || 0);
     const regionClassName = "region " + className;
 
     const rootClassName = "highlight " + className;

@@ -3,6 +3,15 @@
 // units, including CR and unpaired surrogates. Only LF advances a row.
 const BUFFER_UNITS = 32768;
 const MERGE_UNITS = 1024;
+const { MAX_STRING_LENGTH } = require("node:buffer").constants;
+const snapshotIdentities = new WeakMap();
+
+function snapshotIdentity(node) {
+  if (!node) return null;
+  let identity = snapshotIdentities.get(node);
+  if (!identity) snapshotIdentities.set(node, (identity = Object.freeze({})));
+  return identity;
+}
 
 function upperBound(values, value) {
   let low = 0;
@@ -237,8 +246,88 @@ class PieceTree {
     return result;
   }
 
+  // Internal persistence protocol. Identities are opaque, immutable nodes;
+  // callers memoize them without retaining old roots. A postorder traversal
+  // visits only paths absent from the caller's WeakMap.
+  *snapshotNodes(known) {
+    function* visit(node) {
+      if (!node || known.has(snapshotIdentity(node))) return;
+      if (node.buffer) {
+        yield {
+          identity: snapshotIdentity(node),
+          text: node.buffer.text.slice(node.start, node.end),
+        };
+      } else {
+        yield* visit(node.left);
+        yield* visit(node.right);
+        yield {
+          identity: snapshotIdentity(node),
+          left: snapshotIdentity(node.left),
+          right: snapshotIdentity(node.right),
+        };
+      }
+    }
+    yield* visit(this.#root);
+    return snapshotIdentity(this.#root);
+  }
+
+  // Rebuild verified persistence nodes without concatenating their text or
+  // changing their topology, so later saves can reuse the imported identities.
+  static fromSnapshotNode(text, left, right) {
+    if (typeof text === "string") {
+      if (text.length === 0 || text.length > BUFFER_UNITS)
+        throw new Error("Invalid snapshot text node");
+      return PieceTree.#fromRoot(piece(bufferFor(text)));
+    }
+    if (
+      !(left instanceof PieceTree) ||
+      !(right instanceof PieceTree) ||
+      !left.length ||
+      !right.length ||
+      Math.abs(left.#root.height - right.#root.height) > 1 ||
+      !Number.isSafeInteger(left.length + right.length)
+    )
+      throw new Error("Invalid snapshot branch");
+    return PieceTree.#fromRoot(branch(left.#root, right.#root));
+  }
+
+  rememberSnapshotIdentity(known, value) {
+    if (this.#root) known.set(snapshotIdentity(this.#root), value);
+  }
+
+  serializeSnapshot(deferred = false) {
+    if (deferred) return this;
+    return {
+      type: "LumineText",
+      version: 1,
+      length: this.length,
+      chunks: Array.from(this.chunks()),
+    };
+  }
+
+  static deserializeSnapshot(value) {
+    if (value instanceof PieceTree) return value;
+    if (value?.type !== "LumineText" || value.version !== 1 || !Array.isArray(value.chunks))
+      throw new Error("Invalid segmented text snapshot");
+    let result = new PieceTree();
+    for (const chunk of value.chunks) {
+      if (typeof chunk !== "string" || chunk.length > BUFFER_UNITS)
+        throw new Error("Invalid text snapshot chunk");
+      result = result.replace(result.length, result.length, chunk);
+    }
+    if (!Number.isSafeInteger(value.length) || result.length !== value.length)
+      throw new Error("Text snapshot length mismatch");
+    return result;
+  }
+
   get length() {
     return this.#root?.length ?? 0;
+  }
+
+  canMaterialize(maxLength = Infinity) {
+    if (typeof maxLength !== "number" || Number.isNaN(maxLength) || maxLength < 0)
+      throw new RangeError("Text materialization budget must be a non-negative number");
+    return this.length <= Math.min(maxLength, MAX_STRING_LENGTH);
   }
   get lineCount() {
     return (this.#root?.breaks ?? 0) + 1;
@@ -316,6 +405,14 @@ class PieceTree {
     start = start < 0 ? Math.max(0, this.length + start) : Math.min(start, this.length);
     end = end < 0 ? Math.max(0, this.length + end) : Math.min(end, this.length);
     if (start >= end) return "";
+    if (end - start > MAX_STRING_LENGTH) {
+      throw Object.assign(
+        new RangeError(
+          `Cannot materialize ${end - start} UTF-16 units as one string (limit ${MAX_STRING_LENGTH}). Read chunks or a smaller range.`,
+        ),
+        { code: "ERR_TEXT_MATERIALIZATION_LIMIT", length: end - start, limit: MAX_STRING_LENGTH },
+      );
+    }
     let node = this.#root;
     while (!node.buffer) {
       if (end <= node.left.length) node = node.left;

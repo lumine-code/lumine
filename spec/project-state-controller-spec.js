@@ -215,6 +215,21 @@ describe("ProjectStateController", () => {
     expect(fixture.restoreState.calls.mostRecent().args[0]).toBe(outgoing);
   });
 
+  it("persists a new immutable text root captured after the first outgoing write", async () => {
+    const { PieceTree } = require("../src/text-model");
+    const fixture = buildController();
+    const outgoing = fixture.serialize();
+    const first = { ...outgoing, text: new PieceTree("before") };
+    const latest = { ...outgoing, text: new PieceTree("after") };
+    fixture.serialize.and.returnValue(first);
+    fixture.serializeCurrent.and.returnValue(latest);
+    await fixture.controller.setState(["project-b"]);
+    const written = fixture.saveState.calls.allArgs().map((args) => args[1]);
+    expect(written).toContain(first);
+    expect(written).toContain(latest);
+    expect(written.indexOf(latest)).toBeGreaterThan(written.indexOf(first));
+  });
+
   it("refuses automatic saves after an incomplete rollback", async () => {
     const fixture = buildController();
     fixture.restoreState.and.rejectWith(new Error("Cannot restore documents"));

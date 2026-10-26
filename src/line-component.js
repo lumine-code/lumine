@@ -25,6 +25,7 @@ module.exports = class LineComponent {
     this.element = nodePool.getElement("DIV", this.buildClassName(), null);
     this.element.dataset.screenRow = screenRow;
     this.cachedTextNodes = null;
+    this.updateHorizontalPosition(props);
 
     if (offScreen) {
       this.element.style.position = "absolute";
@@ -37,6 +38,7 @@ module.exports = class LineComponent {
   }
 
   update(newProps) {
+    this.updateHorizontalPosition(newProps);
     if (this.props.lineDecoration !== newProps.lineDecoration) {
       this.props.lineDecoration = newProps.lineDecoration;
       this.element.className = this.buildClassName();
@@ -62,6 +64,18 @@ module.exports = class LineComponent {
         horizontalPixelPositionsByScreenLineId.delete(screenLine.id);
       }
     }
+  }
+
+  updateHorizontalPosition(props) {
+    if (props.renderOriginLeft !== undefined) this.props.renderOriginLeft = props.renderOriginLeft;
+    if (props.baseCharacterWidth !== undefined)
+      this.props.baseCharacterWidth = props.baseCharacterWidth;
+    const offset =
+      (this.props.screenLine.startPixelColumn || 0) * (this.props.baseCharacterWidth || 0) -
+      (this.props.renderOriginLeft || 0);
+    // A short line far left of the viewport remains invisible without sending
+    // an unrepresentable negative coordinate into Blink's layout engine.
+    this.element.style.textIndent = Math.max(-1000000, offset) + "px";
   }
 
   destroy() {

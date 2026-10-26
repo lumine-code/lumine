@@ -1,6 +1,17 @@
 const { TextPatch: Patch } = require("./text-model");
 const MarkerLayer = require("./marker-layer");
 const { patchFromChanges } = require("./helpers");
+const { INLINE_TEXT_LIMIT } = require("./serialized-text");
+
+function serializePatch(patch, options) {
+  return options.textSnapshots || patch.getTextSize() > INLINE_TEXT_LIMIT
+    ? patch.serializeSnapshot(options.textSnapshots === true)
+    : patch.serialize().toString("base64");
+}
+
+function deserializePatch(value) {
+  return Patch.deserialize(value?.version === 3 ? value : Buffer.from(value, "base64"));
+}
 
 const SerializationVersion = 7;
 
@@ -519,13 +530,13 @@ class DefaultHistoryProvider {
             type: "transaction",
             markerSnapshotBefore: this.serializeSnapshot(entry.markerSnapshotBefore, options),
             markerSnapshotAfter: this.serializeSnapshot(entry.markerSnapshotAfter, options),
-            patch: entry.patch.serialize().toString("base64"),
+            patch: serializePatch(entry.patch, options),
           });
           break;
         case Patch:
           result.push({
             type: "patch",
-            data: entry.serialize().toString("base64"),
+            data: serializePatch(entry, options),
           });
           break;
         default:
@@ -554,13 +565,13 @@ class DefaultHistoryProvider {
           result.push(
             new Transaction(
               MarkerLayer.deserializeSnapshot(entry.markerSnapshotBefore),
-              Patch.deserialize(Buffer.from(entry.patch, "base64")),
+              deserializePatch(entry.patch),
               MarkerLayer.deserializeSnapshot(entry.markerSnapshotAfter),
             ),
           );
           break;
         case "patch":
-          result.push(Patch.deserialize(Buffer.from(entry.data, "base64")));
+          result.push(deserializePatch(entry.data));
           break;
         default:
           throw new Error(`Unexpected undoStack entry type during deserialization: ${entry.type}`);
@@ -610,14 +621,23 @@ function snapshotFromTransaction(transaction) {
   const iterable = transaction.patch.getChanges();
   for (let i = 0; i < iterable.length; i++) {
     const change = iterable[i];
-    changes.push({
+    const item = {
       oldStart: change.oldStart,
       oldEnd: change.oldEnd,
       newStart: change.newStart,
       newEnd: change.newEnd,
-      oldText: change.oldText,
-      newText: change.newText,
+      get oldText() {
+        return change.oldText;
+      },
+      get newText() {
+        return change.newText;
+      },
+    };
+    Object.defineProperties(item, {
+      oldTextSource: { value: change.oldTextSource },
+      newTextSource: { value: change.newTextSource },
     });
+    changes.push(item);
   }
 
   return {

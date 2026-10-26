@@ -363,17 +363,59 @@ class Patch {
       JSON.stringify({ version: 2, merge: this.#merge, changes: this.getChanges() }),
     );
   }
-  static deserialize(bytes) {
-    const data = JSON.parse(Buffer.from(bytes).toString());
-    if (data.version !== 2) throw new Error("Unsupported text patch version");
-    const patch = new Patch({ mergeAdjacentChanges: data.merge });
-    patch.#changes = new ChangeTree(
-      data.changes.map((h) => ({
-        ...h,
-        oldSource: asText(h.oldText),
-        newSource: asText(h.newText),
+  serializeSnapshot(deferred = true) {
+    return {
+      version: 3,
+      merge: this.#merge,
+      changes: this.#changes.map((h) => ({
+        oldStart: point(h.oldStart),
+        oldEnd: point(h.oldEnd),
+        newStart: point(h.newStart),
+        newEnd: point(h.newEnd),
+        oldText: h.oldSource && h.oldSource.serializeSnapshot(deferred),
+        newText: h.newSource && h.newSource.serializeSnapshot(deferred),
       })),
-    );
+    };
+  }
+  getTextSize() {
+    let length = 0;
+    for (const h of this.#changes)
+      length += (h.oldSource?.length || 0) + (h.newSource?.length || 0);
+    return length;
+  }
+  static deserialize(bytes) {
+    const data = bytes?.version === 3 ? bytes : JSON.parse(Buffer.from(bytes).toString());
+    if (data.version !== 2 && data.version !== 3) throw new Error("Unsupported text patch version");
+    const readText = data.version === 3 ? PieceTree.deserializeSnapshot : asText;
+    const patch = new Patch({ mergeAdjacentChanges: data.merge });
+    if (!Array.isArray(data.changes)) throw new Error("Invalid text patch changes");
+    const changes = data.changes.map((h) => ({
+      ...h,
+      oldSource: h.oldText == null ? null : readText(h.oldText),
+      newSource: h.newText == null ? null : readText(h.newText),
+    }));
+    if (data.version === 3) {
+      let previous;
+      for (const change of changes) {
+        const { oldStart, oldEnd, newStart, newEnd, oldSource, newSource } = change;
+        if (
+          ![oldStart, oldEnd, newStart, newEnd].every(
+            (p) => p && coordinate(p.row) === p.row && coordinate(p.column) === p.column,
+          ) ||
+          compare(oldStart, oldEnd) > 0 ||
+          compare(newStart, newEnd) > 0 ||
+          (previous &&
+            (compare(previous.oldEnd, oldStart) > 0 || compare(previous.newEnd, newStart) > 0)) ||
+          (oldSource &&
+            compare(oldSource.positionAt(oldSource.length), distance(oldEnd, oldStart)) !== 0) ||
+          (newSource &&
+            compare(newSource.positionAt(newSource.length), distance(newEnd, newStart)) !== 0)
+        )
+          throw new Error("Invalid text patch geometry");
+        previous = change;
+      }
+    }
+    patch.#changes = new ChangeTree(changes);
     return patch;
   }
   static compose(patches) {

@@ -151,8 +151,8 @@ function expectLayoutToMatchFoldedText(displayLayer, context) {
 function expectLayoutToMatchLegacyLookup(displayLayer, context) {
   displayLayer.populateSpatialIndexIfNeeded(Infinity, Infinity);
   expect({
-    screenLineLengths: displayLayer.screenLineLengths,
-    tabCounts: displayLayer.tabCounts,
+    screenLineLengths: displayLayer.screenLineLengths.slice(),
+    tabCounts: displayLayer.tabCounts.slice(),
     rightmostScreenColumn: displayLayer.rightmostScreenPosition.column,
   })
     .withContext(context)

@@ -70,7 +70,9 @@ exports.spliceArray = function spliceArray(array, start, removedCount, insertedI
 exports.patchFromChanges = function patchFromChanges(changes) {
   const patch = new Patch();
   for (let i = 0; i < changes.length; i++) {
-    const { oldStart, oldEnd, oldText, newStart, newEnd, newText } = changes[i];
+    const { oldStart, oldEnd, newStart, newEnd } = changes[i];
+    const oldText = changes[i].oldTextSource ?? changes[i].oldText;
+    const newText = changes[i].newTextSource ?? changes[i].newText;
     const oldExtent = traversal(oldEnd, oldStart);
     const newExtent = traversal(newEnd, newStart);
     patch.splice(newStart, oldExtent, newExtent, oldText, newText);
@@ -84,6 +86,14 @@ exports.patchFromChanges = function patchFromChanges(changes) {
 // just as patchFromChanges does. Fresh points preserve the patch result's
 // independence when event consumers freeze or retain their ranges.
 exports.compactPatchChanges = function compactPatchChanges(changes) {
+  if (
+    changes.some(
+      (change) =>
+        (change.oldTextSource?.length ?? 0) > 1024 * 1024 ||
+        (change.newTextSource?.length ?? 0) > 1024 * 1024,
+    )
+  )
+    return exports.patchFromChanges(changes).getChanges();
   if (changes.length !== 1) {
     const independent = compactIndependentRows(changes) ?? compactIndependentSplices(changes);
     return independent ?? exports.patchFromChanges(changes).getChanges();
@@ -120,14 +130,20 @@ exports.compactPatchChanges = function compactPatchChanges(changes) {
     return exports.patchFromChanges(changes).getChanges();
   }
   return [
-    {
-      oldStart: { row: newStart.row + 0, column: newStart.column + 0 },
-      oldEnd: { row: rebasedOldEnd.row + 0, column: rebasedOldEnd.column + 0 },
-      newStart: { row: newStart.row + 0, column: newStart.column + 0 },
-      newEnd: { row: rebasedNewEnd.row + 0, column: rebasedNewEnd.column + 0 },
-      oldText,
-      newText,
-    },
+    Object.defineProperties(
+      {
+        oldStart: { row: newStart.row + 0, column: newStart.column + 0 },
+        oldEnd: { row: rebasedOldEnd.row + 0, column: rebasedOldEnd.column + 0 },
+        newStart: { row: newStart.row + 0, column: newStart.column + 0 },
+        newEnd: { row: rebasedNewEnd.row + 0, column: rebasedNewEnd.column + 0 },
+        oldText,
+        newText,
+      },
+      {
+        oldTextSource: { value: changes[0].oldTextSource },
+        newTextSource: { value: changes[0].newTextSource },
+      },
+    ),
   ];
 };
 
@@ -219,8 +235,8 @@ exports.normalizePatchChanges = function normalizePatchChanges(changes) {
       new TextChange(
         Range(change.oldStart, change.oldEnd),
         Range(change.newStart, change.newEnd),
-        change.oldText,
-        change.newText,
+        change.oldTextSource ?? change.oldText,
+        change.newTextSource ?? change.newText,
       ),
   );
 };
@@ -241,16 +257,28 @@ class TextChange {
   constructor(oldRange, newRange, oldText, newText) {
     this.oldRange = oldRange;
     this.newRange = newRange;
-    this.oldText = oldText;
-    this.newText = newText;
+    if (typeof oldText === "string") this.oldText = oldText;
+    else {
+      Object.defineProperty(this, "oldTextSource", { value: oldText });
+      Object.defineProperty(this, "oldText", { enumerable: true, get: () => oldText.toString() });
+    }
+    if (typeof newText === "string") this.newText = newText;
+    else {
+      Object.defineProperty(this, "newTextSource", { value: newText });
+      Object.defineProperty(this, "newText", { enumerable: true, get: () => newText.toString() });
+    }
   }
 
   isEqual(other) {
     return (
       this.oldRange.isEqual(other.oldRange) &&
       this.newRange.isEqual(other.newRange) &&
-      this.oldText === other.oldText &&
-      this.newText === other.newText
+      (this.oldTextSource && other.oldTextSource
+        ? this.oldTextSource.equals(other.oldTextSource)
+        : this.oldText === other.oldText) &&
+      (this.newTextSource && other.newTextSource
+        ? this.newTextSource.equals(other.newTextSource)
+        : this.newText === other.newText)
     );
   }
 }

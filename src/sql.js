@@ -2,6 +2,7 @@
 
 const path = require("path");
 const fs = require("node:fs");
+const { TextSnapshotStore, removeReferences } = require("./text-snapshot-store");
 // Electron 43 ships the synchronous Node SQLite API used by this adapter.
 // eslint-disable-next-line n/no-unsupported-features/node-builtins
 const { DatabaseSync } = require("node:sqlite");
@@ -47,6 +48,7 @@ module.exports = class SQLStateStore {
     }
 
     this.db = db;
+    this.textSnapshots = new TextSnapshotStore(db, { databasePath: dbPath });
     this.connected = true;
   }
 
@@ -64,27 +66,49 @@ module.exports = class SQLStateStore {
     return true;
   }
 
-  async save(key, value) {
+  async save(key, value, options = {}) {
     if (!this.db) throw new Error("State storage is unavailable");
-    return exec(
-      this.db,
-      `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
-      key,
-      JSON.stringify({ value, storedAt: new Date().toString() }),
-    );
+    const prepared = await this.textSnapshots.prepare(value);
+    try {
+      if (!this.db) throw new Error("State storage is unavailable");
+      options.beforeCommit?.();
+      this.db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = exec(
+          this.db,
+          `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
+          key,
+          JSON.stringify({ value: prepared.value, storedAt: new Date().toString() }),
+        );
+        this.textSnapshots.publishReferences(this.tableName, key, prepared.roots);
+        this.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      }
+    } finally {
+      prepared.release();
+    }
   }
 
-  async saveWithIndex(key, value, indexStore, indexKey) {
+  async saveWithIndex(key, value, indexStore, indexKey, options = {}) {
     if (!this.db || !indexStore.db) throw new Error("State storage is unavailable");
-    this.db.exec("BEGIN IMMEDIATE");
+    const prepared = await this.textSnapshots.prepare(value);
+    let transaction = false;
     try {
+      if (!this.db) throw new Error("State storage is unavailable");
+      options.beforeCommit?.();
+      this.db.exec("BEGIN IMMEDIATE");
+      transaction = true;
       const storedAt = new Date().toString();
       exec(
         this.db,
         `REPLACE INTO ${this.tableName} VALUES (?, ?)`,
         key,
-        JSON.stringify({ value, storedAt }),
+        JSON.stringify({ value: prepared.value, storedAt }),
       );
+      this.textSnapshots.publishReferences(this.tableName, key, prepared.roots);
       exec(
         this.db,
         `REPLACE INTO ${indexStore.tableName} VALUES (?, ?)`,
@@ -95,20 +119,37 @@ module.exports = class SQLStateStore {
       return true;
     } catch (error) {
       try {
-        this.db.exec("ROLLBACK");
+        if (transaction) this.db.exec("ROLLBACK");
       } catch {
         /* Preserve the write failure. */
       }
       throw error;
+    } finally {
+      prepared.release();
     }
   }
 
   async load(key) {
-    return this.loadSync(key);
+    if (!this.db) return null;
+    const release = this.textSnapshots.retainRead();
+    try {
+      return await this.textSnapshots.restore(this.readValue(key));
+    } finally {
+      release();
+    }
   }
 
   loadSync(key) {
     if (!this.db) return null;
+    const release = this.textSnapshots.retainRead();
+    try {
+      return this.textSnapshots.restoreSync(this.readValue(key));
+    } finally {
+      release();
+    }
+  }
+
+  readValue(key) {
     const result = getOne(this.db, `SELECT value FROM ${this.tableName} WHERE key = ?`, key);
     if (!result) return null;
     const parsed = JSON.parse(result.value, reviver);
@@ -151,18 +192,39 @@ module.exports = class SQLStateStore {
 
   async delete(key) {
     if (!this.db) return null;
-    exec(this.db, `DELETE FROM ${this.tableName} WHERE key = ?`, key);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      exec(this.db, `DELETE FROM ${this.tableName} WHERE key = ?`, key);
+      removeReferences(this.db, this.tableName, key);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   async clear() {
     if (!this.db) return null;
-    exec(this.db, `DELETE from ${this.tableName}`);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      exec(this.db, `DELETE from ${this.tableName}`);
+      exec(
+        this.db,
+        "DELETE FROM TextSnapshotRoots1 WHERE owner = ?",
+        this.tableName.replace(/^"|"$/g, ""),
+      );
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   // Release the underlying connection so its file handle and WAL lock on the
   // shared session store are not held for the life of the process.
   close() {
     if (this.db) {
+      this.textSnapshots.close();
       try {
         this.db.close();
       } catch {

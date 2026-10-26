@@ -42,6 +42,10 @@ test("the internal model shares constructor identity and imports no editor or ex
     const load = Module._load;
     Module._load = function(request, parent, ...args) {
       if (members.has(parent?.filename)) {
+        // PieceTree checks the host's intrinsic V8 limit before an explicit
+        // string read. This one runtime constant adds no editor or addon API.
+        if (request === 'node:buffer' && parent.filename === path.join(directory, 'piece-tree.js'))
+          return load.call(this, request, parent, ...args);
         if (!request.startsWith('./') || !members.has(Module._resolveFilename(request, parent)))
           throw Error('Model dependency escapes the internal boundary: ' + request);
       }

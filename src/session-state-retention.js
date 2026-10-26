@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { removeReferences } = require("./text-snapshot-store");
 const {
   SESSION_STATE_VERSION,
   ENVIRONMENT_TABLE,
@@ -324,6 +325,7 @@ function pruneRetiredSnapshots(db, candidates, { protectedWindowIds = [] } = {})
               }
             }
             const result = deleteRow.run(candidate.key, candidate.rowid, serialized);
+            if (result.changes) removeReferences(db, ENVIRONMENT_TABLE, candidate.key);
             stats.removed += result.changes;
             if (!result.changes) stats.skippedChanged++;
           }

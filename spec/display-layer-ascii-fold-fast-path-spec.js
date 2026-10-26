@@ -226,7 +226,7 @@ function layoutSnapshot(displayLayer) {
   const translations = [];
   const rowStep = Math.max(1, Math.floor(screenLineCount / 17));
   for (let row = 0; row < screenLineCount; row += rowStep) {
-    const lineLength = displayLayer.screenLineLengths[row];
+    const lineLength = displayLayer.screenLineLengths.get(row);
     for (const column of [0, Math.floor(lineLength / 2), lineLength]) {
       const screenPosition = Point(row, column);
       const bufferPosition = displayLayer.translateScreenPosition(screenPosition);

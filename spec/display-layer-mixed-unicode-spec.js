@@ -288,7 +288,7 @@ function layoutSnapshot(displayLayer) {
   const screenTranslations = [];
   const rowStep = Math.max(1, Math.floor(screenLineCount / 19));
   for (let row = 0; row < screenLineCount; row += rowStep) {
-    const length = displayLayer.screenLineLengths[row];
+    const length = displayLayer.screenLineLengths.get(row);
     for (const column of [0, 1, Math.floor(length / 2), length]) {
       screenTranslations.push({
         screenPosition: [row, column],

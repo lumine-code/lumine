@@ -106,7 +106,7 @@ describe("DisplayLayer screen-line start flags", () => {
       expect(copy.screenLineStartFlags.length).toBe(copy.screenLineLengths.length);
 
       copy.reset({ softWrapColumn: 6 });
-      expect(copy.screenLineStartFlags).toEqual([]);
+      expect(copy.screenLineStartFlags.slice()).toEqual([]);
       copy.getScreenLineCount();
       expect(copy.screenLineStartFlags.length).toBe(copy.screenLineLengths.length);
 
@@ -242,9 +242,9 @@ function expectRandomDirectRangeToMatch(displayLayer, random, context) {
   const lineCount = displayLayer.getScreenLineCount();
   expect(displayLayer.screenLineStartFlags.length).withContext(context).toBe(lineCount);
   expect(
-    displayLayer.screenLineStartFlags.every(
-      (flags) => flags === 0 || flags === SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE,
-    ),
+    displayLayer.screenLineStartFlags
+      .slice()
+      .every((flags) => flags === 0 || flags === SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE),
   )
     .withContext(context)
     .toBe(true);
