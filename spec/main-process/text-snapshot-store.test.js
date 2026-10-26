@@ -5,6 +5,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { constants } = require("node:buffer");
+// eslint-disable-next-line n/no-unsupported-features/node-builtins
+const { DatabaseSync } = require("node:sqlite");
 const PieceTree = require("../../src/piece-tree");
 const TextBuffer = require("../../src/text-buffer");
 const TextStore = require("../../src/text-store");
@@ -29,6 +31,42 @@ function hugeTree() {
     tree = tree.replace(tree.length, tree.length, tree);
   return tree;
 }
+
+test("snapshot initialization failure closes the partially opened SQL connection", (t) => {
+  const { store, directory } = fixture(t);
+  store.close();
+  const database = new DatabaseSync(path.join(directory, "session-store.db"));
+  database.exec(
+    "DROP TABLE TextSnapshotNodes1; CREATE TABLE TextSnapshotNodes1 (hash TEXT PRIMARY KEY)",
+  );
+  database.close();
+
+  const originalClose = DatabaseSync.prototype.close;
+  let closed = 0,
+    notified = 0;
+  t.mock.method(DatabaseSync.prototype, "close", function () {
+    closed++;
+    return originalClose.call(this);
+  });
+  t.mock.method(console, "error", () => {});
+  const previousEnvironment = globalThis.lumine;
+  globalThis.lumine = {
+    notifications: {
+      addFatalError() {
+        notified++;
+      },
+    },
+  };
+  t.after(() => {
+    globalThis.lumine = previousEnvironment;
+  });
+
+  const failed = new SQL("Snapshots", 1, { storagePath: directory });
+  assert.equal(failed.isConnected(), false);
+  assert.equal(failed.db, undefined);
+  assert.equal(closed, 1);
+  assert.equal(notified, 1);
+});
 
 test("session text larger than V8 strings round trips as shared rope nodes with bounded allocations", async (t) => {
   const { store } = fixture(t);

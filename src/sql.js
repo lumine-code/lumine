@@ -13,7 +13,7 @@ module.exports = class SQLStateStore {
     this.tableName = `"${table}"`;
 
     const dbPath = path.join(storagePath, "session-store.db");
-    let db;
+    let db, textSnapshots;
     try {
       // Ensure the storage directory exists before opening the database.
       // Normally it is the config dir and already present, but it can be missing
@@ -34,6 +34,7 @@ module.exports = class SQLStateStore {
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(`CREATE TABLE IF NOT EXISTS ${this.tableName} (key VARCHAR, value JSON)`);
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS "${table}_index" ON ${this.tableName}(key)`);
+      textSnapshots = new TextSnapshotStore(db, { databasePath: dbPath });
     } catch (error) {
       try {
         db?.close();
@@ -48,7 +49,7 @@ module.exports = class SQLStateStore {
     }
 
     this.db = db;
-    this.textSnapshots = new TextSnapshotStore(db, { databasePath: dbPath });
+    this.textSnapshots = textSnapshots;
     this.connected = true;
   }
 
