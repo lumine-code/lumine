@@ -1,4 +1,6 @@
 const TextEditor = require("../src/text-editor");
+const { Range } = require("../src/text-buffer");
+const { PieceTree } = require("../src/text-model");
 
 describe("Selection", () => {
   let buffer, editor, selection;
@@ -10,6 +12,59 @@ describe("Selection", () => {
   });
 
   afterEach(() => buffer.destroy());
+
+  describe(".copy() indentation metadata", () => {
+    it("copies a tiny fragment beyond the string limit without materializing its line prefix", () => {
+      let source = new PieceTree("x".repeat(32768));
+      while (source.length <= require("node:buffer").constants.MAX_STRING_LENGTH + 6) {
+        source = source.replace(source.length, source.length, source);
+      }
+      source = source.replace(0, 0, " \t ");
+      source = source.replace(source.length - 6, source.length, "needle");
+      const range = new Range([0, source.length - 6], [0, source.length]);
+      spyOn(selection, "isEmpty").and.returnValue(false);
+      spyOn(selection, "getBufferRange").and.returnValue(range);
+      spyOn(buffer, "getTextSnapshot").and.returnValue(source);
+      const read = spyOn(editor, "getTextInRange").and.callFake((value) => {
+        const requested = Range.fromObject(value);
+        expect(requested).toEqual(range);
+        return source.slice(requested.start.column, requested.end.column);
+      });
+      const clipboard = { write: jasmine.createSpy("write") };
+
+      selection.copy(false, false, clipboard);
+
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(clipboard.write).toHaveBeenCalledOnceWith("needle", {
+        indentBasis: 1.5,
+        fullLine: false,
+      });
+    });
+
+    for (const [text, start, end, expectedLevel] of [
+      [" \t \t😀needle", 6, 12, 2],
+      ["\u00a0\t needle", 3, 9, 0],
+      ["  \t  tail", 2, 3, 0.5],
+      [`${" ".repeat(4095)}\t  needle`, 4098, 4104, 1024.5],
+    ]) {
+      it(`preserves exact indentation at columns ${start}–${end} with level ${expectedLevel}`, () => {
+        editor.setTabLength(4);
+        buffer.setText(text);
+        selection.setBufferRange([
+          [0, start],
+          [0, end],
+        ]);
+        const clipboard = { write: jasmine.createSpy("write") };
+
+        selection.copy(false, false, clipboard);
+
+        expect(clipboard.write).toHaveBeenCalledOnceWith(text.slice(start, end), {
+          indentBasis: expectedLevel,
+          fullLine: false,
+        });
+      });
+    }
+  });
 
   describe(".deleteSelectedText()", () => {
     describe("when nothing is selected", () => {

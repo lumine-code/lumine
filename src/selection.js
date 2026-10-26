@@ -9,6 +9,27 @@ function isPromise(value) {
   return value != null && typeof value.then === "function";
 }
 
+function indentLevelBeforePosition(editor, position) {
+  if (position.column === 0) return 0;
+  const source = editor.getBuffer().getTextSnapshot();
+  let offset = source.offsetAt({ row: position.row, column: 0 });
+  const end = offset + position.column;
+  const read = source.reader(4096);
+  const tabLength = editor.getTabLength();
+  let columns = 0;
+  while (offset < end) {
+    const part = read(offset);
+    const length = Math.min(part.length, end - offset);
+    for (let i = 0; i < length; i++) {
+      if (part[i] === " ") columns++;
+      else if (part[i] === "\t") columns += tabLength - (columns % tabLength);
+      else return columns / tabLength;
+    }
+    offset += length;
+  }
+  return columns / tabLength;
+}
+
 /**
  * @public
  * @status extended
@@ -1231,8 +1252,9 @@ module.exports = class Selection {
     if (this.isEmpty()) return;
     const { start, end } = this.getBufferRange();
     const selectionText = this.editor.getTextInRange([start, end]);
-    const precedingText = this.editor.getTextInRange([[start.row, 0], start]);
-    const startLevel = this.editor.indentLevelForLine(precedingText);
+    // Indentation only needs the leading spaces and tabs before the selection,
+    // even when the selected fragment is near the end of an enormous line.
+    const startLevel = indentLevelBeforePosition(this.editor, start);
 
     const appendSelection = ({ text: clipboardText, metadata }) => {
       if (!metadata) metadata = {};
