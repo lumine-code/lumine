@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "recordedAt": "2026-10-26T04:54:36.749Z",
+  "sourceStable": true,
+  "sources": [
+    {
+      "name": "lumine",
+      "revision": "5f5f444657837708300542dcd29bb4f39a115799",
+      "dirty": false,
+      "sourceSha256": "71800ee4f76cd2df8366ec5156fbb2c730b52efdd4742770c1fc7f15c6a407f1",
+      "fileCount": 438
+    },
+    {
+      "name": "search-panel",
+      "revision": "53339d2c1e1353a6f6caa5a45a8008a99b57e5c1",
+      "dirty": false,
+      "sourceSha256": "d42396bb156a6f74ddb06fc8a3bb0ee0862851e37251ccd9b938365d5f8d8e8b",
+      "fileCount": 27
+    },
+    {
+      "name": "line-ending",
+      "revision": "8a2f7305f0a14e194d043618d2641e6dcfa79618",
+      "dirty": false,
+      "sourceSha256": "c84e81c86ed1eb3288145f8c8e442da08a8723dc2969c328948eee75781777c3",
+      "fileCount": 7
+    }
+  ],
+  "input": {
+    "bytes": 537602502,
+    "sha256": "75b5fa9b37d8089ec4040497fe2a4512ce810b7e3f56290727e3a3745d124c43",
+    "statUnchanged": true,
+    "exactDecodedTextUnchanged": true,
+    "units": 537602502,
+    "lines": 12530436,
+    "snapshotUtf16leSha256": "cd689dd177aceef664e0c37aa9f7638a8f96242f8a7033309144a18945b8db14"
+  },
+  "environment": {
+    "electron": "45.0.0",
+    "chrome": "156.0.8078.48",
+    "node": "24.22.0",
+    "platform": "win32",
+    "arch": "x64",
+    "hardwareConcurrency": 20,
+    "devicePixelRatio": 1,
+    "visibilityState": "visible",
+    "documentHasFocus": true,
+    "specMode": false,
+    "ciEnvironmentPresent": false,
+    "activePackageCount": 53,
+    "linkedPackages": ["search-panel", "line-ending"],
+    "nativeWindowSizing": false
+  },
+  "settings": {
+    "inputCount": 30,
+    "intervalMs": 33.333333333333336,
+    "grammar": "text.plain.null-grammar",
+    "softWrapped": false,
+    "softWrapColumn": "Infinity",
+    "largeDocumentView": true,
+    "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
+    "fontSize": "14px",
+    "encoding": "utf8",
+    "viewport": {
+      "width": 617,
+      "height": 1294
+    }
+  },
+  "measurements": {
+    "applicationReadyMs": 1706.6,
+    "editorOpenMs": 3504.4,
+    "coldEnd": {
+      "commandMs": 2.6,
+      "inputToNextRafMs": 20.2,
+      "settledMs": 31.2,
+      "frames": {
+        "count": 2,
+        "medianMs": 8.3,
+        "p95Ms": 16.7,
+        "maxMs": 16.7
+      },
+      "viewport": {
+        "visibleGlyphLines": 59,
+        "visibleGutterRows": 60,
+        "imeAnchorVisible": true,
+        "visibleCursorRoundTrip": true,
+        "logicalHeight": 263140387,
+        "logicalWidth": 1103,
+        "physicalHeight": 140387,
+        "physicalWidth": 1103,
+        "nativeVerticalExtent": 16000000,
+        "nativeHorizontalExtent": 1103
+      }
+    },
+    "enters": [
+      {
+        "location": "start",
+        "command": {
+          "count": 30,
+          "medianMs": 0.7,
+          "p95Ms": 1.5,
+          "maxMs": 5.6
+        },
+        "inputToNextRaf": {
+          "count": 30,
+          "medianMs": 10.3,
+          "p95Ms": 11.2,
+          "maxMs": 11.3
+        },
+        "frames": {
+          "count": 119,
+          "medianMs": 8.3,
+          "p95Ms": 8.4,
+          "maxMs": 8.4
+        },
+        "longTaskCount": 0,
+        "undoCommandMs": 1.2,
+        "exactSnapshotRestored": true,
+        "verificationMs": 68.6,
+        "rendererRssBytes": 1918574592,
+        "viewport": {
+          "visibleGlyphLines": 58,
+          "visibleGutterRows": 64,
+          "imeAnchorVisible": true,
+          "visibleCursorRoundTrip": true,
+          "logicalHeight": 263140387,
+          "logicalWidth": 1103,
+          "physicalHeight": 1000000,
+          "physicalWidth": 1103,
+          "nativeVerticalExtent": 16000000,
+          "nativeHorizontalExtent": 1103
+        }
+      },
+      {
+        "location": "middle",
+        "command": {
+          "count": 30,
+          "medianMs": 0.6,
+          "p95Ms": 0.8,
+          "maxMs": 0.9
+        },
+        "inputToNextRaf": {
+          "count": 30,
+          "medianMs": 9.8,
+          "p95Ms": 10.5,
+          "maxMs": 10.6
+        },
+        "frames": {
+          "count": 119,
+          "medianMs": 8.3,
+          "p95Ms": 8.4,
+          "maxMs": 8.5
+        },
+        "longTaskCount": 0,
+        "undoCommandMs": 0.5,
+        "exactSnapshotRestored": true,
+        "verificationMs": 66.2,
+        "rendererRssBytes": 1890721792,
+        "viewport": {
+          "visibleGlyphLines": 60,
+          "visibleGutterRows": 63,
+          "imeAnchorVisible": true,
+          "visibleCursorRoundTrip": true,
+          "logicalHeight": 263140387,
+          "logicalWidth": 1103,
+          "physicalHeight": 1000000,
+          "physicalWidth": 1103,
+          "nativeVerticalExtent": 16000000,
+          "nativeHorizontalExtent": 1103
+        }
+      },
+      {
+        "location": "end",
+        "command": {
+          "count": 30,
+          "medianMs": 0.5,
+          "p95Ms": 0.6,
+          "maxMs": 0.8
+        },
+        "inputToNextRaf": {
+          "count": 30,
+          "medianMs": 9.7,
+          "p95Ms": 11.8,
+          "maxMs": 11.8
+        },
+        "frames": {
+          "count": 119,
+          "medianMs": 8.3,
+          "p95Ms": 8.4,
+          "maxMs": 8.5
+        },
+        "longTaskCount": 0,
+        "undoCommandMs": 0.5,
+        "exactSnapshotRestored": true,
+        "verificationMs": 63,
+        "rendererRssBytes": 1895202816,
+        "viewport": {
+          "visibleGlyphLines": 29,
+          "visibleGutterRows": 30,
+          "imeAnchorVisible": true,
+          "visibleCursorRoundTrip": true,
+          "logicalHeight": 263140387,
+          "logicalWidth": 1103,
+          "physicalHeight": 140387,
+          "physicalWidth": 1103,
+          "nativeVerticalExtent": 16000000,
+          "nativeHorizontalExtent": 1103
+        }
+      }
+    ],
+    "searches": [
+      {
+        "name": "sparse",
+        "patternSha256": "01175f9fd32b70dd5eed77ba435a834958abf3011f760f81179bf62f3924eae5",
+        "patternUnits": 9,
+        "flags": "g",
+        "status": "complete",
+        "errorCode": null,
+        "count": 64,
+        "complete": true,
+        "firstPositiveProgressMs": 0.9,
+        "completeMs": 303.2,
+        "cancellationRequested": false,
+        "cancellationLatencyMs": null,
+        "checkpointCount": 8204,
+        "presentationLimit": 16,
+        "frames": {
+          "count": 36,
+          "medianMs": 8.3,
+          "p95Ms": 8.4,
+          "maxMs": 8.4
+        },
+        "rendererRssBytes": 1899368448
+      },
+      {
+        "name": "dense",
+        "patternSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+        "patternUnits": 1,
+        "flags": "g",
+        "status": "complete",
+        "errorCode": null,
+        "count": 83887552,
+        "complete": true,
+        "firstPositiveProgressMs": 0.2,
+        "completeMs": 1863.6,
+        "cancellationRequested": false,
+        "cancellationLatencyMs": null,
+        "checkpointCount": 90125,
+        "presentationLimit": 16,
+        "frames": {
+          "count": 222,
+          "medianMs": 8.3,
+          "p95Ms": 8.4,
+          "maxMs": 8.5
+        },
+        "rendererRssBytes": 1901760512
+      },
+      {
+        "name": "dense-cancel",
+        "patternSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+        "patternUnits": 1,
+        "flags": "g",
+        "status": "cancelled",
+        "errorCode": "AbortError",
+        "count": 5994,
+        "complete": false,
+        "firstPositiveProgressMs": 0.3,
+        "completeMs": 1.6,
+        "cancellationRequested": true,
+        "cancellationLatencyMs": 1.3,
+        "checkpointCount": 7,
+        "presentationLimit": 16,
+        "frames": {
+          "count": 0,
+          "medianMs": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "rendererRssBytes": 1901768704
+      }
+    ]
+  },
+  "limitations": [
+    "Times rounded to 0.1 ms; the original harness retained raw samples.",
+    "Command dispatch and RAF callback timing do not measure physical pixel presentation or operating-system keyboard delivery.",
+    "Search measurements cover the core session, not search-panel widget latency.",
+    "Cold editor/process; operating-system disk caches not flushed.",
+    "Original diagnosis used 245 active packages and a 500-column safety wrap; this run uses 53 packages and truly unwrapped projection.",
+    "Only mounted visible geometry is asserted; unmounted horizontal prefixes may be estimated.",
+    "RSS entries are snapshots, not peak or post-close memory reclamation measurements.",
+    "This Windows run does not by itself validate other platforms.",
+    "Measured revisions are explicit; later commits or repins require separate attribution."
+  ]
+}
