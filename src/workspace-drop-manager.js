@@ -16,6 +16,8 @@ const { splitForPoint, boundsForSplit } = require("./workspace-drop-geometry");
 const COMMIT_EVENT = "core:workspace-drop-commit";
 const ROLLBACK_EVENT = "core:workspace-drop-rollback";
 const COMMIT_RESULT_EVENT = "core:workspace-drop-commit-result";
+const READ_EVENT = "core:workspace-drop-read";
+const READ_RESULT_EVENT = "core:workspace-drop-read-result";
 const SESSION_TTL_MS = 2 * 60 * 1000;
 const REMOTE_COMMIT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -36,6 +38,7 @@ class WorkspaceDropManager {
     this.sessions = new Map();
     this.remoteSessionWindows = new Map();
     this.pendingRemoteCommits = new Map();
+    this.pendingSessionReads = new Map();
     this.subscriptions = new CompositeDisposable();
     this.surfaces = new Map();
     this.mainSurface = null;
@@ -56,6 +59,12 @@ class WorkspaceDropManager {
       }),
       this.windowService.onDidReceive(COMMIT_RESULT_EVENT, (message) => {
         this.receiveRemoteCommitResult(message);
+      }),
+      this.windowService.onDidReceive(READ_EVENT, (message) => {
+        void this.receiveSessionRead(message).catch((error) => console.error(error));
+      }),
+      this.windowService.onDidReceive(READ_RESULT_EVENT, (message) => {
+        this.receiveSessionReadResult(message);
       }),
     );
     if (this.workspace.element) this.rebind(this.workspace.element);
@@ -134,6 +143,9 @@ class WorkspaceDropManager {
       pending.resolve(true);
     }
     this.pendingRemoteCommits.clear();
+    for (const pending of this.pendingSessionReads.values())
+      pending.finish(new Error("The workspace transfer manager was destroyed"));
+    this.pendingSessionReads.clear();
   }
 
   /**
@@ -207,14 +219,14 @@ class WorkspaceDropManager {
    * @returns {Object} An object containing the serializable session `token`.
    * @category Drag Sessions
    */
-  createSession(value, { commit, rollback } = {}) {
+  createSession(value, { commit, rollback, read } = {}) {
     const token = crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
     const timeout = setTimeout(
       () => void this.expireSession(token).catch(() => {}),
       SESSION_TTL_MS,
     );
     timeout.unref?.();
-    this.sessions.set(token, { value, commit, rollback, timeout });
+    this.sessions.set(token, { value, commit, rollback, read, timeout });
     return { token };
   }
 
@@ -231,6 +243,86 @@ class WorkspaceDropManager {
   getSession(token) {
     token = this.sessionToken(token);
     return this.sessions.get(token)?.value;
+  }
+
+  // Pull one bounded piece at a time; the caller controls backpressure and
+  // aborts its request when the owning transfer scope is disposed.
+  async readSessionData(token, request, { sourceWindowId, signal } = {}) {
+    signal?.throwIfAborted();
+    const local = this.sessions.get(token);
+    if (local) return local.read?.(request, local.value);
+    const requestId = crypto.randomUUID();
+    const targetWindowId = this.windowService.getId();
+    let pending;
+    const response = new Promise((resolve, reject) => {
+      const finish = (error, value) => {
+        if (this.pendingSessionReads.get(requestId) !== pending) return;
+        this.pendingSessionReads.delete(requestId);
+        clearTimeout(pending.timeout);
+        signal?.removeEventListener("abort", abort);
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const abort = () => finish(signal.reason || new Error("Transfer cancelled"));
+      pending = {
+        token,
+        sourceWindowId,
+        finish,
+        timeout: setTimeout(
+          () => finish(new Error("Timed out reading the source transfer")),
+          30000,
+        ),
+      };
+      pending.timeout.unref?.();
+      this.pendingSessionReads.set(requestId, pending);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+    void Promise.resolve()
+      .then(() =>
+        this.windowService.broadcast(READ_EVENT, {
+          sourceWindowId,
+          targetWindowId,
+          requestId,
+          token,
+          request,
+        }),
+      )
+      .catch((error) => pending.finish(error));
+    return response;
+  }
+
+  async receiveSessionRead(message) {
+    if (message?.sourceWindowId !== this.windowService.getId()) return;
+    let value, error;
+    try {
+      const session = this.sessions.get(message.token);
+      if (!session?.read) throw new Error("The source transfer is no longer available");
+      value = await session.read(message.request, session.value);
+      // A progressing transfer keeps its lease; an abandoned one still expires.
+      session.timeout.refresh?.();
+    } catch (failure) {
+      error = failure.message;
+    }
+    await this.windowService.broadcast(READ_RESULT_EVENT, {
+      sourceWindowId: this.windowService.getId(),
+      targetWindowId: message.targetWindowId,
+      requestId: message.requestId,
+      token: message.token,
+      value,
+      error,
+    });
+  }
+
+  receiveSessionReadResult(message) {
+    if (message?.targetWindowId !== this.windowService.getId()) return;
+    const pending = this.pendingSessionReads.get(message.requestId);
+    if (
+      !pending ||
+      pending.token !== message.token ||
+      pending.sourceWindowId !== message.sourceWindowId
+    )
+      return;
+    pending.finish(message.error ? new Error(message.error) : null, message.value);
   }
 
   /**

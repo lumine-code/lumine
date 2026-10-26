@@ -33,6 +33,26 @@ async function readSource(source, encoding) {
   return text;
 }
 
+function readSourceSync(filePath, encoding) {
+  const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
+  const chunk = Buffer.allocUnsafe(64 * 1024);
+  const fd = fs.openSync(filePath, "r");
+  let text = new PieceTree();
+  try {
+    for (;;) {
+      const count = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (!count) break;
+      const decoded = decoder.write(chunk.subarray(0, count));
+      if (decoded) text = text.replace(text.length, text.length, decoded);
+    }
+    const tail = decoder.end();
+    if (tail) text = text.replace(text.length, text.length, tail);
+    return text;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 async function sourceMatchesSnapshot(source, encoding, snapshot) {
   const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
   const stream = typeof source === "string" ? fs.createReadStream(source) : source;
@@ -514,9 +534,7 @@ class TextStore {
   }
   loadSync(filePath, encoding = "utf8", progress) {
     if (this.isModified()) return undefined;
-    const text = new PieceTree(
-      iconv.decode(fs.readFileSync(filePath), encodingName(encoding), { stripBOM: false }),
-    );
+    const text = readSourceSync(filePath, encoding);
     const patch = diff(this.#text, text);
     let error;
     try {

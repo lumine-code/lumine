@@ -1,5 +1,5 @@
-const crypto = require("crypto");
 const clipboard = require("./clipboard-bridge");
+const clipboardText = require("./clipboard-text");
 
 const VSCODE_COPY_METADATA_FORMAT = "application/vnd.code.copymetadata";
 const LUMINE_TEXT_EDITOR_DATA_FORMAT = "application/lumine-text-editor";
@@ -52,15 +52,15 @@ module.exports = class Clipboard {
   //
   // Returns a hashed `String`.
   md5(text) {
-    return crypto.createHash("md5").update(text, "utf8").digest("hex");
+    return clipboardText.hashText(text);
   }
 
   normalizeText(text) {
-    return text.replace(/\r\n?|\n/g, process.platform === "win32" ? "\r\n" : "\n");
+    return clipboardText.normalizeText(text, process.platform);
   }
 
   signatureForText(text) {
-    return this.md5(text.replace(/\r\n?|\n/g, "\n"));
+    return clipboardText.hashText(text, true);
   }
 
   /**
@@ -163,11 +163,25 @@ module.exports = class Clipboard {
     const lumineData = this.buildLumineEditorData(text, metadata);
     const copyMetadata = this.buildVSCodeCopyMetadata(metadata);
 
-    clipboardData.setData("text/plain", text);
-    clipboardData.setData(VSCODE_COPY_METADATA_FORMAT, JSON.stringify(copyMetadata));
-    if (lumineData) {
-      this.writeDataTransferData(clipboardData, LUMINE_TEXT_EDITOR_DATA_FORMAT, lumineData);
+    let serializedCopyMetadata, serializedLumineData;
+    try {
+      serializedCopyMetadata = clipboardText.serializeMetadata(copyMetadata);
+    } catch {
+      // Preserve exact plain text when optional multicursor metadata is too
+      // large for a clipboard format. Do not serialize a truncated token list.
     }
+    try {
+      if (lumineData) serializedLumineData = clipboardText.serializeMetadata(lumineData);
+    } catch {
+      // Wrapper fields count towards the same optional format budget.
+    }
+    clipboardData.setData("text/plain", text);
+    if (serializedCopyMetadata)
+      clipboardData.setData(VSCODE_COPY_METADATA_FORMAT, serializedCopyMetadata);
+    else clipboardData.clearData?.(VSCODE_COPY_METADATA_FORMAT);
+    if (serializedLumineData)
+      clipboardData.setData(LUMINE_TEXT_EDITOR_DATA_FORMAT, serializedLumineData);
+    else clipboardData.clearData?.(LUMINE_TEXT_EDITOR_DATA_FORMAT);
 
     this.signatureForMetadata = this.md5(text);
     this.metadata = metadata;
@@ -177,7 +191,7 @@ module.exports = class Clipboard {
   buildLumineEditorData(text, metadata) {
     if (metadata == null) return null;
     try {
-      JSON.stringify(metadata);
+      clipboardText.serializeMetadata(metadata);
       return {
         version: LUMINE_EDITOR_DATA_VERSION,
         signature: this.signatureForText(text),
@@ -206,7 +220,7 @@ module.exports = class Clipboard {
   }
 
   writeDataTransferData(clipboardData, format, data) {
-    clipboardData.setData(format, JSON.stringify(data));
+    clipboardData.setData(format, clipboardText.serializeMetadata(data));
   }
 
   /**
@@ -238,7 +252,7 @@ module.exports = class Clipboard {
       const type = `web ${format}`;
       const item = new ClipboardItem({
         "text/plain": new Blob([text], { type: "text/plain" }),
-        [type]: new Blob([JSON.stringify(data)], { type }),
+        [type]: new Blob([clipboardText.serializeMetadata(data)], { type }),
       });
       await navigator.clipboard.write([item]);
       return true;

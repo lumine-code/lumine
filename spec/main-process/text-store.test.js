@@ -8,6 +8,50 @@ const { spawnSync } = require("node:child_process");
 const TextStore = require("../../src/text-store");
 const Patch = require("../../src/text-patch");
 
+test("synchronous loading decodes bounded chunks with BOM and split multibyte sequences intact", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-stream-sync-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const iconv = require("iconv-lite");
+  const text = "\ufeff" + "x".repeat(65531) + "😀\r\nZażółć\ud800";
+  const files = ["utf8", "utf16le", "utf16be"].map((encoding) => {
+    const file = path.join(directory, encoding);
+    const bytes = iconv.encode(text, encoding);
+    fs.writeFileSync(file, bytes);
+    return { file, encoding, expected: iconv.decode(bytes, encoding, { stripBOM: false }) };
+  });
+  const readFile = fs.readFileSync;
+  t.mock.method(fs, "readFileSync", (file, ...args) => {
+    if (files.some((entry) => entry.file === file))
+      throw new Error("full-file reads are forbidden");
+    return readFile(file, ...args);
+  });
+  const originalRead = fs.readSync;
+  let largest = 0;
+  t.mock.method(fs, "readSync", (fd, target, offset, length, position) => {
+    largest = Math.max(largest, length);
+    return originalRead(fd, target, offset, Math.min(length, 7), position);
+  });
+  for (const { file, encoding, expected } of files) {
+    const store = new TextStore();
+    store.loadSync(file, encoding);
+    assert.equal(store.getText(), expected);
+  }
+  assert.equal(largest, 64 * 1024);
+});
+
+test("synchronous load closes its descriptor and leaves prior text intact on read failure", (t) => {
+  t.mock.method(fs, "openSync", () => 123);
+  t.mock.method(fs, "readSync", () => {
+    throw new Error("failed read");
+  });
+  const close = t.mock.method(fs, "closeSync", () => {});
+  const store = new TextStore("previous");
+  assert.throws(() => store.loadSync("file"), /failed read/);
+  assert.equal(store.getText(), "previous");
+  assert.equal(close.mock.callCount(), 1);
+  assert.deepEqual(close.mock.calls[0].arguments, [123]);
+});
+
 test("diff marks deadline fallbacks as coarse while retaining common prefix and suffix", (t) => {
   const before = "prefix\nbefore\nunchanged\nafter\nsuffix";
   const after = "prefix\nBEFORE\nunchanged\nAFTER\nsuffix";

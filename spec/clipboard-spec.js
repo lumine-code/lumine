@@ -10,6 +10,9 @@ function createClipboardData(initialData = {}) {
     setData(type, value) {
       data.set(type, value);
     },
+    clearData(type) {
+      data.delete(type);
+    },
     get types() {
       return Array.from(data.keys());
     },
@@ -68,6 +71,16 @@ describe("Clipboard", () => {
   });
 
   describe("ClipboardEvent data", () => {
+    it("keeps exact plain text and clears old optional formats when metadata exceeds its budget", () => {
+      const clipboardData = createClipboardData();
+      lumine.clipboard.writeToDataTransfer(clipboardData, "previous", { fullLine: true });
+      lumine.clipboard.writeToDataTransfer(clipboardData, "complete 😀 text", {
+        selections: [{ text: "\u0000".repeat(200000) }, { text: "tail" }],
+      });
+      expect(clipboardData.types).toEqual(["text/plain"]);
+      expect(clipboardData.getData("text/plain")).toBe("complete 😀 text");
+    });
+
     it("writes plain text, current VS Code metadata, and Lumine editor metadata", () => {
       const clipboardData = createClipboardData();
       const metadata = { indentBasis: 0, fullLine: true };

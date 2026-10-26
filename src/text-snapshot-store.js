@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
 const { PieceTree } = require("./text-model");
-const { cloneSessionSnapshot } = require("./serialized-text");
+const { cloneSessionSnapshot, INLINE_TEXT_LIMIT } = require("./serialized-text");
 
 const NODE_TABLE = "TextSnapshotNodes1";
 const ROOT_TABLE = "TextSnapshotRoots1";
@@ -173,8 +173,17 @@ class TextSnapshotStore {
         lines: tree.lineCount,
       };
     };
+    const strings = new Map();
     const visit = async (value) => {
       if (value instanceof PieceTree) return writeText(value);
+      if (typeof value === "string" && value.length >= INLINE_TEXT_LIMIT) {
+        if (!strings.has(value))
+          strings.set(value, {
+            ...(await writeText(new PieceTree(value))),
+            representation: "string",
+          });
+        return strings.get(value);
+      }
       if (Array.isArray(value)) {
         const result = [];
         for (const entry of value) result.push(await visit(entry));
@@ -276,6 +285,7 @@ class TextSnapshotStore {
   validateDescriptor(value) {
     if (
       value.version !== 1 ||
+      (value.representation !== undefined && value.representation !== "string") ||
       !Number.isSafeInteger(value.length) ||
       value.length < 0 ||
       !Number.isSafeInteger(value.lines) ||
@@ -288,13 +298,17 @@ class TextSnapshotStore {
 
   async restore(state) {
     const { load } = this.createReader();
+    const strings = new Map();
     const visit = async (value) => {
       if (value?.type === "LumineTextSnapshot") {
         this.validateDescriptor(value);
-        return this.validateReference(
+        const text = this.validateReference(
           value,
           value.hash == null ? new PieceTree() : await load(value.hash),
         );
+        if (value.representation !== "string") return text;
+        if (!strings.has(value.hash)) strings.set(value.hash, text.toString());
+        return strings.get(value.hash);
       }
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) value[i] = await visit(value[i]);
@@ -308,13 +322,17 @@ class TextSnapshotStore {
 
   restoreSync(state) {
     const { loadSync } = this.createReader();
+    const strings = new Map();
     const visit = (value) => {
       if (value?.type === "LumineTextSnapshot") {
         this.validateDescriptor(value);
-        return this.validateReference(
+        const text = this.validateReference(
           value,
           value.hash == null ? new PieceTree() : loadSync(value.hash),
         );
+        if (value.representation !== "string") return text;
+        if (!strings.has(value.hash)) strings.set(value.hash, text.toString());
+        return strings.get(value.hash);
       }
       if (Array.isArray(value)) return value.map(visit);
       if (value && typeof value === "object" && !Buffer.isBuffer(value))

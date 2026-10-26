@@ -49,6 +49,26 @@ describe("TextBuffer known file changes", () => {
     buffer.applyFileChanges(change);
   }
 
+  it("merges a large unsaved source and adopts its disk baseline without string reads", async () => {
+    const oldText = "target\nunchanged\n";
+    await openFile(oldText);
+    const inserted = "unsaved".repeat(500000);
+    buffer.append(inserted);
+    const change = fileChange(oldText, [{ start: 0, end: 6, newText: "updated" }]);
+    spyOn(buffer, "getText").and.throwError("full buffer read");
+    spyOn(buffer, "getTextInRange").and.throwError("full range read");
+
+    apply(change);
+
+    const source = buffer.getTextSnapshot();
+    expect(source.slice(0, 18)).toBe("updated\nunchanged\n");
+    expect(source.slice(18)).toBe(inserted);
+    expect(buffer.getFileState()).toBe("modified");
+    expect(buffer.buffer.baseTextDigest()).toBe(new TextStore(change.newText).baseTextDigest());
+    buffer.undo();
+    expect(buffer.getTextSnapshot().slice(0, 6)).toBe("target");
+  });
+
   it("applies the supplied changes to a clean buffer and adopts the written base", async () => {
     const oldText = "first target\nsecond target\n";
     await openFile(oldText);

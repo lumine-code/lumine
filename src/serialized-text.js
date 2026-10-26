@@ -27,6 +27,10 @@ function cloneSessionSnapshot(state) {
         texts.push(original instanceof PieceTree ? original : deserializeText(original));
         return { [token]: texts.length - 1 };
       }
+      if (typeof value === "string" && value.length >= INLINE_TEXT_LIMIT) {
+        texts.push(value);
+        return { [token]: texts.length - 1 };
+      }
       return value;
     }),
     (_key, value) => {

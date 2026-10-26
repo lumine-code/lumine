@@ -2,6 +2,16 @@ const NullLanguageMode = require("../src/null-language-mode");
 const TextBuffer = require("../src/text-buffer");
 
 describe("NullLanguageMode", () => {
+  it("tests blank rows from source metadata without materializing Unicode whitespace", () => {
+    const buffer = new TextBuffer({ text: " \t\u2003".repeat(10000) + "\r\n\u00a0x\n" });
+    spyOn(buffer, "lineForRow").and.throwError("full row read");
+    expect(buffer.isRowBlank(0)).toBeTrue();
+    expect(buffer.isRowBlank(1)).toBeFalse();
+    expect(buffer.isRowBlank(2)).toBeTrue();
+    expect(buffer.isRowBlank(-1)).toBeFalse();
+    expect(buffer.isRowBlank(3)).toBeFalse();
+    buffer.destroy();
+  });
   it("checks indentation folds on huge rows without materializing their text", () => {
     const buffer = new TextBuffer({ text: "header" + "x".repeat(1000000) + "\n  child\nnext" });
     const mode = buffer.getLanguageMode();

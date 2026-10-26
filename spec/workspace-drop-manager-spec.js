@@ -169,6 +169,60 @@ describe("WorkspaceDropManager", () => {
     target.destroy();
   });
 
+  it("reads acknowledged session data and releases aborted pending requests", async () => {
+    const listeners = new Map();
+    const serviceFor = (id) => ({
+      getId: () => id,
+      onDidReceive(name, callback) {
+        listeners.set(`${id}:${name}`, callback);
+        return new Disposable(() => listeners.delete(`${id}:${name}`));
+      },
+      async broadcast(name, message) {
+        return listeners.get(`${id === 1 ? 2 : 1}:${name}`)?.(message);
+      },
+    });
+    const source = new WorkspaceDropManager({
+      workspace: {},
+      applicationDelegate: {},
+      windowService: serviceFor(1),
+    });
+    const target = new WorkspaceDropManager({
+      workspace: {},
+      applicationDelegate: {},
+      windowService: serviceFor(2),
+    });
+    source.initialize();
+    target.initialize();
+    const { token } = source.createSession("retained", {
+      read: ({ offset }, value) => ({ offset, value }),
+    });
+    try {
+      expect(await target.readSessionData(token, { offset: 7 }, { sourceWindowId: 1 })).toEqual({
+        offset: 7,
+        value: "retained",
+      });
+      expect(target.pendingSessionReads.size).toBe(0);
+      expect(source.getSession(token)).toBe("retained");
+      const controller = new AbortController();
+      const pending = target.readSessionData(
+        token,
+        { offset: 8 },
+        { sourceWindowId: 99, signal: controller.signal },
+      );
+      controller.abort(new Error("cancelled transfer"));
+      await expectAsync(pending).toBeRejectedWithError("cancelled transfer");
+      expect(target.pendingSessionReads.size).toBe(0);
+      expect(source.getSession(token)).toBe("retained");
+      await source.rollback(token, "done");
+      await expectAsync(
+        target.readSessionData(token, {}, { sourceWindowId: 1 }),
+      ).toBeRejectedWithError(/no longer available/);
+    } finally {
+      source.destroy();
+      target.destroy();
+    }
+  });
+
   it("commits a session against the exact object captured by its closure", async () => {
     const item = { id: "exact-item" };
     let committedItem;

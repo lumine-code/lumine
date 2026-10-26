@@ -32,6 +32,21 @@ function hugeTree() {
   return tree;
 }
 
+test("large package strings use durable chunks without expanding the session JSON", async (t) => {
+  const { store } = fixture(t);
+  const text = '\u0000"\\\ud800😀\r\n'.repeat(150000);
+  const state = { notebook: { source: text, duplicate: text }, short: "ordinary" };
+  assert.deepEqual(cloneSessionSnapshot(state), state);
+  await store.save("package-state", state);
+  const encoded = store.db
+    .prepare('SELECT value FROM "Snapshots1" WHERE key = ?')
+    .get("package-state").value;
+  assert(encoded.length < 2048);
+  assert.match(encoded, /"representation":"string"/);
+  assert.deepEqual(await store.load("package-state"), state);
+  assert.deepEqual(store.loadSync("package-state"), state);
+});
+
 test("snapshot initialization failure closes the partially opened SQL connection", (t) => {
   const { store, directory } = fixture(t);
   store.close();

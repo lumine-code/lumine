@@ -2,6 +2,7 @@ const { defaultLocationForItem, allowedLocationsForItem } = require("./pane-item
 const { normalizeDescriptor } = require("./workspace-drop-protocol");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const { PaneItemOperationError, assertItemLocation } = require("./pane-item-contract");
+const transferText = require("./pane-item-transfer-text");
 const {
   awaitLifecycleCleanup,
   captureLifecycleError,
@@ -419,6 +420,7 @@ class PaneItemTransferScope {
     this.service = service;
     this.sessions = new Map();
     this.disposed = false;
+    this.controller = new AbortController();
   }
 
   assertAvailable() {
@@ -442,7 +444,7 @@ class PaneItemTransferScope {
       throw new Error("The pane item is no longer available");
     }
     const uri = itemURI(item);
-    const text = typeof item.getText === "function" ? item.getText() : undefined;
+    const text = transferText.capture(item);
     const fileState = item.getFileState?.() ?? "unmodified";
     const textEditorState = item.serializeViewState?.();
     const record = { scope: this, pane, item, uri, text, fileState };
@@ -452,6 +454,11 @@ class PaneItemTransferScope {
     const { token } = this.service.workspaceDrops.createSession(record, {
       commit: () => this.commitSource(record),
       rollback: () => this.finish(record, false),
+      read: (request) => {
+        if (!this.sourceIsCurrent(record))
+          throw new Error("The source item changed during transfer");
+        return transferText.readChunk(record.text, request);
+      },
     });
     record.token = token;
     this.sessions.set(token, record);
@@ -471,7 +478,7 @@ class PaneItemTransferScope {
           type: "pane-item",
           uri,
           fileState,
-          ...(fileState !== "unmodified" && text !== undefined ? { modifiedText: text } : {}),
+          ...(fileState !== "unmodified" ? transferText.descriptor(text) : {}),
           ...(textEditorState == null ? {} : { textEditorState }),
         },
       ],
@@ -486,7 +493,7 @@ class PaneItemTransferScope {
       this.service.workspace.paneForItem(record.item) != null &&
       itemURI(record.item) === record.uri &&
       (!checkContent ||
-        ((record.text === undefined || record.item.getText() === record.text) &&
+        (transferText.matches(record.item, record.text) &&
           (record.item.getFileState?.() ?? "unmodified") === record.fileState))
     );
   }
@@ -566,7 +573,8 @@ class PaneItemTransferScope {
       !sameWindow &&
       transferItem.fileState !== "unmodified" &&
       transferItem.fileState != null &&
-      typeof transferItem.modifiedText !== "string"
+      typeof transferItem.modifiedText !== "string" &&
+      !transferText.validDescriptor(transferItem.textTransfer)
     ) {
       return null;
     }
@@ -690,10 +698,7 @@ class PaneItemTransferScope {
       pane: openedPane,
       index: openedPane.getItems().indexOf(item),
       activeItem: openedPane.getActiveItem(),
-      text:
-        (existedBeforeOpen || sharedBufferItem) && typeof item.getText === "function"
-          ? item.getText()
-          : undefined,
+      text: existedBeforeOpen || sharedBufferItem ? transferText.capture(item) : undefined,
       viewState: existedBeforeOpen ? viewStatesBeforeOpen.get(item) : undefined,
       sharedViewStates:
         typeof item.getBuffer === "function"
@@ -708,7 +713,7 @@ class PaneItemTransferScope {
           : [],
     };
     let committed = false;
-    let stagedText = item.getText?.();
+    let stagedText = transferText.capture(item);
     try {
       this.assertAvailable();
       this.assertLocation(targetPane, descriptor);
@@ -716,19 +721,35 @@ class PaneItemTransferScope {
       if (Object.hasOwn(transferItem, "modifiedText") && typeof item.setText !== "function") {
         throw new Error("The target item cannot restore the transferred content");
       }
+      if (transferItem.textTransfer && !item.getBuffer?.()?.getTextSnapshot)
+        throw new Error("The target item cannot restore chunked text");
       if (transferItem.textEditorState && typeof item.restoreViewState !== "function") {
         throw new Error("The target item cannot restore the transferred view state");
       }
       this.moveItem(openedPane, targetPane, item, context.index);
-      if (Object.hasOwn(transferItem, "modifiedText")) {
+      if (Object.hasOwn(transferItem, "modifiedText") || transferItem.textTransfer) {
         if (original.text !== undefined) {
           original.buffer = item.getBuffer?.();
           original.checkpoint = original.buffer?.createCheckpoint();
         }
-        item.setText(transferItem.modifiedText);
+        const text = transferItem.textTransfer
+          ? await transferText.receive(
+              workspaceDrops,
+              descriptor.token,
+              transferItem.textTransfer,
+              {
+                sourceWindowId,
+                signal: this.controller.signal,
+              },
+              () => this.assertAvailable(),
+            )
+          : transferItem.modifiedText;
+        if (!transferText.matches(item, stagedText))
+          throw new Error("The target item changed while its text was being transferred");
+        transferText.restore(item, text);
       }
       if (transferItem.textEditorState) item.restoreViewState(transferItem.textEditorState);
-      stagedText = item.getText?.();
+      stagedText = transferText.capture(item);
       original.stagedViewState = item.serializeViewState?.();
       for (const entry of original.sharedViewStates) entry.staged = entry.item.serializeViewState();
       this.assertAvailable();
@@ -761,7 +782,7 @@ class PaneItemTransferScope {
     const currentPane = workspace.paneForItem(item);
     if (!original.existedBeforeOpen) {
       // Edits made after staging belong to the target user, even on failure.
-      if (stagedText === undefined || item.getText?.() === stagedText) {
+      if (transferText.matches(item, stagedText)) {
         if (original.text !== undefined) this.restoreText(item, original);
         await currentPane?.destroyItem(item, true);
       }
@@ -772,10 +793,7 @@ class PaneItemTransferScope {
     } else if (currentPane === original.pane) {
       original.pane.moveItem(item, original.index);
     }
-    if (
-      original.text !== undefined &&
-      (stagedText === undefined || item.getText() === stagedText)
-    ) {
+    if (original.text !== undefined && transferText.matches(item, stagedText)) {
       this.restoreText(item, original);
     }
     if (original.activeItem && original.pane.getItems().includes(original.activeItem)) {
@@ -824,7 +842,7 @@ class PaneItemTransferScope {
       return [{ item: candidate, state }];
     });
     if (original.checkpoint == null || !original.buffer.revertToCheckpoint(original.checkpoint)) {
-      item.setText(original.text);
+      transferText.restore(item, original.text);
     }
     for (const entry of viewStates) entry.item.restoreViewState(entry.state);
   }
@@ -896,6 +914,7 @@ class PaneItemTransferScope {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.controller.abort(cancelledError());
     for (const token of [...this.sessions.keys()]) this.release(token, "transfer scope disposed");
     this.service.scopes.delete(this);
   }

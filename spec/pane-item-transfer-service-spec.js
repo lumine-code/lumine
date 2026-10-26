@@ -46,6 +46,101 @@ describe("PaneItemTransferService", () => {
 
   afterEach(() => service.destroy());
 
+  it("captures and moves a large local draft without calling its full text getter", () => {
+    editor.setText("x".repeat(65537));
+    spyOn(editor, "getText").and.throwError("must not flatten a transfer");
+    const descriptor = scope.createTransfer(pane, editor);
+    expect(descriptor.items[0].modifiedText).toBeUndefined();
+    expect(descriptor.items[0].textTransfer).toEqual({ version: 1, length: 65537 });
+    const record = lumine.workspaceDrops.getSession(descriptor.token);
+    expect(scope.sourceIsCurrent(record)).toBeTrue();
+    scope.moveLocalItem(context(), scope.prepareDrop(descriptor, targetPane));
+    expect(lumine.workspace.paneForItem(editor)).toBe(targetPane);
+  });
+
+  it("receives a remote draft through bounded acknowledged chunks before source commit", async () => {
+    const text = "😀\r\n" + "x".repeat(150000) + "\ud800";
+    const descriptor = remoteDescriptor({
+      items: [
+        {
+          type: "pane-item",
+          uri: "",
+          fileState: "modified",
+          textTransfer: { version: 1, length: text.length },
+        },
+      ],
+    });
+    let pending = false;
+    const reads = spyOn(lumine.workspaceDrops, "readSessionData").and.callFake(
+      async (_token, { offset }) => {
+        expect(pending).toBeFalse();
+        pending = true;
+        await new Promise(setImmediate);
+        pending = false;
+        return { offset, text: text.slice(offset, offset + 65536), length: text.length };
+      },
+    );
+    const commit = spyOn(lumine.workspaceDrops, "commit").and.callFake(async () => {
+      expect(targetPane.getItems()[0].getText()).toBe(text);
+      return true;
+    });
+
+    const result = await scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane));
+
+    expect(result.item.getText()).toBe(text);
+    expect(reads.calls.count()).toBe(3);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back an incomplete chunk transfer without committing the source", async () => {
+    const descriptor = remoteDescriptor({
+      items: [
+        {
+          type: "pane-item",
+          uri: "",
+          fileState: "modified",
+          textTransfer: { version: 1, length: 70000 },
+        },
+      ],
+    });
+    spyOn(lumine.workspaceDrops, "readSessionData").and.resolveTo({
+      offset: 0,
+      text: "",
+      length: 70000,
+    });
+    const commit = spyOn(lumine.workspaceDrops, "commit");
+    spyOn(lumine.workspaceDrops, "rollback").and.resolveTo(true);
+    await expectAsync(
+      scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane)),
+    ).toBeRejectedWithError(/incomplete/);
+    expect(targetPane.getItems().length).toBe(0);
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("preserves edits made at the target while remote text is arriving", async () => {
+    const descriptor = remoteDescriptor({
+      items: [
+        {
+          type: "pane-item",
+          uri: "",
+          fileState: "modified",
+          textTransfer: { version: 1, length: 1 },
+        },
+      ],
+    });
+    spyOn(lumine.workspaceDrops, "readSessionData").and.callFake(async () => {
+      targetPane.getItems()[0].setText("target user edit");
+      return { offset: 0, text: "x", length: 1 };
+    });
+    const commit = spyOn(lumine.workspaceDrops, "commit");
+    spyOn(lumine.workspaceDrops, "rollback").and.resolveTo(true);
+    await expectAsync(
+      scope.performDrop(context(), scope.prepareDrop(descriptor, targetPane)),
+    ).toBeRejectedWithError(/target item changed/);
+    expect(targetPane.getItems()[0].getText()).toBe("target user edit");
+    expect(commit).not.toHaveBeenCalled();
+  });
+
   it("captures an exact source item, content and view state in one descriptor", () => {
     editor.setText("unsaved source");
     editor.setSelectedBufferRange(
