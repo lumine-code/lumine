@@ -273,6 +273,9 @@ class SyntaxWorkerService {
       this.openSession(session);
     } catch (error) {
       session.chain = Promise.resolve();
+      // initializeSyntax() starts before the deferred notification. It must
+      // not create a second worker while this failed session is being retired.
+      controller.abort(Client.abortError("Syntax worker failed to start"));
       // Let the caller install its mode before publishing startup failure.
       queueMicrotask(() =>
         this.disableSession(session, {
