@@ -3060,25 +3060,57 @@ module.exports = class TextEditor {
   }
 
   replaceSelectedText(options, fn) {
-    this.mutateSelectedText((selection) => {
-      selection.getBufferRange();
-      if (options && options.selectWordIfEmpty && selection.isEmpty()) {
-        selection.selectWord();
-      }
-      const selected = selection.getBufferRange();
-      const length =
-        this.buffer.characterIndexForPosition(selected.end) -
-        this.buffer.characterIndexForPosition(selected.start);
+    options ??= {};
+    if (!this.ensureWritable("replaceSelectedText", options)) return;
+    const current = this.captureTextMutationGuard(options);
+    const source = this.buffer.getTextSnapshot();
+    const plans = new Map();
+    let inputLength = 0;
+    const checkLength = (length) => {
       if (length > 8 * 1024 * 1024)
         throw Object.assign(
           new RangeError(
-            "String-based selection callbacks are limited to 8 Mi UTF-16 units. Use getTextSnapshotInRange and applyTextEdits for larger transformations.",
+            "String-based selection callbacks are limited to 8 Mi UTF-16 units in total. Use getTextSnapshotInRange and applyTextEdits for larger transformations.",
           ),
           { code: "ERR_SYNCHRONOUS_TEXT_LIMIT" },
         );
-      const text = fn(selection.getText());
-      selection.deleteSelectedText();
-      const range = selection.insertText(text);
+    };
+    for (const selection of this.getSelectionsOrderedByBufferPosition()) {
+      let range = selection.getBufferRange();
+      const selectWord = options?.selectWordIfEmpty && selection.isEmpty();
+      if (selectWord) {
+        // Match Selection.selectWord without changing any selection while
+        // callbacks or budget validation can still reject the operation.
+        const wordOptions = {};
+        if (selection.cursor.isSurroundedByWhitespace()) wordOptions.wordRegex = /[\t ]*/;
+        if (selection.cursor.isBetweenWordAndNonWord())
+          wordOptions.includeNonWordCharacters = false;
+        range = selection.cursor.getCurrentWordBufferRange(wordOptions);
+      }
+      const start = source.offsetAt(range.start),
+        end = source.offsetAt(range.end);
+      inputLength += end - start;
+      checkLength(inputLength);
+      plans.set(selection, { start, end, selectWord });
+    }
+    let outputLength = 0;
+    for (const plan of plans.values()) {
+      plan.text = fn(source.slice(plan.start, plan.end));
+      if (typeof plan.text !== "string")
+        throw new TypeError("A selection callback must return a string");
+      outputLength += plan.text.length;
+      checkLength(outputLength);
+      if (!current())
+        throw Object.assign(new Error("Selection callback changed its source or selections"), {
+          code: "ERR_STALE_EDIT",
+        });
+    }
+    this.mutateSelectedText((selection) => {
+      const plan = plans.get(selection);
+      if (plan.selectWord) selection.selectWord();
+      const mutationOptions = { bypassReadOnly: options.bypassReadOnly };
+      selection.deleteSelectedText(mutationOptions);
+      const range = selection.insertText(plan.text, mutationOptions);
       selection.setBufferRange(range);
     });
   }
