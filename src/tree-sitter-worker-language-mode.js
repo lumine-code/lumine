@@ -245,16 +245,23 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.folds.clear();
   }
 
-  scopesForInsertion({ oldRange, newRange, newText }) {
+  scopesForInsertion(change) {
+    const { oldRange, newRange } = change;
     const { start } = oldRange;
     if (
       !oldRange.isEmpty() ||
-      typeof newText !== "string" ||
       newRange.end.row !== start.row ||
-      newRange.end.column <= start.column ||
-      /[\r\n]/.test(newText)
+      newRange.end.column <= start.column
     )
       return;
+    // Optimistic token extension is for ordinary typing, not bulk pastes.
+    // Decide from geometry before touching the event's lazy string getter.
+    const length = newRange.end.column - start.column;
+    if (length > 4096) return;
+    const source = change.newTextSource ?? change.inserted;
+    if (source && source.length !== length) return;
+    const newText = source ? source.slice(0, length) : change.newText;
+    if (typeof newText !== "string" || newText.length !== length || /[\r\n]/.test(newText)) return;
     const fallback = [this.grammar.idForScope(this.grammar.scopeName)];
     const boundary = this.cache.insertionScopes(start, fallback);
     if (!boundary) return;

@@ -59,7 +59,7 @@ async function fixture(text = "[1,2,3]", language = "json") {
 test("point scope queries guard native predicates and resolver text without clearing paint state", async () => {
   for (const query of [
     '((string) @string (#match? @string "a"))',
-    '((string) @string (#set! adjust.startAfterFirstMatchOf "a"))',
+    '((string) @string (#set! adjust.startAfterFirstMatchOf "a+"))',
   ]) {
     const f = await fixture(`["${"a".repeat(65537)}"]`);
     try {
@@ -101,6 +101,76 @@ test("semantic query exhaustion crosses the worker boundary without failing its 
     );
     assert.equal(f.host.sessions.has(1), true);
     assert.equal(f.host.sessions.get(1).failure, undefined);
+  } finally {
+    f.close();
+  }
+});
+
+test("point descriptors query only the target character on a dense long string", async () => {
+  const f = await fixture(`"${"\\n".repeat(15000)}"`);
+  try {
+    const query = f.query("highlightsQuery", "(string) @string (escape_sequence) @escape");
+    const windows = [];
+    const captures = query.captures;
+    query.captures = function (node, options) {
+      windows.push([
+        f.buffer.characterIndexForPosition(options.startPosition),
+        f.buffer.characterIndexForPosition(options.endPosition),
+      ]);
+      return captures.call(this, node, options);
+    };
+    f.mode.queryBudget.maxResults = 4;
+    const scopes = f.mode.scopeDescriptorForPosition([0, 15001]).getScopesArray();
+    assert.ok(scopes.includes("string"));
+    assert.ok(scopes.includes("escape"));
+    assert.ok(windows.length > 0);
+    assert.ok(windows.every(([start, end]) => start === 15001 && end === 15002));
+  } finally {
+    f.close();
+  }
+});
+
+test("point descriptors preserve CRLF empty rows and both halves of surrogate pairs", async () => {
+  const f = await fixture("/*\r\n\r\n😀\r\n*/", "javascript");
+  try {
+    const query = f.query("highlightsQuery", "(comment) @comment");
+    const windows = [];
+    const captures = query.captures;
+    query.captures = function (node, options) {
+      windows.push([
+        f.buffer.characterIndexForPosition(options.startPosition),
+        f.buffer.characterIndexForPosition(options.endPosition),
+      ]);
+      return captures.call(this, node, options);
+    };
+    for (const point of [
+      [1, 0],
+      [2, 0],
+      [2, 1],
+    ]) {
+      assert.ok(f.mode.scopeDescriptorForPosition(point).getScopesArray().includes("comment"));
+    }
+    assert.deepEqual(windows, [
+      [4, 6],
+      [6, 8],
+    ]);
+  } finally {
+    f.close();
+  }
+});
+
+test("scope adjustments inspect a bounded prefix of a huge enclosing node", async () => {
+  const f = await fixture(`"prefix a${"x".repeat(100000)}"`);
+  try {
+    f.query("highlightsQuery", '((string) @prefix (#set! adjust.endBeforeFirstMatchOf "a"))');
+    f.layer.tree.textCallback = () => {
+      throw new Error("must not materialize the whole node");
+    };
+    assert.ok(f.mode.scopeDescriptorForPosition([0, 2]).getScopesArray().includes("prefix"));
+    assert.equal(
+      f.mode.scopeDescriptorForPosition([0, 8]).getScopesArray().includes("prefix"),
+      false,
+    );
   } finally {
     f.close();
   }

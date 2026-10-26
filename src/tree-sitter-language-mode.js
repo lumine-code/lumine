@@ -38,8 +38,6 @@ const {
   clearTimeout: cancelBackgroundTask,
 } = require("node:timers");
 
-const ONE_CHAR_FORWARD_TRAVERSAL = Object.freeze(Point(0, 1));
-
 const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
@@ -652,8 +650,14 @@ class TreeSitterLanguageMode {
     // `bufferDidFinishTransaction`.
     let edit = {
       startIndex,
-      oldEndIndex: change.oldEndIndex ?? startIndex + change.oldText.length,
-      newEndIndex: change.newEndIndex ?? startIndex + change.newText.length,
+      oldEndIndex:
+        change.oldEndIndex ??
+        startIndex +
+          (change.oldTextSource?.length ?? change.removed?.length ?? change.oldText.length),
+      newEndIndex:
+        change.newEndIndex ??
+        startIndex +
+          (change.newTextSource?.length ?? change.inserted?.length ?? change.newText.length),
       startPosition: oldRange.start,
       oldEndPosition: oldRange.end,
       newEndPosition: newRange.end,
@@ -1499,15 +1503,20 @@ class TreeSitterLanguageMode {
 
     // The most accurate way to do this is to reconstruct the results from the
     // highlight iterator itself.
-    const iterator = this.buildHighlightIterator();
+    const source = this.document.capture().text;
+    const index = this.buffer.characterIndexForPosition(point);
+    const window = boundedQueryRange(source, index, Math.min(source.length, index + 1), 2);
+    const queryStart = this.buffer.positionForCharacterIndex(window.startIndex);
+    const queryEnd = this.buffer.positionForCharacterIndex(window.endIndex);
+    const iterator = this.buildHighlightIterator({ endPosition: queryEnd });
     const scopes = [];
 
     // Add scopes that were open already at this point.
-    for (const scope of iterator.seek(point, point.row + 1)) {
+    for (const scope of iterator.seek(queryStart, queryEnd.row)) {
       scopes.push(this.grammar.scopeNameForScopeId(scope));
     }
 
-    while (point.isEqual(iterator.getPosition())) {
+    while (comparePoints(iterator.getPosition(), point) <= 0) {
       for (const scope of iterator.getOpenScopeIds()) {
         scopes.push(this.grammar.scopeNameForScopeId(scope));
       }
@@ -2864,6 +2873,7 @@ class HighlightIterator {
 
     this.end = end;
     this.iterators = [];
+    this.coveringIterators = [];
 
     let injectionMarkers = this.languageMode.injectionsMarkerLayer.findMarkers({
       intersectsRange: new Range(start, this.options.endPosition ? end : new Point(endRow + 1, 0)),
@@ -2929,6 +2939,10 @@ class HighlightIterator {
       const iterator = marker.languageLayer.buildHighlightIterator(queryOptions);
       let [result, openScopes] = iterator.seek(start, endRow);
       this.limitedReason ??= iterator.limitedReason;
+      // A covering injection may span the whole query window and contribute
+      // no boundary events. Its included ranges must still suppress parent
+      // events inside that window.
+      if (iterator.coverShallowerScopes) this.coveringIterators.push(iterator);
 
       // Just as with the root layer, any injection layer may need to add to
       // the list of open scopes whether or not they need to mark anything
@@ -3137,13 +3151,11 @@ class HighlightIterator {
   // Detect whether the iterator that's about to act has its scopes covered by
   // a different iterator asserting a `coverShallowerScopes` option.
   detectCoveredScope() {
-    const layerCount = this.iterators.length;
-    if (layerCount > 1) {
-      const leader = this.iterators[layerCount - 1];
+    const leader = last(this.iterators);
+    if (leader) {
       const position = leader.getPosition();
-      for (let i = 0; i < layerCount - 1; i++) {
-        const iterator = this.iterators[i];
-        if (!iterator.coverShallowerScopes || leader.depth >= iterator.depth) continue;
+      for (const iterator of this.coveringIterators) {
+        if (leader.depth >= iterator.depth) continue;
         const iteratorCovers = iterator.coversIteratorAtPosition(leader, position);
         if (iteratorCovers !== false) {
           this.currentIteratorIsCovered = iteratorCovers;
@@ -5137,6 +5149,14 @@ class LanguageLayer {
       return [];
     }
     const budget = this.languageMode.queryBudget ?? {};
+    const source = this.languageMode.document.capture().text;
+    const index = this.buffer.characterIndexForPosition(point);
+    const window = boundedQueryRange(source, index, Math.min(source.length, index + 1), 2);
+    if (window.empty) return [];
+    const options = {
+      startPosition: this.buffer.positionForCharacterIndex(window.startIndex),
+      endPosition: this.buffer.positionForCharacterIndex(window.endIndex),
+    };
     for (let attempt = 0; ; attempt++) {
       const resolver = new ScopeResolver(this, this.scopeResolver.idForScope);
       try {
@@ -5148,7 +5168,7 @@ class LanguageLayer {
               this,
               this.queries.highlightsQuery,
               this.tree,
-              { startPosition: point, endPosition: point.translate(ONE_CHAR_FORWARD_TRAVERSAL) },
+              options,
               (query, node, options) => {
                 const result = runQuery(query, node, options, budget);
                 if (!result.complete) throw new QueryBudgetExceeded(result.reason);

@@ -1,5 +1,31 @@
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
+function expectSameTree(actual, expected, phase) {
+  const actualShape = actual.rootNode.toString(),
+    expectedShape = expected.rootNode.toString();
+  let detail = phase;
+  if (actualShape !== expectedShape) {
+    let offset = 0;
+    while (offset < actualShape.length && actualShape[offset] === expectedShape[offset]) offset++;
+    const summary = (tree, shape) => ({
+      revision: tree.revision,
+      hasError: tree.rootNode.hasError,
+      endIndex: tree.rootNode.endIndex,
+      shapeLength: shape.length,
+      aroundDifference: shape.slice(Math.max(0, offset - 160), offset + 320),
+    });
+    detail += `: ${JSON.stringify({
+      firstDifference: offset,
+      actual: summary(actual, actualShape),
+      expected: summary(expected, expectedShape),
+    })}`;
+  }
+  // Huge AST strings otherwise truncate before the changed row in CI output.
+  expect(actualShape === expectedShape)
+    .withContext(detail)
+    .toBe(true);
+}
+
 describe("Large-buffer syntax update policy", () => {
   it("does not postpone queued root work on retries and bypasses it in synchronous mode", () => {
     const mode = Object.create(TreeSitterLanguageMode.prototype);
@@ -261,11 +287,15 @@ it("replays from one error-free root checkpoint and releases it when history is 
     expect(mode.parseDetails.get(mode.tree).changedRanges).toBeDefined();
     expect(mode.tree.changedRangesBaseRevision).toBe(displayedRevision);
     expect(comparisons.calls.count()).toBe(1);
+    expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
+    expect(mode.tree.input).toBe(editor.getText());
     const Parser = require("../src/tree-sitter-parser");
     const reference = new Parser(mode.tree.language);
     try {
-      expect(mode.tree.rootNode.toString()).toBe(
-        reference.parseSync(editor.getBuffer().getTextSnapshot()).rootNode.toString(),
+      expectSameTree(
+        mode.tree,
+        reference.parseSync(editor.getBuffer().getTextSnapshot()),
+        "checkpoint replay of invalid input",
       );
     } finally {
       reference.close();
@@ -276,6 +306,9 @@ it("replays from one error-free root checkpoint and releases it when history is 
     ]);
     await editor.whenGrammarSettled();
     expect(mode.tree.rootNode.hasError).toBe(false);
+    expect(mode.tree.revision).toBe(editor.getBuffer().getTextRevision());
+    expect(mode.tree.input).toBe(original);
+    expectSameTree(mode.tree, first, "repaired valid input");
     expect(
       mode.parseDetails
         .get(mode.tree)

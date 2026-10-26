@@ -535,6 +535,77 @@ test("a suspended incremental parse with earlier errors restarts fresh before re
   }
 });
 
+test("cancelled checkpoint replay preserves the latest source and repaired valid AST", async (t) => {
+  const parser = new DocumentParser(language),
+    reference = new DocumentParser(language),
+    document = new DocumentCore("export function value() { return 1; }\n".repeat(18000)),
+    reader = new TreeSitterDocument(document);
+  try {
+    const firstInput = reader.capture(),
+      healthy = parser.parseSync(firstInput.text, firstInput),
+      start = firstInput.text.lineStart(17000);
+    document.transact((draft) => draft.replace(start, start, "a"));
+    const damagedInput = reader.capture(healthy),
+      displayed = parser.parseSync(damagedInput.text, damagedInput);
+    assert.equal(displayed.rootNode.hasError, true);
+    for (let i = 0; i < 200; i++)
+      document.transact((draft) =>
+        draft.replace(start + i + 1, start + i + 1, i % 12 === 11 ? " " : "a"),
+      );
+    const input = reader.capture(healthy),
+      comparison = reader.capture(displayed),
+      nativeParse = parser.parser.parse.bind(parser.parser),
+      controller = new AbortController();
+    let callbacks = 0,
+      cancel = true;
+    t.mock.method(parser.parser, "parse", (source, previous, options) =>
+      nativeParse(source, previous, {
+        ...options,
+        progressCallback: () => {
+          callbacks++;
+          if (cancel && callbacks === 100) {
+            controller.abort();
+            return true;
+          }
+          return callbacks % 3 === 0;
+        },
+      }),
+    );
+    await assert.rejects(
+      parser.parse(input.text, { ...input, comparison, signal: controller.signal }),
+      { name: "AbortError" },
+    );
+    assert.equal(callbacks, 100);
+    assert.equal(parser.pending, null);
+    cancel = false;
+    const tree = await parser.parse(input.text, { ...input, comparison });
+    assert.equal(tree.incremental, true);
+    assert.equal(tree.changedRangesBaseRevision, displayed.revision);
+    assert.equal(tree.revision, document.getTextRevision());
+    assert.equal(tree.input, input.text.toString());
+    assert.equal(tree.rootNode.toString(), reference.parseSync(input.text).rootNode.toString());
+    document.transact((draft) => draft.replace(start, start + 201, ""));
+    const repairedInput = reader.capture(healthy),
+      repairedComparison = reader.capture(tree),
+      repaired = await parser.parse(repairedInput.text, {
+        ...repairedInput,
+        comparison: repairedComparison,
+      });
+    assert.equal(repaired.rootNode.hasError, false);
+    assert.equal(repaired.revision, document.getTextRevision());
+    assert.equal(repaired.input, firstInput.text.toString());
+    assert.equal(repaired.rootNode.toString(), healthy.rootNode.toString());
+    assert.equal(
+      repaired.rootNode.toString(),
+      reference.parseSync(repairedInput.text).rootNode.toString(),
+    );
+  } finally {
+    reader.close();
+    parser.close();
+    reference.close();
+  }
+});
+
 test("a separate comparison base computes ranges once against the displayed revision", (t) => {
   const { Tree } = require("web-tree-sitter");
   const parser = new DocumentParser(language),

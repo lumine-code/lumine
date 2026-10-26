@@ -127,6 +127,46 @@ test("an insertion beyond the string limit evicts parser history without flatten
   }
 });
 
+test("parser change notifications derive absent offsets from sources without reading lazy text", () => {
+  const Mode = require("../../src/tree-sitter-language-mode");
+  const reachedLayer = new Error("captured native edit");
+  let edit;
+  const mode = Object.assign(Object.create(Mode.prototype), {
+    highlightCache: { edit() {} },
+    presentation: { edit() {} },
+    resolveNextTransaction() {},
+    transactionChangeCount: 0,
+    rootLanguageLayer: {
+      handleTextChange(value) {
+        edit = value;
+        throw reachedLayer;
+      },
+    },
+  });
+  const change = {
+    startIndex: 7,
+    oldRange: new TextBuffer.Range([1, 2], [1, 5]),
+    newRange: new TextBuffer.Range([1, 2], [2, 3]),
+    oldTextSource: new PieceTree("old"),
+    newTextSource: new PieceTree("new\nrow"),
+    get oldText() {
+      return assert.fail("parser offsets must not read oldText");
+    },
+    get newText() {
+      return assert.fail("parser offsets must not read newText");
+    },
+  };
+  assert.throws(
+    () => mode.bufferDidChange(change),
+    (error) => error === reachedLayer,
+  );
+  assert.equal(edit.startIndex, 7);
+  assert.equal(edit.oldEndIndex, 10);
+  assert.equal(edit.newEndIndex, 14);
+  assert.deepEqual(edit.oldEndPosition, change.oldRange.end);
+  assert.deepEqual(edit.newEndPosition, change.newRange.end);
+});
+
 test("gaps, unavailable pending changes and bounded history choose a fresh parse", () => {
   const buffer = source("a"),
     document = new TreeSitterDocument(buffer, { maxChanges: 1 });

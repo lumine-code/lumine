@@ -2,6 +2,7 @@ const { CompositeDisposable } = require("@lumine-code/event-kit");
 const Client = require("./syntax-worker-client");
 const { environment, configuration } = require("./syntax-worker-environment");
 const { watchFile } = require("./file-watch");
+const insertedSource = (change) => change.newTextSource ?? change.inserted ?? change.newText;
 
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -345,7 +346,7 @@ class SyntaxWorkerService {
     let size = 0;
     if (changes.length < 128)
       for (const change of changes) {
-        size += change.inserted?.length ?? change.newText.length;
+        size += insertedSource(change).length;
         if (size > 64 * 1024) break;
       }
     if (changes.length < 128 && size <= 64 * 1024)
@@ -355,12 +356,15 @@ class SyntaxWorkerService {
           session: session.id,
           beforeRevision: batch.beforeRevision,
           revision: batch.afterRevision,
-          changes: changes.map((change) => ({
-            range: change.oldRange.serialize(),
-            startIndex: change.startIndex,
-            oldEndIndex: change.oldEndIndex,
-            text: change.inserted?.toString() ?? change.newText,
-          })),
+          changes: changes.map((change) => {
+            const source = insertedSource(change);
+            return {
+              range: change.oldRange.serialize(),
+              startIndex: change.startIndex,
+              oldEndIndex: change.oldEndIndex,
+              text: source.slice(0, source.length),
+            };
+          }),
         },
         options,
       );
@@ -369,6 +373,7 @@ class SyntaxWorkerService {
     const flush = async () => {
       if (!packet.length) return;
       await client.request("edit-chunk", { session: session.id, changes: packet }, options);
+      options.signal.throwIfAborted();
       packet = [];
       units = 0;
     };
@@ -385,7 +390,8 @@ class SyntaxWorkerService {
       );
       for (const change of changes) {
         options.signal.throwIfAborted();
-        const length = change.inserted?.length ?? change.newText.length;
+        const source = insertedSource(change);
+        const length = source.length;
         if (length > 64 * 1024) {
           await flush();
           await client.request(
@@ -398,26 +404,31 @@ class SyntaxWorkerService {
             },
             options,
           );
-          const chunks = change.inserted?.chunks() ?? [change.newText];
+          options.signal.throwIfAborted();
+          const chunks = typeof source === "string" ? [source] : source.chunks();
           for (const chunk of chunks)
-            for (let offset = 0; offset < chunk.length; offset += 64 * 1024)
+            for (let offset = 0; offset < chunk.length; offset += 64 * 1024) {
+              options.signal.throwIfAborted();
               await client.request(
                 "edit-text-chunk",
                 { session: session.id, text: chunk.slice(offset, offset + 64 * 1024) },
                 options,
               );
+              options.signal.throwIfAborted();
+            }
           await client.request("edit-text-end", { session: session.id }, options);
         } else {
           if (packet.length >= 128 || units + length > 64 * 1024) await flush();
           packet.push({
             startIndex: change.startIndex,
             oldEndIndex: change.oldEndIndex,
-            text: change.inserted?.toString() ?? change.newText,
+            text: source.slice(0, length),
           });
           units += length;
         }
       }
       await flush();
+      options.signal.throwIfAborted();
       return await client.request("edit-commit", { session: session.id }, options);
     } catch (error) {
       client.send({ type: "control", operation: "release", session: session.id });

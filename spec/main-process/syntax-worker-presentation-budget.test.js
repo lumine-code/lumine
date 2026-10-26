@@ -523,3 +523,51 @@ test("a transient cold query cannot strand a minimap's covered rows without thei
     host.close();
   }
 });
+
+test("optimistic token extension reads bounded source slices and never lazy insertion strings", () => {
+  const { PieceTree } = require("../../src/text-model");
+  const buffer = new TextBuffer({ text: "ab" });
+  const mode = Object.assign(Object.create(Mode.prototype), {
+    buffer,
+    cache: { insertionScopes: () => ({ left: [1, 2], continuous: [1] }) },
+    grammar: {
+      scopeName: "source.js",
+      idForScope: () => 1,
+      scopeNameForScopeId: (id) => (id === 1 ? "source.js" : "variable.other.js"),
+    },
+  });
+  try {
+    assert.deepEqual(
+      mode.scopesForInsertion({
+        oldRange: new Range([0, 1], [0, 1]),
+        newRange: new Range([0, 1], [0, 2]),
+        newTextSource: new PieceTree("b"),
+        get newText() {
+          return assert.fail("typing must use its bounded source");
+        },
+      }),
+      [1, 2],
+    );
+    for (const [oldRange, newRange] of [
+      [new Range([0, 1], [0, 2]), new Range([0, 1], [0, 2])],
+      [new Range([0, 1], [0, 1]), new Range([0, 1], [1, 2])],
+      [new Range([0, 1], [0, 1]), new Range([0, 1], [0, 2 ** 30])],
+    ]) {
+      assert.equal(
+        mode.scopesForInsertion({
+          oldRange,
+          newRange,
+          get newTextSource() {
+            return assert.fail("geometry must reject large/multiline/replacement edits first");
+          },
+          get newText() {
+            return assert.fail("a bulk edit must not materialize for token extension");
+          },
+        }),
+        undefined,
+      );
+    }
+  } finally {
+    buffer.destroy();
+  }
+});

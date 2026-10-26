@@ -2,6 +2,7 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
 const { rangeIsBlank } = require("./text-source-helpers");
+const matchScopePattern = require("./scope-regex-match");
 
 const EMPTY_PROPERTIES = Object.freeze({});
 
@@ -203,6 +204,15 @@ class ScopeResolver {
     }
     this.patternCache.set(pattern, regex);
     return regex;
+  }
+
+  matchPattern(node, regex) {
+    return matchScopePattern(
+      node,
+      regex,
+      () =>
+        this.languageLayer.languageMode?.document?.capture().text ?? this.buffer.getTextSnapshot(),
+    );
   }
 
   // Logs a warning about a problematic predicate at most once per grammar and
@@ -919,7 +929,11 @@ ScopeResolver.TESTS = {
     let [descriptor, ...text] = rawValue.split(/\s+/);
     if (!descriptor || text.length === 0) return false;
     let target = resolveNodeDescriptor(node, descriptor);
-    return target ? target.text === text.join(" ") : false;
+    if (!target) return false;
+    const expected = text.join(" ");
+    const length = target.endIndex - target.startIndex;
+    if (Number.isSafeInteger(length) && length !== expected.length) return false;
+    return target.text === expected;
   },
 
   // Passes when the text of the node at a relative descriptor matches a
@@ -931,7 +945,7 @@ ScopeResolver.TESTS = {
     let target = resolveNodeDescriptor(node, descriptor);
     if (!target) return false;
     let regex = instance.getOrCompilePattern(pattern);
-    return regex ? regex.test(target.text) : false;
+    return regex ? !!instance.matchPattern(target, regex) : false;
   },
 
   // Takes at least two node types (separated by spaces) and starts traversing
@@ -1126,7 +1140,7 @@ ScopeResolver.ADJUSTMENTS = {
     if (!regex) {
       return null;
     }
-    let match = node.text.match(regex);
+    let match = resolver.matchPattern(node, regex);
     if (!match) {
       return null;
     }
@@ -1151,7 +1165,7 @@ ScopeResolver.ADJUSTMENTS = {
     if (!regex) {
       return null;
     }
-    let match = node.text.match(regex);
+    let match = resolver.matchPattern(node, regex);
 
     if (!match) {
       return null;
@@ -1174,7 +1188,7 @@ ScopeResolver.ADJUSTMENTS = {
     if (!regex) {
       return null;
     }
-    let match = node.text.match(regex);
+    let match = resolver.matchPattern(node, regex);
 
     if (!match) {
       return null;
@@ -1197,7 +1211,7 @@ ScopeResolver.ADJUSTMENTS = {
     if (!regex) {
       return null;
     }
-    let match = node.text.match(regex);
+    let match = resolver.matchPattern(node, regex);
 
     if (!match) {
       return null;
@@ -1219,7 +1233,7 @@ ScopeResolver.ADJUSTMENTS = {
     if (!regex) {
       return null;
     }
-    let match = node.text.match(regex);
+    let match = resolver.matchPattern(node, regex);
 
     if (!match) {
       return null;

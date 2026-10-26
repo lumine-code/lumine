@@ -33,6 +33,7 @@ function fixture(length = 40) {
       getTextSnapshot: () => source,
       positionForCharacterIndex: (index) => new Point(0, index),
       characterIndexForPosition: (point) => point.column,
+      clipPosition: (point) => new Point(0, Math.max(0, Math.min(length, point.column))),
     },
     config,
     queryCaptureChunkRows: 200,
@@ -220,9 +221,9 @@ test("an exhausted query budget never reports a partial exact scan as completed"
   });
 });
 
-test("scope adjustments also reject oversized predicate text instead of omitting a capture", async () => {
+test("unbounded scope adjustments reject oversized predicate text instead of omitting a capture", async () => {
   const f = fixture(65537);
-  const capture = f.capture("name", 0, 65537, { "adjust.startAfterFirstMatchOf": "." });
+  const capture = f.capture("name", 0, 65537, { "adjust.startAfterFirstMatchOf": ".+" });
   Object.defineProperty(capture.node, "text", {
     get() {
       checkPredicateTextLength(65537);
@@ -234,6 +235,34 @@ test("scope adjustments also reject oversized predicate text instead of omitting
     name: "QueryBudgetExceeded",
     reason: "predicate-text-limit",
   });
+});
+
+test("finite scope adjustments stream huge captures using bounded source reads", async () => {
+  const f = fixture(65537);
+  f.mode.queryCaptureChunkCodeUnits = 8192;
+  const reads = [];
+  f.mode.buffer.getTextSnapshot = () => ({
+    length: 65537,
+    slice(start, end) {
+      reads.push(end - start);
+      return "x".repeat(end - start);
+    },
+  });
+  const capture = f.capture("name", 0, 65537, { "adjust.startAfterFirstMatchOf": "." });
+  Object.defineProperty(capture.node, "text", {
+    get() {
+      return assert.fail("A finite first match must not materialize the whole node");
+    },
+  });
+  f.layer([capture]);
+  const batches = await collect(scanQueryCaptures(f.mode, "tagsQuery"));
+  assert.deepEqual(
+    batches.flatMap(({ captures }) => captures),
+    [capture],
+  );
+  assert.equal(batches.at(-1).last, true);
+  assert.ok(reads.includes(4096));
+  assert.ok(reads.every((length) => length <= 4096));
 });
 
 test("delivers early batches before scanning later windows and stops when the consumer closes", async () => {
