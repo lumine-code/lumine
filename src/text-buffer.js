@@ -1077,7 +1077,7 @@ class TextBuffer {
    * @param {String} method - Named export to execute with a syntax context.
    * @param {*} params - Serializable analysis parameters.
    * @param {Object} [options] - Optional signal and streamed-data consumer.
-   * @returns {Promise<*>} Data, or null when the captured revision is invalidated.
+   * @returns {Promise<*>} Data, or null when None disables analysis or the captured revision is invalidated.
    */
   analyzeSyntax(modulePath, method, params, options) {
     return require("./buffer-syntax-analysis")(this, modulePath, method, params, options);

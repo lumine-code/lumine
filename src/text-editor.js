@@ -6729,7 +6729,7 @@ module.exports = class TextEditor {
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels the analysis.
    * @param {Function} [options.onChunk] - Accepts one streamed data packet; may return a promise.
-   * @returns {Promise<*>} Analysis data, or null when the invocation becomes obsolete.
+   * @returns {Promise<*>} Analysis data, or null when None disables analysis or the invocation becomes obsolete.
    * @category Syntax Trees
    */
   async analyzeSyntax(modulePath, method, params, options = {}) {

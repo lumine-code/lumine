@@ -1,5 +1,6 @@
 const path = require("node:path");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
+const NullGrammar = require("./null-grammar");
 module.exports = async function analyzeBufferSyntax(
   buffer,
   modulePath,
@@ -11,6 +12,7 @@ module.exports = async function analyzeBufferSyntax(
     throw new TypeError("Syntax analysis module path must be absolute");
   if (buffer.isDestroyed() || signal?.aborted) return null;
   const mode = buffer.getLanguageMode();
+  if (mode.grammar === NullGrammar) return null;
   const revision = buffer.getTextRevision();
   const epoch = mode.getSyntaxRequestEpoch?.();
   const check = () => {
