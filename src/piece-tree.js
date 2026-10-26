@@ -414,16 +414,30 @@ class PieceTree {
 
   static deserializeSnapshot(value) {
     if (value instanceof PieceTree) return value;
-    if (value?.type !== "LumineText" || value.version !== 1 || !Array.isArray(value.chunks))
+    if (
+      value?.type !== "LumineText" ||
+      value.version !== 1 ||
+      !Array.isArray(value.chunks) ||
+      !Number.isSafeInteger(value.length) ||
+      value.length < 0
+    )
       throw new Error("Invalid segmented text snapshot");
+    let length = 0;
+    for (const chunk of value.chunks) {
+      if (typeof chunk !== "string" || chunk.length > BUFFER_UNITS)
+        throw new Error("Invalid text snapshot chunk");
+      length += chunk.length;
+      if (!Number.isSafeInteger(length) || length > value.length)
+        throw new Error("Text snapshot length mismatch");
+    }
+    if (length !== value.length) throw new Error("Text snapshot length mismatch");
     let result = new PieceTree();
     for (const chunk of value.chunks) {
       if (typeof chunk !== "string" || chunk.length > BUFFER_UNITS)
         throw new Error("Invalid text snapshot chunk");
       result = result.replace(result.length, result.length, chunk);
     }
-    if (!Number.isSafeInteger(value.length) || result.length !== value.length)
-      throw new Error("Text snapshot length mismatch");
+    if (result.length !== value.length) throw new Error("Text snapshot length mismatch");
     return result;
   }
 

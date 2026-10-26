@@ -181,12 +181,13 @@ describe("DisplayLayer long-line fast paths", () => {
     expect(ratioCallCount).toBeLessThan(200);
   });
 
-  it("finds trailing whitespace after one bulk buffer read", () => {
+  it("finds trailing whitespace through bounded source reads", () => {
     const { buffer, displayLayer } = buildDisplayLayer(
       `prefix${" ".repeat(100_000)}\n\t \t\nplain`,
       {},
     );
     const characterReads = spyOn(buffer, "getCharacterAtPosition").and.callThrough();
+    spyOn(buffer, "lineForRow").and.throwError("Whole-line read");
 
     expect(displayLayer.findTrailingWhitespaceStartColumn(0)).toBe(6);
     expect(displayLayer.findTrailingWhitespaceStartColumn(1)).toBe(0);

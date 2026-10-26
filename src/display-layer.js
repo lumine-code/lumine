@@ -1158,16 +1158,18 @@ class DisplayLayer {
   }
 
   findTrailingWhitespaceStartColumn(bufferRow) {
-    const line = this.buffer.lineForRow(bufferRow);
-    if (line == null) return 0;
-
-    // Read the line once and scan its string, including long runs of padding
-    // in generated files, without repeated buffer lookups.
-    let column = line.length;
+    const length = this.buffer.lineLengthForRow(bufferRow);
+    if (length == null) return 0;
+    const source = this.buffer.getTextSnapshot();
+    const start = source.lineStart(bufferRow);
+    let column = length;
     while (column > 0) {
-      const character = line[column - 1];
-      if (character !== " " && character !== "\t") break;
-      column--;
+      const chunkStart = Math.max(0, column - 4096);
+      const text = source.slice(start + chunkStart, start + column);
+      let index = text.length;
+      while (index && (text[index - 1] === " " || text[index - 1] === "\t")) index--;
+      if (index) return chunkStart + index;
+      column = chunkStart;
     }
     return column;
   }

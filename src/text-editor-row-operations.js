@@ -124,6 +124,7 @@ async function indentSelections(editor, selections, options) {
   const tabLength = editor.getTabLength();
   const tabText = editor.getTabText();
   const languageMode = buffer.getLanguageMode();
+  const segments = [...rowSegments(rowSelections)];
   const rows = [
     ...new Set(
       selections
@@ -154,7 +155,10 @@ async function indentSelections(editor, selections, options) {
       const column = Math.max(point.column, indent.length);
       const hint =
         options.autoIndent && point.column <= indent.length ? hints?.get(point.row) : undefined;
-      let delta = Number.isFinite(hint) ? hint - indent.level : 0;
+      const rowIndents =
+        segments.find((segment) => point.row >= segment.start && point.row <= segment.end)?.count ||
+        0;
+      let delta = Number.isFinite(hint) ? hint - indent.level - rowIndents : 0;
       if (delta > 0 && !editor.getSoftTabs()) delta = Math.max(delta, 1);
       const text =
         delta > 0 ? editor.buildIndentString(delta) : editor.buildIndentString(1, column);
@@ -169,10 +173,10 @@ async function indentSelections(editor, selections, options) {
       });
     }
     inline.sort((a, b) => a.range[0][0] - b.range[0][0] || a.range[0][1] - b.range[0][1]);
-    async function* edits() {
+    async function* rawEdits() {
       let cursor = 0,
         deadline = performance.now() + 4;
-      for (const segment of rowSegments(rowSelections)) {
+      for (const segment of segments) {
         const text = repeatText(tabText, segment.count);
         for (let row = segment.start; row <= segment.end; row++) {
           while (cursor < inline.length && inline[cursor].range[0][0] < row) yield inline[cursor++];
@@ -194,6 +198,26 @@ async function indentSelections(editor, selections, options) {
         }
       }
       while (cursor < inline.length) yield inline[cursor++];
+    }
+    // An empty cursor at column zero can share a row with a nonempty
+    // selection. Preserve both insertions as one source-coordinate edit.
+    async function* edits() {
+      let pending;
+      for await (const edit of rawEdits()) {
+        if (
+          pending &&
+          pending.range[0][0] === edit.range[0][0] &&
+          pending.range[0][1] === edit.range[0][1]
+        ) {
+          const source =
+            typeof pending.text === "string" ? new PieceTree(pending.text) : pending.text;
+          pending.text = source.replace(source.length, source.length, edit.text);
+        } else {
+          if (pending) yield pending;
+          pending = edit;
+        }
+      }
+      if (pending) yield pending;
     }
     return await buffer.applyTextEdits(edits(), {
       expectedRevision,

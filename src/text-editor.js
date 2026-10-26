@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
+const { PieceTree } = require("./text-model");
 const { Point, Range } = TextBuffer;
 const DecorationManager = require("./decoration-manager");
 const Cursor = require("./cursor");
@@ -2982,6 +2983,11 @@ module.exports = class TextEditor {
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   duplicateLines(options = {}) {
     if (!this.ensureWritable("duplicateLines", options)) return;
+    const prepared = require("./text-editor-duplicate-lines").duplicateWithNormalization(
+      this,
+      options,
+    );
+    if (prepared) return prepared;
     this.transact(() => {
       const selections = this.getSelectionsOrderedByBufferPosition();
       const previousSelectionRanges = [];
@@ -3059,9 +3065,20 @@ module.exports = class TextEditor {
       if (options && options.selectWordIfEmpty && selection.isEmpty()) {
         selection.selectWord();
       }
-      const text = selection.getText();
+      const selected = selection.getBufferRange();
+      const length =
+        this.buffer.characterIndexForPosition(selected.end) -
+        this.buffer.characterIndexForPosition(selected.start);
+      if (length > 8 * 1024 * 1024)
+        throw Object.assign(
+          new RangeError(
+            "String-based selection callbacks are limited to 8 Mi UTF-16 units. Use getTextSnapshotInRange and applyTextEdits for larger transformations.",
+          ),
+          { code: "ERR_SYNCHRONOUS_TEXT_LIMIT" },
+        );
+      const text = fn(selection.getText());
       selection.deleteSelectedText();
-      const range = selection.insertText(fn(text));
+      const range = selection.insertText(text);
       selection.setBufferRange(range);
     });
   }
@@ -3072,6 +3089,17 @@ module.exports = class TextEditor {
   // selections to create multiple single-line selections that cumulatively cover
   // the same original area.
   splitSelectionsIntoLines() {
+    const count = this.getSelections().reduce((total, selection) => {
+      const { start, end } = selection.getBufferRange();
+      return total + Math.max(1, end.row - start.row + (end.column > 0 ? 1 : 0));
+    }, 0);
+    if (count > 2000)
+      throw Object.assign(
+        new RangeError(
+          `Splitting this selection would create ${count} cursors (limit 2000). Use a range-based text operation instead.`,
+        ),
+        { code: "ERR_SELECTION_LIMIT" },
+      );
     this.mergeIntersectingSelections(() => {
       for (const selection of this.getSelections()) {
         const range = selection.getBufferRange();
@@ -5956,7 +5984,16 @@ module.exports = class TextEditor {
       bufferRow <= end;
       bufferRow++
     ) {
-      if (hasIsRowCommented && languageMode.isRowCommented(bufferRow)) continue;
+      if (hasIsRowCommented) {
+        try {
+          if (languageMode.isRowCommented(bufferRow)) continue;
+        } catch (error) {
+          // Tab style detection is an optional hint during editor creation.
+          // Exhausting a syntax budget must not prevent opening the document.
+          if (error.code === "ERR_SYNTAX_QUERY_BUDGET") return;
+          throw error;
+        }
+      }
       const source = this.buffer.getTextSnapshot();
       const code = source.charCodeAt(source.lineStart(bufferRow));
       if (code === 32) return true;
@@ -6211,7 +6248,10 @@ module.exports = class TextEditor {
       const { start, end } = RowOperations.rowBounds(source, row);
       endColumn = RowOperations.leadingWhitespaceLength(source, start, end);
     }
-    const newIndentString = this.buildIndentString(newLevel);
+    const newIndentString = require("./text-editor-comment-operations").indentSource(
+      this,
+      newLevel,
+    );
     return this.buffer.setTextInRange(
       [
         [bufferRow, 0],
@@ -6297,6 +6337,29 @@ module.exports = class TextEditor {
    */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
+    const selections = this.getSelectionsOrderedByBufferPosition();
+    if (
+      RowOperations.selectedRowCount(selections) >= RowOperations.BULK_ROWS ||
+      selections.some((selection) => {
+        const [start, end] = selection.getBufferRowRange();
+        return (
+          this.buffer.characterIndexForPosition([end, Infinity]) -
+            this.buffer.characterIndexForPosition([start, 0]) >
+          1024 * 1024
+        );
+      })
+    ) {
+      const { mergeRanges, autoIndentRanges } = require("./text-editor-auto-indent");
+      return this.trackIndentation(
+        autoIndentRanges(
+          this,
+          mergeRanges(selections.map((selection) => selection.getBufferRowRange())),
+          options,
+          selections,
+        ),
+        this.buffer.getLanguageMode(),
+      );
+    }
     const rows = [];
     let lastRow = -1;
     for (const selection of this.getSelectionsOrderedByBufferPosition()) {
@@ -6985,15 +7048,32 @@ module.exports = class TextEditor {
    * @returns {Boolean|undefined|Promise<Boolean|undefined>} Whether the first non-whitespace character has a comment scope, or undefined for a blank row. Worker syntax resolves asynchronously.
    */
   isBufferRowCommented(bufferRow) {
-    const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
-    if (match) {
-      const mode = this.buffer.getLanguageMode();
+    const buffer = this.buffer,
+      mode = buffer.getLanguageMode();
+    const source = buffer.getTextSnapshot(),
+      revision = buffer.getTextRevision();
+    const inspect = require("./text-editor-comment-operations").inspectRows(
+      source,
+      this.getTabLength(),
+      () => {
+        if (
+          buffer.isDestroyed() ||
+          buffer.getTextRevision() !== revision ||
+          buffer.getLanguageMode() !== mode
+        )
+          throw Object.assign(new Error("Comment scope query cancelled"), { name: "AbortError" });
+      },
+    );
+    const apply = (info) => {
+      if (info.blank) return;
       if (mode.asynchronousSyntax) return mode.builtin("isRowCommented", [bufferRow]);
       return selectorMatchesAnyScope(
         "comment",
-        this.scopeDescriptorForBufferPosition([bufferRow, match.index]).scopes,
+        this.scopeDescriptorForBufferPosition([bufferRow, info.contentStart - info.start]).scopes,
       );
-    }
+    };
+    const info = inspect(bufferRow);
+    return info?.then ? info.then(apply) : apply(info);
   }
 
   // Get the scope descriptor at the cursor.
@@ -8528,6 +8608,16 @@ module.exports = class TextEditor {
     startRow = Math.max(0, startRow);
     endRow = Math.min(buffer.getLastRow(), endRow);
     if (
+      endRow - startRow + 1 >= RowOperations.BULK_ROWS ||
+      buffer.characterIndexForPosition([endRow, Infinity]) -
+        buffer.characterIndexForPosition([startRow, 0]) >
+        1024 * 1024
+    )
+      return this.trackIndentation(
+        require("./text-editor-auto-indent").autoIndentRanges(this, [[startRow, endRow]], options),
+        languageMode,
+      );
+    if (
       languageMode.publicationPending &&
       !languageMode.shouldParseSynchronously?.() &&
       languageMode.atGrammarSettlement
@@ -8633,6 +8723,16 @@ module.exports = class TextEditor {
       .filter((row) => Number.isInteger(row) && row >= 0 && row <= buffer.getLastRow())
       .sort((a, b) => a - b);
     if (!rows.length) return;
+    if (
+      rows.length >= RowOperations.BULK_ROWS ||
+      rows.some((row) => buffer.lineLengthForRow(row) > 1024 * 1024)
+    ) {
+      const { mergeRanges, autoIndentRanges } = require("./text-editor-auto-indent");
+      return this.trackIndentation(
+        autoIndentRanges(this, mergeRanges(rows.map((row) => [row, row])), options),
+        mode,
+      );
+    }
     if (!mode.suggestedIndentForBufferRowsAtRows) {
       if (!canAdjustIndentation(this, buffer, mode, options)) return;
       // Plain text derives each row from its predecessor, including the
@@ -8684,19 +8784,28 @@ module.exports = class TextEditor {
     if (!indents) return false;
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
-    const lineForRow = buffer.getTextSnapshot().lineReader();
+    const source = buffer.getTextSnapshot();
     const edits = [];
     const indentStrings = new Map();
     for (const [row, indent] of indents) {
       if (!Number.isInteger(row) || !Number.isFinite(indent) || indent < 0) continue;
-      const line = lineForRow(row);
-      if (line === undefined) continue;
+      if (row < 0 || row >= source.lineCount) continue;
+      const { start, end } = RowOperations.rowBounds(source, row);
       const endColumn = preserveLeadingWhitespace
         ? (insertedIndentLengths?.get(row) ?? 0)
-        : line.match(/^\s*/)[0].length;
-      if (!indentStrings.has(indent)) indentStrings.set(indent, this.buildIndentString(indent));
+        : RowOperations.leadingWhitespaceLength(source, start, end);
+      if (!indentStrings.has(indent))
+        indentStrings.set(
+          indent,
+          require("./text-editor-comment-operations").indentSource(this, indent),
+        );
       const text = indentStrings.get(indent);
-      if (line.slice(0, endColumn) !== text)
+      if (
+        endColumn !== text.length ||
+        !source
+          .subtext(start, start + endColumn)
+          .equals(typeof text === "string" ? new PieceTree(text) : text)
+      )
         edits.push({
           range: [
             [row, 0],

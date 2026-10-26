@@ -107,6 +107,8 @@ async function toggleComments(
   options,
   prepareOnly = false,
 ) {
+  if (/[\r\n]/.test(startToken) || /[\r\n]/.test(endToken || ""))
+    throw new Error("Comment delimiters must occupy one line");
   const buffer = editor.getBuffer(),
     source = buffer.getTextSnapshot();
   const expectedRevision = buffer.getTextRevision();

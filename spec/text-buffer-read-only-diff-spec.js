@@ -99,4 +99,17 @@ describe("TextBuffer read-only native diff", () => {
     expect(() => argument.lineText).toThrowError(/Synchronous search context/);
     expect(argument.matchText).toBe(" ");
   });
+  it("constructs and restores immutable text through the public snapshot factory", () => {
+    const source = TextBuffer.createTextSnapshot("a\r\n😀\ud800");
+    expect(TextBuffer.createTextSnapshot(source)).toBe(source);
+    const portable = source.serializeSnapshot();
+    expect(TextBuffer.createTextSnapshot(JSON.parse(JSON.stringify(portable))).equals(source)).toBe(
+      true,
+    );
+    expect(TextBuffer.createTextSnapshot().length).toBe(0);
+    expect(() => TextBuffer.createTextSnapshot({ ...portable, length: 1 })).toThrow();
+    expect(() =>
+      TextBuffer.createTextSnapshot({ ...portable, chunks: ["x".repeat(32769)] }),
+    ).toThrow();
+  });
 });

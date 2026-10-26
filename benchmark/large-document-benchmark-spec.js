@@ -445,6 +445,60 @@ async function runBenchmark(options = {}) {
       exactRange: true,
       viewport: inspectViewport(editor, component),
     };
+    report.phase = "duplicate-all";
+    const originalSelection = editor.getSelectedBufferRange();
+    const ending =
+      buffer.getPreferredLineEnding() ||
+      buffer.lineEndingForRow(buffer.getLastRow()) ||
+      buffer.lineEndingForRow(buffer.getLastRow() - 1);
+    let expectedCopy = original;
+    if (buffer.getEndPosition().column !== 0) expectedCopy = expectedCopy.replace(0, 0, "\n");
+    if (ending)
+      expectedCopy = require("../src/text-source-helpers").normalizeLineEndings(
+        expectedCopy,
+        ending,
+      );
+    const duplicateStarted = performance.now();
+    const duplicateWork = lumine.commands.dispatch(element, "editor:duplicate-lines");
+    invariant(duplicateWork, "DUPLICATE_NOT_DISPATCHED");
+    const duplicateCommandMs = performance.now() - duplicateStarted;
+    const firstDuplicateFrame = frame();
+    await duplicateWork;
+    const duplicateCompleteMs = performance.now() - duplicateStarted;
+    const duplicateRaf = await firstDuplicateFrame;
+    await settle();
+    const duplicated = buffer.getTextSnapshot();
+    invariant(
+      duplicated.length === original.length + expectedCopy.length,
+      "DUPLICATE_LENGTH_MISMATCH",
+    );
+    invariant(
+      duplicated.subtext(0, original.length).equals(original),
+      "DUPLICATE_CHANGED_ORIGINAL",
+    );
+    invariant(duplicated.subtext(original.length).equals(expectedCopy), "DUPLICATE_COPY_MISMATCH");
+    const duplicateViewport = inspectViewport(editor, component);
+    const duplicateUndoStarted = performance.now();
+    invariant(lumine.commands.dispatch(element, "core:undo"), "DUPLICATE_UNDO_NOT_DISPATCHED");
+    const duplicateUndoCommandMs = performance.now() - duplicateUndoStarted;
+    await settle();
+    invariant(buffer.getTextSnapshot().equals(original), "DUPLICATE_UNDO_TEXT_MISMATCH");
+    invariant(
+      editor.getSelectedBufferRange().isEqual(originalSelection),
+      "DUPLICATE_UNDO_SELECTION_MISMATCH",
+    );
+    invariant(report.asyncErrorCount === 0, "DUPLICATE_OBSERVER_FAILED");
+    report.duplicateAll = {
+      commandMs: duplicateCommandMs,
+      completeMs: duplicateCompleteMs,
+      inputToNextRafMs: duplicateRaf - duplicateStarted,
+      resultingUnits: duplicated.length,
+      exactCopy: true,
+      undoCommandMs: duplicateUndoCommandMs,
+      exactSnapshotRestored: true,
+      exactSelectionRestored: true,
+      viewport: duplicateViewport,
+    };
     editor.setCursorBufferPosition(buffer.getEndPosition());
     await settle();
     report.searches = [];

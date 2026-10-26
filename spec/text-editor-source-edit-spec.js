@@ -45,6 +45,114 @@ describe("Snapshot-backed editor operations", () => {
     editor.undo();
     expect(buffer.getText()).toBe("first\r\nsecond\nlast");
   });
+  it("normalizes a large duplicate cooperatively and maps reversed selections across lone CRs", async () => {
+    const text = "head\r" + "x".repeat(1048577) + "\rtail";
+    const buffer = new TextBuffer(text);
+    editor = new TextEditor({ buffer, autoHeight: false });
+    buffer.setPreferredLineEnding("\n");
+    editor.setSelectedBufferRange(
+      [
+        [0, 1],
+        [0, text.length - 1],
+      ],
+      { reversed: true },
+    );
+    const originalRange = editor.getSelectedBufferRange();
+    buffer.clearUndoStack();
+    const pending = editor.duplicateLines();
+    expect(typeof pending.then).toBe("function");
+    expect(buffer.getLength()).toBe(text.length);
+    await pending;
+    expect(buffer.getText()).toBe(text + "\n" + text.replace(/\r/g, "\n"));
+    expect(editor.getSelectedBufferRange()).toEqual(new (require("../src/range"))([1, 1], [3, 3]));
+    expect(editor.getLastSelection().isReversed()).toBe(true);
+    editor.undo();
+    expect(buffer.getText()).toBe(text);
+    expect(editor.getSelectedBufferRange()).toEqual(originalRange);
+    editor.redo();
+    expect(editor.getSelectedBufferRange()).toEqual(new (require("../src/range"))([1, 1], [3, 3]));
+  });
+  it("cancels large duplicate normalization when the selection moves", async () => {
+    const text = "x\r".repeat(600000);
+    const buffer = new TextBuffer(text);
+    editor = new TextEditor({ buffer, autoHeight: false });
+    buffer.setPreferredLineEnding("\n");
+    editor.selectAll();
+    const pending = editor.duplicateLines();
+    editor.setCursorBufferPosition([0, 0]);
+    await expectAsync(pending).toBeRejectedWith(jasmine.objectContaining({ name: "AbortError" }));
+    expect(buffer.getText()).toBe(text);
+    expect(buffer.undo()).toBe(false);
+  });
+  it("publishes normalized copies of separate selections using original source offsets", async () => {
+    const line = "x".repeat(1048577) + "\rz";
+    const text = "prefix\n" + line + "\nend\n";
+    const buffer = new TextBuffer(text);
+    editor = new TextEditor({ buffer, autoHeight: false });
+    buffer.setPreferredLineEnding("\n");
+    editor.setSelectedBufferRanges([
+      [
+        [0, 1],
+        [0, 4],
+      ],
+      [
+        [1, 0],
+        [1, line.length],
+      ],
+    ]);
+    const before = editor.getSelectedBufferRanges();
+    await editor.duplicateLines();
+    expect(buffer.getText()).toBe(
+      "prefix\nprefix\n" + line + "\n" + line.replace(/\r/g, "\n") + "\nend\n",
+    );
+    expect(editor.getSelectedBufferRanges()).toEqual([
+      new (require("../src/range"))([1, 1], [1, 4]),
+      new (require("../src/range"))([3, 0], [4, 1]),
+    ]);
+    editor.undo();
+    expect(buffer.getText()).toBe(text);
+    expect(editor.getSelectedBufferRanges()).toEqual(before);
+  });
+  it("rejects a prepared source edit when a will-change observer invalidates its owner", async () => {
+    const buffer = new TextBuffer("original");
+    editor = new TextEditor({ buffer, autoHeight: false });
+    let current = true;
+    const subscription = buffer.onWillChange(() => {
+      current = false;
+    });
+    try {
+      await expectAsync(
+        buffer.applyTextEdits(
+          [
+            {
+              range: [
+                [0, 0],
+                [0, 1],
+              ],
+              text: "X",
+            },
+          ],
+          { isCurrent: () => current },
+        ),
+      ).toBeRejectedWith(jasmine.objectContaining({ code: "ERR_STALE_EDIT" }));
+      expect(buffer.getText()).toBe("original");
+      expect(buffer.undo()).toBe(false);
+    } finally {
+      subscription.dispose();
+    }
+  });
+  it("applies a source diff whose exact inserted span exceeds the native string limit", () => {
+    const source = hugeSource();
+    const buffer = new TextBuffer("prefix\n");
+    editor = new TextEditor({ buffer, autoHeight: false });
+    const expected = source.replace(0, 0, "prefix\n");
+    buffer.setTextViaDiff(expected);
+    expect(buffer.getTextSnapshot().equals(expected)).toBe(true);
+    editor.undo();
+    expect(buffer.getText()).toBe("prefix\n");
+    editor.redo();
+    expect(buffer.getTextSnapshot().equals(expected)).toBe(true);
+  });
 
   it("normalizes snapshot endings across piece boundaries including lone CR and Unicode", () => {
     const buffer = new TextBuffer("before\n");

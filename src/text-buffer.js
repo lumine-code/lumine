@@ -346,6 +346,21 @@ class TextBuffer {
 
   /**
    * @public
+   * @status experimental
+   *
+   * Create an immutable text snapshot from a string, an existing snapshot or
+   * the segmented LumineText value returned by portable session capture.
+   * Existing immutable roots are reused; segmented input is validated and
+   * joined without materializing a document string or creating a live buffer.
+   * @param {String|Object} [value] - Text or serialized snapshot; defaults to empty text.
+   * @returns {Object} An immutable snapshot supporting chunks, subtext and source-coordinate reads.
+   */
+  static createTextSnapshot(value = "") {
+    return typeof value === "string" ? new PieceTree(value) : PieceTree.deserializeSnapshot(value);
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Restore a {@link TextBuffer} based on an earlier state created using
@@ -1735,6 +1750,8 @@ class TextBuffer {
         invoked = true;
         return this.transact(() => {
           this.emitWillChangeEvent();
+          check();
+          markerPlan.verify();
           this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
             recordHistory: true,
             markerPlan,

@@ -81,6 +81,14 @@ module.exports = class NullLanguageMode {
     if (precedingRow == null) return 0;
     return this.indentationForRow(precedingRow, tabLength).level;
   }
+  scanSuggestedIndentation(ranges, tabLength, options) {
+    return require("./text-editor-auto-indent").scanPlainIndentation(
+      this.buffer,
+      ranges,
+      tabLength,
+      options,
+    );
+  }
   isFoldableAtRow(row) {
     return this.endRowForFoldAtRow(row, 1, true) != null;
   }
