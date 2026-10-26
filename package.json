@@ -36,7 +36,7 @@
     "@lumine-code/fs-temp": "github:lumine-code/fs-temp#f2ad78026b74af82520aaa07397b611e35807c9f",
     "@lumine-code/fuzzy-search": "github:lumine-code/fuzzy-search#5a83fef467ce0ce5890b3c02525caa4e0b000ef2",
     "@lumine-code/grim": "github:lumine-code/grim#d9e238e0bc39a11e18fe18130bbe39dd5b0f7ef6",
-    "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#114f837cf07f72d1458e4442f04b37a8e4dfa264",
+    "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#24743b2feb5b044463f9fec20edd9cf5fd5371da",
     "@lumine-code/season": "github:lumine-code/season#7b60a343cea3c3efff81b44840eb6a4663b41ffd",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#f9182feeea4df367a15e64e30f6bc6e00b9bc8f5",
     "@lumine-code/underscore-plus": "github:lumine-code/underscore-plus#a471a621ceab05e6ea001d4b84a80c62ab518789",
@@ -202,7 +202,7 @@
     "yargs": "18.2.0"
   },
   "allowScripts": {
-    "github:lumine-code/keyboard-layout#114f837cf07f72d1458e4442f04b37a8e4dfa264": true,
+    "github:lumine-code/keyboard-layout#24743b2feb5b044463f9fec20edd9cf5fd5371da": true,
     "electron-winstaller@5.4.0": true,
     "github:lumine-code/fs-admin#f213955c7799a555d9c252294e5bf3f38531f3ff": true,
     "github:lumine-code/watcher#62bea700b42a46de24fbb7e0bb57946a03dce5dc": true
