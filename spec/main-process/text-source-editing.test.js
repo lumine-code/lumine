@@ -51,7 +51,7 @@ test("streamed edit batches preserve markers and commit selection finalizers in 
       ],
       {
         didCommit: () =>
-          marker.setBufferRange?.([
+          marker.setRange([
             [2, 0],
             [2, 0],
           ]),
@@ -59,9 +59,12 @@ test("streamed edit batches preserve markers and commit selection finalizers in 
     );
     assert.equal(count, 2);
     assert.equal(buffer.getText(), "aa\nbb\nc\n");
+    assert.equal(marker.getStartPosition().column, 0);
     buffer.undo();
     assert.equal(buffer.getText(), "a\nb\nc\n");
     assert.equal(marker.getStartPosition().column, 1);
+    buffer.redo();
+    assert.equal(marker.getStartPosition().column, 0);
   } finally {
     buffer.destroy();
   }

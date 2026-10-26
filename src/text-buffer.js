@@ -1091,6 +1091,11 @@ class TextBuffer {
    * `subtext(start, end)` captures a shared subrange; `replace(start, end, text)`
    * returns a new snapshot, accepting a string or another snapshot. Neither
    * operation mutates the captured text or materializes the whole document.
+   * `mapChunks(mapper, {cache, signal, isCurrent})` asynchronously transforms
+   * bounded chunks with cooperative yields. A cache is a WeakMap owned by one
+   * pure context-free mapper; unchanged branches are reused across revisions.
+   * The mapper receives a string and synchronously returns a string or snapshot.
+   * It must preserve its own semantics across arbitrary chunk boundaries.
    * A line reader returns a row-to-text function with efficient sequential reads
    * and indexed jumps; requests outside the snapshot return `undefined`.
    * Offsets count UTF-16 units; line iteration strips LF/CRLF and uses an

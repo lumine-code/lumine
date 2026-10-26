@@ -5,6 +5,7 @@ const BUFFER_UNITS = 32768;
 const MERGE_UNITS = 1024;
 const { MAX_STRING_LENGTH } = require("node:buffer").constants;
 const snapshotIdentities = new WeakMap();
+const mapperOwners = new WeakMap();
 
 function snapshotIdentity(node) {
   if (!node) return null;
@@ -302,6 +303,51 @@ class PieceTree {
 
   rememberSnapshotIdentity(known, value) {
     if (this.#root) known.set(snapshotIdentity(this.#root), value);
+  }
+
+  async mapChunks(mapper, { cache = new WeakMap(), signal, isCurrent } = {}) {
+    if (typeof mapper !== "function" || !(cache instanceof WeakMap))
+      throw new TypeError("Chunk mapping requires a function and a WeakMap cache");
+    const owner = mapperOwners.get(cache);
+    if (owner && owner !== mapper)
+      throw new TypeError("A chunk mapping cache belongs to one mapper");
+    mapperOwners.set(cache, mapper);
+    const check = () => {
+      if (signal?.aborted || isCurrent?.() === false)
+        throw Object.assign(new Error("Text mapping was cancelled"), { name: "AbortError" });
+    };
+    check();
+    const iterator = this.snapshotNodes(cache);
+    let deadline = performance.now() + 4;
+    for (let step = iterator.next(); ; step = iterator.next()) {
+      if (step.done) {
+        check();
+        const result = step.value ? cache.get(step.value) : new PieceTree();
+        if (!(result instanceof PieceTree)) throw new TypeError("Invalid text mapping cache");
+        return result;
+      }
+      const node = step.value;
+      let mapped;
+      if (node.text !== undefined) {
+        const value = mapper(node.text);
+        if (typeof value !== "string" && !(value instanceof PieceTree))
+          throw new TypeError("A text chunk mapper must return a string or snapshot synchronously");
+        mapped = value instanceof PieceTree ? value : new PieceTree(value);
+      } else {
+        const left = cache.get(node.left),
+          right = cache.get(node.right);
+        if (!(left instanceof PieceTree) || !(right instanceof PieceTree))
+          throw new TypeError("Invalid text mapping cache");
+        mapped = left.replace(left.length, left.length, right);
+      }
+      cache.set(node.identity, mapped);
+      check();
+      if (performance.now() >= deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        check();
+        deadline = performance.now() + 4;
+      }
+    }
   }
 
   serializeSnapshot(deferred = false) {
