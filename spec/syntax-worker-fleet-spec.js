@@ -459,7 +459,7 @@ describe("Package syntax analyses with a worker owner", () => {
         await filter.filterLevels(
           scopes[0].getScopesArray().filter((scope) => scope.startsWith("comment")),
         );
-        expect(filter.hiddenRows.levels).toEqual([1]);
+        expect(filter.hiddenRows.levels.toArray(1)).toEqual([1]);
       } finally {
         filter.destroy();
       }
