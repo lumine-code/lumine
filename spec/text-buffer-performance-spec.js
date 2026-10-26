@@ -7,12 +7,24 @@ describe("TextBuffer first-match scans", () => {
 
   it("does not collect every match for a forward scan without the global flag", () => {
     buffer = new TextBuffer("alpha beta\nalpha beta\nalpha beta");
-    const first = spyOn(buffer, "findInRangeSync").and.callThrough();
+    const createSearch = buffer.buffer.createSearch.bind(buffer.buffer);
+    let visited = 0;
+    spyOn(buffer.buffer, "createSearch").and.callFake((...args) => {
+      const search = createSearch(...args);
+      const scan = search.scan.bind(search);
+      search.scan = function* (...options) {
+        for (const match of scan(...options)) {
+          if (match && ++visited > 1) throw new Error("First-match scan continued enumerating");
+          yield match;
+        }
+      };
+      return search;
+    });
     const all = spyOn(buffer, "findAllInRangeSync").and.callThrough();
     const callback = jasmine.createSpy("callback");
     buffer.scan(/beta/, callback);
 
-    expect(first).toHaveBeenCalledTimes(1);
+    expect(visited).toBe(1);
     expect(all).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledTimes(1);
   });
