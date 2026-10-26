@@ -2385,9 +2385,10 @@ class TreeSitterLanguageMode {
         indentationLevels.set(
           row,
           options.preserveLeadingWhitespace
-            ? this.indentResolver.indentLevelForLine(
-                this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0),
+            ? this.indentResolver.indentLevelForBufferRow(
+                row,
                 tabLength,
+                options.insertedIndentLengths?.get(row) ?? 0,
                 Math.floor(indent * tabLength),
               )
             : indent,
@@ -2739,7 +2740,12 @@ class TreeSitterLanguageMode {
     let range = this.bufferRangeForScopeAtPosition(last(scopes), point);
     return new Token({
       scopes,
-      value: this.buffer.getTextInRange(range),
+      valueSource: this.buffer
+        .getTextSnapshot()
+        .subtext(
+          this.buffer.characterIndexForPosition(range.start),
+          this.buffer.characterIndexForPosition(range.end),
+        ),
     });
   }
 }
@@ -6425,8 +6431,13 @@ class NodeRangeSet {
             endPosition: current.startPosition,
             endIndex: current.startIndex,
           };
-          let rangeText = buffer.getTextInRange(rangeForNode(pseudoRange));
-          if (!/\S/.test(rangeText)) {
+          if (
+            require("./text-source-helpers").rangeIsBlank(
+              buffer.getTextSnapshot(),
+              previous.endIndex,
+              current.startIndex,
+            )
+          ) {
             rangesWithWhitespace.push(pseudoRange);
           }
         }

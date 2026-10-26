@@ -814,7 +814,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return this.builtin("suggestedIndentForBufferRow", args);
   }
   suggestedIndentForEditedBufferRow(row, ...args) {
-    const first = this.buffer.lineForRow(row)?.[0];
+    const first = this.buffer.getTextInRange([
+      [row, 0],
+      [row, 1],
+    ]);
     if (row === 0 || (first !== " " && first !== "\t")) return;
     return this.builtin("suggestedIndentForEditedBufferRow", [row, ...args]);
   }

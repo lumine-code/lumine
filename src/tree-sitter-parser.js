@@ -1,6 +1,7 @@
 const { Parser } = require("web-tree-sitter");
 const runtime = require("./tree-sitter-runtime");
 require("./tree-sitter-cursor");
+require("./tree-sitter-node-text");
 const ownTree = require("./tree-sitter-tree");
 
 const metadata = new WeakMap();

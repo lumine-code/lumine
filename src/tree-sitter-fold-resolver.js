@@ -1,6 +1,7 @@
 const Point = require("./point");
 const Range = require("./range");
 const createTree = require("./rb-tree");
+const { rangeIsBlank } = require("./text-source-helpers");
 const { comparePoints, resolveNodePosition } = require("./tree-sitter-node-helpers");
 
 // How far a fold resolver reads around a single-row request when it has to
@@ -333,9 +334,9 @@ class FoldResolver {
   // Returns `true` if there is no non-whitespace content on this position's
   // row before this position's column.
   positionIsNotPrecededByTextOnLine(position) {
-    let textForRow = this.buffer.lineForRow(position.row);
-    let precedingText = textForRow.substring(0, position.column);
-    return !/\S/.test(precedingText);
+    const source = this.buffer.getTextSnapshot();
+    const start = source.lineStart(position.row);
+    return rangeIsBlank(source, start, start + position.column);
   }
 
   resolvePositionForDividedFold(capture) {

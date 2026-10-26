@@ -46,8 +46,7 @@ exports.paragraphs = async function (context, { rows }, { signal, emit }) {
       found.set(row, previous);
       continue;
     }
-    const line = context.lineTextForBufferRow(row);
-    if (typeof line !== "string" || !/\S/.test(line)) {
+    if (row < 0 || row > context.getLastBufferRow() || context.buffer.isRowBlank(row)) {
       found.set(row, null);
       continue;
     }
@@ -56,7 +55,7 @@ exports.paragraphs = async function (context, { rows }, { signal, emit }) {
       end = row;
     while (
       start > 0 &&
-      /\S/.test(context.lineTextForBufferRow(start - 1)) &&
+      !context.buffer.isRowBlank(start - 1) &&
       context.isBufferRowCommented(start - 1) === commented
     ) {
       start--;
@@ -67,7 +66,7 @@ exports.paragraphs = async function (context, { rows }, { signal, emit }) {
     }
     while (
       end < context.getLastBufferRow() &&
-      /\S/.test(context.lineTextForBufferRow(end + 1)) &&
+      !context.buffer.isRowBlank(end + 1) &&
       context.isBufferRowCommented(end + 1) === commented
     ) {
       end++;

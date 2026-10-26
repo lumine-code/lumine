@@ -1,5 +1,6 @@
 const Point = require("./point");
 const Range = require("./range");
+const { leadingIndentation } = require("./text-source-helpers");
 
 function guarded(methods, signal) {
   for (const [name, value] of Object.entries(methods)) {
@@ -65,8 +66,12 @@ function contextFor(mode, signal, revision = mode.buffer.getTextRevision()) {
       getLastBufferRow: document.getLastRow,
       getLineCount: document.getLineCount,
       getEofBufferPosition: document.getEndPosition,
-      indentationForBufferRow: (row, tabLength) =>
-        mode.indentLevelForLine(buffer.lineForRow(row), tabLength),
+      indentationForBufferRow: (row, tabLength) => {
+        const source = buffer.getTextSnapshot();
+        const start = source.lineStart(row);
+        return leadingIndentation(source, start, start + buffer.lineLengthForRow(row), tabLength)
+          .level;
+      },
       getFoldableRangeAtBufferRow: (row, tabLength) =>
         mode.getFoldRangeForRow?.(row, tabLength) ?? null,
       isFoldableAtBufferRow: (row) => mode.isFoldableAtRow?.(row) ?? false,

@@ -1,6 +1,7 @@
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
+const { rangeIsBlank } = require("./text-source-helpers");
 
 const EMPTY_PROPERTIES = Object.freeze({});
 
@@ -816,18 +817,22 @@ ScopeResolver.TESTS = {
   // row. Considers the node's ending row.
   lastTextOnRow(node, value, existingData, instance) {
     let { buffer } = instance;
-    let text = buffer.lineForRow(node.endPosition.row);
-    let textAfterNode = text.slice(node.endPosition.column);
-    return !/\S/.test(textAfterNode);
+    const source = buffer.getTextSnapshot();
+    const start = source.lineStart(node.endPosition.row);
+    return rangeIsBlank(
+      source,
+      start + node.endPosition.column,
+      start + buffer.lineLengthForRow(node.endPosition.row),
+    );
   },
 
   // Passes when the node represents the first non-whitespace content on its
   // row. Considers the node's starting row.
   firstTextOnRow(node, value, existingData, instance) {
     let { buffer } = instance;
-    let text = buffer.lineForRow(node.startPosition.row);
-    let textBeforeNode = text.slice(0, node.startPosition.column);
-    return !/\S/.test(textBeforeNode);
+    const source = buffer.getTextSnapshot();
+    const start = source.lineStart(node.startPosition.row);
+    return rangeIsBlank(source, start, start + node.startPosition.column);
   },
 
   // Passes if this node has any node of the given type(s) in its ancestor

@@ -4,7 +4,32 @@ const StartDotRegex = /^\.?/;
 // Represents a single unit of text as selected by a grammar.
 module.exports = class Token {
   constructor(properties) {
-    this.value = properties.value;
+    if (properties.valueSource) {
+      const source = properties.valueSource;
+      Object.defineProperty(this, "valueSource", { value: source });
+      Object.defineProperty(this, "value", {
+        enumerable: true,
+        configurable: true,
+        get: () => {
+          const value = source.toString();
+          Object.defineProperty(this, "value", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+          return value;
+        },
+        set: (value) => {
+          Object.defineProperty(this, "value", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        },
+      });
+    } else this.value = properties.value;
     this.scopes = properties.scopes;
   }
 

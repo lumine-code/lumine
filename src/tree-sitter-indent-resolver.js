@@ -2,6 +2,7 @@ const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const captureQuery = require("./tree-sitter-query-cache");
 const { comparePoints, resolveNodePosition } = require("./tree-sitter-node-helpers");
+const { leadingIndentation, trimmedRange } = require("./text-source-helpers");
 
 function clamp(value, min, max) {
   if (value < min) {
@@ -93,16 +94,16 @@ class IndentResolver {
       // be able to dedent it into the correct position when
       // `preserveLeadingWhitespace` is `true`. This option probably needs to
       // be revisited.
-      const line = this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0);
-      existingIndent = this.indentLevelForLine(line, tabLength);
+      existingIndent = this.indentLevelForBufferRow(
+        row,
+        tabLength,
+        options.insertedIndentLengths?.get(row) ?? 0,
+      );
     }
 
     let comparisonRowIndent = options.comparisonRowIndent ?? options.comparisonRowIndents?.get(row);
     if (comparisonRowIndent === undefined) {
-      comparisonRowIndent = languageMode.indentLevelForLine(
-        this.buffer.lineForRow(comparisonRow),
-        tabLength,
-      );
+      comparisonRowIndent = this.indentLevelForBufferRow(comparisonRow, tabLength);
     }
 
     // What's the right place to measure from? Often we're here because the
@@ -419,8 +420,9 @@ class IndentResolver {
     // next row.
 
     let dedentDelta = 0;
-    let lineText = this.buffer.lineForRow(row);
-    let rowStartingColumn = Math.max(lineText.search(/\S/), 0);
+    const lineContent = this.lineContent(row);
+    const rowStartingColumn =
+      lineContent.start === lineContent.end ? 0 : lineContent.start - lineContent.lineStart;
 
     if (!options.skipDedentCheck) {
       scopeResolver.reset();
@@ -490,7 +492,6 @@ class IndentResolver {
         },
       );
 
-      let currentRowText = lineText.trim();
       // We can reuse the position set we created for Phase 1.
       positionSet.clear();
 
@@ -548,7 +549,7 @@ class IndentResolver {
         //
         // If a capture is confident it knows what it's doing, it can opt out
         // of this behavior with `(#set! indent.force true)`.
-        if (!force && !currentRowText.startsWith(node.text)) {
+        if (!force && !this.nodeMatchesLineContent(node, lineContent, true)) {
           continue;
         }
 
@@ -563,7 +564,7 @@ class IndentResolver {
               currentRow: row,
               comparisonRow,
               captureMode: "preserve",
-              finalIndent: this.indentLevelForLine(lineText, tabLength),
+              finalIndent: this.indentLevelForBufferRow(row, tabLength),
             });
           return null;
         } else if (name === "match") {
@@ -674,16 +675,16 @@ class IndentResolver {
     rawOptions,
     { comparisonRow, comparisonRowIndent, controllingLayer },
   ) {
-    const comparisonText = this.buffer.lineForRow(comparisonRow);
-    const rowText = this.buffer.lineForRow(row);
+    const comparisonText = this.lineSource(comparisonRow);
+    const rowText = this.lineSource(row);
     return this.languageMode.atTransactionEnd().then(({ parseError }) => {
       if (parseError || this.languageMode.destroyed || controllingLayer.destroyed) return undefined;
       // Both phases must wait for current syntax. Retrying a missing dedent
       // snapshot synchronously would visit the same unavailable layer forever.
       // A later edit can also make the original comparison no longer relevant.
       if (
-        comparisonText !== this.buffer.lineForRow(comparisonRow) ||
-        rowText !== this.buffer.lineForRow(row)
+        !comparisonText.equals(this.lineSource(comparisonRow)) ||
+        !rowText.equals(this.lineSource(row))
       )
         return undefined;
       const tree = controllingLayer.getOrParseTree({ force: false });
@@ -851,10 +852,7 @@ class IndentResolver {
           let tree = treeForLayer(controllingLayer);
           if (!tree) return null;
 
-          let firstLineCurrentIndent = this.indentLevelForLine(
-            this.buffer.lineForRow(row),
-            tabLength,
-          );
+          let firstLineCurrentIndent = this.indentLevelForBufferRow(row, tabLength);
 
           let firstLineIdealIndent = this.suggestedIndentForBufferRow(row, tabLength, {
             ...options,
@@ -886,7 +884,7 @@ class IndentResolver {
         }
 
         // All rows other than the first are easy — just apply the delta.
-        let actualIndent = this.indentLevelForLine(this.buffer.lineForRow(row), tabLength);
+        let actualIndent = this.indentLevelForBufferRow(row, tabLength);
 
         results.set(
           row,
@@ -921,10 +919,7 @@ class IndentResolver {
         const indent = this.suggestedIndentForBufferRow(row, tabLength, rowOptions);
         if (preservedRows.has(row)) {
           results.set(row, null);
-          indentationLevels.set(
-            row,
-            this.indentLevelForLine(this.buffer.lineForRow(row), tabLength),
-          );
+          indentationLevels.set(row, this.indentLevelForBufferRow(row, tabLength));
           continue;
         }
         if (typeof indent !== "number" || !Number.isFinite(indent)) {
@@ -938,9 +933,10 @@ class IndentResolver {
         indentationLevels.set(
           row,
           options.preserveLeadingWhitespace
-            ? this.indentLevelForLine(
-                this.buffer.lineForRow(row).slice(options.insertedIndentLengths?.get(row) ?? 0),
+            ? this.indentLevelForBufferRow(
+                row,
                 tabLength,
+                options.insertedIndentLengths?.get(row) ?? 0,
                 Math.floor(indent * tabLength),
               )
             : indent,
@@ -953,8 +949,7 @@ class IndentResolver {
 
   suggestedIndentForEditedBufferRow(row, tabLength, options = {}) {
     let { languageMode } = this;
-    const line = this.buffer.lineForRow(row);
-    const currentRowIndent = this.indentLevelForLine(line, tabLength);
+    const currentRowIndent = this.indentLevelForBufferRow(row, tabLength);
     let comparisonRow = options.comparisonRow ?? this.getComparisonRow(row, options);
 
     // If the row is not indented at all, we have nothing to do, because we can
@@ -974,7 +969,9 @@ class IndentResolver {
     // which one owns the position at the cursor.
     //
     // Use the position of the first text on the line as the reference point.
-    let rowStartingColumn = Math.max(line.search(/\S/), 0);
+    const lineContent = this.lineContent(row);
+    const rowStartingColumn =
+      lineContent.start === lineContent.end ? 0 : lineContent.start - lineContent.lineStart;
     let rowStartingPoint = new Point(row, rowStartingColumn);
     let controllingLayer = languageMode.controllingLayerAtPoint(rowStartingPoint, (layer) => {
       if (!layer.queries.indentsQuery) return false;
@@ -1060,8 +1057,6 @@ class IndentResolver {
       endPosition: { row: row + 1, column: 0 },
     });
 
-    let lineText = this.buffer.lineForRow(row).trim();
-
     // This is the indent level that is suggested from context — the level we'd
     // have if this row were completely blank. We won't alter the indent level
     // of the current row — even if it's “wrong” — unless typing triggers a
@@ -1110,7 +1105,7 @@ class IndentResolver {
       // some other mechanism to ensure the adjustment will happen exactly
       // once, it can bypass this behavior with `(#set! indent.force true)`.
       //
-      if (!force && node.text !== lineText) {
+      if (!force && !this.nodeMatchesLineContent(node, lineContent)) {
         continue;
       }
 
@@ -1195,6 +1190,48 @@ class IndentResolver {
     return indentLength / tabLength;
   }
 
+  lineSource(row) {
+    const source = this.buffer.getTextSnapshot();
+    const start = source.lineStart(row);
+    return source.subtext(start, start + this.buffer.lineLengthForRow(row));
+  }
+
+  lineContent(row) {
+    const source = this.buffer.getTextSnapshot();
+    const lineStart = source.lineStart(row);
+    return {
+      source,
+      lineStart,
+      ...trimmedRange(source, lineStart, lineStart + this.buffer.lineLengthForRow(row)),
+    };
+  }
+
+  indentLevelForBufferRow(row, tabLength, skip = 0, initialColumn = 0) {
+    const source = this.buffer.getTextSnapshot();
+    const start = source.lineStart(row);
+    const end = start + this.buffer.lineLengthForRow(row);
+    return leadingIndentation(source, Math.min(end, start + skip), end, tabLength, initialColumn)
+      .level;
+  }
+
+  nodeMatchesLineContent(node, content, prefix = false) {
+    const length = node.endIndex - node.startIndex;
+    const available = content.end - content.start;
+    if (prefix ? length > available : length !== available) return false;
+    for (let offset = 0; offset < length;) {
+      const value = node.tree.textCallback(node.startIndex + offset, node.startPosition);
+      const count = Math.min(value?.length ?? 0, length - offset, 4096);
+      if (
+        !count ||
+        content.source.slice(content.start + offset, content.start + offset + count) !==
+          value.slice(0, count)
+      )
+        return false;
+      offset += count;
+    }
+    return true;
+  }
+
   resolveMatch(capture, { currentRow, tabLength, indentationLevels }) {
     let { node } = capture;
 
@@ -1222,10 +1259,7 @@ class IndentResolver {
     if (indentationLevels) {
       baseIndent = indentationLevels.get(targetRow);
     }
-    baseIndent ??= this.languageMode.indentLevelForLine(
-      this.buffer.lineForRow(targetRow),
-      tabLength,
-    );
+    baseIndent ??= this.indentLevelForBufferRow(targetRow, tabLength);
 
     let result = baseIndent + offsetIndent;
 

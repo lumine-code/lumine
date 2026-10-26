@@ -4,6 +4,8 @@ const Range = require("./range");
 const ScopeDescriptor = require("./scope-descriptor");
 const NullGrammar = require("./null-grammar");
 const Token = require("./token");
+const { PieceTree } = require("./text-model");
+const { rangeIsBlank, leadingIndentation } = require("./text-source-helpers");
 
 const EMPTY = [];
 const NON_WHITESPACE_REGEX = /\S/;
@@ -46,8 +48,16 @@ module.exports = class NullLanguageMode {
     return null;
   }
   tokenForPosition(position) {
-    const value = this.buffer?.lineForRow(Point.fromObject(position).row) ?? "";
-    return new Token({ value, scopes: [this.grammar.scopeName] });
+    if (!this.buffer) return new Token({ value: "", scopes: [this.grammar.scopeName] });
+    const row = Point.fromObject(position).row;
+    const length = this.buffer.lineLengthForRow(row);
+    if (length === undefined) return new Token({ value: "", scopes: [this.grammar.scopeName] });
+    const source = this.buffer.getTextSnapshot();
+    const start = source.lineStart(row);
+    return new Token({
+      valueSource: source.subtext(start, start + length),
+      scopes: [this.grammar.scopeName],
+    });
   }
   classNameForScopeId() {
     return null;
@@ -59,23 +69,12 @@ module.exports = class NullLanguageMode {
     return false;
   }
   suggestedIndentForLineAtBufferRow(_row, line, tabLength) {
-    if (!NON_WHITESPACE_REGEX.test(line) && this.buffer) {
+    const source = typeof line === "string" ? new PieceTree(line) : line;
+    if (rangeIsBlank(source) && this.buffer) {
       const precedingRow = this.previousNonBlankRow(_row, tabLength);
-      if (precedingRow != null) {
-        return this.indentationForRow(precedingRow, tabLength).level;
-      }
+      if (precedingRow != null) return this.indentationForRow(precedingRow, tabLength).level;
     }
-    let columns = 0;
-    for (const character of line) {
-      if (character === " ") {
-        columns++;
-      } else if (character === "\t") {
-        columns += tabLength - (columns % tabLength);
-      } else {
-        break;
-      }
-    }
-    return columns / tabLength;
+    return leadingIndentation(source, 0, source.length, tabLength).level;
   }
   suggestedIndentForBufferRow(row, tabLength) {
     const precedingRow = this.previousNonBlankRow(row, tabLength);
