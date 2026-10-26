@@ -429,9 +429,9 @@ describe("Packed Tree-sitter injection change routing", () => {
           "5",
         );
         expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
-        expect(mode.document.capture(parsedSnapshot).edits.map((change) => change.newText)).toEqual(
-          ["rename", "5"],
-        );
+        expect(
+          mode.document.capture(parsedSnapshot).edits.map((change) => change.newText.toString()),
+        ).toEqual(["rename", "5"]);
       } finally {
         resume();
       }

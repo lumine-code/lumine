@@ -73,12 +73,12 @@ describe("Tree-sitter snapshot text input", () => {
     buffer.insert([1, 6], "\r", { normalizeLineEndings: false });
     const snapshot = reader.capture(previous);
     expect(snapshot.text.toString()).toBe("first\r\nsecond\r\n");
-    expect(snapshot.edits.map((edit) => [edit.startIndex, edit.oldEndIndex, edit.newText])).toEqual(
-      [
-        [5, 6, "\r\n"],
-        [13, 14, "\r\n"],
-      ],
-    );
+    expect(
+      snapshot.edits.map((edit) => [edit.startIndex, edit.oldEndIndex, edit.newText.toString()]),
+    ).toEqual([
+      [5, 6, "\r\n"],
+      [13, 14, "\r\n"],
+    ]);
   });
 
   it("shares one immutable input root per committed revision without flattening", async () => {
@@ -125,7 +125,8 @@ describe("Tree-sitter snapshot text input", () => {
     expect(published.edits).toEqual(latest.edits);
     let replay = previous.text;
     for (const edit of latest.edits)
-      replay = replay.slice(0, edit.startIndex) + edit.newText + replay.slice(edit.oldEndIndex);
+      replay =
+        replay.slice(0, edit.startIndex) + edit.newText.toString() + replay.slice(edit.oldEndIndex);
     expect(replay).toBe(buffer.getText());
     expect(Object.isFrozen(latest.edits)).toBe(true);
   });

@@ -524,7 +524,7 @@ describe("Tree-sitter injection change routing", () => {
       expect(layer.handleTextChange).toHaveBeenCalledTimes(2);
       const capture = mode.document.capture(parsedSnapshot);
       expect(capture.text.toString()).toBe(buffer.getText());
-      expect(capture.edits.map((change) => change.newText)).toEqual(["rename", "5"]);
+      expect(capture.edits.map((change) => change.newText.toString())).toEqual(["rename", "5"]);
       expect(parsedSnapshot.rootNode.text).toBe("4");
     } finally {
       resume();
