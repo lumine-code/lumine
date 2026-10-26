@@ -3,6 +3,14 @@ const Range = require("./range");
 const createTree = require("./rb-tree");
 const { rangeIsBlank } = require("./text-source-helpers");
 const { comparePoints, resolveNodePosition } = require("./tree-sitter-node-helpers");
+const {
+  runQuery,
+  boundedQueryRange,
+  withPredicateTextBudget,
+  checkPredicateTextLength,
+  QueryBudgetExceeded,
+  DEFAULTS,
+} = require("./tree-sitter-query-budget");
 
 // How far a fold resolver reads around a single-row request when it has to
 // build fresh boundary data anyway: querying only the asked-for row would
@@ -72,11 +80,27 @@ class FoldResolver {
     this.boundariesRange = null;
     this.boundariesTree = null;
     this.dividedFoldEndsByStartNodeId = new Map();
+    this.failedPrefills = new Set();
+    this.failedPrefillsTree = null;
+  }
+
+  get queryBudget() {
+    return this.layer.languageMode?.queryBudget ?? {};
+  }
+
+  resolveWithinBudget(callback) {
+    const result = withPredicateTextBudget(callback, this.queryBudget);
+    if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+    return result.value;
   }
 
   // Retrieve the first valid fold range for this row in this language layer —
   // that is, the first fold range that spans more than one row.
   getFoldRangeForRow(row) {
+    return this.resolveWithinBudget(() => this.computeFoldRangeForRow(row));
+  }
+
+  computeFoldRangeForRow(row) {
     if (!this.layer.tree || !this.layer.queries.foldsQuery) {
       return null;
     }
@@ -94,6 +118,7 @@ class FoldResolver {
     // row, but we still consider the intrinsic range of the fold capture when
     // deciding which one to honor.)
     while (iterator.key) {
+      checkPredicateTextLength(0);
       if (comparePoints(iterator.key.position, end) >= 0) {
         break;
       }
@@ -132,6 +157,10 @@ class FoldResolver {
   // * resolves to a range that spans more than one line;
   // * starts on a line that hasn't already been promised to an earlier fold.
   getAllFoldRanges() {
+    return this.resolveWithinBudget(() => this.computeAllFoldRanges());
+  }
+
+  computeAllFoldRanges() {
     if (!this.layer.getOrParseTree({ force: false }) || !this.layer.queries.foldsQuery) {
       return [];
     }
@@ -148,6 +177,7 @@ class FoldResolver {
     let results = [];
     let lastValidFoldRange = null;
     while (iterator.key) {
+      checkPredicateTextLength(0);
       let capture = iterator.value;
       let { name } = capture;
       let range;
@@ -176,6 +206,8 @@ class FoldResolver {
     this.boundariesRange = null;
     this.boundariesTree = null;
     this.dividedFoldEndsByStartNodeId.clear();
+    this.failedPrefills.clear();
+    this.failedPrefillsTree = null;
   }
 
   canReuseBoundaries(start, end) {
@@ -189,7 +221,20 @@ class FoldResolver {
     if (!this.layer.getOrParseTree({ force: false }) || !this.layer.queries.foldsQuery) {
       return;
     }
-    this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, range.start, range.end);
+    if (this.failedPrefillsTree !== this.layer.tree) {
+      this.failedPrefills.clear();
+      this.failedPrefillsTree = this.layer.tree;
+    }
+    const key = `${range.start.row}:${range.start.column}:${range.end.row}:${range.end.column}`;
+    if (this.failedPrefills.has(key)) return;
+    try {
+      this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, range.start, range.end);
+    } catch (error) {
+      if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+      this.failedPrefills.add(key);
+      if (this.failedPrefills.size > 16)
+        this.failedPrefills.delete(this.failedPrefills.values().next().value);
+    }
   }
 
   getOrCreateBoundariesIterator(rootNode, start, end) {
@@ -209,9 +254,28 @@ class FoldResolver {
     // neighbors reuse this pass instead of each running their own.
     let queryStart = start;
     let queryEnd = end;
-    if (end.row - start.row <= 1) {
+    const requestedStart = this.buffer.characterIndexForPosition(start);
+    const requestedEnd = this.buffer.characterIndexForPosition(end);
+    if (requestedEnd - requestedStart > (this.queryBudget.maxRangeLength ?? 1024 * 1024))
+      throw new QueryBudgetExceeded("range-limit");
+    if (requestedStart === requestedEnd) {
+      queryStart = this.buffer.positionForCharacterIndex(requestedStart);
+      queryEnd = queryStart;
+    } else if (end.row - start.row <= 1) {
       queryStart = new Point(Math.max(0, start.row - FOLD_WINDOW_ROWS_BEHIND), 0);
       queryEnd = new Point(end.row + FOLD_WINDOW_ROWS_AHEAD, 0);
+      const source = this.buffer.getTextSnapshot();
+      const first = this.buffer.characterIndexForPosition(queryStart);
+      const last = this.buffer.characterIndexForPosition(queryEnd);
+      const width = Math.max(DEFAULTS.maxWindowLength, requestedEnd - requestedStart + 2);
+      const window = boundedQueryRange(
+        source,
+        Math.max(first, requestedStart - Math.floor((width - (requestedEnd - requestedStart)) / 4)),
+        last,
+        width,
+      );
+      queryStart = this.buffer.positionForCharacterIndex(window.startIndex);
+      queryEnd = this.buffer.positionForCharacterIndex(window.endIndex);
     }
 
     // Instead of keying off of a plain buffer position, this tree also
@@ -219,57 +283,77 @@ class FoldResolver {
     // boundary ends at the same point that another one starts, the ending
     // boundary will be visited first.
     let boundaries = createTree(compareBoundaries);
-    let captures = this.layer.queries.foldsQuery.captures(rootNode, {
-      startPosition: queryStart,
-      endPosition: queryEnd,
-    });
+    const queryResult =
+      requestedStart === requestedEnd
+        ? { complete: true, results: [] }
+        : runQuery(
+            this.layer.queries.foldsQuery,
+            rootNode,
+            {
+              startPosition: queryStart,
+              endPosition: queryEnd,
+            },
+            this.queryBudget,
+          );
+    if (!queryResult.complete) throw new QueryBudgetExceeded(queryResult.reason);
+    const captures = queryResult.results;
+    const invalidatedNodes = [];
 
-    for (let capture of captures) {
-      // NOTE: Currently, the first fold to match for a given starting position
-      // is the only one considered. That's because we use a version of a
-      // red-black tree in which we silently ignore any attempts to add a key
-      // that is equivalent in value to that of a previously added key.
-      //
-      // Attempts to use `capture.final` and `capture.shy` won't harm anything,
-      // but they'll be redundant. Other types of custom predicates, however,
-      // should work just fine.
-      let result = scopeResolver.store(capture, { boundaries: false });
-      if (!result) {
-        continue;
-      }
+    let resolved;
+    try {
+      resolved = withPredicateTextBudget(() => {
+        for (let capture of captures) {
+          checkPredicateTextLength(0);
+          // NOTE: Currently, the first fold to match for a given starting position
+          // is the only one considered. That's because we use a version of a
+          // red-black tree in which we silently ignore any attempts to add a key
+          // that is equivalent in value to that of a previously added key.
+          //
+          // Attempts to use `capture.final` and `capture.shy` won't harm anything,
+          // but they'll be redundant. Other types of custom predicates, however,
+          // should work just fine.
+          let result = scopeResolver.store(capture, { boundaries: false });
+          if (!result) {
+            continue;
+          }
 
-      // Some folds are unusual enough that they can flip from valid to
-      // invalid, or vice versa, based on edits to rows other than their
-      // starting row. We need to keep track of these nodes so that we can
-      // invalidate the fold cache properly when edits happen inside of them.
-      if (scopeResolver.shouldInvalidateFoldOnChange(capture)) {
-        this.layer.foldNodesToInvalidateOnChange.add(capture.node);
-      }
+          // Some folds are unusual enough that they can flip from valid to
+          // invalid, or vice versa, based on edits to rows other than their
+          // starting row. We need to keep track of these nodes so that we can
+          // invalidate the fold cache properly when edits happen inside of them.
+          if (scopeResolver.shouldInvalidateFoldOnChange(capture)) {
+            invalidatedNodes.push(capture.node);
+          }
 
-      if (capture.node.startPosition.row < queryStart.row) {
-        // This fold starts before the range we're interested in. We needed to
-        // run these nodes through the scope resolver for various reasons, but
-        // they're not relevant to our iterator.
-        continue;
-      }
-      if (capture.name === "fold") {
-        boundaries = boundaries.insert(
-          {
-            position: capture.node.startPosition,
-            boundary: "start",
-          },
-          capture,
-        );
-      } else if (capture.name.startsWith("fold.")) {
-        let key = this.keyForDividedFold(capture);
-        boundaries = boundaries.insert(key, capture);
-      }
+          if (capture.node.startPosition.row < queryStart.row) {
+            // This fold starts before the range we're interested in. We needed to
+            // run these nodes through the scope resolver for various reasons, but
+            // they're not relevant to our iterator.
+            continue;
+          }
+          if (capture.name === "fold") {
+            boundaries = boundaries.insert(
+              {
+                position: capture.node.startPosition,
+                boundary: "start",
+              },
+              capture,
+            );
+          } else if (capture.name.startsWith("fold.")) {
+            let key = this.keyForDividedFold(capture);
+            boundaries = boundaries.insert(key, capture);
+          }
+        }
+        return this.indexDividedFoldPairs(boundaries);
+      }, this.queryBudget);
+    } finally {
+      scopeResolver.reset();
     }
-
-    scopeResolver.reset();
+    if (!resolved.complete) throw new QueryBudgetExceeded(resolved.reason);
 
     this.boundaries = boundaries;
-    this.indexDividedFoldPairs(boundaries);
+    this.dividedFoldEndsByStartNodeId = resolved.value;
+    for (const node of invalidatedNodes) this.layer.foldNodesToInvalidateOnChange.add(node);
     // The widened range, so the neighbors this pass read for can reuse it.
     this.boundariesRange = new Range(queryStart, queryEnd);
     this.boundariesTree = this.layer.tree;
@@ -278,19 +362,21 @@ class FoldResolver {
   }
 
   indexDividedFoldPairs(boundaries) {
-    this.dividedFoldEndsByStartNodeId.clear();
+    const ends = new Map();
     const starts = [];
     const iterator = boundaries.begin;
     while (iterator.key) {
+      checkPredicateTextLength(0);
       const capture = iterator.value;
       if (capture.name === "fold.start") {
         starts.push(capture);
       } else if (capture.name === "fold.end" && starts.length > 0) {
         const start = starts.pop();
-        this.dividedFoldEndsByStartNodeId.set(start.node.id, capture);
+        ends.set(start.node.id, capture);
       }
       iterator.next();
     }
+    return ends;
   }
 
   // Given a `@fold.start` capture, queries the rest of the layer's extent to
@@ -334,6 +420,9 @@ class FoldResolver {
   // Returns `true` if there is no non-whitespace content on this position's
   // row before this position's column.
   positionIsNotPrecededByTextOnLine(position) {
+    checkPredicateTextLength(0);
+    if (position.column > (this.queryBudget.maxRangeLength ?? 1024 * 1024))
+      throw new QueryBudgetExceeded("range-limit");
     const source = this.buffer.getTextSnapshot();
     const start = source.lineStart(position.row);
     return rangeIsBlank(source, start, start + position.column);
@@ -421,6 +510,7 @@ class FoldResolver {
       }
       return new Range(start, end);
     } catch (error) {
+      if (error.code === "ERR_SYNTAX_QUERY_BUDGET") throw error;
       // If any of our assumptions are violated, fall back to an end point that we know can't fail: the end of the captured node itself.
       console.warn("Error resolving fold range:");
       console.warn(error.message);

@@ -392,6 +392,7 @@ class ScopeResolver {
         try {
           range = this.applyAdjustment(key, capture.node, value, range, this);
         } catch (error) {
+          if (error.code === "ERR_SYNTAX_QUERY_BUDGET") throw error;
           this.warnOncePerGrammar(`error:${key}`, `adjustment "${key}" threw: ${error.message}`);
           return null;
         }
@@ -489,6 +490,7 @@ class ScopeResolver {
       try {
         result = this.applyTest(key, node, value, existingData, this);
       } catch (error) {
+        if (error.code === "ERR_SYNTAX_QUERY_BUDGET") throw error;
         this.warnOncePerGrammar(`error:${key}`, `scope test "${key}" threw: ${error.message}`);
         // A test that can't run at all should drop the capture, matching the
         // guarded behavior of `#is?` tests.
@@ -507,6 +509,7 @@ class ScopeResolver {
     try {
       return this.applyTest(key, node, value, existingData, this);
     } catch (error) {
+      if (error.code === "ERR_SYNTAX_QUERY_BUDGET") throw error;
       this.warnOncePerGrammar(`error:${key}`, `scope test "${key}" threw: ${error.message}`);
       return false;
     }

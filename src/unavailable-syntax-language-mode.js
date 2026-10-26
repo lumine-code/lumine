@@ -16,7 +16,11 @@ module.exports = class UnavailableSyntaxLanguageMode extends NullLanguageMode {
     const reason =
       failure.code === "memory-limit"
         ? "The syntax parser stopped at its memory limit."
-        : "The syntax parser could not continue.";
+        : failure.code === "memory-pressure"
+          ? "Syntax analysis reached its memory budget."
+          : failure.code === "parse-budget"
+            ? "Syntax analysis exceeded its processing budget."
+            : "The syntax parser could not continue.";
     this.notification = globalThis.lumine?.notifications?.addWarning(
       "Syntax analysis is unavailable",
       {

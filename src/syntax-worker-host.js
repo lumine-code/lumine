@@ -7,9 +7,11 @@ const TreeSitterGrammar = require("./tree-sitter-grammar");
 const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
 const TextBuffer = require("./text-buffer");
 const runtime = require("./tree-sitter-runtime");
+const { paintTile } = require("./syntax-paint-policy");
+const SyntaxPreview = require("./syntax-preview");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
-const { PAINT_TILE_ROWS, PAINT_PACKET_EVENTS } = require("./syntax-worker-protocol");
+const { PAINT_PACKET_EVENTS } = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
 
 function aborted(message = "Syntax snapshot is obsolete") {
@@ -49,6 +51,7 @@ class SyntaxWorkerHost {
         watchFile: (file) => this.watchFile(file),
       },
     });
+    this.previews = new SyntaxPreview({ grammars: this.grammars, config: this.config });
     globalThis.lumine = {
       config: this.config,
       grammars: this.grammars,
@@ -235,6 +238,7 @@ class SyntaxWorkerHost {
     session.buffer.setLanguageMode(mode);
     session.subscriptions = new CompositeDisposable(
       mode.onDidChangeHighlighting((range) => {
+        if (!mode.publicationPending) this.previews.release(session);
         if (range.start.row <= 1000) session.tabStyleReady = false;
         this.notify({
           event: "highlight",
@@ -290,6 +294,7 @@ class SyntaxWorkerHost {
         fatal: false,
         message: error.message,
         stack: error.stack,
+        ...error.failure,
       },
     });
     this.closeSession(session.id);
@@ -300,14 +305,26 @@ class SyntaxWorkerHost {
     if (!session) return;
     this.sessions.delete(id);
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
+    this.previews.release(session);
     this.invalidate(session);
     session.buffer.destroy();
+    if (runtime.releaseSession(id)) this.notify({ event: "recycle-requested" });
   }
 
   async dispatch(operation, data, { signal, emit } = {}) {
-    return runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
-      this.dispatchOperation(operation, data, { signal, emit }),
-    );
+    try {
+      return await runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
+        this.dispatchOperation(operation, data, { signal, emit }),
+      );
+    } catch (error) {
+      if (error.code === "ERR_SYNTAX_QUERY_BUDGET") {
+        const unavailable = aborted("Syntax query exceeded its resource budget");
+        unavailable.code = error.code;
+        unavailable.reason = error.reason;
+        throw unavailable;
+      }
+      throw error;
+    }
   }
 
   async dispatchOperation(operation, data, { signal, emit } = {}) {
@@ -515,11 +532,63 @@ class SyntaxWorkerHost {
       )
         throw aborted();
     };
+    if (emit) {
+      const deliver = emit;
+      emit = (...args) => {
+        current();
+        // Session invalidation must release a paused stream even if its
+        // consumer has not acknowledged the last packet yet.
+        return waitFor(deliver(...args), combined);
+      };
+    }
     try {
       if (!session.initialized) throw new Error("Syntax document is not initialized");
       let transaction;
       try {
-        transaction = await waitFor(mode.atGrammarSettlement(), combined);
+        const settlement = mode.atGrammarSettlement();
+        if (
+          operation === "view" &&
+          data.allowPreview &&
+          mode.publicationPending &&
+          data.ranges?.length
+        ) {
+          // Give the exact small-edit path its ordinary fast turn before
+          // spending anything on a private, explicitly provisional preview.
+          let timer;
+          const fast = await Promise.race([
+            settlement.then((value) => ({ value })),
+            new Promise((resolve) => {
+              timer = setTimeout(() => resolve(null), 4);
+            }),
+          ]).finally(() => clearTimeout(timer));
+          current();
+          if (!fast) {
+            void settlement.then(
+              (value) => {
+                if (
+                  value?.parseError &&
+                  this.sessions.get(session.id) === session &&
+                  session.mode === mode
+                )
+                  this.failSession(session, value.parseError);
+              },
+              (error) => {
+                if (this.sessions.get(session.id) === session && session.mode === mode)
+                  this.failSession(session, error);
+              },
+            );
+            const preview = await this.previewView(
+              session,
+              data.ranges[0],
+              emit,
+              current,
+              combined,
+            );
+            if (preview) return { revision, generation, value: preview, syntaxReady: false };
+          } else transaction = fast.value;
+        }
+        transaction ??= await waitFor(settlement, combined);
+        this.previews.release(session);
       } catch (error) {
         this.failSession(session, error);
         throw error;
@@ -567,6 +636,18 @@ class SyntaxWorkerHost {
           }
           value = { stream: kind, count };
         }
+      } else if (operation === "indent") {
+        let count = 0;
+        for await (const batch of mode.scanSuggestedIndentation(data.ranges, data.tabLength, {
+          ...data.options,
+          signal: combined,
+        })) {
+          current();
+          await emit(batch);
+          current();
+          count += batch.length;
+        }
+        value = { count };
       } else if (operation === "analyze") {
         if (!path.isAbsolute(data.module))
           throw new Error("Syntax analysis requires an absolute module path");
@@ -660,11 +741,16 @@ class SyntaxWorkerHost {
     }
     if (!session.tabStyleReady) {
       session.softTabs = undefined;
-      const lineForRow = buffer.getTextSnapshot().lineReader();
+      const source = buffer.getTextSnapshot();
       for (let row = 0, end = Math.min(1000, buffer.getLastRow()); row <= end; row++) {
-        const first = lineForRow(row)[0];
+        const first = source.slice(source.lineStart(row), source.lineStart(row) + 1);
         if (first !== " " && first !== "\t") continue;
-        if (mode.isRowCommented(row)) continue;
+        try {
+          if (mode.isRowCommented(row)) continue;
+        } catch (error) {
+          if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+          break;
+        }
         session.softTabs = first === " ";
         break;
       }
@@ -674,6 +760,7 @@ class SyntaxWorkerHost {
       queries: session.metadata.queries,
       grammars: session.metadata.grammars,
       softTabs: session.softTabs,
+      syntaxReady: !mode.publicationPending,
     };
   }
 
@@ -738,54 +825,142 @@ class SyntaxWorkerHost {
     const { buffer, mode } = session;
     const tiles = [],
       names = new Map();
-    const pending = [...ranges];
+    const pending = ranges.map((range) => ({ range, origin: range }));
     while (pending.length) {
-      const [first, last] = pending.shift();
-      for (let firstRow = first; firstRow <= last; firstRow += PAINT_TILE_ROWS) {
-        current?.();
-        const start = buffer.clipPosition([firstRow, 0]);
-        const endRow = Math.min(firstRow + PAINT_TILE_ROWS - 1, last, buffer.getLastRow());
-        const end = buffer.clipPosition([endRow + 1, 0]);
-        const iterator = mode.buildHighlightIterator();
-        const scopes = [...iterator.seek(start, endRow)];
-        const events = [],
-          folds = [];
-        for (const id of scopes) names.set(id, mode.scopeNameForScopeId(id));
-        let header = { start, end, scopes };
-        current?.();
-        while (iterator.getPosition().row <= endRow) {
-          const open = [...iterator.getOpenScopeIds()],
-            close = [...iterator.getCloseScopeIds()];
-          events.push({ position: iterator.getPosition(), open, close });
-          for (const id of [...open, ...close]) names.set(id, mode.scopeNameForScopeId(id));
-          iterator.moveToSuccessor();
-          if (emit && events.length >= PAINT_PACKET_EVENTS) {
-            await emit(serialize({ ...header, kind: "events", events, names: [...names] }));
-            header = null;
-            events.length = 0;
-            names.clear();
-            current?.();
-          }
-        }
-        for (let row = firstRow; row <= endRow; row++)
-          folds.push([row, mode.getFoldRangeForRow(row, 4)]);
-        if (emit) {
-          const next = await emit(
-            serialize({ ...header, kind: "end", events, folds, names: [...names] }),
-          );
+      current?.();
+      const { range, origin } = pending.shift();
+      const [first, last] = range;
+      const tile = paintTile(buffer, first, last);
+      if (!tile) continue;
+      const { start, end, endRow } = tile;
+      const iterator = mode.buildHighlightIterator({ presentation: true });
+      const scopes = [
+        ...runtime.run(this.contextFor(session, "paint-query"), () => iterator.seek(start, endRow)),
+      ];
+      const events = [],
+        folds = [];
+      for (const id of scopes) names.set(id, mode.scopeNameForScopeId(id));
+      const quality = iterator.limitedReason ? "limited" : "exact";
+      let header = { start, end, scopes, quality, reason: iterator.limitedReason };
+      current?.();
+      while (iterator.getPosition().row <= endRow) {
+        const open = [...iterator.getOpenScopeIds()],
+          close = [...iterator.getCloseScopeIds()];
+        events.push({ position: iterator.getPosition(), open, close });
+        for (const id of [...open, ...close]) names.set(id, mode.scopeNameForScopeId(id));
+        iterator.moveToSuccessor();
+        if (emit && events.length >= PAINT_PACKET_EVENTS) {
+          await emit(serialize({ ...header, kind: "events", events, names: [...names] }));
+          header = null;
+          events.length = 0;
           names.clear();
           current?.();
-          // The renderer selects the next missing tile after publishing this
-          // one. A moving viewport never queues behind an obsolete window.
-          if (follow && next?.range) pending.push(next.range);
-        } else tiles.push({ start, end, scopes, events, folds });
+        }
+      }
+      if (quality === "exact") {
+        for (let row = first; row <= endRow; row++) {
+          try {
+            folds.push([row, mode.getFoldRangeForRow(row, 4)]);
+          } catch (error) {
+            if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+            break;
+          }
+        }
+      }
+      if (emit) {
+        const next = await emit(
+          serialize({ ...header, kind: "end", events, folds, names: [...names] }),
+        );
+        names.clear();
+        current?.();
+        if (follow) {
+          if (next?.range) {
+            const same = next.range[0] === origin[0] && next.range[1] === origin[1];
+            if (same && endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
+            else if (!same) pending.unshift({ range: next.range, origin: next.range });
+          }
+        } else if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
+      } else {
+        tiles.push({ start, end, scopes, events, folds, quality, reason: iterator.limitedReason });
+        if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
       }
     }
     return emit ? this.metadata(session) : { tiles, scopes: [...names] };
   }
 
+  async previewView(session, range, emit, current, signal) {
+    if (!emit) return null;
+    const [startRow, endRow] = range;
+    const preview = await this.previews.get(
+      session,
+      { startRow, endRow },
+      {
+        signal,
+        context: () => this.contextFor(session, "preview"),
+      },
+    );
+    current();
+    if (!preview || !session.mode.publicationPending) return null;
+    try {
+      const localStart = new Point(startRow - preview.startRow, 0);
+      const localEndRow = Math.min(endRow - preview.startRow, preview.buffer.getLastRow());
+      const iterator = preview.mode.buildHighlightIterator({ presentation: true });
+      const scopes = [
+        ...runtime.run(this.contextFor(session, "preview-paint"), () =>
+          iterator.seek(localStart, localEndRow),
+        ),
+      ];
+      const names = new Map(scopes.map((id) => [id, preview.mode.scopeNameForScopeId(id)]));
+      const end = Point.fromObject(preview.requestedEnd);
+      let header = {
+        start: Point.fromObject(preview.requestedStart),
+        end,
+        scopes,
+        quality: "provisional",
+        reason: iterator.limitedReason ?? (preview.limited ? "source-window" : null),
+      };
+      const events = [];
+      while (iterator.getPosition().row <= localEndRow) {
+        const position = iterator.getPosition().translate([preview.startRow, 0]);
+        if (position.compare(end) > 0) break;
+        const open = [...iterator.getOpenScopeIds()],
+          close = [...iterator.getCloseScopeIds()];
+        events.push({ position, open, close });
+        for (const id of [...open, ...close]) names.set(id, preview.mode.scopeNameForScopeId(id));
+        iterator.moveToSuccessor();
+        if (events.length >= PAINT_PACKET_EVENTS) {
+          await emit(serialize({ ...header, kind: "events", events, names: [...names] }));
+          header = null;
+          events.length = 0;
+          names.clear();
+          current();
+          if (!session.mode.publicationPending)
+            throw aborted("Exact syntax superseded the preview");
+        }
+      }
+      current();
+      if (!session.mode.publicationPending) return null;
+      await emit(serialize({ ...header, kind: "end", events, folds: [], names: [...names] }));
+      current();
+      if (!session.mode.publicationPending) return null;
+      return { queries: [], grammars: [session.scopeName], syntaxReady: false };
+    } catch (error) {
+      if (
+        runtime.failure ||
+        error instanceof WebAssembly.RuntimeError ||
+        error.name === "AbortError"
+      )
+        throw error;
+      // Provisional presentation is optional. Its failure cannot disable the
+      // real document or replace a valid grammar/query with a fallback.
+      this.previews.release(session);
+      return null;
+    }
+  }
+
   close() {
     this.runtimeSubscription.dispose();
+    this.previews.dispose();
     for (const id of [...this.sessions.keys()]) this.closeSession(id);
     for (const module of this.modules.splice(0)) module.dispose?.();
     for (const grammar of this.grammars.getGrammars()) grammar.destroy?.();

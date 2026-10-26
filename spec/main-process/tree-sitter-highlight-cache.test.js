@@ -5,6 +5,24 @@ const HighlightCache = require("../../src/tree-sitter-highlight-cache");
 
 const point = (row, column = 0) => new Point(row, column);
 
+test("recording preserves provisional quality and its limitation reason", () => {
+  const cache = new HighlightCache();
+  const record = cache.record(
+    {
+      quality: "provisional",
+      limitedReason: "source-window",
+      seek: () => [1],
+      getPosition: () => Point.INFINITY,
+    },
+    { clipPosition: () => point(1) },
+  );
+  record.seek(point(0), 0);
+  assert.equal(cache.snapshots[0].quality, "provisional");
+  assert.equal(cache.snapshots[0].reason, "source-window");
+  assert.equal(record.quality, "provisional");
+  assert.equal(record.limitedReason, "source-window");
+});
+
 test("coverage follows replacement, eviction and edits without mixing syntax generations", () => {
   const cache = new HighlightCache();
   const old = { revision: 1, generation: 0, presentation: 0 };
@@ -711,4 +729,143 @@ test("adjacent fragments cannot prove continuity between different literals with
     assert.deepEqual(at(cache, point(0, 3)), [1]);
     assert.deepEqual(at(cache, point(0, 4)), [1, 2]);
   }
+});
+
+test("byte limits evict scope-heavy cold windows even when event counts are tiny", () => {
+  const cache = new HighlightCache({ maxBytes: 5000 });
+  const tile = (row) => ({
+    start: point(row),
+    end: point(row + 1),
+    scopes: [1],
+    events: [
+      { position: point(row, 1), open: Array.from({ length: 400 }, (_, i) => i + 2), close: [] },
+    ],
+  });
+  cache.replace([tile(0)], {});
+  cache.replace([tile(10)], {});
+  assert.equal(cache.eventCount, 1);
+  assert.equal(cache.covers(point(0), point(1)), false);
+  assert.equal(cache.covers(point(10), point(11)), true);
+  assert.ok(cache.estimatedBytes < cache.maxBytes);
+  assert.ok(cache.estimatedBytes > 3000);
+});
+
+test("protected visible coverage and the newest required tile survive a byte-budget excess", () => {
+  const cache = new HighlightCache({ maxBytes: 4000 });
+  const scopes = Array.from({ length: 300 }, (_, i) => i);
+  const tile = (row) => ({ start: point(row), end: point(row + 1), scopes, events: [] });
+  cache.replace([tile(0)], {});
+  const visible = cache.snapshots[0];
+  cache.replace([tile(10)], {}, (snapshot) => snapshot === visible);
+  assert.equal(cache.covers(point(0), point(1)), true);
+  assert.equal(cache.covers(point(10), point(11)), true);
+  assert.equal(cache.getStats().overBudget, true);
+  cache.replace([tile(20)], {});
+  assert.equal(cache.covers(point(0), point(1)), false);
+  assert.equal(cache.covers(point(10), point(11)), false);
+  assert.equal(cache.covers(point(20), point(21)), true);
+  assert.equal(cache.getStats().overBudget, false);
+});
+
+test("recording cannot retain arbitrarily large initial or event scope arrays", () => {
+  const cache = new HighlightCache({ maxBytes: 1000 });
+  const scopes = Array.from({ length: 300 }, (_, i) => i);
+  record(cache, point(0), point(1), scopes, []);
+  assert.equal(cache.snapshots.length, 0);
+  assert.equal(cache.estimatedBytes, 0);
+  record(cache, point(0), point(1), [1], [{ position: point(0, 1), open: scopes, close: [] }]);
+  assert.equal(cache.snapshots.length, 0);
+  assert.equal(cache.eventCount, 0);
+  assert.equal(cache.estimatedBytes, 0);
+});
+
+test("byte accounting follows checkpoint creation, boundary splits, replacement, copy and clear", () => {
+  const cache = new HighlightCache();
+  const events = [];
+  for (let row = 0; row < 100; row++) {
+    events.push({ position: point(row, 0), open: [2, 3], close: [] });
+    events.push({ position: point(row, 5), open: [], close: [3, 2] });
+  }
+  cache.replace([{ start: point(0), end: point(100), scopes: [1], events }], {});
+  const beforeRead = cache.estimatedBytes;
+  at(cache, point(99, 4));
+  assert.ok(cache.checkpointBytes > 0);
+  assert.ok(cache.estimatedBytes > beforeRead);
+  const beforeEdit = cache.estimatedBytes;
+  cache.edit(insertion(10, 5), { extendScopes: [1, 2] });
+  assert.ok(cache.editBytes > 0);
+  assert.ok(cache.estimatedBytes > beforeEdit);
+  cache.rebase();
+  assert.equal(cache.editBytes, 0);
+  assert.equal(cache.checkpointBytes, 0);
+  assert.equal(cache.eventCount, events.length);
+  assert.deepEqual(at(cache, point(10, 5)), [1, 2]);
+  cache.replace([{ start: point(20), end: point(80), scopes: [1], events: [] }], {});
+  assert.ok(cache.eventCount < 100);
+  const beforeCopy = cache.estimatedBytes;
+  assert.equal(cache.copyRange(point(0), point(10), point(120), [1]), true);
+  assert.ok(cache.estimatedBytes > beforeCopy);
+  while (cache.snapshots.length) cache.removeSnapshot(0);
+  assert.equal(cache.estimatedBytes, 0);
+  assert.equal(cache.checkpointBytes, 0);
+  assert.equal(cache.eventCount, 0);
+  cache.edit(insertion(0, 0));
+  cache.clear();
+  assert.equal(cache.estimatedBytes, 0);
+  assert.equal(cache.editBytes, 0);
+});
+
+test("optional checkpoint stacks remain bounded and preserve forward and backward reads", () => {
+  const cache = new HighlightCache({ maxBytes: 100000 });
+  const scopes = Array.from({ length: 300 }, (_, i) => i);
+  const events = Array.from({ length: 512 }, (_, column) => ({
+    position: point(0, column),
+    open: [],
+    close: [],
+  }));
+  cache.replace([{ start: point(0), end: point(1), scopes, events }], {});
+  for (const column of [64, 128, 192, 256, 320, 384, 448, 500, 130, 400]) {
+    assert.deepEqual(at(cache, point(0, column)), scopes);
+    assert.ok(cache.checkpointBytes <= cache.maxCheckpointBytes);
+    assert.ok(cache.estimatedBytes <= cache.maxBytes);
+  }
+  cache.removeSnapshot(0);
+  assert.equal(cache.checkpointBytes, 0);
+});
+
+test("diagnostic reads and lazy row shifts do not recount event scope arrays", () => {
+  const cache = new HighlightCache();
+  let reads = 0;
+  const event = {
+    position: point(100),
+    get open() {
+      reads++;
+      return [2];
+    },
+    get close() {
+      reads++;
+      return [];
+    },
+  };
+  cache.replace([{ start: point(100), end: point(101), scopes: [1], events: [event] }], {});
+  const bytes = cache.estimatedBytes;
+  reads = 0;
+  for (let i = 0; i < 100; i++) cache.getStats();
+  cache.edit({ oldRange: { start: point(0), end: point(0) }, newRange: { end: point(1) } });
+  cache.rebase();
+  assert.equal(reads, 0);
+  assert.equal(cache.estimatedBytes, bytes);
+});
+
+test("boundary edit growth evicts cold bytes while retaining the latest required coverage", () => {
+  const cache = new HighlightCache({ maxBytes: 500 });
+  cache.replace([{ start: point(0), end: point(1), scopes: [1, 2, 3], events: [] }], {});
+  cache.replace([{ start: point(10), end: point(11), scopes: [1], events: [] }], {});
+  assert.equal(cache.snapshots.length, 2);
+  cache.edit(insertion(0, 0), { extendScopes: [1] });
+  cache.rebase();
+  assert.equal(cache.covers(point(0), point(1)), false);
+  assert.equal(cache.covers(point(10), point(11)), true);
+  assert.ok(cache.estimatedBytes <= cache.maxBytes);
+  assert.equal(cache.editBytes, 0);
 });

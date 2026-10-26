@@ -19,6 +19,10 @@ const STREAMED_BUILTINS = new Set([
   "suggestedIndentForPastedRanges",
 ]);
 const rangeFromData = (range) => range && Range.fromObject(range);
+const primaryRequest = (request) => (request.priority ?? 1) <= 1;
+const intersectsRows = (snapshot, first, last) =>
+  snapshot.start.row <= last &&
+  (snapshot.end.row > first || (snapshot.end.row === first && snapshot.end.column > 0));
 
 class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   constructor({ buffer, grammar, service }) {
@@ -36,6 +40,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.dirtyRanges = new RangeList();
     this.invalidateAll = true;
     this.presentationVersion = 0;
+    this.warmupPaused = false;
     this.requests = new Set();
     this.requestsByOwner = new WeakMap();
     this.defaultOwner = {};
@@ -97,6 +102,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       return;
     }
     if (event.event === "recovering") {
+      this.warmupPaused = false;
       this.presentationVersion++;
       this.invalidateAll = true;
       this.error = null;
@@ -108,6 +114,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       this.initializeSyntax();
     } else if (event.event === "failure") this.failed(event.error ?? new Error(event.message));
     else if (event.event === "pending" || event.event === "invalidate") {
+      this.warmupPaused = false;
       this.presentationVersion++;
       this.invalidateAll = true;
       this.refreshController?.abort();
@@ -175,7 +182,55 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return `${this.service.syntaxEpoch}:${this.session.epoch}`;
   }
 
+  getHighlightingStatus() {
+    this.cache.rebase();
+    const visible = [...this.requests].filter(primaryRequest).flatMap((request) => request.ranges);
+    const stamp = {
+      revision: this.buffer.getTextRevision(),
+      generation: this.session.generation,
+      presentation: this.presentationVersion,
+    };
+    const reasons = new Set();
+    let provisional = false;
+    let retained = false;
+    for (const snapshot of this.cache.snapshots) {
+      if (!visible.some(([first, last]) => intersectsRows(snapshot, first, last))) continue;
+      if (
+        snapshot.stamp?.revision !== stamp.revision ||
+        snapshot.stamp?.generation !== stamp.generation ||
+        snapshot.stamp?.presentation !== stamp.presentation
+      ) {
+        retained = true;
+        continue;
+      }
+      if (snapshot.quality === "provisional") provisional = true;
+      else if (this.publicationPending) retained = true;
+      if (snapshot.reason) reasons.add(snapshot.reason);
+    }
+    const covered = visible.every(([first, last]) =>
+      this.cache.covers(
+        this.buffer.clipPosition([first, 0]),
+        this.buffer.clipPosition([last + 1, 0]),
+        stamp,
+      ),
+    );
+    return {
+      state: provisional
+        ? "provisional"
+        : covered && !this.publicationPending
+          ? reasons.size
+            ? "limited"
+            : "ready"
+          : retained
+            ? "retained"
+            : "pending",
+      revision: stamp.revision,
+      reasons: [...reasons],
+    };
+  }
+
   bufferDidChange(change) {
+    this.warmupPaused = false;
     this.presentationVersion++;
     this.refreshController?.abort();
     if (!this.publicationPending) this.transactionIndentRequests = 0;
@@ -270,15 +325,14 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   copyHighlighting(source, target) {
-    const visible = [...this.requests].flatMap((request) => request.ranges);
+    const visible = [...this.requests].filter(primaryRequest).flatMap((request) => request.ranges);
     if (
       this.cache.copyRange(
         source.start,
         source.end,
         target,
         [this.grammar.idForScope(this.grammar.scopeName)],
-        (snapshot) =>
-          visible.some(([first, last]) => snapshot.start.row <= last && snapshot.end.row > first),
+        (snapshot) => visible.some(([first, last]) => intersectsRows(snapshot, first, last)),
       )
     ) {
       this.emitter.emit(
@@ -402,6 +456,15 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       this.requestsByOwner.set(owner, request);
       this.requests.add(request);
     }
+    const changed =
+      request.ranges.length !== ranges.length ||
+      request.ranges.some(
+        ([first, last], index) => first !== ranges[index]?.[0] || last !== ranges[index]?.[1],
+      );
+    if (priority <= 1 && changed) {
+      this.warmupPaused = false;
+      this.service?.noteInteraction?.();
+    }
     const previous = request.ranges[0]?.[0];
     const start = ranges[0]?.[0];
     if (previous != null && start != null && previous !== start) {
@@ -420,7 +483,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       );
       request.movedAt = now;
     }
-    request.ranges = ranges;
+    request.ranges = ranges.map(([first, last]) => [first, last]);
     request.priority = priority;
     request.prefetch = prefetch;
     request.background = background;
@@ -441,6 +504,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         this.requests.delete(request);
         continue;
       }
+      if (this.warmupPaused && !primaryRequest(request)) continue;
       const ranges = [];
       let size = 0;
       for (const [start, end] of request.ranges) {
@@ -449,7 +513,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           ranges.push([row, Math.min(last, end, row + TILE_ROWS - 1)]);
       }
       const visibleCount = ranges.length;
-      if (request.prefetch && visibleCount) {
+      if (!this.warmupPaused && request.prefetch && visibleCount) {
         const first = Math.floor(request.ranges[0][0] / TILE_ROWS) * TILE_ROWS;
         const final = Math.floor(request.ranges.at(-1)[1] / TILE_ROWS) * TILE_ROWS;
         const direction = request.direction || 1;
@@ -484,10 +548,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   backgroundRange(stamp) {
+    if (this.warmupPaused) return;
     // Spend spare worker time on nearby unvisited text, retaining it within
     // the existing event allowance. Keep headroom for new visible windows.
     const requests = [...this.requests]
       .filter((request) => request.background && request.ranges.length && request.owner.deref())
+      .filter(primaryRequest)
       .sort((a, b) => a.priority - b.priority);
     const request = requests[0];
     if (!request || request.ranges.length !== 1) return;
@@ -505,12 +571,15 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     if (
       this.cache.snapshots.length >= this.cache.maxSnapshots * 0.75 ||
       this.cache.snapshots.reduce((sum, item) => sum + item.events.length, 0) >=
-        this.cache.maxEvents * 0.75
+        this.cache.maxEvents * 0.75 ||
+      this.cache.estimatedBytes >= this.cache.maxBytes * 0.75
     ) {
       // A full cache must follow a new viewport instead of staying frozen
       // around the first one. Replace only a strictly more distant fragment,
       // with two tiles of hysteresis to avoid work oscillating at the edge.
-      const protectedRanges = this.wantedRanges();
+      const protectedRanges = [...this.requests]
+        .filter(primaryRequest)
+        .flatMap((request) => request.ranges);
       let distance = Math.max(gap[0].row - center, center - gap[1].row, 0) + 2 * TILE_ROWS;
       let index = -1;
       for (let i = 0; i < this.cache.snapshots.length; i++) {
@@ -518,9 +587,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         const candidate = Math.max(snapshot.start.row - center, center - snapshot.end.row, 0);
         if (
           candidate <= distance ||
-          protectedRanges.some(
-            ([first, last]) => snapshot.start.row <= last && snapshot.end.row > first,
-          )
+          protectedRanges.some(([first, last]) => intersectsRows(snapshot, first, last))
         )
           continue;
         distance = candidate;
@@ -559,13 +626,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   schedule() {
     if (!this.canRefresh()) return;
     if (this.timer || this.refreshPromise) return;
-    this.timer = setTimeout(
-      () => {
-        this.timer = null;
-        void this.refresh().catch((error) => this.failed(error));
-      },
-      this.publicationPending && this.buffer.getLength() >= 512 * 1024 ? 50 : 0,
-    );
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.refresh().catch((error) => this.failed(error));
+    }, 0);
   }
 
   async refresh() {
@@ -603,7 +667,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           const metadata = await this.service.request(
             this.session,
             "view",
-            { ranges: [first], stream: true, follow: true },
+            { ranges: [first], stream: true, follow: true, allowPreview: true },
             {
               revision,
               signal: controller.signal,
@@ -618,6 +682,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                     end: Point.fromObject(packet.end),
                     scopes: packet.scopes.map((id) => ids.get(id)),
                     events: [],
+                    quality: packet.quality ?? "exact",
+                    reason: packet.reason ?? null,
                   };
                 }
                 for (const event of packet.events)
@@ -663,12 +729,17 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                       stamp,
                     ))
                       updates.add(new Range(start, end));
-                  const visible = [...this.requests].flatMap((request) => request.ranges);
+                  const visible = [...this.requests]
+                    .filter(primaryRequest)
+                    .flatMap((request) => request.ranges);
                   const evicted = this.cache.replace([tile], stamp, (snapshot) =>
-                    visible.some(
-                      ([first, last]) => snapshot.start.row <= last && snapshot.end.row > first,
-                    ),
+                    visible.some(([first, last]) => intersectsRows(snapshot, first, last)),
                   );
+                  // Optional coverage must not repeatedly evict and request its
+                  // neighbours. Required primary viewports still finish even
+                  // when their protected coverage alone exceeds the allowance.
+                  if (evicted || this.cache.estimatedBytes > this.cache.maxBytes)
+                    this.warmupPaused = true;
                   // Completing the current viewport does not repair retained
                   // paint elsewhere. Keep those invalidations until their own
                   // tiles arrive, including after scrolling or a file reload.
@@ -706,12 +777,13 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                         : update.end;
                     this.emitter.emit("did-change-highlighting", new Range(update.start, end));
                   }
-                  if (current()) return { range: nextRange() };
+                  if (current() && tile.quality !== "provisional") return { range: nextRange() };
                 }
               },
             },
           );
           if (current()) {
+            if (metadata.syntaxReady === false) return;
             this.receiveMetadata(metadata);
             this.publicationPending = false;
           }
@@ -829,6 +901,15 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       "suggestedIndentForBufferRows",
       [startRow, endRow, tabLength, options],
       requestOptions,
+    );
+  }
+  scanSuggestedIndentation(ranges, tabLength, options = {}) {
+    const { signal, isCurrent, ...parameters } = options;
+    return this.service.stream(
+      this.session,
+      "indent",
+      { ranges, tabLength, options: parameters },
+      { signal, isCurrent },
     );
   }
   suggestedIndentForBufferRowsAtRows(...args) {

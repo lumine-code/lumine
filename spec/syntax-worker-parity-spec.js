@@ -96,11 +96,22 @@ describe("Syntax owner parity", () => {
               ),
             });
             if (hasLongString) {
-              const token = states
-                .at(-1)
-                .paint.flat()
-                .find((token) => token.text.length === 70000);
-              expect(token?.scopes.some((scope) => scope.includes("syntax--string"))).toBeTrue();
+              const cache = mode.asynchronousSyntax ? mode.cache : mode.highlightCache;
+              const limited = cache.snapshots.filter(
+                (snapshot) =>
+                  snapshot.stamp?.revision === editor.getBuffer().getTextRevision() &&
+                  snapshot.quality === "limited" &&
+                  snapshot.reason === "source-window",
+              );
+              expect(limited.length).toBeGreaterThan(0);
+              expect(limited.every((snapshot) => snapshot.events.length < 128)).toBe(true);
+              const insideString = positions.findIndex(
+                ([row, column]) => editor.lineTextForBufferRow(row).length > 70000 && column > 0,
+              );
+              expect(insideString).toBeGreaterThanOrEqual(0);
+              expect(
+                states.at(-1).scopes[insideString].some((scope) => scope.startsWith("string.")),
+              ).toBe(true);
             }
             expect(mode.error).toBeFalsy();
           }

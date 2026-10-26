@@ -99,6 +99,8 @@ function contextFor(mode, signal, revision = mode.buffer.getTextRevision()) {
       getSyntaxNodeContainingBufferRange: (range, where) =>
         mode.getSyntaxNodeContainingRange?.(Range.fromObject(range), where) ?? null,
       getGrammarQueryCaptureGroups: (type) => mode.getQueryCaptureGroups?.(type, { signal }) ?? [],
+      scanGrammarQueryCaptures: (type, options = {}) =>
+        mode.scanQueryCaptures(type, { ...options, signal }),
     },
     signal,
   );

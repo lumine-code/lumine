@@ -1,8 +1,10 @@
 const { Node, TreeCursor } = require("web-tree-sitter");
 const { constants } = require("node:buffer");
+const { checkPredicateTextLength } = require("./tree-sitter-query-budget");
 
 function textForRange(tree, start, end, position) {
   const length = end - start;
+  checkPredicateTextLength(length);
   if (length > constants.MAX_STRING_LENGTH)
     throw Object.assign(
       new RangeError(

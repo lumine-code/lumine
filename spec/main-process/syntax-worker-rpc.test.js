@@ -122,6 +122,40 @@ test("consumer failures cancel streams and later requests remain usable", async 
   }
 });
 
+test("dispatch invalidation releases the transport acknowledgement without consumer cooperation", async () => {
+  let invalidate, release, abandoned;
+  const invalidation = new Promise((_, reject) => {
+    invalidate = reject;
+  });
+  const { client, endpoint } = connection(async (_op, _data, { emit }) =>
+    Promise.race([
+      emit("first").catch((error) => {
+        abandoned = error;
+        throw error;
+      }),
+      invalidation,
+    ]),
+  );
+  try {
+    const result = client.request("stream", null, {
+      onChunk: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    });
+    const rejection = assert.rejects(result, { name: "AbortError" });
+    while (!release) await tick();
+    invalidate(Object.assign(new Error("The document changed"), { name: "AbortError" }));
+    await rejection;
+    assert.equal(abandoned?.name, "AbortError");
+    assert.equal(endpoint.jobs.size, 0);
+    assert.equal(client.pending.size, 0);
+  } finally {
+    release?.();
+    client.close();
+  }
+});
+
 test("closing the connection rejects every pending request", async () => {
   const { client } = connection(() => new Promise(() => {}));
   const a = assert.rejects(client.request("wait", 1), { name: "AbortError" });

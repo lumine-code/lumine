@@ -73,6 +73,10 @@ class SyntaxWorkerService {
   }
 
   focusBuffer(buffer) {
+    if (this.focusedBuffer?.deref() !== (buffer ?? undefined)) {
+      this.focusedBuffer = buffer ? new WeakRef(buffer) : null;
+      this.noteInteraction();
+    }
     let id = null;
     // Constructing a replacement mode acquires its session before destroying
     // the previous one. Prioritize the newest owner of the active buffer.
@@ -81,6 +85,10 @@ class SyntaxWorkerService {
         id = session.id;
       }
     this.client?.send({ type: "control", operation: "focus", session: id });
+  }
+
+  noteInteraction() {
+    this.lastInteraction = performance.now();
   }
 
   invalidateEnvironment() {
@@ -191,6 +199,10 @@ class SyntaxWorkerService {
 
   receive(event) {
     if (this.closed) return;
+    if (event.event === "recycle-requested") {
+      this.scheduleRecycle();
+      return;
+    }
     if (event.event === "runtime-failure") {
       this.runtimeFailed(this.client, event.failure);
       return;
@@ -198,6 +210,10 @@ class SyntaxWorkerService {
     const session = this.sessions.get(event.session);
     if (session) {
       if (event.event === "failure") {
+        if (event.failure?.recycle) {
+          this.runtimeFailed(this.client, event.failure);
+          return;
+        }
         this.disableSession(
           session,
           event.failure ?? {
@@ -322,6 +338,7 @@ class SyntaxWorkerService {
   }
 
   async sendEdits(client, session, batch) {
+    this.noteInteraction();
     const changes = batch.changes,
       options = { signal: session.controller.signal };
     options.signal.throwIfAborted();
@@ -515,6 +532,7 @@ class SyntaxWorkerService {
   }
 
   async request(session, operation, data = {}, options = {}) {
+    if (operation !== "view") this.noteInteraction();
     const client = this.client;
     try {
       return await this.requestCurrent(session, operation, data, options);
@@ -523,6 +541,13 @@ class SyntaxWorkerService {
         throw Client.abortError("Syntax analysis is unavailable or was replaced");
       throw error;
     }
+  }
+
+  stream(session, operation, data, options = {}) {
+    return require("./syntax-result-stream")(
+      (onChunk, signal) => this.request(session, operation, data, { ...options, signal, onChunk }),
+      options,
+    );
   }
 
   async requestCurrent(
@@ -573,6 +598,7 @@ class SyntaxWorkerService {
           error.name !== "AbortError" ||
           this.closed ||
           this.terminalError ||
+          error.code === "ERR_SYNTAX_QUERY_BUDGET" ||
           session.closed ||
           signal?.aborted
         )
@@ -592,8 +618,31 @@ class SyntaxWorkerService {
     if (!this.sessions.size) this.idleTimer = setTimeout(() => this.disconnect(), 5000);
   }
 
+  scheduleRecycle() {
+    if (this.recycleTimer || !this.client || this.closed) return;
+    const client = this.client;
+    const check = () => {
+      this.recycleTimer = null;
+      if (this.closed || this.client !== client) return;
+      if (!this.sessions.size) {
+        this.disconnect();
+        return;
+      }
+      if (performance.now() - (this.lastInteraction ?? -Infinity) < 750 || client.pending?.size) {
+        this.recycleTimer = setTimeout(check, 250);
+        return;
+      }
+      // Freed allocations can remain reserved by WASM. Restore the small live
+      // documents in a new owner once interactive work has become quiet.
+      this.recover(client, Client.abortError("Syntax resources were recycled"), true);
+    };
+    this.recycleTimer = setTimeout(check, 750);
+  }
+
   disconnect() {
     clearTimeout(this.idleTimer);
+    clearTimeout(this.recycleTimer);
+    this.recycleTimer = null;
     this.eventSubscription?.dispose();
     this.eventSubscription = null;
     this.closeSubscription?.dispose();

@@ -77,7 +77,12 @@ module.exports = async function analyzeBufferSyntax(
     check();
     return buffer.getTextRevision() === revision ? result : null;
   } catch (error) {
-    if (combined.aborted || error.name === "AbortError" || mode.getSyntaxRequestEpoch?.() !== epoch)
+    if (
+      error.code === "ERR_SYNTAX_QUERY_BUDGET" ||
+      combined.aborted ||
+      error.name === "AbortError" ||
+      mode.getSyntaxRequestEpoch?.() !== epoch
+    )
       return null;
     throw error;
   } finally {

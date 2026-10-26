@@ -23,6 +23,17 @@ function scm(strings) {
   return strings.join("");
 }
 
+function describeBudgetedQueryCalls(query) {
+  return query.captures.calls
+    .allArgs()
+    .map(([node, options]) => [
+      node.id,
+      options.maxStartDepth,
+      typeof options.progressCallback,
+      options.matchLimit,
+    ]);
+}
+
 // These fixtures define their own injection points. Package queries are tested
 // separately and must not create additional layers in these isolated modes.
 function readGrammarConfig(grammarPath) {
@@ -328,10 +339,10 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = await setUp("const value = 1;\n");
       const layer = languageMode.rootLanguageLayer;
       grammar.queryPaths.parseBoundariesMaxStartDepth = 2;
-      const dirty = { id: 1, hasChanges: true, childCount: 2 };
+      const dirty = { id: 1, hasChanges: true, childCount: 2, startIndex: 0, endIndex: 10 };
       const clean = { id: 2, hasChanges: false, childCount: 2 };
       const leaf = { id: 3, hasChanges: true, childCount: 0 };
-      const nested = { id: 4, hasChanges: true, childCount: 2 };
+      const nested = { id: 4, hasChanges: true, childCount: 2, startIndex: 0, endIndex: 5 };
       const fragment = { id: 5, hasChanges: true, childCount: 0 };
       const boundary = (node) => ({ name: "parse.boundary", node });
       const original = layer.queries.parseBoundariesQuery;
@@ -347,10 +358,10 @@ describe("TreeSitterLanguageMode", () => {
         expect(layer.getParseBoundaryCaptures().map(({ node }) => node.id)).toEqual([
           1, 2, 3, 4, 5,
         ]);
-        expect(query.captures.calls.allArgs()).toEqual([
-          [layer.tree.rootNode, { maxStartDepth: 2 }],
-          [dirty, { maxStartDepth: 3 }],
-          [nested, { maxStartDepth: 3 }],
+        expect(describeBudgetedQueryCalls(query)).toEqual([
+          [layer.tree.rootNode.id, 2, "function", 4096],
+          [dirty.id, 3, "function", 4096],
+          [nested.id, 3, "function", 4096],
         ]);
       } finally {
         layer.queries.parseBoundariesQuery = original;
@@ -401,10 +412,10 @@ describe("TreeSitterLanguageMode", () => {
           captures.filter(({ name }) => name === "parse.boundary").map(({ node }) => node.id),
         ).toEqual([1, 2, 3, 5, 6, 7, 8, 10, 11]);
         expect(captures.find(({ name }) => name === "other").node).toBe(farDocument);
-        expect(query.captures.calls.allArgs()).toEqual([
-          [layer.tree.rootNode, { maxStartDepth: 1 }],
-          [dirtyDocument, { maxStartDepth: 2 }],
-          [dirtyRow, { maxStartDepth: 2 }],
+        expect(describeBudgetedQueryCalls(query)).toEqual([
+          [layer.tree.rootNode.id, 1, "function", 4096],
+          [dirtyDocument.id, 2, "function", 4096],
+          [dirtyRow.id, 2, "function", 4096],
         ]);
       } finally {
         layer.queries.parseBoundariesQuery = original;
@@ -479,7 +490,7 @@ describe("TreeSitterLanguageMode", () => {
       expect(query.captures.calls.count()).toBe(1);
     });
 
-    it("uses one unrestricted query when the depth option is absent or invalid", async () => {
+    it("keeps one budgeted query without a depth limit when the option is absent or invalid", async () => {
       const languageMode = await setUp("const value = 1;\n");
       const layer = languageMode.rootLanguageLayer;
       const query = layer.queries.parseBoundariesQuery;
@@ -488,7 +499,10 @@ describe("TreeSitterLanguageMode", () => {
         grammar.queryPaths.parseBoundariesMaxStartDepth = option;
         query.captures.calls.reset();
         expect(layer.getParseBoundaryCaptures()).toEqual([]);
-        expect(query.captures.calls.allArgs()).toEqual([[layer.tree.rootNode]]);
+        expect(describeBudgetedQueryCalls(query)).toEqual([
+          [layer.tree.rootNode.id, undefined, "function", 4096],
+        ]);
+        expect(query.captures.calls.mostRecent().args[1].maxStartDepth).toBeUndefined();
       }
     });
   });
@@ -905,12 +919,17 @@ describe("TreeSitterLanguageMode", () => {
       buffer.setLanguageMode(languageMode);
 
       expect(languageMode.hasQuery("tagsQuery")).toBe(true);
+      await languageMode.atGrammarSettlement();
+      const paintResolver = languageMode.rootLanguageLayer.scopeResolver;
+      const paintBoundaries = [...paintResolver.boundaries];
+      spyOn(paintResolver, "reset").and.callThrough();
       const groups = await languageMode.getQueryCaptureGroups("tagsQuery");
 
       expect(groups.length).toBe(1);
       expect(groups[0].grammar).toBe(grammar);
       expect(groups[0].captures.map((capture) => capture.node.text)).toEqual(["alpha", "beta"]);
-      expect(languageMode.rootLanguageLayer.scopeResolver.boundaries.size).toBe(0);
+      expect([...paintResolver.boundaries]).toEqual(paintBoundaries);
+      expect(paintResolver.reset).not.toHaveBeenCalled();
     });
 
     it("returns separate capture groups for root and injected grammars", async () => {

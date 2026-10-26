@@ -2,6 +2,11 @@ const Point = require("./point");
 
 const compare = (a, b) => a.row - b.row || a.column - b.column;
 const copy = (p) => (Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.row, p.column));
+const eventBytes = (event) => 128 + (event.open.length + event.close.length) * 8;
+const snapshotBytes = (snapshot) =>
+  192 +
+  snapshot.scopes.length * 8 +
+  snapshot.events.reduce((bytes, event) => bytes + eventBytes(event), 0);
 const applyScopes = (scopes, event) => {
   for (const id of event.close) {
     const index = scopes.lastIndexOf(id);
@@ -44,19 +49,101 @@ class ScopeIterator {
 // Presentation-only scope IDs and coordinates. No syntax nodes, source strings
 // or stale query results escape through the document's semantic APIs.
 class HighlightCache {
-  constructor({ maxSnapshots = 16, maxEvents = 16000, maxEdits = 512 } = {}) {
+  constructor({
+    maxSnapshots = 16,
+    maxEvents = 16000,
+    maxEdits = 512,
+    maxBytes = 8 * 1024 * 1024,
+  } = {}) {
+    if (!Number.isFinite(maxBytes) || maxBytes < 0)
+      throw new RangeError("maxBytes must be a non-negative finite number.");
     this.maxSnapshots = maxSnapshots;
     this.maxEvents = maxEvents;
     this.maxRecordEvents = Math.max(1, Math.floor(maxEvents / 2));
     this.maxEdits = maxEdits;
+    this.maxBytes = maxBytes;
+    this.maxCheckpointBytes = Math.floor(maxBytes / 4);
     this.clear();
   }
   clear() {
     this.snapshots = [];
     this.orderedSnapshots = null;
     this.scopeCheckpoints = new WeakMap();
+    this.snapshotCosts = new WeakMap();
+    this.protectedSnapshots = new WeakSet();
+    this.snapshotBytes = 0;
+    this.checkpointBytes = 0;
+    this.editBytes = 0;
+    this.eventCount = 0;
     this.edits = [];
     this.sequence = 0;
+  }
+  // Accounted JS payload, not measured heap usage. The estimate includes point,
+  // event and array overhead, numeric scope slots, pending edits and optional
+  // checkpoints. Shared scope IDs are numbers; no syntax tree is retained here.
+  get estimatedBytes() {
+    return this.snapshotBytes + this.checkpointBytes + this.editBytes;
+  }
+  getStats() {
+    return {
+      estimatedBytes: this.estimatedBytes,
+      maxBytes: this.maxBytes,
+      snapshots: this.snapshots.length,
+      events: this.eventCount,
+      checkpointBytes: this.checkpointBytes,
+      editBytes: this.editBytes,
+      overBudget: this.estimatedBytes > this.maxBytes,
+    };
+  }
+  trackSnapshot(snapshot) {
+    if (this.snapshotCosts.has(snapshot)) return;
+    const cost = { bytes: snapshotBytes(snapshot), events: snapshot.events.length };
+    this.snapshotCosts.set(snapshot, cost);
+    this.snapshotBytes += cost.bytes;
+    this.eventCount += cost.events;
+  }
+  adjustSnapshot(snapshot, bytes, events = 0) {
+    const cost = this.snapshotCosts.get(snapshot);
+    if (!cost) return;
+    cost.bytes += bytes;
+    cost.events += events;
+    this.snapshotBytes += bytes;
+    this.eventCount += events;
+  }
+  dropCheckpoints(snapshot) {
+    const saved = this.scopeCheckpoints.get(snapshot);
+    if (saved) this.checkpointBytes -= saved.bytes;
+    this.scopeCheckpoints.delete(snapshot);
+  }
+  forgetSnapshot(snapshot) {
+    const cost = this.snapshotCosts.get(snapshot);
+    if (!cost) return;
+    this.snapshotBytes -= cost.bytes;
+    this.eventCount -= cost.events;
+    this.snapshotCosts.delete(snapshot);
+    this.dropCheckpoints(snapshot);
+  }
+  setSnapshots(snapshots) {
+    const retained = new Set(snapshots);
+    for (const snapshot of this.snapshots)
+      if (!retained.has(snapshot)) this.forgetSnapshot(snapshot);
+    for (const snapshot of snapshots) this.trackSnapshot(snapshot);
+    this.snapshots = snapshots;
+    this.orderedSnapshots = null;
+  }
+  evictColdSnapshots() {
+    let evicted = false;
+    while (
+      this.snapshots.length > this.maxSnapshots ||
+      this.eventCount > this.maxEvents ||
+      this.estimatedBytes > this.maxBytes
+    ) {
+      const index = this.snapshots.findIndex((snapshot) => !this.protectedSnapshots.has(snapshot));
+      if (index < 0) break;
+      this.removeSnapshot(index);
+      evicted = true;
+    }
+    return evicted;
   }
   edit({ oldRange, newRange }, { extendScopes } = {}) {
     const edit = {
@@ -78,7 +165,8 @@ class HighlightCache {
       edit.extensionStack = [...extendScopes];
     }
     this.edits.push(edit);
-    if (this.edits.length >= this.maxEdits) this.rebase();
+    this.editBytes += 160 + (edit.extensionStack?.length ?? 0) * 48;
+    if (this.edits.length >= this.maxEdits || this.estimatedBytes > this.maxBytes) this.rebase();
   }
   rebase() {
     if (this.edits.length === 0) return;
@@ -107,13 +195,19 @@ class HighlightCache {
           atStart && edit.extensionStack.every((id, index) => snapshot.scopes[index] === id);
         const moveStart = atStart && !sharesPrefix;
         if (sharesPrefix && snapshot.scopes.length > edit.extensionStack.length) {
-          snapshot.events.unshift({
+          const event = {
             position: copy(edit.start),
             close: [],
             open: snapshot.scopes.slice(edit.extensionStack.length),
-          });
+          };
+          snapshot.events.unshift(event);
+          this.adjustSnapshot(
+            snapshot,
+            eventBytes(event) + (edit.extensionStack.length - snapshot.scopes.length) * 8,
+            1,
+          );
           snapshot.scopes = [...edit.extensionStack];
-          this.scopeCheckpoints.delete(snapshot);
+          this.dropCheckpoints(snapshot);
         }
         snapshot.start = shift(snapshot.start, edit, moveStart);
         snapshot.end = shift(snapshot.end, edit, true);
@@ -135,6 +229,8 @@ class HighlightCache {
       snapshot.sequence = this.sequence;
     }
     this.edits.length = 0;
+    this.editBytes = 0;
+    this.evictColdSnapshots();
   }
   extendBoundary(snapshot, start, edit) {
     if (compare(snapshot.start, edit.start) > 0) return start;
@@ -148,22 +244,28 @@ class HighlightCache {
       if (!edit.extensionStack.every((id, index) => scopes[index] === id)) return start;
       const suffix = scopes.slice(edit.extensionStack.length);
       if (!suffix.length) return start;
-      snapshot.events.splice(
-        start,
-        0,
+      const inserted = [
         { position: copy(edit.start), close: [...suffix].reverse(), open: [] },
         { position: copy(edit.newEnd), close: [], open: suffix },
+      ];
+      snapshot.events.splice(start, 0, ...inserted);
+      this.adjustSnapshot(
+        snapshot,
+        inserted.reduce((bytes, event) => bytes + eventBytes(event), 0),
+        2,
       );
-      this.scopeCheckpoints.delete(snapshot);
+      this.dropCheckpoints(snapshot);
       return start + 2;
     }
     const left = [],
       right = [],
       opened = new Map();
+    let removedBytes = 0;
     for (let index = start; index < end; index++) {
       const event = snapshot.events[index],
         closeLeft = [],
         closeRight = [];
+      removedBytes += eventBytes(event);
       for (const id of event.close) {
         const count = opened.get(id) || 0;
         // An empty scope opened and closed at the same boundary must move as
@@ -178,9 +280,14 @@ class HighlightCache {
         right.push({ position: copy(edit.newEnd), close: closeRight, open: [...event.open] });
     }
     snapshot.events.splice(start, end - start, ...left, ...right);
+    this.adjustSnapshot(
+      snapshot,
+      [...left, ...right].reduce((bytes, event) => bytes + eventBytes(event), 0) - removedBytes,
+      left.length + right.length - (end - start),
+    );
     // Splitting/reordering boundaries changes scope prefixes even when the
     // number of events happens to remain identical.
-    this.scopeCheckpoints.delete(snapshot);
+    this.dropCheckpoints(snapshot);
     return start + left.length + right.length;
   }
   materialize(snapshot) {
@@ -267,28 +374,25 @@ class HighlightCache {
         remaining.push(...fragments);
         if (retained.has(previous)) for (const fragment of fragments) retained.add(fragment);
       }
-      this.snapshots = remaining;
+      this.setSnapshots(remaining);
       const replacement = { ...snapshot, sequence: this.sequence, stamp };
       this.snapshots.push(replacement);
+      this.trackSnapshot(replacement);
       retained.add(replacement);
     }
-    let events = this.snapshots.reduce((sum, snapshot) => sum + snapshot.events.length, 0);
-    // The event allowance evicts old windows, never part of the current view.
-    // A dense but bounded batch must not silently lose its highlighting.
-    let evicted = false;
-    while (this.snapshots.length > this.maxSnapshots || events > this.maxEvents) {
-      const index = this.snapshots.findIndex(
-        (snapshot) => !retained.has(snapshot) && !keep(snapshot),
-      );
-      if (index < 0) break;
-      evicted = true;
-      events -= this.removeSnapshot(index).events.length;
-    }
-    return evicted;
+    // Retention allowances evict old windows, never the protected current view
+    // or the newly delivered batch. If those alone exceed maxBytes, report the
+    // excess rather than lose coverage and request the same tile indefinitely.
+    this.protectedSnapshots = new WeakSet();
+    for (const snapshot of this.snapshots)
+      if (retained.has(snapshot) || keep(snapshot)) this.protectedSnapshots.add(snapshot);
+    return this.evictColdSnapshots();
   }
   removeSnapshot(index) {
     this.orderedSnapshots = null;
-    return this.snapshots.splice(index, 1)[0];
+    const snapshot = this.snapshots.splice(index, 1)[0];
+    if (snapshot) this.forgetSnapshot(snapshot);
+    return snapshot;
   }
   getOrderedSnapshots() {
     this.rebase();
@@ -354,32 +458,62 @@ class HighlightCache {
           end: copy(start),
           scopes: [...scopes],
           events: [],
+          quality: iterator.quality ?? (iterator.limitedReason ? "limited" : "exact"),
+          reason: iterator.limitedReason ?? iterator.reason ?? null,
         };
         cache.snapshots.push(snapshot);
+        cache.trackSnapshot(snapshot);
+        if (complete) cache.protectedSnapshots.add(snapshot);
+        else cache.protectedSnapshots = new WeakSet([snapshot]);
         cache.orderedSnapshots = null;
-        if (!complete && cache.snapshots.length > cache.maxSnapshots) cache.snapshots.shift();
+        if (!complete)
+          while (
+            cache.snapshots.length > 1 &&
+            (cache.snapshots.length > cache.maxSnapshots || cache.estimatedBytes > cache.maxBytes)
+          )
+            cache.removeSnapshot(0);
+        if (!complete && cache.snapshotCosts.get(snapshot).bytes > cache.maxBytes) {
+          cache.removeSnapshot(cache.snapshots.indexOf(snapshot));
+          snapshot = null;
+        }
         cover();
         return scopes;
       },
       getPosition: () => iterator.getPosition(),
+      get quality() {
+        return (
+          snapshot?.quality ?? iterator.quality ?? (iterator.limitedReason ? "limited" : "exact")
+        );
+      },
+      get limitedReason() {
+        return snapshot?.reason ?? iterator.limitedReason ?? null;
+      },
       getOpenScopeIds: () => iterator.getOpenScopeIds(),
       getCloseScopeIds: () => iterator.getCloseScopeIds(),
       moveToSuccessor() {
+        if (snapshot && !cache.snapshotCosts.has(snapshot)) snapshot = null;
         if (snapshot && compare(iterator.getPosition(), limit) <= 0) {
-          snapshot.events.push({
+          const event = {
             position: copy(iterator.getPosition()),
             open: [...iterator.getOpenScopeIds()],
             close: [...iterator.getCloseScopeIds()],
-          });
-          if (!complete && snapshot.events.length > cache.maxRecordEvents) {
-            cache.snapshots = cache.snapshots.filter((item) => item !== snapshot);
-            cache.orderedSnapshots = null;
+          };
+          snapshot.events.push(event);
+          cache.adjustSnapshot(snapshot, eventBytes(event), 1);
+          if (
+            !complete &&
+            (snapshot.events.length > cache.maxRecordEvents ||
+              cache.snapshotCosts.get(snapshot)?.bytes > cache.maxBytes)
+          ) {
+            cache.removeSnapshot(cache.snapshots.indexOf(snapshot));
             snapshot = null;
           }
           if (!complete) {
-            let total = cache.snapshots.reduce((count, item) => count + item.events.length, 0);
-            while (total > cache.maxEvents && cache.snapshots.length > 1)
-              total -= cache.removeSnapshot(0).events.length;
+            while (
+              (cache.eventCount > cache.maxEvents || cache.estimatedBytes > cache.maxBytes) &&
+              cache.snapshots.length > 1
+            )
+              cache.removeSnapshot(0);
           }
         }
         const result = iterator.moveToSuccessor();
@@ -404,18 +538,55 @@ class HighlightCache {
     // scope sequence; replaced/sliced snapshots get their own checkpoints.
     let saved = this.scopeCheckpoints.get(snapshot);
     if (!saved || saved.count !== events.length) {
-      saved = { count: events.length, scopes: [[...snapshot.scopes]] };
-      this.scopeCheckpoints.set(snapshot, saved);
-    }
-    const checkpoint = Math.floor(low / 64);
-    if (saved.scopes.length <= checkpoint) {
-      const scopes = [...saved.scopes.at(-1)];
-      for (let i = (saved.scopes.length - 1) * 64; i < checkpoint * 64; i++) {
-        applyScopes(scopes, events[i]);
-        if ((i + 1) % 64 === 0) saved.scopes.push([...scopes]);
+      this.dropCheckpoints(snapshot);
+      // The base stack is already owned/accounted by the snapshot. Later
+      // checkpoints own copies, including a rolling tail when dense prefixes
+      // have reached their allowance.
+      const cached =
+        this.checkpointBytes + 64 <= this.maxCheckpointBytes &&
+        this.estimatedBytes + 64 <= this.maxBytes;
+      saved = { count: events.length, scopes: [snapshot.scopes], bytes: 64, tail: null, cached };
+      if (cached) {
+        this.checkpointBytes += saved.bytes;
+        this.scopeCheckpoints.set(snapshot, saved);
       }
     }
-    const scopes = [...saved.scopes[checkpoint]];
+    const checkpoint = Math.floor(low / 64);
+    let first = Math.min(checkpoint, saved.scopes.length - 1);
+    let scopes = saved.scopes[first];
+    if (saved.tail && saved.tail.index <= checkpoint && saved.tail.index > first) {
+      first = saved.tail.index;
+      scopes = saved.tail.scopes;
+    }
+    scopes = [...scopes];
+    for (let i = first * 64; i < checkpoint * 64; i++) {
+      applyScopes(scopes, events[i]);
+      if ((i + 1) % 64 === 0 && saved.scopes.length === (i + 1) / 64) {
+        const bytes = 32 + scopes.length * 8;
+        if (
+          saved.cached &&
+          this.checkpointBytes + bytes <= this.maxCheckpointBytes / 2 &&
+          this.estimatedBytes + bytes <= this.maxBytes
+        ) {
+          saved.scopes.push([...scopes]);
+          saved.bytes += bytes;
+          this.checkpointBytes += bytes;
+        }
+      }
+    }
+    if (checkpoint >= saved.scopes.length) {
+      const bytes = 48 + scopes.length * 8;
+      const delta = bytes - (saved.tail?.bytes ?? 0);
+      if (
+        saved.cached &&
+        this.checkpointBytes + delta <= this.maxCheckpointBytes &&
+        this.estimatedBytes + delta <= this.maxBytes
+      ) {
+        saved.tail = { index: checkpoint, scopes: [...scopes], bytes };
+        saved.bytes += delta;
+        this.checkpointBytes += delta;
+      }
+    }
     for (let i = checkpoint * 64; i < low; i++) applyScopes(scopes, events[i]);
     return { scopes, index: low };
   }

@@ -1043,7 +1043,7 @@ class DisplayLayer {
     // Finish that work before ScreenLineBuilder captures its mutable state or
     // uncached ranges, including when a subscriber reads another screen line.
     return languageMode.requestHighlighting(owner, ranges, true, {
-      priority: owner === this ? 0 : owner === this.singleLineHighlightingOwner ? 2 : 1,
+      priority: owner === this ? 0 : owner === this.singleLineHighlightingOwner ? 3 : 2,
       prefetch: owner !== this.singleLineHighlightingOwner,
       background: owner === this,
     });

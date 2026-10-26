@@ -132,12 +132,14 @@ test("dense highlighting is transferred in bounded packets and obsolete streams 
   try {
     let packets = 0,
       events = 0;
+    const qualities = [];
     await host.dispatch(
       "view",
       { ...data, ranges: [[0, 0]], stream: true },
       {
         emit: async (packet) => {
           packets++;
+          if (packet.start) qualities.push({ quality: packet.quality, reason: packet.reason });
           if (packet.events) {
             assert.ok(packet.events.length <= 4096);
             events += packet.events.length;
@@ -146,7 +148,7 @@ test("dense highlighting is transferred in bounded packets and obsolete streams 
       },
     );
     assert.ok(packets >= 1);
-    assert.ok(events > 512);
+    assert.ok(events > 512, JSON.stringify({ events, qualities }));
     let invalidated = false;
     await assert.rejects(
       host.dispatch(
@@ -180,7 +182,7 @@ test("paint packets split dense tiles and follow the acknowledged viewport", asy
   const starts = [],
     packets = [];
   const session = {
-    buffer: { clipPosition: Point.fromObject, getLastRow: () => 3 },
+    buffer: new TextBuffer({ text: "x\nx\nx\nx" }),
     mode: {
       scopeNameForScopeId: () => "source.test",
       getFoldRangeForRow: () => null,
@@ -221,6 +223,135 @@ test("paint packets split dense tiles and follow the acknowledged viewport", asy
     );
     assert.equal(packets.filter((packet) => packet.start).length, 2);
     assert.equal(packets.filter((packet) => packet.kind === "end").length, 2);
+  } finally {
+    session.buffer.destroy();
+    host.close();
+  }
+});
+
+test("indentation iterators preserve virtual indentation across acknowledged worker packets", async () => {
+  const { host, data } = await setup(
+    "function example() {\nif (ready) {\nwork();\n}\n}\n".repeat(60),
+  );
+  try {
+    await host.dispatch("settle", data);
+    const session = host.sessions.get(data.session);
+    const expected = session.mode.suggestedIndentForBufferRows(0, 299, 2);
+    const packets = [];
+    const reply = await host.dispatch(
+      "indent",
+      { ...data, ranges: [[0, 299]], tabLength: 2, options: { batchSize: 7 } },
+      { emit: async (packet) => packets.push(packet) },
+    );
+    assert.equal(reply.value.count, 300);
+    assert.ok(packets.length > 1);
+    assert.ok(packets.every((packet) => packet.length <= 7));
+    assert.deepEqual(new Map(packets.flat()), expected);
+
+    let received = 0;
+    await assert.rejects(
+      host.dispatch(
+        "indent",
+        { ...data, ranges: [[0, 299]], tabLength: 2, options: { batchSize: 7 } },
+        {
+          emit: async () => {
+            received++;
+            await host.dispatch("edit", {
+              session: data.session,
+              beforeRevision: 0,
+              revision: 1,
+              changes: [{ startIndex: 0, oldEndIndex: session.buffer.getLength(), text: "" }],
+            });
+          },
+        },
+      ),
+      { name: "AbortError" },
+    );
+    assert.equal(received, 1);
+    assert.equal(session.jobs.size, 0);
+  } finally {
+    host.close();
+  }
+});
+
+test("provisional view packets remain separate from exact semantics and yield to exact settlement", async () => {
+  const { host, data } = await setup("const value = 3;\n".repeat(20));
+  try {
+    await host.dispatch("settle", data);
+    const session = host.sessions.get(data.session);
+    const mode = session.mode;
+    let settle;
+    const settlement = new Promise((resolve) => {
+      settle = resolve;
+    });
+    mode.atGrammarSettlement = () => settlement;
+    mode.publicationPending = true;
+    const packets = [];
+    const result = await host.dispatch(
+      "view",
+      { ...data, ranges: [[0, 3]], stream: true, allowPreview: true },
+      { emit: async (packet) => packets.push(packet) },
+    );
+    assert.equal(result.syntaxReady, false);
+    assert.ok(packets.some((packet) => packet.quality === "provisional"));
+    assert.ok(packets.every((packet) => !packet.folds?.length));
+    assert.equal(mode.publicationPending, true);
+
+    let semanticFinished = false;
+    const semantic = host.dispatch("analyze", { ...data, module: processor, method: "summary" });
+    void semantic.then(() => {
+      semanticFinished = true;
+    });
+    await new Promise(setImmediate);
+    assert.equal(semanticFinished, false);
+
+    const takeover = [];
+    const current = await host.dispatch(
+      "view",
+      { ...data, ranges: [[0, 3]], stream: true, allowPreview: true },
+      {
+        emit: async (packet) => {
+          takeover.push(packet);
+          if (packet.quality === "provisional") {
+            mode.publicationPending = false;
+            settle({});
+          }
+        },
+      },
+    );
+    assert.equal(current.syntaxReady, true);
+    assert.ok(takeover.some((packet) => packet.quality === "exact"));
+    assert.equal((await semantic).value.type, "const");
+    assert.equal(host.sessions.get(data.session), session);
+  } finally {
+    host.close();
+  }
+});
+
+test("session invalidation releases indentation waiting for an unacknowledged packet", async () => {
+  const { host, data } = await setup("function work() {\nvalue();\n}\n");
+  let delivered;
+  const firstPacket = new Promise((resolve) => {
+    delivered = resolve;
+  });
+  try {
+    const pending = host.dispatch(
+      "indent",
+      { ...data, ranges: [[0, 2]], tabLength: 2, options: { batchSize: 1 } },
+      {
+        emit: () => {
+          delivered();
+          return new Promise(() => {});
+        },
+      },
+    );
+    const rejection = assert.rejects(pending, { name: "AbortError" });
+    await firstPacket;
+    const session = host.sessions.get(data.session);
+    host.abortJobs(session);
+    await rejection;
+    assert.equal(session.jobs.size, 0);
+    assert.equal(session.mode.indentResolver.lastIndentationScanStats.processedRows, 1);
   } finally {
     host.close();
   }

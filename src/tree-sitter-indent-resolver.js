@@ -3,6 +3,13 @@ const Point = require("./point");
 const captureQuery = require("./tree-sitter-query-cache");
 const { comparePoints, resolveNodePosition } = require("./tree-sitter-node-helpers");
 const { leadingIndentation, trimmedRange } = require("./text-source-helpers");
+const { scanSuggestedIndentation } = require("./tree-sitter-indentation-stream");
+const {
+  runQuery,
+  withPredicateTextBudget,
+  checkPredicateTextLength,
+  QueryBudgetExceeded,
+} = require("./tree-sitter-query-budget");
 
 function clamp(value, min, max) {
   if (value < min) {
@@ -31,11 +38,89 @@ class IndentResolver {
     this.emitter = new Emitter();
   }
 
+  get queryBudget() {
+    return this.languageMode?.queryBudget ?? {};
+  }
+
+  resolveWithinBudget(callback) {
+    const previousEvents = this.pendingSuggestionEvents;
+    const previousResolvers = this.activeScopeResolvers;
+    const events = [];
+    const resolvers = new Set();
+    this.pendingSuggestionEvents = events;
+    this.activeScopeResolvers = resolvers;
+    let result;
+    try {
+      // A deferred parse is returned as a value, not awaited inside this
+      // synchronous context. Its continuation re-enters the public method.
+      result = withPredicateTextBudget(() => ({ value: callback() }), this.queryBudget);
+    } finally {
+      this.pendingSuggestionEvents = previousEvents;
+      this.activeScopeResolvers = previousResolvers;
+      for (const resolver of resolvers) resolver.reset();
+    }
+    if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+    if (previousEvents) previousEvents.push(...events);
+    else for (const event of events) this.emitter.emit(...event);
+    return result.value.value;
+  }
+
+  emitIndentSuggestion(...event) {
+    if (this.pendingSuggestionEvents) this.pendingSuggestionEvents.push(event);
+    else this.emitter.emit(...event);
+  }
+
+  storeScope(resolver, capture) {
+    this.activeScopeResolvers?.add(resolver);
+    return resolver.store(capture, { boundaries: false });
+  }
+
+  captureQuery(owner, query, tree, options) {
+    const first = this.buffer.characterIndexForPosition(options.startPosition);
+    const last = this.buffer.characterIndexForPosition(options.endPosition);
+    if (last - first > (this.queryBudget.maxRangeLength ?? 65536))
+      throw new QueryBudgetExceeded("range-limit");
+    if (first === last) return [];
+    let reason;
+    const captures = captureQuery(owner, query, tree, options, (query, node, options) => {
+      const result = runQuery(query, node, options, this.queryBudget);
+      reason = result.reason;
+      return result.complete ? result.results : null;
+    });
+    if (captures === null) throw new QueryBudgetExceeded(reason);
+    return captures;
+  }
+
+  checkRowRange(row) {
+    checkPredicateTextLength(0);
+    if (
+      this.languageMode &&
+      this.buffer.lineLengthForRow(row) > (this.queryBudget.maxRangeLength ?? 65536)
+    )
+      throw new QueryBudgetExceeded("range-limit");
+  }
+
+  hasRow(row) {
+    return (
+      Number.isInteger(row) &&
+      row >= 0 &&
+      !this.buffer.isDestroyed?.() &&
+      typeof this.buffer.lineLengthForRow(row) === "number"
+    );
+  }
+
   // Get the suggested indentation level for an existing line in the
   // buffer.
   //
   // See {@link TreeSitterLanguageMode#suggestedIndentForBufferRow}.
   suggestedIndentForBufferRow(row, tabLength, rawOptions = {}) {
+    return this.resolveWithinBudget(() =>
+      this.computeSuggestedIndentForBufferRow(row, tabLength, rawOptions),
+    );
+  }
+
+  computeSuggestedIndentForBufferRow(row, tabLength, rawOptions = {}) {
+    if (!this.hasRow(row)) return undefined;
     if (row === 0) {
       return 0;
     }
@@ -152,7 +237,7 @@ class IndentResolver {
       // match the previous line's indentation.
       let finalIndent = comparisonRowIndent - existingIndent;
       if (!options.skipEvent) {
-        this.emitter.emit("did-suggest-indent", {
+        this.emitIndentSuggestion("did-suggest-indent", {
           currentRow: row,
           comparisonRow,
           finalIndent,
@@ -240,7 +325,7 @@ class IndentResolver {
     let positionSet = new Set();
 
     // Perform the Phase 1 capture.
-    let indentCaptures = captureQuery(controllingLayer, indentsQuery, indentTree, {
+    let indentCaptures = this.captureQuery(controllingLayer, indentsQuery, indentTree, {
       startPosition: { row: comparisonRow, column: 0 },
       endPosition: { row: row, column: 0 },
     });
@@ -259,6 +344,7 @@ class IndentResolver {
     let matchNextResult = null;
 
     for (let capture of indentCaptures) {
+      checkPredicateTextLength(0);
       let { node, name } = capture;
       // Captures that have no content are ignored by default because they
       // typically are “phantom” nodes inserted by Tree-sitter as part of error
@@ -279,7 +365,7 @@ class IndentResolver {
 
       // Ignore anything that fails a scope test. This applies all the tests of
       // the form `(#is? test.foo)`.
-      if (!scopeResolver.store(capture, { boundaries: false })) {
+      if (!this.storeScope(scopeResolver, capture)) {
         continue;
       }
       // Apply indentation-specific scope tests and skip this capture if any
@@ -482,7 +568,7 @@ class IndentResolver {
       }
 
       // Perform the Phase 2 capture.
-      let dedentCaptures = captureQuery(
+      let dedentCaptures = this.captureQuery(
         dedentControllingLayer ?? controllingLayer,
         indentsQuery,
         indentTree,
@@ -496,6 +582,7 @@ class IndentResolver {
       positionSet.clear();
 
       for (let capture of dedentCaptures) {
+        checkPredicateTextLength(0);
         let { name, node } = capture;
 
         // As in Phase 1, we allow captures to opt into being recognized even
@@ -519,7 +606,7 @@ class IndentResolver {
         }
 
         // Ignore anything that fails a scope test.
-        if (!scopeResolver.store(capture, { boundaries: false })) {
+        if (!this.storeScope(scopeResolver, capture)) {
           continue;
         }
         // Apply indentation-specific scope tests and skip this capture if any
@@ -560,7 +647,7 @@ class IndentResolver {
           scopeResolver.reset();
           options.preservedRows?.add(row);
           if (!options.skipEvent)
-            this.emitter.emit("did-suggest-indent", {
+            this.emitIndentSuggestion("did-suggest-indent", {
               currentRow: row,
               comparisonRow,
               captureMode: "preserve",
@@ -580,7 +667,7 @@ class IndentResolver {
             scopeResolver.reset();
             let finalIndent = Math.max(matchIndentLevel - Math.floor(existingIndent), 0);
             if (!options.skipEvent) {
-              this.emitter.emit("did-suggest-indent", {
+              this.emitIndentSuggestion("did-suggest-indent", {
                 currentRow: row,
                 comparisonRow,
                 matchIndentLevel,
@@ -595,7 +682,7 @@ class IndentResolver {
           // Python statement during explicit reindent.
           scopeResolver.reset();
           if (!options.skipEvent) {
-            this.emitter.emit("did-suggest-indent", {
+            this.emitIndentSuggestion("did-suggest-indent", {
               currentRow: row,
               comparisonRow,
               finalIndent: 0,
@@ -654,7 +741,7 @@ class IndentResolver {
     // tooling to help a grammar author understand the indentation logic
     // without necessarily having to step through it in a debugger.
     if (!options.skipEvent) {
-      this.emitter.emit("did-suggest-indent", {
+      this.emitIndentSuggestion("did-suggest-indent", {
         currentRow: row,
         comparisonRow,
         comparisonRowIndent,
@@ -675,16 +762,35 @@ class IndentResolver {
     rawOptions,
     { comparisonRow, comparisonRowIndent, controllingLayer },
   ) {
+    const languageMode = this.languageMode;
+    const revision = this.buffer.getTextRevision?.();
+    const epoch = languageMode.getSyntaxRequestEpoch?.();
+    if (!this.hasRow(comparisonRow) || !this.hasRow(row)) return Promise.resolve(undefined);
     const comparisonText = this.lineSource(comparisonRow);
     const rowText = this.lineSource(row);
-    return this.languageMode.atTransactionEnd().then(({ parseError }) => {
-      if (parseError || this.languageMode.destroyed || controllingLayer.destroyed) return undefined;
+    if (!comparisonText || !rowText) return Promise.resolve(undefined);
+    return languageMode.atTransactionEnd().then(({ parseError }) => {
+      if (
+        parseError ||
+        this.languageMode !== languageMode ||
+        languageMode.destroyed ||
+        controllingLayer.destroyed ||
+        this.buffer.getTextRevision?.() !== revision ||
+        languageMode.getSyntaxRequestEpoch?.() !== epoch ||
+        !this.hasRow(comparisonRow) ||
+        !this.hasRow(row)
+      )
+        return undefined;
       // Both phases must wait for current syntax. Retrying a missing dedent
       // snapshot synchronously would visit the same unavailable layer forever.
       // A later edit can also make the original comparison no longer relevant.
+      const currentComparisonText = this.lineSource(comparisonRow);
+      const currentRowText = this.lineSource(row);
       if (
-        !comparisonText.equals(this.lineSource(comparisonRow)) ||
-        !rowText.equals(this.lineSource(row))
+        !currentComparisonText ||
+        !currentRowText ||
+        !comparisonText.equals(currentComparisonText) ||
+        !rowText.equals(currentRowText)
       )
         return undefined;
       const tree = controllingLayer.getOrParseTree({ force: false });
@@ -783,24 +889,44 @@ class IndentResolver {
   }
 
   suggestedIndentForBufferRows(startRow, endRow, tabLength, options = {}) {
+    const results = new Map();
+    const iterator = this.iterateSuggestedIndentationRows(startRow, endRow, tabLength, options);
+    while (true) {
+      const next = iterator.next();
+      if (next.done) return next.value === null ? null : results;
+      results.set(...next.value);
+    }
+  }
+
+  scanSuggestedIndentation(ranges, tabLength, options = {}) {
+    return scanSuggestedIndentation(this, ranges, tabLength, options);
+  }
+
+  *iterateSuggestedIndentationRows(startRow, endRow, tabLength, options = {}) {
     options = {
       isReindenting: !options.isPastedText && !options.preserveLeadingWhitespace,
       ...options,
     };
     const revision = this.buffer.getTextRevision();
-    const rows =
-      options.rows ??
-      Array.from({ length: Math.max(0, endRow - startRow + 1) }, (_, index) => startRow + index);
+    function* consecutiveRows() {
+      for (let row = startRow; row <= endRow; row++) yield row;
+    }
+    const rows = options.rows ?? consecutiveRows();
     const trees = new Map();
     const treeForLayer = (layer) => {
-      if (!trees.has(layer)) trees.set(layer, layer.getOrParseTree());
+      if (!trees.has(layer)) {
+        if (trees.size >= 32) trees.delete(trees.keys().next().value);
+        trees.set(layer, layer.getOrParseTree());
+      }
       return trees.get(layer);
     };
     let { languageMode } = this;
     let root = languageMode.rootLanguageLayer;
-    if (!root || !root.tree || !root.ready) return null;
+    if (!root || !root.tree || !root.ready) {
+      if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
+      return null;
+    }
 
-    let results = new Map();
     // Returned values may be additive; references and @match captures need
     // the absolute indentation that previously planned rows will have.
     const indentationLevels = options.indentationLevels ?? new Map();
@@ -812,7 +938,9 @@ class IndentResolver {
     let indentDelta;
 
     for (const row of rows) {
+      options.checkCurrent?.();
       if (this.buffer.getTextRevision() !== revision) return null;
+      preservedRows.clear();
       const comparisonRow =
         options.comparisonRow ??
         (options.skipBlankLines !== false &&
@@ -847,10 +975,14 @@ class IndentResolver {
           // the control of a layer with an indents query — just the row we
           // need.
           if (!controllingLayer) {
+            if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
             return null;
           }
           let tree = treeForLayer(controllingLayer);
-          if (!tree) return null;
+          if (!tree) {
+            if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
+            return null;
+          }
 
           let firstLineCurrentIndent = this.indentLevelForBufferRow(row, tabLength);
 
@@ -868,17 +1000,18 @@ class IndentResolver {
             // If we decline to suggest an indent level for the first line,
             // then there's no change to be made here. Keep the whole region
             // the way it is.
+            if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
             return null;
           } else {
             indentDelta = options.preserveLeadingWhitespace
               ? firstLineIdealIndent
               : firstLineIdealIndent - firstLineCurrentIndent;
-            if (indentDelta === 0) {
+            if (indentDelta === 0 && !options.requireComplete) {
               // If the first row doesn't have to be adjusted, neither do any
               // others.
               return null;
             }
-            results.set(row, firstLineIdealIndent);
+            yield [row, firstLineIdealIndent];
           }
           continue;
         }
@@ -886,12 +1019,12 @@ class IndentResolver {
         // All rows other than the first are easy — just apply the delta.
         let actualIndent = this.indentLevelForBufferRow(row, tabLength);
 
-        results.set(
+        yield [
           row,
           options.preserveLeadingWhitespace
             ? Math.max(indentDelta, 0)
             : Math.max(actualIndent + indentDelta, 0),
-        );
+        ];
         continue;
       }
 
@@ -905,7 +1038,10 @@ class IndentResolver {
       // rows' indentations yet.
       {
         const tree = controllingLayer ? treeForLayer(controllingLayer) : null;
-        if (controllingLayer && !tree) return results;
+        if (controllingLayer && !tree) {
+          if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
+          return;
+        }
         let rowOptions = {
           ...options,
           tree,
@@ -918,8 +1054,8 @@ class IndentResolver {
         };
         const indent = this.suggestedIndentForBufferRow(row, tabLength, rowOptions);
         if (preservedRows.has(row)) {
-          results.set(row, null);
           indentationLevels.set(row, this.indentLevelForBufferRow(row, tabLength));
+          yield [row, null];
           continue;
         }
         if (typeof indent !== "number" || !Number.isFinite(indent)) {
@@ -927,9 +1063,9 @@ class IndentResolver {
           // without re-parsing the tree. We should give up and return what we
           // have so that `TextEditor` can finish the job through a less
           // efficient means.
-          return results;
+          if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
+          return;
         }
-        results.set(row, indent);
         indentationLevels.set(
           row,
           options.preserveLeadingWhitespace
@@ -941,14 +1077,22 @@ class IndentResolver {
               )
             : indent,
         );
+        yield [row, indent];
       }
     }
-
-    return results;
   }
 
   suggestedIndentForEditedBufferRow(row, tabLength, options = {}) {
+    return this.resolveWithinBudget(() =>
+      this.computeSuggestedIndentForEditedBufferRow(row, tabLength, options),
+    );
+  }
+
+  computeSuggestedIndentForEditedBufferRow(row, tabLength, options = {}) {
+    if (!this.hasRow(row)) return undefined;
     let { languageMode } = this;
+    const revision = this.buffer.getTextRevision?.();
+    const epoch = languageMode.getSyntaxRequestEpoch?.();
     const currentRowIndent = this.indentLevelForBufferRow(row, tabLength);
     let comparisonRow = options.comparisonRow ?? this.getComparisonRow(row, options);
 
@@ -1023,8 +1167,17 @@ class IndentResolver {
       ) {
         indentTree = controllingLayer.getOrParseTree();
       } else {
-        return languageMode.atTransactionEnd().then(({ changeCount }) => {
-          if (changeCount > 1) {
+        return languageMode.atTransactionEnd().then(({ changeCount, parseError }) => {
+          if (
+            changeCount > 1 ||
+            parseError ||
+            this.languageMode !== languageMode ||
+            languageMode.destroyed ||
+            controllingLayer.destroyed ||
+            this.buffer.getTextRevision?.() !== revision ||
+            languageMode.getSyntaxRequestEpoch?.() !== epoch ||
+            !this.hasRow(row)
+          ) {
             // Unlike `suggestedIndentForBufferRow`, we should not return
             // `undefined` here and implicitly tell `TextEditor` to handle the
             // auto-indent itself. If there were several changes in this
@@ -1052,7 +1205,7 @@ class IndentResolver {
       return undefined;
     }
 
-    const indents = captureQuery(controllingLayer, indentsQuery, indentTree, {
+    const indents = this.captureQuery(controllingLayer, indentsQuery, indentTree, {
       startPosition: { row: row - 1, column: Infinity },
       endPosition: { row: row + 1, column: 0 },
     });
@@ -1074,13 +1227,14 @@ class IndentResolver {
 
     let seenDedent = false;
     for (let indent of indents) {
+      checkPredicateTextLength(0);
       let { node } = indent;
       // Ignore captures that aren't on this row.
       if (node.startPosition.row !== row) {
         continue;
       }
       // Ignore captures that fail their scope tests.
-      if (!scopeResolver.store(indent, { boundaries: false })) {
+      if (!this.storeScope(scopeResolver, indent)) {
         continue;
       }
       // Apply indentation-specific scope tests and skip this capture if any
@@ -1119,7 +1273,7 @@ class IndentResolver {
         });
         if (typeof matchIndentLevel === "number") {
           scopeResolver.reset();
-          this.emitter.emit("did-suggest-indent", {
+          this.emitIndentSuggestion("did-suggest-indent", {
             currentRow: row,
             comparisonRow,
             matchIndentLevel,
@@ -1130,7 +1284,7 @@ class IndentResolver {
         }
       } else if (indent.name === "none") {
         scopeResolver.reset();
-        this.emitter.emit("did-suggest-indent", {
+        this.emitIndentSuggestion("did-suggest-indent", {
           currentRow: row,
           comparisonRow,
           finalIndent: 0,
@@ -1153,7 +1307,7 @@ class IndentResolver {
 
     let finalIndent = seenDedent ? Math.max(0, originalRowIndent - 1) : currentRowIndent;
 
-    this.emitter.emit("did-suggest-indent", {
+    this.emitIndentSuggestion("did-suggest-indent", {
       currentRow: row,
       comparisonRow,
       finalIndent,
@@ -1168,7 +1322,9 @@ class IndentResolver {
     if (skipBlankLines) {
       // It usually makes no sense to compare to a blank row, so we'll move
       // upward until we find a line with text on it.
-      while (this.buffer.isRowBlank(comparisonRow) && comparisonRow > 0) {
+      while (comparisonRow > 0) {
+        this.checkRowRange(comparisonRow);
+        if (!this.buffer.isRowBlank(comparisonRow)) break;
         comparisonRow--;
       }
     }
@@ -1191,12 +1347,16 @@ class IndentResolver {
   }
 
   lineSource(row) {
+    if (!this.hasRow(row)) return null;
+    this.checkRowRange(row);
     const source = this.buffer.getTextSnapshot();
+    if (row >= source.lineCount) return null;
     const start = source.lineStart(row);
     return source.subtext(start, start + this.buffer.lineLengthForRow(row));
   }
 
   lineContent(row) {
+    this.checkRowRange(row);
     const source = this.buffer.getTextSnapshot();
     const lineStart = source.lineStart(row);
     return {
@@ -1207,6 +1367,7 @@ class IndentResolver {
   }
 
   indentLevelForBufferRow(row, tabLength, skip = 0, initialColumn = 0) {
+    this.checkRowRange(row);
     const source = this.buffer.getTextSnapshot();
     const start = source.lineStart(row);
     const end = start + this.buffer.lineLengthForRow(row);
@@ -1219,6 +1380,7 @@ class IndentResolver {
     const available = content.end - content.start;
     if (prefix ? length > available : length !== available) return false;
     for (let offset = 0; offset < length;) {
+      checkPredicateTextLength(0);
       const value = node.tree.textCallback(node.startIndex + offset, node.startPosition);
       const count = Math.min(value?.length ?? 0, length - offset, 4096);
       if (

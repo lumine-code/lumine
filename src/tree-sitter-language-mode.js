@@ -1,5 +1,11 @@
 const { Node } = require("web-tree-sitter");
 const runtime = require("./tree-sitter-runtime");
+const {
+  runQuery,
+  boundedQueryRange,
+  withPredicateTextBudget,
+  QueryBudgetExceeded,
+} = require("./tree-sitter-query-budget");
 const TreeSitterParser = require("./tree-sitter-parser");
 const HighlightCache = require("./tree-sitter-highlight-cache");
 const TreeSitterPresentation = require("./tree-sitter-presentation");
@@ -60,6 +66,13 @@ const FOLD_PREFILL_MAX_ROWS = 400;
 // document order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
+// Warm ordinary documents can finish one guarded query synchronously. Larger
+// populations still use the smaller cooperative windows above.
+const SYNCHRONOUS_INJECTION_QUERY_UNITS = 64 * 1024;
+// Injection routing sometimes tests complete comments/templates, not just an
+// identifier. Permit ordinary large comments while retaining a hard text cap;
+// extracted language names and custom scope predicates keep their 64 Ki limit.
+const INJECTION_PREDICATE_TEXT_UNITS = 1024 * 1024;
 const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
 // Full-buffer queries can return hundreds of thousands of captures. Keep both
 // query execution and predicate resolution in small tasks so background symbol
@@ -203,6 +216,8 @@ class TreeSitterLanguageMode {
     queryCaptureChunkCodeUnits,
     initialInjectionUpdateBudgetMs,
     maxIdleParsersPerLanguage,
+    parsePriority,
+    queryBudget,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
@@ -233,6 +248,8 @@ class TreeSitterLanguageMode {
     this.initialInjectionUpdateBudgetMs =
       initialInjectionUpdateBudgetMs ?? INITIAL_INJECTION_UPDATE_BUDGET_MILLIS;
     this.maxIdleParsersPerLanguage = maxIdleParsersPerLanguage ?? MAX_IDLE_PARSERS_PER_LANGUAGE;
+    this.parsePriority = parsePriority;
+    this.queryBudget = queryBudget;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
 
@@ -256,7 +273,7 @@ class TreeSitterLanguageMode {
       cache: this.highlightCache,
       capture: () => this.capturePresentationVersion(),
       isCurrent: (stamp) => this.presentationVersionIsCurrent(stamp),
-      iterator: () => new HighlightIterator(this),
+      iterator: () => new HighlightIterator(this, { presentation: true }),
       hasBudget: () =>
         this.shouldParseSynchronously() || parserScheduler.hasBudget(this.syncTimeoutMicros),
       publish: (range) => this.emitter.emit("did-change-highlighting", range),
@@ -1262,12 +1279,12 @@ class TreeSitterLanguageMode {
     return this.emitter.on("did-change-highlighting", callback);
   }
 
-  buildHighlightIterator() {
+  buildHighlightIterator(options = {}) {
     if (!this.rootLanguageLayer) {
       return new NullLanguageModeHighlightIterator();
     }
     if (this.publicationPending) return new PendingHighlightIterator(this);
-    return new HighlightIterator(this);
+    return new HighlightIterator(this, options);
   }
 
   buildPresentationHighlightIterator(owner) {
@@ -1538,6 +1555,7 @@ class TreeSitterLanguageMode {
     let wrapped = new Error(`Tree-sitter parse failed in ${detail}: ${error.message}`);
     wrapped.stack = `${wrapped.message}\n${error.stack ?? ""}`;
     wrapped.cause = error;
+    if (error.failure) wrapped.failure = error.failure;
     return wrapped;
   }
 
@@ -1594,69 +1612,65 @@ class TreeSitterLanguageMode {
     }
     if (!fromCheckpoint) capture = this.document.capture(previous);
     const comparison = fromCheckpoint ? this.document.capture(previous) : null;
-    return parserScheduler
-      .run(
-        async () => {
-          if (this.destroyed) return null;
-          onStart?.();
-          const parser = this.acquireParserForLanguage(language);
-          try {
-            signal?.throwIfAborted();
-            const options = {
-              runtimeContext: runtime.contextForBuffer(this.buffer, scopeName),
-              deadlineForSlice: () => parserScheduler.deadline(4000),
-              previous: capture.previous,
-              edits: extraEdits.length
-                ? Object.freeze([...capture.edits, ...extraEdits])
-                : capture.edits,
-              revision: capture.revision,
-              includedRanges: includedRanges ?? undefined,
-              comparison: fromCheckpoint
-                ? comparison.previous
-                  ? {
-                      previous: comparison.previous,
-                      edits: extraEdits.length
-                        ? [...comparison.edits, ...extraEdits]
-                        : comparison.edits,
-                    }
-                  : null
-                : undefined,
-            };
-            let tree =
-              this.syncTimeoutMicros > 0
-                ? parser.tryParseSync(capture.text, {
-                    ...options,
-                    deadline: parserScheduler.deadline(this.syncTimeoutMicros),
-                  })
-                : null;
-            if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
-            if (!tree) return null;
-            this.backgroundSnapshots.add(tree);
-            const details = {
-              incremental:
-                tree.incremental && tree.changedRangesBaseRevision === previous?.revision,
-            };
-            if (fromCheckpoint && details.incremental) details.changedRanges = tree.changedRanges;
-            this.parseDetails.set(tree, details);
-            return tree;
-          } catch (error) {
-            if (error.name === "AbortError" || this.destroyed) return null;
-            throw this.describeParseFailure(error, { scopeName, includedRanges });
-          } finally {
-            this.releaseParserForLanguage(language, parser);
-          }
-        },
-        {
-          signal,
+    return (async () => {
+      // Capture belongs to the submitted revision, but native work starts on
+      // the next turn so an edit burst can cancel it before a parser is leased.
+      await new Promise((resolve) => setImmediate(resolve));
+      if (this.destroyed || signal?.aborted) return null;
+      onStart?.();
+      const parser = this.acquireParserForLanguage(language);
+      try {
+        signal?.throwIfAborted();
+        const options = {
           priority: () =>
-            (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100) +
+            (this.parsePriority ??
+              (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100)) +
             depth,
-        },
-      )
-      .catch((error) => {
+          runtimeContext: runtime.contextForBuffer(this.buffer, scopeName),
+          deadlineForSlice: () => parserScheduler.deadline(4000),
+          previous: capture.previous,
+          edits: extraEdits.length
+            ? Object.freeze([...capture.edits, ...extraEdits])
+            : capture.edits,
+          revision: capture.revision,
+          includedRanges: includedRanges ?? undefined,
+          comparison: fromCheckpoint
+            ? comparison.previous
+              ? {
+                  previous: comparison.previous,
+                  edits: extraEdits.length
+                    ? [...comparison.edits, ...extraEdits]
+                    : comparison.edits,
+                }
+              : null
+            : undefined,
+        };
+        let tree =
+          this.syncTimeoutMicros > 0
+            ? parser.tryParseSync(capture.text, {
+                ...options,
+                deadline: parserScheduler.deadline(this.syncTimeoutMicros),
+              })
+            : null;
+        if (!tree) tree = await parser.parse(capture.text, { ...options, signal });
+        if (!tree) return null;
+        this.backgroundSnapshots.add(tree);
+        const details = {
+          incremental: tree.incremental && tree.changedRangesBaseRevision === previous?.revision,
+        };
+        if (fromCheckpoint && details.incremental) details.changedRanges = tree.changedRanges;
+        this.parseDetails.set(tree, details);
+        return tree;
+      } catch (error) {
         if (error.name === "AbortError" || this.destroyed) return null;
-        throw error;
-      });
+        throw this.describeParseFailure(error, { scopeName, includedRanges });
+      } finally {
+        this.releaseParserForLanguage(language, parser);
+      }
+    })().catch((error) => {
+      if (error.name === "AbortError" || this.destroyed) return null;
+      throw error;
+    });
   }
 
   parse(
@@ -1714,11 +1728,16 @@ class TreeSitterLanguageMode {
       }
       if (resumable) {
         retained = true;
-        return parserScheduler
-          .run(() => parser.parse(capture.text, options), {
-            signal,
-            priority: () =>
-              lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100,
+        return Promise.resolve()
+          .then(() => {
+            signal?.throwIfAborted();
+            if (this.destroyed) return null;
+            return parser.parse(capture.text, {
+              ...options,
+              priority: () =>
+                this.parsePriority ??
+                (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100),
+            });
           })
           .then(finish, fail)
           .finally(() => {
@@ -2367,6 +2386,15 @@ class TreeSitterLanguageMode {
     return this.indentResolver.suggestedIndentForBufferRows(...args);
   }
 
+  async *scanSuggestedIndentation(ranges, tabLength, options = {}) {
+    const transaction = await this.atGrammarSettlement();
+    options.signal?.throwIfAborted();
+    if (this.destroyed || transaction.parseError || this.lastTransactionParseError)
+      throw new QueryBudgetExceeded("indentation-unavailable");
+    this.ensureQueriesForLayersSync("indentsQuery");
+    yield* this.indentResolver.scanSuggestedIndentation(ranges, tabLength, options);
+  }
+
   suggestedIndentForPastedRanges(ranges, tabLength) {
     this.ensureQueriesForLayersSync("indentsQuery");
     const results = new Map(),
@@ -2476,104 +2504,25 @@ class TreeSitterLanguageMode {
     return this.getAllLanguageLayers((layer) => declaresQuery(layer?.grammar)).length > 0;
   }
 
-  async getQueryCaptureGroups(queryType, { signal } = {}) {
-    let layers;
-    while (true) {
-      const transaction = await this.atGrammarSettlement();
-      if (this.destroyed || signal?.aborted || transaction.parseError) return [];
+  scanQueryCaptures(queryType, options = {}) {
+    return require("./tree-sitter-capture-stream")(this, queryType, options);
+  }
 
-      // Promise continuations run in their own microtask. Topology work may
-      // have been scheduled after the settlement's final scan but before this
-      // continuation, so take one last synchronous snapshot. Once it contains
-      // no pending work, captures below run in the same stack and therefore
-      // describe exactly this layer set.
-      layers = this.getAllLanguageLayers();
-      await Promise.all(layers.map((layer) => layer?.ensureQuery?.(queryType)));
-      if (this.destroyed || signal?.aborted) return [];
-      const currentLayers = this.getAllLanguageLayers();
-      if (
-        layers.length !== currentLayers.length ||
-        layers.some((layer, index) => layer !== currentLayers[index])
-      )
-        continue;
-      const hasPendingWork = layers.some(
-        (layer) =>
-          layer?.queryReloadPromise?.then ||
-          layer?.injectionPopulationDrainPromise?.then ||
-          layer?.queryLoadPromises?.size,
-      );
-      if (!this.resolveNextTransaction && !hasPendingWork) {
-        if (this.lastTransactionParseError) return [];
-        break;
-      }
-    }
-
-    const snapshots = layers.map((layer) => ({
-      layer,
-      tree: layer?.tree,
-      query: layer?.queries?.[queryType],
-      injectionPointVersion: layer?.injectionPointVersion,
-    }));
-    const isCurrent = () => this.queryCaptureSnapshotIsCurrent(snapshots, queryType, signal);
+  async getQueryCaptureGroups(queryType, options = {}) {
     const groups = [];
-    for (const { layer, tree, query } of snapshots) {
-      if (!query || !tree) continue;
-      const extent = layer.getExtent();
-      const resolvedCaptures = [];
-      // Highlight and fold requests also use the layer's resolver while this
-      // scan yields. Give the scan its own state so capture.final and capture.shy
-      // continue to apply across the complete, ordered stream.
-      layer.scopeResolver.reset();
-      const scopeResolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
-      try {
-        const chunkRows = Math.max(1, this.queryCaptureChunkRows);
-        const chunkCodeUnits = Math.max(1, this.queryCaptureChunkCodeUnits);
-        const endIndex = this.buffer.characterIndexForPosition(extent.end);
-        let start = extent.start;
-        let startIndex = this.buffer.characterIndexForPosition(start);
-        let firstChunk = true;
-
-        do {
-          if (!isCurrent()) return [];
-          const endRow = Math.min(extent.end.row, start.row + chunkRows);
-          const rowEnd = endRow === extent.end.row ? extent.end : new Point(endRow, 0);
-          const rowEndIndex = this.buffer.characterIndexForPosition(rowEnd);
-          const chunkEndIndex = Math.min(endIndex, startIndex + chunkCodeUnits, rowEndIndex);
-          const end =
-            chunkEndIndex === endIndex
-              ? extent.end
-              : this.buffer.positionForCharacterIndex(chunkEndIndex);
-          const captures = query.captures(tree.rootNode, {
-            startPosition: start,
-            endPosition: end,
-          });
-
-          for (const capture of captures) {
-            // Range queries also return captures enclosing the window. Their
-            // original starting position owns them: later windows skip them,
-            // while genuine duplicate captures within that first window stay
-            // intact and in the order supplied by Tree-sitter.
-            if (!firstChunk && comparePoints(capture.node.startPosition, start) < 0) continue;
-            if (chunkEndIndex < endIndex && comparePoints(capture.node.startPosition, end) >= 0)
-              continue;
-            if (scopeResolver.store(capture, { boundaries: false })) {
-              resolvedCaptures.push(capture);
-            }
-          }
-
-          if (chunkEndIndex >= endIndex) break;
-          start = end;
-          startIndex = chunkEndIndex;
-          firstChunk = false;
-          await this._yieldForQueryCaptureScan();
-        } while (true);
-      } finally {
-        scopeResolver.destroy();
+    try {
+      for await (const { grammar, captures, layerId } of this.scanQueryCaptures(
+        queryType,
+        options,
+      )) {
+        const group = (groups[layerId] ??= { grammar, captures: [] });
+        group.captures.push(...captures);
       }
-      groups.push({ grammar: layer.grammar, captures: resolvedCaptures });
+    } catch (error) {
+      if (error.name === "AbortError") return [];
+      throw error;
     }
-    if (!isCurrent()) return [];
-    return groups;
+    return groups.filter(Boolean);
   }
 
   queryCaptureSnapshotIsCurrent(snapshots, queryType, signal) {
@@ -2848,8 +2797,10 @@ class SortedBoundaryIterator {
 // of understanding, at any given point, which of the iterators needs to be
 // advanced next.
 class HighlightIterator {
-  constructor(languageMode) {
+  constructor(languageMode, options = {}) {
     this.languageMode = languageMode;
+    this.options = options;
+    this.limitedReason = null;
     this.iterators = null;
   }
 
@@ -2877,12 +2828,14 @@ class HighlightIterator {
       row: endRow,
       column: buffer.lineLengthForRow(endRow),
     };
+    if (this.options.endPosition)
+      end = Point.min(Point.fromObject(end), buffer.clipPosition(this.options.endPosition));
 
     this.end = end;
     this.iterators = [];
 
     let injectionMarkers = this.languageMode.injectionsMarkerLayer.findMarkers({
-      intersectsRange: new Range(start, new Point(endRow + 1, 0)),
+      intersectsRange: new Range(start, this.options.endPosition ? end : new Point(endRow + 1, 0)),
     });
 
     injectionMarkers.sort((a, b) => {
@@ -2890,7 +2843,10 @@ class HighlightIterator {
       return a.languageLayer.depth - b.languageLayer.depth;
     });
 
-    const iterator = rootLanguageLayer.buildHighlightIterator();
+    const queryOptions = { ...this.options };
+    if (queryOptions.presentation) queryOptions.deadline = performance.now() + 50;
+    this.limitedReason = null;
+    const iterator = rootLanguageLayer.buildHighlightIterator(queryOptions);
 
     // We need to know which open scopes were contributed by which language
     // layer so that we know which ones to “cover” if we see an injection with
@@ -2914,6 +2870,7 @@ class HighlightIterator {
     // scope was opened, because we'll need that information in a moment.
     //
     let [result, openScopes] = iterator.seek(start, endRow);
+    this.limitedReason ??= iterator.limitedReason;
 
     if (rootLanguageLayer?.tree?.rootNode.hasChanges) {
       // The tree is dirty. We should keep going — if we stop now, then the
@@ -2937,8 +2894,9 @@ class HighlightIterator {
     // their parent iterator at this position, we need to revisit the list of
     // open scopes, removing any that aren't their layer's base language scope.
     for (const marker of injectionMarkers) {
-      const iterator = marker.languageLayer.buildHighlightIterator();
+      const iterator = marker.languageLayer.buildHighlightIterator(queryOptions);
       let [result, openScopes] = iterator.seek(start, endRow);
+      this.limitedReason ??= iterator.limitedReason;
 
       // Just as with the root layer, any injection layer may need to add to
       // the list of open scopes whether or not they need to mark anything
@@ -3266,6 +3224,8 @@ class LayerHighlightIterator {
 
   seek(start, endRow) {
     let end = this._getEndPosition(endRow);
+    if (this.queryOptions?.endPosition)
+      end = Point.min(end, Point.fromObject(this.queryOptions.endPosition));
     // let isDevMode = lumine.window.isDevMode();
 
     // let timeKey;
@@ -3273,7 +3233,12 @@ class LayerHighlightIterator {
     //   timeKey = `${this.name} getSyntaxBoundaries`;
     //   console.time(timeKey);
     // }
-    let [boundaries, openScopes] = this.languageLayer.getSyntaxBoundaries(start, end);
+    let [boundaries, openScopes, limitedReason] = this.languageLayer.getSyntaxBoundaries(
+      start,
+      end,
+      this.queryOptions,
+    );
+    this.limitedReason = limitedReason;
 
     this.iterator = boundaries?.begin;
     if (!this.iterator?.key) {
@@ -3954,7 +3919,29 @@ class LanguageLayer {
 
   // Run a highlights query for the given range and process the raw captures
   // through a `ScopeResolver`.
-  getSyntaxBoundaries(from, to) {
+  getSyntaxBoundaries(from, to, options = {}) {
+    const timeoutMs = () =>
+      Math.max(0, options.deadline == null ? 25 : options.deadline - performance.now());
+    try {
+      const outcome = withPredicateTextBudget(
+        () => this.getBudgetedSyntaxBoundaries(from, to, options),
+        { timeoutMs: timeoutMs() },
+      );
+      if (outcome.complete) return outcome.value;
+      throw new QueryBudgetExceeded(outcome.reason);
+    } catch (error) {
+      if (!options.presentation || error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+      // Keep base language scopes, but never present a truncated query as exact.
+      const fallback = this.getBudgetedSyntaxBoundaries(from, to, {
+        ...options,
+        skipCaptures: true,
+      });
+      fallback[2] = error.reason;
+      return fallback;
+    }
+  }
+
+  getBudgetedSyntaxBoundaries(from, to, options = {}) {
     let { buffer } = this.languageMode;
     if (!(this.language && this.tree) || this.tree.revision !== buffer.getTextRevision()) {
       return [[], new OpenScopeMap()];
@@ -3966,11 +3953,45 @@ class LanguageLayer {
     let boundaries = new SortedBoundaryList();
     let extent = this.getExtent();
 
-    let captures =
-      captureQuery(this, this.queries.highlightsQuery, this.tree, {
-        startPosition: from,
-        endPosition: to,
-      }) ?? [];
+    let limitedReason = null;
+    let queryEnd = to;
+    const source = this.languageMode.document.capture().text;
+    if (options.presentation) {
+      const window = boundedQueryRange(
+        source,
+        buffer.characterIndexForPosition(from),
+        buffer.characterIndexForPosition(to),
+        this.languageMode.queryBudget?.presentationWindowLength ??
+          (from.row === to.row && to.column - from.column > 16384 ? 2048 : 16384),
+      );
+      if (window.clipped) {
+        limitedReason = "source-window";
+        queryEnd = buffer.positionForCharacterIndex(window.endIndex);
+      }
+    }
+    let captures = [];
+    if (!options.skipCaptures && from.compare(queryEnd) < 0) {
+      captures =
+        captureQuery(
+          this,
+          this.queries.highlightsQuery,
+          this.tree,
+          {
+            startPosition: from,
+            endPosition: queryEnd,
+          },
+          (query, node, queryOptions) => {
+            const result = runQuery(query, node, queryOptions, {
+              timeoutMs: Math.max(
+                0,
+                options.deadline == null ? 25 : options.deadline - performance.now(),
+              ),
+            });
+            if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+            return result.results;
+          },
+        ) ?? [];
+    }
     this.scopeResolver.reset();
 
     for (let capture of captures) {
@@ -4155,12 +4176,14 @@ class LanguageLayer {
       }
     }
 
-    return [boundaries, alreadyOpenScopes];
+    return [boundaries, alreadyOpenScopes, limitedReason];
   }
 
-  buildHighlightIterator() {
+  buildHighlightIterator(options = {}) {
     if (this.tree) {
-      return new LayerHighlightIterator(this, this.tree);
+      const iterator = new LayerHighlightIterator(this, this.tree);
+      iterator.queryOptions = options;
+      return iterator;
     } else {
       return new NullLayerHighlightIterator(this);
     }
@@ -4424,11 +4447,55 @@ class LanguageLayer {
   getParseBoundaryCaptures(tree = this.tree) {
     const query = this.queries.parseBoundariesQuery;
     const root = tree.rootNode;
+    const budget = this.languageMode.queryBudget ?? {};
+    const now = budget.now ?? (() => performance.now());
+    const deadline = now() + (budget.timeoutMs ?? 25);
+    const source = this.languageMode.document.capture().text;
+    const captureWindows = (node, options = {}) => {
+      const execute = (options) => {
+        const result = runQuery(query, node, options, {
+          ...budget,
+          timeoutMs: Math.max(0, deadline - now()),
+        });
+        if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+        return result.results;
+      };
+      const captures = [];
+      const endIndex = node.endIndex;
+      let startIndex = node.startIndex;
+      // Preserve the single-call path for ordinary documents and shallow
+      // groups; only large nodes need source windows around that same query.
+      if (endIndex - startIndex <= 8192) return execute(options);
+      let first = true;
+      do {
+        const window = boundedQueryRange(source, startIndex, endIndex, 8192);
+        const results = execute(
+          window.empty
+            ? options
+            : {
+                ...options,
+                startPosition: this.buffer.positionForCharacterIndex(window.startIndex),
+                endPosition: this.buffer.positionForCharacterIndex(window.endIndex),
+              },
+        );
+        for (const capture of results) {
+          if (!first && capture.node.startIndex < startIndex) continue;
+          if (window.endIndex < endIndex && capture.node.startIndex >= window.endIndex) continue;
+          if (captures.length >= (budget.maxResults ?? 16000))
+            throw new QueryBudgetExceeded("result-limit");
+          captures.push(capture);
+        }
+        if (window.endIndex >= endIndex) break;
+        startIndex = window.endIndex;
+        first = false;
+      } while (true);
+      return captures;
+    };
     const maxStartDepth = this.grammar.queryPaths?.parseBoundariesMaxStartDepth;
     if (!Number.isSafeInteger(maxStartDepth) || maxStartDepth < 0 || maxStartDepth > 32)
-      return query.captures(root);
+      return captureWindows(root);
 
-    const shallow = query.captures(root, { maxStartDepth });
+    const shallow = captureWindows(root, { maxStartDepth });
     const keyFor = ({ name, node }) => `${name}:${node.id}`;
     const captures = [];
     const seen = new Set();
@@ -4471,7 +4538,7 @@ class LanguageLayer {
       const node = pending.pop();
       if (!node.hasChanges || node.childCount === 0 || expanded.has(node.id)) continue;
       expanded.add(node.id);
-      query.captures(node, childOptions).forEach(addCapture);
+      captureWindows(node, childOptions).forEach(addCapture);
     }
     return captures;
   }
@@ -4480,6 +4547,7 @@ class LanguageLayer {
     // These are parser hints, never new ownership boundaries for injections.
     // A scanner must explicitly opt in and tolerate adjacent included ranges.
     this.parseCompactionEdits = [];
+    this.parseBoundaryLimitedReason = null;
     const query = this.queries.parseBoundariesQuery;
     if (
       (this.depth !== 0 && this.grammar.queryPaths?.parseBoundariesInjections !== true) ||
@@ -4494,6 +4562,7 @@ class LanguageLayer {
     const tree = TreeSitterParser.prepareTree(capture.previous, capture.text, {
       edits: capture.edits,
     });
+    const wasDirty = this.treeIsDirty;
     try {
       const length = this.buffer.getLength();
       let captures = this.getParseBoundaryCaptures(tree);
@@ -4557,6 +4626,15 @@ class LanguageLayer {
         includedRanges ?? [rangeToTreeSitterRangeSpec(this.buffer.getRange(), this.buffer)],
         boundaries,
       );
+    } catch (error) {
+      if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+      // Boundary hints only optimize incremental reuse. Keep the original
+      // language ownership and discard every tentative hint/compaction edit
+      // when their scan cannot finish; syntax itself is still available.
+      this.parseBoundaryLimitedReason = error.reason;
+      this.parseCompactionEdits = [];
+      this.treeIsDirty = wasDirty;
+      return includedRanges;
     } finally {
       tree.delete();
     }
@@ -5005,44 +5083,38 @@ class LanguageLayer {
     if (!this.language || !this.tree || this.tree.revision !== this.buffer.getTextRevision()) {
       return [];
     }
-    let { scopeResolver } = this;
-    scopeResolver.reset();
-
-    // If the cursor is resting before column X, we want all scopes that cover
-    // the character in column X.
-    let captures =
-      captureQuery(this, this.queries.highlightsQuery, this.tree, {
-        startPosition: point,
-        endPosition: point.translate(ONE_CHAR_FORWARD_TRAVERSAL),
-      }) ?? [];
-
-    let results = [];
-    for (let capture of captures) {
-      // Storing the capture will return its range (after any potential
-      // adjustments) — or `false`, to signify that the capture was ignored.
-      let range = scopeResolver.store(capture, { boundaries: false });
-      if (!range) {
-        continue;
-      }
-
-      // Since the range might have been adjusted, we wait until after
-      // resolution.
-      if (comparePoints(range.endPosition, point) === 0) {
-        continue;
-      }
-      if (isBetweenPoints(point, range.startPosition, range.endPosition)) {
-        results.push({ capture, adjustedRange: range });
-      }
+    const budget = this.languageMode.queryBudget ?? {};
+    const resolver = new ScopeResolver(this, this.scopeResolver.idForScope);
+    try {
+      const result = withPredicateTextBudget(() => {
+        // A narrow window may still return an enclosing document-sized node.
+        // Both built-in query predicates and scope adjustments need budgets.
+        const captures =
+          captureQuery(
+            this,
+            this.queries.highlightsQuery,
+            this.tree,
+            { startPosition: point, endPosition: point.translate(ONE_CHAR_FORWARD_TRAVERSAL) },
+            (query, node, options) => {
+              const result = runQuery(query, node, options, budget);
+              if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+              return result.results;
+            },
+          ) ?? [];
+        const results = [];
+        for (const capture of captures) {
+          const range = resolver.store(capture, { boundaries: false });
+          if (!range || comparePoints(range.endPosition, point) === 0) continue;
+          if (isBetweenPoints(point, range.startPosition, range.endPosition))
+            results.push({ capture, adjustedRange: range });
+        }
+        return results.sort((a, b) => nodeBreadth(b.adjustedRange) - nodeBreadth(a.adjustedRange));
+      }, budget);
+      if (!result.complete) throw new QueryBudgetExceeded(result.reason);
+      return result.value;
+    } finally {
+      resolver.destroy();
     }
-
-    scopeResolver.reset();
-
-    // Sort from biggest to smallest.
-    results = results.sort((a, b) => {
-      return nodeBreadth(b.adjustedRange) - nodeBreadth(a.adjustedRange);
-    });
-
-    return results;
   }
 
   // Like `TreeSitterLanguageMode#getSyntaxNodeAtPosition`, but for just this
@@ -5382,30 +5454,41 @@ class LanguageLayer {
     }
 
     const chunkRows = Math.max(1, this.languageMode.injectionCandidateChunkRows);
-    const chunkCodeUnits = Math.max(1, this.languageMode.injectionCandidateChunkCodeUnits);
+    const chunkCodeUnits = Math.max(
+      2,
+      Math.min(8192, this.languageMode.injectionCandidateChunkCodeUnits),
+    );
     const startIndex = this.buffer.characterIndexForPosition(start);
     const endIndex = this.buffer.characterIndexForPosition(end);
-    if (
-      this.languageMode.shouldParseSynchronously() ||
-      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
-    ) {
-      return tree.rootNode.descendantsOfType(types, start, end);
-    }
-
     let candidateQuery = null;
     try {
       const patterns = types
         .map((type) =>
-          /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type) ? `  (${type})` : `  ${JSON.stringify(type)}`,
+          type !== "_" && type !== "MISSING" && /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type)
+            ? `  (${type})`
+            : `  ${JSON.stringify(type)}`,
         )
         .join("\n");
       candidateQuery = this.grammar._getOrCreateInternalQuerySync(
         `[\n${patterns}\n] @_INJECTION_CANDIDATE_`,
       );
     } catch {
-      // A type the query compiler doesn't recognize can still use the slower
-      // compatibility traversal.
+      // Mixed known/unknown types still use a bounded cursor traversal.
     }
+
+    if (
+      (this.languageMode.shouldParseSynchronously() &&
+        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS) ||
+      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
+    )
+      return this._queryInjectionCandidateNodes(
+        tree,
+        types,
+        start,
+        end,
+        candidateQuery,
+        injectionPointVersion,
+      );
 
     return this._collectInjectionCandidateNodesInChunks(
       tree,
@@ -5429,17 +5512,21 @@ class LanguageLayer {
     const end = Point.min(range.end, treeRange.end);
     if (start.compare(end) >= 0) return [];
     const chunkRows = Math.max(1, this.languageMode.injectionCandidateChunkRows);
-    const chunkCodeUnits = Math.max(1, this.languageMode.injectionCandidateChunkCodeUnits);
+    const chunkCodeUnits = Math.max(
+      2,
+      Math.min(8192, this.languageMode.injectionCandidateChunkCodeUnits),
+    );
     const startIndex = this.buffer.characterIndexForPosition(start);
     const endIndex = this.buffer.characterIndexForPosition(end);
     if (
-      this.languageMode.shouldParseSynchronously() ||
+      (this.languageMode.shouldParseSynchronously() &&
+        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS) ||
       (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
     ) {
-      return collectInjectionMatches(
-        query.matches(tree.rootNode, { startPosition: start, endPosition: end }),
-        query.injectionDescriptors,
-      ).records;
+      return (
+        this._queryStaticInjectionCandidates(tree, query, start, end, injectionPointVersion)
+          ?.records ?? null
+      );
     }
     return this._collectStaticInjectionCandidatesInChunks(
       tree,
@@ -5467,23 +5554,31 @@ class LanguageLayer {
   ) {
     let state;
     let records = [];
+    const source = this.languageMode.document.capture().text;
     let chunkStart = start;
     let chunkStartIndex = startIndex;
     while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
       const rowEnd = nextRow === end.row ? end : new Point(nextRow, 0);
-      const chunkEndIndex = Math.min(
-        endIndex,
-        this.buffer.characterIndexForPosition(rowEnd),
-        chunkStartIndex + chunkCodeUnits,
-      );
+      const rowEndIndex = this.buffer.characterIndexForPosition(rowEnd);
+      const chunkEndIndex = boundedQueryRange(
+        source,
+        chunkStartIndex,
+        rowEndIndex > chunkStartIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
+        chunkCodeUnits,
+      ).endIndex;
       const chunkEnd =
         chunkEndIndex === endIndex ? end : this.buffer.positionForCharacterIndex(chunkEndIndex);
-      ({ records, state } = collectInjectionMatches(
-        query.matches(tree.rootNode, { startPosition: chunkStart, endPosition: chunkEnd }),
-        query.injectionDescriptors,
+      const result = this._queryStaticInjectionCandidates(
+        tree,
+        query,
+        chunkStart,
+        chunkEnd,
+        injectionPointVersion,
         state,
-      ));
+      );
+      if (result === null) return null;
+      ({ records, state } = result);
       if (chunkEndIndex >= endIndex) break;
       await this.languageMode._yieldForInjectionCandidateScan();
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
@@ -5491,6 +5586,82 @@ class LanguageLayer {
       chunkStartIndex = chunkEndIndex;
     }
     return records;
+  }
+
+  _queryStaticInjectionCandidates(tree, query, start, end, injectionPointVersion, state) {
+    const budget = {
+      ...this.languageMode.queryBudget,
+      method: "matches",
+      isCancelled: () => !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion),
+    };
+    const result = withPredicateTextBudget(() => {
+      const queried = runQuery(
+        query,
+        tree.rootNode,
+        { startPosition: start, endPosition: end },
+        { maxPredicateTextLength: INJECTION_PREDICATE_TEXT_UNITS, ...budget },
+      );
+      if (!queried.complete) throw new QueryBudgetExceeded(queried.reason);
+      // The language capture is read here, after native query predicates. Keep
+      // it inside the same text budget and publish topology only on completion.
+      return collectInjectionMatches(queried.results, query.injectionDescriptors, state);
+    }, budget);
+    if (!result.complete) {
+      if (result.reason === "cancelled") return null;
+      throw new QueryBudgetExceeded(result.reason);
+    }
+    return result.value;
+  }
+
+  _queryInjectionCandidateNodes(tree, types, start, end, query, injectionPointVersion) {
+    const budget = {
+      ...this.languageMode.queryBudget,
+      isCancelled: () => !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion),
+    };
+    if (query) {
+      const result = runQuery(
+        query,
+        tree.rootNode,
+        { startPosition: start, endPosition: end },
+        budget,
+      );
+      if (!result.complete) {
+        if (result.reason === "cancelled") return null;
+        throw new QueryBudgetExceeded(result.reason);
+      }
+      return result.results.map((capture) => capture.node);
+    }
+    // descendantsOfType collects all native results before returning. If a
+    // query cannot represent a requested type, use an interruptible cursor.
+    const now = budget.now ?? (() => performance.now());
+    const deadline = now() + (budget.timeoutMs ?? 25);
+    const first = this.buffer.characterIndexForPosition(start);
+    const last = this.buffer.characterIndexForPosition(end);
+    const wanted = new Set(types);
+    const nodes = [];
+    const cursor = tree.rootNode.walk();
+    try {
+      for (;;) {
+        if (budget.isCancelled()) return null;
+        if (now() >= deadline) throw new QueryBudgetExceeded("timeout");
+        const node = cursor.currentNode;
+        if (node.startIndex > last) break;
+        if (node.endIndex >= first) {
+          if (wanted.has(node.type)) {
+            if (nodes.length >= (budget.maxResults ?? 16000))
+              throw new QueryBudgetExceeded("result-limit");
+            nodes.push(node);
+          }
+          if (cursor.gotoFirstChild()) continue;
+        }
+        while (!cursor.gotoNextSibling()) {
+          if (!cursor.gotoParent()) return nodes;
+        }
+      }
+      return nodes;
+    } finally {
+      cursor.delete();
+    }
   }
 
   async _collectInjectionCandidateNodesInChunks(
@@ -5507,7 +5678,7 @@ class LanguageLayer {
   ) {
     const result = [];
     const seenNodeIds = new Set();
-    const rootNode = tree.rootNode;
+    const source = this.languageMode.document.capture().text;
     let chunkStart = start;
     let chunkStartIndex = startIndex;
 
@@ -5515,22 +5686,24 @@ class LanguageLayer {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
       const rowChunkEnd = nextRow === end.row ? end : new Point(nextRow, 0);
       const rowChunkEndIndex = this.buffer.characterIndexForPosition(rowChunkEnd);
-      const codeUnitChunkEndIndex = Math.min(endIndex, chunkStartIndex + chunkCodeUnits);
-      let chunkEndIndex = Math.min(rowChunkEndIndex, codeUnitChunkEndIndex);
-      if (chunkEndIndex <= chunkStartIndex) {
-        chunkEndIndex = codeUnitChunkEndIndex;
-      }
+      const chunkEndIndex = boundedQueryRange(
+        source,
+        chunkStartIndex,
+        rowChunkEndIndex > chunkStartIndex ? Math.min(endIndex, rowChunkEndIndex) : endIndex,
+        chunkCodeUnits,
+      ).endIndex;
       const chunkEnd =
         chunkEndIndex === endIndex ? end : this.buffer.positionForCharacterIndex(chunkEndIndex);
 
-      const chunkNodes = candidateQuery
-        ? candidateQuery
-            .captures(rootNode, {
-              startPosition: chunkStart,
-              endPosition: chunkEnd,
-            })
-            .map((capture) => capture.node)
-        : rootNode.descendantsOfType(types, chunkStart, chunkEnd);
+      const chunkNodes = this._queryInjectionCandidateNodes(
+        tree,
+        types,
+        chunkStart,
+        chunkEnd,
+        candidateQuery,
+        injectionPointVersion,
+      );
+      if (chunkNodes === null) return null;
       for (const node of chunkNodes) {
         if (seenNodeIds.has(node.id)) continue;
         seenNodeIds.add(node.id);

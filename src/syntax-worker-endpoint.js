@@ -79,9 +79,16 @@ class SyntaxWorkerEndpoint {
           name: error.name ?? "Error",
           message: String(error.message ?? error),
           stack: error.stack,
+          code: error.code,
+          reason: error.reason,
         },
       });
     } finally {
+      // Dispatch may finish through a session-level cancellation while emit
+      // is still awaiting an acknowledgement. Release that transport wait.
+      job.controller.abort(cancelled());
+      job.waiting?.reject(job.controller.signal.reason);
+      job.waiting = null;
       this.jobs.delete(message.id);
     }
   }

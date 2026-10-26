@@ -1,12 +1,18 @@
 const fs = require("node:fs/promises");
 const { Emitter } = require("@lumine-code/event-kit");
 const { Parser } = require("web-tree-sitter");
+const { SyntaxResourcePolicy, SyntaxResourceLimitError } = require("./syntax-resource-policy");
 
 // One runtime belongs to one execution environment. After an abort or trap its
 // memory is never reused: the renderer replaces the entire syntax worker.
 class TreeSitterRuntime {
-  constructor({ maximumPages = 32768 } = {}) {
+  constructor({ maximumPages = 32768, resourcePolicy, now = () => performance.now() } = {}) {
+    if (!Number.isSafeInteger(maximumPages) || maximumPages <= 0)
+      throw new RangeError("Invalid Tree-sitter memory limit");
     this.maximumPages = maximumPages;
+    this.now = now;
+    this.resources =
+      resourcePolicy ?? new SyntaxResourcePolicy({ maximumMemoryBytes: maximumPages * 65536, now });
     this.context = null;
     this.buffers = new WeakMap();
     this.emitter = new Emitter();
@@ -17,7 +23,10 @@ class TreeSitterRuntime {
   initialize() {
     this.assertHealthy();
     return (this.initializing ??= (async () => {
-      this.memory = new WebAssembly.Memory({ initial: 512, maximum: this.maximumPages });
+      this.memory = new WebAssembly.Memory({
+        initial: Math.min(512, this.maximumPages),
+        maximum: this.maximumPages,
+      });
       const wasmBinary = await fs.readFile(require.resolve("web-tree-sitter/web-tree-sitter.wasm"));
       await Parser.init({
         wasmBinary,
@@ -41,7 +50,38 @@ class TreeSitterRuntime {
 
   contextForBuffer(buffer, scopeName) {
     const context = this.buffers.get(buffer)?.();
-    return context && { ...context, scopeName: scopeName ?? context.scopeName, operation: "parse" };
+    return (
+      context && {
+        ...context,
+        scopeName: scopeName ?? context.scopeName,
+        operation: context.operation ?? "parse",
+      }
+    );
+  }
+
+  beginParseSlice(context = this.context) {
+    this.assertHealthy();
+    return this.resources.beginParse(context, this.memory?.buffer.byteLength);
+  }
+
+  shouldStopParse(slice) {
+    return this.resources.shouldStopParse(slice, this.memory?.buffer.byteLength);
+  }
+
+  endParseSlice(slice, { throwOnLimit = true } = {}) {
+    const failure = this.resources.endParse(slice, this.memory?.buffer.byteLength);
+    // Preserve the original fatal trap when a hard allocation outruns the
+    // cooperative guard. The runtime failure path has already captured it.
+    if (failure && throwOnLimit && !this.failure) throw new SyntaxResourceLimitError(failure);
+    return failure;
+  }
+
+  resourceState() {
+    return this.resources.state(this.memory?.buffer.byteLength);
+  }
+
+  releaseSession(id) {
+    return this.resources.releaseSession(id, this.memory?.buffer.byteLength);
   }
 
   run(context, callback) {
@@ -53,6 +93,7 @@ class TreeSitterRuntime {
     const previous = this.context;
     const current = context ?? previous;
     this.context = current;
+    const started = this.now();
     try {
       const result = callback();
       if (result?.then)
@@ -66,6 +107,13 @@ class TreeSitterRuntime {
       throw error;
     } finally {
       this.context = previous;
+      // Measure this synchronous boundary only. Waiting for an async result is
+      // not parser CPU; nested entries are inclusive diagnostics, not a sum.
+      this.resources.recordOperation(
+        current?.operation,
+        this.now() - started,
+        this.memory?.buffer.byteLength,
+      );
     }
   }
 
@@ -82,6 +130,7 @@ class TreeSitterRuntime {
   fail(error, aborted = false, context = this.context) {
     if (this.failure) return;
     const memoryBytes = this.memory?.buffer.byteLength ?? null;
+    this.resources.sampleMemory(memoryBytes);
     this.failure = Object.freeze({
       ...context,
       code: aborted && memoryBytes >= this.maximumPages * 65536 ? "memory-limit" : "wasm-failure",
@@ -89,7 +138,10 @@ class TreeSitterRuntime {
       message: error.message,
       stack: error.stack,
       memoryBytes,
+      allocatedMemoryBytes: memoryBytes,
+      memoryMeasurement: "allocated-wasm-capacity",
       memoryLimitBytes: this.maximumPages * 65536,
+      memoryPressureBytes: this.resources.memoryPressureBytes,
       diagnostics: this.messages.join("\n"),
     });
     if (context?.session != null) this.reportFailure(context);

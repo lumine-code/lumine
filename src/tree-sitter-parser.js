@@ -1,5 +1,6 @@
 const { Parser } = require("web-tree-sitter");
 const runtime = require("./tree-sitter-runtime");
+const scheduler = require("./tree-sitter-scheduler");
 require("./tree-sitter-cursor");
 require("./tree-sitter-node-text");
 const ownTree = require("./tree-sitter-tree");
@@ -15,7 +16,6 @@ const textInput = (text, units) =>
     : (index) => text.slice(index, index + units);
 const nodeTextInput = (text) => textInput(text, NODE_TEXT_UNITS);
 const sourceOf = (tree) => metadata.get(tree)?.text ?? tree.input;
-const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
 
 // web-tree-sitter 0.27 retains its module-global callbacks when parsing throws.
 // Keep their closure separate from the parse frame and detach every captured
@@ -308,9 +308,14 @@ class TreeSitterParser {
       // Resumption keeps the same input callback, but it owns the source only
       // while the native call is executing.
       const callbacks = (job.callbacks ??= parseCallbacks());
+      const slice = runtime.beginParseSlice(job.runtimeContext);
       callbacks.attach({
         input: job.input,
-        progress: () => this.closed || signal?.aborted || performance.now() >= deadline,
+        progress: () =>
+          this.closed ||
+          signal?.aborted ||
+          runtime.shouldStopParse(slice) ||
+          performance.now() >= deadline,
         logger: this.logger,
       });
       this.executing = true;
@@ -320,9 +325,15 @@ class TreeSitterParser {
           includedRanges: job.includedRanges,
           progressCallback: callbacks.progress,
         });
+        runtime.endParseSlice(slice, { throwOnLimit: !this.closed && !signal?.aborted });
         if (tree) tree.textCallback = nodeTextInput(job.text);
       } catch (error) {
+        runtime.endParseSlice(slice, { throwOnLimit: false });
         runtime.observe(error);
+        if (tree && !runtime.failure) {
+          tree.delete();
+          tree = null;
+        }
         throw error;
       } finally {
         callbacks.release();
@@ -441,16 +452,21 @@ class TreeSitterParser {
     this.running = true;
     try {
       const job = this.begin(text, options);
-      for (;;) {
-        await yieldTask();
-        if (this.closed) return null;
-        options.signal?.throwIfAborted();
-        const deadline = options.deadlineForSlice?.() ?? performance.now() + ASYNC_SLICE_MS;
-        if (performance.now() >= deadline) continue;
-        const tree = this.step(job, deadline, options.signal);
-        if (this.closed) return null;
-        if (tree) return tree;
-      }
+      return await scheduler.runSlices(
+        (allowance) => {
+          if (this.closed) return { done: true, value: null };
+          options.signal?.throwIfAborted();
+          const deadline = Math.min(allowance, options.deadlineForSlice?.() ?? Infinity);
+          if (performance.now() >= deadline) return { done: false };
+          const tree = this.step(job, deadline, options.signal);
+          return { done: Boolean(tree) || this.closed, value: this.closed ? null : tree };
+        },
+        {
+          signal: options.signal,
+          priority: options.priority,
+          timeoutMicros: ASYNC_SLICE_MS * 1000,
+        },
+      );
     } catch (error) {
       this.resetPending();
       throw error;

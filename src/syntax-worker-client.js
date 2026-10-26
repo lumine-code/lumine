@@ -79,6 +79,8 @@ class SyntaxWorkerClient {
     if (message.type === "error") {
       const error = new Error(message.error.message);
       error.name = message.error.name;
+      error.code = message.error.code;
+      error.reason = message.error.reason;
       if (message.error.stack) error.stack = message.error.stack;
       request.reject(error);
     } else if (message.type === "result") request.resolve(message.value);
