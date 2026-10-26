@@ -337,7 +337,17 @@ async function runBenchmark(options = {}) {
       generatedRows: config.inputFile ? null : config.generatedRows,
     },
     settings: { inputCount: config.inputCount, intervalMs: config.intervalMs },
+    asyncErrors: [],
+    asyncErrorCount: 0,
   };
+  const recordError = (code) => {
+    report.asyncErrorCount++;
+    if (report.asyncErrors.length < 8) report.asyncErrors.push(code);
+  };
+  const captureError = () => recordError("UNCAUGHT_RENDERER_ERROR");
+  const captureRejection = () => recordError("UNHANDLED_RENDERER_REJECTION");
+  window.addEventListener("error", captureError);
+  window.addEventListener("unhandledrejection", captureRejection);
   try {
     const openStart = performance.now();
     buffer = config.inputFile
@@ -417,6 +427,26 @@ async function runBenchmark(options = {}) {
       report.phase = `input-${location}`;
       report.inputs.push(await measureEnters(editor, component, location, config, original));
     }
+    report.phase = "select-all";
+    const selectStarted = performance.now();
+    invariant(lumine.commands.dispatch(element, "core:select-all"), "SELECT_ALL_NOT_DISPATCHED");
+    const selectCommandMs = performance.now() - selectStarted;
+    const selectRaf = await frame();
+    await settle();
+    invariant(
+      editor.getSelectedBufferRange().isEqual(buffer.getRange()),
+      "SELECT_ALL_RANGE_MISMATCH",
+    );
+    invariant(report.asyncErrors.length === 0, "SELECTION_OBSERVER_FAILED");
+    report.selectAll = {
+      commandMs: selectCommandMs,
+      inputToNextRafMs: selectRaf - selectStarted,
+      units: buffer.getLength(),
+      exactRange: true,
+      viewport: inspectViewport(editor, component),
+    };
+    editor.setCursorBufferPosition(buffer.getEndPosition());
+    await settle();
     report.searches = [];
     for (const descriptor of [config.sparse, config.dense]) {
       report.phase = `search-${descriptor.name}`;
@@ -431,6 +461,7 @@ async function runBenchmark(options = {}) {
       report.searches.every((search) => search.status !== "failed"),
       "SEARCH_BENCHMARK_FAILED",
     );
+    invariant(report.asyncErrors.length === 0, "ASYNC_RENDERER_ERROR");
     report.status = "complete";
     report.phase = "complete";
     return report;
@@ -439,6 +470,8 @@ async function runBenchmark(options = {}) {
     report.failure = { code: error.code || error.name };
     return report;
   } finally {
+    window.removeEventListener("error", captureError);
+    window.removeEventListener("unhandledrejection", captureRejection);
     // Remove only this ephemeral pane item. Never save, reload, or overwrite the
     // external input; process isolation also disables session autosaves.
     if (editor) {
