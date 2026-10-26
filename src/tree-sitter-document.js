@@ -57,7 +57,7 @@ class TreeSitterDocument {
     const append = (batch) => {
       for (const change of batch.changes) {
         const { startIndex, oldEndIndex, oldRange, newRange } = change;
-        const newText = change.inserted ?? change.newText;
+        const newText = change.newTextSource ?? change.inserted ?? change.newText;
         textUnits += changeTextUnits(change);
         edits.push(
           Object.freeze({
@@ -115,8 +115,8 @@ module.exports = TreeSitterDocument;
 
 function changeTextUnits(change) {
   return (
-    (change.removed?.length ?? change.oldText.length) +
-    (change.inserted?.length ?? change.newText.length)
+    (change.oldTextSource?.length ?? change.removed?.length ?? change.oldText.length) +
+    (change.newTextSource?.length ?? change.inserted?.length ?? change.newText.length)
   );
 }
 

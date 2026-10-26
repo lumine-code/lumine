@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { DocumentCore, PieceTree } = require("../../src/text-model");
 const TreeSitterDocument = require("../../src/tree-sitter-document");
 const { TreeSitterScheduler } = require("../../src/tree-sitter-scheduler");
+const TextBuffer = require("../../src/text-buffer");
 
 function source(initial = "") {
   let text = initial,
@@ -69,6 +70,61 @@ test("parser document captures live revisions and replays exact sequential offse
   document.close();
   assert.equal(document.isCurrent(next), false);
   assert.throws(() => document.capture(), /closed/);
+});
+
+test("source-backed applied and pending edits retain snapshots without reading lazy strings", () => {
+  const buffer = new TextBuffer({ text: "before" });
+  const document = new TreeSitterDocument(buffer);
+  const first = document.capture();
+  const batches = [];
+  const subscription = buffer.onDidApplyChanges((batch) => batches.push(batch));
+  try {
+    buffer.transact(() => {
+      buffer.setText(new PieceTree("after 🦉\r\n"));
+      const pending = document.capture(first);
+      assert.equal(pending.previous, first);
+      assert.equal(pending.edits[0].newText instanceof PieceTree, true);
+      assert.equal(pending.edits[0].newText.toString(), "after 🦉\r\n");
+    });
+    const change = batches[0].changes[0];
+    assert.equal(change.oldTextSource instanceof PieceTree, true);
+    assert.equal(change.newTextSource instanceof PieceTree, true);
+    const lazy = Object.create(change, {
+      oldText: { get: () => assert.fail("old text must remain a source") },
+      newText: { get: () => assert.fail("new text must remain a source") },
+    });
+    document.apply({ ...batches[0], changes: [lazy] });
+    const captured = document.capture(first);
+    assert.equal(captured.edits[0].newText, change.newTextSource);
+    assert.equal(document.textUnits, "before".length + "after 🦉\r\n".length);
+  } finally {
+    subscription.dispose();
+    document.close();
+    buffer.destroy();
+  }
+});
+
+test("an insertion beyond the string limit evicts parser history without flattening its source", () => {
+  const { constants } = require("node:buffer");
+  let huge = new PieceTree("x".repeat(4096));
+  while (huge.length <= constants.MAX_STRING_LENGTH)
+    huge = huge.replace(huge.length, huge.length, huge);
+  const buffer = new TextBuffer({ text: "before" });
+  const document = new TreeSitterDocument(buffer);
+  const first = document.capture();
+  try {
+    buffer.setText(huge);
+    assert.equal(document.changeCount, 0);
+    assert.equal(document.textUnits, 0);
+    const current = document.capture(first);
+    assert.equal(current.previous, null);
+    assert.deepEqual(current.edits, []);
+    assert.equal(current.text.length, huge.length);
+    assert.equal(current.text.slice(0, 4), "xxxx");
+  } finally {
+    document.close();
+    buffer.destroy();
+  }
 });
 
 test("gaps, unavailable pending changes and bounded history choose a fresh parse", () => {
