@@ -1438,7 +1438,11 @@ class TextBuffer {
     this.transact(() => {
       for (let i = changes.length - 1; i >= 0; i--) {
         const change = changes[i];
-        this.setTextInRange([change.oldStart, change.oldEnd], change.newText, changeOptions);
+        this.setTextInRange(
+          [change.oldStart, change.oldEnd],
+          change.newTextSource ?? change.newText,
+          changeOptions,
+        );
       }
     });
   }
