@@ -1241,20 +1241,11 @@ module.exports = class Selection {
   ) {
     if (!this.ensureWritable("cut", { bypassReadOnly })) return;
     const isCurrent = this.editor.captureTextMutationGuard({ bypassReadOnly }, [this]);
-    try {
-      const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
-      const removeSelection = () => {
-        if (isCurrent()) return this.editor.transact(() => this.delete({ bypassReadOnly }));
-      };
-      return isPromise(didCopy)
-        ? didCopy.then(
-            removeSelection,
-            require("./text-editor-clipboard-operations").reportClipboardError,
-          )
-        : removeSelection();
-    } catch (error) {
-      return require("./text-editor-clipboard-operations").reportClipboardError(error);
-    }
+    const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
+    const removeSelection = () => {
+      if (isCurrent()) return this.editor.transact(() => this.delete({ bypassReadOnly }));
+    };
+    return isPromise(didCopy) ? didCopy.then(removeSelection) : removeSelection();
   }
 
   /**

@@ -314,6 +314,97 @@ class DocumentSearch {
     }
   }
 
+  // Reverse traversal stores numeric offsets, not match objects or window
+  // strings. Borderless literals can seek locally; other grammars retain their
+  // exact global match phase through sparse forward checkpoints and replay.
+  *reverseRanges({ blockSize = 8192, checkpointLimit = 65536 } = {}) {
+    if (
+      !Number.isInteger(blockSize) ||
+      blockSize < 1 ||
+      blockSize > 65536 ||
+      !Number.isInteger(checkpointLimit) ||
+      checkpointLimit < 2 ||
+      checkpointLimit > 65536
+    )
+      throw new RangeError("Invalid reverse scan block budget");
+    if (this.localLiteral) {
+      const width = Math.max(1, Math.min(this.windowUnits, 65536));
+      const offsets = new Float64Array(width * 2);
+      for (let upper = this.end; upper > this.start;) {
+        const lower = Math.max(this.start, upper - width);
+        const task = Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+        task.end = Math.min(this.end, upper + this.width + 2);
+        let count = 0;
+        for (const match of task.scan(lower)) {
+          if (!match) continue;
+          if (match.start >= upper) break;
+          offsets[count * 2] = match.start;
+          offsets[count * 2 + 1] = match.end;
+          count++;
+        }
+        for (let index = count - 1; index >= 0; index--)
+          yield { start: offsets[index * 2], end: offsets[index * 2 + 1] };
+        upper = lower;
+      }
+      return;
+    }
+    let checkpoints = [],
+      stride = blockSize,
+      count = 0;
+    for (const match of this.scan()) {
+      if (!match) continue;
+      if (count % stride === 0) {
+        checkpoints.push(match.start);
+        if (checkpoints.length > checkpointLimit) {
+          checkpoints = checkpoints.filter((_, index) => index % 2 === 0);
+          stride *= 2;
+        }
+      }
+      count++;
+    }
+    const search = this;
+    const offsets = new Float64Array(blockSize * 2);
+    function* replay(start, length) {
+      if (length > blockSize) {
+        const left = Math.floor(length / 2);
+        let seen = 0,
+          middle;
+        for (const match of search.scan(start))
+          if (match && seen++ === left) {
+            middle = match.start;
+            break;
+          }
+        if (middle === undefined)
+          throw new Error("Reverse scan checkpoint no longer describes its snapshot");
+        yield* replay(middle, length - left);
+        yield* replay(start, left);
+        return;
+      }
+      let found = 0;
+      for (const match of search.scan(start)) {
+        if (!match) continue;
+        offsets[found * 2] = match.start;
+        offsets[found * 2 + 1] = match.end;
+        if (++found === length) break;
+      }
+      if (found !== length)
+        throw new Error("Reverse scan replay did not preserve the snapshot match sequence");
+      for (let index = found - 1; index >= 0; index--)
+        yield { start: offsets[index * 2], end: offsets[index * 2 + 1] };
+    }
+    for (let index = checkpoints.length - 1; index >= 0; index--)
+      yield* replay(checkpoints[index], Math.min(stride, count - index * stride));
+  }
+
+  matchAtOffset(start, end) {
+    for (const match of this.scan(start)) {
+      if (!match) continue;
+      if (match.start === start && match.end === end) return match;
+      break;
+    }
+    throw new Error("Search match no longer describes its immutable snapshot");
+  }
+
   async *batches(resume = this.start) {
     await yieldTurn();
     let deadline = performance.now() + 4;

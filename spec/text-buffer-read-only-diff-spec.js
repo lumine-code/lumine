@@ -70,4 +70,33 @@ describe("TextBuffer read-only native diff", () => {
     expect(buffer.getChangesToText(buffer.getText())).toEqual([]);
     expect(buffer.undo()).toBe(false);
   });
+  it("returns source ranges without materializing a huge inserted patch", () => {
+    const { PieceTree } = require("../src/text-model");
+    let source = new PieceTree("test".repeat(1024));
+    while (source.canMaterialize()) source = source.replace(source.length, source.length, source);
+    buffer = new TextBuffer("before");
+    const changes = buffer.getChangesToText(source);
+    expect(changes.length).toBe(1);
+    expect(changes[0].newTextSource.equals(source)).toBe(true);
+    expect(changes[0].oldTextSource.toString()).toBe("before");
+    expect(() => changes[0].newText).toThrow();
+    expect(buffer.getText()).toBe("before");
+  });
+  it("preflights string search context before reading huge surrounding lines", () => {
+    const { PieceTree } = require("../src/text-model");
+    let source = new PieceTree(" ".repeat(32768));
+    while (source.canMaterialize()) source = source.replace(source.length, source.length, source);
+    buffer = new TextBuffer();
+    buffer.setTextInRange(buffer.getRange(), source.replace(0, 0, "match\n"));
+    spyOn(buffer, "lineForRow").and.throwError("Eager context read");
+    expect(() => buffer.scan(/match/, { trailingContextLineCount: 1 }, () => {})).toThrowError(
+      /Synchronous search context/,
+    );
+    let argument;
+    buffer.scan(/ /, (match) => {
+      argument = match;
+    });
+    expect(() => argument.lineText).toThrowError(/Synchronous search context/);
+    expect(argument.matchText).toBe(" ");
+  });
 });

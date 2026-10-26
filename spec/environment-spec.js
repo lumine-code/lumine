@@ -1237,6 +1237,7 @@ describe("Environment", () => {
       expect(lumine.project.serialize.calls.count()).toBe(1);
       expect(lumine.project.serialize.calls.mostRecent().args[0]).toEqual({
         anyOption: "any option",
+        retainTextSnapshots: true,
       });
     });
 

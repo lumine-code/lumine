@@ -3317,19 +3317,22 @@ module.exports = class TextEditorComponent {
     );
     const operation = this.pendingClipboardOperation;
 
-    if (isCut) {
-      this.props.model.cutSelectedText({ clipboard });
-    } else if (operation?.onlySelectedText) {
-      this.props.model.copyOnlySelectedText(clipboard);
-    } else {
-      this.props.model.copySelectedText(clipboard);
-    }
+    const result = require("./settle-editor-command")(
+      () => {
+        if (isCut) return this.props.model.cutSelectedText({ clipboard });
+        if (operation?.onlySelectedText) return this.props.model.copyOnlySelectedText(clipboard);
+        return this.props.model.copySelectedText(clipboard);
+      },
+      lumine.notifications,
+      isCut ? "core:cut" : "core:copy",
+    );
 
     const matchesPendingOperation = operation && operation.type === (isCut ? "cut" : "copy");
-    if (clipboard.didWrite() || matchesPendingOperation) {
+    if (clipboard.didWrite() || matchesPendingOperation || result === false || isPromise(result)) {
       event.preventDefault();
       if (matchesPendingOperation) operation.handled = true;
     }
+    return result;
   }
 
   didPaste(event) {

@@ -131,9 +131,21 @@ function lastOccupiedRowForRange(range) {
 }
 
 function scanFirstMatchInRange(buffer, regex, range, options, callback) {
-  const matchRange = buffer.findInRangeSync(regex, range);
-  if (matchRange && !(range.end.isEqual(matchRange.start) && range.end.column > 0)) {
-    callback(new SearchCallbackArgument(buffer, Range.fromObject(matchRange), regex, options));
+  const search = buffer.buffer.createSearch(regex, range);
+  for (const match of search.scan()) {
+    if (!match) continue;
+    const matchRange = search.range(match);
+    if (!(range.end.isEqual(matchRange.start) && range.end.column > 0))
+      callback(
+        new SearchCallbackArgument(
+          buffer,
+          Range.fromObject(matchRange),
+          regex,
+          options,
+          () => match,
+        ),
+      );
+    break;
   }
 }
 
@@ -1383,19 +1395,31 @@ class TextBuffer {
    * Compute diff changes to target text without modifying this buffer,
    * its history, markers or observers. Ranges use UTF-16 buffer coordinates.
    *
-   * @param {String} text - Target text.
-   * @returns {Array<Object>} Changes containing oldRange, newRange, oldText and newText.
+   * @param {String|PieceTree} text - Target text or immutable snapshot.
+   * @returns {Array<Object>} Changes containing oldRange, newRange, source snapshots and lazy oldText/newText string getters.
    */
   getChangesToText(text) {
     return this.buffer
       .diff(text)
       .getChanges()
-      .map((change) => ({
-        oldRange: new Range(change.oldStart, change.oldEnd),
-        newRange: new Range(change.newStart, change.newEnd),
-        oldText: change.oldText,
-        newText: change.newText,
-      }));
+      .map((change) =>
+        Object.defineProperties(
+          {
+            oldRange: new Range(change.oldStart, change.oldEnd),
+            newRange: new Range(change.newStart, change.newEnd),
+            get oldText() {
+              return change.oldText;
+            },
+            get newText() {
+              return change.newText;
+            },
+          },
+          {
+            oldTextSource: { value: change.oldTextSource },
+            newTextSource: { value: change.newTextSource },
+          },
+        ),
+      );
   }
 
   /**
@@ -1405,7 +1429,7 @@ class TextBuffer {
    * Replace the current buffer contents by applying a diff based on the
    * given text.
    *
-   * @param {String} text - A `String` containing the new buffer contents.
+   * @param {String|PieceTree} text - The new buffer contents as a string or immutable snapshot.
    */
   setTextViaDiff(text) {
     if (this.atomicEditContext) this.assertCanEdit();
@@ -2850,7 +2874,8 @@ class TextBuffer {
    * @param {Number} [options.trailingContextLineCount] - default `0`; The number of lines after the matched line to include in the results object.
    * @param {Function} [callback] - A `Function` that's called on each match with an `Object` containing the following keys:
    * @param {Object} callback.result - Match information supplied as the callback's only argument.
-   * @param {Array} callback.result.match - The current regular expression match.
+   * @param {Array} callback.result.match - The original native regular expression match, including captures and groups. Its `index`, `indices` and `input` refer to a bounded search window.
+   * @param {Number} callback.result.inputOffset - UTF-16 offset of that search window in the captured buffer snapshot; add it to `match.index` for the original match offset.
    * @param {String} callback.result.matchText - A `String` with the text of the match.
    * @param {Range} callback.result.range - The {@link Range} of the match.
    * @param {Function} callback.result.stop - Call this `Function` to terminate the scan.
@@ -2873,14 +2898,13 @@ class TextBuffer {
       return scanFirstMatchInRange(this, regex, range, options, callback);
     }
     const search = this.buffer.createSearch(regex, range);
-    const ranges = function* () {
-      for (const match of search.scan()) if (match) yield search.range(match);
-    };
-    const matchRanges = reverse ? Array.from(ranges()).reverse() : ranges();
+    const matches = reverse ? search.reverseRanges() : search.scan();
     let previousRow = -1;
     let replacementColumnDelta = 0;
 
-    for (const matchRange of matchRanges) {
+    for (const match of matches) {
+      if (!match) continue;
+      const matchRange = search.range(match);
       if (range.end.isEqual(matchRange.start) && range.end.column > 0) continue;
       if (matchRange.start.row !== previousRow) {
         replacementColumnDelta = 0;
@@ -2894,6 +2918,7 @@ class TextBuffer {
         Range.fromObject(matchRange),
         regex,
         options,
+        () => (match.match ? match : search.matchAtOffset(match.start, match.end)),
       );
       callback(argument);
       if (argument.stopped || !regex.global) break;
@@ -2921,7 +2946,8 @@ class TextBuffer {
    * @param {Number} [options.trailingContextLineCount] - default `0`; The number of lines after the matched line to include in the results object.
    * @param {Function} [iterator] - A `Function` that's called on each match with an `Object` containing the following keys:
    * @param {Object} iterator.result - Match information supplied as the callback's only argument.
-   * @param {Array} iterator.result.match - The current regular expression match.
+   * @param {Array} iterator.result.match - The original native regular expression match, including captures and groups. Its `index`, `indices` and `input` refer to a bounded search window.
+   * @param {Number} iterator.result.inputOffset - UTF-16 offset of that search window in the captured buffer snapshot; add it to `match.index` for the original match offset.
    * @param {String} iterator.result.matchText - A `String` with the text of the match.
    * @param {Range} iterator.result.range - The {@link Range} of the match.
    * @param {Function} iterator.result.stop - Call this `Function` to terminate the scan.
@@ -5151,12 +5177,11 @@ class SearchCallbackArgument {
   }
 
   get lineText() {
-    const lines = [];
     const lastOccupiedRow = lastOccupiedRowForRange(this.range);
-    for (let row = this.range.start.row; row <= lastOccupiedRow; row++) {
-      lines.push(this.buffer.lineForRow(row));
-    }
-    return lines.join("\n");
+    const range = new Range([this.range.start.row, 0], [lastOccupiedRow, Infinity]);
+    const source = this.buffer.getTextSnapshotInRange(range);
+    SearchCallbackArgument.checkContextSize(source.length, 0);
+    return source.toString().replace(/\r\n/g, "\n");
   }
 
   get lineTextOffset() {
@@ -5167,29 +5192,72 @@ class SearchCallbackArgument {
     return this.buffer.getTextInRange(this.range);
   }
 
+  resolveMatch() {
+    if (!this.nativeMatch && this.matchResolver) this.nativeMatch = this.matchResolver();
+    return this.nativeMatch;
+  }
+
   get match() {
+    const found = this.resolveMatch();
+    if (found) return found.match;
     this.regex.lastIndex = 0;
     return this.regex.exec(this.matchText);
   }
 
+  get inputOffset() {
+    return this.resolveMatch()?.inputOffset ?? 0;
+  }
+
   static addContextLines(argument, options) {
+    const counts = [options.leadingContextLineCount ?? 0, options.trailingContextLineCount ?? 0];
+    if (counts.some((count) => !Number.isSafeInteger(count) || count < 0))
+      throw new RangeError("Search context line counts must be nonnegative safe integers");
     argument.leadingContextLines = [];
-    let row = Math.max(0, argument.range.start.row - (options.leadingContextLineCount || 0));
+    argument.trailingContextLines = [];
+    if (!counts[0] && !counts[1]) return;
+    const lastOccupiedRow = lastOccupiedRowForRange(argument.range);
+    const leadingStart = Math.max(0, argument.range.start.row - counts[0]);
+    const trailingEnd = Math.min(argument.buffer.getLastRow(), lastOccupiedRow + counts[1]);
+    const source = argument.buffer.getTextSnapshot();
+    const leadingUnits =
+      source.lineStart(argument.range.start.row) - source.lineStart(leadingStart);
+    const trailingUnits =
+      trailingEnd > lastOccupiedRow
+        ? argument.buffer.characterIndexForPosition([trailingEnd, Infinity]) -
+          source.lineStart(lastOccupiedRow + 1)
+        : 0;
+    SearchCallbackArgument.checkContextSize(
+      leadingUnits + trailingUnits,
+      argument.range.start.row - leadingStart + trailingEnd - lastOccupiedRow,
+    );
+    let row = leadingStart;
     while (row < argument.range.start.row) {
       argument.leadingContextLines.push(argument.buffer.lineForRow(row));
       row += 1;
     }
 
-    argument.trailingContextLines = [];
-    const lastOccupiedRow = lastOccupiedRowForRange(argument.range);
-    for (let i = 0, end = options.trailingContextLineCount || 0; i < end; i++) {
+    for (let i = 0, end = counts[1]; i < end; i++) {
       row = lastOccupiedRow + i + 1;
       if (row >= argument.buffer.getLineCount()) break;
       argument.trailingContextLines.push(argument.buffer.lineForRow(row));
     }
   }
 
-  constructor(buffer, range, regex, options) {
+  static checkContextSize(units, rows) {
+    if (units > 8 * 1024 * 1024 || rows > 100000)
+      throw Object.assign(
+        new RangeError(
+          "Synchronous search context is limited to 8 Mi UTF-16 units and 100,000 lines. Read bounded snapshot ranges instead.",
+        ),
+        { code: "ERR_SYNCHRONOUS_TEXT_LIMIT" },
+      );
+  }
+
+  constructor(buffer, range, regex, options, matchResolver) {
+    Object.defineProperties(this, {
+      matchResolver: { value: matchResolver },
+      nativeMatch: { value: null, writable: true },
+    });
     this.replace = this.replace.bind(this);
     this.stop = this.stop.bind(this);
     this.buffer = buffer;

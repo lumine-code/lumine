@@ -114,14 +114,11 @@ describe("Source-backed editing commands", () => {
       ],
     ]);
     const ranges = editor.getSelectedBufferRanges();
-    const report = spyOn(lumine.notifications, "addError");
-    const clipboard = {
-      write: () => Promise.reject(new RangeError("Clipboard text is too large")),
-    };
-    expect(await editor.cutSelectedText({ clipboard })).toBe(false);
+    const error = new RangeError("Clipboard text is too large");
+    const clipboard = { write: () => Promise.reject(error) };
+    await expectAsync(editor.cutSelectedText({ clipboard })).toBeRejectedWith(error);
     expect(editor.getText()).toBe("one two three");
     expect(editor.getSelectedBufferRanges()).toEqual(ranges);
-    expect(report).toHaveBeenCalled();
   });
 
   it("cuts only after asynchronous clipboard publication and cancels stale deletion", async () => {
@@ -217,4 +214,29 @@ describe("Source-backed editing commands", () => {
       other.destroy();
     }
   });
+  for (const asynchronous of [false, true]) {
+    it(`reports a ${asynchronous ? "rejected" : "thrown"} native clipboard failure once and prevents browser fallback`, async () => {
+      create("keep this text");
+      editor.selectAll();
+      const component = editor.getElement().getComponent();
+      const error = new RangeError("Clipboard limit");
+      const clipboard = {
+        didWrite: () => false,
+        write() {
+          if (asynchronous) return Promise.reject(error);
+          throw error;
+        },
+      };
+      spyOn(editor.constructor.clipboard, "createDataTransferClipboard").and.returnValue(clipboard);
+      const report = spyOn(lumine.notifications, "addError");
+      const event = { clipboardData: {}, preventDefault: jasmine.createSpy("preventDefault") };
+      component.pendingClipboardOperation = { type: "cut", handled: false };
+      const result = component.writeClipboardEvent(event, true);
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+      expect(component.pendingClipboardOperation.handled).toBe(true);
+      expect(await result).toBe(false);
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(editor.getText()).toBe("keep this text");
+    });
+  }
 });
