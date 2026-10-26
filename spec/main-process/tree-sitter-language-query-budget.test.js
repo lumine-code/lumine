@@ -3,7 +3,11 @@ const assert = require("node:assert/strict");
 const { Query } = require("web-tree-sitter");
 const Host = require("../../src/syntax-worker-host");
 const { configuration } = require("../../src/syntax-worker-environment");
-const { compileInjectionQuery } = require("../../src/tree-sitter-injections");
+const {
+  compileInjectionQuery,
+  collectInjectionMatches,
+} = require("../../src/tree-sitter-injections");
+const { QueryBudgetExceeded } = require("../../src/tree-sitter-query-budget");
 const Point = require("../../src/point");
 const scopeRanges = require("../../src/syntax-scope-ranges");
 
@@ -235,6 +239,9 @@ test("static injection language text cannot escape its budget or publish partial
 test("inline long-line presentation retains its limited quality in the highlight cache", async () => {
   const f = await fixture(`[${"1,".repeat(10000)}2]`);
   try {
+    // This checks deterministic source clipping; real timeout/cancellation
+    // behavior is covered independently with advancing clocks and callbacks.
+    f.mode.queryBudget.now = () => 0;
     const query = f.layer.queries.highlightsQuery;
     const captures = query.captures;
     const queriedLengths = [];
@@ -257,6 +264,234 @@ test("inline long-line presentation retains its limited quality in the highlight
     );
     assert.ok(queriedLengths.length > 0);
     assert.ok(queriedLengths.every((length) => length <= 2048));
+  } finally {
+    f.close();
+  }
+});
+
+test("interrupted static and dynamic injection windows yield and retry exact bounded work", async () => {
+  for (const kind of ["static", "dynamic"]) {
+    const f = await fixture();
+    try {
+      let now = 0,
+        calls = 0,
+        yields = 0;
+      f.mode.queryBudget = { now: () => now, timeoutMs: 25 };
+      f.mode._yieldForInjectionCandidateScan = async () => {
+        yields++;
+      };
+      const query =
+        kind === "static"
+          ? f.query(
+              "injectionsQuery",
+              '((number) @injection.owner @injection.content (#set! injection.language "test"))',
+            )
+          : new Query(f.layer.language, "(number) @candidate");
+      const method = kind === "static" ? "matches" : "captures";
+      const original = query[method];
+      query[method] = function (node, options) {
+        if (++calls === 1) {
+          now = 100;
+          assert.equal(options.progressCallback({}), true);
+        }
+        return original.call(this, node, options);
+      };
+      if (kind === "dynamic") f.layer.grammar._getOrCreateInternalQuerySync = () => query;
+      try {
+        const result =
+          kind === "static"
+            ? f.layer._collectStaticInjectionCandidates(
+                f.layer.tree,
+                f.buffer.getRange(),
+                f.layer.injectionPointVersion,
+              )
+            : f.layer._collectInjectionCandidateNodes(
+                f.layer.tree,
+                ["number"],
+                f.buffer.getRange(),
+                f.layer.injectionPointVersion,
+              );
+        assert.ok(result instanceof Promise);
+        assert.equal((await result).length, 3);
+        assert.equal(calls, 2);
+        assert.equal(yields, 1);
+        assert.equal(f.host.sessions.has(1), true);
+      } finally {
+        if (kind === "dynamic") query.delete();
+      }
+    } finally {
+      f.close();
+    }
+  }
+});
+
+test("injection retries are finite, skip structural limits and stop on invalidation", async () => {
+  for (const kind of ["persistent", "structural", "cancelled"]) {
+    const f = await fixture();
+    try {
+      let now = 0,
+        calls = 0,
+        yields = 0;
+      f.mode.queryBudget = {
+        now: () => now,
+        timeoutMs: 25,
+        ...(kind === "structural" ? { maxResults: 1 } : {}),
+      };
+      f.mode._yieldForInjectionCandidateScan = async () => {
+        yields++;
+        if (kind === "cancelled") f.layer.injectionPointVersion++;
+      };
+      const query = f.query(
+        "injectionsQuery",
+        '((number) @injection.owner @injection.content (#set! injection.language "test"))',
+      );
+      const original = query.matches;
+      query.matches = function (node, options) {
+        calls++;
+        if (kind !== "structural") {
+          now += 100;
+          assert.equal(options.progressCallback({}), true);
+        }
+        return original.call(this, node, options);
+      };
+      const run = () =>
+        f.layer._collectStaticInjectionCandidates(
+          f.layer.tree,
+          f.buffer.getRange(),
+          f.layer.injectionPointVersion,
+        );
+      if (kind === "structural") {
+        assert.throws(run, { reason: "result-limit" });
+        assert.equal(calls, 1);
+        assert.equal(yields, 0);
+      } else if (kind === "cancelled") {
+        assert.equal(await run(), null);
+        assert.equal(calls, 1);
+        assert.equal(yields, 1);
+      } else {
+        await assert.rejects(run(), { reason: "timeout" });
+        assert.equal(calls, 3);
+        assert.equal(yields, 2);
+      }
+    } finally {
+      f.close();
+    }
+  }
+});
+
+test("failed static windows cannot modify accumulated topology before a retry", async () => {
+  const f = await fixture();
+  try {
+    let fail = true;
+    const descriptor = new Map([[0, { patternIndex: 0 }]]);
+    const match = (id, text) => {
+      const node = {
+        id,
+        startIndex: id,
+        endIndex: id + 1,
+        get text() {
+          if (id === 2 && fail) throw new QueryBudgetExceeded("timeout");
+          return text;
+        },
+      };
+      return {
+        patternIndex: 0,
+        captures: ["injection.owner", "injection.content", "injection.language"].map((name) => ({
+          name,
+          node,
+        })),
+      };
+    };
+    const previous = collectInjectionMatches([match(0, "previous")], descriptor).state;
+    const query = {
+      injectionDescriptors: descriptor,
+      matches: () => [match(1, "first"), match(2, "second")],
+    };
+    const run = () =>
+      f.layer._queryStaticInjectionCandidates(
+        f.layer.tree,
+        query,
+        f.buffer.getRange().start,
+        f.buffer.getRange().end,
+        f.layer.injectionPointVersion,
+        previous,
+      );
+    assert.throws(run, { reason: "timeout" });
+    assert.equal(previous.records.length, 1);
+    assert.equal(previous.patterns.get(0).size, 1);
+    fail = false;
+    assert.deepEqual(
+      run().records.map((record) => record.languageName),
+      ["previous", "first", "second"],
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test("small exact scope queries retry a transient timeout once but preserve structural failures", async () => {
+  const f = await fixture();
+  try {
+    const result = [[], new Map()];
+    let calls = 0;
+    f.layer.getBudgetedSyntaxBoundaries = () => {
+      if (++calls === 1) throw new QueryBudgetExceeded("timeout");
+      return result;
+    };
+    assert.equal(f.layer.getSyntaxBoundaries(new Point(0, 0), new Point(0, 1)), result);
+    assert.equal(calls, 2);
+    calls = 0;
+    f.layer.getBudgetedSyntaxBoundaries = () => {
+      calls++;
+      throw new QueryBudgetExceeded("capture-limit");
+    };
+    assert.throws(() => f.layer.getSyntaxBoundaries(new Point(0, 0), new Point(0, 1)), {
+      reason: "capture-limit",
+    });
+    assert.equal(calls, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("scope conversion checks its budget before further batches rather than rejecting finished work", async () => {
+  const f = await fixture(`[${"1,".repeat(100)}2]`);
+  try {
+    let now = 0,
+      converted = 0;
+    f.mode.queryBudget = { now: () => now, timeoutMs: 25 };
+    f.query("highlightsQuery", "(number) @number");
+    const store = f.layer.scopeResolver.store.bind(f.layer.scopeResolver);
+    f.layer.scopeResolver.store = (capture) => {
+      converted++;
+      const value = store(capture);
+      now = 100;
+      return value;
+    };
+    const result = f.layer.getSyntaxBoundaries(f.buffer.getRange().start, f.buffer.getRange().end, {
+      presentation: true,
+    });
+    assert.equal(result[2], "timeout");
+    assert.equal(converted, 32);
+  } finally {
+    f.close();
+  }
+});
+
+test("a synchronous static failure still observes an already pending dynamic query failure", async () => {
+  const f = await fixture();
+  try {
+    const failure = new QueryBudgetExceeded("capture-limit");
+    f.layer._collectInjectionCandidateNodes = () =>
+      Promise.reject(new QueryBudgetExceeded("timeout"));
+    f.layer._collectStaticInjectionCandidates = () => {
+      throw failure;
+    };
+    assert.throws(
+      () => f.layer._performPopulateInjections(f.buffer.getRange()),
+      (error) => error === failure,
+    );
+    await new Promise(setImmediate);
   } finally {
     f.close();
   }

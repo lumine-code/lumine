@@ -233,6 +233,9 @@ class SyntaxPreview {
         config: this.config,
         parsePriority: -10,
         queryBudget: { presentationWindowLength: 2048 },
+        reportFailure: () => {
+          entry.queryFailed = true;
+        },
         syncTimeoutMicros: 1000,
         maxIdleParsersPerLanguage: 0,
       }));

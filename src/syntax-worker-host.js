@@ -228,6 +228,10 @@ class SyntaxWorkerHost {
       grammar,
       config: this.config,
       grammars: this.grammars,
+      reportFailure: (error) => {
+        if (this.sessions.get(session.id) === session && session.mode === mode)
+          this.failSession(session, error);
+      },
     });
     // The renderer owns presentation windows. Semantic work must not also
     // prepare an unused default viewport at the beginning of every document.
@@ -290,7 +294,8 @@ class SyntaxWorkerHost {
       session: session.id,
       failure: {
         ...this.contextFor(session, "parse"),
-        code: "analysis-failure",
+        code: error.code === "ERR_SYNTAX_QUERY_BUDGET" ? "query-budget" : "analysis-failure",
+        reason: error.reason,
         fatal: false,
         message: error.message,
         stack: error.stack,

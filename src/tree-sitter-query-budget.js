@@ -52,10 +52,10 @@ function withPredicateTextBudget(callback, budget = {}) {
   const now = budget.now ?? (() => performance.now());
   const deadline = now() + limit(budget.timeoutMs, DEFAULTS.timeoutMs, "timeoutMs", 0);
   const previous = predicateTextBudget;
-  const check = () => {
+  const check = (checkTime = true) => {
     if (budget.signal?.aborted || budget.isCancelled?.())
       throw new QueryBudgetExceeded("cancelled");
-    if (now() >= deadline) throw new QueryBudgetExceeded("timeout");
+    if (checkTime && now() >= deadline) throw new QueryBudgetExceeded("timeout");
   };
   predicateTextBudget = { maxLength, check };
   try {
@@ -63,7 +63,10 @@ function withPredicateTextBudget(callback, budget = {}) {
     const value = callback();
     if (value && typeof value.then === "function")
       throw new TypeError("Predicate text budgets require a synchronous callback.");
-    check();
+    // Completion is not an admission point. A scheduler pause after bounded
+    // work finished cannot make its exact result partial; cancellation still
+    // invalidates it, even when it arrived during the final operation.
+    check(false);
     return { value, complete: true, reason: null };
   } catch (error) {
     if (!(error instanceof QueryBudgetExceeded)) throw error;
@@ -108,11 +111,11 @@ function runQuery(query, node, options = {}, budget = {}) {
     reason ??= value;
     return true;
   };
-  const stopped = () => {
+  const stopped = (checkTime = true) => {
     if (reason) return true;
     try {
       if (budget.signal?.aborted || budget.isCancelled?.()) return stop("cancelled");
-      if (now() >= deadline) return stop("timeout");
+      if (checkTime && now() >= deadline) return stop("timeout");
     } catch (error) {
       deferredError ??= error;
       return stop("callback-error");
@@ -140,19 +143,22 @@ function runQuery(query, node, options = {}, budget = {}) {
     if (Array.isArray(originalPredicates)) {
       query.textPredicates = originalPredicates.map((predicates) => [
         (captures) => {
-          if (stopped()) return false;
+          if (stopped(false)) return false;
           const captureCount = method === "captures" ? 1 : captures.length;
           // The Node.text accessor checks the active budget at the actual read,
           // rather than rejecting every large capture. A pattern may capture a
           // huge container but only test the text of its tiny key/identifier.
           try {
-            if (!predicates.every((predicate) => predicate(captures))) return false;
+            for (const predicate of predicates) {
+              if (stopped()) return false;
+              if (!predicate(captures)) return false;
+            }
           } catch (error) {
             if (error instanceof QueryBudgetExceeded) return !stop(error.reason);
             deferredError ??= error;
             return !stop("predicate-error");
           }
-          if (stopped()) return false;
+          if (stopped(false)) return false;
           if (acceptedResults >= maxResults) return !stop("result-limit");
           if (captureCount > maxCaptures - acceptedCaptures) return !stop("capture-limit");
           acceptedResults++;
@@ -171,7 +177,9 @@ function runQuery(query, node, options = {}, budget = {}) {
     try {
       rawResults = query[method](node, { ...options, matchLimit, progressCallback });
       if (query.didExceedMatchLimit?.()) stop("match-limit");
-      stopped();
+      // Native progress and predicate admission recorded every actual abort.
+      // Do not retrospectively discard a query which completed without one.
+      stopped(false);
     } finally {
       predicateTextBudget = previousTextBudget;
       if (Array.isArray(originalPredicates)) query.textPredicates = originalPredicates;
@@ -196,6 +204,8 @@ function runQuery(query, node, options = {}, budget = {}) {
     results.push(result);
     captureCount += count;
   }
+  stopped(false);
+  if (deferredError) throw deferredError;
   return {
     results: reason && !budget.allowPartial ? null : results,
     complete: reason === null,

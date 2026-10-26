@@ -451,3 +451,75 @@ test("focus changes mark interaction without retaining a strong buffer or resett
     [1, 1, 2, null, null],
   );
 });
+
+test("a transient cold query cannot strand a minimap's covered rows without their scopes", async () => {
+  const Host = require("../../src/syntax-worker-host");
+  const state = fixture({ maxBytes: 8 * 1024 * 1024 });
+  const host = new Host();
+  let timedOut = false;
+  let minimapAttempts = 0;
+  const scopeName = (id) => (id === 1 ? "source.js" : "comment.line.js");
+  const worker = {
+    id: 1,
+    revision: state.buffer.getTextRevision(),
+    scopeName: "source.js",
+    buffer: state.buffer,
+    mode: {
+      scopeNameForScopeId: scopeName,
+      getFoldRangeForRow: () => null,
+      buildHighlightIterator() {
+        let row,
+          last,
+          closing = false;
+        const iterator = {
+          limitedReason: null,
+          seek(start, endRow) {
+            row = start.row;
+            last = endRow;
+            if (row <= 200 && last >= 200) {
+              minimapAttempts++;
+              if (!timedOut) {
+                timedOut = true;
+                iterator.limitedReason = "timeout";
+              }
+            }
+            return [1];
+          },
+          getPosition: () =>
+            iterator.limitedReason || row > last ? Point.INFINITY : new Point(row, closing ? 4 : 1),
+          getOpenScopeIds: () => (closing ? [] : [2]),
+          getCloseScopeIds: () => (closing ? [2] : []),
+          moveToSuccessor() {
+            if (closing) row++;
+            closing = !closing;
+          },
+        };
+        return iterator;
+      },
+    },
+  };
+  host.metadata = () => ({ syntaxReady: true, queries: [], grammars: ["source.js"] });
+  state.mode.grammar = {
+    scopeName: "source.js",
+    idForScope: (name) => (name === "source.js" ? 1 : 2),
+    scopeNameForScopeId: scopeName,
+  };
+  state.service.request = (session, operation, data, { onChunk, signal }) =>
+    host.view(worker, data.ranges, onChunk, () => signal.throwIfAborted(), data.follow);
+  try {
+    state.request([[0, 30]], { priority: 0 });
+    state.request([[0, 249]], { priority: 2 });
+    await state.mode.refresh();
+    assert.equal(timedOut, true);
+    assert.equal(minimapAttempts, 2);
+    assert.equal(state.mode.warmupPaused, false);
+    assert.equal(state.mode.cache.covers(new Point(0, 0), new Point(250, 0), state.stamp()), true);
+    assert.ok(
+      state.mode.scopeDescriptorForPosition(new Point(200, 2)).scopes.includes("comment.line.js"),
+    );
+    assert.ok(state.mode.cache.snapshots.every((snapshot) => snapshot.quality === "exact"));
+  } finally {
+    state.dispose();
+    host.close();
+  }
+});

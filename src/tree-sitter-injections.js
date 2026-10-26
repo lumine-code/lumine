@@ -1,3 +1,5 @@
+const { checkPredicateTextLength } = require("./tree-sitter-query-budget");
+
 const BOOLEAN_PROPERTIES = {
   "injection.include-children": "includeChildren",
   "injection.exclude-children-lines": "excludeChildrenLines",
@@ -97,7 +99,9 @@ function collectInjectionMatches(
   descriptors,
   state = { records: [], patterns: new Map() },
 ) {
+  let processed = 0;
   for (const match of matches) {
+    if ((processed++ & 31) === 0) checkPredicateTextLength(0);
     const patternIndex = match.patternIndex;
     const injectionPoint = descriptors.get(patternIndex);
     if (!injectionPoint) throw new Error(`Unknown injection pattern ${patternIndex}`);
@@ -136,4 +140,33 @@ function collectInjectionMatches(
   return { records: state.records, state };
 }
 
-module.exports = { compileInjectionQuery, collectInjectionMatches };
+// A query window is staged independently. Merge only after both its native
+// predicates and language-name extraction completed, so retrying a timed-out
+// window cannot retain half of its topology.
+function mergeInjectionState(state, staged) {
+  if (!state) return { records: staged.records, state: staged };
+  for (const [pattern, owners] of staged.patterns) {
+    let existingOwners = state.patterns.get(pattern);
+    if (!existingOwners) state.patterns.set(pattern, (existingOwners = new Map()));
+    for (const [owner, languages] of owners) {
+      let existingLanguages = existingOwners.get(owner);
+      if (!existingLanguages) existingOwners.set(owner, (existingLanguages = new Map()));
+      for (const [language, entry] of languages) {
+        const existing = existingLanguages.get(language);
+        if (!existing) {
+          existingLanguages.set(language, entry);
+          state.records.push(entry.record);
+          continue;
+        }
+        for (const content of entry.record.contentNodes) {
+          if (existing.contentIds.has(content.id)) continue;
+          existing.contentIds.add(content.id);
+          existing.record.contentNodes.push(content);
+        }
+      }
+    }
+  }
+  return { records: state.records, state };
+}
+
+module.exports = { compileInjectionQuery, collectInjectionMatches, mergeInjectionState };

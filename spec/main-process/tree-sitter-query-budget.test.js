@@ -276,6 +276,152 @@ test("elapsed budget interrupts real WASM traversal", () => {
   );
 });
 
+test("a completed bounded native query remains exact after wall-clock preemption", () => {
+  for (const method of ["captures", "matches"]) {
+    withQuery("[1,2,3]", "(number) @n", (query, tree) => {
+      let now = 0;
+      const original = query[method];
+      query[method] = function (...args) {
+        const result = original.apply(this, args);
+        now = 100;
+        return result;
+      };
+      const result = runQuery(query, tree.rootNode, {}, { method, timeoutMs: 25, now: () => now });
+      assert.equal(result.complete, true);
+      assert.equal(result.results.length, 3);
+    });
+  }
+});
+
+test("native completion with no text predicates does not admit a false timeout during result decoding", () => {
+  let now = 0;
+  const captures = [{ node: {}, name: "n" }];
+  const query = {
+    textPredicates: [[]],
+    captures() {
+      now = 100;
+      return this.textPredicates[0].every((predicate) => predicate(captures)) ? captures : [];
+    },
+  };
+  const result = runQuery(query, {}, {}, { timeoutMs: 25, now: () => now });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.results, captures);
+});
+
+test("a final text predicate may complete late, while a later predicate must not start", () => {
+  for (const text of ["1", "[1,2]"]) {
+    withQuery(text, '((number) @n (#not-eq? @n "missing"))', (query, tree) => {
+      let now = 0,
+        reads = 0;
+      const original = tree.textCallback;
+      tree.textCallback = (...args) => {
+        reads++;
+        const text = original(...args);
+        now = 100;
+        return text;
+      };
+      const result = runQuery(query, tree.rootNode, {}, { timeoutMs: 25, now: () => now });
+      assert.equal(reads, 1);
+      if (text === "1") {
+        assert.equal(result.complete, true);
+        assert.equal(result.results.length, 1);
+      } else {
+        assert.equal(result.complete, false);
+        assert.equal(result.reason, "timeout");
+        assert.equal(result.results, null);
+      }
+    });
+  }
+});
+
+test("finished late work still honors native interruption, cancellation and structural caps", () => {
+  let now = 0;
+  const capture = { node: {}, name: "n" };
+  const timed = runQuery(
+    {
+      captures(_node, options) {
+        now = 100;
+        assert.equal(options.progressCallback({}), true);
+        return [capture];
+      },
+    },
+    {},
+    {},
+    { timeoutMs: 25, now: () => now },
+  );
+  assert.equal(timed.complete, false);
+  assert.equal(timed.reason, "timeout");
+  assert.equal(timed.results, null);
+  now = 0;
+  const controller = new AbortController();
+  const cancelled = runQuery(
+    {
+      captures() {
+        now = 100;
+        controller.abort();
+        return [capture];
+      },
+    },
+    {},
+    {},
+    { signal: controller.signal, now: () => now },
+  );
+  assert.equal(cancelled.reason, "cancelled");
+  assert.equal(cancelled.results, null);
+  now = 0;
+  const capped = runQuery(
+    {
+      captures() {
+        now = 100;
+        return [capture, capture];
+      },
+    },
+    {},
+    {},
+    { maxResults: 1, now: () => now },
+  );
+  assert.equal(capped.reason, "result-limit");
+  assert.equal(capped.results, null);
+});
+
+test("predicate scopes accept complete late callbacks but stop future reads and cancellation", () => {
+  let now = 0;
+  assert.deepEqual(
+    withPredicateTextBudget(
+      () => {
+        checkPredicateTextLength(1);
+        now = 100;
+        return 42;
+      },
+      { timeoutMs: 25, now: () => now },
+    ),
+    { value: 42, complete: true, reason: null },
+  );
+  now = 0;
+  const interrupted = withPredicateTextBudget(
+    () => {
+      now = 100;
+      checkPredicateTextLength(1);
+      assert.fail("Late future work must not start");
+    },
+    { timeoutMs: 25, now: () => now },
+  );
+  assert.equal(interrupted.complete, false);
+  assert.equal(interrupted.reason, "timeout");
+  now = 0;
+  const controller = new AbortController();
+  const cancelled = withPredicateTextBudget(
+    () => {
+      now = 100;
+      controller.abort();
+      return 42;
+    },
+    { signal: controller.signal, now: () => now },
+  );
+  assert.equal(cancelled.complete, false);
+  assert.equal(cancelled.reason, "cancelled");
+});
+
 test("bounded ranges read only boundaries and preserve UTF-16 and CRLF pairs", () => {
   const text = "ab😀cd\r\nef";
   const source = {

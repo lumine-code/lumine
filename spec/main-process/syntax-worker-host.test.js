@@ -364,6 +364,53 @@ test("session invalidation releases indentation waiting for an unacknowledged pa
   }
 });
 
+test("background update failures notify the owner once without console errors or a waiting request", async (t) => {
+  const { QueryBudgetExceeded } = require("../../src/tree-sitter-query-budget");
+  const { host, data } = await setup();
+  const failures = [];
+  host.notify = (event) => {
+    if (event.event === "failure") failures.push(event);
+  };
+  const logged = t.mock.method(console, "error", () => {});
+  try {
+    await host.dispatch("settle", data);
+    const mode = host.sessions.get(data.session).mode;
+    const error = new QueryBudgetExceeded("predicate-text-limit");
+    mode.finishTransactionUpdate(error);
+    mode.finishTransactionUpdate(error);
+    await new Promise(setImmediate);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].failure.code, "query-budget");
+    assert.equal(failures[0].failure.reason, "predicate-text-limit");
+    assert.equal(failures[0].failure.fatal, false);
+    assert.equal(host.sessions.size, 0);
+    assert.equal(logged.mock.callCount(), 0);
+  } finally {
+    host.close();
+  }
+});
+
+test("a newer revision supersedes a queued update failure", async (t) => {
+  const { host, data } = await setup();
+  const failures = [];
+  host.notify = (event) => {
+    if (event.event === "failure") failures.push(event);
+  };
+  const logged = t.mock.method(console, "error", () => {});
+  try {
+    await host.dispatch("settle", data);
+    const session = host.sessions.get(data.session);
+    session.mode.finishTransactionUpdate(new Error("obsolete update"));
+    session.buffer.append("// newer\n");
+    await new Promise(setImmediate);
+    assert.equal(failures.length, 0);
+    assert.equal(host.sessions.get(data.session), session);
+    assert.equal(logged.mock.callCount(), 0);
+  } finally {
+    host.close();
+  }
+});
+
 async function setup(text = "const value = 3;\r\n") {
   const host = new Host();
   for (const [key, schema] of Object.entries(require("../../src/config-schema")))

@@ -354,14 +354,24 @@ describe("Package syntax analyses with a worker owner", () => {
     view.offscreenFirstRow = null;
     view.updateCanvas();
     await mode.refresh();
-    expect(mode.cache.covers(new Point(0, 0), new Point(250, 0))).toBeTrue();
+    const paintContext = JSON.stringify({
+      warmupPaused: mode.warmupPaused,
+      cache: mode.cache.getStats(),
+      requested: mode.requestsByOwner.get(view)?.ranges,
+      row200: mode.cache.snapshots
+        .filter((snapshot) => snapshot.start.row <= 200 && snapshot.end.row >= 200)
+        .map(({ start, end, quality, reason }) => ({ start, end, quality, reason })),
+    });
+    expect(mode.cache.covers(new Point(0, 0), new Point(250, 0)))
+      .withContext(paintContext)
+      .toBeTrue();
     const tokens = editor.tokensForScreenRow(200, { highlightingOwner: view });
-    expect(
-      tokens.some((token) => token.scopes.some((scope) => scope.includes("syntax--comment"))),
-    ).toBeTrue();
-    expect(editor.tokensForScreenRow(200, { highlightingOwner: view, maxTokens: 2 }).length).toBe(
-      2,
-    );
+    expect(tokens.some((token) => token.scopes.some((scope) => scope.includes("syntax--comment"))))
+      .withContext(paintContext)
+      .toBeTrue();
+    expect(editor.tokensForScreenRow(200, { highlightingOwner: view, maxTokens: 2 }).length)
+      .withContext(paintContext)
+      .toBe(2);
     view.destroy();
     expect(mode.requestsByOwner.get(view)?.ranges ?? []).toEqual([]);
   });

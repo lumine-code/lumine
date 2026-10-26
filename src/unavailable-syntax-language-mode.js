@@ -20,7 +20,9 @@ module.exports = class UnavailableSyntaxLanguageMode extends NullLanguageMode {
           ? "Syntax analysis reached its memory budget."
           : failure.code === "parse-budget"
             ? "Syntax analysis exceeded its processing budget."
-            : "The syntax parser could not continue.";
+            : failure.code === "query-budget"
+              ? "Syntax analysis exceeded its query budget."
+              : "The syntax parser could not continue.";
     this.notification = globalThis.lumine?.notifications?.addWarning(
       "Syntax analysis is unavailable",
       {
