@@ -30,6 +30,44 @@ function expected(text, regex) {
   return result;
 }
 
+test("replacement predicates filter before publication and revalidate asynchronous decisions", async () => {
+  const source = new PieceTree("one one one");
+  const splices = [];
+  const result = await buildReplacement(source, [new DocumentSearch(source, /one/g)], "two", {
+    literalReplacement: true,
+    shouldReplace: async (match) => match.start !== 4,
+    onReplacement: (...args) => splices.push(args.slice(0, 3)),
+  });
+  assert.equal(result.snapshot.toString(), "two one two");
+  assert.equal(result.count, 2);
+  assert.deepEqual(splices, [
+    [0, 3, 3],
+    [8, 11, 3],
+  ]);
+  await assert.rejects(
+    buildReplacement(source, [new DocumentSearch(source, /one/g)], "x", {
+      shouldReplace: () => undefined,
+    }),
+    TypeError,
+  );
+  let current = true;
+  await assert.rejects(
+    buildReplacement(
+      source,
+      [new DocumentSearch(source, /one/g, null, { isCurrent: () => current })],
+      "x",
+      {
+        shouldReplace: async () => {
+          current = false;
+          return true;
+        },
+      },
+    ),
+    { code: "ERR_STALE_SEARCH" },
+  );
+  assert.equal(source.toString(), "one one one");
+});
+
 test("bounded windows preserve native anchors, CRLF, Unicode, captures, assertions and backreferences", async () => {
   const source = "ababa\r\n😀ab\nAB\nababa\r\n\n".repeat(12);
   const snapshot = new PieceTree(source);

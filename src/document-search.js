@@ -705,6 +705,16 @@ async function buildReplacement(snapshot, sessions, replacement, options = {}) {
           (found.start !== options.onlyMatch.start || found.end !== options.onlyMatch.end)
         )
           break matchBatches;
+        if (options.shouldReplace) {
+          let accepted = options.shouldReplace(found);
+          if (accepted && typeof accepted.then === "function") {
+            accepted = await accepted;
+            session.check();
+          }
+          if (typeof accepted !== "boolean")
+            throw new TypeError("Replacement predicates must return or resolve to a boolean");
+          if (!accepted) continue;
+        }
         appendSource(offset, found.start);
         const outputStart = output.length + units;
         const previousUnit = outputLast;
