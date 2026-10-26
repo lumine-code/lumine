@@ -32,6 +32,8 @@ function bufferFor(text) {
     if (text.charCodeAt(index - 1) === 13) crlfs.push(index + 1);
   }
   const astrals = [];
+  const bareCRs = [];
+  for (const match of text.matchAll(/\r(?!\n)/g)) bareCRs.push(match.index + 1);
   const expression = /[\ud800-\udbff][\udc00-\udfff]/g;
   for (let match; (match = expression.exec(text));) astrals.push(match.index + 2);
   // These indexes address one backing buffer, not the whole document.
@@ -42,6 +44,7 @@ function bufferFor(text) {
     starts: IndexArray.from(starts),
     crlfs: IndexArray.from(crlfs),
     astrals: IndexArray.from(astrals),
+    bareCRs: IndexArray.from(bareCRs),
   };
 }
 
@@ -58,6 +61,11 @@ function piece(buffer, start = 0, end = buffer.text.length) {
     length: end - start,
     breaks: last - first,
     crlfs: upperBound(buffer.crlfs, end) - upperBound(buffer.crlfs, start + 1),
+    crs:
+      upperBound(buffer.crlfs, end + 1) -
+      upperBound(buffer.crlfs, start + 1) +
+      upperBound(buffer.bareCRs, end) -
+      upperBound(buffer.bareCRs, start),
     tail: last > first ? end - buffer.starts[last - 1] : end - start,
     height: 1,
     pieces: 1,
@@ -74,6 +82,7 @@ function branch(left, right) {
     length: left.length + right.length,
     breaks: left.breaks + right.breaks,
     crlfs: left.crlfs + right.crlfs + (left.lastUnit === 13 && right.firstUnit === 10 ? 1 : 0),
+    crs: left.crs + right.crs,
     tail: right.breaks ? right.tail : left.tail + right.length,
     height: 1 + Math.max(left.height, right.height),
     pieces: left.pieces + right.pieces,
@@ -342,6 +351,10 @@ class PieceTree {
 
   get hasAstral() {
     return this.#root?.astral ?? false;
+  }
+
+  get hasLoneCarriageReturn() {
+    return (this.#root?.crs ?? 0) > (this.#root?.crlfs ?? 0);
   }
 
   replace(start, end, text) {

@@ -8,7 +8,11 @@ const path = require("path");
 const crypto = require("crypto");
 const TextStore = require("./text-store");
 const { INLINE_TEXT_LIMIT, serializeText, deserializeText } = require("./serialized-text");
-const { TextPatch } = require("./text-model");
+const { TextPatch, PieceTree } = require("./text-model");
+const {
+  normalizeLineEndings: normalizeTextSourceLineEndings,
+  rangeIsBlank,
+} = require("./text-source-helpers");
 const { idleDisposals } = require("./idle-disposal-queue");
 const Point = require("./point");
 const Range = require("./range");
@@ -35,6 +39,7 @@ const LARGE_SPARSE_DISPLAY_ROW_SPAN = 32768;
 const MIN_UNCHANGED_DISPLAY_ROWS_PER_CHANGED_ROW = 16;
 
 function textExtent(text) {
+  if (text instanceof PieceTree) return Point.fromObject(text.positionAt(text.length));
   let row = 0,
     last = -1;
   for (let index = text.indexOf("\n"); index >= 0; index = text.indexOf("\n", index + 1)) {
@@ -65,7 +70,12 @@ function indexForPatchPoint(buffer, point) {
 }
 
 function fileChangesWithWholeLineEndings(text, changes) {
-  const insideCRLF = (offset) => text[offset - 1] === "\r" && text[offset] === "\n";
+  const source = text instanceof PieceTree ? text : new PieceTree(text);
+  const insideCRLF = (offset) =>
+    offset > 0 &&
+    offset < source.length &&
+    source.charCodeAt(offset - 1) === 13 &&
+    source.charCodeAt(offset) === 10;
   if (!changes.some(({ start, end }) => insideCRLF(start) || insideCRLF(end))) return changes;
 
   // Buffer positions cannot address the middle of CRLF. Include the whole
@@ -83,14 +93,15 @@ function fileChangesWithWholeLineEndings(text, changes) {
     }
   }
   return groups.map(({ start, end, changes: edits }) => {
-    const parts = [];
+    let result = new PieceTree();
     let offset = start;
     for (const edit of edits) {
-      parts.push(text.slice(offset, edit.start), edit.newText);
+      result = result.replace(result.length, result.length, source.subtext(offset, edit.start));
+      result = result.replace(result.length, result.length, edit.newText);
       offset = edit.end;
     }
-    parts.push(text.slice(offset, end));
-    return { start, end, newText: parts.join("") };
+    result = result.replace(result.length, result.length, source.subtext(offset, end));
+    return { start, end, newText: result };
   });
 }
 
@@ -1077,6 +1088,9 @@ class TextBuffer {
    * valid after edits, undo and buffer destruction. Its read interface exposes
    * `length`, `lineCount`, `slice(start, end)`, `charCodeAt(index)`, `chunks()`,
    * `lines(startRow, endRow)`, `lineReader()`, `positionAt(index)` and `offsetAt(point)`.
+   * `subtext(start, end)` captures a shared subrange; `replace(start, end, text)`
+   * returns a new snapshot, accepting a string or another snapshot. Neither
+   * operation mutates the captured text or materializes the whole document.
    * A line reader returns a row-to-text function with efficient sequential reads
    * and indexed jumps; requests outside the snapshot return `undefined`.
    * Offsets count UTF-16 units; line iteration strips LF/CRLF and uses an
@@ -1088,6 +1102,24 @@ class TextBuffer {
    */
   getTextSnapshot() {
     return this.buffer.getTextSnapshot();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Capture a clipped buffer range as immutable shared text without creating a
+   * string. Snapshot offsets and row positions are relative to the range start.
+   * Pass the snapshot to {@link #setTextInRange}, {@link #insert} or {@link #append}
+   * to copy text of any size with normal change events and undo history.
+   * @param {Range|Array|Object} range - The buffer range to capture.
+   * @returns {Object} An immutable text snapshot with the interface of {@link #getTextSnapshot}.
+   * @category Reading Text
+   */
+  getTextSnapshotInRange(range) {
+    const clipped = this.clipRange(range);
+    const source = this.getTextSnapshot();
+    return source.subtext(source.offsetAt(clipped.start), source.offsetAt(clipped.end));
   }
 
   /**
@@ -1258,7 +1290,11 @@ class TextBuffer {
    * @returns {Boolean}
    */
   isRowBlank(row) {
-    return !/\S/.test(this.lineForRow(row));
+    const length = this.lineLengthForRow(row);
+    if (length === undefined) return false;
+    const source = this.getTextSnapshot();
+    const start = source.lineStart(row);
+    return rangeIsBlank(source, start, start + length);
   }
 
   /**
@@ -1399,6 +1435,8 @@ class TextBuffer {
   }
 
   setTextViaLineDiff(text) {
+    if (this.getLength() + text.length > 2097152) return this.setTextViaDiff(text);
+    if (text instanceof PieceTree) text = text.toString();
     const currentText = this.getText();
     if (currentText === text) return;
 
@@ -1447,7 +1485,7 @@ class TextBuffer {
    * Set the text in the given range.
    *
    * @param {Range|Array|Object} range - A {@link Range}
-   * @param {String} newText - A `String`
+   * @param {String|Object} newText - A string or immutable snapshot from {@link #getTextSnapshot} or {@link #getTextSnapshotInRange}.
    * @param {Object} [options]
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
    * @param {String} [options.undo] - *Deprecated* `String` 'skip' will cause this change to be grouped with the preceding change for the purposes of undo and redo. This property is deprecated. Call groupLastChanges() on the buffer after instead.
@@ -1480,7 +1518,7 @@ class TextBuffer {
         this.lineEndingForRow(oldRange.start.row) ||
         this.lineEndingForRow(oldRange.start.row - 1);
       if (normalizedEnding) {
-        newText = newText.replace(newlineRegex, normalizedEnding);
+        newText = normalizeTextSourceLineEndings(newText, normalizedEnding);
       }
     }
 
@@ -1503,7 +1541,7 @@ class TextBuffer {
    * Dense batches share unchanged text and update display geometry once.
    * Widely spaced edits in large documents retain local display updates.
    * Custom range trackers retain intermediate-text callbacks.
-   * @param {Array<Object>} edits - Objects with a buffer `range` and replacement `text`.
+   * @param {Array<Object>} edits - Objects with a buffer `range` and replacement `text` (string or immutable text snapshot).
    * @param {Object} [options] - Batch options.
    * @param {Number} [options.expectedRevision] - Required current revision for an asynchronous plan.
    * @param {Boolean} [options.normalizeLineEndings=false] - Normalize replacements using each original start row's line ending.
@@ -1523,18 +1561,20 @@ class TextBuffer {
       .map(({ range, text }) => {
         range = this.clipRange(range);
         if (
-          typeof text !== "string" ||
+          (typeof text !== "string" && !(text instanceof PieceTree)) ||
           ![range.start.row, range.start.column, range.end.row, range.end.column].every(
             Number.isSafeInteger,
           )
         )
-          throw new RangeError("Independent edits require integer ranges and string text");
+          throw new RangeError(
+            "Independent edits require integer ranges and string or snapshot text",
+          );
         if (normalizeLineEndings) {
           const ending =
             this.preferredLineEnding ||
             this.lineEndingForRow(range.start.row) ||
             this.lineEndingForRow(range.start.row - 1);
-          if (ending) text = text.replace(newlineRegex, ending);
+          if (ending) text = normalizeTextSourceLineEndings(text, ending);
         }
         return { range, text };
       })
@@ -1545,16 +1585,25 @@ class TextBuffer {
       if (previous.end.compare(current.start) > 0 || previous.start.isEqual(current.start))
         throw new RangeError("Independent edit ranges overlap");
     }
-    const changes = planned.filter(({ range, text }) => this.getTextInRange(range) !== text);
-    if (!changes.length) return false;
     const source = this.getTextSnapshot();
+    const changes = planned.filter(({ range, text }) => {
+      const previous = source.subtext(source.offsetAt(range.start), source.offsetAt(range.end));
+      return (
+        previous.length !== text.length ||
+        !previous.equals(text instanceof PieceTree ? text : new PieceTree(text))
+      );
+    });
+    if (!changes.length) return false;
     return this.transact(() => {
       if (!this.tryApplyIndependentEdits(changes, true)) {
         let oldEnd = Point.ZERO,
           newEnd = Point.ZERO;
         for (const { range, text } of changes) {
           const newStart = newEnd.traverse(range.start.traversalFrom(oldEnd));
-          const oldText = source.slice(source.offsetAt(range.start), source.offsetAt(range.end));
+          const oldTextSource = source.subtext(
+            source.offsetAt(range.start),
+            source.offsetAt(range.end),
+          );
           // A previous edit can form CRLF around the next physical boundary.
           // Preserve the original plan's offsets instead of clipping it again.
           this.emitWillChangeEvent();
@@ -1563,8 +1612,8 @@ class TextBuffer {
               oldStart: range.start,
               oldEnd: range.end,
               newStart,
-              oldText,
-              newText: text,
+              oldTextSource,
+              newTextSource: text instanceof PieceTree ? text : new PieceTree(text),
             }),
             { recordHistory: true },
           );
@@ -1576,6 +1625,94 @@ class TextBuffer {
     });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Prepare an ordered stream of disjoint edits without a document string or a
+   * per-edit array, then publish one atomic undo operation. Ranges address the
+   * captured revision and must be ordered, in bounds, with distinct starts.
+   * Marker positions and invalidation follow forward individual edit semantics.
+   * Text and markers remain unchanged on cancellation or stale preparation.
+   * Custom range trackers requiring intermediate live text reject before edits.
+   * @param {Iterable|AsyncIterable} edits - Entries with `range` and `text` (string or immutable snapshot), optionally grouped into arrays of at most 1024 entries to amortize asynchronous delivery.
+   * @param {Object} [options]
+   * @param {Number} [options.expectedRevision] - Required source revision.
+   * @param {AbortSignal} [options.signal] - Cancels preparation before publication.
+   * @param {Boolean} [options.normalizeLineEndings=false] - Normalize inserted line endings.
+   * @param {Function} [options.isCurrent] - Optional synchronous owner-validity predicate checked through publication.
+   * @param {Function} [options.didCommit] - Optional synchronous selection finalizer called inside the transaction after text and marker publication. Failures report that the edit was committed.
+   * @returns {Promise<Number>} Number of committed edits; a committed observer failure has `committed: true`.
+   * @category Mutating Text
+   */
+  async applyTextEdits(edits, options = {}) {
+    this.assertCanEdit();
+    const revision = options.expectedRevision ?? this.getTextRevision();
+    const check = () => {
+      if (options.signal?.aborted)
+        throw Object.assign(new Error("Text edit preparation was cancelled"), {
+          name: "AbortError",
+        });
+      if (
+        this.isDestroyed() ||
+        this.getTextRevision() !== revision ||
+        options.isCurrent?.() === false
+      )
+        throw Object.assign(new Error("Text edit preparation is stale"), {
+          code: "ERR_STALE_EDIT",
+        });
+    };
+    check();
+    const source = this.getTextSnapshot();
+    const ReplacementMarkerPlan = require("./replacement-marker-plan");
+    const plan = new ReplacementMarkerPlan(this, source);
+    const markerPlan = {
+      verify() {
+        check();
+        plan.verify();
+      },
+      publish(text) {
+        plan.publish(text);
+      },
+    };
+    const { prepareTextEdits } = require("./streaming-text-edits");
+    const result = await prepareTextEdits(
+      this,
+      source,
+      edits,
+      options,
+      (start, end, length, boundaries) => plan.splice(start, end, length, boundaries),
+      check,
+    );
+    check();
+    if (!result.count) return 0;
+    markerPlan.verify();
+    const previousCapture = this.captureAllMarkerLayers;
+    this.captureAllMarkerLayers = true;
+    let committed = false;
+    try {
+      this.transact(() => {
+        this.emitWillChangeEvent();
+        this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
+          recordHistory: true,
+          markerPlan,
+        });
+        committed = true;
+        options.didCommit?.();
+      });
+    } catch (error) {
+      if (committed)
+        throw Object.assign(
+          new Error("Text edits were committed, but a change listener failed", { cause: error }),
+          { code: "ERR_EDIT_OBSERVER_FAILED", committed: true, editCount: result.count },
+        );
+      throw error;
+    } finally {
+      this.captureAllMarkerLayers = previousCapture;
+    }
+    return result.count;
+  }
+
   tryApplyIndependentEdits(edits, recordHistory, origin = "edit") {
     const requiresIntermediateText = () =>
       Object.values(this.markerLayers).some(
@@ -1583,6 +1720,18 @@ class TextBuffer {
           layer.getMarkerCount() > 0 && (layer.trackRanges || layer.destroyInvalidatedMarkers),
       );
     if (edits.length < 64 || requiresIntermediateText()) return false;
+
+    // The fast small-string batch can stay compact, but no participant may
+    // force a document-sized string just to discover it needs the scalar path.
+    if (
+      edits.some(
+        ({ range, text }) =>
+          typeof text !== "string" ||
+          this.characterIndexForPosition(range.end) - this.characterIndexForPosition(range.start) >
+            1024 * 1024,
+      )
+    )
+      return false;
 
     const source = this.getTextSnapshot();
     const changes = [];
@@ -1800,7 +1949,7 @@ class TextBuffer {
    * Insert text at the given position.
    *
    * @param {Point|Array<Number>|Object} position - A {@link Point} representing the insertion location. The position is clipped before insertion.
-   * @param {String} text - A `String` representing the text to insert.
+   * @param {String|Object} text - A string or immutable text snapshot to insert.
    * @param {Object} [options]
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
    * @param {String} [options.undo] - *Deprecated* The value `skip` groups this edit with the preceding change. Call {@link #groupLastChanges} afterward instead.
@@ -1816,7 +1965,7 @@ class TextBuffer {
    *
    * Append text to the end of the buffer.
    *
-   * @param {String} text - A `String` representing the text to append.
+   * @param {String|Object} text - A string or immutable text snapshot to append.
    * @param {Object} [options]
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
    * @param {String} [options.undo] - *Deprecated* The value `skip` groups this edit with the preceding change. Call {@link #groupLastChanges} afterward instead.
@@ -2749,6 +2898,9 @@ class TextBuffer {
    * @status public
    *
    * Replace all regular expression matches in the entire buffer.
+   * This synchronous compatibility API is limited to 8 Mi UTF-16 units so native
+   * RegExp execution and replacement expansion stay bounded. Use
+   * {@link #replaceAllMatches} for cooperative snapshot-backed bulk replacement.
    *
    * @param {RegExp} regex - A `RegExp` representing the matches to be replaced.
    * @param {String} replacementText - A `String` representing the text to replace each match.
@@ -2756,6 +2908,13 @@ class TextBuffer {
    */
   replace(regex, replacementText) {
     this.assertCanEdit();
+    if (!this.canMaterializeText(8 * 1024 * 1024))
+      throw Object.assign(
+        new RangeError(
+          "Synchronous replacement exceeds its 8 Mi UTF-16 budget. Use await buffer.replaceAllMatches(regex, replacement) for this document.",
+        ),
+        { code: "ERR_SYNCHRONOUS_TEXT_LIMIT" },
+      );
     replacementText = String(replacementText);
 
     const flags = regex.global ? regex.flags : `${regex.flags}g`;
@@ -4159,6 +4318,8 @@ class TextBuffer {
   // The caller suspends file observation until this synchronous merge finishes.
   applyFileChanges({ oldText, newText, changes }) {
     if (this.isDestroyed() || oldText === newText) return;
+    oldText = oldText instanceof PieceTree ? oldText : new PieceTree(oldText);
+    newText = newText instanceof PieceTree ? newText : new PieceTree(newText);
     const previous = new TextStore(oldText);
     const baseDigest = this.buffer.baseTextDigest();
     if (baseDigest !== previous.baseTextDigest()) {
@@ -4183,8 +4344,8 @@ class TextBuffer {
     ) {
       return;
     }
-    const currentText = this.getText();
-    if (currentText === newText) {
+    const currentText = this.getTextSnapshot();
+    if (currentText.equals(newText)) {
       this.buffer.reset(newText);
       this.baseTextDigestCache = null;
       this.digestWhenLastPersisted = this.buffer.baseTextDigest();
@@ -4200,7 +4361,7 @@ class TextBuffer {
         start: previous.characterIndexForPosition(change.oldStart),
         end: previous.characterIndexForPosition(change.oldEnd),
         newEnd: this.buffer.characterIndexForPosition(change.newEnd),
-        newText: change.newText,
+        newText: change.newTextSource ?? new PieceTree(change.newText),
       }));
     const mapOffset = (offset, end) => {
       let low = 0;
@@ -4225,7 +4386,11 @@ class TextBuffer {
     const fileChanges = fileChangesWithWholeLineEndings(oldText, changes);
     for (let fileIndex = 0; fileIndex < fileChanges.length; fileIndex++) {
       const fileChange = fileChanges[fileIndex];
-      const { start, end, newText: replacement } = fileChange;
+      const { start, end } = fileChange;
+      const replacement =
+        fileChange.newText instanceof PieceTree
+          ? fileChange.newText
+          : new PieceTree(fileChange.newText);
       while (
         localIndex < localChanges.length &&
         (localChanges[localIndex].end < start ||
@@ -4257,10 +4422,14 @@ class TextBuffer {
             ) {
               return false;
             }
-            const gap = oldText.slice(gapStart, gapEnd);
+            const gap = oldText.subtext(gapStart, gapEnd);
             return local.start >= start
-              ? gap + local.newText === replacement + gap
-              : local.newText + gap === gap + replacement;
+              ? gap
+                  .replace(gap.length, gap.length, local.newText)
+                  .equals(replacement.replace(replacement.length, replacement.length, gap))
+              : local.newText
+                  .replace(local.newText.length, local.newText.length, gap)
+                  .equals(gap.replace(gap.length, gap.length, replacement));
           },
         );
         if (alreadyApplied) {
@@ -4290,7 +4459,11 @@ class TextBuffer {
       if (overlaps) {
         // A user may already have made this exact replacement. Adopt the new
         // disk baseline without repeating the edit or adding an undo entry.
-        if (start !== end && contained && this.getTextInRange(mappedRange) === replacement) {
+        if (
+          start !== end &&
+          contained &&
+          this.getTextSnapshotInRange(mappedRange).equals(replacement)
+        ) {
           continue;
         }
         conflicted = true;
@@ -4313,7 +4486,7 @@ class TextBuffer {
         // unresolved overlap, including after undoing the propagated edits.
         this.setFileState("conflicted");
       } else {
-        const mergedText = this.getText();
+        const mergedText = this.getTextSnapshot();
         this.buffer.reset(newText);
         this.buffer.setText(mergedText);
         this.baseTextDigestCache = null;
