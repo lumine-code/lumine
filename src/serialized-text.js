@@ -40,6 +40,18 @@ function cloneSessionSnapshot(state) {
   );
 }
 
+function portableSessionSnapshot(state) {
+  const snapshot = cloneSessionSnapshot(state);
+  const visit = (value) => {
+    if (value instanceof PieceTree) return value.serializeSnapshot(false);
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === "object" && !Buffer.isBuffer(value))
+      for (const key of Object.keys(value)) value[key] = visit(value[key]);
+    return value;
+  };
+  return visit(snapshot);
+}
+
 function sessionSnapshotsEqual(left, right) {
   if (left === right) return true;
   // Private roots are intentionally invisible to ordinary structural equality.
@@ -61,5 +73,6 @@ module.exports = {
   deserializeText,
   isSegmentedText,
   cloneSessionSnapshot,
+  portableSessionSnapshot,
   sessionSnapshotsEqual,
 };

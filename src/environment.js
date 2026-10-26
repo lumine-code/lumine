@@ -8,7 +8,7 @@ const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("source-map-support");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
-const { cloneSessionSnapshot } = require("./serialized-text");
+const { cloneSessionSnapshot, portableSessionSnapshot } = require("./serialized-text");
 const PackageStorage = require("./package-storage");
 const { SESSION_STATE_VERSION } = require("./session-state-schema");
 const { getProjectStateKey, getWindowProjectStateKey } = require("./project-state-keys");
@@ -508,8 +508,9 @@ class Environment {
       packages: this.packages,
       saveState: (options, snapshot, assertCurrent) =>
         this.persistState(options, snapshot, assertCurrent),
-      serialize: (options) => this.captureState(options),
-      serializeCurrent: (options) => cloneSessionSnapshot(this.serialize(options)),
+      serialize: (options) => this.captureState({ ...options, retainTextSnapshots: true }),
+      serializeCurrent: (options) =>
+        cloneSessionSnapshot(this.serialize({ ...options, retainTextSnapshots: true })),
       loadProjectState: (projectPaths) => this.loadProjectState(projectPaths),
       restoreState: (state, options, assertCurrent) =>
         this.restoreStateIntoThisEnvironment(state, options, assertCurrent),
@@ -1325,7 +1326,7 @@ class Environment {
   }
 
   serialize(options) {
-    return {
+    const state = {
       version: this.constructor.version,
       project: this.project.serialize(options),
       workspace: this.workspace.serialize(),
@@ -1333,9 +1334,14 @@ class Environment {
       grammars: this.grammars.serialize(),
       uriHistory: this.uriHandlers.serialize(),
     };
+    return options?.retainTextSnapshots ? state : portableSessionSnapshot(state);
   }
 
-  /** @private Prepare asynchronous document payloads before the synchronous layout snapshot. */
+  /**
+   * Prepare document payloads and return a detached, portable workspace state.
+   * Internal persistence sets retainTextSnapshots to retain immutable roots;
+   * ordinary callers receive JSON-compatible text snapshots and history.
+   */
   async captureState(options) {
     await this.workspace.fileMoveReadiness;
     await this.workspace.whenWindowOperationsIdle({ prepareToUnload: false });
@@ -1354,7 +1360,10 @@ class Environment {
       if (packages.length !== current.length || packages.some((pack) => !current.includes(pack)))
         continue;
       try {
-        return cloneSessionSnapshot(this.serialize(options));
+        const state = this.serialize(options);
+        return options?.retainTextSnapshots
+          ? cloneSessionSnapshot(state)
+          : portableSessionSnapshot(state);
       } catch (error) {
         if (error.code !== "STATE_SNAPSHOT_CHANGED" || attempt === 2) throw error;
       }
@@ -1737,7 +1746,8 @@ class Environment {
     assertCurrent();
     if (this.enablePersistence && this.project) {
       const initialPaths = this.project.getPaths().slice();
-      const state = snapshot ?? (await this.captureState(options));
+      const state =
+        snapshot ?? (await this.captureState({ ...options, retainTextSnapshots: true }));
       assertCurrent();
       const projectPaths = state.project?.paths ?? initialPaths;
       const projectKey = getProjectStateKey(projectPaths);

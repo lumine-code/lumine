@@ -1,6 +1,36 @@
 const Package = require("../src/package");
 
 describe("workspace state capture", () => {
+  it("keeps public JSON exports portable while internal captures retain text roots", async () => {
+    const editor = await lumine.workspace.open();
+    editor.setText("first\nsecond\n");
+    editor.insertText("edited ");
+    const buffer = editor.getBuffer();
+    const publicState = JSON.parse(JSON.stringify(await lumine.captureState()));
+    const state = publicState.project.buffers.find((item) => item.id === buffer.id);
+    const TextBuffer = require("../src/text-buffer");
+    const restored = await TextBuffer.deserialize(state);
+    try {
+      expect(restored.getText()).toBe(buffer.getText());
+      restored.undo();
+      expect(restored.getText()).toBe("first\nsecond\n");
+      const chunks = spyOn(
+        Object.getPrototypeOf(buffer.getTextSnapshot()),
+        "chunks",
+      ).and.throwError("internal snapshot traversal");
+      try {
+        const internal = await lumine.captureState({ retainTextSnapshots: true });
+        const retained = internal.project.buffers.find((item) => item.id === buffer.id);
+        expect(retained.textSnapshot).toBe(buffer.getTextSnapshot());
+        expect(chunks).not.toHaveBeenCalled();
+      } finally {
+        chunks.and.callThrough();
+      }
+    } finally {
+      restored.destroy();
+    }
+  });
+
   it("omits resource-only packages without document recovery modules", () => {
     expect(
       Package.prototype.serializeSessionState.call({ mainInitialized: true, mainModule: null }),

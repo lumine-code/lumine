@@ -287,7 +287,7 @@ module.exports = class Project extends Model {
     }
   }
 
-  serialize() {
+  serialize({ retainTextSnapshots = false } = {}) {
     return {
       deserializer: "Project",
       paths: this.getPaths(),
@@ -299,7 +299,7 @@ module.exports = class Project extends Model {
               // in autosaves used after an unexpected shutdown.
               markerLayers: true,
               history: true,
-              textSnapshots: true,
+              textSnapshots: retainTextSnapshots,
             });
           }
         }),

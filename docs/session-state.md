@@ -12,6 +12,8 @@ Bulk node writes run in a short-lived Node child with one acknowledged batch in 
 
 `TextBuffer.serialize({textSnapshots: true})` returns an in-process state containing immutable text roots for the session store. Default serialization keeps small text inline and returns a segmented `textSnapshot` for large contents, with similarly segmented large history patches. Consumers exporting such state outside the session store must stream it rather than building one document-sized JSON string. `getHistory()` exposes an immutable `baseTextSnapshot`; its compatible `baseText` property materializes text only when read. Explicit string reads exceeding the runtime string limit reject before allocation with `ERR_TEXT_MATERIALIZATION_LIMIT`; callers can read smaller ranges or iterate snapshot chunks instead.
 
+`lumine.captureState()` and `lumine.serialize()` return portable state by default, including JSON-compatible text and history from package-owned snapshots. Small states retain ordinary JSON roundtrip compatibility; large segmented states should be streamed instead of joined into one JSON string. Internal autosaves and project transitions explicitly use `retainTextSnapshots: true` to retain immutable roots without traversing text. No implicit `PieceTree.toJSON()` conversion runs during internal capture.
+
 Separate snapshots let two windows keep their own pane layout and documents. An active window's snapshots for other projects remain available when it switches back, and restoring previous windows reuses their saved identities. Sessions without project folders are durable too: their private key uses the window identity, so unrelated empty windows do not share a snapshot.
 
 ## Project changes
