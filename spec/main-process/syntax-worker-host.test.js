@@ -49,9 +49,12 @@ test("package unload evicts syntax helpers reached through a development link", 
   }
 });
 
-test("large fold and indentation replies stream bounded packets and stop on invalidation", async () => {
+test("large fold and indentation replies stream bounded packets and stop on invalidation", async (t) => {
   const { host, data } = await setup("function example() {\n  work();\n}\n".repeat(300));
   try {
+    await host.dispatch("settle", data);
+    // Keep transport invariants independent of a loaded CI runner's clock.
+    t.mock.method(performance, "now", () => 0);
     for (const [method, args, kind] of [
       ["getFoldableRanges", [2], "array"],
       ["suggestedIndentForBufferRows", [0, 899, 2], "map"],
@@ -127,9 +130,13 @@ test("multipart edits remain invisible until commit and closing releases waiting
   }
 });
 
-test("dense highlighting is transferred in bounded packets and obsolete streams stop", async () => {
+test("dense highlighting is transferred in bounded packets and obsolete streams stop", async (t) => {
   const { host, data } = await setup("const value = 1;".repeat(300));
   try {
+    await host.dispatch("settle", data);
+    // This checks packet cardinality and invalidation, not machine speed.
+    // Query deadline behavior has its own deterministic clock-driven tests.
+    t.mock.method(performance, "now", () => 0);
     let packets = 0,
       events = 0;
     const qualities = [];

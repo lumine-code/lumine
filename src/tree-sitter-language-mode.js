@@ -2673,10 +2673,29 @@ class TreeSitterLanguageMode {
   }
 
   firstNonWhitespaceRange(row) {
-    return this.buffer.findInRangeSync(
-      /\S/,
-      new Range(new Point(row, 0), new Point(row, Infinity)),
-    );
+    const source = this.buffer.getTextSnapshot();
+    row = Math.max(0, Math.min(source.lineCount - 1, Math.trunc(row) || 0));
+    const start = source.lineStart(row);
+    const end = start + this.buffer.lineLengthForRow(row);
+    // This probe is also used while creating an editor to infer its tab style.
+    // Do not pass a potentially unmaterializable row through document search.
+    // A bounded prefix can prove the first non-white position; exhausting it
+    // cannot prove that the rest of a huge row is blank.
+    const limit = Math.min(end, start + 64 * 1024);
+    const read = source.reader(4096);
+    for (let offset = start; offset < limit;) {
+      const text = read(offset).slice(0, limit - offset);
+      if (!text.length) throw new RangeError("Text source ended before the requested row");
+      const index = text.search(/\S/);
+      if (index >= 0) {
+        const column = offset - start + index;
+        // The previous non-Unicode /\S/ expression matched one UTF-16 unit.
+        return new Range(new Point(row, column), new Point(row, column + 1));
+      }
+      offset += text.length;
+    }
+    if (limit < end) throw new QueryBudgetExceeded("source-window");
+    return null;
   }
 
   // If you want to analyze the content at a point, prefer inspecting the syntax

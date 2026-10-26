@@ -833,10 +833,23 @@ class SyntaxWorkerHost {
       const tile = paintTile(buffer, first, last);
       if (!tile) continue;
       const { start, end, endRow } = tile;
-      const iterator = mode.buildHighlightIterator({ presentation: true });
-      const scopes = [
+      let iterator = mode.buildHighlightIterator({ presentation: true });
+      let scopes = [
         ...runtime.run(this.contextFor(session, "paint-query"), () => iterator.seek(start, endRow)),
       ];
+      if (iterator.limitedReason === "timeout") {
+        // Cold queries or transient contention must not strand ordinary paint
+        // in a cached fallback. Retry once after yielding, with a new iterator's
+        // unchanged deadline. Structural/result limits are deliberately stable.
+        await new Promise(setImmediate);
+        current?.();
+        iterator = mode.buildHighlightIterator({ presentation: true });
+        scopes = [
+          ...runtime.run(this.contextFor(session, "paint-query"), () =>
+            iterator.seek(start, endRow),
+          ),
+        ];
+      }
       const events = [],
         folds = [];
       for (const id of scopes) names.set(id, mode.scopeNameForScopeId(id));
