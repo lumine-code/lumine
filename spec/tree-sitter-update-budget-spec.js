@@ -34,6 +34,16 @@ describe("Tree-sitter update budgets", () => {
     let painted = draw();
     mode.syncTimeoutMicros = 0;
     spyOn(mode, "shouldParseSynchronously").and.returnValue(false);
+    // A worker reply can arrive after many cheap event-loop turns. Hold an
+    // actual parse result behind a timer so repainting cannot rely on turn count.
+    const parse = mode.parseAsync.bind(mode);
+    let deliveredReplies = 0;
+    spyOn(mode, "parseAsync").and.callFake(async (...args) => {
+      const result = await parse(...args);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      deliveredReplies++;
+      return result;
+    });
     let paintTask = null;
     const subscription = editor.onDidChange(() => {
       if (paintTask) return;
@@ -45,11 +55,14 @@ describe("Tree-sitter update budgets", () => {
     try {
       editor.selectAll();
       for (const commented of [true, false]) {
+        const repliesBefore = deliveredReplies;
         editor.toggleLineCommentsInSelection();
         // No settlement API or extra screen read: only regular change events
-        // can refresh the recorded paint. Bound a scheduling loop on failure.
-        for (let i = 0; i < 200; i++) {
-          await new Promise((resolve) => setImmediate(resolve));
+        // can refresh the recorded paint. Event-loop turns have no minimum
+        // duration, so bound real elapsed time and let reply timers run.
+        const deadline = performance.now() + 2000;
+        while (performance.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
           if (
             !mode.publicationPending &&
             !mode.presentation.promise &&
@@ -58,6 +71,7 @@ describe("Tree-sitter update budgets", () => {
           )
             break;
         }
+        expect(deliveredReplies).toBeGreaterThan(repliesBefore);
         expect(mode.publicationPending).toBe(false);
         expect(mode.presentation.promise).toBeNull();
         expect(mode.presentation.timer).toBeNull();
@@ -79,7 +93,7 @@ describe("Tree-sitter update budgets", () => {
       subscription.dispose();
       clearImmediate(paintTask);
     }
-  });
+  }, 10000);
 
   it("retains painted scopes until a budgeted update can publish current syntax", async () => {
     const mode = await start('def work():\n    return "value"\n');
