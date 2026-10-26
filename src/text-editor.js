@@ -6283,9 +6283,12 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Indent rows intersecting selections by one level.
+   * Large row sets prepare cooperatively and publish one undo operation.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Array|undefined|Promise<Number>} Small edits return per-selection results; await large edits before reading changed text.
    */
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
@@ -6300,9 +6303,12 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Outdent rows intersecting selections by one level.
+   * Large row sets prepare cooperatively and publish one undo operation.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Array|undefined|Promise<Number>} Small edits return per-selection results; await large edits before reading changed text.
    */
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
@@ -6348,9 +6354,12 @@ module.exports = class TextEditor {
    *
    * Indent rows intersecting selections based on the grammar's suggested
    * indent level.
+   * Large ranges consume bounded grammar batches and commit atomically.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Object|undefined|Promise<Object|undefined>} The changed flag and resulting revision, or undefined when unavailable. Await asynchronous plans before reading changed text.
    */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
