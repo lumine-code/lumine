@@ -45,6 +45,7 @@ class TextSnapshotStore {
     CREATE TABLE IF NOT EXISTS ${META_TABLE} (id INTEGER PRIMARY KEY, generation INTEGER);
     INSERT OR IGNORE INTO ${META_TABLE} VALUES (1, 0);`);
     this.known = new WeakMap();
+    this.stringSources = new Map();
     this.preparation = Promise.resolve();
     this.leases = new Set();
     this.writers = new Set();
@@ -86,6 +87,7 @@ class TextSnapshotStore {
     // its leases before closing that connection; late finally blocks are inert.
     for (const lease of this.leases) this.releaseLease(lease);
     this.known = new WeakMap();
+    this.stringSources.clear();
   }
 
   prepare(state) {
@@ -174,14 +176,18 @@ class TextSnapshotStore {
       };
     };
     const strings = new Map();
+    const retainedStrings = new Map();
     const visit = async (value) => {
       if (value instanceof PieceTree) return writeText(value);
       if (typeof value === "string" && value.length >= INLINE_TEXT_LIMIT) {
-        if (!strings.has(value))
+        if (!strings.has(value)) {
+          const tree = this.stringSources.get(value) ?? new PieceTree(value);
+          retainedStrings.set(value, tree);
           strings.set(value, {
-            ...(await writeText(new PieceTree(value))),
+            ...(await writeText(tree)),
             representation: "string",
           });
+        }
         return strings.get(value);
       }
       if (Array.isArray(value)) {
@@ -201,6 +207,9 @@ class TextSnapshotStore {
       await flush();
       await writer?.close();
       this.assertOpen();
+      // Retain only this prepared generation, never every string seen over the
+      // window's lifetime. Unchanged output strings reuse their rope identity.
+      this.stringSources = retainedStrings;
       return { value, roots, release };
     } catch (error) {
       // A failed batch must never leave cached identities claiming durability.
@@ -299,6 +308,7 @@ class TextSnapshotStore {
   async restore(state) {
     const { load } = this.createReader();
     const strings = new Map();
+    const retainedStrings = new Map();
     const visit = async (value) => {
       if (value?.type === "LumineTextSnapshot") {
         this.validateDescriptor(value);
@@ -308,6 +318,7 @@ class TextSnapshotStore {
         );
         if (value.representation !== "string") return text;
         if (!strings.has(value.hash)) strings.set(value.hash, text.toString());
+        retainedStrings.set(strings.get(value.hash), text);
         return strings.get(value.hash);
       }
       if (Array.isArray(value)) {
@@ -317,12 +328,15 @@ class TextSnapshotStore {
       }
       return value;
     };
-    return visit(state);
+    const result = await visit(state);
+    if (!this.closed) this.stringSources = retainedStrings;
+    return result;
   }
 
   restoreSync(state) {
     const { loadSync } = this.createReader();
     const strings = new Map();
+    const retainedStrings = new Map();
     const visit = (value) => {
       if (value?.type === "LumineTextSnapshot") {
         this.validateDescriptor(value);
@@ -332,6 +346,7 @@ class TextSnapshotStore {
         );
         if (value.representation !== "string") return text;
         if (!strings.has(value.hash)) strings.set(value.hash, text.toString());
+        retainedStrings.set(strings.get(value.hash), text);
         return strings.get(value.hash);
       }
       if (Array.isArray(value)) return value.map(visit);
@@ -339,7 +354,9 @@ class TextSnapshotStore {
         for (const key of Object.keys(value)) value[key] = visit(value[key]);
       return value;
     };
-    return visit(state);
+    const result = visit(state);
+    if (!this.closed) this.stringSources = retainedStrings;
+    return result;
   }
 }
 

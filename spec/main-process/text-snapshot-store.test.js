@@ -45,6 +45,25 @@ test("large package strings use durable chunks without expanding the session JSO
   assert.match(encoded, /"representation":"string"/);
   assert.deepEqual(await store.load("package-state"), state);
   assert.deepEqual(store.loadSync("package-state"), state);
+  const original = PieceTree.prototype.snapshotNodes;
+  let visited = 0;
+  t.mock.method(PieceTree.prototype, "snapshotNodes", function* (known) {
+    const iterator = original.call(this, known);
+    let next;
+    while (!(next = iterator.next()).done) {
+      visited++;
+      yield next.value;
+    }
+    return next.value;
+  });
+  await store.save("package-state", {
+    notebook: { source: text, duplicate: text },
+    short: "changed",
+  });
+  assert.equal(visited, 0, "unchanged ordinary strings reuse durable rope identities");
+  assert.equal(store.textSnapshots.stringSources.size, 1);
+  await store.save("package-state", { short: "only metadata remains" });
+  assert.equal(store.textSnapshots.stringSources.size, 0);
 });
 
 test("snapshot initialization failure closes the partially opened SQL connection", (t) => {
