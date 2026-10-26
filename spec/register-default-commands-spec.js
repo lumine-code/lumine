@@ -21,8 +21,9 @@ describe("registerDefaultCommands", () => {
   });
 
   for (const rejected of [false, true]) {
-    it(`preserves the ${rejected ? "rejection" : "completion"} of an asynchronous editing command`, async () => {
-      const commands = commandsRegisteredOn("win32");
+    it(`settles the ${rejected ? "failure" : "completion"} of an asynchronous editing command`, async () => {
+      const notificationManager = { addError: jasmine.createSpy("addError") };
+      const commands = commandsRegisteredOn("win32", { notificationManager });
       const [listener] = commands.get("editor:indent");
       const result = rejected
         ? Promise.reject(new Error("Indent failed"))
@@ -34,9 +35,16 @@ describe("registerDefaultCommands", () => {
         indent: () => result,
       };
       const actual = listener.didDispatch.call({ getModel: () => model }, { stopPropagation() {} });
-      expect(actual).toBe(result);
-      if (rejected) await expectAsync(result).toBeRejectedWithError("Indent failed");
-      else await expectAsync(result).toBeResolvedTo("indented");
+      if (rejected) {
+        await expectAsync(actual).toBeResolvedTo(false);
+        expect(notificationManager.addError).toHaveBeenCalledWith(
+          "Unable to complete the editor command.",
+          { detail: "editor:indent: Indent failed", dismissable: true },
+        );
+      } else {
+        await expectAsync(actual).toBeResolvedTo("indented");
+        expect(notificationManager.addError).not.toHaveBeenCalled();
+      }
     });
   }
 

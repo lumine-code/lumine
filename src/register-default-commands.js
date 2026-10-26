@@ -629,7 +629,7 @@ module.exports = function ({
   );
   commandRegistry.add(
     "lumine-text-editor",
-    stopEventPropagation({
+    stopEventPropagation(notificationManager, {
       "core:move-left": function () {
         return this.moveLeft();
       },
@@ -775,7 +775,7 @@ module.exports = function ({
   );
   commandRegistry.add(
     "lumine-text-editor:not([readonly])",
-    stopEventPropagation({
+    stopEventPropagation(notificationManager, {
       "core:undo": function () {
         return this.undo();
       },
@@ -787,7 +787,7 @@ module.exports = function ({
   );
   commandRegistry.add(
     "lumine-text-editor",
-    stopEventPropagationAndGroupUndo(config, {
+    stopEventPropagationAndGroupUndo(config, notificationManager, {
       "core:copy": {
         description: "Copy the selection, or the whole line when nothing is selected.",
         didDispatch: function () {
@@ -805,7 +805,7 @@ module.exports = function ({
   );
   commandRegistry.add(
     "lumine-text-editor:not([readonly])",
-    stopEventPropagationAndGroupUndo(config, {
+    stopEventPropagationAndGroupUndo(config, notificationManager, {
       "core:backspace": function () {
         return this.backspace();
       },
@@ -891,7 +891,7 @@ module.exports = function ({
   );
   commandRegistry.add(
     "lumine-text-editor:not([mini])",
-    stopEventPropagation({
+    stopEventPropagation(notificationManager, {
       "core:move-up": function () {
         return this.moveUp();
       },
@@ -1082,7 +1082,7 @@ module.exports = function ({
   );
   return commandRegistry.add(
     "lumine-text-editor:not([mini]):not([readonly])",
-    stopEventPropagationAndGroupUndo(config, {
+    stopEventPropagationAndGroupUndo(config, notificationManager, {
       "editor:indent": {
         description: "Indent at the cursor, as pressing Tab does.",
         didDispatch: function () {
@@ -1186,7 +1186,7 @@ const rewrapCommandListener = function (listener, wrap) {
   return typeof listener === "function" ? wrapped : { ...listener, didDispatch: wrapped };
 };
 
-var stopEventPropagation = function (commandListeners) {
+var stopEventPropagation = function (notificationManager, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
     newCommandListeners[commandName] = rewrapCommandListener(
@@ -1194,14 +1194,18 @@ var stopEventPropagation = function (commandListeners) {
       (didDispatch) =>
         function (event) {
           event.stopPropagation();
-          return didDispatch.call(this.getModel(), event);
+          return require("./settle-editor-command")(
+            () => didDispatch.call(this.getModel(), event),
+            notificationManager,
+            commandName,
+          );
         },
     );
   }
   return newCommandListeners;
 };
 
-var stopEventPropagationAndGroupUndo = function (config, commandListeners) {
+var stopEventPropagationAndGroupUndo = function (config, notificationManager, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
     newCommandListeners[commandName] = rewrapCommandListener(
@@ -1210,8 +1214,11 @@ var stopEventPropagationAndGroupUndo = function (config, commandListeners) {
         function (event) {
           event.stopPropagation();
           const model = this.getModel();
-          return model.transact(model.getUndoGroupingInterval(), () =>
-            didDispatch.call(model, event),
+          return require("./settle-editor-command")(
+            () =>
+              model.transact(model.getUndoGroupingInterval(), () => didDispatch.call(model, event)),
+            notificationManager,
+            commandName,
           );
         },
     );

@@ -1,6 +1,8 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const { toRipgrepGlobArgs } = require("./ignored-names");
+const BoundedJsonLines = require("./bounded-json-lines");
+const MAX_MATCHES_PER_FILE = 100000;
 
 // `ripgrep` and `scandal` have a different way of handling the trailing and leading
 // context lines:
@@ -134,7 +136,15 @@ function processUnicodeMatch(match) {
 // range. This is mostly needed for multi-line results, since the range
 // will have different start and end rows and we need to calculate these
 // based on the lines that ripgrep returns.
-function processSubmatch(submatch, lineText, offsetRow) {
+function processSubmatch(submatch, lineText, offsetRow, singleLine) {
+  if (singleLine !== null && submatch.end <= singleLine.length)
+    return {
+      range: [
+        [offsetRow, submatch.start],
+        [offsetRow, submatch.end],
+      ],
+      lineText: singleLine,
+    };
   const lineParts = lineText.split("\n");
 
   const start = getPositionFromColumn(lineParts, submatch.start);
@@ -282,7 +292,6 @@ module.exports = class RipgrepDirectorySearcher {
     let cancelled = false;
 
     const returnedPromise = new Promise((resolve, reject) => {
-      let buffer = "";
       let bufferError = "";
       let pendingEvent;
       let pendingLeadingContext;
@@ -297,58 +306,87 @@ module.exports = class RipgrepDirectorySearcher {
         }
       });
 
+      const fail = (error) => {
+        cancelled = true;
+        child.kill();
+        reject(error);
+      };
+      child.on("error", fail);
       child.stderr.on("data", (chunk) => {
-        bufferError += chunk;
+        if (cancelled) return;
+        if (bufferError.length + chunk.length > 1024 * 1024) {
+          fail(
+            Object.assign(
+              new Error(
+                "Project search produced more than 1 MiB of diagnostics; it was stopped. Results are incomplete.",
+              ),
+              { code: "ERR_PROJECT_SEARCH_DIAGNOSTIC_LIMIT" },
+            ),
+          );
+        } else bufferError += chunk;
       });
 
-      child.stdout.on("data", (chunk) => {
-        if (cancelled) {
-          return;
+      const messages = new BoundedJsonLines((message) => {
+        updateTrailingContexts(message, pendingTrailingContexts, options);
+
+        if (message.type === "begin") {
+          pendingEvent = {
+            filePath: path.join(directoryPath, getText(message.data.path)),
+            matches: [],
+          };
+          pendingLeadingContext = [];
+          pendingTrailingContexts = new Set();
+        } else if (message.type === "match") {
+          const trailingContextLines = [];
+          pendingTrailingContexts.add(trailingContextLines);
+
+          if (pendingEvent.matches.length + message.data.submatches.length > MAX_MATCHES_PER_FILE) {
+            throw Object.assign(
+              new RangeError(
+                `Project search found more than ${MAX_MATCHES_PER_FILE} matches in ${pendingEvent.filePath}. Narrow the query or use buffer search. Results are incomplete.`,
+              ),
+              { code: "ERR_PROJECT_SEARCH_MATCH_LIMIT" },
+            );
+          }
+          processUnicodeMatch(message.data);
+          const rawLineText = getText(message.data.lines);
+          const firstNewline = rawLineText.indexOf("\n");
+          const singleLine =
+            firstNewline < 0 || firstNewline === rawLineText.length - 1
+              ? cleanResultLine({ text: rawLineText })
+              : null;
+
+          for (const submatch of message.data.submatches) {
+            const { lineText, range } = processSubmatch(
+              submatch,
+              rawLineText,
+              message.data.line_number - 1,
+              singleLine,
+            );
+
+            pendingEvent.matches.push({
+              matchText: getText(submatch.match),
+              lineText,
+              lineTextOffset: 0,
+              range,
+              leadingContextLines: [...pendingLeadingContext],
+              trailingContextLines,
+            });
+          }
+        } else if (message.type === "end") {
+          options.didSearchPaths(++numPathsFound.num);
+          didMatch(pendingEvent);
+          pendingEvent = null;
         }
 
-        buffer += chunk;
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-        for (const line of lines) {
-          const message = JSON.parse(line);
-          updateTrailingContexts(message, pendingTrailingContexts, options);
-
-          if (message.type === "begin") {
-            pendingEvent = {
-              filePath: path.join(directoryPath, getText(message.data.path)),
-              matches: [],
-            };
-            pendingLeadingContext = [];
-            pendingTrailingContexts = new Set();
-          } else if (message.type === "match") {
-            const trailingContextLines = [];
-            pendingTrailingContexts.add(trailingContextLines);
-
-            processUnicodeMatch(message.data);
-
-            for (const submatch of message.data.submatches) {
-              const { lineText, range } = processSubmatch(
-                submatch,
-                getText(message.data.lines),
-                message.data.line_number - 1,
-              );
-
-              pendingEvent.matches.push({
-                matchText: getText(submatch.match),
-                lineText,
-                lineTextOffset: 0,
-                range,
-                leadingContextLines: [...pendingLeadingContext],
-                trailingContextLines,
-              });
-            }
-          } else if (message.type === "end") {
-            options.didSearchPaths(++numPathsFound.num);
-            didMatch(pendingEvent);
-            pendingEvent = null;
-          }
-
-          updateLeadingContext(message, pendingLeadingContext, options);
+        updateLeadingContext(message, pendingLeadingContext, options);
+      });
+      child.stdout.on("data", (chunk) => {
+        if (cancelled) return;
+        try {
+          messages.write(chunk);
+        } catch (error) {
+          fail(error);
         }
       });
     });

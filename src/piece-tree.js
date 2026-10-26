@@ -77,10 +77,13 @@ function piece(buffer, start = 0, end = buffer.text.length) {
 }
 
 function branch(left, right) {
+  const length = left.length + right.length;
+  if (!Number.isSafeInteger(length))
+    throw new RangeError("Document length exceeds exact UTF-16 coordinates");
   return {
     left,
     right,
-    length: left.length + right.length,
+    length,
     breaks: left.breaks + right.breaks,
     crlfs: left.crlfs + right.crlfs + (left.lastUnit === 13 && right.firstUnit === 10 ? 1 : 0),
     crs: left.crs + right.crs,
@@ -97,6 +100,55 @@ function branch(left, right) {
         right.firstUnit >= 0xdc00 &&
         right.firstUnit <= 0xdfff),
   };
+}
+
+// Align persistent subtrees before comparing leaves. Edits retain almost all
+// nodes, so a long unchanged prefix/suffix does not become a linear scan.
+function commonLength(leftRoot, rightRoot, limit, reverse) {
+  if (!limit || leftRoot === rightRoot) return limit;
+  const left = [{ node: leftRoot, used: 0 }],
+    right = [{ node: rightRoot, used: 0 }];
+  let matched = 0;
+  const expand = (stack) => {
+    const { node } = stack.pop();
+    stack.push({ node: reverse ? node.left : node.right, used: 0 });
+    stack.push({ node: reverse ? node.right : node.left, used: 0 });
+  };
+  while (matched < limit) {
+    const a = left.at(-1),
+      b = right.at(-1);
+    const count = Math.min(a.node.length - a.used, b.node.length - b.used, limit - matched);
+    if (a.node === b.node && a.used === b.used) {
+      matched += count;
+    } else if (a.node.buffer && b.node.buffer) {
+      const aStart = reverse ? a.node.end - a.used - count : a.node.start + a.used;
+      const bStart = reverse ? b.node.end - b.used - count : b.node.start + b.used;
+      if (a.node.buffer !== b.node.buffer || aStart !== bStart) {
+        const aText = a.node.buffer.text.slice(aStart, aStart + count);
+        const bText = b.node.buffer.text.slice(bStart, bStart + count);
+        if (aText !== bText) {
+          let same = 0;
+          while (
+            same < count &&
+            aText.charCodeAt(reverse ? count - same - 1 : same) ===
+              bText.charCodeAt(reverse ? count - same - 1 : same)
+          )
+            same++;
+          return matched + same;
+        }
+      }
+      matched += count;
+    } else {
+      if (!a.node.buffer && (b.node.buffer || a.node.length >= b.node.length)) expand(left);
+      else expand(right);
+      continue;
+    }
+    a.used += count;
+    b.used += count;
+    if (a.used === a.node.length) left.pop();
+    if (b.used === b.node.length) right.pop();
+  }
+  return matched;
 }
 
 function balance(left, right) {
@@ -531,18 +583,19 @@ class PieceTree {
 
   equals(other) {
     if (!(other instanceof PieceTree) || other.length !== this.length) return false;
-    if (this.#root === other.#root) return true;
-    const a = this.reader(32768),
-      b = other.reader(32768);
-    let offset = 0;
-    while (offset < this.length) {
-      const left = a(offset),
-        right = b(offset);
-      const count = Math.min(left.length, right.length);
-      if (left.slice(0, count) !== right.slice(0, count)) return false;
-      offset += count;
-    }
-    return true;
+    return this.commonPrefixLength(other) === this.length;
+  }
+
+  commonPrefixLength(other, limit = Math.min(this.length, other?.length ?? 0)) {
+    if (!(other instanceof PieceTree)) throw new TypeError("Expected an immutable text snapshot");
+    integer(limit, "Comparison length", Math.min(this.length, other.length));
+    return commonLength(this.#root, other.#root, limit, false);
+  }
+
+  commonSuffixLength(other, limit = Math.min(this.length, other?.length ?? 0)) {
+    if (!(other instanceof PieceTree)) throw new TypeError("Expected an immutable text snapshot");
+    integer(limit, "Comparison length", Math.min(this.length, other.length));
+    return commonLength(this.#root, other.#root, limit, true);
   }
 
   charCodeAt(index) {

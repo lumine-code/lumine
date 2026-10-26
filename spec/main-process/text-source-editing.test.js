@@ -69,3 +69,40 @@ test("streamed edit batches preserve markers and commit selection finalizers in 
     buffer.destroy();
   }
 });
+
+test("a failing selection finalizer rolls back instead of claiming that text stayed committed", async () => {
+  const buffer = new TextBuffer("original");
+  try {
+    await assert.rejects(
+      buffer.applyTextEdits([{ range: buffer.getRange(), text: "changed" }], {
+        didCommit() {
+          throw new Error("Finalizer failed");
+        },
+      }),
+      (error) => error.message === "Finalizer failed" && error.committed !== true,
+    );
+    assert.equal(buffer.getText(), "original");
+  } finally {
+    buffer.destroy();
+  }
+});
+
+test("a post-transaction observer failure reports an applied edit that can be undone", async () => {
+  const buffer = new TextBuffer("original");
+  const subscription = buffer.onDidChangeText(() => {
+    throw new Error("Observer failed");
+  });
+  try {
+    await assert.rejects(
+      buffer.applyTextEdits([{ range: buffer.getRange(), text: "changed" }]),
+      (error) => error.committed === true && error.code === "ERR_EDIT_OBSERVER_FAILED",
+    );
+    assert.equal(buffer.getText(), "changed");
+    subscription.dispose();
+    buffer.undo();
+    assert.equal(buffer.getText(), "original");
+  } finally {
+    subscription.dispose();
+    buffer.destroy();
+  }
+});

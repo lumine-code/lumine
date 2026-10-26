@@ -1096,6 +1096,9 @@ class TextBuffer {
    * pure context-free mapper; unchanged branches are reused across revisions.
    * The mapper receives a string and synchronously returns a string or snapshot.
    * It must preserve its own semantics across arbitrary chunk boundaries.
+   * `commonPrefixLength(other, limit)` and `commonSuffixLength(other, limit)`
+   * compare UTF-16 units exactly while skipping shared immutable branches.
+   * The default limit is the shorter snapshot's length.
    * A line reader returns a row-to-text function with efficient sequential reads
    * and indexed jumps; requests outside the snapshot return `undefined`.
    * Offsets count UTF-16 units; line iteration strips LF/CRLF and uses an
@@ -1405,6 +1408,7 @@ class TextBuffer {
    * @param {String} text - A `String` containing the new buffer contents.
    */
   setTextViaDiff(text) {
+    if (this.atomicEditContext) this.assertCanEdit();
     const patch = this.buffer.diff(text);
     const changes = patch.getChanges();
     if (changes.length === 0) return;
@@ -1646,7 +1650,8 @@ class TextBuffer {
    * @param {AbortSignal} [options.signal] - Cancels preparation before publication.
    * @param {Boolean} [options.normalizeLineEndings=false] - Normalize inserted line endings.
    * @param {Function} [options.isCurrent] - Optional synchronous owner-validity predicate checked through publication.
-   * @param {Function} [options.didCommit] - Optional synchronous selection finalizer called inside the transaction after text and marker publication. Failures report that the edit was committed.
+   * @param {Function} [options.didCommit] - Optional synchronous selection finalizer inside the transaction. A throwing finalizer aborts the transaction; failures from later observers report `committed: true`.
+   * @param {Function} [options.withCommit] - Optional synchronous presentation wrapper that must invoke its commit callback exactly once.
    * @returns {Promise<Number>} Number of committed edits; a committed observer failure has `committed: true`.
    * @category Mutating Text
    */
@@ -1696,15 +1701,23 @@ class TextBuffer {
     this.captureAllMarkerLayers = true;
     let committed = false;
     try {
-      this.transact(() => {
-        this.emitWillChangeEvent();
-        this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
-          recordHistory: true,
-          markerPlan,
+      let invoked = false;
+      const publish = () => {
+        if (invoked) throw new Error("An edit publication callback can only run once");
+        invoked = true;
+        return this.transact(() => {
+          this.emitWillChangeEvent();
+          this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
+            recordHistory: true,
+            markerPlan,
+          });
+          options.didCommit?.();
+          committed = true;
         });
-        committed = true;
-        options.didCommit?.();
-      });
+      };
+      const wrapped = options.withCommit ? options.withCommit(publish) : publish();
+      if (!invoked || wrapped?.then)
+        throw new Error("Text edit publication wrappers must commit synchronously");
     } catch (error) {
       if (committed)
         throw Object.assign(
@@ -1982,41 +1995,29 @@ class TextBuffer {
 
   // All synchronous mutations commit a prepared text edit. History receives
   // the same immutable text blocks; notifications receive only value snapshots.
-  applyChange(edit, { recordHistory = false, origin = "edit", markerPlan } = {}) {
+  applyChange(
+    edit,
+    {
+      recordHistory = false,
+      origin = "edit",
+      markerPlan,
+      atomicToken,
+      skipDisplayPreparation = false,
+      deferDidChange = false,
+    } = {},
+  ) {
     const wasApplying = this.applyingEdit;
     try {
-      this.assertCanEdit();
+      this.assertCanEdit(atomicToken);
       this.applyingEdit = true;
       const change = edit.getChange();
-      const { oldStart, oldEnd, newStart, newEnd, startIndex, oldEndIndex, newEndIndex } = change;
+      const { oldStart, oldEnd, newStart, newEnd } = change;
       const oldRange = new Range(oldStart, oldEnd).freeze();
       const newRange = new Range(newStart, newEnd).freeze();
       const oldExtent = oldRange.getExtent();
       const newExtent = newRange.getExtent();
-      const changeEvent = Object.freeze(
-        Object.defineProperties(
-          {
-            oldRange,
-            newRange,
-            get oldText() {
-              return change.oldText;
-            },
-            get newText() {
-              return change.newText;
-            },
-            origin,
-            startIndex,
-            oldEndIndex,
-            newEndIndex,
-          },
-          {
-            oldTextSource: { value: change.oldTextSource },
-            newTextSource: { value: change.newTextSource },
-          },
-        ),
-      );
-
-      this.prepareDisplayLayersForChange(changeEvent);
+      const changeEvent = this.changeEventForPreparedEdit(change, origin);
+      if (!skipDisplayPreparation) this.prepareDisplayLayersForChange(changeEvent);
       markerPlan?.verify();
       const patch = recordHistory ? edit.createPatch() : null;
       edit.commit();
@@ -2044,12 +2045,40 @@ class TextBuffer {
         }
       }
 
-      this.emitDidChangeEvent(changeEvent);
+      if (!deferDidChange) this.emitDidChangeEvent(changeEvent);
       return newRange;
     } finally {
       edit.dispose();
       this.applyingEdit = wasApplying;
     }
+  }
+
+  changeEventForPreparedEdit(change, origin = "edit") {
+    const { oldStart, oldEnd, newStart, newEnd, startIndex, oldEndIndex, newEndIndex } = change;
+    const oldRange = new Range(oldStart, oldEnd).freeze();
+    const newRange = new Range(newStart, newEnd).freeze();
+    return Object.freeze(
+      Object.defineProperties(
+        {
+          oldRange,
+          newRange,
+          get oldText() {
+            return change.oldText;
+          },
+          get newText() {
+            return change.newText;
+          },
+          origin,
+          startIndex,
+          oldEndIndex,
+          newEndIndex,
+        },
+        {
+          oldTextSource: { value: change.oldTextSource },
+          newTextSource: { value: change.newTextSource },
+        },
+      ),
+    );
   }
 
   emitDidChangeEvent(changeEvent) {
@@ -2383,6 +2412,7 @@ class TextBuffer {
    */
 
   setHistoryProvider(historyProvider) {
+    if (this.atomicEditContext) this.assertCanEdit();
     this.historyProvider = historyProvider;
   }
 
@@ -2500,6 +2530,8 @@ class TextBuffer {
    * @returns {*} The callback result, or undefined when the transaction is aborted.
    */
   transact(options, fn) {
+    if (this.atomicEditContext && options?.atomicToken !== this.atomicEditContext.token)
+      this.assertCanEdit();
     let groupingInterval, result, selectionsMarkerLayer;
     const revisionBefore = this.getTextRevision();
     let aborted = false;
@@ -2595,6 +2627,7 @@ class TextBuffer {
    * Clear the undo stack.
    */
   clearUndoStack() {
+    if (this.atomicEditContext) this.assertCanEdit();
     return this.historyProvider.clearUndoStack();
   }
 
@@ -2605,6 +2638,7 @@ class TextBuffer {
    * Clear the redo stack without changing text or the undo stack.
    */
   clearRedoStack() {
+    if (this.atomicEditContext) this.assertCanEdit();
     return this.historyProvider.clearRedoStack();
   }
 
@@ -3024,6 +3058,21 @@ class TextBuffer {
    * @returns {Promise<Number>} Number of replaced matches.
    */
   async replaceAllMatches(regex, replacement, options = {}) {
+    const plan = await this.prepareReplaceAllMatches(regex, replacement, options);
+    return plan.commit();
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Prepare replacements without publishing text or markers. The one-use plan exposes count, snapshot, validate(), commit() and dispose().
+   * @param {RegExp} regex - Expression to replace.
+   * @param {String} replacement - Replacement template.
+   * @param {Object} [options] - Replacement options and cancellation signal.
+   * @returns {Promise<Object>} Revision-bound replacement plan.
+   */
+  async prepareReplaceAllMatches(regex, replacement, options = {}) {
     this.assertCanEdit();
     const { buildReplacement } = require("./document-search");
     const revision = this.getTextRevision();
@@ -3048,7 +3097,6 @@ class TextBuffer {
         markerPlan?.splice(start, end, length, boundaries),
     });
     for (const session of sessions) session.check();
-    if (!result.count) return 0;
     if (revision !== this.getTextRevision())
       throw Object.assign(new Error("The document changed during replacement"), {
         code: "ERR_STALE_EDIT",
@@ -3078,32 +3126,34 @@ class TextBuffer {
         ),
         { code: "ERR_REPLACE_RANGE_TRACKER" },
       );
-    const previousCapture = this.captureAllMarkerLayers;
-    this.captureAllMarkerLayers = Boolean(markerPlan) || previousCapture;
-    let committed = false;
-    try {
-      this.transact(() => {
-        this.emitWillChangeEvent();
-        this.applyChange(this.buffer.prepareEdit(range, inserted), {
-          recordHistory: true,
-          markerPlan,
-        });
-        committed = true;
-      });
-    } catch (error) {
-      if (committed)
-        throw Object.assign(
-          new Error(
-            `All ${result.count} replacements were committed, but a change listener failed: ${error.message}`,
-            { cause: error },
-          ),
-          { code: "ERR_REPLACE_OBSERVER_FAILED", committed: true, replacementCount: result.count },
-        );
-      throw error;
-    } finally {
-      this.captureAllMarkerLayers = previousCapture;
-    }
-    return result.count;
+    const check = () => {
+      for (const session of sessions) session.check();
+      if (options.isCurrent?.() === false)
+        throw Object.assign(new Error("Replacement owner changed"), { code: "ERR_STALE_EDIT" });
+    };
+    return require("./prepared-text-replacements").createPlan({
+      buffer: this,
+      before: snapshot,
+      snapshot: result.snapshot,
+      count: result.count,
+      range,
+      inserted,
+      markerPlan,
+      check,
+    });
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Publish prepared replacements across buffers before delivering any change observers.
+   * @param {Array<Object>} plans - One prepared replacement plan per buffer.
+   * @param {Object} [options] - Optional signal, isCurrent predicate, and synchronous didCommit model-publication callback.
+   * @returns {Number} Replaced occurrences; observer failures are marked committed.
+   */
+  static commitPreparedReplacements(plans, options = {}) {
+    return require("./prepared-text-replacements").commitPlans(plans, options);
   }
 
   /**
@@ -4255,6 +4305,7 @@ class TextBuffer {
    */
 
   destroy() {
+    if (this.atomicEditContext) this.assertCanEdit();
     if (this.destroyed) return;
     this.destroyed = true;
     this.syntaxSnapshotToken = null;
@@ -4314,6 +4365,7 @@ class TextBuffer {
   }
 
   release() {
+    if (this.atomicEditContext) this.assertCanEdit();
     this.refcount--;
     if (this.refcount <= 0) this.destroy();
     return this;
@@ -4829,7 +4881,13 @@ class TextBuffer {
     }
   }
 
-  assertCanEdit() {
+  assertCanEdit(atomicToken) {
+    if (this.atomicEditContext && atomicToken !== this.atomicEditContext.token) {
+      throw Object.assign(
+        new Error("Document edits are locked during atomic multi-buffer publication"),
+        { code: "ERR_ATOMIC_EDIT_REENTRANCY" },
+      );
+    }
     if (this.emittingWillChange) {
       throw new Error("Document edits are not allowed from onWillChange observers");
     }

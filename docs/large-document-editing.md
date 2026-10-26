@@ -20,13 +20,29 @@ Gutter foldability checks in None read bounded indentation prefixes instead of e
 
 Automatic selection consumers check range metadata before reading text. `InputDialog.setQueryFromSelection()` uses the last selection only when it stays on one buffer line and contains at most 4,096 UTF-16 units; otherwise the existing query remains unchanged. On Linux, automatic PRIMARY clipboard updates accept at most 1 Mi UTF-16 units from the last selection. A larger gesture cancels an older pending update and preserves the existing PRIMARY contents. These limits do not change explicit Copy commands or the selected document content.
 
+Native clipboard text remains a string contract. Newline conversion checks its expanded length before allocation, and clipboard signatures consume bounded chunks. Optional custom clipboard metadata has a conservative 1 Mi serialization budget; exceeding it omits the custom format while preserving the complete plain text. A text payload that cannot be represented raises an explicit materialization error instead of truncating it.
+
+Moving a pane within a window retains its exact editor. Cross-window transfers of large dirty text retain an immutable source in the original window and request acknowledged chunks of at most 64 Ki UTF-16 units. The destination validates every chunk and stages the complete source before committing removal of the original. Cancellation, incomplete data or edits in either window reject the transfer while preserving user content.
+
 ## Search and bulk edits
 
 [Large document search](large-document-search.md) documents snapshot queries, progress, cancellation, bounded result presentation, atomic replacements and regex limits. Counts and navigation are separate from presentation markers. A partial count is not an exact total, and a presentation limit must never become an implicit Replace All limit.
 
 Change events expose source snapshots as non-enumerable `oldTextSource` and `newTextSource`. Their legacy string properties remain available for bounded changes. `TextBuffer.canMaterializeText(maxLength)` checks both a caller's budget and the runtime limit before requesting a full string. Prefer `getTextSnapshot()` and bounded reads when size is unknown. An oversized explicit string read fails before allocation with `ERR_TEXT_MATERIALIZATION_LIMIT`.
 
+Syntax scope and indentation operations read source ranges in bounded chunks. Token queries retain their source and materialize their legacy `value` property only when requested. Tree-sitter `Node.text` and `TreeCursor.nodeText` remain explicit string APIs; their UTF-16 range length is checked against the runtime limit before invoking the text callback. Code processing an unknown node size should retain its range and read the document snapshot instead.
+
 Text transactions finalize modified state and marker/display notifications even when an observer fails after publication. Atomic replacement reports a committed observer failure explicitly, so a caller does not mistake an already-applied edit for an operation that left the document unchanged. Undo remains available.
+
+## Intrinsic text commands
+
+Line duplication and movement pass immutable snapshot fragments to the buffer. Upper/lower case conversion and selected transpose read bounded chunks; selections above 1 Mi UTF-16 units prepare asynchronously with a 4 ms scheduling budget and publish only if the original revision and selections remain current. Default Unicode casing preserves contextual final sigma across chunk boundaries. Selected transpose reverses Unicode code points, preserving surrogate pairs and lone surrogates. An empty selection retains adjacent-character transpose behavior.
+
+Large Join Lines prepares ordered edits around line boundaries instead of repeatedly rescanning the growing joined line. Unchanged text remains shared, ordinary markers follow the actual edits, and undo restores the source. Word, subword and paragraph navigation use exact source algorithms; built-in subword runs preserve the existing regular grammar and alternative order. Arbitrary caller-supplied regexes retain the bounded native search contract. Explicit string-returning APIs such as `Selection.getText()` and callback-based `replaceSelectedText()` retain their string contract and raise a typed error when a requested string cannot be represented.
+
+Explicit Copy/Cut preflights the aggregate selection length before materialization. Cut prepares the entire clipboard payload, waits for successful native publication and verifies the original document/selection before deleting anything. A failed write leaves document text intact and produces an error notification. Editor commands settle asynchronous results, including arrays of per-selection promises, and distinguish committed observer failures from failed preparation.
+
+Project search still exposes complete line strings in its external result contract. The ripgrep JSON transport rejects a message over 8 Mi UTF-16 units or more than 100,000 matches in one file before allocation of an unbounded result list; the error explicitly identifies incomplete results and recommends buffer search or a narrower query. It never presents truncated matches as complete results. Buffer search has the separate scalable contract described above.
 
 ## Recovery and external changes
 

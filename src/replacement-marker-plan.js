@@ -159,8 +159,8 @@ module.exports = class ReplacementMarkerPlan {
     );
   }
 
-  publish(snapshot) {
-    for (const { layer, planned, index } of this.layers) {
+  preparePublication(snapshot) {
+    this.publication = this.layers.map(({ layer, planned, index }) => {
       const states = {};
       for (const [id, state] of planned) {
         const range = index.getRange(id);
@@ -172,8 +172,16 @@ module.exports = class ReplacementMarkerPlan {
           ),
         };
       }
+      return { layer, states };
+    });
+    return this.publication;
+  }
+
+  publish(snapshot) {
+    for (const { layer, states } of this.publication ?? this.preparePublication(snapshot)) {
       layer.restoreFromSnapshot(states, false);
       this.buffer.markerLayersWithPendingUpdateEvents.add(layer);
     }
+    this.publication = null;
   }
 };

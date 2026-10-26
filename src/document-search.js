@@ -255,8 +255,9 @@ class DocumentSearch {
       const endIsLineBoundary =
         inputEnd === this.end &&
         (inputEnd === snapshot.length ||
-          inputEnd === nextLine - 1 ||
-          (snapshot.charCodeAt(nextLine - 2) === 13 && inputEnd === nextLine - 2));
+          (snapshot.charCodeAt(nextLine - 1) === 10 &&
+            (inputEnd === nextLine - 1 ||
+              (snapshot.charCodeAt(nextLine - 2) === 13 && inputEnd === nextLine - 2))));
       const source = searchPattern(this.source, endIsLineBoundary, this.flags.includes("v"), {
         startIsDocumentBoundary: contextStart === 0,
         endIsDocumentBoundary: inputEnd === snapshot.length,

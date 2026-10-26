@@ -97,38 +97,9 @@ function* encode(snapshot, encoding) {
 function diff(before, after) {
   const patch = livePatch();
   if (before === after) return patch;
-  let start = 0,
-    end = 0;
   const length = Math.min(before.length, after.length);
-  const a = before.reader(32768),
-    b = after.reader(32768);
-  while (start < length) {
-    const left = a(start),
-      right = b(start),
-      count = Math.min(left.length, right.length);
-    if (left.slice(0, count) === right.slice(0, count)) {
-      start += count;
-      continue;
-    }
-    while (start < length && before.charCodeAt(start) === after.charCodeAt(start)) start++;
-    break;
-  }
-  while (end < length - start) {
-    const count = Math.min(32768, length - start - end);
-    if (
-      before.slice(before.length - end - count, before.length - end) ===
-      after.slice(after.length - end - count, after.length - end)
-    ) {
-      end += count;
-      continue;
-    }
-    while (
-      end < length - start &&
-      before.charCodeAt(before.length - end - 1) === after.charCodeAt(after.length - end - 1)
-    )
-      end++;
-    break;
-  }
+  const start = before.commonPrefixLength(after);
+  const end = before.commonSuffixLength(after, length - start);
   if (start === before.length && start === after.length) return patch;
   const oldMiddle = before.subtext(start, before.length - end),
     newMiddle = after.subtext(start, after.length - end);

@@ -7,6 +7,8 @@ const { Point, Range } = TextBuffer;
 const DecorationManager = require("./decoration-manager");
 const Cursor = require("./cursor");
 const Selection = require("./selection");
+const RowOperations = require("./text-editor-row-operations");
+const { leadingIndentation } = require("./text-source-helpers");
 const NullGrammar = require("./null-grammar");
 const ScopeDescriptor = require("./scope-descriptor");
 const { selectorMatchesAnyScope } = require("./selectors");
@@ -1099,6 +1101,7 @@ module.exports = class TextEditor {
    */
 
   destroy() {
+    if (this.buffer.atomicEditContext) this.buffer.assertCanEdit();
     if (!this.alive) return;
     this.alive = false;
     // Release the attached component while it is still reachable from the
@@ -2405,14 +2408,26 @@ module.exports = class TextEditor {
         let prefix = "";
         if (batchNewlineIndent && languageMode.asynchronousSyntax) {
           const { start } = selection.getBufferRange();
-          prefix = this.lineTextForBufferRow(start.row)
-            .slice(0, start.column)
-            .match(/^[\t ]*/)[0];
+          const source = this.buffer.getTextSnapshot();
+          const offset = source.lineStart(start.row);
+          const length = leadingIndentation(
+            source,
+            offset,
+            offset + start.column,
+            this.getTabLength(),
+          ).length;
+          prefix = source.subtext(offset, offset + length);
         }
         // Publish the newline and its inherited indentation as one edit. The
         // worker may refine the owned prefix, but paint never sees column zero
         // merely because the previous line's indentation crossed a thread.
-        const range = selection.insertText(text + prefix, insertionOptions);
+        const range = prefix.length
+          ? require("./text-editor-snapshot-operations").insertPreparedSource(
+              selection,
+              prefix.replace(0, 0, text),
+              insertionOptions,
+            )
+          : selection.insertText(text, insertionOptions);
         if (batchNewlineIndent) {
           const marker = languageMode.asynchronousSyntax
             ? this.markBufferRange([range.end, range.end], {
@@ -2421,7 +2436,7 @@ module.exports = class TextEditor {
               })
             : this.markBufferPosition(range.end);
           indentMarkers.push(marker);
-          if (prefix) indentPrefixes.set(marker, prefix);
+          if (prefix.length) indentPrefixes.set(marker, prefix);
           // Insertion observers may remove whitespace from the previous blank
           // row. Preserve the same baseline that a single cursor sees before
           // those callbacks, while still planning against the final syntax.
@@ -2602,7 +2617,12 @@ module.exports = class TextEditor {
         for (const [marker, prefix] of prefixes) {
           if (!marker.isValid()) continue;
           const row = marker.getStartBufferPosition().row;
-          if (this.lineTextForBufferRow(row).startsWith(prefix))
+          const source = buffer.getTextSnapshot();
+          const offset = source.lineStart(row);
+          if (
+            buffer.lineLengthForRow(row) >= prefix.length &&
+            source.subtext(offset, offset + prefix.length).equals(prefix)
+          )
             options.insertedIndentLengths.set(row, prefix.length);
         }
         for (const marker of markers)
@@ -2776,9 +2796,13 @@ module.exports = class TextEditor {
           .map((range) => range.translate([-insertDelta, 0]));
 
         // Delete lines spanned by selection and insert them on the preceding buffer row
-        let lines = this.buffer.getTextInRange(linesRange);
-        if (lines[lines.length - 1] !== "\n") {
-          lines += this.buffer.lineEndingForRow(linesRange.end.row - 2);
+        let lines = this.buffer.getTextSnapshotInRange(linesRange);
+        if (lines.charCodeAt(lines.length - 1) !== 10) {
+          lines = lines.replace(
+            lines.length,
+            lines.length,
+            this.buffer.lineEndingForRow(linesRange.end.row - 2),
+          );
         }
         this.buffer.delete(linesRange);
         this.buffer.insert([precedingRow, 0], lines);
@@ -2861,9 +2885,9 @@ module.exports = class TextEditor {
           .map((range) => range.translate([insertDelta, 0]));
 
         // Delete lines spanned by selection and insert them on the following correct buffer row
-        let lines = this.buffer.getTextInRange(linesRange);
+        let lines = this.buffer.getTextSnapshotInRange(linesRange);
         if (followingRow - 1 === this.buffer.getLastRow()) {
-          lines = `\n${lines}`;
+          lines = lines.replace(0, 0, "\n");
         }
 
         this.buffer.insert([followingRow, 0], lines);
@@ -3000,9 +3024,9 @@ module.exports = class TextEditor {
           [startRow, 0],
           [endRow, 0],
         ]);
-        let textToDuplicate = this.getTextInBufferRange(sourceRange);
+        let textToDuplicate = this.buffer.getTextSnapshotInRange(sourceRange);
         const appendNewline = endRow > this.getLastBufferRow();
-        if (appendNewline) textToDuplicate = `\n${textToDuplicate}`;
+        if (appendNewline) textToDuplicate = textToDuplicate.replace(0, 0, "\n");
         const insertedRange = this.buffer.insert([endRow, 0], textToDuplicate);
         // The source is unchanged by this insertion. Reuse its presentation
         // while asynchronous syntax checks the copy in its new context.
@@ -3079,24 +3103,22 @@ module.exports = class TextEditor {
    * For each selection, transpose the selected text.
    *
    * If the selection is empty, the characters preceding and following the cursor
-   * are swapped. Otherwise, the selected characters are reversed.
+   * are swapped. Otherwise, selected Unicode code points are reversed without splitting surrogate pairs.
+   *
+   * Large selections are prepared from immutable chunks before publication. Changes to the document or selection cancel pending work.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Boolean|undefined|Promise<Boolean>} True on completion, false on cancellation, or undefined when refused.
    */
   transpose(options = {}) {
     if (!this.ensureWritable("transpose", options)) return;
-    this.mutateSelectedText((selection) => {
-      if (selection.isEmpty()) {
-        selection.selectRight();
-        const text = selection.getText();
-        selection.delete();
-        selection.cursor.moveLeft();
-        selection.insertText(text);
-      } else {
-        selection.insertText(selection.getText().split("").reverse().join(""));
-      }
-    });
+    return require("./text-editor-snapshot-operations").transformSelections(
+      this,
+      "reverse",
+      options,
+    );
   }
 
   /**
@@ -3108,12 +3130,16 @@ module.exports = class TextEditor {
    * For each selection, if the selection is empty, converts the containing word
    * to upper case. Otherwise convert the selected text to upper case.
    *
+   * Large selections are prepared from immutable chunks before publication. Changes to the document or selection cancel pending work.
+   *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Boolean|undefined|Promise<Boolean>} True on completion, false on cancellation, or undefined when refused.
    */
   upperCase(options = {}) {
     if (!this.ensureWritable("upperCase", options)) return;
-    this.replaceSelectedText({ selectWordIfEmpty: true }, (text) => text.toUpperCase(options));
+    return require("./text-editor-snapshot-operations").transformSelections(this, "upper", options);
   }
 
   /**
@@ -3123,14 +3149,18 @@ module.exports = class TextEditor {
    * Convert the selected text to lower case.
    *
    * For each selection, if the selection is empty, converts the containing word
-   * to upper case. Otherwise convert the selected text to upper case.
+   * to lower case. Otherwise convert the selected text to lower case.
+   *
+   * Large selections are prepared from immutable chunks before publication. Changes to the document or selection cancel pending work.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @param {AbortSignal} [options.signal] - Cancels asynchronous preparation.
+   * @returns {Boolean|undefined|Promise<Boolean>} True on completion, false on cancellation, or undefined when refused.
    */
   lowerCase(options = {}) {
     if (!this.ensureWritable("lowerCase", options)) return;
-    this.replaceSelectedText({ selectWordIfEmpty: true }, (text) => text.toLowerCase(options));
+    return require("./text-editor-snapshot-operations").transformSelections(this, "lower", options);
   }
 
   /**
@@ -3146,6 +3176,11 @@ module.exports = class TextEditor {
    */
   toggleLineCommentsInSelection(options = {}) {
     if (!this.ensureWritable("toggleLineCommentsInSelection", options)) return;
+    if (
+      this.buffer.getLength() > 1048576 ||
+      RowOperations.selectedRowCount(this.getSelections()) >= 4096
+    )
+      return require("./text-editor-comment-operations").toggleSelections(this, options);
     const mode = this.buffer.getLanguageMode();
     if (!mode.asynchronousSyntax)
       return this.mutateSelectedText((selection) => selection.toggleLineComments(options));
@@ -3191,7 +3226,11 @@ module.exports = class TextEditor {
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   joinLines(options = {}) {
     if (!this.ensureWritable("joinLines", options)) return;
-    this.mutateSelectedText((selection) => selection.joinLines());
+    const operations = require("./text-editor-join-lines");
+    const selections = this.getSelectionsOrderedByBufferPosition();
+    if (operations.needsStreamingJoin(this, selections))
+      return operations.joinSelections(this, selections, options);
+    return this.mutateSelectedText((selection) => selection.joinLines(options));
   }
 
   /**
@@ -3205,6 +3244,8 @@ module.exports = class TextEditor {
    */
   collapseBlankLines(options = {}) {
     if (!this.ensureWritable("collapseBlankLines", options)) return;
+    if (this.buffer.getLength() > 1048576 || this.buffer.getLineCount() >= 4096)
+      return require("./text-editor-whitespace-operations").collapseWhitespace(this, options, true);
     const collapse = () =>
       this.transact(() => {
         this.backwardsScanInBufferRange(
@@ -3238,6 +3279,12 @@ module.exports = class TextEditor {
    */
   collapseContentSpaces(options = {}) {
     if (!this.ensureWritable("collapseContentSpaces", options)) return;
+    if (this.buffer.getLength() > 1048576 || this.buffer.getLineCount() >= 4096)
+      return require("./text-editor-whitespace-operations").collapseWhitespace(
+        this,
+        options,
+        false,
+      );
     this.transact(() => {
       this.backwardsScanInBufferRange(/ {2,}/g, this.buffer.getRange(), ({ range, replace }) => {
         const indentationLength = this.lineTextForBufferRow(range.start.row).match(/^[ \t]*/)[0]
@@ -3438,14 +3485,13 @@ module.exports = class TextEditor {
         continue;
       }
 
-      const nextLine = this.lineTextForBufferRow(nextRow);
-      const firstContentColumn = nextLine.search(NON_WHITESPACE_REGEXP);
-      rangesToDelete.push(
-        new Range(
-          selectionRange.start,
-          new Point(nextRow, firstContentColumn === -1 ? nextLine.length : firstContentColumn),
-        ),
-      );
+      const firstContent = this.buffer.findInRangeSync(/\S/, [
+        [nextRow, 0],
+        [nextRow, Infinity],
+      ]);
+      const firstContentColumn =
+        firstContent?.start.column ?? this.buffer.lineLengthForRow(nextRow);
+      rangesToDelete.push(new Range(selectionRange.start, new Point(nextRow, firstContentColumn)));
     }
 
     rangesToDelete.sort((left, right) => left.start.compare(right.start));
@@ -5911,9 +5957,10 @@ module.exports = class TextEditor {
       bufferRow++
     ) {
       if (hasIsRowCommented && languageMode.isRowCommented(bufferRow)) continue;
-      const line = this.buffer.lineForRow(bufferRow);
-      if (line[0] === " ") return true;
-      if (line[0] === "\t") return false;
+      const source = this.buffer.getTextSnapshot();
+      const code = source.charCodeAt(source.lineStart(bufferRow));
+      if (code === 32) return true;
+      if (code === 9) return false;
     }
   }
 
@@ -6131,7 +6178,10 @@ module.exports = class TextEditor {
    * @returns {Number}
    */
   indentationForBufferRow(bufferRow) {
-    return this.indentLevelForLine(this.lineTextForBufferRow(bufferRow));
+    const row = this.buffer.clipPosition([bufferRow, 0]).row;
+    const source = this.buffer.getTextSnapshot();
+    const { start, end } = RowOperations.rowBounds(source, row);
+    return leadingIndentation(source, start, end, this.getTabLength()).level;
   }
 
   /**
@@ -6156,7 +6206,10 @@ module.exports = class TextEditor {
     if (preserveLeadingWhitespace) {
       endColumn = 0;
     } else {
-      endColumn = this.lineTextForBufferRow(bufferRow).match(/^\s*/)[0].length;
+      const source = this.buffer.getTextSnapshot();
+      const row = this.buffer.clipPosition([bufferRow, 0]).row;
+      const { start, end } = RowOperations.rowBounds(source, row);
+      endColumn = RowOperations.leadingWhitespaceLength(source, start, end);
     }
     const newIndentString = this.buildIndentString(newLevel);
     return this.buffer.setTextInRange(
@@ -6179,6 +6232,9 @@ module.exports = class TextEditor {
    */
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
+    const selections = this.getSelectionsOrderedByBufferPosition();
+    if (RowOperations.selectedRowCount(selections) >= RowOperations.BULK_ROWS)
+      return RowOperations.indentRows(this, selections, options);
     return this.mutateSelectedText((selection) => selection.indentSelectedRows(options));
   }
 
@@ -6193,6 +6249,9 @@ module.exports = class TextEditor {
    */
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
+    const selections = this.getSelectionsOrderedByBufferPosition();
+    if (RowOperations.selectedRowCount(selections) >= RowOperations.BULK_ROWS)
+      return RowOperations.indentRows(this, selections, options, true);
     return this.mutateSelectedText((selection) => selection.outdentSelectedRows(options));
   }
 
@@ -6257,6 +6316,9 @@ module.exports = class TextEditor {
   indent(options = {}) {
     if (!this.ensureWritable("indent", options)) return;
     if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndent();
+    const selections = this.getSelectionsOrderedByBufferPosition();
+    if (RowOperations.selectedRowCount(selections) >= RowOperations.BULK_ROWS)
+      return RowOperations.indentSelections(this, selections, options);
     if (
       options.autoIndent &&
       this.getSelections().some((selection) => selection.canAutoIndentAtCursor())
@@ -6962,20 +7024,7 @@ module.exports = class TextEditor {
    * @returns {Promise|undefined} A promise when the clipboard adapter flushes asynchronously; otherwise completes synchronously.
    */
   copySelectedText(clipboard = this.constructor.clipboard) {
-    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
-    let maintainClipboard = false;
-    for (let selection of this.getSelectionsOrderedByBufferPosition()) {
-      if (selection.isEmpty()) {
-        const previousRange = selection.getBufferRange();
-        selection.selectLine();
-        selection.copy(maintainClipboard, true, clipboard);
-        selection.setBufferRange(previousRange);
-      } else {
-        selection.copy(maintainClipboard, false, clipboard);
-      }
-      maintainClipboard = true;
-    }
-    return clipboard.flush?.();
+    return require("./text-editor-clipboard-operations").copySelections(this, { clipboard });
   }
 
   /**
@@ -6984,15 +7033,10 @@ module.exports = class TextEditor {
    * @private
    */
   copyOnlySelectedText(clipboard = this.constructor.clipboard) {
-    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
-    let maintainClipboard = false;
-    for (let selection of this.getSelectionsOrderedByBufferPosition()) {
-      if (!selection.isEmpty()) {
-        selection.copy(maintainClipboard, false, clipboard);
-        maintainClipboard = true;
-      }
-    }
-    return clipboard.flush?.();
+    return require("./text-editor-clipboard-operations").copySelections(this, {
+      clipboard,
+      onlySelected: true,
+    });
   }
 
   /**
@@ -7008,19 +7052,10 @@ module.exports = class TextEditor {
    */
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
-    let clipboard = options.clipboard || this.constructor.clipboard;
-    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
-    let maintainClipboard = false;
-    this.mutateSelectedText((selection) => {
-      if (selection.isEmpty()) {
-        selection.selectLine();
-        selection.cut(maintainClipboard, true, options.bypassReadOnly, clipboard);
-      } else {
-        selection.cut(maintainClipboard, false, options.bypassReadOnly, clipboard);
-      }
-      maintainClipboard = true;
+    return require("./text-editor-clipboard-operations").copySelections(this, {
+      ...options,
+      cut: true,
     });
-    return clipboard.flush?.();
   }
 
   /**
@@ -7054,7 +7089,7 @@ module.exports = class TextEditor {
       const pendingIndents = [];
       try {
         this.mutateSelectedText((selection, index) => {
-          let fullLine, indentBasis, text;
+          let fullLine, indentBasis, text, insertedSource;
           if (metadata.selections && metadata.selections.length === this.getSelections().length) {
             ({ text, indentBasis, fullLine } = metadata.selections[index]);
           } else {
@@ -7074,7 +7109,11 @@ module.exports = class TextEditor {
           const pasteStart = selection.getBufferRange().start;
           const indentPastedText =
             (fullLine && selection.isEmpty()) ||
-            !/\S/.test(this.buffer.lineForRow(pasteStart.row).slice(0, pasteStart.column));
+            require("./text-source-helpers").rangeIsBlank(
+              this.buffer.getTextSnapshot(),
+              this.buffer.characterIndexForPosition([pasteStart.row, 0]),
+              this.buffer.characterIndexForPosition(pasteStart),
+            );
           // Blank pasted text has no syntax to reindent. A later correction
           // would recreate trailing spaces an insertion observer just removed.
           const autoIndent = options.autoIndent && /\S/.test(text);
@@ -7107,7 +7146,7 @@ module.exports = class TextEditor {
                 isPastedText: true,
               });
               range = marker.getBufferRange();
-              text = this.buffer.getTextInRange(range);
+              insertedSource = this.buffer.getTextSnapshotInRange(range);
             } finally {
               marker.destroy();
             }
@@ -7140,7 +7179,15 @@ module.exports = class TextEditor {
               options: { ...options, isPastedText: true },
             });
           }
-          this.emitter.emit("did-insert-text", { text, range });
+          this.emitter.emit(
+            "did-insert-text",
+            insertedSource
+              ? require("./text-editor-snapshot-operations").insertedSourceEvent(
+                  insertedSource,
+                  range,
+                )
+              : { text, range },
+          );
         });
       } catch (error) {
         for (const { marker } of pendingIndents) marker.destroy();
@@ -7287,15 +7334,11 @@ module.exports = class TextEditor {
    */
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
-    let clipboard = options.clipboard || this.constructor.clipboard;
-    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
-    options = { ...options, clipboard };
-    let maintainClipboard = false;
-    this.mutateSelectedText((selection) => {
-      selection.cutToEndOfLine(maintainClipboard, options);
-      maintainClipboard = true;
+    return require("./text-editor-clipboard-operations").copySelections(this, {
+      ...options,
+      cut: true,
+      endOfLine: "screen",
     });
-    return clipboard.flush?.();
   }
 
   /**
@@ -7313,15 +7356,11 @@ module.exports = class TextEditor {
    */
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
-    let clipboard = options.clipboard || this.constructor.clipboard;
-    clipboard = this.constructor.clipboard.createMemoryClipboard(clipboard);
-    options = { ...options, clipboard };
-    let maintainClipboard = false;
-    this.mutateSelectedText((selection) => {
-      selection.cutToEndOfBufferLine(maintainClipboard, options);
-      maintainClipboard = true;
+    return require("./text-editor-clipboard-operations").copySelections(this, {
+      ...options,
+      cut: true,
+      endOfLine: "buffer",
     });
-    return clipboard.flush?.();
   }
 
   /**
@@ -8815,6 +8854,15 @@ module.exports = class TextEditor {
           languageMode.commentStringsForPosition(new Point(start, 0))) || {};
     if (!commentStartString) return;
     commentStartString = commentStartString.trim();
+    if (end - start + 1 >= 4096 || this.buffer.getLength() > 1048576)
+      return require("./text-editor-comment-operations").toggleComments(
+        this,
+        start,
+        end,
+        commentStartString,
+        commentEndString?.trim(),
+        options,
+      );
 
     if (commentEndString) {
       commentEndString = commentEndString.trim();
@@ -9006,8 +9054,8 @@ module.exports = class TextEditor {
   }
 
   rowRangeForParagraphAtBufferRow(bufferRow) {
-    const line = this.lineTextForBufferRow(bufferRow);
-    if (line === undefined || !NON_WHITESPACE_REGEXP.test(line)) return;
+    if (bufferRow < 0 || bufferRow > this.buffer.getLastRow() || this.buffer.isRowBlank(bufferRow))
+      return;
     if (this.buffer.getLanguageMode().asynchronousSyntax)
       return this.getParagraphRangesForBufferRows([bufferRow]).then((ranges) => ranges?.[0]);
 
@@ -9016,7 +9064,7 @@ module.exports = class TextEditor {
 
     let startRow = bufferRow;
     while (startRow > 0) {
-      if (!NON_WHITESPACE_REGEXP.test(this.lineTextForBufferRow(startRow - 1))) break;
+      if (this.buffer.isRowBlank(startRow - 1)) break;
       if (languageMode.isRowCommented(startRow - 1) !== isCommented) break;
       startRow--;
     }
@@ -9024,7 +9072,7 @@ module.exports = class TextEditor {
     let endRow = bufferRow;
     const rowCount = this.getLineCount();
     while (endRow + 1 < rowCount) {
-      if (!NON_WHITESPACE_REGEXP.test(this.lineTextForBufferRow(endRow + 1))) break;
+      if (this.buffer.isRowBlank(endRow + 1)) break;
       if (languageMode.isRowCommented(endRow + 1) !== isCommented) break;
       endRow++;
     }

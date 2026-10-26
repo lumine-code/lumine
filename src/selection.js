@@ -2,6 +2,7 @@ const { Point, Range } = require("./text-buffer");
 const { pick } = require("@lumine-code/underscore-plus");
 const { Emitter } = require("@lumine-code/event-kit");
 
+const { rangeIsBlank, leadingIndentation } = require("./text-source-helpers");
 const NonWhitespaceRegExp = /\S/;
 let nextId = 0;
 
@@ -738,43 +739,46 @@ module.exports = class Selection {
     this.clear(options);
 
     let autoIndentFirstLine = false;
-    const precedingText = this.editor.getTextInRange([
-      [oldBufferRange.start.row, 0],
-      oldBufferRange.start,
-    ]);
-    const remainingLines = text.split("\n");
-    const firstInsertedLine = remainingLines.shift();
-
-    if (options.indentBasis != null && !options.preserveTrailingLineIndentation) {
-      indentAdjustment = this.editor.indentLevelForLine(precedingText) - options.indentBasis;
-      this.adjustIndent(remainingLines, indentAdjustment);
-    }
-
-    const textIsAutoIndentable = text === "\n" || text === "\r\n" || NonWhitespaceRegExp.test(text);
+    const newline = text.indexOf("\n");
+    // Most keystrokes need no prefix read or split of the inserted text. In
+    // particular Enter at the end of a giant nonblank line stays local.
     if (
-      options.autoIndent &&
-      textIsAutoIndentable &&
-      !NonWhitespaceRegExp.test(precedingText) &&
-      remainingLines.length > 0
+      newline >= 0 &&
+      (options.autoIndent ||
+        (options.indentBasis != null && !options.preserveTrailingLineIndentation))
     ) {
-      autoIndentFirstLine = true;
-      const firstLine = precedingText + firstInsertedLine;
-      const languageMode = this.editor.buffer.getLanguageMode();
-      desiredIndentLevel =
-        languageMode.suggestedIndentForLineAtBufferRow &&
-        languageMode.suggestedIndentForLineAtBufferRow(
+      const preceding = this.editor.buffer.getTextSnapshotInRange([
+        [oldBufferRange.start.row, 0],
+        oldBufferRange.start,
+      ]);
+      const remainingLines = text.slice(newline + 1).split("\n");
+      const firstInsertedLine = text.slice(0, newline);
+      if (options.indentBasis != null && !options.preserveTrailingLineIndentation) {
+        indentAdjustment =
+          leadingIndentation(preceding, 0, preceding.length, this.editor.getTabLength()).level -
+          options.indentBasis;
+        this.adjustIndent(remainingLines, indentAdjustment);
+      }
+      const textIsAutoIndentable =
+        text === "\n" || text === "\r\n" || NonWhitespaceRegExp.test(text);
+      if (options.autoIndent && textIsAutoIndentable && rangeIsBlank(preceding)) {
+        autoIndentFirstLine = true;
+        const firstLine = preceding.replace(preceding.length, preceding.length, firstInsertedLine);
+        const languageMode = this.editor.buffer.getLanguageMode();
+        desiredIndentLevel = languageMode.suggestedIndentForLineAtBufferRow?.(
           oldBufferRange.start.row,
           firstLine,
           this.editor.getTabLength(),
         );
-      if (desiredIndentLevel != null) {
-        indentAdjustment = desiredIndentLevel - this.editor.indentLevelForLine(firstLine);
-        this.adjustIndent(remainingLines, indentAdjustment);
+        if (desiredIndentLevel != null) {
+          indentAdjustment =
+            desiredIndentLevel -
+            leadingIndentation(firstLine, 0, firstLine.length, this.editor.getTabLength()).level;
+          this.adjustIndent(remainingLines, indentAdjustment);
+        }
       }
+      text = firstInsertedLine + "\n" + remainingLines.join("\n");
     }
-
-    text = firstInsertedLine;
-    if (remainingLines.length > 0) text += `\n${remainingLines.join("\n")}`;
 
     const newBufferRange = this.editor.buffer.setTextInRange(
       oldBufferRange,
@@ -1046,6 +1050,9 @@ module.exports = class Selection {
    */
   joinLines(options = {}) {
     if (!this.ensureWritable("joinLines", options)) return;
+    const operations = require("./text-editor-join-lines");
+    if (operations.needsStreamingJoin(this.editor, [this]))
+      return operations.joinSelections(this.editor, [this], options);
     let joinMarker;
     const selectedRange = this.getBufferRange();
     if (selectedRange.isEmpty()) {
@@ -1111,10 +1118,16 @@ module.exports = class Selection {
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
     const [start, end] = this.getBufferRowRange();
+    if (end - start + 1 >= require("./text-editor-row-operations").BULK_ROWS)
+      return require("./text-editor-row-operations").indentRows(this.editor, [this], options, true);
     const { buffer } = this.editor;
     const leadingTabRegex = new RegExp(`^( {1,${this.editor.getTabLength()}}|\t)`);
     for (let row = start; row <= end; row++) {
-      const match = buffer.lineForRow(row).match(leadingTabRegex);
+      const prefix = buffer.getTextInRange([
+        [row, 0],
+        [row, this.editor.getTabLength()],
+      ]);
+      const match = prefix.match(leadingTabRegex);
       if (match && match[0].length > 0) {
         buffer.delete([
           [row, 0],
@@ -1228,13 +1241,20 @@ module.exports = class Selection {
   ) {
     if (!this.ensureWritable("cut", { bypassReadOnly })) return;
     const isCurrent = this.editor.captureTextMutationGuard({ bypassReadOnly }, [this]);
-    const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
-    const removeSelection = () => this.delete({ bypassReadOnly });
-    return isPromise(didCopy)
-      ? didCopy.then(() => {
-          if (isCurrent()) return this.editor.transact(removeSelection);
-        })
-      : removeSelection();
+    try {
+      const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
+      const removeSelection = () => {
+        if (isCurrent()) return this.editor.transact(() => this.delete({ bypassReadOnly }));
+      };
+      return isPromise(didCopy)
+        ? didCopy.then(
+            removeSelection,
+            require("./text-editor-clipboard-operations").reportClipboardError,
+          )
+        : removeSelection();
+    } catch (error) {
+      return require("./text-editor-clipboard-operations").reportClipboardError(error);
+    }
   }
 
   /**
@@ -1272,6 +1292,17 @@ module.exports = class Selection {
         indentBasis: startLevel,
         fullLine,
       });
+      if (
+        clipboardText.length + selectionText.length + 1 >
+        require("node:buffer").constants.MAX_STRING_LENGTH
+      ) {
+        throw Object.assign(
+          new RangeError(
+            "The combined selections exceed the clipboard string limit. Copy a smaller range or save the document to a file.",
+          ),
+          { code: "ERR_CLIPBOARD_TEXT_LIMIT" },
+        );
+      }
       return clipboard.write([clipboardText, selectionText].join("\n"), metadata);
     };
 
@@ -1327,7 +1358,14 @@ module.exports = class Selection {
   canAutoIndentAtCursor() {
     if (!this.isEmpty()) return false;
     const { row, column } = this.cursor.getBufferPosition();
-    return !/[^\t ]/.test(this.editor.lineTextForBufferRow(row).slice(0, column));
+    const source = this.editor.buffer.getTextSnapshotInRange([
+      [row, 0],
+      [row, column],
+    ]);
+    return (
+      leadingIndentation(source, 0, source.length, this.editor.getTabLength()).length ===
+      source.length
+    );
   }
 
   // Indent the current line(s).
@@ -1363,7 +1401,7 @@ module.exports = class Selection {
         });
       }
     } else {
-      this.indentSelectedRows({ bypassReadOnly });
+      return this.indentSelectedRows({ bypassReadOnly });
     }
   }
 
@@ -1379,6 +1417,8 @@ module.exports = class Selection {
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
     const [start, end] = this.getBufferRowRange();
+    if (end - start + 1 >= require("./text-editor-row-operations").BULK_ROWS)
+      return require("./text-editor-row-operations").indentRows(this.editor, [this], options);
     for (let row = start; row <= end; row++) {
       if (this.editor.buffer.lineLengthForRow(row) !== 0) {
         this.editor.buffer.insert([row, 0], this.editor.getTabText());

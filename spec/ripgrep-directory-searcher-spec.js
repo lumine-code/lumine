@@ -24,4 +24,45 @@ describe("RipgrepDirectorySearcher", () => {
       ],
     ]);
   });
+  it("rejects an oversized JSON line explicitly before publishing partial file results", async () => {
+    const projectDirectory = fs.realpathSync.native(temp.mkdirSync("ripgrep-large-line-"));
+    fs.writeFileSync(path.join(projectDirectory, "large.txt"), "x".repeat(8 * 1024 * 1024 + 1));
+    const Searcher = require("../src/ripgrep-directory-searcher");
+    const didMatch = jasmine.createSpy("didMatch");
+    await expectAsync(
+      new Searcher().searchInDirectory(
+        { getPath: () => projectDirectory },
+        /x+/,
+        {
+          inclusions: [],
+          exclusions: [],
+          didSearchPaths() {},
+          didMatch,
+        },
+        { num: 0 },
+      ),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: "ERR_PROJECT_SEARCH_RESULT_LIMIT" }));
+    expect(didMatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a dense per-file match list explicitly instead of silently truncating it", async () => {
+    const projectDirectory = fs.realpathSync.native(temp.mkdirSync("ripgrep-dense-line-"));
+    fs.writeFileSync(path.join(projectDirectory, "dense.txt"), "x ".repeat(100001));
+    const Searcher = require("../src/ripgrep-directory-searcher");
+    const didMatch = jasmine.createSpy("didMatch");
+    await expectAsync(
+      new Searcher().searchInDirectory(
+        { getPath: () => projectDirectory },
+        /x/,
+        {
+          inclusions: [],
+          exclusions: [],
+          didSearchPaths() {},
+          didMatch,
+        },
+        { num: 0 },
+      ),
+    ).toBeRejectedWith(jasmine.objectContaining({ code: "ERR_PROJECT_SEARCH_MATCH_LIMIT" }));
+    expect(didMatch).not.toHaveBeenCalled();
+  });
 });

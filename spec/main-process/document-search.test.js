@@ -690,3 +690,18 @@ test("navigation preserves self-overlap phase and sparse window checkpoints", as
   assert.equal((await sparse.findNear(390000)).index, 1);
   assert.equal((await sparse.findNear(390000, { backwards: true })).index, 0);
 });
+
+test("a clipped range before the last EOF character is not a line-end anchor", () => {
+  const source = new PieceTree("word .");
+  const clipped = new DocumentSearch(source, / +$/g, { start: 0, end: 5 });
+  assert.deepEqual(Array.from(clipped.scan()).filter(Boolean), []);
+  for (const text of ["word ", "word \nnext", "word \r\nnext"]) {
+    const search = new DocumentSearch(new PieceTree(text), / +$/g, { start: 0, end: 5 });
+    assert.deepEqual(
+      Array.from(search.scan())
+        .filter(Boolean)
+        .map((match) => [match.start, match.end]),
+      [[4, 5]],
+    );
+  }
+});

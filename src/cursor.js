@@ -3,8 +3,6 @@ const { Emitter } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 const Model = require("./model");
 
-const EmptyLineRegExp = /(\r\n[\t ]*\r\n)|(\n[\t ]*\n)/g;
-
 /**
  * @public
  * @status extended
@@ -285,12 +283,24 @@ module.exports = class Cursor extends Model {
    */
   isInsideWord(options) {
     const { row, column } = this.getBufferPosition();
-    const range = [
+    if (!options?.wordRegex) {
+      const source = this.editor.buffer.getTextSnapshot();
+      const start = source.lineStart(row);
+      const end = start + this.editor.buffer.lineLengthForRow(row);
+      const { characterClasses, runBoundary } = require("./cursor-word-navigation");
+      if (
+        column < end - start &&
+        characterClasses(this).classify(source.slice(start + column, start + column + 1))
+      )
+        return true;
+      // The default expression also matches a complete blank line.
+      return runBoundary(source, start + column, end, "[\\t ]", 1) === end;
+    }
+    const text = this.editor.getTextInBufferRange([
       [row, column],
       [row, Infinity],
-    ];
-    const text = this.editor.getTextInBufferRange(range);
-    return text.search((options && options.wordRegex) || this.wordRegExp()) === 0;
+    ]);
+    return text.search(options.wordRegex) === 0;
   }
 
   /**
@@ -343,15 +353,10 @@ module.exports = class Cursor extends Model {
    * @returns {Boolean} true if this cursor has non-whitespace characters before its current position.
    */
   hasPrecedingCharactersOnLine() {
-    const bufferPosition = this.getBufferPosition();
-    const line = this.editor.lineTextForBufferRow(bufferPosition.row);
-    const firstCharacterColumn = line.search(/\S/);
-
-    if (firstCharacterColumn === -1) {
-      return false;
-    } else {
-      return bufferPosition.column > firstCharacterColumn;
-    }
+    const position = this.getBufferPosition();
+    const source = this.editor.buffer.getTextSnapshot();
+    const start = source.lineStart(position.row);
+    return !require("./text-source-helpers").rangeIsBlank(source, start, start + position.column);
   }
 
   /**
@@ -739,12 +744,14 @@ module.exports = class Cursor extends Model {
     const previousNonBlankRow = this.editor.buffer.previousNonBlankRow(currentBufferPosition.row);
     const scanRange = Range(Point(previousNonBlankRow || 0, 0), currentBufferPosition);
 
-    const ranges = this.editor.buffer.findAllInRangeSync(
-      options.wordRegex || this.wordRegExp(),
-      scanRange,
-    );
-
-    const range = ranges[ranges.length - 1];
+    let range;
+    const navigation = require("./cursor-word-navigation");
+    if (navigation.isSubwordRegex(options.wordRegex)) {
+      range = navigation.lastSubwordRange(this, scanRange, options.wordRegex);
+    } else
+      range = options.wordRegex
+        ? this.editor.buffer.findAllInRangeSync(options.wordRegex, scanRange).at(-1)
+        : navigation.wordRanges(this, scanRange, options, true).next().value;
     if (range) {
       if (range.start.row < currentBufferPosition.row && currentBufferPosition.column > 0) {
         return Point(currentBufferPosition.row, 0);
@@ -772,10 +779,12 @@ module.exports = class Cursor extends Model {
     const currentBufferPosition = this.getBufferPosition();
     const scanRange = Range(currentBufferPosition, this.editor.getEofBufferPosition());
 
-    const range = this.editor.buffer.findInRangeSync(
-      options.wordRegex || this.wordRegExp(),
-      scanRange,
-    );
+    const navigation = require("./cursor-word-navigation");
+    const range = navigation.isSubwordRegex(options.wordRegex)
+      ? navigation.subwordRanges(this, scanRange, options.wordRegex).next().value
+      : options.wordRegex
+        ? this.editor.buffer.findInRangeSync(options.wordRegex, scanRange)
+        : navigation.wordRanges(this, scanRange, options).next().value;
 
     if (range) {
       if (range.start.row > currentBufferPosition.row) {
@@ -810,10 +819,19 @@ module.exports = class Cursor extends Model {
       ? new Range(new Point(position.row - 1, 0), position)
       : new Range(new Point(position.row, 0), position);
 
-    const ranges = this.editor.buffer.findAllInRangeSync(
-      options.wordRegex || this.wordRegExp(options),
-      scanRange,
-    );
+    const ranges = options.wordRegex
+      ? this.editor.buffer.findAllInRangeSync(options.wordRegex, scanRange)
+      : require("./cursor-word-navigation").wordRanges(this, scanRange, options, true);
+    if (!options.wordRegex) {
+      for (const range of ranges) {
+        if (
+          position.isGreaterThan(range.start) &&
+          (allowPrevious || position.isLessThanOrEqual(range.end))
+        )
+          return Point.fromObject(range.start);
+      }
+      return allowPrevious ? new Point(0, 0) : position;
+    }
 
     let result;
     for (let range of ranges) {
@@ -845,10 +863,9 @@ module.exports = class Cursor extends Model {
       ? new Range(position, new Point(position.row + 2, 0))
       : new Range(position, new Point(position.row, Infinity));
 
-    const ranges = this.editor.buffer.findAllInRangeSync(
-      options.wordRegex || this.wordRegExp(options),
-      scanRange,
-    );
+    const ranges = options.wordRegex
+      ? this.editor.buffer.findAllInRangeSync(options.wordRegex, scanRange)
+      : require("./cursor-word-navigation").wordRanges(this, scanRange, options);
 
     for (let range of ranges) {
       if (position.isLessThan(range.start) && !allowNext) break;
@@ -875,6 +892,12 @@ module.exports = class Cursor extends Model {
       : currentBufferPosition;
     const scanRange = [start, this.editor.getEofBufferPosition()];
 
+    if (!options.wordRegex) {
+      const match = require("./cursor-word-navigation")
+        .wordRanges(this, scanRange, options)
+        .next().value;
+      return match ? Point.fromObject(match.start) : currentBufferPosition;
+    }
     let beginningOfNextWordPosition;
     this.editor.scanInBufferRange(
       options.wordRegex || this.wordRegExp(),
@@ -899,6 +922,8 @@ module.exports = class Cursor extends Model {
    * @returns {Range} buffer Range occupied by the word located under the cursor.
    */
   getCurrentWordBufferRange(options = {}) {
+    if (!options.wordRegex)
+      return require("./cursor-word-navigation").currentWordRange(this, options);
     const position = this.getBufferPosition();
     const ranges = this.editor.buffer.findAllInRangeSync(
       options.wordRegex || this.wordRegExp(options),
@@ -1038,7 +1063,11 @@ module.exports = class Cursor extends Model {
       segments.push(`\\s*[${_.escapeRegExp(nonWordCharacters)}]+`);
     }
     segments.push("_+");
-    return new RegExp(segments.join("|"), "g");
+    return require("./cursor-word-navigation").markSubwordRegex(
+      new RegExp(segments.join("|"), "g"),
+      nonWordCharacters,
+      options.backwards === true,
+    );
   }
 
   /**
@@ -1068,33 +1097,10 @@ module.exports = class Cursor extends Model {
   }
 
   getBeginningOfNextParagraphBufferPosition() {
-    const start = this.getBufferPosition();
-    const eof = this.editor.getEofBufferPosition();
-    const scanRange = [start, eof];
-
-    const { row, column } = eof;
-    let position = new Point(row, column - 1);
-
-    this.editor.scanInBufferRange(EmptyLineRegExp, scanRange, ({ range, stop }) => {
-      position = range.start.traverse(Point(1, 0));
-      if (!position.isEqual(start)) stop();
-    });
-    return position;
+    return Point.fromObject(require("./cursor-word-navigation").paragraphBoundary(this, 1));
   }
 
   getBeginningOfPreviousParagraphBufferPosition() {
-    const start = this.getBufferPosition();
-
-    const { row, column } = start;
-    const scanRange = [
-      [row - 1, column],
-      [0, 0],
-    ];
-    let position = new Point(0, 0);
-    this.editor.backwardsScanInBufferRange(EmptyLineRegExp, scanRange, ({ range, stop }) => {
-      position = range.start.traverse(Point(1, 0));
-      if (!position.isEqual(start)) stop();
-    });
-    return position;
+    return Point.fromObject(require("./cursor-word-navigation").paragraphBoundary(this, -1));
   }
 };
