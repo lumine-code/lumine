@@ -669,6 +669,8 @@ class InputDialogHost {
     this.document.defaultView.requestAnimationFrame(() => {
       if (!this.document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
       if (this.model.isActionPending()) return;
+      // The focus trap can restore focus after the original focusout event.
+      if (element.contains(this.document.activeElement)) return;
       this.cancel("focus-lost");
     });
   }

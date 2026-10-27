@@ -443,6 +443,7 @@ describe("InputDialog", () => {
 
       const outside = document.createElement("input");
       lumine.views.getView(lumine.workspace).appendChild(outside);
+      host.pauseFocusTrap();
       outside.focus();
       await new Promise(requestAnimationFrame);
       await new Promise(requestAnimationFrame);
@@ -1293,6 +1294,28 @@ describe("InputDialog", () => {
         toJSON() {},
       };
     }
+
+    it("keeps the dialog when the focus trap restores focus before cancellation", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const cancelled = jasmine.createSpy("cancelled");
+      createHostedInputDialog({});
+      host.onDidCancel(cancelled);
+      await host.show();
+      const outside = document.createElement("input");
+      lumine.workspace.getElement().appendChild(outside);
+
+      try {
+        outside.focus();
+        expect(view.getElement().contains(document.activeElement)).toBe(true);
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+
+        expect(cancelled).not.toHaveBeenCalled();
+        expect(host.isVisible()).toBe(true);
+      } finally {
+        outside.remove();
+      }
+    });
 
     it("lets an outside mousedown through and cancels after the event", async () => {
       spyOn(document, "hasFocus").and.returnValue(true);
