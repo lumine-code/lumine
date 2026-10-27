@@ -62,6 +62,9 @@ function fixture({ maxBytes = 1600, events = () => 4, provisional = false } = {}
     invalidateAll: false,
     emitter: new Emitter(),
     schedule() {},
+    // These fixtures deliberately exercise eviction at a tiny fixed budget.
+    // Focus-dependent production allowances are tested separately below.
+    updateCacheAllowance() {},
   });
   const request = (ranges, options = {}, owner = {}) => {
     owners.push(owner);
@@ -86,6 +89,39 @@ function fixture({ maxBytes = 1600, events = () => 4, provisional = false } = {}
     },
   };
 }
+
+test("focus loss reclaims cold paint fragments within the inactive document allowance", () => {
+  const state = fixture();
+  try {
+    Mode.prototype.updateCacheAllowance.call(state.mode, true);
+    for (let row = 0; row < 16; row++) {
+      state.mode.cache.replace(
+        [
+          {
+            start: new Point(row, 0),
+            end: new Point(row + 1, 0),
+            scopes: [],
+            events: Array.from({ length: 8000 }, () => ({
+              position: new Point(row, 0),
+              open: [1],
+              close: [1],
+            })),
+          },
+        ],
+        state.stamp(),
+      );
+    }
+    assert.ok(state.mode.cache.estimatedBytes > 8 * 1024 * 1024);
+    Mode.prototype.updateCacheAllowance.call(state.mode, false);
+    assert.ok(state.mode.cache.estimatedBytes <= 8 * 1024 * 1024);
+    assert.equal(state.mode.cache.covers(new Point(15, 0), new Point(16, 0)), true);
+    Mode.prototype.updateCacheAllowance.call(state.mode, true);
+    assert.equal(state.mode.cache.maxBytes, 32 * 1024 * 1024);
+    assert.equal(state.mode.warmupPaused, false);
+  } finally {
+    state.dispose();
+  }
+});
 
 test("byte-budget eviction stops the two-prefetch-tile ping-pong below old event limits", async () => {
   const state = fixture();
