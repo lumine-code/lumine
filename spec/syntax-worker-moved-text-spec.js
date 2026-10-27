@@ -122,16 +122,14 @@ describe("Retained presentation for moved text", () => {
         const fresh = lumine.workspace.buildTextEditor();
         try {
           fresh.setText(editor.getText());
-          fresh
-            .getBuffer()
-            .setLanguageMode(
-              new InlineMode({
-                buffer: fresh.getBuffer(),
-                grammar,
-                grammars: lumine.grammars,
-                config: lumine.config,
-              }),
-            );
+          fresh.getBuffer().setLanguageMode(
+            new InlineMode({
+              buffer: fresh.getBuffer(),
+              grammar,
+              grammars: lumine.grammars,
+              config: lumine.config,
+            }),
+          );
           await fresh.whenGrammarSettled();
           for (let row = 0; row < editor.getLineCount(); row++)
             expect(editor.tokensForScreenRow(row)).toEqual(fresh.tokensForScreenRow(row));
