@@ -91,6 +91,10 @@ describe("Duplicated line presentation with worker syntax", () => {
         // No await: a fast worker cannot hide an uncolored intermediate frame.
         const immediate = paint(editor);
         expect(immediate).toEqual(scenario.order.map((row) => before[row]));
+        editor.undo();
+        expect(paint(editor)).toEqual(before);
+        editor.redo();
+        expect(paint(editor)).toEqual(immediate);
         await compareFresh();
         editor.undo();
         await compareFresh();

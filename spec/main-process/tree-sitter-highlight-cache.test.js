@@ -2,8 +2,53 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const Point = require("../../src/point");
 const HighlightCache = require("../../src/tree-sitter-highlight-cache");
+const { TextChangeMap } = require("../../src/text-model");
 
 const point = (row, column = 0) => new Point(row, column);
+
+test("repeated source transfers retain colors, reverse exactly and stay bounded", () => {
+  const cache = new HighlightCache();
+  cache.replace(
+    Array.from({ length: 3 }, (_, row) => ({
+      start: point(row),
+      end: point(row + 1),
+      scopes: [1],
+      events: [
+        { position: point(row), open: [row + 2], close: [] },
+        { position: point(row, 4), open: [], close: [row + 2] },
+      ],
+    })),
+    { revision: 0 },
+  );
+  const map = TextChangeMap.transfer(
+    TextChangeMap.fromChanges([
+      { oldStart: point(1), oldEnd: point(2), newStart: point(1), newEnd: point(1) },
+      { oldStart: point(0), oldEnd: point(0), newStart: point(0), newEnd: point(1) },
+    ]),
+    [{ start: point(1), end: point(2), target: point(0) }],
+  );
+  const scopesAt = (position) => {
+    const { scopes, iterator } = cache.read(position, position.translate([0, 1]), []);
+    while (iterator.getPosition().compare(position) <= 0) {
+      for (const id of iterator.getCloseScopeIds()) {
+        const index = scopes.lastIndexOf(id);
+        if (index >= 0) scopes.splice(index, 1);
+      }
+      scopes.push(...iterator.getOpenScopeIds());
+      if (!iterator.moveToSuccessor()) break;
+    }
+    return scopes;
+  };
+  for (let i = 0; i < 100; i++) {
+    cache.edit({ coordinateMap: map });
+    assert.deepEqual(scopesAt(point(0, 1)), [1, 3]);
+    assert.deepEqual(scopesAt(point(1, 1)), [1, 2]);
+    cache.edit({ coordinateMap: map.invert() });
+    assert.deepEqual(scopesAt(point(0, 1)), [1, 2]);
+    assert.deepEqual(scopesAt(point(1, 1)), [1, 3]);
+    assert(cache.eventCount <= 18, `${cache.eventCount} retained events after ${i} moves`);
+  }
+});
 
 test("recording preserves provisional quality and its limitation reason", () => {
   const cache = new HighlightCache();

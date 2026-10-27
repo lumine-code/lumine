@@ -89,6 +89,12 @@ class TextChangeMap {
   }
 
   static deserialize(data) {
+    if (data?.type === "transfer")
+      return TextChangeMap.transfer(
+        TextChangeMap.deserialize(data.base),
+        data.transfers,
+        data.inverted,
+      );
     if (data?.type === "chain" && Array.isArray(data.maps))
       return TextChangeMap.compose(data.maps.map((map) => TextChangeMap.deserialize(map)));
     if (data?.type === "edits" && Array.isArray(data.edits)) {
@@ -132,6 +138,44 @@ class TextChangeMap {
       newEnd: change.newEnd,
     }));
     return scalarMap(edits);
+  }
+
+  static transfer(base, transfers, inverted = false) {
+    transfers = Object.freeze(
+      transfers.map(({ start, end, target, copy = false }) => {
+        if (![start, end, target].every(validPoint) || compare(start, end) > 0)
+          throw new Error("Invalid text transfer coordinates");
+        return Object.freeze({
+          start: Object.freeze({ ...start }),
+          end: Object.freeze({ ...end }),
+          target: Object.freeze({ ...target }),
+          copy: Boolean(copy),
+        });
+      }),
+    );
+    return Object.freeze({
+      base,
+      transfers: inverted
+        ? Object.freeze(
+            transfers
+              .filter((item) => !item.copy)
+              .map(({ start, end, target }) =>
+                Object.freeze({
+                  start: target,
+                  end: Object.freeze(traverse(target, distance(end, start))),
+                  target: start,
+                }),
+              ),
+          )
+        : transfers,
+      mapPoint: (point, right) => base.mapPoint(point, right),
+      invert() {
+        return TextChangeMap.transfer(base.invert(), transfers, !inverted);
+      },
+      serializeSnapshot(deferred = true) {
+        return { type: "transfer", base: base.serializeSnapshot(deferred), transfers, inverted };
+      },
+    });
   }
 
   static compose(maps) {

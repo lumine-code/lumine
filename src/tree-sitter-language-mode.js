@@ -624,6 +624,18 @@ class TreeSitterLanguageMode {
     return count >= TreeSitterParser.bulkEditLimit;
   }
 
+  applyPresentationMap(coordinateMap) {
+    this.highlightCache.edit({ coordinateMap });
+    for (const { start, end, target } of coordinateMap.transfers) {
+      const source = new Range(start, end),
+        destination = Point.fromObject(target);
+      this.emitter.emit(
+        "did-change-highlighting",
+        new Range(destination, destination.traverse(source.getExtent())),
+      );
+    }
+  }
+
   // Large independent batches already force a fresh parser tree. Invalidate
   // presentation and injection routing once over their affected extent; the
   // document journal still receives every exact splice for revision tracking.

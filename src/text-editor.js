@@ -2812,8 +2812,18 @@ module.exports = class TextEditor {
             this.buffer.lineEndingForRow(linesRange.end.row - 2),
           );
         }
-        this.buffer.delete(linesRange);
-        this.buffer.insert([precedingRow, 0], lines);
+        const source = this.buffer.clipRange(linesRange);
+        this.buffer.transact(
+          {
+            textTransfers: [
+              { start: source.start, end: source.end, target: new Point(precedingRow, 0) },
+            ],
+          },
+          () => {
+            this.buffer.delete(linesRange);
+            this.buffer.insert([precedingRow, 0], lines);
+          },
+        );
 
         // Restore folds that existed before the lines were moved
         for (let rangeToRefold of rangesToRefold) {
@@ -2898,8 +2908,22 @@ module.exports = class TextEditor {
           lines = lines.replace(0, 0, "\n");
         }
 
-        this.buffer.insert([followingRow, 0], lines);
-        this.buffer.delete(linesRange);
+        const source = this.buffer.clipRange(linesRange);
+        this.buffer.transact(
+          {
+            textTransfers: [
+              {
+                start: source.start,
+                end: source.end,
+                target: new Point(startRow + insertDelta, 0),
+              },
+            ],
+          },
+          () => {
+            this.buffer.insert([followingRow, 0], lines);
+            this.buffer.delete(linesRange);
+          },
+        );
 
         // Restore folds that existed before the lines were moved
         for (let rangeToRefold of rangesToRefold) {
@@ -2941,8 +2965,21 @@ module.exports = class TextEditor {
           );
           const charTextToLeftOfSelection = this.buffer.getTextInRange(charToLeftOfSelection);
 
-          this.buffer.insert(selection.end, charTextToLeftOfSelection);
-          this.buffer.delete(charToLeftOfSelection);
+          this.buffer.transact(
+            {
+              textTransfers: [
+                {
+                  start: charToLeftOfSelection.start,
+                  end: charToLeftOfSelection.end,
+                  target: selection.end.translate(translationDelta),
+                },
+              ],
+            },
+            () => {
+              this.buffer.insert(selection.end, charTextToLeftOfSelection);
+              this.buffer.delete(charToLeftOfSelection);
+            },
+          );
           translatedRanges.push(selection.translate(translationDelta));
         }
 
@@ -2974,8 +3011,21 @@ module.exports = class TextEditor {
           );
           const charTextToRightOfSelection = this.buffer.getTextInRange(charToRightOfSelection);
 
-          this.buffer.delete(charToRightOfSelection);
-          this.buffer.insert(selection.start, charTextToRightOfSelection);
+          this.buffer.transact(
+            {
+              textTransfers: [
+                {
+                  start: charToRightOfSelection.start,
+                  end: charToRightOfSelection.end,
+                  target: selection.start,
+                },
+              ],
+            },
+            () => {
+              this.buffer.delete(charToRightOfSelection);
+              this.buffer.insert(selection.start, charTextToRightOfSelection);
+            },
+          );
           translatedRanges.push(selection.translate(translationDelta));
         }
 
@@ -3040,15 +3090,18 @@ module.exports = class TextEditor {
         let textToDuplicate = this.buffer.getTextSnapshotInRange(sourceRange);
         const appendNewline = endRow > this.getLastBufferRow();
         if (appendNewline) textToDuplicate = textToDuplicate.replace(0, 0, "\n");
-        const insertedRange = this.buffer.insert([endRow, 0], textToDuplicate);
-        // The source is unchanged by this insertion. Reuse its presentation
-        // while asynchronous syntax checks the copy in its new context.
-        this.buffer
-          .getLanguageMode()
-          .copyHighlighting?.(
-            sourceRange,
-            appendNewline ? insertedRange.start.traverse([1, 0]) : insertedRange.start,
-          );
+        const transfer = {
+          start: sourceRange.start,
+          end: sourceRange.end,
+          target: sourceRange.end,
+          copy: true,
+        };
+        this.buffer.transact({ textTransfers: [transfer] }, () => {
+          const insertedRange = this.buffer.insert([endRow, 0], textToDuplicate);
+          transfer.target = appendNewline
+            ? insertedRange.start.traverse([1, 0])
+            : insertedRange.start;
+        });
 
         const insertedRowCount = endRow - startRow;
 

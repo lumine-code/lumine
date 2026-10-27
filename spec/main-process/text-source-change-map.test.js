@@ -3,6 +3,115 @@ const assert = require("node:assert/strict");
 const { PieceTree, TextChangeMap, TextPatch } = require("../../src/text-model");
 const TextBuffer = require("../../src/text-buffer");
 
+test("transfer metadata composes, persists, reverses and distinguishes copied text", () => {
+  const base = TextChangeMap.fromChanges([
+    {
+      oldStart: { row: 0, column: 0 },
+      oldEnd: { row: 0, column: 0 },
+      newStart: { row: 0, column: 0 },
+      newEnd: { row: 1, column: 0 },
+    },
+  ]);
+  for (const copy of [false, true]) {
+    const transfers = [
+      {
+        start: { row: 1, column: 0 },
+        end: { row: 2, column: 0 },
+        target: { row: 0, column: 0 },
+        copy,
+      },
+    ];
+    const map = TextChangeMap.transfer(base, transfers);
+    const restored = TextChangeMap.deserialize(JSON.parse(JSON.stringify(map.serializeSnapshot())));
+    assert.deepEqual(restored.transfers, transfers);
+    assert.equal(restored.invert().transfers.length, copy ? 0 : 1);
+    assert.deepEqual(restored.invert().invert().transfers, transfers);
+    assert.deepEqual(
+      TextChangeMap.deserialize(
+        JSON.parse(JSON.stringify(map.invert().serializeSnapshot())),
+      ).invert().transfers,
+      transfers,
+    );
+  }
+});
+
+test("failed text transfers restore text without publishing a partial presentation map", () => {
+  const buffer = new TextBuffer("first\nsecond\n");
+  let maps = 0;
+  buffer.getLanguageMode().applyPresentationMap = () => maps++;
+  try {
+    assert.throws(
+      () =>
+        buffer.transact(
+          {
+            textTransfers: [
+              {
+                start: { row: 1, column: 0 },
+                end: { row: 2, column: 0 },
+                target: { row: 0, column: 0 },
+              },
+            ],
+          },
+          () => {
+            buffer.delete([
+              [1, 0],
+              [2, 0],
+            ]);
+            throw new Error("cancel move");
+          },
+        ),
+      /cancel move/,
+    );
+    assert.equal(buffer.getText(), "first\nsecond\n");
+    assert.equal(buffer.presentationTransfer, undefined);
+    assert.equal(maps, 0);
+  } finally {
+    buffer.destroy();
+  }
+});
+
+test("a presentation observer failure cannot hide committed source transfers from the parser journal", () => {
+  const buffer = new TextBuffer("first\nsecond\n");
+  let changes;
+  buffer.onDidApplyChanges((batch) => {
+    changes = batch.changes;
+  });
+  buffer.getLanguageMode().applyPresentationMap = () => {
+    throw new Error("paint observer");
+  };
+  try {
+    assert.throws(
+      () =>
+        buffer.transact(
+          {
+            textTransfers: [
+              {
+                start: { row: 1, column: 0 },
+                end: { row: 2, column: 0 },
+                target: { row: 0, column: 0 },
+              },
+            ],
+          },
+          () => {
+            buffer.delete([
+              [1, 0],
+              [2, 0],
+            ]);
+            buffer.insert([0, 0], "second\n");
+          },
+        ),
+      /paint observer/,
+    );
+    assert.equal(buffer.getText(), "second\nfirst\n");
+    assert.equal(changes.length, 2);
+    assert.equal(buffer.presentationTransfer, undefined);
+    buffer.undo();
+    assert.equal(buffer.getText(), "first\nsecond\n");
+  } finally {
+    buffer.destroy();
+  }
+});
+
 test("compressed change maps agree with sequential edits in both directions and affinities", () => {
   let seed = 12345;
   const random = (max) => {

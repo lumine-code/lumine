@@ -8,7 +8,7 @@ const path = require("path");
 const crypto = require("crypto");
 const TextStore = require("./text-store");
 const { INLINE_TEXT_LIMIT, serializeText, deserializeText } = require("./serialized-text");
-const { TextPatch, PieceTree } = require("./text-model");
+const { TextPatch, PieceTree, TextChangeMap } = require("./text-model");
 const {
   normalizeLineEndings: normalizeTextSourceLineEndings,
   rangeIsBlank,
@@ -1780,6 +1780,7 @@ class TextBuffer {
   }
 
   tryApplyIndependentEdits(edits, recordHistory, origin = "edit") {
+    if (this.presentationTransfer) return false;
     const requiresIntermediateText = () =>
       Object.values(this.markerLayers).some(
         (layer) =>
@@ -2071,6 +2072,7 @@ class TextBuffer {
       this.assertCanEdit(atomicToken);
       this.applyingEdit = true;
       const change = edit.getChange();
+      if (this.presentationTransfer) skipPresentation = true;
       const { oldStart, oldEnd, newStart, newEnd } = change;
       const oldRange = new Range(oldStart, oldEnd).freeze();
       const newRange = new Range(newStart, newEnd).freeze();
@@ -2085,6 +2087,7 @@ class TextBuffer {
       const patch = recordHistory ? edit.createPatch() : null;
       if (patch && coordinateMap) patch.coordinateMap = coordinateMap;
       edit.commit();
+      this.presentationTransfer?.changes.push(change);
       // The public text revision advances before any observer reads parser input.
       this._textRevision++;
       this.cachedText = null;
@@ -2621,6 +2624,17 @@ class TextBuffer {
       isBarrier: true,
     });
 
+    const previousTransfer = this.presentationTransfer;
+    // A move publishes ordinary source edits for markers and the parser, but
+    // retains paint until the whole synchronous transfer has completed. Keep
+    // its mapping in grouped history so undo/redo can move the paint too.
+    const transfer =
+      options?.textTransfers && !previousTransfer
+        ? { changes: [], mode: this.languageMode, transfers: options.textTransfers }
+        : null;
+    let coordinateMap;
+    if (transfer) this.presentationTransfer = transfer;
+
     try {
       this.transactCallDepth++;
       result = fn();
@@ -2630,12 +2644,19 @@ class TextBuffer {
         !this.atomicEditContext?.selectionFinalizersHandled
       )
         require("./text-buffer-marker-finalizers").run(this);
+      if (transfer?.changes.length) {
+        coordinateMap = TextChangeMap.transfer(
+          TextChangeMap.fromChanges(transfer.changes),
+          transfer.transfers,
+        );
+      }
     } catch (exception) {
       aborted = true;
       this.revertToCheckpoint(checkpointBefore, { deleteCheckpoint: true });
       if (!(exception instanceof TransactionAbortedError)) throw exception;
       return;
     } finally {
+      if (transfer) this.presentationTransfer = previousTransfer;
       this.transactCallDepth--;
       if (aborted && this.transactCallDepth === 0 && !this.isDestroyed()) {
         this.emitDidChangeTextAndMarkerEvents(null);
@@ -2648,12 +2669,18 @@ class TextBuffer {
       markers: endMarkerSnapshot,
       deleteCheckpoint: true,
       returnChanges: false,
+      coordinateMap,
     });
     if (this.getTextRevision() !== revisionBefore) {
       this.historyProvider.applyGroupingInterval(groupingInterval);
     }
     this.historyProvider.enforceUndoStackSizeLimit();
-    this.emitDidChangeTextAndMarkerEvents(endMarkerSnapshot);
+    try {
+      if (coordinateMap && transfer.mode === this.languageMode)
+        this.languageMode.applyPresentationMap?.(coordinateMap);
+    } finally {
+      this.emitDidChangeTextAndMarkerEvents(endMarkerSnapshot);
+    }
     return result;
   }
 

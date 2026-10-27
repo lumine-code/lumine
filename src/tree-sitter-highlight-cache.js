@@ -148,6 +148,18 @@ class HighlightCache {
   edit({ oldRange, newRange, coordinateMap, skipPresentation }, { extendScopes } = {}) {
     if (skipPresentation) return;
     if (coordinateMap) {
+      if (coordinateMap.maps) {
+        for (const map of coordinateMap.maps) this.edit({ coordinateMap: map });
+        return;
+      }
+      if (coordinateMap.transfers) {
+        const snapshots = coordinateMap.transfers.flatMap(({ start, end, target }) =>
+          this.captureRange(copy(start), copy(end), copy(target), []),
+        );
+        this.edit({ coordinateMap: coordinateMap.base });
+        this.replace(snapshots, null, () => true);
+        return;
+      }
       this.rebase();
       this.sequence++;
       this.orderedSnapshots = null;
@@ -160,6 +172,11 @@ class HighlightCache {
         snapshot.sequence = this.sequence;
         this.dropCheckpoints(snapshot);
       }
+      // Deleted fragments have no coverage. Keeping their collapsed events
+      // would retain a new empty snapshot for every distinct source move.
+      this.setSnapshots(
+        this.snapshots.filter((snapshot) => compare(snapshot.start, snapshot.end) < 0),
+      );
       return;
     }
     const edit = {
@@ -315,7 +332,13 @@ class HighlightCache {
     snapshot.rowOffset = 0;
   }
   copyRange(start, end, target, fallback, keep) {
-    if (compare(start, end) >= 0) return false;
+    const snapshots = this.captureRange(start, end, target, fallback);
+    if (!snapshots.length) return false;
+    this.replace(snapshots, null, keep);
+    return true;
+  }
+  captureRange(start, end, target, fallback) {
+    if (compare(start, end) >= 0) return [];
     // Folded/offscreen source text may only be partially cached. Copy its
     // prepared fragments without claiming coverage for the gaps between them.
     const ranges = [];
@@ -328,7 +351,7 @@ class HighlightCache {
         if (compare(last, previous[1]) > 0) previous[1] = last;
       } else ranges.push([first, last]);
     }
-    if (!ranges.length) return false;
+    if (!ranges.length) return [];
     const translate = (position) => target.traverse(position.traversalFrom(start));
     const snapshots = ranges.map(([first, last]) => {
       const { scopes, iterator } = this.read(first, last, fallback);
@@ -345,8 +368,7 @@ class HighlightCache {
     });
     // This is retained paint, never evidence of current syntax. A worker
     // result must replace it even when the copied text has not changed.
-    this.replace(snapshots, null, keep);
-    return true;
+    return snapshots;
   }
   replace(snapshots, stamp, keep = () => false) {
     this.rebase();

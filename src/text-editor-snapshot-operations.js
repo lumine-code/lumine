@@ -34,10 +34,15 @@ function transformSelections(editor, kind, options = {}) {
         if (kind === "reverse" && range.isEmpty()) {
           // Preserve the existing adjacent-character operation for cursors.
           selection.selectRight();
+          const moved = selection.getBufferRange();
           const text = selection.getText();
-          selection.delete(options);
-          selection.cursor.moveLeft();
-          selection.insertText(text, options);
+          const transfer = { start: moved.start, end: moved.end, target: moved.start };
+          buffer.transact({ textTransfers: [transfer] }, () => {
+            selection.delete(options);
+            selection.cursor.moveLeft();
+            transfer.target = selection.cursor.getBufferPosition();
+            selection.insertText(text, options);
+          });
         } else if (source.length && transformed !== source) {
           const inserted = buffer.setTextInRange(range, transformed, {
             normalizeLineEndings: false,

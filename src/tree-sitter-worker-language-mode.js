@@ -349,6 +349,18 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     }
   }
 
+  applyPresentationMap(coordinateMap) {
+    this.cache.edit({ coordinateMap });
+    for (const { start, end, target } of coordinateMap.transfers) {
+      const source = new Range(start, end),
+        destination = Point.fromObject(target);
+      this.emitter.emit(
+        "did-change-highlighting",
+        new Range(destination, destination.traverse(source.getExtent())),
+      );
+    }
+  }
+
   bufferDidChangeBatch(change, count, changes) {
     if (!changes) return this.bufferDidChange(change);
     for (const edit of changes) this.bufferDidChange(edit);

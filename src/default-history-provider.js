@@ -109,6 +109,7 @@ class DefaultHistoryProvider {
 
     if (checkpointIndex != null) {
       const composedPatches = Patch.compose(patchesSinceCheckpoint);
+      if (options?.coordinateMap) composedPatches.coordinateMap = options.coordinateMap;
       if (patchesSinceCheckpoint.length > 0) {
         this.undoStack.splice(checkpointIndex + 1);
         this.undoStack.push(
