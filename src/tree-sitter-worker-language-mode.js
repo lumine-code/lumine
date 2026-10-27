@@ -46,6 +46,11 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.defaultOwner = {};
     this.requestHighlighting(this.defaultOwner, [[0, 63]], false);
     this.session = service.acquire(buffer, grammar, (event) => this.receive(event));
+    this.focusSubscription = globalThis.lumine?.workspace?.onDidChangeActiveTextEditor?.(
+      (editor) => {
+        this.updateCacheAllowance(editor?.getBuffer() === this.buffer);
+      },
+    );
     this.initializeSyntax();
   }
 
@@ -465,6 +470,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     { priority = 1, prefetch = true, background = false } = {},
   ) {
     if (this.destroyed) return;
+    this.updateCacheAllowance();
     if (owner !== this.defaultOwner) {
       const initial = this.requestsByOwner.get(this.defaultOwner);
       if (initial) this.requests.delete(initial);
@@ -565,6 +571,17 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       for (const view of group) ranges.push(...view.ranges.slice(view.visibleCount));
     }
     return [...new Map(ranges.map((range) => [range.join(":"), range])).values()];
+  }
+
+  updateCacheAllowance(active = this.service.focusedBuffer?.deref() === this.buffer) {
+    const maxBytes = (active ? 32 : 8) * 1024 * 1024;
+    if (this.cache.maxBytes === maxBytes) return;
+    this.cache.maxBytes = maxBytes;
+    this.cache.maxCheckpointBytes = Math.floor(maxBytes / 4);
+    this.cache.maxEvents = active ? 512000 : 128000;
+    this.warmupPaused = false;
+    if (!active) this.cache.evictColdSnapshots();
+    else if (this.session) this.schedule();
   }
 
   backgroundRange(stamp) {
@@ -990,6 +1007,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.focusSubscription?.dispose();
     clearTimeout(this.timer);
     this.refreshController?.abort();
     this.service.release(this.session);

@@ -344,6 +344,25 @@ class TextEditorElement extends HTMLElement {
     return viewport ? top - component.getScrollTop() : top;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the vertical pixel offset of a screen row's text, after its block decorations.
+   * Uses measured vertical geometry without requesting horizontal measurement or rendering.
+   * @param {Number} row - A non-negative screen-row index or end boundary.
+   * @param {Object} [options]
+   * @param {Boolean} [options.viewport=false] - Subtract the logical vertical scroll offset.
+   * @returns {Number} Vertical pixel offset after this row's blocks.
+   */
+  pixelPositionAfterBlocksForScreenRow(row, { viewport = false } = {}) {
+    if (!Number.isSafeInteger(row) || row < 0)
+      throw new RangeError("A screen row must be a non-negative integer");
+    const component = this.getComponent();
+    const top = component.pixelPositionAfterBlocksForRow(row);
+    return viewport ? top - component.getScrollTop() : top;
+  }
+
   screenPositionForPixelPosition(pixelPosition) {
     return this.getComponent().screenPositionForPixelPosition(pixelPosition);
   }

@@ -4,6 +4,8 @@ const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
 const { PieceTree } = require("./text-model");
+const { constants: bufferConstants } = require("node:buffer");
+const documentCostPolicy = require("./document-cost-policy");
 const { Point, Range } = TextBuffer;
 const DecorationManager = require("./decoration-manager");
 const Cursor = require("./cursor");
@@ -6170,10 +6172,7 @@ module.exports = class TextEditor {
   usesBoundedAutoSize(size = this.buffer) {
     return (
       (this.mini || this.getAutoHeight() || this.getAutoWidth()) &&
-      require("./document-cost-policy").shouldUseLargeDocumentView(
-        size,
-        this.largeDocumentCostActive,
-      )
+      documentCostPolicy.shouldUseLargeDocumentView(size, this.largeDocumentCostActive)
     );
   }
 
@@ -6181,16 +6180,13 @@ module.exports = class TextEditor {
     if (this.requiresUnwrappedSource(size)) return true;
     return (
       (this.largeFileOptimizations || this.usesBoundedAutoSize(size)) &&
-      require("./document-cost-policy").shouldUseLargeDocumentView(
-        size,
-        this.largeDocumentCostActive,
-      )
+      documentCostPolicy.shouldUseLargeDocumentView(size, this.largeDocumentCostActive)
     );
   }
 
   requiresUnwrappedSource(size = this.buffer) {
     const span = size.maxLineSpan ?? size.getTextSnapshot?.().maxLineSpan;
-    return span > require("node:buffer").constants.MAX_STRING_LENGTH;
+    return span > bufferConstants.MAX_STRING_LENGTH;
   }
 
   /**

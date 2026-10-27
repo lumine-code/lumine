@@ -67,6 +67,26 @@ module.exports = class DummyScrollbarComponent {
     this.flushScrollPosition();
   }
 
+  // A native scroll write reads back Blink's quantized position. Do it before
+  // replacing token DOM when the measured scrollbar geometry is unchanged.
+  // Resizes and visibility transitions keep the ordinary post-layout path.
+  updatePositionBeforeRender(props) {
+    for (const key of [
+      "orientation",
+      "scrollWidth",
+      "scrollHeight",
+      "viewportExtent",
+      "verticalScrollbarWidth",
+      "horizontalScrollbarHeight",
+      "canScroll",
+      "forceScrollbarVisible",
+    ])
+      if (props[key] !== this.props[key]) return;
+    this.updateScrollPosition(
+      props.orientation === "horizontal" ? props.scrollLeft : props.scrollTop,
+    );
+  }
+
   destroy() {
     this.element.removeEventListener("scroll", this.didScroll);
     this.element.removeEventListener("mousedown", this.didMouseDown);

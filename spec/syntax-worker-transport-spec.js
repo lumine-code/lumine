@@ -6,6 +6,58 @@ const path = require("node:path");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 
 describe("Syntax worker transport", () => {
+  it("reclaims the active document's larger paint budget on focus loss", () => {
+    const mode = {
+      cache: { maxBytes: 8 * 1024 * 1024, evictColdSnapshots: jasmine.createSpy("evict") },
+      session: {},
+      schedule: jasmine.createSpy("schedule"),
+      warmupPaused: true,
+    };
+    WorkerMode.prototype.updateCacheAllowance.call(mode, true);
+    expect(mode.cache.maxBytes).toBe(32 * 1024 * 1024);
+    expect(mode.cache.maxEvents).toBe(512000);
+    expect(mode.warmupPaused).toBeFalse();
+    expect(mode.schedule).toHaveBeenCalledTimes(1);
+    WorkerMode.prototype.updateCacheAllowance.call(mode, true);
+    expect(mode.schedule).toHaveBeenCalledTimes(1);
+    WorkerMode.prototype.updateCacheAllowance.call(mode, false);
+    expect(mode.cache.maxBytes).toBe(8 * 1024 * 1024);
+    expect(mode.cache.maxCheckpointBytes).toBe(2 * 1024 * 1024);
+    expect(mode.cache.maxEvents).toBe(128000);
+    expect(mode.cache.evictColdSnapshots).toHaveBeenCalledTimes(1);
+  });
+
+  it("paints cached native thumb destinations immediately and defers missing colors", () => {
+    const Component = require("../src/text-editor-component");
+    let ready = true;
+    const component = {
+      props: {
+        model: {
+          getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: true }) }),
+          displayLayer: { prepareHighlightingForScreenRows: () => ready },
+        },
+      },
+      setScrollTop: () => true,
+      beginScrollHighlighting: jasmine.createSpy("prepare"),
+      getRenderedStartRow: () => 100,
+      getRenderedEndRow: () => 140,
+      updateSync: jasmine.createSpy("paint"),
+      scheduleUpdate: jasmine.createSpy("schedule"),
+    };
+    const scroll = () =>
+      Component.prototype.didScrollDummyScrollbar.call(component, {
+        orientation: "vertical",
+        position: 2000,
+      });
+    scroll();
+    expect(component.updateSync).toHaveBeenCalledTimes(1);
+    expect(component.scheduleUpdate).not.toHaveBeenCalled();
+    ready = false;
+    scroll();
+    expect(component.updateSync).toHaveBeenCalledTimes(1);
+    expect(component.scheduleUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it("prepares a bounded initial window and releases the wait on paint or timeout", async () => {
     jasmine.useRealClock();
     const buffer = new TextBuffer("const value = 1;\n".repeat(300));
@@ -113,6 +165,7 @@ describe("Syntax worker transport", () => {
       requests: new Set(),
       requestsByOwner: new WeakMap(),
       defaultOwner: {},
+      updateCacheAllowance() {},
     };
     const request = (...args) => WorkerMode.prototype.requestHighlighting.call(mode, ...args);
     const stamp = { revision: 0, generation: 0, presentation: 0 };
@@ -256,7 +309,10 @@ describe("Syntax worker transport", () => {
     const Component = require("../src/text-editor-component");
     const calls = [];
     const displayLayer = {
-      prepareHighlightingForScreenRows: (...args) => calls.push(["prepare", ...args]),
+      prepareHighlightingForScreenRows: (...args) => {
+        calls.push(["prepare", ...args]);
+        return false;
+      },
     };
     const component = {
       props: {
@@ -305,6 +361,7 @@ describe("Syntax worker transport", () => {
     const mode = {
       buffer: { getLastRow: () => 100000, clipPosition: TextBuffer.Point.fromObject },
       cache: { covers: () => false },
+      updateCacheAllowance() {},
       requests: new Set(),
       requestsByOwner: new WeakMap(),
       defaultOwner: {},
@@ -327,6 +384,7 @@ describe("Syntax worker transport", () => {
     const mode = {
       buffer: { getLastRow: () => 20000, clipPosition: TextBuffer.Point.fromObject },
       cache: { covers: () => false },
+      updateCacheAllowance() {},
       requests: new Set(),
       requestsByOwner: new WeakMap(),
       defaultOwner: {},

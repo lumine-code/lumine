@@ -17,6 +17,30 @@ describe("DummyScrollbarComponent", () => {
     { orientation: "horizontal", positionProperty: "scrollLeft" },
   ]) {
     describe(`with a ${orientation} scrollbar`, () => {
+      it("writes a stable position before token DOM changes without a second native write", () => {
+        const component = buildComponent(orientation, () => {});
+        emulateNativeQuantization(component.element, positionProperty);
+        component.flushScrollPosition();
+        const write = spyOnProperty(component.element, positionProperty, "set").and.callThrough();
+        const props = { ...component.props, [positionProperty]: 200 };
+        component.updatePositionBeforeRender(props);
+        expect(write).toHaveBeenCalledTimes(1);
+        component.update(props);
+        expect(write).toHaveBeenCalledTimes(1);
+      });
+
+      it("defers a position write until changed scrollbar geometry has been applied", () => {
+        const component = buildComponent(orientation, () => {});
+        emulateNativeQuantization(component.element, positionProperty);
+        component.flushScrollPosition();
+        const write = spyOnProperty(component.element, positionProperty, "set").and.callThrough();
+        const props = { ...component.props, [positionProperty]: 200, viewportExtent: 500 };
+        component.updatePositionBeforeRender(props);
+        expect(write).not.toHaveBeenCalled();
+        component.update(props);
+        expect(write).toHaveBeenCalledTimes(1);
+      });
+
       it("preserves selection when an overlay scrollbar receives a mouse down", () => {
         const didMouseDown = jasmine.createSpy("didMouseDown");
         const component = buildComponent(orientation, () => {}, didMouseDown);

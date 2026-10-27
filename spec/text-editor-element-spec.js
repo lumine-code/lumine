@@ -28,11 +28,16 @@ describe("TextEditorElement", () => {
     component.lineTopIndex.insertBlock("after", 2, 10, true);
     spyOn(component, "getScrollTop").and.returnValue(85);
     spyOn(element.getModel(), "getScreenLineCount").and.throwError("No full layout scan");
+    spyOn(component, "updateSync").and.throwError("No recursive render");
     expect(element.pixelPositionBeforeBlocksForScreenRow(2)).toBe(40);
+    expect(element.pixelPositionAfterBlocksForScreenRow(2)).toBe(70);
+    expect(element.pixelPositionAfterBlocksForScreenRow(2, { viewport: true })).toBe(-15);
     expect(element.pixelPositionBeforeBlocksForScreenRow(3, { viewport: true })).toBe(15);
     component.getScrollTop.and.returnValue(250608700);
     expect(element.pixelPositionBeforeBlocksForScreenRow(12530436, { viewport: true })).toBe(60);
     expect(() => element.pixelPositionBeforeBlocksForScreenRow(Infinity)).toThrowError(RangeError);
+    for (const row of [-1, 0.5, Infinity])
+      expect(() => element.pixelPositionAfterBlocksForScreenRow(row)).toThrowError(RangeError);
     element.getModel().destroy();
   });
 

@@ -1002,6 +1002,7 @@ module.exports = class TextEditorComponent {
   renderSync(updateMode = UPDATE_MODE_NORMAL) {
     this.renderOriginTop = originForOffset(this.getScrollTop());
     this.renderOriginLeft = originForOffset(this.getScrollLeft());
+    this.syncDummyScrollbars(true);
     this.updateRootElement();
     this.updateClientContainerElement();
     this.syncGutterContainer(updateMode);
@@ -1456,7 +1457,7 @@ module.exports = class TextEditorComponent {
   // same protocol the previous virtual-DOM diff performed via a null render),
   // and updateSyncAfterMeasuringContent flushes scroll positions afterwards
   // because they cannot be assigned before the elements are attached.
-  syncDummyScrollbars() {
+  syncDummyScrollbars(positionsOnly = false) {
     if (this.shouldRenderDummyScrollbars && !this.props.model.isMini()) {
       let scrollHeight, scrollTop, horizontalScrollbarHeight;
       let scrollWidth, scrollLeft, verticalScrollbarWidth, forceScrollbarVisible;
@@ -1499,6 +1500,12 @@ module.exports = class TextEditorComponent {
         forceScrollbarVisible,
       };
 
+      if (positionsOnly) {
+        this.refs.verticalScrollbar?.updatePositionBeforeRender(verticalScrollbarProps);
+        this.refs.horizontalScrollbar?.updatePositionBeforeRender(horizontalScrollbarProps);
+        return;
+      }
+
       if (this.refs.verticalScrollbar) {
         this.refs.verticalScrollbar.update(verticalScrollbarProps);
         this.refs.horizontalScrollbar.update(horizontalScrollbarProps);
@@ -1527,7 +1534,7 @@ module.exports = class TextEditorComponent {
 
       this.refs.scrollbarCorner.style.visibility =
         canScrollHorizontally && canScrollVertically ? "" : "hidden";
-    } else if (this.refs.verticalScrollbar) {
+    } else if (!positionsOnly && this.refs.verticalScrollbar) {
       this.refs.verticalScrollbar.destroy();
       this.refs.horizontalScrollbar.destroy();
       this.refs.scrollbarCorner.remove();
@@ -3191,16 +3198,17 @@ module.exports = class TextEditorComponent {
     }
     if (scrollPositionChanged) {
       // Begin asynchronous preparation from the input event, before the next
-      // frame builds its lines. Coalesce native thumb events just like wheel
-      // events instead of painting plain text synchronously on every event.
+      // frame builds its lines. Cached destinations paint in this native scroll
+      // event; missing colors use the bounded asynchronous preparation path.
       if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax) {
         this.beginScrollHighlighting();
-        this.props.model.displayLayer.prepareHighlightingForScreenRows(
+        const ready = this.props.model.displayLayer.prepareHighlightingForScreenRows(
           this.getRenderedStartRow(),
           this.getRenderedEndRow(),
           this.props.model.displayLayer,
         );
-        this.scheduleUpdate();
+        if (ready) this.updateSync();
+        else this.scheduleUpdate();
       } else this.updateSync();
     }
   }
