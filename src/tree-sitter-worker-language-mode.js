@@ -940,6 +940,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return this.builtin("suggestedIndentForPastedRanges", [ranges, tabLength], options);
   }
 
+  scanPreparedIndentation(changes, ranges, tabLength, options) {
+    return this.service.scanPreparedIndentation(this.session, changes, ranges, tabLength, options);
+  }
+
   async getFoldRangeForRow(...args) {
     const range = await this.builtin("getFoldRangeForRow", args);
     return range && Range.fromObject(range);

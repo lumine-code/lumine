@@ -206,6 +206,7 @@ class SyntaxWorkerHost {
   }
 
   abortJobs(session) {
+    for (const id of session.forks ?? []) this.closeSession(id);
     session.generation++;
     session.metadataDirty = true;
     session.tabStyleReady = false;
@@ -232,7 +233,12 @@ class SyntaxWorkerHost {
         if (this.sessions.get(session.id) === session && session.mode === mode)
           this.failSession(session, error);
       },
+      initialSyntaxTree: session.initialSyntaxTree,
+      initialSyntaxChanges: session.initialSyntaxChanges,
     });
+    session.initialSyntaxTree = null;
+    session.initialSyntaxChanges = null;
+    session.captureInitialChanges?.dispose();
     // The renderer owns presentation windows. Semantic work must not also
     // prepare an unused default viewport at the beginning of every document.
     mode.requestHighlighting(this, []);
@@ -309,6 +315,9 @@ class SyntaxWorkerHost {
     const session = this.sessions.get(id);
     if (!session) return;
     this.sessions.delete(id);
+    this.sessions.get(session.parent)?.forks?.delete(id);
+    session.captureInitialChanges?.dispose();
+    session.rootRanges?.dispose();
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
     this.previews.release(session);
     this.invalidate(session);
@@ -369,6 +378,7 @@ class SyntaxWorkerHost {
     if (!session) throw aborted("Syntax document was closed");
     const { buffer } = session;
     if (operation === "edit-begin") {
+      for (const id of session.forks ?? []) this.closeSession(id);
       if (
         session.pendingEdit ||
         !Number.isSafeInteger(data.revision) ||
@@ -428,7 +438,7 @@ class SyntaxWorkerHost {
           oldEndIndex: data.oldEndIndex,
           length: data.length,
           units: 0,
-          chunks: [],
+          source: new (require("./text-model").PieceTree)(),
         };
         return;
       }
@@ -440,7 +450,11 @@ class SyntaxWorkerHost {
           edit.text.units + data.text.length > edit.text.length
         )
           throw new Error("Invalid syntax text packet");
-        edit.text.chunks.push(data.text);
+        edit.text.source = edit.text.source.replace(
+          edit.text.source.length,
+          edit.text.source.length,
+          data.text,
+        );
         edit.text.units += data.text.length;
         return;
       }
@@ -450,7 +464,7 @@ class SyntaxWorkerHost {
         edit.changes.push({
           startIndex: edit.text.startIndex,
           oldEndIndex: edit.text.oldEndIndex,
-          text: edit.text.chunks.join(""),
+          text: edit.text.source,
         });
         edit.text = null;
         return;
@@ -499,6 +513,7 @@ class SyntaxWorkerHost {
       return;
     }
     if (operation === "edit") {
+      for (const id of session.forks ?? []) this.closeSession(id);
       if (session.pendingEdit) throw new Error("Syntax edit transaction is already open");
       if (!Number.isSafeInteger(data.revision) || data.revision < session.revision)
         throw new Error("Invalid syntax revision");
@@ -605,7 +620,77 @@ class SyntaxWorkerHost {
         throw aborted("Syntax analysis is unavailable");
       }
       let value;
-      if (operation === "settle") {
+      if (operation === "fork") {
+        if (!Number.isSafeInteger(data.target) || this.sessions.has(data.target))
+          throw new Error("Invalid speculative syntax session");
+        const copy = new TextBuffer({ text: buffer.getTextSnapshot() });
+        copy.getPath = () => buffer.getPath();
+        const fork = {
+          id: data.target,
+          parent: session.id,
+          buffer: copy,
+          scopeName: session.scopeName,
+          revision: 0,
+          generation: 0,
+          initialized: false,
+          jobs: new Set(),
+          initialSyntaxChanges: [],
+        };
+        this.sessions.set(fork.id, fork);
+        (session.forks ??= new Set()).add(fork.id);
+        try {
+          runtime.registerBuffer(copy, () => this.contextFor(fork));
+          const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
+          if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);
+          const tree = mode.rootLanguageLayer?.backgroundTree;
+          if (tree?.revision === buffer.getTextRevision())
+            fork.initialSyntaxTree = require("./tree-sitter-parser").copySnapshot(
+              tree,
+              copy.getTextRevision(),
+            );
+          fork.captureInitialChanges = copy.onDidApplyChanges((batch) =>
+            fork.initialSyntaxChanges.push(batch),
+          );
+          value = { id: fork.id };
+        } catch (error) {
+          this.closeSession(fork.id);
+          throw error;
+        }
+      } else if (operation === "prepared-indent") {
+        const { IndentationLevels } = require("./tree-sitter-indentation-stream");
+        const history = new IndentationLevels();
+        let previousEnd = -1,
+          count = 0;
+        for (const [start, end] of data.ranges) {
+          if (start <= previousEnd) throw new RangeError("Overlapping paste indentation ranges");
+          previousEnd = end;
+          for await (const batch of mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
+            ...data.options,
+            isPastedText: data.options?.isPastedText !== false,
+            indentationLevels: history,
+            signal: combined,
+          })) {
+            current();
+            for (const [row, level] of batch) {
+              if (level !== null)
+                history.set(
+                  row,
+                  data.options?.preserveLeadingWhitespace
+                    ? mode.indentResolver.indentLevelForBufferRow(
+                        row,
+                        data.tabLength,
+                        data.options.insertedIndentLengths?.get(row) ?? 0,
+                        Math.floor(level * data.tabLength),
+                      )
+                    : level,
+                );
+              count++;
+            }
+            await emit(batch);
+          }
+        }
+        value = { count };
+      } else if (operation === "settle") {
         const error = transaction.parseError ?? mode.lastTransactionParseError;
         value = {
           ...this.metadata(session),

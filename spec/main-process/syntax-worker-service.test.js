@@ -388,3 +388,77 @@ test("source text transfer waits for each packet acknowledgement before sending 
     buffer.destroy();
   }
 });
+
+test("prepared paste transports only bounded new text against the existing worker mirror", async () => {
+  let source = new PieceTree("x\n".repeat(32768));
+  while (source.length <= require("node:buffer").constants.MAX_STRING_LENGTH)
+    source = source.replace(source.length, source.length, source);
+  const buffer = new TextBuffer({ text: source });
+  const session = { id: 1, buffer, epoch: 1, controller: new AbortController() };
+  const operations = [],
+    controls = [];
+  const client = {
+    async request(operation, data, options) {
+      operations.push({ operation, data });
+      if (operation === "prepared-indent") {
+        await options.onChunk([
+          [0, 1],
+          [1, 1],
+        ]);
+        return { value: { count: 2 } };
+      }
+    },
+    send: (message) => controls.push(message),
+  };
+  const service = Object.assign(Object.create(Service.prototype), {
+    client,
+    nextSession: 1,
+    syntaxEpoch: 1,
+    request: async (_session, operation, data) => {
+      operations.push({ operation, data });
+      return { id: data.target };
+    },
+  });
+  const text = new PieceTree("new\n".repeat(40000));
+  try {
+    const packets = [];
+    for await (const packet of service.scanPreparedIndentation(
+      session,
+      [
+        {
+          oldRange: new TextBuffer.Range([0, 0], [0, 0]),
+          startIndex: 0,
+          oldEndIndex: 0,
+          newTextSource: text,
+        },
+      ],
+      [[0, 1]],
+      2,
+      {},
+    ))
+      packets.push(packet);
+    assert.deepEqual(packets, [
+      [
+        [0, 1],
+        [1, 1],
+      ],
+    ]);
+    assert.equal(
+      operations.some((x) => x.operation === "open" || x.operation === "append"),
+      false,
+    );
+    const uploaded = operations
+      .filter((x) => x.operation === "edit-text-chunk")
+      .map((x) => x.data.text);
+    assert.ok(uploaded.every((chunk) => chunk.length <= 65536));
+    assert.equal(
+      uploaded.reduce((sum, chunk) => sum + chunk.length, 0),
+      text.length,
+    );
+    assert.equal(buffer.getTextSnapshot(), source);
+    assert.equal(controls.at(-1).operation, "release");
+    assert.equal(controls.at(-1).session, 2);
+  } finally {
+    buffer.destroy();
+  }
+});

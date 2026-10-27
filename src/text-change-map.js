@@ -221,6 +221,7 @@ function scalarMap(edits) {
     ),
   );
   return Object.freeze({
+    edits,
     serializeSnapshot() {
       return { type: "edits", edits };
     },

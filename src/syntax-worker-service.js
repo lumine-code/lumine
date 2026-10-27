@@ -561,6 +561,71 @@ class SyntaxWorkerService {
     );
   }
 
+  scanPreparedIndentation(session, changes, ranges, tabLength, options = {}) {
+    return require("./syntax-result-stream")(async (onChunk, signal) => {
+      const id = ++this.nextSession;
+      const revision = session.buffer.getTextRevision();
+      const epoch = session.epoch,
+        syntaxEpoch = this.syntaxEpoch;
+      let client;
+      const check = () => {
+        signal.throwIfAborted();
+        if (
+          session.closed ||
+          session.failure ||
+          session.buffer.getTextRevision() !== revision ||
+          session.epoch !== epoch ||
+          this.syntaxEpoch !== syntaxEpoch ||
+          (client && client !== this.client) ||
+          options.isCurrent?.() === false
+        )
+          throw Client.abortError("Prepared paste is obsolete");
+      };
+      try {
+        await this.request(session, "fork", { target: id }, { signal, revision });
+        client = this.client;
+        check();
+        await this.sendEdits(
+          client,
+          { id, controller: { signal } },
+          {
+            beforeRevision: 0,
+            afterRevision: 1,
+            changes,
+          },
+        );
+        check();
+        await client.request("initialize", { session: id }, { signal });
+        check();
+        const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
+        const result = await client.request(
+          "prepared-indent",
+          {
+            session: id,
+            revision: 1,
+            ranges,
+            tabLength,
+            options: parameters,
+          },
+          {
+            signal,
+            onChunk: async (batch) => {
+              check();
+              await onChunk(batch);
+              check();
+            },
+          },
+        );
+        check();
+        return result.value;
+      } finally {
+        // The id is known before requesting the fork, including cancellation
+        // after the worker created it but before its reply was delivered.
+        (client ?? this.client)?.send({ type: "control", operation: "release", session: id });
+      }
+    }, options);
+  }
+
   async requestCurrent(
     session,
     operation,

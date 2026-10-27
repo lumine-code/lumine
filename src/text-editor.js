@@ -724,6 +724,7 @@ module.exports = class TextEditor {
 
   updateSoftTabs(value, finish) {
     if (value !== this.softTabs) {
+      require("./text-editor-prepared-indent").cancel(this);
       this.softTabs = value;
     }
     if (finish) this.finishUpdate();
@@ -738,6 +739,7 @@ module.exports = class TextEditor {
 
   updateTabLength(value, finish, displayLayerParams = {}) {
     if (value > 0 && value !== this.displayLayer.tabLength) {
+      require("./text-editor-prepared-indent").cancel(this);
       displayLayerParams.tabLength = value;
     }
     if (finish) this.finishUpdate(displayLayerParams);
@@ -1369,12 +1371,14 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Calls your `callback` after text has been inserted.
-   * Called once per insertion, without waiting for asynchronous indentation.
-   * Later indentation corrections are buffer changes, not new insertions.
+   * Called once per published insertion. Worker-backed multiline paste prepares
+   * its final indentation first; cancelled preparation emits no insertion.
+   * Typing-related indentation corrections are later buffer changes, not new insertions.
    *
    * @param {Function} callback
    * @param {Object} callback.event - event `Object`
-   * @param {String} callback.event.text - inserted text
+   * @param {String} callback.event.text - Inserted text; prepared source events materialize this lazily.
+   * @param {Object} [callback.event.textSource] - Immutable inserted source on prepared source events.
    * @param {Range} callback.event.range - Range at notification time; later edits may move it.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
@@ -2753,13 +2757,17 @@ module.exports = class TextEditor {
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveLineUp(options = {}) {
     if (!this.ensureWritable("moveLineUp", options)) return;
+    if (this.shouldAutoIndent() && this.buffer.getLanguageMode().scanPreparedIndentation)
+      return this.trackIndentation(
+        require("./text-editor-prepared-indent").moveLines(this, "moveLineUp", options),
+      );
 
     const selections = this.getSelectedBufferRanges().sort((a, b) => a.compare(b));
 
     if (selections[0].start.row === 0) return;
     if (
       selections[selections.length - 1].start.row === this.getLastBufferRow() &&
-      this.buffer.getLastLine() === ""
+      this.buffer.lineLengthForRow(this.buffer.getLastRow()) === 0
     )
       return;
 
@@ -2851,6 +2859,10 @@ module.exports = class TextEditor {
   //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveLineDown(options = {}) {
     if (!this.ensureWritable("moveLineDown", options)) return;
+    if (this.shouldAutoIndent() && this.buffer.getLanguageMode().scanPreparedIndentation)
+      return this.trackIndentation(
+        require("./text-editor-prepared-indent").moveLines(this, "moveLineDown", options),
+      );
 
     const selections = this.getSelectedBufferRanges();
     selections.sort((a, b) => b.compare(a));
@@ -6022,8 +6034,7 @@ module.exports = class TextEditor {
    * @param {Boolean} softTabs - A `Boolean`
    */
   setSoftTabs(softTabs) {
-    this.softTabs = softTabs;
-    this.updateSoftTabs(this.softTabs, true);
+    this.updateSoftTabs(softTabs, true);
   }
 
   // Returns a `Boolean` indicating whether atomic soft tabs are enabled for this editor.
@@ -6383,13 +6394,17 @@ module.exports = class TextEditor {
       this,
       newLevel,
     );
-    return this.buffer.setTextInRange(
-      [
-        [bufferRow, 0],
-        [bufferRow, endColumn],
-      ],
-      newIndentString,
-    );
+    const range = this.buffer.clipRange([
+      [bufferRow, 0],
+      [bufferRow, endColumn],
+    ]);
+    const current = this.buffer.getTextSnapshotInRange(range);
+    const replacement =
+      typeof newIndentString === "string" ? new PieceTree(newIndentString) : newIndentString;
+    // Compare the actual replaced prefix: preserveLeadingWhitespace inserts at
+    // an empty range, whereas an explicit setter may normalize tabs to spaces.
+    if (current.equals(replacement)) return range;
+    return this.buffer.setTextInRange(range, newIndentString);
   }
 
   /**
@@ -7288,6 +7303,9 @@ module.exports = class TextEditor {
    * If the clipboard contains the same number of selections as the current
    * editor, each selection will be replaced with the content of the
    * corresponding clipboard selection text.
+   * Worker-backed multiline pastes prepare their final indentation before
+   * changing live text or selections. Changing the document, selections,
+   * grammar or indentation settings cancels that preparation without an edit.
    *
    * @param {Object} [options] - See {@link Selection#insertText}.
    * @param {Clipboard|Object} [options.clipboard] - Clipboard adapter to read; defaults to the editor's clipboard.
@@ -7305,6 +7323,12 @@ module.exports = class TextEditor {
 
       if (!metadata) metadata = {};
       if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndentOnPaste();
+
+      const preparedPaste = require("./text-editor-prepared-indent");
+      if (preparedPaste.applies(languageMode, { text: clipboardText, metadata }, options))
+        return this.trackIndentation(
+          preparedPaste.paste(this, { text: clipboardText, metadata }, options),
+        );
 
       const pendingIndents = [];
       try {
@@ -8963,7 +8987,16 @@ module.exports = class TextEditor {
     const buffer = this.buffer;
     const requestedRevision = buffer.getTextRevision();
     const languageMode = buffer.getLanguageMode();
-    const isCurrent = () => canAdjustIndentation(this, buffer, languageMode, options);
+    const tabLength = this.getTabLength(),
+      softTabs = this.getSoftTabs();
+    const epoch = languageMode.getSyntaxRequestEpoch?.();
+    const isCurrent = () =>
+      canAdjustIndentation(this, buffer, languageMode, options) &&
+      this.getTabLength() === tabLength &&
+      this.getSoftTabs() === softTabs &&
+      languageMode.getSyntaxRequestEpoch?.() === epoch;
+    const changesLevel = (level) =>
+      Number.isFinite(level) && level >= 0 && level !== this.indentationForBufferRow(bufferRow);
     if (!languageMode.suggestedIndentForEditedBufferRow) {
       return;
     }
@@ -8980,7 +9013,7 @@ module.exports = class TextEditor {
             // `suggestedIndentForEditedBufferRow` doesn't return a number, we
             // should ignore it. Otherwise we run the risk of dedenting something
             // that the user doesn't want dedented.
-            if (Number.isFinite(indentLevel) && indentLevel >= 0) {
+            if (changesLevel(indentLevel)) {
               const revision = buffer.getTextRevision();
               const range = this.withAutomaticIndentation(() =>
                 this.setIndentationForBufferRow(bufferRow, indentLevel),
@@ -8994,7 +9027,7 @@ module.exports = class TextEditor {
         languageMode,
       );
     } else {
-      if (Number.isFinite(indentLevel) && indentLevel >= 0)
+      if (changesLevel(indentLevel))
         this.withAutomaticIndentation(() =>
           this.setIndentationForBufferRow(bufferRow, indentLevel),
         );

@@ -611,3 +611,118 @@ test("configuration updates invalidate analyses without reconstructing the synta
     host.close();
   }
 });
+
+test("paste candidates share the saved source and reuse a private incremental tree without changing the parent", async () => {
+  const original = "function work() {\n\n}\n";
+  const { host, data } = await setup(original);
+  try {
+    host.config.setSchema("language-javascript", {
+      type: "object",
+      properties: require("language-javascript/package.json").configSchema,
+    });
+    await host.dispatch("settle", data);
+    const parent = host.sessions.get(1),
+      source = parent.buffer.getTextSnapshot(),
+      tree = parent.mode.tree;
+    await host.dispatch("fork", { ...data, target: 2 });
+    const fork = host.sessions.get(2);
+    assert.equal(fork.buffer.getTextSnapshot(), source);
+    assert.notEqual(fork.initialSyntaxTree, tree);
+    await host.dispatch("edit", {
+      session: 2,
+      beforeRevision: 0,
+      revision: 1,
+      changes: [{ startIndex: 18, oldEndIndex: 18, text: "value();\nnext();" }],
+    });
+    await host.dispatch("initialize", { session: 2 });
+    const entries = [];
+    await host.dispatch(
+      "prepared-indent",
+      { session: 2, revision: 1, ranges: [[1, 2]], tabLength: 2, options: {} },
+      { emit: async (batch) => entries.push(...batch) },
+    );
+    assert.deepEqual(entries, [
+      [1, 1],
+      [2, 1],
+    ]);
+    assert.equal(fork.mode.tree.incremental, true);
+    assert.equal(parent.buffer.getText(), original);
+    assert.equal(parent.mode.tree, tree);
+    assert.equal(parent.revision, 0);
+    host.control({ operation: "release", session: 2 });
+    assert.equal(host.sessions.size, 1);
+    assert.equal(parent.forks.size, 0);
+  } finally {
+    host.close();
+  }
+});
+
+test("changing a parent cancels a paused candidate stream and releases its private document", async () => {
+  const { host, data } = await setup("function work() {\n\n}\n");
+  try {
+    await host.dispatch("fork", { ...data, target: 2 });
+    await host.dispatch("edit", {
+      session: 2,
+      beforeRevision: 0,
+      revision: 1,
+      changes: [{ startIndex: 18, oldEndIndex: 18, text: "work();\n".repeat(300) }],
+    });
+    await host.dispatch("initialize", { session: 2 });
+    let announce;
+    const entered = new Promise((resolve) => {
+      announce = resolve;
+    });
+    const running = host.dispatch(
+      "prepared-indent",
+      { session: 2, revision: 1, ranges: [[1, 300]], tabLength: 2, options: {} },
+      {
+        emit: () => {
+          announce();
+          return new Promise(() => {});
+        },
+      },
+    );
+    const rejected = assert.rejects(running, { name: "AbortError" });
+    await entered;
+    await host.dispatch("edit", {
+      ...data,
+      beforeRevision: 0,
+      revision: 1,
+      changes: [{ startIndex: 0, oldEndIndex: 0, text: "// edited\n" }],
+    });
+    await rejected;
+    assert.equal(host.sessions.has(2), false);
+    assert.equal(host.sessions.get(1).forks.size, 0);
+  } finally {
+    host.close();
+  }
+});
+
+test("candidate text packets assemble immutable chunks instead of joining a whole payload string", async () => {
+  const { host, data } = await setup();
+  try {
+    await host.dispatch("fork", { ...data, target: 2 });
+    const text = "x".repeat(150000);
+    await host.dispatch("edit-begin", { session: 2, beforeRevision: 0, revision: 1, count: 1 });
+    await host.dispatch("edit-text-begin", {
+      session: 2,
+      startIndex: 0,
+      oldEndIndex: 0,
+      length: text.length,
+    });
+    for (let offset = 0; offset < text.length; offset += 65536)
+      await host.dispatch("edit-text-chunk", {
+        session: 2,
+        text: text.slice(offset, offset + 65536),
+      });
+    await host.dispatch("edit-text-end", { session: 2 });
+    const inserted = host.sessions.get(2).pendingEdit.changes[0].text;
+    assert.ok(inserted instanceof require("../../src/text-model").PieceTree);
+    assert.equal(inserted.length, text.length);
+    await host.dispatch("edit-commit", { session: 2 });
+    assert.equal(host.sessions.get(2).buffer.getTextSnapshot().slice(0, text.length), text);
+    assert.equal(host.sessions.get(1).buffer.getText(), "const value = 3;\r\n");
+  } finally {
+    host.close();
+  }
+});

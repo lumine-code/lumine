@@ -204,7 +204,7 @@ describe("Pasting into multiple worker-backed selections", () => {
         );
         await editor.whenGrammarSettled();
         const mode = editor.getBuffer().getLanguageMode();
-        const plans = spyOn(mode, "suggestedIndentForPastedRanges").and.callThrough();
+        const plans = spyOn(mode, "scanPreparedIndentation").and.callThrough();
         editor.setSelectedBufferRanges(
           Array.from({ length: count }, (_, i) => [
             [i * 3 + 1, 0],

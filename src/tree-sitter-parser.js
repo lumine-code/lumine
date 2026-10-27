@@ -170,6 +170,12 @@ function publish(
 // Owns a private editable tree and a resumable WASM parse. Published trees
 // remain valid for consumers holding nodes or cursors from older revisions.
 class TreeSitterParser {
+  // Speculative documents own a new tree handle and revision while sharing the
+  // immutable text backing. Parsing still copies this handle before editing it.
+  static copySnapshot(tree, revision) {
+    return publish(tree.copy(), sourceOf(tree), revision, false);
+  }
+
   static get bulkEditLimit() {
     return BULK_EDIT_LIMIT;
   }

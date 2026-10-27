@@ -218,9 +218,12 @@ class TreeSitterLanguageMode {
     parsePriority,
     queryBudget,
     reportFailure,
+    initialSyntaxTree,
+    initialSyntaxChanges,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
+    for (const batch of initialSyntaxChanges ?? []) this.document.apply(batch);
     this.highlightCache = new HighlightCache({ maxEvents: 128000 });
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
@@ -346,6 +349,12 @@ class TreeSitterLanguageMode {
         this.rootLanguage = language;
         this.registerGrammarForLanguage(language, grammar);
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
+        if (initialSyntaxTree?.language === language) {
+          this.backgroundSnapshots.add(initialSyntaxTree);
+          this.rootLanguageLayer.setBackgroundTree(initialSyntaxTree);
+        }
+        initialSyntaxTree = null;
+        initialSyntaxChanges = null;
         this.subscriptions.add(
           ScopeResolver.onDidChangeConfiguration(this.config, (event) =>
             this.highlightConfigurationChanged(event),

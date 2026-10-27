@@ -223,6 +223,7 @@ function commitPlans(prepared, options = {}) {
               skipDisplayPreparation: true,
               deferDidChange: true,
               coordinateMap: entry.coordinateMap,
+              syntaxChanges: entry.syntaxChanges,
               markerPlan: entry.markerPlan && {
                 verify() {},
                 publish: (snapshot) => entry.markerPlan.publish(snapshot),
