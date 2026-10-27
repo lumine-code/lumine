@@ -109,9 +109,13 @@ function commitPlans(prepared, options = {}) {
     for (const entry of entries) entry.plan.validate();
   };
   check();
-  if (!count) {
-    for (const plan of prepared) plan.dispose();
-    return 0;
+  if (!entries.some((entry) => entry.changedCount ?? entry.count)) {
+    try {
+      if (count) options.didCommit?.();
+    } finally {
+      for (const plan of prepared) plan.dispose();
+    }
+    return count;
   }
   for (const buffer of buffers) {
     buffer.assertCanEdit();
@@ -143,7 +147,7 @@ function commitPlans(prepared, options = {}) {
     buffer.atomicEditContext = context;
     buffer.captureAllMarkerLayers = true;
   }
-  const active = entries.filter((entry) => entry.count);
+  const active = entries.filter((entry) => entry.changedCount ?? entry.count);
   const transact = (index, fn) => {
     if (index === buffers.length) return fn();
     // A failure while publishing a completed inner transaction must never make
@@ -164,7 +168,10 @@ function commitPlans(prepared, options = {}) {
           entry.edit = entry.buffer.buffer.prepareEdit(entry.range, entry.inserted);
           entry.change = entry.edit.getChange();
           entry.patch = entry.edit.createPatch();
-          entry.event = entry.buffer.changeEventForPreparedEdit(entry.change, "edit");
+          entry.patch.coordinateMap = entry.coordinateMap;
+          entry.event = entry.buffer.changeEventForPreparedEdit(entry.change, "edit", {
+            coordinateMap: entry.coordinateMap,
+          });
           entry.buffer.prepareDisplayLayersForChange(entry.event, entry.edit.snapshot);
           entry.markerPlan?.preparePublication(entry.snapshot);
         }
@@ -219,6 +226,7 @@ function commitPlans(prepared, options = {}) {
               atomicToken: context.token,
               skipDisplayPreparation: true,
               deferDidChange: true,
+              coordinateMap: entry.coordinateMap,
               markerPlan: entry.markerPlan && {
                 verify() {},
                 publish: (snapshot) => entry.markerPlan.publish(snapshot),

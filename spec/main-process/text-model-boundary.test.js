@@ -11,6 +11,7 @@ test("production consumers enter the model through its flat module entry", () =>
     "document-core.js",
     "piece-tree.js",
     "text-patch.js",
+    "text-change-map.js",
     "change-tree.js",
     "marker-index.js",
   ]);
@@ -38,7 +39,7 @@ test("the internal model shares constructor identity and imports no editor or ex
     const Module = require('node:module'), path = require('node:path');
     const entry = ${JSON.stringify(entry)}, directory = path.dirname(entry);
     const members = new Set(['text-model.js', 'document-core.js', 'piece-tree.js',
-      'text-patch.js', 'change-tree.js', 'marker-index.js'].map(file => path.join(directory, file)));
+      'text-patch.js', 'text-change-map.js', 'change-tree.js', 'marker-index.js'].map(file => path.join(directory, file)));
     const load = Module._load;
     Module._load = function(request, parent, ...args) {
       if (members.has(parent?.filename)) {

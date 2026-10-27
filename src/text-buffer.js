@@ -1681,8 +1681,8 @@ class TextBuffer {
    * @public
    * @status experimental
    *
-   * Prepare an ordered stream of disjoint edits without a document string or a
-   * per-edit array, then publish one atomic undo operation. Ranges address the
+   * Prepare an ordered stream of disjoint edits with shared text and compressed
+   * coordinate runs, then publish one atomic undo operation. Ranges address the
    * captured revision and must be ordered, in bounds, with distinct starts.
    * Marker positions and invalidation follow forward individual edit semantics.
    * Text and markers remain unchanged on cancellation or stale preparation.
@@ -1755,6 +1755,8 @@ class TextBuffer {
           this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
             recordHistory: true,
             markerPlan,
+            coordinateMap: result.coordinateMap,
+            syntaxChanges: result.syntaxChanges,
           });
           options.didCommit?.();
           require("./text-buffer-marker-finalizers").run(this);
@@ -1965,7 +1967,11 @@ class TextBuffer {
       }
       if (batchLanguageMode) {
         try {
-          batchLanguageMode.bufferDidChangeBatch(displayChange, changes.length);
+          batchLanguageMode.bufferDidChangeBatch(
+            displayChange,
+            changes.length,
+            changes.map((change) => this.changeEventForPreparedEdit(change, origin)),
+          );
         } catch (error) {
           updateErrors.push(error);
         }
@@ -1988,6 +1994,7 @@ class TextBuffer {
 
   applyHistoryUpdates(changes, origin = "edit") {
     if (
+      !changes.coordinateMap &&
       changes.length >= 64 &&
       !changes.some(
         (change) =>
@@ -2003,7 +2010,11 @@ class TextBuffer {
       if (this.tryApplyIndependentEdits(edits, false, origin)) return;
     }
     for (const change of changes)
-      this.applyChange(this.buffer.prepareEditFromChange(change), { origin });
+      this.applyChange(this.buffer.prepareEditFromChange(change), {
+        origin,
+        coordinateMap: change === changes.at(-1) ? changes.coordinateMap : undefined,
+        skipPresentation: Boolean(changes.coordinateMap && change !== changes.at(-1)),
+      });
   }
 
   /**
@@ -2050,6 +2061,9 @@ class TextBuffer {
       atomicToken,
       skipDisplayPreparation = false,
       deferDidChange = false,
+      coordinateMap,
+      syntaxChanges,
+      skipPresentation = false,
     } = {},
   ) {
     const wasApplying = this.applyingEdit;
@@ -2062,10 +2076,14 @@ class TextBuffer {
       const newRange = new Range(newStart, newEnd).freeze();
       const oldExtent = oldRange.getExtent();
       const newExtent = newRange.getExtent();
-      const changeEvent = this.changeEventForPreparedEdit(change, origin);
+      const changeEvent = this.changeEventForPreparedEdit(change, origin, {
+        coordinateMap,
+        skipPresentation,
+      });
       if (!skipDisplayPreparation) this.prepareDisplayLayersForChange(changeEvent, edit.snapshot);
       markerPlan?.verify();
       const patch = recordHistory ? edit.createPatch() : null;
+      if (patch && coordinateMap) patch.coordinateMap = coordinateMap;
       edit.commit();
       // The public text revision advances before any observer reads parser input.
       this._textRevision++;
@@ -2075,7 +2093,9 @@ class TextBuffer {
       this.changesSinceLastDidChangeTextEvent.push(change);
       this.changesSinceLastStoppedChangingEvent.push(change);
       this.changeOriginsSinceLastDidChangeTextEvent.add(origin);
-      this.recordAppliedChange(changeEvent);
+      if (syntaxChanges?.length) {
+        for (const local of syntaxChanges) this.recordAppliedChange(local);
+      } else this.recordAppliedChange(changeEvent);
 
       if (markerPlan) markerPlan.publish(this.getTextSnapshot());
       else if (this.markerLayers) {
@@ -2099,7 +2119,7 @@ class TextBuffer {
     }
   }
 
-  changeEventForPreparedEdit(change, origin = "edit") {
+  changeEventForPreparedEdit(change, origin = "edit", presentation = {}) {
     const { oldStart, oldEnd, newStart, newEnd, startIndex, oldEndIndex, newEndIndex } = change;
     const oldRange = new Range(oldStart, oldEnd).freeze();
     const newRange = new Range(newStart, newEnd).freeze();
@@ -2122,6 +2142,8 @@ class TextBuffer {
         {
           oldTextSource: { value: change.oldTextSource },
           newTextSource: { value: change.newTextSource },
+          coordinateMap: { value: presentation.coordinateMap },
+          skipPresentation: { value: presentation.skipPresentation },
         },
       ),
     );
@@ -3191,8 +3213,10 @@ class TextBuffer {
       before: snapshot,
       snapshot: result.snapshot,
       count: result.count,
+      changedCount: result.changedCount,
       range,
       inserted,
+      coordinateMap: result.coordinateMap,
       markerPlan,
       check,
     });

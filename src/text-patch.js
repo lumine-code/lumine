@@ -1,5 +1,6 @@
 const PieceTree = require("./piece-tree");
 const ChangeTree = require("./change-tree");
+const TextChangeMap = require("./text-change-map");
 const point = (p) => ({ row: p.row + 0, column: p.column + 0 });
 const coordinate = (value) => Math.min(0xffffffff, Math.max(0, Math.trunc(value) || 0));
 const inputPoint = (p) => ({ row: coordinate(p.row), column: coordinate(p.column) });
@@ -155,6 +156,13 @@ class Patch {
     if (zero(oldExtent) && zero(newExtent)) return;
     const end = traverse(start, oldExtent),
       insertedEnd = traverse(start, newExtent);
+    if (this.coordinateMap)
+      this.coordinateMap = TextChangeMap.compose([
+        this.coordinateMap,
+        TextChangeMap.fromChanges([
+          { oldStart: start, oldEnd: end, newStart: start, newEnd: insertedEnd },
+        ]),
+      ]);
     const first = lowerBound(this.#changes, (h) =>
       this.#merge ? compare(h.newEnd, start) >= 0 : compare(h.newEnd, start) > 0,
     );
@@ -275,7 +283,10 @@ class Patch {
   }
 
   getChanges() {
-    return this.#changes.map(snapshot);
+    const changes = this.#changes.map(snapshot);
+    if (this.coordinateMap)
+      Object.defineProperty(changes, "coordinateMap", { value: this.coordinateMap });
+    return changes;
   }
   getChangeCount() {
     return this.#changes.length;
@@ -342,10 +353,12 @@ class Patch {
       discardIdentityChanges: this.#discardIdentities,
     });
     patch.#changes = this.#changes.copy();
+    patch.coordinateMap = this.coordinateMap;
     return patch;
   }
   invert() {
     const patch = new Patch({ mergeAdjacentChanges: this.#merge });
+    patch.coordinateMap = this.coordinateMap?.invert();
     patch.#changes = new ChangeTree(
       this.#changes.map((h) => ({
         oldStart: h.newStart,
@@ -360,13 +373,19 @@ class Patch {
   }
   serialize() {
     return Buffer.from(
-      JSON.stringify({ version: 2, merge: this.#merge, changes: this.getChanges() }),
+      JSON.stringify({
+        version: 2,
+        merge: this.#merge,
+        changes: this.getChanges(),
+        coordinateMap: this.coordinateMap?.serializeSnapshot(false),
+      }),
     );
   }
   serializeSnapshot(deferred = true) {
     return {
       version: 3,
       merge: this.#merge,
+      coordinateMap: this.coordinateMap?.serializeSnapshot(deferred),
       changes: this.#changes.map((h) => ({
         oldStart: point(h.oldStart),
         oldEnd: point(h.oldEnd),
@@ -388,6 +407,7 @@ class Patch {
     if (data.version !== 2 && data.version !== 3) throw new Error("Unsupported text patch version");
     const readText = data.version === 3 ? PieceTree.deserializeSnapshot : asText;
     const patch = new Patch({ mergeAdjacentChanges: data.merge });
+    if (data.coordinateMap) patch.coordinateMap = TextChangeMap.deserialize(data.coordinateMap);
     if (!Array.isArray(data.changes)) throw new Error("Invalid text patch changes");
     const changes = data.changes.map((h) => ({
       ...h,
@@ -419,6 +439,13 @@ class Patch {
     return patch;
   }
   static compose(patches) {
+    const coordinateMap = patches.some((patch) => patch.coordinateMap)
+      ? TextChangeMap.compose(
+          patches.map(
+            (patch) => patch.coordinateMap ?? TextChangeMap.fromChanges(patch.getChanges()),
+          ),
+        )
+      : undefined;
     // Multicursor transactions produce one patch per selection. When those
     // splices are ordered and disjoint, recover original coordinates once
     // instead of repeatedly inserting them into the growing history tree.
@@ -450,6 +477,7 @@ class Patch {
         const result = Patch.fromIndependentChanges(independent, { discardIdentityChanges: true });
         if (result) {
           result.#discardIdentities = false;
+          result.coordinateMap = coordinateMap;
           return result;
         }
       }
@@ -484,6 +512,7 @@ class Patch {
       }
     }
     result.#discardIdentities = false;
+    result.coordinateMap = coordinateMap;
     return result;
   }
 }

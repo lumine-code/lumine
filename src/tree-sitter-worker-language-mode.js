@@ -349,8 +349,9 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     }
   }
 
-  bufferDidChangeBatch(change) {
-    this.bufferDidChange(change);
+  bufferDidChangeBatch(change, count, changes) {
+    if (!changes) return this.bufferDidChange(change);
+    for (const edit of changes) this.bufferDidChange(edit);
   }
 
   bufferDidFinishTransaction() {

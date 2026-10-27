@@ -627,7 +627,11 @@ class TreeSitterLanguageMode {
   // Large independent batches already force a fresh parser tree. Invalidate
   // presentation and injection routing once over their affected extent; the
   // document journal still receives every exact splice for revision tracking.
-  bufferDidChangeBatch(change, count) {
+  bufferDidChangeBatch(change, count, changes) {
+    if (changes) {
+      for (const edit of changes) this.highlightCache.edit(edit);
+      change = Object.create(change, { skipPresentation: { value: true } });
+    }
     this.bufferDidChange(change);
     if (this.rootLanguageLayer) this.transactionChangeCount += count - 1;
   }

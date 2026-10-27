@@ -32,6 +32,36 @@ function hugeTree() {
   return tree;
 }
 
+test("atomic source edit maps survive durable history storage and undo", async (t) => {
+  const { store } = fixture(t);
+  const buffer = new TextBuffer('head = 1\nkeep = "colored"\ntail = 3\n');
+  try {
+    await buffer.applyTextEdits([
+      {
+        range: [
+          [0, 7],
+          [0, 8],
+        ],
+        text: "2\nextra = 4",
+      },
+    ]);
+    buffer.historyProvider.restoreFromSnapshot(buffer.historyProvider.getSnapshot(Infinity));
+    await store.save("mapped-history", buffer.historyProvider.serialize({ textSnapshots: true }));
+    buffer.historyProvider.deserialize(await store.load("mapped-history"));
+    let map;
+    buffer.onDidApplyChanges((batch) => {
+      map = batch.changes[0].coordinateMap;
+    });
+    buffer.undo();
+    assert.equal(buffer.lineForRow(1), 'keep = "colored"');
+    assert.deepEqual(map.mapPoint({ row: 2, column: 8 }), { row: 1, column: 8 });
+    buffer.redo();
+    assert.deepEqual(map.mapPoint({ row: 1, column: 8 }), { row: 2, column: 8 });
+  } finally {
+    buffer.destroy();
+  }
+});
+
 test("large package strings use durable chunks without expanding the session JSON", async (t) => {
   const { store } = fixture(t);
   const text = '\u0000"\\\ud800😀\r\n'.repeat(150000);

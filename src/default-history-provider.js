@@ -4,7 +4,7 @@ const { patchFromChanges } = require("./helpers");
 const { INLINE_TEXT_LIMIT } = require("./serialized-text");
 
 function serializePatch(patch, options) {
-  return options.textSnapshots || patch.getTextSize() > INLINE_TEXT_LIMIT
+  return options.textSnapshots || patch.coordinateMap || patch.getTextSize() > INLINE_TEXT_LIMIT
     ? patch.serializeSnapshot(options.textSnapshots === true)
     : patch.serialize().toString("base64");
 }
@@ -643,14 +643,17 @@ function snapshotFromTransaction(transaction) {
   return {
     type: "transaction",
     changes,
+    ...(transaction.patch.coordinateMap ? { coordinateMap: transaction.patch.coordinateMap } : {}),
     markersBefore: transaction.markerSnapshotBefore,
     markersAfter: transaction.markerSnapshotAfter,
   };
 }
 
-function transactionFromSnapshot({ changes, markersBefore, markersAfter }) {
+function transactionFromSnapshot({ changes, coordinateMap, markersBefore, markersAfter }) {
   // TODO: Return raw patch if there's no markersBefore && markersAfter
-  return new Transaction(markersBefore, patchFromChanges(changes), markersAfter);
+  const patch = patchFromChanges(changes);
+  patch.coordinateMap = coordinateMap;
+  return new Transaction(markersBefore, patch, markersAfter);
 }
 
 module.exports = DefaultHistoryProvider;

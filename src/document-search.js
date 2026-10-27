@@ -735,13 +735,15 @@ class DocumentSearch {
 // Frequent tiny replacements are compacted into ordinary text blocks rather
 // than leaving one tree node per occurrence. The live document is untouched.
 async function buildReplacement(snapshot, sessions, replacement, options = {}) {
-  const { PieceTree } = require("./text-model");
+  const { PieceTree, TextChangeMap } = require("./text-model");
+  const coordinateMap = new TextChangeMap(snapshot);
   const getSubstitution = require("./text-substitution");
   let output = new PieceTree(),
     parts = [],
     units = 0,
     offset = 0,
-    count = 0;
+    count = 0,
+    changedCount = 0;
   const flush = () => {
     if (units) output = output.replace(output.length, output.length, parts.join(""));
     parts = [];
@@ -750,11 +752,20 @@ async function buildReplacement(snapshot, sessions, replacement, options = {}) {
   let outputLast = NaN,
     capturing = false,
     insertedFirst = NaN,
-    insertedLast;
+    insertedLast,
+    captured;
   const append = (text) => {
     if (!text.length) return;
     outputLast = text.charCodeAt(text.length - 1);
     if (capturing) {
+      captured =
+        captured == null
+          ? text
+          : (typeof captured === "string" ? new PieceTree(captured) : captured).replace(
+              captured.length,
+              captured.length,
+              text,
+            );
       if (Number.isNaN(insertedFirst)) insertedFirst = text.charCodeAt(0);
       insertedLast = outputLast;
     }
@@ -811,6 +822,7 @@ async function buildReplacement(snapshot, sessions, replacement, options = {}) {
         const outputStart = output.length + units;
         const previousUnit = outputLast;
         insertedFirst = insertedLast = NaN;
+        captured = null;
         capturing = true;
         if (options.literalReplacement) {
           append(
@@ -867,13 +879,31 @@ async function buildReplacement(snapshot, sessions, replacement, options = {}) {
           append(tail);
         }
         capturing = false;
+        const insertedLength = output.length + units - outputStart;
+        const identity =
+          !options.identityFiltered &&
+          insertedLength === found.end - found.start &&
+          (typeof captured === "string"
+            ? captured === found.match[0]
+            : snapshot.subtext(found.start, found.end).equals(captured ?? new PieceTree()));
+        offset = found.end;
+        count++;
+        if (identity) {
+          if (options.onlyMatch) break matchBatches;
+          if (count % 32 === 0 && performance.now() >= deadline) {
+            await yieldTurn();
+            session.check();
+            deadline = performance.now() + 4;
+          }
+          continue;
+        }
+        changedCount++;
+        coordinateMap.add(found.start, found.end, insertedLength);
         options.onReplacement?.(found.start, found.end, output.length + units - outputStart, {
           previousUnit,
           insertedFirst,
           insertedLast,
         });
-        offset = found.end;
-        count++;
         if (options.onlyMatch) break matchBatches;
         if (count % 32 === 0 && performance.now() >= deadline) {
           await yieldTurn();
@@ -885,7 +915,7 @@ async function buildReplacement(snapshot, sessions, replacement, options = {}) {
   }
   appendSource(offset, snapshot.length);
   flush();
-  return { snapshot: output, count };
+  return { snapshot: output, count, changedCount, coordinateMap: coordinateMap.finish(output) };
 }
 
 module.exports = { DocumentSearch, searchPattern, literalWidth, isLineLocal, buildReplacement };

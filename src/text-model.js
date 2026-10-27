@@ -8,5 +8,6 @@ module.exports = {
   DocumentCore,
   ChangeSet,
   TextPatch: require("./text-patch"),
+  TextChangeMap: require("./text-change-map"),
   MarkerIndex: require("./marker-index"),
 };

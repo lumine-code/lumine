@@ -145,7 +145,23 @@ class HighlightCache {
     }
     return evicted;
   }
-  edit({ oldRange, newRange }, { extendScopes } = {}) {
+  edit({ oldRange, newRange, coordinateMap, skipPresentation }, { extendScopes } = {}) {
+    if (skipPresentation) return;
+    if (coordinateMap) {
+      this.rebase();
+      this.sequence++;
+      this.orderedSnapshots = null;
+      for (const snapshot of this.snapshots) {
+        this.materialize(snapshot);
+        snapshot.start = copy(coordinateMap.mapPoint(snapshot.start));
+        snapshot.end = copy(coordinateMap.mapPoint(snapshot.end, true));
+        for (const event of snapshot.events)
+          event.position = copy(coordinateMap.mapPoint(event.position));
+        snapshot.sequence = this.sequence;
+        this.dropCheckpoints(snapshot);
+      }
+      return;
+    }
     const edit = {
       sequence: ++this.sequence,
       start: copy(oldRange.start),

@@ -1,4 +1,5 @@
 const { PieceTree } = require("./text-model");
+const TextStore = require("./text-store");
 const Range = require("./range");
 const { buildReplacement } = require("./document-search");
 const { normalizeLineEndings } = require("./text-source-helpers");
@@ -24,8 +25,15 @@ function* synchronousBatches(edits) {
 }
 
 // Adapt ordered edits to the same bounded builder and marker geometry used by
-// replacement. An input can contain millions of edits without retaining them.
+// replacement. Large inputs retain compressed geometry, not replacement objects.
 async function prepareTextEdits(buffer, source, edits, options, onReplacement, check) {
+  // Parsing deliberately restarts beyond its bounded edit journal. Keep local
+  // changes below that bound, while the compressed presentation map has no such
+  // cutoff and continues to preserve all cached unchanged text.
+  let journal = [],
+    store = new TextStore(source, { wordIndex: false }),
+    delta = 0;
+  let deadline = performance.now() + 4;
   const session = {
     check,
     async *batches() {
@@ -39,6 +47,10 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
         if (entries.length > 1024)
           throw new RangeError("Text edit batches are limited to 1024 entries");
         for (const edit of entries) {
+          if (performance.now() >= deadline) {
+            await new Promise((resolve) => setImmediate(resolve));
+            deadline = performance.now() + 4;
+          }
           check();
           const requested = Range.fromObject(edit.range);
           const range = buffer.clipRange(requested);
@@ -60,6 +72,27 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
           }
           previousStart = start;
           previousEnd = end;
+          const replacement = typeof text === "string" ? new PieceTree(text) : text;
+          if (source.subtext(start, end).equals(replacement)) continue;
+          if (journal) {
+            if (journal.length === 128) {
+              journal = null;
+              store = null;
+            } else {
+              const current = store.getTextSnapshot();
+              const prepared = store.prepareEditFromChange({
+                newStart: current.positionAt(start + delta),
+                oldStart: current.positionAt(start + delta),
+                oldEnd: current.positionAt(end + delta),
+                oldTextSource: current.subtext(start + delta, end + delta),
+                newTextSource: replacement,
+              });
+              journal.push(buffer.changeEventForPreparedEdit(prepared.getChange(), "edit"));
+              prepared.commit();
+              prepared.dispose();
+            }
+          }
+          delta += text.length - (end - start);
           batch.push({ start, end, match: [text] });
           if (batch.length === 64) {
             yield batch;
@@ -70,11 +103,16 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
       if (batch.length) yield batch;
     },
   };
-  return buildReplacement(source, [session], "", {
+  const result = await buildReplacement(source, [session], "", {
     literalReplacement: true,
     transformReplacement: (_template, text) => text,
     onReplacement,
+    identityFiltered: true,
   });
+  return {
+    ...result,
+    syntaxChanges: journal,
+  };
 }
 
 module.exports = { prepareTextEdits };

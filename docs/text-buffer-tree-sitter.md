@@ -14,6 +14,10 @@ flowchart LR
 
 ## Coordinates and input
 
+Atomic source edits and Replace All retain a separate local coordinate map for presentation. Publishing a new text root is not evidence that all characters were replaced: cached scope boundaries follow the actual edits, including through undo, redo, transaction grouping and session restoration. Repeated edit geometry is compressed into runs; irregular edits retain one run per geometry change, without keeping replacement strings. Identity edits do not advance the text revision or invalidate markers. Replace All still reports its matched count when replacements are identical.
+
+`applyTextEdits()` keeps up to 128 exact local splices for the parser journal. Larger streams use the existing full-source transport and fresh-parse fallback while preserving their complete presentation map. Independent synchronous batches pass their exact splices alongside the broad display invalidation range; crossing the parser's bulk threshold must not collapse the retained highlighting between edits. Parser readiness remains separate from retained paint.
+
 The installed binding is web-tree-sitter 0.27.1. Its [WASM adapter](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/lib/tree-sitter.c) converts JavaScript code-unit offsets and columns to byte offsets and parses UTF-16LE. Lumine therefore supplies its existing UTF-16 coordinates directly; it must not add a separate UTF-8 conversion merely because the native Tree-sitter API names its fields in bytes. CRLF handling and surrogate pairs are covered by differential syntax tests.
 
 Parser input comes from a snapshot reader in 4096-unit chunks. Node text uses a separate 32768-unit reader. Parsing does not call the legacy whole-input materialization getter; an explicit consumer request for `tree.input` still produces a string. The binding's parse-input buffer is bounded, so increasing callback chunks arbitrarily is not a free optimization.
