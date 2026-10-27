@@ -166,6 +166,36 @@ test("identity streams publish no revision, events, invalidated markers or undo 
   }
 });
 
+test("identity replacement finalizers keep the atomic publication lock without editing text", async () => {
+  const buffer = new TextBuffer("same");
+  const marker = buffer.markPosition([0, 0]);
+  const revision = buffer.getTextRevision();
+  let finalized = 0;
+  try {
+    const plan = await buffer.prepareReplaceAllMatches(/same/g, "same");
+    assert.equal(
+      plan.commit({
+        didCommit() {
+          finalized++;
+          assert.throws(() => buffer.append("unexpected"));
+          marker.setRange([
+            [0, 4],
+            [0, 4],
+          ]);
+        },
+      }),
+      1,
+    );
+    assert.equal(finalized, 1);
+    assert.equal(buffer.getText(), "same");
+    assert.equal(buffer.getTextRevision(), revision);
+    assert.equal(marker.getStartPosition().column, 4);
+    assert.equal(buffer.undo(), false);
+  } finally {
+    buffer.destroy();
+  }
+});
+
 test("streamed edits publish an exact local parser journal with CRLF and multiline replacements", async () => {
   const original = "a\rb\ncd\r\nef\n";
   const buffer = new TextBuffer(original),

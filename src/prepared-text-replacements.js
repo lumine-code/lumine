@@ -109,13 +109,9 @@ function commitPlans(prepared, options = {}) {
     for (const entry of entries) entry.plan.validate();
   };
   check();
-  if (!entries.some((entry) => entry.changedCount ?? entry.count)) {
-    try {
-      if (count) options.didCommit?.();
-    } finally {
-      for (const plan of prepared) plan.dispose();
-    }
-    return count;
+  if (!count) {
+    for (const plan of prepared) plan.dispose();
+    return 0;
   }
   for (const buffer of buffers) {
     buffer.assertCanEdit();
