@@ -6,6 +6,19 @@ module.exports = function stageMutation(editor, callback, records, mode) {
   const requests = [];
   const request = (row, options = {}, edited = false) => {
     const buffer = editor.getBuffer();
+    if (
+      !edited &&
+      options.preserveLeadingWhitespace &&
+      options.skipBlankLines === false &&
+      row > 0 &&
+      buffer.lineLengthForRow(row - 1) === 0
+    ) {
+      const source = buffer.getTextSnapshot();
+      // Inserting a blank row before the document's first content has no
+      // preceding syntax or indentation to inherit. Keep the existing line
+      // intact, including its prefix, without preparing another syntax tree.
+      if (require("./text-source-blank-prefix")(source, source.lineStart(row))) return;
+    }
     // Enter at the end of a whitespace-only row preserves that exact prefix.
     // This is an editing rule, independent of syntax: repeat-key input must not
     // wait for a fresh parse of an otherwise unchanged enclosing block.

@@ -317,6 +317,36 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe(original);
   });
 
+  it("inserts leading newlines in Python without awaiting syntax, even while it is pending", async () => {
+    const original = "# generated header\n" + "class Record:\n    field = 1\n\n".repeat(10000);
+    const mode = await start(original);
+    editor.setCursorBufferPosition([0, 0]);
+    const scan = spyOn(mode, "scanPreparedIndentation").and.callFake(() => {
+      throw new Error("Leading blank rows must not request indentation syntax");
+    });
+    const publications = [];
+    const sub = editor
+      .getBuffer()
+      .onDidApplyChanges(() => publications.push(editor.getCursorBufferPosition()));
+    for (let i = 0; i < 50; i++) await dispatchInput(editor, () => editor.insertNewline());
+    sub.dispose();
+    expect(scan).not.toHaveBeenCalled();
+    expect(publications.length).toBe(50);
+    expect(editor.getText()).toBe("\n".repeat(50) + original);
+    expect(editor.getCursorBufferPosition()).toEqual([50, 0]);
+    for (let i = 0; i < 50; i++) editor.undo();
+    expect(editor.getText()).toBe(original);
+  });
+
+  it("still resolves indentation when a blank row follows real code", async () => {
+    const mode = await start("if ready:\n\n    value = 1");
+    editor.setCursorBufferPosition([2, 0]);
+    const scan = spyOn(mode, "scanPreparedIndentation").and.callThrough();
+    await editor.insertNewline();
+    expect(scan).toHaveBeenCalled();
+    expect(editor.getText()).toBe("if ready:\n\n\n    value = 1");
+  });
+
   it("matches syntax-resolved newline indentation for split prefixes, selections and multiple cursors", async () => {
     await lumine.packages.activatePackage("language-text");
     const original = "\t  first line\r\n    next line\r\n\tlast line";
