@@ -593,6 +593,52 @@ for (const inserted of ["\n", "\r\n\r\n", "const prefix = '🦉';\n", "/* prefix
     }
   });
 
+test("resumed leading edits preserve Python external-scanner state", async () => {
+  const python = await Language.load(
+    fs.readFileSync(require.resolve("language-python/grammars/python.wasm")),
+  );
+  const source = new PieceTree(
+    "def method(value):\n    if value:\n        return value + 1\n    return 0\n\n".repeat(1500),
+  );
+  for (const inserted of ["\n", "\r\n\r\n", "# prefix\n", "if True:\n", "    "]) {
+    const parser = new DocumentParser(python),
+      fresh = new DocumentParser(python);
+    try {
+      const previous = parser.parseSync(source);
+      const text = source.replace(0, 0, inserted);
+      const parse = parser.parser.parse.bind(parser.parser);
+      let interrupted = false;
+      parser.parser.parse = (input, oldTree, options) =>
+        parse(input, oldTree, {
+          ...options,
+          progressCallback() {
+            if (!interrupted && oldTree) {
+              interrupted = true;
+              return true;
+            }
+            return false;
+          },
+        });
+      const result = await parser.parse(text, {
+        previous,
+        edits: [{ startIndex: 0, oldEndIndex: 0, newText: inserted }],
+      });
+      const expected = fresh.parseSync(text);
+      assert.equal(interrupted, true);
+      assert.equal(result.incremental, true);
+      assert.equal(
+        result.rootNode.toString(),
+        expected.rootNode.toString(),
+        JSON.stringify(inserted),
+      );
+      assert.deepEqual(result.rootNode.endPosition, expected.rootNode.endPosition);
+    } finally {
+      parser.close();
+      fresh.close();
+    }
+  }
+});
+
 test("cancelled checkpoint replay preserves the latest source and repaired valid AST", async (t) => {
   const parser = new DocumentParser(language),
     reference = new DocumentParser(language),
