@@ -83,6 +83,26 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   receive(event) {
     if (this.destroyed) return;
+    if (event.event === "paint-folds") {
+      if (
+        event.revision !== this.buffer.getTextRevision() ||
+        event.generation !== this.session.generation ||
+        event.presentation !== this.presentationVersion
+      )
+        return;
+      const changedRows = new Set();
+      for (const [row, fold] of event.folds) {
+        const start = new Point(row, 0),
+          end = this.buffer.clipPosition([row + 1, 0]);
+        if (!this.cache.covers(start, end)) continue;
+        const changed = Boolean(this.folds.get(row)) !== Boolean(fold);
+        if (fold) this.folds.set(row, Range.fromObject(fold));
+        else this.folds.delete(row);
+        if (changed) changedRows.add(row);
+      }
+      if (changedRows.size) this.emitter.emit("did-change-foldability", changedRows);
+      return;
+    }
     if (event.event === "unavailable") {
       this.error = event.failure;
       if (this.buffer.getLanguageMode() !== this) return;
@@ -146,6 +166,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   onDidUseInjectionGrammar(callback) {
     return this.emitter.on("did-use-injection-grammar", callback);
+  }
+
+  onDidChangeFoldability(callback) {
+    return this.emitter.on("did-change-foldability", callback);
   }
 
   shouldParseSynchronously() {
@@ -733,7 +757,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           const metadata = await this.service.request(
             this.session,
             "view",
-            { ranges: [first], stream: true, follow: true, allowPreview: true },
+            { ranges: [first], stream: true, follow: true, allowPreview: true, presentation },
             {
               revision,
               signal: controller.signal,

@@ -485,6 +485,22 @@ class LineNumberGutterComponent {
         }
       }
     }
+    // Stable row slots need only new labels and attributes on a distant
+    // scroll. Keep the existing icon/text nodes and their resolved styles.
+    // Foreign children and focused content retain the ordinary keyed path.
+    if (replaceRows && tile.lineNumbersByKey.size === rowCount) {
+      const rows = [...tile.lineNumbersByKey.values()].sort(
+        (a, b) => a.props.screenRow - b.props.screenRow,
+      );
+      if (rows.every((row) => row.hasOwnedContents())) {
+        tile.lineNumbersByKey.clear();
+        for (let i = 0; i < rows.length; i++) {
+          rows[i].update(rowPropsByIndex[i]);
+          tile.lineNumbersByKey.set(rowPropsByIndex[i].key, rows[i]);
+        }
+        return;
+      }
+    }
     let target = tile.element;
     if (replaceRows) {
       tile.element.replaceChildren();
@@ -647,6 +663,15 @@ class LineNumberComponent {
     this.props.nodePool.release(this.element);
   }
 
+  hasOwnedContents() {
+    const { number, showFoldControls } = this.props;
+    const nodes = this.element.childNodes;
+    if (nodes.length !== Number(number != null) + Number(showFoldControls)) return false;
+    if (number != null && nodes[0].nodeType !== 3) return false;
+    const icon = showFoldControls && nodes[nodes.length - 1];
+    return !icon || (icon.nodeType === 1 && icon.className === "icon-right" && !icon.firstChild);
+  }
+
   update(props) {
     const { nodePool, className, width, marginTop, bufferRow, screenRow, number } = props;
 
@@ -669,14 +694,26 @@ class LineNumberComponent {
     }
 
     if (this.props.number !== number) {
-      if (this.props.number != null) {
+      if (this.props.number != null && number != null) {
+        this.element.firstChild.data = number;
+      } else if (this.props.number != null) {
         const numberNode = this.element.firstChild;
         numberNode.remove();
         nodePool.release(numberNode);
-      }
-
-      if (number != null) {
+      } else if (number != null) {
         this.element.insertBefore(nodePool.getTextNode(number), this.element.firstChild);
+      }
+    }
+
+    if (this.props.showFoldControls !== props.showFoldControls) {
+      if (props.showFoldControls)
+        this.element.appendChild(nodePool.getElement("DIV", "icon-right", null));
+      else {
+        const icon = this.element.querySelector(":scope > .icon-right");
+        if (icon) {
+          icon.remove();
+          nodePool.release(icon);
+        }
       }
     }
 

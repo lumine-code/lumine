@@ -367,11 +367,7 @@ module.exports = class TextEditor {
     this.lastNotifiedSoftWrapped = this.isSoftWrapped();
 
     const languageMode = this.buffer.getLanguageMode();
-    this.languageModeSubscription =
-      languageMode.onDidTokenize &&
-      languageMode.onDidTokenize(() => {
-        this.emitter.emit("did-tokenize");
-      });
+    this.languageModeSubscription = this.subscribeToLanguageMode(languageMode);
     if (this.languageModeSubscription) this.disposables.add(this.languageModeSubscription);
 
     if (params.displayLayer) {
@@ -8343,11 +8339,7 @@ module.exports = class TextEditor {
     if (this.component && this.component.visible && languageMode.startTokenizing) {
       languageMode.startTokenizing();
     }
-    this.languageModeSubscription =
-      languageMode.onDidTokenize &&
-      languageMode.onDidTokenize(() => {
-        this.emitter.emit("did-tokenize");
-      });
+    this.languageModeSubscription = this.subscribeToLanguageMode(languageMode);
     if (this.languageModeSubscription) this.disposables.add(this.languageModeSubscription);
     if (this.component) {
       const scope = languageMode.grammar?.scopeName;
@@ -8355,6 +8347,17 @@ module.exports = class TextEditor {
       else delete this.component.element.dataset.grammar;
     }
     this.emitter.emit("did-change-grammar", languageMode.grammar);
+  }
+
+  subscribeToLanguageMode(languageMode) {
+    const subscriptions = new CompositeDisposable();
+    if (languageMode.onDidTokenize)
+      subscriptions.add(languageMode.onDidTokenize(() => this.emitter.emit("did-tokenize")));
+    if (languageMode.onDidChangeFoldability)
+      subscriptions.add(
+        languageMode.onDidChangeFoldability((rows) => this.component?.didChangeFoldability(rows)),
+      );
+    return subscriptions;
   }
 
   /**

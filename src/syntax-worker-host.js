@@ -739,6 +739,7 @@ class SyntaxWorkerHost {
           data.stream ? emit : null,
           current,
           data.follow,
+          data.presentation,
         );
       else if (operation === "builtin") {
         value = await this.builtin(mode, data.method, data.args);
@@ -947,7 +948,7 @@ class SyntaxWorkerHost {
     });
   }
 
-  async view(session, ranges, emit, current, follow = false) {
+  async view(session, ranges, emit, current, follow = false, presentation) {
     const { buffer, mode } = session;
     const tiles = [],
       names = new Map();
@@ -996,6 +997,14 @@ class SyntaxWorkerHost {
           current?.();
         }
       }
+      // Publish the complete color tile before folds. Fold lookup can compile
+      // a query and visit ancestors; it must not delay the text's first paint.
+      // Compute it while the existing color acknowledgement is in flight, so
+      // the split adds no second acknowledgement round trip.
+      const acknowledgement = emit?.(
+        serialize({ ...header, kind: "end", events, folds: [], names: [...names] }),
+      );
+      if (acknowledgement) void Promise.resolve(acknowledgement).catch(() => {});
       if (quality === "exact") {
         for (let row = first; row <= endRow; row++) {
           try {
@@ -1007,9 +1016,19 @@ class SyntaxWorkerHost {
         }
       }
       if (emit) {
-        const next = await emit(
-          serialize({ ...header, kind: "end", events, folds, names: [...names] }),
-        );
+        current?.();
+        if (folds.length)
+          this.notify(
+            serialize({
+              event: "paint-folds",
+              session: session.id,
+              revision: session.revision,
+              generation: session.generation,
+              presentation,
+              folds,
+            }),
+          );
+        const next = await acknowledgement;
         names.clear();
         current?.();
         if (follow) {

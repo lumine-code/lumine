@@ -1054,7 +1054,7 @@ class DisplayLayer {
     );
   }
 
-  prepareHighlightingForScreenRows(startRow, endRow, owner) {
+  prepareHighlightingForScreenRows(startRow, endRow, owner, options = {}) {
     const languageMode = this.buffer.languageMode;
     if (!languageMode.requestHighlighting) return;
     this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), endRow);
@@ -1085,6 +1085,7 @@ class DisplayLayer {
       priority: owner === this ? 0 : owner === this.singleLineHighlightingOwner ? 3 : 2,
       prefetch: owner !== this.singleLineHighlightingOwner,
       background: owner === this,
+      ...options,
     });
   }
 

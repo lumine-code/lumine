@@ -6,6 +6,75 @@ const path = require("node:path");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 
 describe("Syntax worker transport", () => {
+  it("updates fold controls without discarding colors and rejects obsolete fold replies", () => {
+    const { Emitter } = require("@lumine-code/event-kit");
+    const buffer = new TextBuffer("a\nb\nc");
+    const mode = {
+      buffer,
+      session: { generation: 3 },
+      presentationVersion: 5,
+      cache: { covers: () => true },
+      folds: new Map(),
+      emitter: new Emitter(),
+    };
+    const colors = jasmine.createSpy("colors"),
+      folds = jasmine.createSpy("folds");
+    mode.emitter.on("did-change-highlighting", colors);
+    mode.emitter.on("did-change-foldability", folds);
+    const event = {
+      event: "paint-folds",
+      revision: buffer.getTextRevision(),
+      generation: 3,
+      presentation: 5,
+      folds: [
+        [
+          0,
+          [
+            [0, 1],
+            [2, 0],
+          ],
+        ],
+      ],
+    };
+    try {
+      for (const stale of [{ revision: -1 }, { generation: 2 }, { presentation: 4 }])
+        WorkerMode.prototype.receive.call(mode, { ...event, ...stale });
+      expect(mode.folds.size).toBe(0);
+      WorkerMode.prototype.receive.call(mode, event);
+      expect(mode.folds.has(0)).toBeTrue();
+      expect(folds).toHaveBeenCalledOnceWith(new Set([0]));
+      expect(colors).not.toHaveBeenCalled();
+      WorkerMode.prototype.receive.call(mode, event);
+      expect(folds).toHaveBeenCalledTimes(1);
+      WorkerMode.prototype.receive.call(mode, { ...event, folds: [[0, null]] });
+      expect(mode.folds.size).toBe(0);
+      expect(folds).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.emitter.dispose();
+      buffer.destroy();
+    }
+  });
+
+  it("does not roll the worker generation back when an obsolete fold notification arrives", () => {
+    const listener = jasmine.createSpy("listener");
+    const session = { generation: 3, buffer: { getTextRevision: () => 9 }, listener };
+    const service = { sessions: new Map([[1, session]]) };
+    Service.prototype.receive.call(service, {
+      event: "paint-folds",
+      session: 1,
+      generation: 2,
+      revision: 9,
+    });
+    expect(session.generation).toBe(3);
+    expect(listener).not.toHaveBeenCalled();
+    Service.prototype.receive.call(service, {
+      event: "paint-folds",
+      session: 1,
+      generation: 3,
+      revision: 8,
+    });
+    expect(listener).not.toHaveBeenCalled();
+  });
   it("reclaims the active document's larger paint budget on focus loss", () => {
     const mode = {
       cache: { maxBytes: 8 * 1024 * 1024, evictColdSnapshots: jasmine.createSpy("evict") },
@@ -744,22 +813,26 @@ describe("Syntax worker transport", () => {
       service,
     });
     editor.getBuffer().setLanguageMode(mode);
-    let subscription;
+    let subscription, foldSubscription;
     try {
       await mode.ready;
       mode.requestHighlighting(editor, [[0, 10]]);
       await mode.refresh();
       expect(mode.isFoldableAtRowForRendering(0)).toBeTrue();
       const updates = [];
+      const foldUpdates = [];
       subscription = mode.onDidChangeHighlighting((range) => updates.push(range));
+      foldSubscription = mode.onDidChangeFoldability((rows) => foldUpdates.push(rows));
       editor.getBuffer().insert([900, 0], " ");
       expect(mode.isFoldableAtRowForRendering(0)).toBeFalse();
       await editor.whenGrammarSettled();
       await mode.refresh();
       expect(mode.isFoldableAtRowForRendering(0)).toBeTrue();
-      expect(updates.some((range) => range.start.row === 0)).toBeTrue();
+      expect(updates.some((range) => range.start.row === 0)).toBeFalse();
+      expect(foldUpdates.some((rows) => rows.has(0))).toBeTrue();
     } finally {
       subscription?.dispose();
+      foldSubscription?.dispose();
       editor.destroy();
       service.dispose();
     }

@@ -27,14 +27,10 @@ function rangeSpecToString(range) {
 }
 
 function resolveNodeDescriptor(node, descriptor) {
-  let parts = descriptor.split(".");
   let result = node;
-  while (result !== null && parts.length > 0) {
-    let part = parts.shift();
-    if (!result[part]) {
-      return null;
-    }
-    result = result[part];
+  for (const part of descriptor.split(".")) {
+    result = result?.[part];
+    if (!result) return null;
   }
   return result;
 }
@@ -295,12 +291,10 @@ class ScopeResolver {
 
   // Detects whether a capture wants to alter its range from the default.
   adjustsCaptureRange(capture) {
-    let { setProperties: props = {} } = capture;
-    let keys = Object.keys(props);
-    if (keys.length === 0) {
-      return false;
-    }
-    return keys.some((k) => this.capturePropertyIsAdjustment(k));
+    const props = capture.setProperties ?? EMPTY_PROPERTIES;
+    for (const key in props)
+      if (Object.hasOwn(props, key) && this.capturePropertyIsAdjustment(key)) return true;
+    return false;
   }
 
   rangeExceedsBoundsOfCapture(range, capture) {
@@ -427,7 +421,7 @@ class ScopeResolver {
     return range;
   }
 
-  isFinal(existingData = {}) {
+  isFinal(existingData = EMPTY_PROPERTIES) {
     return "capture.final" in existingData;
   }
 
@@ -595,8 +589,8 @@ class ScopeResolver {
 
     if (comparePoints(boundaryStart, boundaryEnd) < 0) {
       let id = this.idForScope(name);
-      this.setBoundary(boundaryStart, id, "open");
-      this.setBoundary(boundaryEnd, id, "close");
+      this.setClippedBoundary(boundaryStart, id, "open");
+      this.setClippedBoundary(boundaryEnd, id, "close");
     }
 
     return range;
@@ -605,7 +599,10 @@ class ScopeResolver {
   setBoundary(point, id, which, { root = false } = {}) {
     // Language-layer root scopes use this method directly, so enforce the
     // renderer's position invariant here as well as in `store`.
-    point = this.buffer.clipPosition(point);
+    this.setClippedBoundary(this.buffer.clipPosition(point), id, which, root);
+  }
+
+  setClippedBoundary(point, id, which, root = false) {
     const key = `${point.row},${point.column}`;
     let bundle = this.boundaries.get(key);
     if (!bundle) {
@@ -854,8 +851,7 @@ ScopeResolver.TESTS = {
     let multiple = type.includes(" ");
     let target = multiple ? type.split(/\s+/) : type;
     let current = node;
-    while (current.parent) {
-      current = current.parent;
+    while ((current = current.parent)) {
       if (multiple && target.includes(current.type)) {
         return true;
       } else if (!multiple && target === current.type) {
@@ -869,10 +865,11 @@ ScopeResolver.TESTS = {
   //
   // Only rarely needed, but may be useful when dealing with ERROR nodes.
   childOfType(node, type) {
-    if (!node.parent) return false;
+    const parent = node.parent;
+    if (!parent) return false;
     let multiple = type.includes(" ");
     let target = multiple ? type.split(/\s+/) : type;
-    return multiple ? target.includes(node.parent.type) : node.parent.type === type;
+    return multiple ? target.includes(parent.type) : parent.type === type;
   },
 
   // Passes when this node occupies one of the given named fields on its
@@ -880,9 +877,10 @@ ScopeResolver.TESTS = {
   // the query rooted on the field value itself and avoids scanning all of a
   // large field value's children to rediscover that relationship.
   field(node, fieldNames) {
-    if (!node.parent || typeof fieldNames !== "string") return false;
+    const parent = node.parent;
+    if (!parent || typeof fieldNames !== "string") return false;
     for (const fieldName of fieldNames.split(/\s+/)) {
-      if (node.parent.childForFieldName(fieldName)?.id === node.id) return true;
+      if (parent.childForFieldName(fieldName)?.id === node.id) return true;
     }
     return false;
   },
@@ -891,11 +889,11 @@ ScopeResolver.TESTS = {
   // Comments and other extras do not occupy field values. Cache each field's
   // index for this resolver pass so a large flat collection stays linear.
   fieldIndex(node, rawValue, existingData, instance) {
-    if (!node.parent || typeof rawValue !== "string") return false;
+    const parent = node.parent;
+    if (!parent || typeof rawValue !== "string") return false;
     const match = /^(\S+)\s+(even|odd|\d+)$/.exec(rawValue.trim());
     if (!match) return false;
     const [, field, wanted] = match;
-    const parent = node.parent;
     if (typeof parent.childrenForFieldName !== "function") return false;
     const key = `${parent.id}:${field}`;
     let indices = instance?.fieldIndexCache.get(key);
@@ -956,8 +954,7 @@ ScopeResolver.TESTS = {
     let [target, ...rejected] = types.split(/\s+/);
     rejected = new Set(rejected);
     let current = node;
-    while (current.parent) {
-      current = current.parent;
+    while ((current = current.parent)) {
       if (rejected.has(current.type)) {
         return false;
       }
@@ -1014,8 +1011,7 @@ ScopeResolver.TESTS = {
       return true;
     }
 
-    while (current.parent) {
-      current = current.parent;
+    while ((current = current.parent)) {
       let data = instance.getDataForRange(current);
       if (data === undefined) {
         continue;

@@ -226,6 +226,14 @@ class SyntaxWorkerService {
         return;
       }
       if (session.failure) return;
+      if (event.event === "paint-folds") {
+        if (
+          event.generation === session.generation &&
+          event.revision === session.buffer.getTextRevision()
+        )
+          session.listener(event);
+        return;
+      }
       if (event.generation !== undefined) session.generation = event.generation;
       session.listener(event);
       return;

@@ -7,6 +7,56 @@ const TextBuffer = require("../../src/text-buffer");
 const { serialize } = require("../../src/syntax-analysis-context");
 const processor = path.resolve(__dirname, "../fixtures/syntax-worker-analysis.js");
 
+test("color tiles publish before fold queries and folds do not require another acknowledgement", async () => {
+  const { host, data } = await setup("function example() {\n  work();\n}\n");
+  try {
+    await host.dispatch("settle", data);
+    const mode = host.sessions.get(data.session).mode;
+    mode.queryBudget = { now: () => 0 };
+    const fold = mode.getFoldRangeForRow.bind(mode);
+    let colorSent = false,
+      foldCalls = 0,
+      acknowledge;
+    mode.getFoldRangeForRow = (...args) => {
+      assert.equal(colorSent, true);
+      foldCalls++;
+      return fold(...args);
+    };
+    const events = [];
+    host.notify = (event) => events.push(event);
+    const pending = host.dispatch(
+      "view",
+      {
+        ...data,
+        ranges: [[0, 2]],
+        stream: true,
+        presentation: 7,
+      },
+      {
+        emit(packet) {
+          if (packet.kind !== "end") return;
+          assert.equal(foldCalls, 0);
+          assert.deepEqual(packet.folds, []);
+          colorSent = true;
+          return new Promise((resolve) => (acknowledge = resolve));
+        },
+      },
+    );
+    await new Promise(setImmediate);
+    assert.equal(colorSent, true);
+    assert.equal(foldCalls, 3);
+    const update = events.find((event) => event.event === "paint-folds");
+    assert.equal(update.presentation, 7);
+    assert.equal(update.revision, data.revision);
+    assert.equal(update.generation, host.sessions.get(data.session).generation);
+    assert.ok(update.folds.some(([, range]) => range));
+    acknowledge();
+    await pending;
+  } finally {
+    host.close();
+  }
+});
+
 test("package unload evicts syntax helpers reached through a development link", () => {
   const fs = require("node:fs"),
     os = require("node:os");

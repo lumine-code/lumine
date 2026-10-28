@@ -55,15 +55,17 @@ describe("Gutter row replacement", () => {
     container.element.remove();
   });
 
-  it("batches disjoint row mutations while preserving labels, folding icons, classes and row maps", () => {
+  it("reuses disjoint row slots while preserving labels, folding icons, classes and row maps", () => {
+    const originalRows = [...tile.element.children];
+    const originalText = originalRows.map((row) => row.firstChild);
     const observer = new MutationObserver(() => {});
     observer.observe(tile.element, { childList: true });
     try {
       container.update(props([10, 11, 12]));
       const records = observer.takeRecords();
-      expect(records.length).toBe(2);
-      expect(records[0].removedNodes.length).toBe(3);
-      expect(records[1].addedNodes.length).toBe(3);
+      expect(records.length).toBe(0);
+      expect([...tile.element.children]).toEqual(originalRows);
+      expect([...tile.element.children].map((row) => row.firstChild)).toEqual(originalText);
       expect([...tile.element.children].map((row) => row.textContent.trim())).toEqual([
         "11",
         "12",

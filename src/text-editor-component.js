@@ -3,6 +3,7 @@ const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
+const ScrollPresentation = require("./scroll-presentation");
 const { originForOffset, physicalExtent } = require("./scroll-coordinate-space");
 const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
@@ -186,6 +187,7 @@ module.exports = class TextEditorComponent {
     this.scrollTopPending = false;
     this.scrollLeftPending = false;
     this.scrollTop = 0;
+    this.scrollPresentation = new ScrollPresentation(this);
     this.preservedScrollTop = 0;
     this.scrollLeft = 0;
     this.renderedScrollTop = 0;
@@ -419,7 +421,10 @@ module.exports = class TextEditorComponent {
 
     if (this.isVisible()) this.measureBlockDecorations();
 
-    this.updateSyncBeforeMeasuringContent(updateMode);
+    if (this.updateSyncBeforeMeasuringContent(updateMode) === false) {
+      this.updateScheduled = false;
+      return;
+    }
     if (useScheduler === true) {
       const documentScheduler = getScheduler();
       documentScheduler.readDocument(() => {
@@ -523,7 +528,7 @@ module.exports = class TextEditorComponent {
     this.updateContentScrollTransform();
     if (vertical) {
       this.refs.gutterContainer.updateScrollTop(this.getScrollTop());
-      this.refs.verticalScrollbar.updateScrollPosition(this.getScrollTop());
+      this.refs.verticalScrollbar.updateScrollPosition(this.getRequestedScrollTop());
       this.scrollTopPending = false;
     }
     if (horizontal) {
@@ -576,6 +581,7 @@ module.exports = class TextEditorComponent {
   }
 
   cancelScrollHighlighting(resolvePending = false) {
+    if (resolvePending) this.scrollPresentation?.cancel();
     const frame = this.scrollHighlightingFrame;
     if (frame) frame.window.cancelAnimationFrame(frame.handle);
     this.scrollHighlightingFrame = null;
@@ -798,6 +804,17 @@ module.exports = class TextEditorComponent {
     if (anchorRestored) {
       this.populateVisibleRowRange(this.getRenderedStartRow());
       this.populateVisibleTiles();
+    }
+    if (
+      this.scrollPresentation?.committing &&
+      this.props.model.displayLayer.prepareHighlightingForScreenRows(
+        this.getRenderedStartRow(),
+        this.getRenderedEndRow(),
+        this.props.model.displayLayer,
+      ) === false
+    ) {
+      this.preparedScrollDeferred = true;
+      return false;
     }
     this.queryScreenLinesToRender();
     this.queryLongestLine();
@@ -1466,7 +1483,7 @@ module.exports = class TextEditorComponent {
       if (this.hasInitialMeasurements) {
         scrollHeight = this.getScrollHeight();
         scrollWidth = this.getScrollWidth();
-        scrollTop = this.getScrollTop();
+        scrollTop = this.getRequestedScrollTop();
         scrollLeft = this.getScrollLeft();
         canScrollHorizontally = this.canScrollHorizontally();
         canScrollVertically = this.canScrollVertically();
@@ -3186,6 +3203,15 @@ module.exports = class TextEditorComponent {
   }
 
   didScrollDummyScrollbar({ orientation, position }) {
+    if (
+      orientation === "vertical" &&
+      this.scrollPresentation &&
+      position !== this.getRequestedScrollTop()
+    )
+      this.settlingScrollAnchor = null;
+    if (orientation === "vertical" && this.scrollPresentation?.request(position)) {
+      return;
+    }
     let scrollPositionChanged = false;
     if (orientation === "vertical") {
       scrollPositionChanged = this.setScrollTop(position);
@@ -3950,17 +3976,28 @@ module.exports = class TextEditorComponent {
     const bottomOffset = offsetForPercentage(afterLeavingBottom);
 
     if (travel < 0) {
-      this.setScrollTop(rangeTop - (reversed ? topOffset : bottomOffset));
+      this.setAutoscrollTop(rangeTop - (reversed ? topOffset : bottomOffset));
       return;
     }
 
     const relativeTop = rangeTop - this.getScrollTop();
 
     if (relativeTop < Math.min(topOffset, bottomOffset)) {
-      this.setScrollTop(rangeTop - topOffset);
+      this.setAutoscrollTop(rangeTop - topOffset);
     } else if (relativeTop > Math.max(topOffset, bottomOffset)) {
-      this.setScrollTop(rangeTop - bottomOffset);
+      this.setAutoscrollTop(rangeTop - bottomOffset);
     }
+  }
+
+  setAutoscrollTop(top) {
+    // Layout already owns this update. Ready destinations can be applied in
+    // place; cold ones prepare without recursively rendering inside the pass.
+    if (
+      !this.scrollPresentation?.committing &&
+      this.scrollPresentation?.request(top, { defer: true, inlineReady: true })
+    )
+      return false;
+    return this.setScrollTop(top);
   }
 
   autoscrollHorizontally(screenRange, options) {
@@ -4802,7 +4839,14 @@ module.exports = class TextEditorComponent {
     }
   }
 
+  didChangeFoldability(rows) {
+    // Fold controls are gutter state, not a syntax repaint. Keep cached screen
+    // lines and text DOM intact; a pending scroll still waits for its colors.
+    if (this.lineNumbersToRender.bufferRows.some((row) => rows.has(row))) this.scheduleUpdate();
+  }
+
   didChangeDisplayLayer(changes) {
+    this.scrollPresentation?.update();
     if (changes.length && changes.every((change) => change.origin === "highlight")) {
       if (this.scrollHighlightingFrame && !this.waitForScrollHighlighting()) {
         this.updateSync();
@@ -5262,6 +5306,7 @@ module.exports = class TextEditorComponent {
   }
 
   destroyBlockDecorations() {
+    this.scrollPresentation?.cancel();
     const owner = this.blockDecorationOwner;
     if (!owner || owner.retired) return;
     owner.retired = true;
@@ -5588,8 +5633,30 @@ module.exports = class TextEditorComponent {
     return this.scrollTop;
   }
 
+  getRequestedScrollTop() {
+    return this.scrollPresentation?.requestedTop ?? this.getScrollTop();
+  }
+
+  requestScrollPresentation(top, options) {
+    return this.scrollPresentation?.request(top, options) ?? false;
+  }
+
+  commitScrollPresentation(top) {
+    const previous = this.getScrollTop();
+    this.preparedScrollDeferred = false;
+    this.setScrollTop(top);
+    this.beginScrollHighlighting();
+    this.updateSync();
+    if (this.preparedScrollDeferred) {
+      this.setScrollTop(previous);
+      return false;
+    }
+    return !this.scrollHighlightingFrame;
+  }
+
   setScrollTop(scrollTop) {
     if (Number.isNaN(scrollTop) || scrollTop == null) return false;
+    if (!this.scrollPresentation?.committing) this.scrollPresentation?.cancel();
 
     // The stored position is exact; only outputs quantize (the content
     // transform and the gutter each snap to the physical grid themselves).
@@ -5613,7 +5680,8 @@ module.exports = class TextEditorComponent {
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&
-        !this.scrollAnimator.applyingFrame
+        !this.scrollAnimator.applyingFrame &&
+        !this.scrollPresentation?.committing
       ) {
         this.scrollAnimator.cancel();
       }
@@ -5775,6 +5843,7 @@ module.exports = class TextEditorComponent {
   }
 
   getNextUpdatePromise() {
+    if (this.scrollPresentation?.requestedTop != null) return this.scrollPresentation.whenSettled();
     if (!this.nextUpdatePromise) {
       this.nextUpdatePromise = new Promise((resolve) => {
         this.resolveNextUpdatePromise = () => {
