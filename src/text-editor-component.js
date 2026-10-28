@@ -5112,7 +5112,9 @@ module.exports = class TextEditorComponent {
     return changed;
   }
 
-  // Keep the first visible content through a synchronous buffer operation.
+  // Keep the first visible content through a buffer operation, including any
+  // asynchronous preparation. Create the marker before preparation so atomic
+  // edits include it in their marker plan and can validate that plan at commit.
   // A marker follows edits above it; a plain buffer position cannot. Retain
   // enough scroll extent at EOF to restore it even when rows below disappear.
   preserveScrollPosition(callback) {
@@ -5127,9 +5129,7 @@ module.exports = class TextEditorComponent {
     const marker = model.markBufferPosition(model.bufferPositionForScreenPosition(Point(row, 0)), {
       invalidate: "never",
     });
-    try {
-      return callback();
-    } finally {
+    const restore = () => {
       const bufferPosition = marker.isDestroyed() ? null : marker.getStartBufferPosition();
       marker.destroy();
       if (!model.isDestroyed() && this.props.model === model && bufferPosition) {
@@ -5143,7 +5143,17 @@ module.exports = class TextEditorComponent {
         this.setScrollTop(target);
         this.scheduleUpdate();
       }
+    };
+    let result;
+    try {
+      result = callback();
+    } catch (error) {
+      restore();
+      throw error;
     }
+    if (isPromise(result)) return Promise.resolve(result).finally(restore);
+    restore();
+    return result;
   }
 
   // Runs a synchronous spatial-index mutation while preserving the editor's

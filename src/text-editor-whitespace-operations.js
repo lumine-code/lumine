@@ -58,15 +58,13 @@ function collapseWhitespace(editor, options, blankLines) {
     const edit = finish();
     if (edit) yield edit;
   }
-  return buffer.applyTextEdits(edits(), {
-    expectedRevision,
-    isCurrent,
-    signal: options.signal,
-    withCommit:
-      blankLines && editor.component
-        ? (publish) => editor.component.preserveScrollPosition(publish)
-        : undefined,
-  });
+  const apply = () =>
+    buffer.applyTextEdits(edits(), {
+      expectedRevision,
+      isCurrent,
+      signal: options.signal,
+    });
+  return blankLines && editor.component ? editor.component.preserveScrollPosition(apply) : apply();
 }
 
 module.exports = { collapseWhitespace };

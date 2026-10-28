@@ -139,6 +139,84 @@ describe("Collapsing blank lines preserves the reading position", () => {
     expect(component.getMaxScrollTop()).toBe(0);
   });
 
+  for (const ending of ["\n", "\r\n"]) {
+    it(`collapses a visible large document with ${JSON.stringify(ending)} endings and preserves its markers, viewport and undo`, async () => {
+      const lines = Array.from({ length: 2400 }, (_, row) => `line-${row}`);
+      const text = lines.map((line) => line + ending.repeat(4)).join("");
+      build(text);
+      const buffer = editor.getBuffer();
+      const marker = buffer.markPosition([1, 0], { invalidate: "touch" });
+      editor.setSelectedBufferRange(
+        [
+          [8000, 1],
+          [8000, 4],
+        ],
+        { reversed: true, autoscroll: false },
+      );
+      component.updateSync();
+      const lineHeight = component.getLineHeight();
+      component.setScrollTop(component.pixelPositionAfterBlocksForRow(8000) + 0.25 * lineHeight);
+      component.updateSync();
+      const offset = component.pixelPositionAfterBlocksForRow(8000) - component.getScrollTop();
+      const markers = editor.getMarkerCount();
+      const selection = editor.getSelectedBufferRange();
+      buffer.onDidChangeText(() => component.getScrollTop());
+      buffer.clearUndoStack();
+
+      await editor.collapseBlankLines();
+      component.updateSync();
+
+      expect(buffer.getText()).toBe(lines.map((line) => line + ending.repeat(2)).join(""));
+      expect(marker.isValid()).toBe(true);
+      expect(marker.getStartPosition()).toEqual([1, 0]);
+      expect(editor.getMarkerCount()).toBe(markers);
+      expect(editor.getSelectedBufferRange()).toEqual([
+        [4000, 1],
+        [4000, 4],
+      ]);
+      expect(editor.getLastSelection().isReversed()).toBe(true);
+      expect(editor.lineTextForBufferRow(component.getFirstVisibleRow())).toBe("line-2000");
+      expect(component.pixelPositionAfterBlocksForRow(4000) - component.getScrollTop()).toBeCloseTo(
+        offset,
+        5,
+      );
+      editor.undo();
+      expect(buffer.getText()).toBe(text);
+      expect(editor.getSelectedBufferRange()).toEqual(selection);
+      editor.redo();
+      expect(editor.getSelectedBufferRange()).toEqual([
+        [4000, 1],
+        [4000, 4],
+      ]);
+    });
+  }
+
+  it("releases the viewport marker after a large collapse makes no changes or is cancelled", async () => {
+    const text = "line\r\n\r\n".repeat(2400);
+    build(text);
+    const buffer = editor.getBuffer();
+    const markers = editor.getMarkerCount();
+    buffer.clearUndoStack();
+
+    await editor.collapseBlankLines();
+
+    expect(buffer.getText()).toBe(text);
+    expect(editor.getMarkerCount()).toBe(markers);
+    expect(buffer.undo()).toBe(false);
+
+    editor.setText("line\r\n\r\n\r\n".repeat(2400));
+    const original = buffer.getText();
+    buffer.clearUndoStack();
+    const pending = editor.collapseBlankLines();
+    editor.setCursorBufferPosition([3, 0]);
+    await expectAsync(pending).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_STALE_EDIT" }),
+    );
+    expect(buffer.getText()).toBe(original);
+    expect(editor.getMarkerCount()).toBe(markers);
+    expect(buffer.undo()).toBe(false);
+  });
+
   it("keeps a cursor on the first blank line that survives the collapse", () => {
     build("one\n\n\n\ntwo\n");
     editor.setCursorBufferPosition([1, 0]);
