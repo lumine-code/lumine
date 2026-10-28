@@ -6,6 +6,32 @@ const { PieceTree, TextChangeMap } = require("../../src/text-model");
 
 const point = (row, column = 0) => new Point(row, column);
 
+test("coverage and gaps agree on optional presentation identity and exact quality", () => {
+  const cache = new HighlightCache();
+  const stamp = { revision: 7, generation: 3, presentation: 5 };
+  assert.equal(cache.covers(point(0), point(0), stamp), true);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(0), stamp), []);
+  cache.replace(
+    [
+      { start: point(0), end: point(2), scopes: [1], events: [], quality: "exact" },
+      { start: point(2), end: point(4), scopes: [1], events: [], quality: "limited" },
+    ],
+    stamp,
+  );
+  for (const filter of [stamp, { revision: 7, generation: 3 }]) {
+    assert.equal(cache.covers(point(0), point(4), filter), true);
+    assert.deepEqual(cache.uncoveredRanges(point(0), point(4), filter), []);
+    assert.equal(cache.covers(point(0), point(4), { ...filter, quality: "exact" }), false);
+    assert.deepEqual(cache.uncoveredRanges(point(0), point(4), { ...filter, quality: "exact" }), [
+      [point(2), point(4)],
+    ]);
+  }
+  assert.equal(cache.covers(point(0), point(4), { ...stamp, presentation: 6 }), false);
+  assert.deepEqual(cache.uncoveredRanges(point(0), point(4), { ...stamp, presentation: 6 }), [
+    [point(0), point(4)],
+  ]);
+});
+
 test("paint differences detect corrected provisional and limited results at the same stamp", () => {
   const cache = new HighlightCache();
   const stamp = { revision: 4, generation: 2, presentation: 7 };

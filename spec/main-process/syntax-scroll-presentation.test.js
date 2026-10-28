@@ -69,6 +69,9 @@ function fixture() {
       ready.add(revision + ":" + top);
       queue.update();
     },
+    evict(top) {
+      ready.delete(revision + ":" + top);
+    },
     frame() {
       const callbacks = [...frames.values()];
       frames.clear();
@@ -136,6 +139,37 @@ test("revision changes cannot publish a previously completed viewport", () => {
   f.ready(100);
   f.frame();
   assert.deepEqual(f.commits, [100]);
+});
+
+test("eviction between preparation and animation frame cannot publish an uncolored viewport", () => {
+  const f = fixture();
+  f.queue.request(100);
+  f.ready(100);
+  f.evict(100);
+  f.frame();
+  assert.deepEqual(f.commits, []);
+  f.ready(100);
+  f.frame();
+  assert.deepEqual(f.commits, [100]);
+});
+
+test("rapid reverse scrolling with edits never commits stale prepared coverage", () => {
+  const f = fixture();
+  for (let i = 0; i < 100; i++) {
+    const first = i % 2 ? 100 : 900;
+    const last = first === 100 ? 900 : 100;
+    f.queue.request(first, { defer: true });
+    f.queue.request(last, { defer: true });
+    f.ready(first);
+    f.revise();
+    const count = f.commits.length;
+    f.frame();
+    assert.equal(f.commits.length, count);
+    f.ready(last);
+    f.frame();
+    assert.equal(f.commits.at(-1), last);
+    assert.equal(f.leases.size, 0);
+  }
 });
 
 test("geometry is checked again before committing a completed viewport", () => {

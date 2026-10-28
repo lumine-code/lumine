@@ -10,6 +10,12 @@ function isSmallBulkMap(map) {
 
 const compare = (a, b) => a.row - b.row || a.column - b.column;
 const copy = (p) => (Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.row, p.column));
+const matchesStamp = (snapshot, stamp) =>
+  !stamp ||
+  (snapshot.stamp?.revision === stamp.revision &&
+    snapshot.stamp?.generation === stamp.generation &&
+    (stamp.presentation === undefined || snapshot.stamp?.presentation === stamp.presentation) &&
+    (stamp.quality === undefined || snapshot.quality === stamp.quality));
 const eventBytes = (event) => 128 + (event.open.length + event.close.length) * 8;
 const snapshotBytes = (snapshot) =>
   192 +
@@ -464,15 +470,10 @@ class HighlightCache {
     ));
   }
   covers(start, end, stamp = null) {
+    if (compare(start, end) >= 0) return true;
     let position = start;
     for (const snapshot of this.getOrderedSnapshots()) {
-      if (
-        stamp &&
-        (snapshot.stamp?.revision !== stamp.revision ||
-          snapshot.stamp?.generation !== stamp.generation ||
-          (stamp.presentation !== undefined && snapshot.stamp?.presentation !== stamp.presentation))
-      )
-        continue;
+      if (!matchesStamp(snapshot, stamp)) continue;
       if (compare(snapshot.start, position) > 0) break;
       if (compare(snapshot.end, position) > 0) position = snapshot.end;
       if (compare(position, end) >= 0) return true;
@@ -483,13 +484,7 @@ class HighlightCache {
     const ranges = [];
     let position = start;
     for (const snapshot of this.getOrderedSnapshots()) {
-      if (
-        stamp &&
-        (snapshot.stamp?.revision !== stamp.revision ||
-          snapshot.stamp?.generation !== stamp.generation ||
-          snapshot.stamp?.presentation !== stamp.presentation)
-      )
-        continue;
+      if (!matchesStamp(snapshot, stamp)) continue;
       if (compare(position, end) >= 0) break;
       if (compare(snapshot.end, position) <= 0 || compare(snapshot.start, snapshot.end) >= 0)
         continue;
@@ -811,8 +806,8 @@ class HighlightCache {
     return ranges;
   }
 
-  uncoveredSnapshots(snapshot) {
-    const gaps = this.uncoveredRanges(snapshot.start, snapshot.end);
+  uncoveredSnapshots(snapshot, stamp) {
+    const gaps = this.uncoveredRanges(snapshot.start, snapshot.end, stamp);
     const scopes = [...snapshot.scopes];
     let index = 0;
     return gaps.map(([start, end]) => {

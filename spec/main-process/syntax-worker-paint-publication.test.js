@@ -41,6 +41,7 @@ async function fixture() {
     mode,
     display,
     requests,
+    service,
     async publish(first, last, quality, rows, scope = 2) {
       packet = {
         kind: "end",
@@ -126,6 +127,35 @@ test("a cold preview fills only gaps and never replaces retained syntax from the
   }
 });
 
+for (const invalidation of ["edit", "configuration", "generation", "destroy"]) {
+  test(`a streamed tile interrupted by ${invalidation} never enters the paint cache`, async () => {
+    const state = await fixture();
+    const request = state.service.request;
+    state.service.request = (session, operation, data, options) => {
+      const accept = options.onChunk;
+      return request(session, operation, data, {
+        ...options,
+        onChunk(packet) {
+          accept({ ...packet, kind: "events", events: packet.events.slice(0, 1) });
+          if (invalidation === "edit") state.buffer.insert([0, 0], "\n");
+          else if (invalidation === "configuration") state.mode.receive({ event: "pending" });
+          else if (invalidation === "generation") state.mode.session.generation++;
+          else state.mode.destroy();
+          return accept({ kind: "end", names: [], events: packet.events.slice(1), folds: [] });
+        },
+      });
+    };
+    try {
+      const publication = state.publish(0, 9, "exact", [0, 1, 2]);
+      if (invalidation === "destroy") await assert.rejects(publication, { name: "AbortError" });
+      else await publication;
+      assert.equal(state.mode.cache.snapshots.length, 0);
+    } finally {
+      state.dispose();
+    }
+  });
+}
+
 test("covered viewports request exact syntax instead of downgrading retained colors to a preview", async () => {
   const state = await fixture();
   try {
@@ -134,6 +164,61 @@ test("covered viewports request exact syntax instead of downgrading retained col
     await state.publish(0, 9, "exact", [0, 1, 2]);
     assert.equal(state.requests[0].allowPreview, true);
     assert.equal(state.requests[1].allowPreview, false);
+  } finally {
+    state.dispose();
+  }
+});
+
+test("limited prefetch cannot overwrite exact current colors or strand a later correction", async () => {
+  const state = await fixture();
+  try {
+    await state.publish(2, 3, "exact", [2, 3]);
+    const before = state.lines();
+    await state.publish(0, 9, "limited", []);
+    const limited = state.lines();
+    for (const row of [2, 3]) {
+      assert.equal(limited[row].id, before[row].id);
+      assert.deepEqual(state.mode.scopeDescriptorForPosition([row, 8]).getScopesArray(), [
+        "source.test",
+        "comment.line.test",
+      ]);
+    }
+    assert.ok(
+      state.mode.cache.covers(new TextBuffer.Point(0, 0), new TextBuffer.Point(10, 0), {
+        revision: state.buffer.getTextRevision(),
+        generation: 0,
+        presentation: state.mode.presentationVersion,
+      }),
+      "limited gaps must not cause an unbounded request loop",
+    );
+    state.mode.presentationVersion++;
+    await state.publish(
+      0,
+      9,
+      "exact",
+      Array.from({ length: 10 }, (_, row) => row),
+    );
+    for (const row of [0, 1, 4, 9])
+      assert.deepEqual(state.mode.scopeDescriptorForPosition([row, 8]).getScopesArray(), [
+        "source.test",
+        "comment.line.test",
+      ]);
+  } finally {
+    state.dispose();
+  }
+});
+
+test("a preview after an edit does not rebuild retained dirty rows", async () => {
+  const state = await fixture();
+  try {
+    await state.publish(2, 3, "exact", [2, 3]);
+    const before = state.lines();
+    state.mode.presentationVersion++;
+    state.mode.dirtyRanges.add(state.buffer.getRange());
+    await state.publish(0, 9, "provisional", []);
+    const after = state.lines();
+    for (const row of [2, 3]) assert.equal(after[row].id, before[row].id);
+    assert.ok([...state.mode.dirtyRanges].length, "exact invalidations must survive the preview");
   } finally {
     state.dispose();
   }

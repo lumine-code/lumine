@@ -797,8 +797,14 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                   const range = new Range(tile.start, tile.end);
                   // A fragment preview may lack the enclosing string/comment
                   // context. Fill cold gaps only; never downgrade retained paint.
+                  // Budget-limited prefetch can overlap an exact viewport of
+                  // this same version. Preserve its already-complete colors.
                   const tiles =
-                    tile.quality === "provisional" ? this.cache.uncoveredSnapshots(tile) : [tile];
+                    tile.quality === "provisional"
+                      ? this.cache.uncoveredSnapshots(tile)
+                      : tile.quality === "limited"
+                        ? this.cache.uncoveredSnapshots(tile, { ...stamp, quality: "exact" })
+                        : [tile];
                   const updates = new RangeList();
                   const candidates = new RangeList();
                   // Screen lines are the invalidation unit. Merge changed
@@ -834,7 +840,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                     );
                     this.dirtyFromRow = null;
                   }
-                  for (const dirty of this.dirtyRanges)
+                  for (const dirty of tile.quality === "provisional" ? [] : this.dirtyRanges)
                     if (range.intersectsWith(dirty, true))
                       candidates.add(
                         new Range(
