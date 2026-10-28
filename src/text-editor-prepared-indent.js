@@ -8,6 +8,17 @@ const { autoIndentRanges, mergeRanges } = require("./text-editor-auto-indent");
 const { insertPreparedSource, insertedSourceEvent } = require("./text-editor-snapshot-operations");
 const pending = new WeakMap();
 const queues = new WeakMap();
+const inputVersions = new WeakMap();
+const inputObservers = new WeakMap();
+const activeInputs = new WeakMap();
+const publishingEditors = new WeakSet();
+function notifyInput(editor) {
+  if (activeInputs.has(editor)) return activeInputs.get(editor);
+  const version = (inputVersions.get(editor) ?? 0) + 1;
+  inputVersions.set(editor, version);
+  for (const notify of inputObservers.get(editor) ?? []) notify();
+  return version;
+}
 const pause = () => new Promise((resolve) => setImmediate(resolve));
 const aborted = () =>
   Object.assign(new Error("Prepared indentation edit was cancelled"), { name: "AbortError" });
@@ -169,6 +180,11 @@ async function prepare(editor, data, options, queue) {
   let publishing = false,
     staged,
     draft;
+  const setPublishing = (value) => {
+    publishing = value;
+    if (value) publishingEditors.add(editor);
+    else publishingEditors.delete(editor);
+  };
   const cancel = () => {
     if (!publishing) {
       queue.cancelled = true;
@@ -199,6 +215,8 @@ async function prepare(editor, data, options, queue) {
       softWrapped: false,
       autoIndent: false,
     });
+    staged.emitWillPublishTextInsertion = (event) =>
+      editor.emitWillPublishTextInsertion(event, staged);
     if (data.move || data.mutation) {
       subscriptions.add(editor.displayLayer.foldsMarkerLayer.onDidUpdate(cancel));
       for (const marker of editor.displayLayer.foldsMarkerLayer.getMarkers())
@@ -318,6 +336,7 @@ async function prepare(editor, data, options, queue) {
             autoscroll: false,
           });
           records.push({ marker: staged.markBufferRange(range, { invalidate: "never" }), indent });
+          staged.emitWillPublishTextInsertion(insertedSourceEvent(inserted, range));
           if (fullLine) {
             const position = oldPosition.translate([1, 0]);
             selection.setBufferRange([position, position]);
@@ -449,7 +468,7 @@ async function prepare(editor, data, options, queue) {
           syntaxChanges,
           check,
         });
-        publishing = true;
+        setPublishing(true);
         try {
           plan.commit({
             signal,
@@ -458,13 +477,13 @@ async function prepare(editor, data, options, queue) {
             groupingInterval: options.groupUndo ? editor.getUndoGroupingInterval() : 0,
           });
         } finally {
-          publishing = false;
+          setPublishing(false);
           plan.dispose();
         }
       }
       if (!finalized) {
         check();
-        publishing = true;
+        setPublishing(true);
         const captureAll = buffer.captureAllMarkerLayers;
         buffer.captureAllMarkerLayers = true;
         try {
@@ -478,7 +497,7 @@ async function prepare(editor, data, options, queue) {
           });
         } finally {
           buffer.captureAllMarkerLayers = captureAll;
-          publishing = false;
+          setPublishing(false);
         }
       }
       if (options.undo === "skip" && buffer.getTextRevision() === committedRevision)
@@ -520,6 +539,7 @@ async function prepare(editor, data, options, queue) {
 }
 
 function enqueue(editor, data, options) {
+  notifyInput(editor);
   data = {
     ...data,
     metadata: data.metadata && {
@@ -533,15 +553,20 @@ function enqueue(editor, data, options) {
   if (!queue || queue.cancelled) {
     queue = { cancelled: false };
     queues.set(editor, queue);
-    task = prepare(editor, data, options, queue);
+    let resolve, reject;
+    task = new Promise((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    queue.tail = task;
+    Promise.resolve(prepare(editor, data, options, queue)).then(resolve, reject);
   } else {
     task = queue.tail.then(
-      (result) =>
-        result === false || queue.cancelled ? false : prepare(editor, data, options, queue),
+      () => (queue.cancelled ? false : prepare(editor, data, options, queue)),
       () => false,
     );
+    queue.tail = task;
   }
-  queue.tail = task;
   return task.finally(() => {
     if (queues.get(editor) === queue && queue.tail === task) queues.delete(editor);
   });
@@ -553,6 +578,32 @@ module.exports = {
   moveLines: (editor, move, options) => enqueue(editor, { move }, options),
   mutate: (editor, mutation, options) => enqueue(editor, { mutation }, options),
   isPending: (editor) => Boolean(queues.get(editor) && !queues.get(editor).cancelled),
+  pendingTask: (editor) => queues.get(editor)?.tail,
+  isPublishing: (editor) => publishingEditors.has(editor),
+  inputVersion: (editor) => inputVersions.get(editor) ?? 0,
+  activeInput: (editor) => activeInputs.get(editor),
+  notifyInput,
+  withInput(editor, version, operation) {
+    const previous = activeInputs.get(editor);
+    activeInputs.set(editor, version);
+    try {
+      return operation();
+    } finally {
+      if (previous == null) activeInputs.delete(editor);
+      else activeInputs.set(editor, previous);
+    }
+  },
+  observeInput(editor, callback) {
+    let observers = inputObservers.get(editor);
+    if (!observers) inputObservers.set(editor, (observers = new Set()));
+    observers.add(callback);
+    return {
+      dispose() {
+        observers.delete(callback);
+        if (!observers.size) inputObservers.delete(editor);
+      },
+    };
+  },
   cancel: (editor) => {
     const queue = queues.get(editor);
     if (queue) queue.cancelled = true;

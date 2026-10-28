@@ -73,6 +73,31 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe("class Record:");
   });
 
+  it("rejects asynchronous preparation hooks before publication", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    editor.onWillPublishTextInsertion(() => Promise.reject(new Error("async cleanup")));
+    await expectAsync(editor.insertNewline()).toBeRejectedWithError(
+      TypeError,
+      "Insertion preparation callbacks must be synchronous",
+    );
+    expect(editor.getText()).toBe("class Record:");
+  });
+
+  it("keeps a replacement queued by an insertion-cancellation observer", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    let replacement;
+    editor.onWillInsertText((event) => {
+      if (event.text !== "\n") return;
+      replacement = editor.insertText(" # replacement");
+      event.cancel();
+    });
+    expect(await editor.insertNewline()).toBe(false);
+    await replacement;
+    expect(editor.getText()).toBe("class Record: # replacement");
+  });
+
   for (const scenario of [
     {
       name: "Python else",
@@ -160,6 +185,70 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe("class Record:\n    ");
     editor.undo();
     expect(editor.getText()).toBe("class Record:");
+  });
+
+  it("settles the input accepted before a completion intent and rejects later input", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    const gate = hold();
+    const first = dispatchInput(editor, () => editor.insertNewline());
+    await gate.ready;
+    const second = dispatchInput(editor, () => editor.insertText("field"));
+    const ready = editor.whenPendingTextInputSettled();
+    gate.release();
+    await Promise.all([first, second]);
+    expect(await ready).toBe(true);
+    expect(editor.getText()).toBe("class Record:\n    field");
+  });
+
+  it("cancels a waiting completion immediately when newer input is accepted", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    const gate = hold(),
+      first = dispatchInput(editor, () => editor.insertNewline());
+    await gate.ready;
+    const ready = editor.whenPendingTextInputSettled();
+    const second = dispatchInput(editor, () => editor.insertText("field"));
+    try {
+      expect(await ready).toBe(false);
+    } finally {
+      gate.release();
+    }
+    await Promise.all([first, second]);
+    expect(editor.getText()).toBe("class Record:\n    field");
+  });
+
+  it("repeats Enter on whitespace-only rows without syntax requests and groups insertion hooks", async () => {
+    const original = "class Record:\n\t  ";
+    await start(original);
+    editor.setCursorBufferPosition([1, Infinity]);
+    const scan = spyOn(
+      editor.getBuffer().getLanguageMode(),
+      "scanPreparedIndentation",
+    ).and.callThrough();
+    editor.onWillPublishTextInsertion(({ editor: target, range }) =>
+      target.setIndentationForBufferRow(range.start.row, 0),
+    );
+    const publications = [];
+    editor.getBuffer().onDidApplyChanges(() => publications.push(editor.getText()));
+    for (let i = 0; i < 20; i++) await editor.insertNewline();
+    expect(scan).not.toHaveBeenCalled();
+    expect(publications.length).toBe(20);
+    expect(publications.every((text) => text.endsWith("\n\t  "))).toBe(true);
+    for (let i = 0; i < 20; i++) editor.undo();
+    expect(editor.getText()).toBe(original);
+  });
+
+  it("keeps repeated grouped Enter commands in one undo step", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    editor.undoGroupingInterval = 10000;
+    for (let i = 0; i < 10; i++) await editor.insertNewline({ groupUndo: true });
+    const after = editor.getText();
+    editor.undo();
+    expect(editor.getText()).toBe("class Record:");
+    editor.redo();
+    expect(editor.getText()).toBe(after);
   });
 
   it("resolves queued typing against the completed newline rather than its old row", async () => {

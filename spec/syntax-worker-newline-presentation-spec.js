@@ -68,6 +68,7 @@ describe("Worker newline presentation", () => {
       rows: [1],
       column: Infinity,
       immediate: 4,
+      inheritsBlankPrefix: true,
     },
     {
       name: "a split inside indentation",
@@ -165,11 +166,17 @@ describe("Worker newline presentation", () => {
         let insertion;
         try {
           insertion = worker.insertText(scenario.newline ?? "\n");
+          if (scenario.inheritsBlankPrefix) await insertion;
           for (let frame = 0; frame < 5; frame++) {
             await new Promise(requestAnimationFrame);
-            expect(worker.getText()).toBe(scenario.text);
-            expect(worker.getCursorBufferPositions()).toEqual(beforePositions);
-            expect(publications).toEqual([]);
+            if (scenario.inheritsBlankPrefix) {
+              expect(worker.getText()).toBe(scenario.text + "\n    ");
+              expect(publications).toEqual([scenario.text + "\n    "]);
+            } else {
+              expect(worker.getText()).toBe(scenario.text);
+              expect(worker.getCursorBufferPositions()).toEqual(beforePositions);
+              expect(publications).toEqual([]);
+            }
           }
         } finally {
           release();

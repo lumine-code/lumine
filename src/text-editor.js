@@ -1386,6 +1386,46 @@ module.exports = class TextEditor {
 
   /**
    * @public
+   * @status experimental
+   *
+   * Contribute synchronous edits to an insertion before its final indentation
+   * and publication. Edit only the supplied editor: worker-backed input uses a
+   * private candidate. This hook also runs inside ordinary insertion transactions.
+   *
+   * @param {Function} callback - Synchronous callback; promises are rejected.
+   * @param {Object} callback.event - The insertion being prepared.
+   * @param {TextEditor} callback.event.editor - Editor to modify during this callback.
+   * @param {Range} callback.event.range - Inserted range before callback edits.
+   * @param {String} callback.event.text - Inserted text; source-backed events materialize lazily.
+   * @param {Object} [callback.event.textSource] - Immutable inserted source; inspect its length before materializing.
+   * @returns {Disposable} Subscription to insertion preparation.
+   */
+  onWillPublishTextInsertion(callback) {
+    return this.emitter.on("will-publish-text-insertion", (event) => {
+      const result = callback(event);
+      if (result?.then) {
+        Promise.resolve(result).catch(() => {});
+        throw new TypeError("Insertion preparation callbacks must be synchronous");
+      }
+    });
+  }
+
+  emitWillPublishTextInsertion(event, target = this) {
+    if (!this.emitter.listenerCountForEventName("will-publish-text-insertion")) return;
+    this.emitter.emit(
+      "will-publish-text-insertion",
+      Object.defineProperties(
+        {},
+        {
+          ...Object.getOwnPropertyDescriptors(event),
+          editor: { value: target, enumerable: true },
+        },
+      ),
+    );
+  }
+
+  /**
+   * @public
    * @status essential
    *
    * Invoke the given callback after the buffer is saved to disk.
@@ -2388,6 +2428,7 @@ module.exports = class TextEditor {
     if (!this.ensureWritable("insertText", options)) return;
     options = { ...options };
     const prepared = require("./text-editor-prepared-indent");
+    prepared.notifyInput(this);
     const pendingInput = prepared.isPending(this);
     const mode = this.buffer.getLanguageMode();
     const newline = text === "\n" || text === "\r\n";
@@ -2448,6 +2489,7 @@ module.exports = class TextEditor {
             indentBaselines.set(marker, this.indentationForBufferRow(previousRow));
         }
         const didInsertEvent = { text, range };
+        this.emitWillPublishTextInsertion(didInsertEvent);
         this.emitter.emit("did-insert-text", didInsertEvent);
         return range;
       }, groupingInterval);
@@ -3336,6 +3378,7 @@ module.exports = class TextEditor {
       cursor.moveToBeginningOfLine();
       cursor.moveLeft();
       const range = selection.insertText("\n", options);
+      this.emitWillPublishTextInsertion({ text: "\n", range });
       this.emitter.emit("did-insert-text", { text: "\n", range });
 
       if (options.autoIndentNewline && this.indentationForBufferRow(bufferRow) < indentLevel) {
@@ -3689,7 +3732,9 @@ module.exports = class TextEditor {
     if (!this.ensureWritable("transactWithAutoIndentation", options)) return;
     const mode = this.buffer.getLanguageMode();
     if (typeof mode.scanPreparedIndentation !== "function")
-      return this.transact(() => callback(this));
+      return this.transact(options.groupUndo ? this.getUndoGroupingInterval() : 0, () =>
+        callback(this),
+      );
     return this.trackIndentation(
       require("./text-editor-prepared-indent").mutate(this, callback, options),
       mode,
@@ -7324,15 +7369,14 @@ module.exports = class TextEditor {
               options: { ...options, isPastedText: true },
             });
           }
-          this.emitter.emit(
-            "did-insert-text",
-            insertedSource
-              ? require("./text-editor-snapshot-operations").insertedSourceEvent(
-                  insertedSource,
-                  range,
-                )
-              : { text, range },
-          );
+          const event = insertedSource
+            ? require("./text-editor-snapshot-operations").insertedSourceEvent(
+                insertedSource,
+                range,
+              )
+            : { text, range };
+          this.emitWillPublishTextInsertion(event);
+          this.emitter.emit("did-insert-text", event);
         });
       } catch (error) {
         for (const { marker } of pendingIndents) marker.destroy();
@@ -8601,7 +8645,66 @@ module.exports = class TextEditor {
    * @returns {Boolean}
    */
   hasPendingIndentation() {
-    return Boolean(this.autoIndentAtTransactionEndPromise || this.pendingIndentationPromises?.size);
+    return Boolean(
+      this.autoIndentAtTransactionEndPromise ||
+      this.pendingIndentationPromises?.size ||
+      require("./text-editor-prepared-indent").isPending(this),
+    );
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Wait for previously accepted text input and its indentation before acquiring
+   * coordinates for a completion or snippet. A newer input, independent edit,
+   * cursor movement, grammar change or cancellation invalidates this intent.
+   * Waiting does not cancel the edits themselves.
+   *
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels only this wait.
+   * @returns {Promise<Boolean>} Whether the existing input settled without superseding intent.
+   */
+  whenPendingTextInputSettled({ signal } = {}) {
+    if (this.isDestroyed() || signal?.aborted) return Promise.resolve(false);
+    const prepared = require("./text-editor-prepared-indent");
+    const queued = require("./text-editor-input-queue").pendingFor(this);
+    const textTask = prepared.pendingTask(this);
+    if (!queued && !this.hasPendingIndentation())
+      return Promise.resolve(!this.isDestroyed() && !signal?.aborted);
+    const controller = new AbortController();
+    signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const version = prepared.inputVersion(this),
+      mode = this.buffer.getLanguageMode();
+    const cancel = () => controller.abort();
+    const belongsToPendingInput = () =>
+      prepared.isPublishing(this) ||
+      this.isApplyingAutomaticIndentation() ||
+      (prepared.activeInput(this) != null && prepared.activeInput(this) <= version);
+    const subscriptions = new CompositeDisposable(
+      prepared.observeInput(this, cancel),
+      this.onDidChangeReadOnly(cancel),
+      this.buffer.onDidChangePath(cancel),
+      this.onDidAddCursor(() => {
+        if (!belongsToPendingInput()) cancel();
+      }),
+      this.onDidRemoveCursor(() => {
+        if (!belongsToPendingInput()) cancel();
+      }),
+      this.onDidChangeSelectionRange((event) => {
+        if (!belongsToPendingInput() && !event.oldBufferRange.isEqual(event.newBufferRange))
+          cancel();
+      }),
+      this.buffer.onDidApplyChanges(() => {
+        if (!belongsToPendingInput()) cancel();
+      }),
+    );
+    return runCancellableGrammarOperation(this, mode, signal, false, async () => {
+      const results = await Promise.all([queued, textTask]);
+      if (results.includes(false)) return false;
+      if (signal.aborted || prepared.inputVersion(this) !== version) return false;
+      return this.whenGrammarSettled({ signal });
+    }).finally(() => subscriptions.dispose());
   }
 
   /**

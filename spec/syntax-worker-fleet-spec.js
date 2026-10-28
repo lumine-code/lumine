@@ -658,6 +658,46 @@ describe("Package syntax analyses with a worker owner", () => {
     expect(editor.getText()).toBe("if (ok) {\n  typed\n}");
   });
 
+  it("cancels manual completion while leaving previously accepted input intact", async () => {
+    lumine.config.set("autocomplete.enableAutoActivation", false);
+    const editor = await build("if (ok) {\n}", "source.js");
+    await lumine.workspace.open(editor);
+    const pack = await lumine.packages.activatePackage("autocomplete");
+    const manager = pack.mainModule.autocompleteManager;
+    await manager.prepareCompletion();
+    manager.updateCurrentEditor(editor);
+    const requests = [];
+    registrations.push(
+      pack.mainModule.consumeAutocomplete({
+        scopeSelector: "*",
+        inclusionPriority: 100,
+        excludeLowerPriority: true,
+        getSuggestions(options) {
+          requests.push(options);
+          return [{ text: "work" }];
+        },
+      }),
+    );
+    editor.update({ autoIndent: true, tabLength: 2, softTabs: true });
+    editor.setCursorBufferPosition([0, 9]);
+    let release;
+    const gate = new Promise((resolve) => (release = resolve));
+    editor.getBuffer().getLanguageMode().scanPreparedIndentation = async function* () {
+      await gate;
+      yield [[1, 1]];
+    };
+    const inserting = editor.insertNewline();
+    const activation = lumine.commands.dispatch(editor.getElement(), "autocomplete:activate");
+    lumine.commands.dispatch(editor.getElement(), "autocomplete:cancel");
+    release();
+    await inserting;
+    await activation;
+    await editor.whenGrammarSettled();
+    expect(editor.getText()).toBe("if (ok) {\n  \n}");
+    expect(requests).toEqual([]);
+    expect(manager.shouldDisplaySuggestions).toBe(false);
+  });
+
   it("prepares syntax-dependent snippet variables before editing every cursor", async () => {
     const pack = await lumine.packages.activatePackage("snippets");
     const snippets = pack.mainModule;

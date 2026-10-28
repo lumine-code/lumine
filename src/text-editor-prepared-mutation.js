@@ -5,12 +5,34 @@ const { mergeRanges } = require("./text-editor-auto-indent");
 module.exports = function stageMutation(editor, callback, records, mode) {
   const requests = [];
   const request = (row, options = {}, edited = false) => {
+    const buffer = editor.getBuffer();
+    // Enter at the end of a whitespace-only row preserves that exact prefix.
+    // This is an editing rule, independent of syntax: repeat-key input must not
+    // wait for a fresh parse of an otherwise unchanged enclosing block.
+    if (
+      !edited &&
+      options.preserveLeadingWhitespace &&
+      options.skipBlankLines === false &&
+      row > 0 &&
+      buffer.lineLengthForRow(row) === 0 &&
+      buffer.isRowBlank(row - 1)
+    ) {
+      const source = buffer.getTextSnapshot(),
+        start = source.lineStart(row - 1);
+      const prefix = source.subtext(start, start + buffer.lineLengthForRow(row - 1));
+      if (prefix.length) buffer.insert([row, 0], prefix, { normalizeLineEndings: false });
+      return;
+    }
     requests.push({
       marker: editor.markBufferPosition([row, 0], { invalidate: "never" }),
       options: {
         preserveLeadingWhitespace: options.preserveLeadingWhitespace,
         skipBlankLines: options.skipBlankLines,
         isReindenting: options.isReindenting,
+        comparisonRowIndent:
+          options.skipBlankLines === false && row > 0 && editor.getBuffer().isRowBlank(row - 1)
+            ? editor.indentationForBufferRow(row - 1)
+            : undefined,
       },
       edited,
     });

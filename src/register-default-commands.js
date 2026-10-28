@@ -1108,10 +1108,10 @@ module.exports = function ({
         return this.insertNewline({ groupUndo: true });
       },
       "editor:newline-below": function () {
-        return this.insertNewlineBelow();
+        return this.insertNewlineBelow({ groupUndo: true });
       },
       "editor:newline-above": function () {
-        return this.insertNewlineAbove();
+        return this.insertNewlineAbove({ groupUndo: true });
       },
       "editor:toggle-line-comments": function () {
         return this.toggleLineCommentsInSelection();
