@@ -100,7 +100,28 @@ class TextChangeMap {
     if (data?.type === "edits" && Array.isArray(data.edits)) {
       if (!data.edits.every((edit) => [edit.start, edit.oldEnd, edit.newEnd].every(validPoint)))
         throw new Error("Invalid text change map coordinates");
-      return scalarMap(data.edits);
+      return scalarMap(
+        data.edits.map((edit) => {
+          const oldTextSource = edit.oldText && PieceTree.deserializeSnapshot(edit.oldText);
+          const newTextSource = edit.newText && PieceTree.deserializeSnapshot(edit.newText);
+          if (
+            compare(edit.oldEnd, edit.start) < 0 ||
+            compare(edit.newEnd, edit.start) < 0 ||
+            Boolean(oldTextSource) !== Boolean(newTextSource) ||
+            (oldTextSource &&
+              (compare(
+                oldTextSource.positionAt(oldTextSource.length),
+                distance(edit.oldEnd, edit.start),
+              ) !== 0 ||
+                compare(
+                  newTextSource.positionAt(newTextSource.length),
+                  distance(edit.newEnd, edit.start),
+                ) !== 0))
+          )
+            throw new Error("Invalid text change map source extents");
+          return { ...edit, oldTextSource, newTextSource };
+        }),
+      );
     }
     if (data?.type !== "bulk" || !Array.isArray(data.runs))
       throw new Error("Invalid text change map");
@@ -132,10 +153,14 @@ class TextChangeMap {
   }
 
   static fromChanges(changes) {
+    // Retain source fragments when available so grouped history can replay
+    // local edits rather than invalidating annotations across unchanged gaps.
     const edits = changes.map((change) => ({
       start: change.newStart,
       oldEnd: traverse(change.newStart, distance(change.oldEnd, change.oldStart)),
       newEnd: change.newEnd,
+      oldTextSource: change.oldTextSource,
+      newTextSource: change.newTextSource,
     }));
     return scalarMap(edits);
   }
@@ -213,17 +238,32 @@ const traverse = (a, b) => ({ row: a.row + b.row, column: b.row ? b.column : a.c
 function scalarMap(edits) {
   edits = Object.freeze(
     edits.map((edit) =>
-      Object.freeze({
-        start: Object.freeze({ ...edit.start }),
-        oldEnd: Object.freeze({ ...edit.oldEnd }),
-        newEnd: Object.freeze({ ...edit.newEnd }),
-      }),
+      Object.freeze(
+        Object.defineProperties(
+          {
+            start: Object.freeze({ ...edit.start }),
+            oldEnd: Object.freeze({ ...edit.oldEnd }),
+            newEnd: Object.freeze({ ...edit.newEnd }),
+          },
+          {
+            oldTextSource: { value: edit.oldTextSource },
+            newTextSource: { value: edit.newTextSource },
+          },
+        ),
+      ),
     ),
   );
   return Object.freeze({
     edits,
-    serializeSnapshot() {
-      return { type: "edits", edits };
+    serializeSnapshot(deferred = true) {
+      return {
+        type: "edits",
+        edits: edits.map((edit) => ({
+          ...edit,
+          oldText: edit.oldTextSource?.serializeSnapshot(deferred),
+          newText: edit.newTextSource?.serializeSnapshot(deferred),
+        })),
+      };
     },
     mapPoint(point, right = false) {
       for (const { start, oldEnd, newEnd } of edits) {
@@ -243,7 +283,13 @@ function scalarMap(edits) {
         edits
           .slice()
           .reverse()
-          .map(({ start, oldEnd, newEnd }) => ({ start, oldEnd: newEnd, newEnd: oldEnd })),
+          .map(({ start, oldEnd, newEnd, oldTextSource, newTextSource }) => ({
+            start,
+            oldEnd: newEnd,
+            newEnd: oldEnd,
+            oldTextSource: newTextSource,
+            newTextSource: oldTextSource,
+          })),
       );
     },
   });

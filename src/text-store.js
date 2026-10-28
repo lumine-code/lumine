@@ -308,6 +308,124 @@ class TextStore {
     );
   }
 
+  // Precompile a chronological edit journal without touching live storage.
+  // Publication only installs these ready states, so a storage preparation
+  // failure cannot leave some live marker layers in an intermediate document.
+  async preparePublication(edits, { check = () => {} } = {}) {
+    const revision = this.#revision;
+    const scratch = new TextStore(this.#text, { wordIndex: false });
+    scratch.#base = this.#base;
+    scratch.#changes = this.#changes.copy();
+    const copyWordIndex = (index) =>
+      index ? Object.assign(new (require("./word-index"))(), index) : null;
+    scratch.#wordIndex = copyWordIndex(this.#wordIndex);
+    const prepared = [],
+      states = [];
+    let next = 0,
+      closed = false,
+      savedBase = this.#base,
+      deadline = performance.now() + 4;
+    const validate = () => {
+      if (closed) throw new Error("Prepared publication is closed");
+      if (this.#revision !== revision + next)
+        throw Object.assign(new Error("Prepared publication no longer matches the buffer"), {
+          code: "ERR_STALE_EDIT",
+        });
+      // A save can complete while the cooperative preparation yields without
+      // changing the text revision. Rebase the ready saved-state patches before
+      // the first publication; text roots and marker geometry remain reusable.
+      if (next === 0 && this.#base !== savedBase) {
+        const changes = this.#changes.copy();
+        for (let index = 0; index < prepared.length; index++) {
+          const change = prepared[index].getChange();
+          changes.splice(
+            change.oldStart,
+            distance(change.oldEnd, change.oldStart),
+            distance(change.newEnd, change.newStart),
+            change.oldTextSource,
+            change.newTextSource,
+          );
+          states[index].changes = changes.copy();
+        }
+        savedBase = this.#base;
+      }
+    };
+    try {
+      for (const change of edits) {
+        check();
+        if (performance.now() >= deadline) {
+          await new Promise((resolve) => setImmediate(resolve));
+          check();
+          deadline = performance.now() + 4;
+        }
+        const edit = scratch.prepareEditFromChange({
+          newStart: change.oldRange.start,
+          oldStart: change.oldRange.start,
+          oldEnd: change.oldRange.end,
+          oldTextSource: change.oldTextSource,
+          newTextSource: change.newTextSource ?? change.newText,
+          get oldText() {
+            return change.oldText;
+          },
+        });
+        const physicalChange = edit.getChange();
+        try {
+          edit.commit();
+        } finally {
+          edit.dispose();
+        }
+        let state = {
+          document: scratch.#document,
+          changes: scratch.#changes.copy(),
+          wordIndex: copyWordIndex(scratch.#wordIndex),
+        };
+        states.push(state);
+        const snapshot = scratch.#text;
+        // Each retained DocumentCore is a completed immutable root. The next
+        // scratch edit owns a different mutable document facade.
+        scratch.#document = new DocumentCore(snapshot, { historyLimit: 0 });
+        const index = prepared.length;
+        prepared.push({
+          snapshot,
+          getChange: () => physicalChange,
+          commit: () => {
+            validate();
+            if (!state || next !== index) throw new Error("Prepared edits must publish in order");
+            // All allocation, text validation and saved-base patch work has
+            // completed. Invalidate any old in-flight word query, then install
+            // the already prepared text and bounded caches by reference.
+            if (this.#wordIndex) this.#wordIndex.generation++;
+            this.#document = state.document;
+            this.#changes = state.changes;
+            this.#wordIndex = state.wordIndex;
+            this.#invalidateLines();
+            this.#revision++;
+            next++;
+          },
+          dispose: () => {
+            state = null;
+          },
+        });
+      }
+      check();
+      validate();
+      return {
+        edits: prepared,
+        snapshot: scratch.#text,
+        validate,
+        dispose() {
+          closed = true;
+          for (const edit of prepared) edit.dispose();
+          prepared.length = 0;
+          states.length = 0;
+        },
+      };
+    } catch (error) {
+      for (const edit of prepared) edit.dispose();
+      throw error;
+    }
+  }
+
   // Offsets address one source snapshot. The facade validates the independent-edit
   // contract; storage shares untouched pieces and publishes only one root.
   prepareEdits(edits) {

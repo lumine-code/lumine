@@ -160,7 +160,14 @@ class Patch {
       this.coordinateMap = TextChangeMap.compose([
         this.coordinateMap,
         TextChangeMap.fromChanges([
-          { oldStart: start, oldEnd: end, newStart: start, newEnd: insertedEnd },
+          {
+            oldStart: start,
+            oldEnd: end,
+            newStart: start,
+            newEnd: insertedEnd,
+            oldTextSource: asText(oldText),
+            newTextSource: asText(newText),
+          },
         ]),
       ]);
     const first = lowerBound(this.#changes, (h) =>

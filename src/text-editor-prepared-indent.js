@@ -2,7 +2,6 @@ const { CompositeDisposable } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
 const { PieceTree } = require("./text-model");
 const TextChangeMap = require("./text-change-map");
-const CoordinateMarkerPlan = require("./coordinate-marker-plan");
 const { inspectRows, indentSource } = require("./text-editor-comment-operations");
 const { autoIndentRanges, mergeRanges } = require("./text-editor-auto-indent");
 const { insertPreparedSource, insertedSourceEvent } = require("./text-editor-snapshot-operations");
@@ -411,15 +410,11 @@ async function prepare(editor, data, options, queue) {
     });
     const changes = draft.historyProvider.getChangesSinceCheckpoint(checkpoint);
     const coordinateMap = changes.coordinateMap ?? TextChangeMap.fromChanges(changes);
-    const markerPlan = new CoordinateMarkerPlan(buffer, source);
-    await markerPlan.apply(coordinateMap, check);
     const folds =
       data.move || mutation
         ? staged.displayLayer.foldsMarkerLayer.getMarkers().map((m) => m.getRange())
         : null;
-    let failure,
-      finalized = false,
-      committedRevision;
+    let failure, committedRevision;
     const finalizeSelections = () => {
       editor.avoidMergingSelections(() => {
         if (folds) {
@@ -441,65 +436,28 @@ async function prepare(editor, data, options, queue) {
         for (const { selection } of selections) if (!survivors.has(selection)) selection.destroy();
       });
       editor.mergeIntersectingSelections(() => {});
-      finalized = true;
       committedRevision = buffer.getTextRevision();
     };
     try {
       check();
-      if (changes.length) {
-        const syntaxChanges = appliedChanges;
-        const first = changes[0],
-          last = changes.at(-1);
-        const range = new TextBuffer.Range(first.oldStart, last.oldEnd);
-        const inserted = finalSource.subtext(
-          finalSource.offsetAt(first.newStart),
-          finalSource.offsetAt(last.newEnd),
-        );
-        const plan = require("./prepared-text-replacements").createPlan({
-          buffer,
-          before: source,
-          snapshot: finalSource,
-          count: changes.length,
-          changedCount: changes.length,
-          range,
-          inserted,
-          coordinateMap,
-          markerPlan,
-          syntaxChanges,
-          check,
-        });
-        setPublishing(true);
-        try {
-          plan.commit({
-            signal,
-            isCurrent,
-            didCommit: finalizeSelections,
-            groupingInterval: options.groupUndo ? editor.getUndoGroupingInterval() : 0,
-          });
-        } finally {
-          setPublishing(false);
-          plan.dispose();
-        }
-      }
-      if (!finalized) {
-        check();
-        setPublishing(true);
-        const captureAll = buffer.captureAllMarkerLayers;
-        buffer.captureAllMarkerLayers = true;
-        try {
-          editor.transact(() => {
-            // Identical text can still move a cursor, fold or other marker.
-            // Keep its history just as a scalar delete/insert transaction does.
-            buffer.historyProvider.pushPatch(new (require("./text-model").TextPatch)());
-            markerPlan.verify();
-            markerPlan.publish(finalSource);
-            finalizeSelections();
-          });
-        } finally {
-          buffer.captureAllMarkerLayers = captureAll;
-          setPublishing(false);
-        }
-      }
+      await require("./prepared-input-publication")({
+        buffer,
+        changes,
+        appliedChanges,
+        coordinateMap,
+        finalSource,
+        check,
+        finalize: finalizeSelections,
+        groupingInterval: options.groupUndo ? editor.getUndoGroupingInterval() : 0,
+        withPublication(callback) {
+          setPublishing(true);
+          try {
+            return callback();
+          } finally {
+            setPublishing(false);
+          }
+        },
+      });
       if (options.undo === "skip" && buffer.getTextRevision() === committedRevision)
         buffer.groupLastChanges();
     } catch (error) {

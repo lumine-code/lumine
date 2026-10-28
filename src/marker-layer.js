@@ -497,7 +497,7 @@ class MarkerLayer {
   /**
    * @category Private TextBuffer Interface
    */
-  splice(start, oldExtent, newExtent, newText) {
+  splice(start, oldExtent, newExtent, newText, options) {
     // Empty layers have no coordinates or invalidation state to update. The
     // buffer still schedules their transaction-level did-update notification.
     if (this.markersById.size === 0) return;
@@ -511,7 +511,7 @@ class MarkerLayer {
       ? this.index.findIntersecting(start, traverse(start, oldExtent))
       : null;
     let trackedRanges = null;
-    if (this.trackRanges && touched.size > 0) {
+    if (this.trackRanges && touched.size > 0 && !options?.suppressRangeTracking) {
       const ranges = [];
       for (const id of touched) {
         const range = Range.fromObject(this.index.getRange(id));
@@ -547,6 +547,12 @@ class MarkerLayer {
         trackedRanges = new Map();
       }
     }
+
+    // Legacy history may retain exact geometry without the intermediate text
+    // a custom tracker requires. Retire only its touched annotations; never
+    // call it with the final document pretending to be the intermediate one.
+    if (options?.suppressRangeTracking && this.trackRanges && touched.size > 0)
+      trackedRanges = new Map();
 
     this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
     const invalidated = this.index.splicePacked(start, oldExtent, newExtent);

@@ -177,6 +177,8 @@ test("atomic replacement preserves exact marker geometry and invalidation plus u
   const actual = new TextBuffer(before),
     reference = new TextBuffer(before);
   const pairs = [];
+  const actualLayer = actual.addMarkerLayer({ maintainHistory: true });
+  const referenceLayer = reference.addMarkerLayer({ maintainHistory: true });
   try {
     for (let i = 0; i < before.length; i++) {
       for (const options of [
@@ -189,7 +191,10 @@ test("atomic replacement preserves exact marker geometry and invalidation plus u
           actual.positionForCharacterIndex(i),
           actual.positionForCharacterIndex(Math.min(i + 2, before.length)),
         ];
-        pairs.push([actual.markRange(range, options), reference.markRange(range, options)]);
+        pairs.push([
+          actualLayer.markRange(range, options),
+          referenceLayer.markRange(range, options),
+        ]);
       }
     }
     const originalRanges = pairs.map(([marker]) => marker.getRange());
@@ -253,7 +258,7 @@ test("a replacement beyond the string limit commits and replays without flatteni
     assert.equal(event.changes.length, 1);
     committedEvent ??= event;
     assert.equal(Object.keys(event).includes("newTextSource"), false);
-    assert.equal(event.newTextSource.length, buffer.getTextSnapshot().length);
+    assert(event.newTextSource.equals(buffer.getTextSnapshotInRange(event.newRange)));
   });
   try {
     const marker = buffer.markRange(

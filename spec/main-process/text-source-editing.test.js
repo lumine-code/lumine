@@ -63,7 +63,9 @@ test("source insertion shares oversized text, captures ranges and restores exact
 
 test("streamed edit batches preserve markers and commit selection finalizers in history", async () => {
   const buffer = new TextBuffer("a\nb\nc\n");
-  const marker = buffer.markPosition([2, 1], { invalidate: "never" });
+  const marker = buffer
+    .addMarkerLayer({ maintainHistory: true })
+    .markPosition([2, 1], { invalidate: "never" });
   try {
     const count = await buffer.applyTextEdits(
       [

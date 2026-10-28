@@ -2,6 +2,7 @@ const { isEqual } = require("@lumine-code/underscore-plus");
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");
+const markerEvents = require("./text-buffer-marker-events");
 
 const OptionKeys = new Set(["reversed", "tailed", "invalidate", "exclusive"]);
 
@@ -540,8 +541,14 @@ class Marker {
     return require("./complete-cleanup")(
       [
         () => this.layer.destroyMarker(this, suppressMarkerLayerUpdateEvents),
-        () => this.emitter.emit("did-destroy"),
-        () => this.emitter.clear(),
+        () => {
+          const notify = () =>
+            require("./complete-cleanup")(
+              [() => this.emitter.emit("did-destroy"), () => this.emitter.clear()],
+              "Marker destruction observers failed",
+            );
+          if (!markerEvents.defer(this.layer.delegate, notify)) notify();
+        },
       ],
       "Marker destruction observers failed",
     );
@@ -772,6 +779,21 @@ class Marker {
   }
 
   emitChangeEvent(currentRange, textChanged, propertiesChanged, origin = "edit") {
+    if (!this.hasChangeObservers) return;
+    if (
+      markerEvents.change(
+        this.layer.delegate,
+        this,
+        { textChanged, propertiesChanged, origin },
+        (event) =>
+          this.emitChangeEventNow(null, event.textChanged, event.propertiesChanged, event.origin),
+      )
+    )
+      return;
+    return this.emitChangeEventNow(currentRange, textChanged, propertiesChanged, origin);
+  }
+
+  emitChangeEventNow(currentRange, textChanged, propertiesChanged, origin = "edit") {
     let newHeadPosition, newTailPosition, oldHeadPosition, oldTailPosition;
     if (!this.hasChangeObservers) {
       return;

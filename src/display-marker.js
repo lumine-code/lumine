@@ -2,6 +2,7 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const { isEqual } = require("@lumine-code/underscore-plus");
 const Range = require("./range");
 const completeCleanup = require("./complete-cleanup");
+const markerEvents = require("./text-buffer-marker-events");
 
 /**
  * @public
@@ -75,6 +76,21 @@ class DisplayMarker {
   }
 
   didDestroyBufferMarker() {
+    if (
+      markerEvents.defer(this.bufferMarker.layer.delegate, () =>
+        completeCleanup(
+          [
+            () => this.emitter.emit("did-destroy"),
+            () => this.emitter.dispose(),
+            () => this.bufferMarkerSubscription?.dispose(),
+          ],
+          "Display marker destruction observers failed",
+        ),
+      )
+    ) {
+      this.layer.didDestroyMarker(this);
+      return;
+    }
     completeCleanup(
       [
         () => this.emitter.emit("did-destroy"),
@@ -685,6 +701,24 @@ class DisplayMarker {
   }
 
   notifyObservers(change, origin = "edit") {
+    if (!this.hasChangeObservers) return;
+    const markerChange = change != null && typeof change === "object" ? change : null;
+    if (
+      markerEvents.change(
+        this.bufferMarker.layer.delegate,
+        this,
+        {
+          textChanged: markerChange ? markerChange.textChanged : Boolean(change),
+          origin: markerChange?.origin ?? origin,
+        },
+        (event) => this.notifyObserversNow(Boolean(event.textChanged), event.origin),
+      )
+    )
+      return;
+    return this.notifyObserversNow(change, origin);
+  }
+
+  notifyObserversNow(change, origin = "edit") {
     if (!this.hasChangeObservers) {
       return;
     }

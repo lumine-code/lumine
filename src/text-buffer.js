@@ -1740,8 +1740,6 @@ class TextBuffer {
     check();
     if (!result.count) return 0;
     markerPlan.verify();
-    const previousCapture = this.captureAllMarkerLayers;
-    this.captureAllMarkerLayers = true;
     let committed = false;
     try {
       let invoked = false;
@@ -1773,8 +1771,6 @@ class TextBuffer {
           { code: "ERR_EDIT_OBSERVER_FAILED", committed: true, editCount: result.count },
         );
       throw error;
-    } finally {
-      this.captureAllMarkerLayers = previousCapture;
     }
     return result.count;
   }
@@ -1994,6 +1990,28 @@ class TextBuffer {
   }
 
   applyHistoryUpdates(changes, origin = "edit") {
+    const map = changes.coordinateMap;
+    const editsForMap = require("./text-change-map-edits");
+    if (editsForMap.canReplay(map)) {
+      const edits = editsForMap(map);
+      let current = edits.next();
+      while (!current.done) {
+        const next = edits.next();
+        this.applyChange(this.buffer.prepareEditFromChange(current.value), {
+          origin,
+          coordinateMap: next.done ? map : undefined,
+          skipPresentation: !next.done,
+        });
+        current = next;
+      }
+      return;
+    }
+    let legacyFailure;
+    const legacyMarkers =
+      map &&
+      require("./legacy-history-markers")(this, map, (error) => {
+        legacyFailure = error;
+      });
     if (
       !changes.coordinateMap &&
       changes.length >= 64 &&
@@ -2013,9 +2031,14 @@ class TextBuffer {
     for (const change of changes)
       this.applyChange(this.buffer.prepareEditFromChange(change), {
         origin,
+        markerPlan:
+          legacyMarkers &&
+          (change === changes.at(-1) ? legacyMarkers : { verify() {}, publish() {} }),
         coordinateMap: change === changes.at(-1) ? changes.coordinateMap : undefined,
         skipPresentation: Boolean(changes.coordinateMap && change !== changes.at(-1)),
       });
+    if (legacyMarkers && !changes.length) legacyMarkers.publish();
+    if (legacyFailure) throw legacyFailure;
   }
 
   /**
@@ -2065,6 +2088,7 @@ class TextBuffer {
       coordinateMap,
       syntaxChanges,
       skipPresentation = false,
+      collectErrors,
     } = {},
   ) {
     const wasApplying = this.applyingEdit;
@@ -2104,12 +2128,17 @@ class TextBuffer {
       else if (this.markerLayers) {
         for (const id in this.markerLayers) {
           const markerLayer = this.markerLayers[id];
-          markerLayer.splice(
-            oldRange.start,
-            oldExtent,
-            newExtent,
-            change.newTextSource ?? change.newText,
-          );
+          try {
+            markerLayer.splice(
+              oldRange.start,
+              oldExtent,
+              newExtent,
+              change.newTextSource ?? change.newText,
+            );
+          } catch (error) {
+            if (!collectErrors) throw error;
+            collectErrors(error);
+          }
           this.markerLayersWithPendingUpdateEvents.add(markerLayer);
         }
       }
@@ -2537,16 +2566,7 @@ class TextBuffer {
     const pop = this.historyProvider.undo();
     if (!pop) return false;
 
-    this.emitWillChangeEvent();
-    this.transactCallDepth++;
-    try {
-      this.applyHistoryUpdates(pop.textUpdates, "undo");
-    } finally {
-      this.transactCallDepth--;
-    }
-    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "undo");
-    this.emitDidChangeTextAndMarkerEvents(pop.markers);
-    return true;
+    return this.replayHistory(pop, options, "undo");
   }
 
   /**
@@ -2564,15 +2584,31 @@ class TextBuffer {
     const pop = this.historyProvider.redo();
     if (!pop) return false;
 
+    return this.replayHistory(pop, options, "redo");
+  }
+
+  replayHistory(pop, options, origin) {
     this.emitWillChangeEvent();
+    let failure;
     this.transactCallDepth++;
     try {
-      this.applyHistoryUpdates(pop.textUpdates, "redo");
+      this.applyHistoryUpdates(pop.textUpdates, origin);
+    } catch (error) {
+      failure = error;
     } finally {
       this.transactCallDepth--;
     }
-    this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, "redo");
-    this.emitDidChangeTextAndMarkerEvents(pop.markers);
+    try {
+      this.restoreFromMarkerSnapshot(pop.markers, options && options.selectionsMarkerLayer, origin);
+    } catch (error) {
+      failure ??= error;
+    }
+    try {
+      this.emitDidChangeTextAndMarkerEvents(pop.markers);
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure) throw failure;
     return true;
   }
 
@@ -2632,7 +2668,7 @@ class TextBuffer {
       options?.textTransfers && !previousTransfer
         ? { changes: [], mode: this.languageMode, transfers: options.textTransfers }
         : null;
-    let coordinateMap;
+    let coordinateMap = options?.coordinateMap;
     if (transfer) this.presentationTransfer = transfer;
 
     try {
@@ -2676,7 +2712,7 @@ class TextBuffer {
     }
     this.historyProvider.enforceUndoStackSizeLimit();
     try {
-      if (coordinateMap && transfer.mode === this.languageMode)
+      if (transfer && coordinateMap && transfer.mode === this.languageMode)
         this.languageMode.applyPresentationMap?.(coordinateMap);
     } finally {
       this.emitDidChangeTextAndMarkerEvents(endMarkerSnapshot);
@@ -4894,7 +4930,7 @@ class TextBuffer {
     const snapshot = {};
     for (const markerLayerId in this.markerLayers) {
       const markerLayer = this.markerLayers[markerLayerId];
-      if (!markerLayer.maintainHistory && !this.captureAllMarkerLayers) continue;
+      if (!markerLayer.maintainHistory) continue;
       if (
         selectionsMarkerLayer &&
         markerLayer.getRole() === "selections" &&
@@ -4932,6 +4968,9 @@ class TextBuffer {
 
     for (const markerLayerId in snapshot) {
       const layerSnapshot = snapshot[markerLayerId];
+      // Old prepared-edit history may contain annotations despite their layer
+      // opting out. Provider-owned markers must never be restored from history.
+      if (!this.markerLayers[markerLayerId]?.maintainHistory) continue;
       if (markerLayerId === selectionsSnapshotId) {
         this.markerLayers[selectionsMarkerLayer.id].restoreFromSnapshot(
           layerSnapshot,

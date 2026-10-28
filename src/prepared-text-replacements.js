@@ -127,7 +127,6 @@ function commitPlans(prepared, options = {}) {
       );
   }
   const context = { token: Symbol("atomic text publication") };
-  const previousCapture = buffers.map((buffer) => buffer.captureAllMarkerLayers);
   const errors = [];
   let publications,
     committed = false,
@@ -141,7 +140,6 @@ function commitPlans(prepared, options = {}) {
   };
   for (const buffer of buffers) {
     buffer.atomicEditContext = context;
-    buffer.captureAllMarkerLayers = true;
   }
   const active = entries.filter((entry) => entry.changedCount ?? entry.count);
   const transact = (index, fn) => {
@@ -262,7 +260,6 @@ function commitPlans(prepared, options = {}) {
     publications?.dispose();
     for (let index = 0; index < buffers.length; index++) {
       buffers[index].atomicEditContext = null;
-      buffers[index].captureAllMarkerLayers = previousCapture[index];
     }
     for (const entry of active) entry.edit?.dispose();
     for (const plan of prepared) plan.dispose();
