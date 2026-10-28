@@ -2512,6 +2512,14 @@ class TextBuffer {
    */
 
   setHistoryProvider(historyProvider) {
+    const context = this.atomicEditContext;
+    if (context?.selectionFinalizersHandled && !this.finalizingTransactionMarkers) {
+      // Post-publication observers (for example a completed snippet) can
+      // release their history wrapper. Finish the current transaction on the
+      // provider that owns its checkpoint before installing the replacement.
+      (context.historyProviderUpdates ??= new Map()).set(this, historyProvider);
+      return;
+    }
     if (this.atomicEditContext || this.finalizingTransactionMarkers) this.assertCanEdit();
     this.historyProvider = historyProvider;
   }
@@ -4970,7 +4978,11 @@ class TextBuffer {
       const layerSnapshot = snapshot[markerLayerId];
       // Old prepared-edit history may contain annotations despite their layer
       // opting out. Provider-owned markers must never be restored from history.
-      if (!this.markerLayers[markerLayerId]?.maintainHistory) continue;
+      const targetLayer =
+        this.markerLayers[
+          markerLayerId === selectionsSnapshotId ? selectionsMarkerLayer.id : markerLayerId
+        ];
+      if (!targetLayer?.maintainHistory) continue;
       if (markerLayerId === selectionsSnapshotId) {
         this.markerLayers[selectionsMarkerLayer.id].restoreFromSnapshot(
           layerSnapshot,

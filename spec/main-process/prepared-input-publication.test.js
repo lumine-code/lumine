@@ -26,6 +26,52 @@ async function candidate(buffer, mutate) {
   };
 }
 
+for (const observerThrows of [false, true])
+  test(`history wrappers can be released after publication without changing the transaction owner (${observerThrows})`, async () => {
+    const buffer = new TextBuffer("abc");
+    const original = buffer.historyProvider;
+    let grouped = false;
+    const wrapper = new Proxy(original, {
+      get(target, key) {
+        if (key === "groupChangesSinceCheckpoint")
+          return (...args) => {
+            assert.equal(buffer.historyProvider, wrapper);
+            grouped = true;
+            return target.groupChangesSinceCheckpoint(...args);
+          };
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    buffer.setHistoryProvider(wrapper);
+    const marker = buffer.markPosition([0, 0]);
+    const input = await candidate(buffer, (draft) => draft.insert([0, 3], "\n  "));
+    input.finalize = () => marker.setHeadPosition([1, 2]);
+    const subscription = marker.onDidChange(() => {
+      assert.equal(buffer.getText(), "abc\n  ");
+      assert.equal(grouped, false);
+      buffer.setHistoryProvider(original);
+      assert.equal(buffer.historyProvider, wrapper);
+      if (observerThrows) throw new Error("observer failed after releasing history");
+    });
+    try {
+      if (observerThrows)
+        await assert.rejects(publish(input), { code: "ERR_EDIT_OBSERVER_FAILED", committed: true });
+      else await publish(input);
+      assert.equal(grouped, true);
+      assert.equal(buffer.historyProvider, original);
+      subscription.dispose();
+      buffer.undo();
+      assert.equal(buffer.getText(), "abc");
+      buffer.redo();
+      assert.equal(buffer.getText(), "abc\n  ");
+    } finally {
+      subscription.dispose();
+      input.dispose();
+      buffer.destroy();
+    }
+  });
+
 test("prepared input tracks intermediate live text and publishes one final batch", async () => {
   const buffer = new TextBuffer("abc\ntail");
   const tracked = [];

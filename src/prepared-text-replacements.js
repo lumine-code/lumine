@@ -260,6 +260,8 @@ function commitPlans(prepared, options = {}) {
     publications?.dispose();
     for (let index = 0; index < buffers.length; index++) {
       buffers[index].atomicEditContext = null;
+      if (context.historyProviderUpdates?.has(buffers[index]))
+        buffers[index].setHistoryProvider(context.historyProviderUpdates.get(buffers[index]));
     }
     for (const entry of active) entry.edit?.dispose();
     for (const plan of prepared) plan.dispose();

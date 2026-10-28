@@ -122,6 +122,8 @@ module.exports = async function publishPreparedInput({
         if (committed) events?.flush(errors);
         events?.dispose();
         buffer.atomicEditContext = null;
+        if (context.historyProviderUpdates?.has(buffer))
+          buffer.setHistoryProvider(context.historyProviderUpdates.get(buffer));
       }
       if (failure) throw failure;
       if (errors.length)
