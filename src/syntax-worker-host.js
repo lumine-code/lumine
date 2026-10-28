@@ -1068,6 +1068,10 @@ class SyntaxWorkerHost {
           iterator.seek(localStart, localEndRow),
         ),
       ];
+      // A bounded query can stop inside the preview's source window. Its
+      // missing captures are unknown, not evidence that the suffix is plain
+      // text. Wait for the real document instead of caching that false paint.
+      if (iterator.limitedReason) return null;
       const names = new Map(scopes.map((id) => [id, preview.mode.scopeNameForScopeId(id)]));
       const end = Point.fromObject(preview.requestedEnd);
       let header = {

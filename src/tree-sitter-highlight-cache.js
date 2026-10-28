@@ -750,6 +750,59 @@ class HighlightCache {
     transition(end, []);
     return { scopes: [...fallback], iterator: new ScopeIterator({ events }) };
   }
+
+  changedRanges(snapshot, fallback) {
+    // A matching revision is not proof of matching paint: provisional windows
+    // and budget-limited queries can later be replaced by a complete result.
+    // Compare effective scope stacks, not event grouping or snapshot identity.
+    const previous = this.read(snapshot.start, snapshot.end, fallback);
+    const next = new ScopeIterator(snapshot);
+    const before = previous.scopes;
+    const after = [...snapshot.scopes];
+    const ranges = [];
+    let position = snapshot.start;
+    const advance = (iterator, scopes) => {
+      while (compare(iterator.getPosition(), position) <= 0) {
+        applyScopes(scopes, {
+          close: iterator.getCloseScopeIds(),
+          open: iterator.getOpenScopeIds(),
+        });
+        if (!iterator.moveToSuccessor()) break;
+      }
+    };
+    while (compare(position, snapshot.end) < 0) {
+      advance(previous.iterator, before);
+      advance(next, after);
+      let end = snapshot.end;
+      for (const iterator of [previous.iterator, next])
+        if (compare(iterator.getPosition(), end) < 0) end = iterator.getPosition();
+      if (before.length !== after.length || before.some((id, index) => id !== after[index])) {
+        const last = ranges.at(-1);
+        if (last && compare(last[1], position) === 0) last[1] = end;
+        else ranges.push([position, end]);
+      }
+      position = end;
+    }
+    return ranges;
+  }
+
+  uncoveredSnapshots(snapshot) {
+    const gaps = this.uncoveredRanges(snapshot.start, snapshot.end);
+    const scopes = [...snapshot.scopes];
+    let index = 0;
+    return gaps.map(([start, end]) => {
+      while (index < snapshot.events.length && compare(snapshot.events[index].position, start) < 0)
+        applyScopes(scopes, snapshot.events[index++]);
+      const initial = [...scopes];
+      const events = [];
+      while (index < snapshot.events.length && compare(snapshot.events[index].position, end) < 0) {
+        const event = snapshot.events[index++];
+        events.push({ ...event });
+        applyScopes(scopes, event);
+      }
+      return { ...snapshot, start, end, scopes: initial, events };
+    });
+  }
 }
 
 module.exports = HighlightCache;

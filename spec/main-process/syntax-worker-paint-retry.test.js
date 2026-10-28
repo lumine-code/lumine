@@ -51,6 +51,33 @@ function fixture(reasons, { onSeek } = {}) {
   };
 }
 
+test("a preview with incomplete query coverage publishes no falsely plain suffix", async () => {
+  for (const reason of ["source-window", "timeout", "capture-limit"]) {
+    const state = fixture([reason]);
+    const packets = [];
+    state.session.mode.publicationPending = true;
+    state.host.previews.get = async () => ({
+      startRow: 0,
+      requestedStart: { row: 0, column: 0 },
+      requestedEnd: { row: 0, column: 16 },
+      buffer: state.session.buffer,
+      mode: state.session.mode,
+    });
+    try {
+      const result = await state.host.previewView(
+        state.session,
+        [0, 0],
+        async (packet) => packets.push(packet),
+        () => {},
+      );
+      assert.equal(result, null);
+      assert.deepEqual(packets, []);
+    } finally {
+      state.dispose();
+    }
+  }
+});
+
 test("a transient paint timeout yields once and publishes only the fresh successful result", async () => {
   let yielded = false;
   const state = fixture(["timeout", null], {

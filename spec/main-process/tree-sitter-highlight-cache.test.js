@@ -6,6 +6,62 @@ const { TextChangeMap } = require("../../src/text-model");
 
 const point = (row, column = 0) => new Point(row, column);
 
+test("paint differences detect corrected provisional and limited results at the same stamp", () => {
+  const cache = new HighlightCache();
+  const stamp = { revision: 4, generation: 2, presentation: 7 };
+  const tile = {
+    start: point(100),
+    end: point(104),
+    scopes: [1],
+    events: [
+      { position: point(101, 2), open: [2], close: [] },
+      { position: point(101, 8), open: [], close: [2] },
+    ],
+  };
+  for (const quality of ["provisional", "limited", "exact"]) {
+    cache.clear();
+    cache.replace([{ ...tile, quality }], stamp);
+    const corrected = {
+      ...tile,
+      quality: "exact",
+      events: [
+        ...tile.events,
+        { position: point(103, 3), open: [3], close: [] },
+        { position: point(103, 9), open: [], close: [3] },
+      ],
+    };
+    assert.deepEqual(cache.changedRanges(corrected, [1]), [[point(103, 3), point(103, 9)]]);
+    cache.replace([corrected], stamp);
+    assert.deepEqual(cache.changedRanges(corrected, [1]), []);
+    assert.deepEqual(cache.changedRanges(tile, [1]), [[point(103, 3), point(103, 9)]]);
+  }
+});
+
+test("paint differences compare effective scopes across shifted fragments and redundant boundaries", () => {
+  const cache = new HighlightCache();
+  cache.replace(
+    [
+      { start: point(100), end: point(102), scopes: [1, 2], events: [] },
+      { start: point(102), end: point(104), scopes: [1, 2], events: [] },
+    ],
+    {},
+  );
+  cache.edit({ oldRange: { start: point(0), end: point(0) }, newRange: { end: point(2) } });
+  const tile = {
+    start: point(102),
+    end: point(106),
+    scopes: [1],
+    events: [
+      { position: point(102), open: [2], close: [] },
+      { position: point(104), open: [2], close: [2] },
+      { position: point(106), open: [], close: [2] },
+    ],
+  };
+  assert.deepEqual(cache.changedRanges(tile, [1]), []);
+  tile.events.splice(1, 1, { position: point(104), open: [3], close: [2] });
+  assert.deepEqual(cache.changedRanges(tile, [1]), [[point(104), point(106)]]);
+});
+
 test("repeated source transfers retain colors, reverse exactly and stay bounded", () => {
   const cache = new HighlightCache();
   cache.replace(

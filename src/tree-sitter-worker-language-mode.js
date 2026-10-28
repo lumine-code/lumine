@@ -757,7 +757,18 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           const metadata = await this.service.request(
             this.session,
             "view",
-            { ranges: [first], stream: true, follow: true, allowPreview: true, presentation },
+            {
+              ranges: [first],
+              stream: true,
+              follow: true,
+              // Retained, edit-adjusted colors are preferable to parsing an
+              // isolated fragment without its surrounding syntax context.
+              allowPreview: !this.cache.covers(
+                new Point(first[0], 0),
+                this.buffer.clipPosition([first[1] + 1, 0]),
+              ),
+              presentation,
+            },
             {
               revision,
               signal: controller.signal,
@@ -784,8 +795,30 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                   });
                 if (packet.kind === "end") {
                   const range = new Range(tile.start, tile.end);
+                  // A fragment preview may lack the enclosing string/comment
+                  // context. Fill cold gaps only; never downgrade retained paint.
+                  const tiles =
+                    tile.quality === "provisional" ? this.cache.uncoveredSnapshots(tile) : [tile];
                   const updates = new RangeList();
                   const candidates = new RangeList();
+                  // Screen lines are the invalidation unit. Merge changed
+                  // tokens in one batch rather than emitting per-token events
+                  // or repeatedly sorting a dense tile's boundary list.
+                  updates.addAll(
+                    tiles.flatMap((replacement) =>
+                      this.cache
+                        .changedRanges(replacement, [
+                          this.grammar.idForScope(this.grammar.scopeName),
+                        ])
+                        .map(
+                          ([start, end]) =>
+                            new Range(
+                              [start.row, 0],
+                              end.column === 0 ? end : this.buffer.clipPosition([end.row + 1, 0]),
+                            ),
+                        ),
+                    ),
+                  );
                   if (this.invalidateAll) {
                     this.dirtyRanges.add(this.buffer.getRange());
                     this.invalidateAll = false;
@@ -822,7 +855,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                   const visible = [...this.requests]
                     .filter(primaryRequest)
                     .flatMap((request) => request.ranges);
-                  const evicted = this.cache.replace([tile], stamp, (snapshot) =>
+                  const evicted = this.cache.replace(tiles, stamp, (snapshot) =>
                     visible.some(([first, last]) => intersectsRows(snapshot, first, last)),
                   );
                   // Optional coverage must not repeatedly evict and request its
@@ -833,7 +866,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                   // Completing the current viewport does not repair retained
                   // paint elsewhere. Keep those invalidations until their own
                   // tiles arrive, including after scrolling or a file reload.
-                  this.dirtyRanges.remove(range);
+                  if (tile.quality !== "provisional") this.dirtyRanges.remove(range);
                   for (const [row, fold] of packet.folds ?? []) {
                     if (Boolean(this.folds.get(row)) !== Boolean(fold))
                       updates.add(new Range([row, 0], this.buffer.clipPosition([row, Infinity])));
