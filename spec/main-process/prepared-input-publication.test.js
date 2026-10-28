@@ -26,6 +26,94 @@ async function candidate(buffer, mutate) {
   };
 }
 
+test("sparse prepared edits update only local layout and notify observers after the complete transaction", async (t) => {
+  const text = "value = 1\n".repeat(1200);
+  const buffer = new TextBuffer(text);
+  const display = buffer.addDisplayLayer({ softWrapColumn: 5 });
+  display.getScreenLineCount();
+  const spans = [];
+  const update = display.updateSpatialIndex;
+  t.mock.method(display, "updateSpatialIndex", function (start, oldEnd, newEnd, ...args) {
+    spans.push(Math.max(oldEnd, newEnd) - start);
+    return update.call(this, start, oldEnd, newEnd, ...args);
+  });
+  const input = await candidate(buffer, async (draft) => {
+    for (const row of [1190, 600, 10]) draft.insert([row, 9], "\n");
+    await draft.applyTextEdits(
+      [11, 602, 1193].map((row) => ({
+        range: [
+          [row, 0],
+          [row, 0],
+        ],
+        text: "  ",
+      })),
+    );
+  });
+  assert.equal(
+    input.changes.length,
+    1,
+    "Indentation can coalesce distant changes into one history span",
+  );
+  const publications = [];
+  buffer.onDidApplyChanges(() => publications.push(buffer.getTextSnapshot()));
+  display.onDidChange(() => publications.push(buffer.getTextSnapshot()));
+  try {
+    await publish(input);
+    assert.ok(spans.length >= 3);
+    assert.ok(
+      spans.every((span) => span <= 3),
+      JSON.stringify(spans),
+    );
+    assert.ok(publications.length > 0);
+    assert.ok(publications.every((snapshot) => snapshot.equals(input.finalSource)));
+    const reference = new TextBuffer({ text: input.finalSource });
+    try {
+      const fresh = reference.addDisplayLayer({ softWrapColumn: 5 });
+      assert.equal(display.getScreenLineCount(), fresh.getScreenLineCount());
+      for (const row of [10, 11, 601, 602, 1192, 1193])
+        assert.deepEqual(
+          display.translateBufferPosition([row, 2]),
+          fresh.translateBufferPosition([row, 2]),
+        );
+    } finally {
+      reference.destroy();
+    }
+    buffer.undo();
+    assert.equal(buffer.getText(), text);
+    buffer.redo();
+    assert.ok(buffer.getTextSnapshot().equals(input.finalSource));
+  } finally {
+    input.dispose();
+    buffer.destroy();
+  }
+});
+
+test("a later sparse layout observer failure still finishes every edit and history", async (t) => {
+  const text = "value\n".repeat(1200);
+  const buffer = new TextBuffer(text);
+  const input = await candidate(buffer, (draft) => {
+    for (const row of [1190, 600, 10]) draft.insert([row, 5], "\n");
+  });
+  const prepare = buffer.prepareDisplayLayersForChange;
+  let count = 0;
+  t.mock.method(buffer, "prepareDisplayLayersForChange", function (...args) {
+    if (++count === 2) throw new Error("projection observer failed");
+    return prepare.apply(this, args);
+  });
+  try {
+    await assert.rejects(publish(input), { code: "ERR_EDIT_OBSERVER_FAILED", committed: true });
+    assert.equal(count, 3);
+    assert.ok(buffer.getTextSnapshot().equals(input.finalSource));
+    buffer.undo();
+    assert.equal(buffer.getText(), text);
+    buffer.redo();
+    assert.ok(buffer.getTextSnapshot().equals(input.finalSource));
+  } finally {
+    input.dispose();
+    buffer.destroy();
+  }
+});
+
 for (const observerThrows of [false, true])
   test(`history wrappers can be released after publication without changing the transaction owner (${observerThrows})`, async () => {
     const buffer = new TextBuffer("abc");

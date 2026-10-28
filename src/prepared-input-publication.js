@@ -26,6 +26,21 @@ function backupHistory(history) {
   return () => history.restoreFromSnapshot(snapshot);
 }
 
+function containsTransfer(map) {
+  return Boolean(map?.transfers?.length || map?.maps?.some(containsTransfer));
+}
+
+function useLocalPresentation(changes, edits, map) {
+  if (!changes.length || edits.length < 2 || edits.length > 64 || containsTransfer(map))
+    return false;
+  const span = changes.at(-1).oldEnd.row - changes[0].oldStart.row;
+  const touched = edits.reduce((count, edit) => {
+    const change = edit.getChange();
+    return count + change.oldEnd.row - change.oldStart.row + 1;
+  }, 0);
+  return span > Math.max(256, touched * 8);
+}
+
 // A prepared keystroke is a local edit, even when its document has millions of
 // annotations. Replay its real splices on the live indexes in one synchronous
 // transaction. Only opted-in marker layers belong in undo history.
@@ -71,6 +86,9 @@ module.exports = async function publishPreparedInput({
     const event =
       presentation &&
       buffer.changeEventForPreparedEdit(presentation.getChange(), "edit", { coordinateMap });
+    const localEvents = useLocalPresentation(changes, prepared.edits, coordinateMap)
+      ? prepared.edits.map((edit) => buffer.changeEventForPreparedEdit(edit.getChange()))
+      : null;
     check();
     prepared.validate();
     return withPublication(() => {
@@ -87,7 +105,9 @@ module.exports = async function publishPreparedInput({
             buffer.emitWillChangeEvent();
             check();
             prepared.validate();
-            if (event) buffer.prepareDisplayLayersForChange(event, finalSource);
+            if (localEvents?.length)
+              buffer.prepareDisplayLayersForChange(localEvents[0], prepared.edits[0].snapshot);
+            else if (event) buffer.prepareDisplayLayersForChange(event, finalSource);
             // A custom history provider can reject a patch, including after
             // modifying its own stacks. Restore it before any live text or
             // marker is touched, rather than attempting an inverse text edit.
@@ -99,14 +119,23 @@ module.exports = async function publishPreparedInput({
             return;
           }
           committed = true;
-          for (const edit of prepared.edits)
+          for (const [index, edit] of prepared.edits.entries()) {
+            // Widely separated small edits must not rebuild layout in their
+            // unchanged gaps. These updates remain in the same synchronous
+            // transaction; display and marker observers publish at its end.
+            if (localEvents && index > 0)
+              attempt(() =>
+                buffer.prepareDisplayLayersForChange(localEvents[index], edit.snapshot),
+              );
             buffer.applyChange(edit, {
               atomicToken: context.token,
               skipDisplayPreparation: true,
               deferDidChange: true,
               collectErrors: (error) => errors.push(error),
             });
-          if (event) attempt(() => buffer.emitDidChangeEvent(event));
+            if (localEvents) attempt(() => buffer.emitDidChangeEvent(localEvents[index]));
+          }
+          if (event && !localEvents) attempt(() => buffer.emitDidChangeEvent(event));
           attempt(finalize);
           attempt(() => require("./text-buffer-marker-finalizers").run(buffer));
           context.selectionFinalizersHandled = true;
