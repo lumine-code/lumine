@@ -75,7 +75,10 @@ jobs:
       - name: Test demo capture validation
         run: node --test script/demo.test.js
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: |
+          node --test script/check-audit.test.js
+          npm audit --omit=dev --audit-level=none --json > "$RUNNER_TEMP/npm-audit.json"
+          node script/check-audit.js "$RUNNER_TEMP/npm-audit.json"
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract

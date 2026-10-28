@@ -110,6 +110,7 @@ describe("Syntax worker transport", () => {
       beginScrollHighlighting: jasmine.createSpy("prepare"),
       getRenderedStartRow: () => 100,
       getRenderedEndRow: () => 140,
+      highlightingOptions: () => ({}),
       updateSync: jasmine.createSpy("paint"),
       scheduleUpdate: jasmine.createSpy("schedule"),
     };
@@ -314,6 +315,7 @@ describe("Syntax worker transport", () => {
       window: frameWindow,
       getRenderedStartRow: () => 100,
       getRenderedEndRow: () => 140,
+      highlightingOptions: () => ({}),
       cancelScrollHighlighting: Component.prototype.cancelScrollHighlighting,
       updateSync: jasmine.createSpy("updateSync"),
     };
@@ -406,6 +408,7 @@ describe("Syntax worker transport", () => {
         return this.position + 40;
       },
       scheduleUpdate: () => calls.push(["schedule"]),
+      highlightingOptions: () => ({}),
       updateSync: jasmine.createSpy("updateSync"),
     };
     for (const position of [100, 200, 300])
@@ -415,11 +418,11 @@ describe("Syntax worker transport", () => {
       });
     expect(component.position).toBe(300);
     expect(calls).toEqual([
-      ["prepare", 100, 140, displayLayer],
+      ["prepare", 100, 140, displayLayer, {}],
       ["schedule"],
-      ["prepare", 200, 240, displayLayer],
+      ["prepare", 200, 240, displayLayer, {}],
       ["schedule"],
-      ["prepare", 300, 340, displayLayer],
+      ["prepare", 300, 340, displayLayer, {}],
       ["schedule"],
     ]);
     expect(component.updateSync).not.toHaveBeenCalled();
