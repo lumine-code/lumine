@@ -553,7 +553,7 @@ class SyntaxWorkerHost {
     if (operation === "initialize") {
       if (session.initialized) throw new Error("Syntax document is already initialized");
       if (session.parent && data.indentationRanges?.length) {
-        const contexts = new (require("./tree-sitter-range-list"))();
+        const contexts = [];
         let deadline = performance.now() + 4;
         let previousEnd = -1;
         for (const [start, last] of data.indentationRanges) {
@@ -575,10 +575,20 @@ class SyntaxWorkerHost {
               deadline = performance.now() + 4;
             }
           }
-          contexts.add(new Range([first, 0], buffer.clipPosition([last + 1, 0])));
+          const context = new Range([first, 0], buffer.clipPosition([last + 1, 0]));
+          const previous = contexts.at(-1);
+          if (previous?.intersectsWith(context))
+            contexts[contexts.length - 1] = previous.union(context);
+          else contexts.push(context);
           previousEnd = last;
+          if (performance.now() >= deadline) {
+            await new Promise((resolve) => setImmediate(resolve));
+            signal?.throwIfAborted();
+            if (this.sessions.get(session.id) !== session) throw aborted();
+            deadline = performance.now() + 4;
+          }
         }
-        session.indentationRanges = [...contexts];
+        session.indentationRanges = contexts;
       }
       session.initialized = true;
       this.installMode(session);

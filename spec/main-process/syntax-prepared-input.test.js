@@ -323,6 +323,38 @@ test("combined injections retain distant members when preparing local indentatio
   }
 });
 
+test("thousands of disjoint indentation contexts are merged in linear work", async (t) => {
+  const count = 2000;
+  const { host, data } = await setup({ text: "value = 1\n".repeat(count * 4 + 4) });
+  try {
+    await host.dispatch("fork", { ...data, target: 2 });
+    let comparisons = 0,
+      contexts;
+    const compare = require("../../src/point").prototype.compare;
+    t.mock.method(require("../../src/point").prototype, "compare", function (...args) {
+      comparisons++;
+      return compare.apply(this, args);
+    });
+    t.mock.method(host, "installMode", (session) => {
+      contexts = session.indentationRanges;
+    });
+    const ranges = Array.from({ length: count }, (_, i) => [i * 4 + 2, i * 4 + 2]);
+    await host.dispatch("initialize", { session: 2, indentationRanges: ranges });
+    assert.equal(contexts.length, count);
+    assert.deepEqual(contexts[0].serialize(), [
+      [1, 0],
+      [3, 0],
+    ]);
+    assert.deepEqual(contexts.at(-1).serialize(), [
+      [count * 4 - 3, 0],
+      [count * 4 - 1, 0],
+    ]);
+    assert.ok(comparisons < count * 12, `Unexpected context work: ${comparisons}`);
+  } finally {
+    host.close();
+  }
+});
+
 test("inline prepared input sends only a result through the real worker endpoint", async () => {
   const { host, data } = await setup();
   const messages = [];

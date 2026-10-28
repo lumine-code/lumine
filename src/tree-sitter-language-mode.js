@@ -5730,6 +5730,7 @@ class LanguageLayer {
 
   async _collectIndentationInjectionCandidates(tree, range, injectionPointVersion) {
     const state = { records: [], patterns: new Map() };
+    let deadline = performance.now() + 4;
     for (const context of this.languageMode.indentationRanges) {
       if (!range.intersectsWith(context, true)) continue;
       const window = new Range(
@@ -5744,6 +5745,11 @@ class LanguageLayer {
       );
       if (result === null || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion))
         return null;
+      if (performance.now() >= deadline) {
+        await this.languageMode._yieldForInjectionCandidateScan();
+        if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
+        deadline = performance.now() + 4;
+      }
     }
     return state.records;
   }
