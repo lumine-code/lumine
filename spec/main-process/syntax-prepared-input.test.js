@@ -6,6 +6,97 @@ const rules = require("../../src/typing-indentation-rules");
 const Endpoint = require("../../src/syntax-worker-endpoint");
 const Service = require("../../src/syntax-worker-service");
 const Range = require("../../src/range");
+const LanguageMode = require("../../src/tree-sitter-language-mode");
+const PieceTree = require("../../src/piece-tree");
+
+function parseCandidate(indentationOnly, parser) {
+  return {
+    indentationOnly,
+    buffer: {},
+    document: { capture: () => ({ text: new PieceTree("value = 1"), revision: 1, edits: [] }) },
+    backgroundSnapshots: new WeakSet(),
+    parseDetails: new WeakMap(),
+    syncTimeoutMicros: 4000,
+    parsePriority: 0,
+    acquireParserForLanguage: () => parser,
+    releaseParserForLanguage() {},
+    describeParseFailure: (error) => error,
+  };
+}
+
+test("private indentation starts within the current task but preserves cancellation before parsing", async (t) => {
+  const deferred = [];
+  t.mock.method(globalThis, "setImmediate", (callback) => deferred.push(callback));
+  const tree = {};
+  let parsed = 0;
+  const mode = parseCandidate(true, {
+    tryParseSync() {
+      parsed++;
+      return tree;
+    },
+  });
+  const result = LanguageMode.prototype.parseAsync.call(mode, {}, null, null);
+  assert.equal(parsed, 0);
+  assert.equal(await result, tree);
+  assert.equal(parsed, 1);
+  assert.deepEqual(deferred, []);
+  const controller = new AbortController();
+  const cancelled = LanguageMode.prototype.parseAsync.call(mode, {}, null, null, {
+    signal: controller.signal,
+  });
+  controller.abort();
+  assert.equal(await cancelled, null);
+  assert.equal(parsed, 1);
+});
+
+test("ordinary parse work still defers so an edit burst can cancel it before leasing a parser", async (t) => {
+  const deferred = [];
+  t.mock.method(globalThis, "setImmediate", (callback) => deferred.push(callback));
+  const controller = new AbortController();
+  const mode = parseCandidate(false, {});
+  mode.acquireParserForLanguage = () =>
+    assert.fail("Cancelled ordinary parse must not lease a parser");
+  const result = LanguageMode.prototype.parseAsync.call(mode, {}, null, null, {
+    signal: controller.signal,
+  });
+  assert.equal(deferred.length, 1);
+  controller.abort();
+  deferred.shift()();
+  assert.equal(await result, null);
+});
+
+test("private indentation retains the synchronous deadline and resumes through bounded async parsing", async () => {
+  const tree = {};
+  const controller = new AbortController();
+  let resumed = false,
+    released = false;
+  const before = performance.now();
+  const mode = parseCandidate(true, {
+    tryParseSync(_text, options) {
+      assert.ok(Number.isFinite(options.deadline));
+      assert.ok(options.deadline <= performance.now() + 4);
+      return null;
+    },
+    async parse(_text, options) {
+      resumed = true;
+      assert.equal(options.signal, controller.signal);
+      assert.ok(Number.isFinite(options.deadlineForSlice()));
+      assert.ok(options.deadlineForSlice() <= performance.now() + 4);
+      return tree;
+    },
+  });
+  mode.releaseParserForLanguage = () => {
+    released = true;
+  };
+  assert.equal(
+    await LanguageMode.prototype.parseAsync.call(mode, {}, null, null, {
+      signal: controller.signal,
+    }),
+    tree,
+  );
+  assert.ok(performance.now() >= before);
+  assert.ok(resumed && released);
+});
 
 async function setup() {
   const host = new Host();

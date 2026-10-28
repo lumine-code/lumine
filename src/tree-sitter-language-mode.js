@@ -1675,9 +1675,12 @@ class TreeSitterLanguageMode {
     if (!fromCheckpoint) capture = this.document.capture(previous);
     const comparison = fromCheckpoint ? this.document.capture(previous) : null;
     return (async () => {
-      // Capture belongs to the submitted revision, but native work starts on
-      // the next turn so an edit burst can cancel it before a parser is leased.
-      await new Promise((resolve) => setImmediate(resolve));
+      // Ordinary documents coalesce edit bursts before leasing a parser.
+      // A private indentation candidate already contains its complete edit;
+      // delaying it cannot coalesce anything and adds a task to every Enter.
+      // It still shares the same bounded synchronous allowance and scheduler.
+      if (this.indentationOnly) await Promise.resolve();
+      else await new Promise((resolve) => setImmediate(resolve));
       if (this.destroyed || signal?.aborted) return null;
       onStart?.();
       const parser = this.acquireParserForLanguage(language);

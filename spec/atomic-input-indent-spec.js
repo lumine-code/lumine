@@ -44,6 +44,57 @@ describe("Atomic input indentation", () => {
     return { release, ready };
   }
 
+  it("prepares distant cursors without scanning the private editor's preceding rows", async () => {
+    const source = "value = 1\n".repeat(12020);
+    await start(source);
+    editor.foldBufferRange([
+      [2000, 0],
+      [5000, 0],
+    ]);
+    const positions = [100, 6000, 12000].map((row) => [row, 9]);
+    editor.setSelectedBufferRanges(positions.map((position) => [position, position]));
+    const DisplayLayer = require("../src/display-layer");
+    const update = DisplayLayer.prototype.updateSpatialIndex;
+    const privateScans = [];
+    spyOn(DisplayLayer.prototype, "updateSpatialIndex").and.callFake(function (...args) {
+      if (this.buffer !== editor.getBuffer() && this.softWrapColumn !== Infinity)
+        privateScans.push(args);
+      return update.apply(this, args);
+    });
+    await editor.insertNewline();
+    expect(privateScans).toEqual([]);
+    const expected = source.split("\n");
+    for (const [row] of positions.slice().reverse()) expected.splice(row + 1, 0, "");
+    expect(editor.getText()).toBe(expected.join("\n"));
+    expect(editor.getCursorBufferPositions().map((position) => position.serialize())).toEqual([
+      [101, 0],
+      [6002, 0],
+      [12003, 0],
+    ]);
+    editor.undo();
+    expect(editor.getText()).toBe(source);
+    expect(editor.getCursorBufferPositions().map((position) => position.serialize())).toEqual(
+      positions,
+    );
+    editor.redo();
+    expect(editor.getText()).toBe(expected.join("\n"));
+  });
+
+  it("moves a complete long buffer line without introducing private safety-wrap boundaries", async () => {
+    const long = "# " + "x".repeat(1200) + "🦉";
+    const source = "head = 1\n" + long + "\ntail = 2";
+    await start(source);
+    editor.setCursorBufferPosition([1, 700]);
+    await editor.moveLineUp();
+    expect(editor.getText()).toBe(long + "\nhead = 1\ntail = 2");
+    expect(editor.getCursorBufferPosition()).toEqual([0, 700]);
+    editor.undo();
+    expect(editor.getText()).toBe(source);
+    expect(editor.getCursorBufferPosition()).toEqual([1, 700]);
+    editor.redo();
+    expect(editor.getText()).toBe(long + "\nhead = 1\ntail = 2");
+  });
+
   it("keeps ordinary Python typing synchronous without indentation requests", async () => {
     await start("class Record:\n    field = ");
     editor.setCursorBufferPosition([1, Infinity]);
