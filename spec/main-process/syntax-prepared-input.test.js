@@ -98,22 +98,28 @@ test("private indentation retains the synchronous deadline and resumes through b
   assert.ok(resumed && released);
 });
 
-async function setup() {
+async function setup({
+  files = ["language-python/grammars/python.json"],
+  text = "class Record:",
+} = {}) {
   const host = new Host();
   for (const [key, schema] of Object.entries(require("../../src/config-schema")))
     host.config.setSchema(key, schema);
-  const file = require.resolve("language-python/grammars/python.json");
-  const definition = require("@lumine-code/season").readFileSync(file);
+  const grammars = files.map((name) => {
+    const file = require.resolve(name);
+    return { file, definition: require("@lumine-code/season").readFileSync(file) };
+  });
+  const { definition } = grammars[0];
   await host.dispatch("environment", {
     version: 1,
     configuration: configuration(host.config),
-    grammars: [{ file, definition }],
+    grammars,
     modules: [],
     specMode: true,
   });
   const data = { session: 1, revision: 9, scopeName: definition.scopeName, path: "example.py" };
   await host.dispatch("open", data);
-  await host.dispatch("append", { session: 1, text: "class Record:" });
+  await host.dispatch("append", { session: 1, text });
   await host.dispatch("initialize", data);
   await host.dispatch("settle", data);
   return { host, data };
@@ -145,6 +151,173 @@ test("small prepared input returns inline levels without an acknowledgement and 
     assert.equal(host.sessions.size, 1);
     assert.equal(host.sessions.get(1).buffer.getText(), "class Record:");
     assert.equal(host.sessions.get(1).forks.size, 0);
+  } finally {
+    host.close();
+  }
+});
+
+test("private indentation scans only local independent injections and skips fixed non-indent languages", async (t) => {
+  const text =
+    "function method() {\n    return 1;\n}\n".repeat(400) + "const expression = /abc+/;\n";
+  const { host, data } = await setup({
+    files: ["language-javascript/grammars/javascript.json", "language-regex/grammars/regex.json"],
+    text,
+  });
+  try {
+    host.config.set("language-javascript.indentation.indentBraces", true);
+    const grammar = host.grammars.grammarForScopeName("source.js");
+    const registration = host.grammars.addInjectionPoint("source.js", {
+      type: "regex",
+      language: "regex",
+      content: (node) => node.childForFieldName("pattern"),
+    });
+    await host.dispatch("settle", data);
+    const mode = host.sessions.get(1).mode;
+    assert.ok(
+      mode.getAllInjectionLayers().some((layer) => layer.grammar.scopeName === "source.regexp"),
+    );
+    const prototype = Object.getPrototypeOf(mode.rootLanguageLayer);
+    const queries = [],
+      types = [];
+    const query = prototype._queryStaticInjectionCandidates;
+    const collect = prototype._collectInjectionCandidateNodes;
+    t.mock.method(
+      prototype,
+      "_queryStaticInjectionCandidates",
+      function (tree, queryObject, start, end, ...rest) {
+        if (this.languageMode.indentationOnly) queries.push([start.row, end.row]);
+        return query.call(this, tree, queryObject, start, end, ...rest);
+      },
+    );
+    t.mock.method(prototype, "_collectInjectionCandidateNodes", function (tree, names, ...rest) {
+      if (this.languageMode.indentationOnly) types.push(...names);
+      return collect.call(this, tree, names, ...rest);
+    });
+    const result = await host.dispatch("prepared-indent", {
+      ...data,
+      target: 2,
+      changes: [{ startIndex: 19, oldEndIndex: 19, text: "\n" }],
+      ranges: [[1, 1]],
+      tabLength: 4,
+      inline: true,
+      options: {
+        isPastedText: false,
+        rowOptions: new Map([[1, { preserveLeadingWhitespace: true, skipBlankLines: false }]]),
+      },
+    });
+    assert.deepEqual(result.value.levels, [[1, 1]]);
+    assert.equal(types.includes("regex"), false);
+    assert.ok(queries.length > 0);
+    assert.ok(queries.every(([start, end]) => start >= 0 && end <= 2));
+    queries.length = 0;
+    await host.dispatch("prepared-indent", {
+      ...data,
+      target: 3,
+      changes: [{ startIndex: 19, oldEndIndex: 19, text: "\n" }],
+      ranges: [
+        [1, 1],
+        [901, 901],
+      ],
+      tabLength: 4,
+      inline: true,
+      options: { isPastedText: false },
+    });
+    assert.ok(queries.length >= 2);
+    assert.ok(queries.every(([start, end]) => end <= 2 || (start >= 900 && end <= 902)));
+    assert.equal(host.sessions.size, 1);
+    assert.equal(grammar.injectionPointsByType.regex[0].language, "regex");
+    registration.dispose();
+  } finally {
+    host.close();
+  }
+});
+
+test("local indentation discovery retains enclosing injected content and matches full discovery", async (t) => {
+  const text =
+    "const style = css`\n.example {\n  color: red;\n}\n`;\n" + "const tail = 1;\n".repeat(300);
+  const { host, data } = await setup({
+    files: ["language-javascript/grammars/javascript.json", "language-css/grammars/css.json"],
+    text,
+  });
+  try {
+    const dispatch = host.dispatch;
+    let full = false;
+    t.mock.method(host, "dispatch", function (operation, data, options) {
+      if (full && operation === "initialize") data = { ...data, indentationRanges: undefined };
+      return dispatch.call(this, operation, data, options);
+    });
+    const startIndex = text.indexOf("red;") + 4;
+    const input = {
+      ...data,
+      changes: [{ startIndex, oldEndIndex: startIndex, text: "\n" }],
+      ranges: [[3, 3]],
+      tabLength: 2,
+      inline: true,
+      options: {
+        isPastedText: false,
+        rowOptions: new Map([[3, { preserveLeadingWhitespace: true, skipBlankLines: false }]]),
+      },
+    };
+    const local = await host.dispatch("prepared-indent", { ...input, target: 2 });
+    full = true;
+    const complete = await host.dispatch("prepared-indent", { ...input, target: 3 });
+    assert.deepEqual(local.value, complete.value);
+    assert.deepEqual(local.value.levels, [[3, 1]]);
+    assert.equal(host.sessions.get(1).buffer.getText(), text);
+  } finally {
+    host.close();
+  }
+});
+
+test("combined injections retain distant members when preparing local indentation", async (t) => {
+  const text =
+    "const first = css`.example {\n`;\n" +
+    "const unrelated = 1;\n".repeat(300) +
+    "const second = css`\n  color: red;\n}\n`;\n";
+  const { host, data } = await setup({
+    files: ["language-javascript/grammars/javascript.json", "language-css/grammars/css.json"],
+    text,
+  });
+  try {
+    await host.grammars.grammarForScopeName("source.js").setQueryForTest(
+      "injectionsQuery",
+      `
+      ((call_expression function: (identifier) @_tag
+        arguments: (template_string (string_fragment) @injection.content)) @injection.owner
+        (#eq? @_tag "css")
+        (#set! injection.language "css")
+        (#set! injection.combined true))
+    `,
+    );
+    await host.dispatch("settle", data);
+    const mode = host.sessions.get(1).mode;
+    const prototype = Object.getPrototypeOf(mode.rootLanguageLayer);
+    const query = prototype._queryStaticInjectionCandidates;
+    const rows = [];
+    t.mock.method(
+      prototype,
+      "_queryStaticInjectionCandidates",
+      function (tree, queryObject, start, ...rest) {
+        if (this.languageMode.indentationOnly && this.depth === 0) rows.push(start.row);
+        return query.call(this, tree, queryObject, start, ...rest);
+      },
+    );
+    const startIndex = text.indexOf("red;") + 4;
+    const result = await host.dispatch("prepared-indent", {
+      ...data,
+      target: 2,
+      changes: [{ startIndex, oldEndIndex: startIndex, text: "\n" }],
+      ranges: [[304, 304]],
+      tabLength: 2,
+      inline: true,
+      options: {
+        isPastedText: false,
+        rowOptions: new Map([[304, { preserveLeadingWhitespace: true, skipBlankLines: false }]]),
+      },
+    });
+    assert.deepEqual(result.value.levels, [[304, 1]]);
+    assert.equal(Math.min(...rows), 0);
+    assert.equal(host.sessions.size, 1);
   } finally {
     host.close();
   }

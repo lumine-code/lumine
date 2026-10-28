@@ -23,6 +23,24 @@ module.exports = function stageMutation(editor, callback, records, mode) {
       if (prefix.length) buffer.insert([row, 0], prefix, { normalizeLineEndings: false });
       return;
     }
+    if (
+      !edited &&
+      options.preserveLeadingWhitespace &&
+      options.skipBlankLines === false &&
+      row > 0 &&
+      mode.canIndentNewlineWithoutSyntax?.() &&
+      editor.getSelections().length === 1 &&
+      buffer.lineLengthForRow(row - 1) <= 4096 &&
+      buffer.lineLengthForRow(row) <= 4096
+    ) {
+      // With no indentation query in any possible layer, the resolver only
+      // subtracts the existing prefix from the preceding row's indentation.
+      // Do that on the private editor without waiting for a speculative parse
+      // of the entire document. Keep long-prefix work on the cooperative path.
+      const level = editor.indentationForBufferRow(row - 1) - editor.indentationForBufferRow(row);
+      editor.setIndentationForBufferRow(row, Math.max(0, level), options);
+      return;
+    }
     requests.push({
       marker: editor.markBufferPosition([row, 0], { invalidate: "never" }),
       options: {

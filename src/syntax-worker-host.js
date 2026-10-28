@@ -241,6 +241,7 @@ class SyntaxWorkerHost {
       initialSyntaxTree: session.initialSyntaxTree,
       initialSyntaxChanges: session.initialSyntaxChanges,
       indentationOnly: Boolean(session.parent),
+      indentationRanges: session.indentationRanges,
     });
     session.initialSyntaxTree = null;
     session.initialSyntaxChanges = null;
@@ -397,7 +398,11 @@ class SyntaxWorkerHost {
           { session: target, beforeRevision: 0, revision: 1, changes: data.changes },
           { signal },
         );
-        await this.dispatch("initialize", { session: target }, { signal });
+        await this.dispatch(
+          "initialize",
+          { session: target, indentationRanges: data.ranges },
+          { signal },
+        );
         const result = await this.dispatch(
           "prepared-indent",
           {
@@ -547,6 +552,34 @@ class SyntaxWorkerHost {
     }
     if (operation === "initialize") {
       if (session.initialized) throw new Error("Syntax document is already initialized");
+      if (session.parent && data.indentationRanges?.length) {
+        const contexts = new (require("./tree-sitter-range-list"))();
+        let deadline = performance.now() + 4;
+        let previousEnd = -1;
+        for (const [start, last] of data.indentationRanges) {
+          if (
+            !Number.isSafeInteger(start) ||
+            !Number.isSafeInteger(last) ||
+            start <= previousEnd ||
+            last < start ||
+            last > buffer.getLastRow()
+          )
+            throw new RangeError("Invalid indentation context");
+          let first = Math.max(0, start - 1);
+          while (first > previousEnd && first > 0 && buffer.isRowBlank(first)) {
+            first--;
+            if (performance.now() >= deadline) {
+              await new Promise((resolve) => setImmediate(resolve));
+              signal?.throwIfAborted();
+              if (this.sessions.get(session.id) !== session) throw aborted();
+              deadline = performance.now() + 4;
+            }
+          }
+          contexts.add(new Range([first, 0], buffer.clipPosition([last + 1, 0])));
+          previousEnd = last;
+        }
+        session.indentationRanges = [...contexts];
+      }
       session.initialized = true;
       this.installMode(session);
       return;
@@ -900,6 +933,7 @@ class SyntaxWorkerHost {
       softTabs: session.softTabs,
       syntaxReady: !mode.publicationPending,
       typingIndentationRules: require("./typing-indentation-rules").forMode(mode),
+      usesSyntaxIndentation: require("./typing-indentation-rules").usesSyntaxIndentation(mode),
     };
   }
 

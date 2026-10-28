@@ -930,7 +930,7 @@ module.exports = class TreeSitterGrammar {
    *
    * @param {Object} injectionPoint - The options for the injection point:
    * @param {String} injectionPoint.type - A `String` describing the type of node to inject into.
-   * @param {Function} injectionPoint.language - A `Function` that should return a short, unambiguous language name declared by the target grammar in `injectionNames`. Matching ignores surrounding whitespace and letter case. Receives one parameter:
+   * @param {String|Function} injectionPoint.language - A fixed language name declared by the target grammar in `injectionNames`, or a function returning one. Prefer a string for a fixed language so operations can skip irrelevant injections before scanning. Matching ignores surrounding whitespace and letter case. A function receives one parameter:
    * @param {SyntaxNode} injectionPoint.language.node - A Tree-sitter node.
    * @param {Function} injectionPoint.content - A `Function` that should return the node (or nodes) that will actually be injected into. Usually this will be the same node that was given, but could also be a specific child or descendant of that node.
    * @param {Boolean} [injectionPoint.includeChildren=false] - controlling whether the injection range should include the ranges of the content node’s children. Defaults to `false`, meaning that the range of each of this node's children will be "subtracted" from the injection range, and the remainder will be parsed as if those ranges of the buffer do not exist.

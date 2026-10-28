@@ -302,6 +302,96 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe(after);
   });
 
+  it("inserts repeated newlines before plain text without speculative syntax requests", async () => {
+    await lumine.packages.activatePackage("language-text");
+    const original = "first line\n" + "    next line\n".repeat(10000);
+    const mode = await start(original, "text.plain");
+    expect(mode.canIndentNewlineWithoutSyntax()).toBe(true);
+    editor.setCursorBufferPosition([0, 0]);
+    const scan = spyOn(mode, "scanPreparedIndentation").and.callThrough();
+    for (let i = 0; i < 20; i++) await dispatchInput(editor, () => editor.insertNewline());
+    expect(scan).not.toHaveBeenCalled();
+    expect(editor.getText()).toBe("\n".repeat(20) + original);
+    expect(editor.getCursorBufferPosition()).toEqual([20, 0]);
+    for (let i = 0; i < 20; i++) editor.undo();
+    expect(editor.getText()).toBe(original);
+  });
+
+  it("matches syntax-resolved newline indentation for split prefixes, selections and multiple cursors", async () => {
+    await lumine.packages.activatePackage("language-text");
+    const original = "\t  first line\r\n    next line\r\n\tlast line";
+    const scenarios = [
+      [
+        [
+          [0, 0],
+          [0, 0],
+        ],
+      ],
+      [
+        [
+          [0, 1],
+          [0, 1],
+        ],
+      ],
+      [
+        [
+          [0, 3],
+          [0, 3],
+        ],
+      ],
+      [
+        [
+          [0, 8],
+          [0, 8],
+        ],
+      ],
+      [
+        [
+          [0, 8],
+          [1, 2],
+        ],
+      ],
+      [
+        [
+          [0, 1],
+          [0, 1],
+        ],
+        [
+          [0, 8],
+          [0, 8],
+        ],
+        [
+          [2, 1],
+          [2, 1],
+        ],
+      ],
+    ];
+    for (const softTabs of [true, false]) {
+      editor.update({ softTabs });
+      for (const ranges of scenarios) {
+        const results = [];
+        for (const useLocal of [false, true]) {
+          const mode = await start(original, "text.plain");
+          if (!useLocal) mode.canIndentNewlineWithoutSyntax = () => false;
+          editor.setSelectedBufferRanges(ranges);
+          const before = editor.getSelectedBufferRanges();
+          try {
+            await editor.insertNewline();
+          } catch (error) {
+            throw new Error(JSON.stringify({ softTabs, ranges, useLocal }), { cause: error });
+          }
+          results.push({ text: editor.getText(), ranges: editor.getSelectedBufferRanges() });
+          editor.undo();
+          expect(editor.getText()).toBe(original);
+          expect(editor.getSelectedBufferRanges()).toEqual(before);
+          editor.redo();
+          expect(editor.getText()).toBe(results.at(-1).text);
+        }
+        expect(results[1]).toEqual(results[0]);
+      }
+    }
+  });
+
   it("resolves queued typing against the completed newline rather than its old row", async () => {
     await start("if (ready) {", "source.js");
     editor.moveToEndOfLine();

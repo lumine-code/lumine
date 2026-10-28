@@ -384,7 +384,13 @@ class TreeSitterParser {
               range.endPosition.column === next.endPosition.column
             );
           });
-        if (!sameRanges || job.previous.rootNode.hasError) {
+        const originalRanges = job.previous.getIncludedRanges();
+        const unrestricted =
+          job.includedRanges == null &&
+          originalRanges.length === 1 &&
+          originalRanges[0].startIndex === 0 &&
+          originalRanges[0].endIndex > sourceOf(job.previous).length;
+        if ((!sameRanges && !unrestricted) || job.previous.rootNode.hasError) {
           // The 0.27.1 runtime clears included-range differences when resuming
           // an incremental parse. It can then reuse an old subtree over newly
           // included source. Keep the fast path if the first slice completes;
@@ -392,6 +398,9 @@ class TreeSitterParser {
           // Resuming from a tree with existing errors can also change error
           // recovery depending on the slice boundary. Fresh resumable parsing
           // avoids carrying those recovery states into the next slice.
+          // An unrestricted tree edited at offset zero moves its sentinel's
+          // start too. That is an ordinary recorded source edit, not a change
+          // to included language ownership; it can keep incremental reuse.
           this.parser.reset();
           job.oldTree.delete();
           job.oldTree = null;

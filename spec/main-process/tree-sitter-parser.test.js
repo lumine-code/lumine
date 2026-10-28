@@ -554,6 +554,45 @@ test("a suspended incremental parse with earlier errors restarts fresh before re
   }
 });
 
+for (const inserted of ["\n", "\r\n\r\n", "const prefix = '🦉';\n", "/* prefix\n", "{"])
+  test(`resuming an unrestricted leading insertion keeps incremental reuse (${JSON.stringify(inserted)})`, async () => {
+    const parser = new DocumentParser(language);
+    const fresh = new DocumentParser(language);
+    try {
+      const source = new PieceTree("function method(value) { return value + 1; }\n".repeat(2000));
+      const previous = parser.parseSync(source);
+      const text = source.replace(0, 0, inserted);
+      const parse = parser.parser.parse.bind(parser.parser);
+      let interrupted = false;
+      parser.parser.parse = (input, oldTree, options) =>
+        parse(input, oldTree, {
+          ...options,
+          progressCallback() {
+            if (!interrupted && oldTree) {
+              interrupted = true;
+              return true;
+            }
+            return false;
+          },
+        });
+      const result = await parser.parse(text, {
+        previous,
+        edits: [{ startIndex: 0, oldEndIndex: 0, newText: inserted }],
+        revision: 1,
+      });
+      const expected = fresh.parseSync(text);
+      assert.equal(interrupted, true);
+      assert.equal(result.incremental, true);
+      assert.equal(result.rootNode.toString(), expected.rootNode.toString());
+      assert.equal(result.rootNode.endIndex, text.length);
+      assert.deepEqual(result.rootNode.endPosition, expected.rootNode.endPosition);
+      assert.equal(previous.input, source.toString());
+    } finally {
+      parser.close();
+      fresh.close();
+    }
+  });
+
 test("cancelled checkpoint replay preserves the latest source and repaired valid AST", async (t) => {
   const parser = new DocumentParser(language),
     reference = new DocumentParser(language),

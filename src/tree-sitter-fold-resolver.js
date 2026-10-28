@@ -387,9 +387,16 @@ class FoldResolver {
       return null;
     }
 
-    let extent = this.layer.getExtent();
-    this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, extent.start, extent.end);
-    const matchedEndCapture = this.dividedFoldEndsByStartNodeId.get(capture.node.id);
+    let matchedEndCapture = this.dividedFoldEndsByStartNodeId.get(capture.node.id);
+    if (!matchedEndCapture) {
+      // The local gutter query usually contains both ends of a short block.
+      // Its paired boundaries are already exact; widening to the whole layer
+      // here repeats a document-wide query before every indentation request
+      // sharing this worker can run. Only an unresolved end needs that scan.
+      const extent = this.layer.getExtent();
+      this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, extent.start, extent.end);
+      matchedEndCapture = this.dividedFoldEndsByStartNodeId.get(capture.node.id);
+    }
 
     // There's no guarantee that a matching `@fold.end` will even appear, so if
     // it doesn't, then this row does not contain a valid fold.

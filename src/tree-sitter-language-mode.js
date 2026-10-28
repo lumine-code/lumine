@@ -221,11 +221,13 @@ class TreeSitterLanguageMode {
     initialSyntaxTree,
     initialSyntaxChanges,
     indentationOnly = false,
+    indentationRanges = null,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
     for (const batch of initialSyntaxChanges ?? []) this.document.apply(batch);
     this.indentationOnly = indentationOnly;
+    this.indentationRanges = indentationOnly ? indentationRanges : null;
     this.highlightCache = new HighlightCache({ maxEvents: 128000 });
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
@@ -1699,16 +1701,18 @@ class TreeSitterLanguageMode {
             : capture.edits,
           revision: capture.revision,
           includedRanges: includedRanges ?? undefined,
-          comparison: fromCheckpoint
-            ? comparison.previous
-              ? {
-                  previous: comparison.previous,
-                  edits: extraEdits.length
-                    ? [...comparison.edits, ...extraEdits]
-                    : comparison.edits,
-                }
-              : null
-            : undefined,
+          comparison: this.indentationOnly
+            ? null
+            : fromCheckpoint
+              ? comparison.previous
+                ? {
+                    previous: comparison.previous,
+                    edits: extraEdits.length
+                      ? [...comparison.edits, ...extraEdits]
+                      : comparison.edits,
+                  }
+                : null
+              : undefined,
         };
         let tree =
           this.syncTimeoutMicros > 0
@@ -5498,7 +5502,16 @@ class LanguageLayer {
     const injectionPointVersion = this.injectionPointVersion;
     const injectionPointsByType = {};
     for (const [type, injectionPoints] of Object.entries(this.grammar.injectionPointsByType)) {
-      injectionPointsByType[type] = injectionPoints.slice();
+      const needed = this.languageMode.indentationOnly
+        ? injectionPoints.filter(
+            (point) =>
+              typeof point.language !== "string" ||
+              this.languageMode.injectionCanAffectIndentation(
+                this.languageMode.grammarForLanguageString(point.language),
+              ),
+          )
+        : injectionPoints.slice();
+      if (needed.length) injectionPointsByType[type] = needed;
     }
 
     // Query for all the nodes within the original range that could possibly
@@ -5641,7 +5654,7 @@ class LanguageLayer {
     );
   }
 
-  _collectStaticInjectionCandidates(tree, range, injectionPointVersion) {
+  _collectStaticInjectionCandidates(tree, range, injectionPointVersion, state = null) {
     const query = this.queries.injectionsQuery;
     if (!query) return [];
     if (
@@ -5656,6 +5669,21 @@ class LanguageLayer {
       )
     )
       return [];
+    const indentationRanges = this.languageMode.indentationRanges;
+    if (
+      this.depth === 0 &&
+      indentationRanges &&
+      !state &&
+      query.injectionDescriptors &&
+      [...query.injectionDescriptors.values()].every((descriptor) => !descriptor.combined)
+    ) {
+      // A private indentation document only needs layers controlling the
+      // requested rows and their comparison row. Query the complete tree in
+      // that window: enclosing owners retain their full content and syntax.
+      // Combined injections need global discovery; callback-based topology is
+      // scanned separately, and nested languages keep their full context.
+      return this._collectIndentationInjectionCandidates(tree, range, injectionPointVersion);
+    }
     const treeRange = rangeForNode(tree.rootNode);
     const start = Point.max(range.start, treeRange.start);
     const end = Point.min(range.end, treeRange.end);
@@ -5674,8 +5702,14 @@ class LanguageLayer {
     ) {
       return this._runInjectionQuery(
         () =>
-          this._queryStaticInjectionCandidates(tree, query, start, end, injectionPointVersion)
-            ?.records ?? null,
+          this._queryStaticInjectionCandidates(
+            tree,
+            query,
+            start,
+            end,
+            injectionPointVersion,
+            state,
+          )?.records ?? null,
         tree,
         injectionPointVersion,
       );
@@ -5690,7 +5724,28 @@ class LanguageLayer {
       chunkRows,
       chunkCodeUnits,
       injectionPointVersion,
+      state ?? undefined,
     );
+  }
+
+  async _collectIndentationInjectionCandidates(tree, range, injectionPointVersion) {
+    const state = { records: [], patterns: new Map() };
+    for (const context of this.languageMode.indentationRanges) {
+      if (!range.intersectsWith(context, true)) continue;
+      const window = new Range(
+        Point.max(range.start, context.start),
+        Point.min(range.end, context.end),
+      );
+      const result = await this._collectStaticInjectionCandidates(
+        tree,
+        window,
+        injectionPointVersion,
+        state,
+      );
+      if (result === null || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion))
+        return null;
+    }
+    return state.records;
   }
 
   async _collectStaticInjectionCandidatesInChunks(
@@ -5703,8 +5758,8 @@ class LanguageLayer {
     chunkRows,
     chunkCodeUnits,
     injectionPointVersion,
+    state,
   ) {
-    let state;
     let records = [];
     const source = this.languageMode.document.capture().text;
     let chunkStart = start;
@@ -6014,7 +6069,10 @@ class LanguageLayer {
           const injectionPoint = injectionPoints[plan.injectionPointIndex++];
           operations++;
 
-          const languageName = injectionPoint.language(node);
+          const languageName =
+            typeof injectionPoint.language === "string"
+              ? injectionPoint.language
+              : injectionPoint.language(node);
           if (!isCurrent()) {
             plan.stale = true;
             return true;

@@ -462,12 +462,20 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.usedGrammarScopes = result.grammars;
     this.softTabsHint = result.softTabs;
     this.typingIndentationRules = result.typingIndentationRules;
+    this.usesSyntaxIndentation = result.usesSyntaxIndentation;
     this.typingIndentationEpoch = this.getSyntaxRequestEpoch();
     if (this.tokenized && previous !== this.softTabsHint) this.emitter.emit("did-tokenize");
   }
 
   getSoftTabsHint() {
     return this.softTabsHint;
+  }
+
+  canIndentNewlineWithoutSyntax() {
+    return (
+      this.usesSyntaxIndentation === false &&
+      this.typingIndentationEpoch === this.getSyntaxRequestEpoch()
+    );
   }
 
   mayIndentEditedText(range, text) {

@@ -108,21 +108,12 @@ function compile(query, source) {
   }
 }
 
-function forMode(mode) {
-  const visited = new Set(),
-    rules = [];
+function everyGrammar(mode, accept) {
+  const visited = new Set();
   const visit = (grammar) => {
     if (!grammar || visited.has(grammar)) return true;
     visited.add(grammar);
-    if (grammar.queryPaths?.indentsQuery) {
-      const query = grammar.queryCache.get("indentsQuery");
-      if (!query) return false;
-      if (!Object.hasOwn(query, "typingIndentationRules"))
-        query.typingIndentationRules = compile(query, grammar.indentsQuery);
-      const own = query.typingIndentationRules;
-      if (!own) return false;
-      rules.push(...own);
-    }
+    if (!accept(grammar)) return false;
     if (Object.keys(grammar.injectionPointsByType ?? {}).length) return false;
     if (grammar.queryPaths?.injectionsQuery) {
       const descriptors = grammar.queryCache.get("injectionsQuery")?.injectionDescriptors;
@@ -133,7 +124,30 @@ function forMode(mode) {
     }
     return true;
   };
-  return visit(mode.grammar) ? rules : null;
+  return visit(mode.grammar);
+}
+
+function forMode(mode) {
+  const rules = [];
+  const complete = everyGrammar(mode, (grammar) => {
+    if (!grammar.queryPaths?.indentsQuery) return true;
+    const query = grammar.queryCache.get("indentsQuery");
+    if (!query) return false;
+    if (!Object.hasOwn(query, "typingIndentationRules"))
+      query.typingIndentationRules = compile(query, grammar.indentsQuery);
+    const own = query.typingIndentationRules;
+    if (!own) return false;
+    rules.push(...own);
+    return true;
+  });
+  return complete ? rules : null;
+}
+
+function usesSyntaxIndentation(mode) {
+  // Inspect possible injections, not just layers present in this revision:
+  // the newline itself can introduce a new embedded language. Dynamic or
+  // unloaded injection queries cannot prove that indentation is plain.
+  return !everyGrammar(mode, (grammar) => !grammar.queryPaths?.indentsQuery);
 }
 
 function mayMatch(rules, text) {
@@ -150,4 +164,4 @@ function mayMatch(rules, text) {
   );
 }
 
-module.exports = { compile, forMode, mayMatch };
+module.exports = { compile, forMode, mayMatch, usesSyntaxIndentation };
