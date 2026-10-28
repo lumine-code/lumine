@@ -11,6 +11,12 @@ describe("Worker newline presentation", () => {
 
   const scenarios = [
     {
+      name: "a Python class header followed by a comment",
+      text: "class Example(Structure):  # record description\n   _fields_ = []\n",
+      rows: [0],
+      column: Infinity,
+    },
+    {
       name: "a Python multiline string",
       text: 'def work():\n    value = """abc\n    xyz\n    """',
       rows: [1],
@@ -111,7 +117,7 @@ describe("Worker newline presentation", () => {
   ];
 
   for (const scenario of scenarios) {
-    it(`inserts inherited indentation atomically for ${scenario.name} and matches the final inline result`, async () => {
+    it(`publishes final indentation atomically for ${scenario.name} and matches the inline result`, async () => {
       const service = new Service(lumine.grammars);
       const editors = [];
       let release;
@@ -145,35 +151,35 @@ describe("Worker newline presentation", () => {
           editor.getBuffer().clearUndoStack();
         }
         const [worker, inline] = editors;
-        const mode = worker.getBuffer().getLanguageMode();
-        const suggest = mode.suggestedIndentForBufferRowsAtRows.bind(mode);
-        spyOn(mode, "suggestedIndentForBufferRowsAtRows").and.callFake(async (...args) => {
-          await gate;
-          return suggest(...args);
+        const request = service.client.request.bind(service.client);
+        spyOn(service.client, "request").and.callFake(async (operation, ...args) => {
+          const result = request(operation, ...args);
+          if (operation === "prepared-indent") await gate;
+          return result;
         });
-        const columns = [];
-        const subscription = worker.onDidChangeCursorPosition(({ newBufferPosition }) => {
-          if (!scenario.rows.includes(newBufferPosition.row))
-            columns.push(newBufferPosition.column);
-        });
+        const beforePositions = worker.getCursorBufferPositions();
+        const publications = [];
+        const subscription = worker
+          .getBuffer()
+          .onDidApplyChanges(() => publications.push(worker.getText()));
+        let insertion;
         try {
-          worker.insertText(scenario.newline ?? "\n");
-          expect(worker.getCursorBufferPositions().map((p) => p.column)).toEqual(
-            scenario.rows.map(() => scenario.immediate),
-          );
-          expect(columns).not.toContain(0);
-          await new Promise(requestAnimationFrame);
-          await new Promise(requestAnimationFrame);
-          expect(worker.getCursorBufferPositions().map((p) => p.column)).toEqual(
-            scenario.rows.map(() => scenario.immediate),
-          );
+          insertion = worker.insertText(scenario.newline ?? "\n");
+          for (let frame = 0; frame < 5; frame++) {
+            await new Promise(requestAnimationFrame);
+            expect(worker.getText()).toBe(scenario.text);
+            expect(worker.getCursorBufferPositions()).toEqual(beforePositions);
+            expect(publications).toEqual([]);
+          }
         } finally {
-          subscription.dispose();
           release();
         }
+        await insertion;
+        subscription.dispose();
         inline.insertText(scenario.newline ?? "\n");
         await Promise.all(editors.map((editor) => editor.whenGrammarSettled()));
         expect(worker.getText()).toBe(inline.getText());
+        expect(publications).toEqual([inline.getText()]);
         expect(worker.getCursorBufferPositions()).toEqual(inline.getCursorBufferPositions());
         worker.undo();
         expect(worker.getText()).toBe(scenario.text);

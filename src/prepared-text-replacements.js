@@ -149,7 +149,10 @@ function commitPlans(prepared, options = {}) {
     // A failure while publishing a completed inner transaction must never make
     // an outer transaction roll back text already observed in another buffer.
     try {
-      return buffers[index].transact({ atomicToken: context.token }, () => transact(index + 1, fn));
+      return buffers[index].transact(
+        { atomicToken: context.token, groupingInterval: options.groupingInterval },
+        () => transact(index + 1, fn),
+      );
     } catch (error) {
       if (committed) errors.push(error);
       else throw error;

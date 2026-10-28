@@ -409,11 +409,40 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.availableQueries = new Set(result.queries);
     this.usedGrammarScopes = result.grammars;
     this.softTabsHint = result.softTabs;
+    this.typingIndentationRules = result.typingIndentationRules;
+    this.typingIndentationEpoch = this.getSyntaxRequestEpoch();
     if (this.tokenized && previous !== this.softTabsHint) this.emitter.emit("did-tokenize");
   }
 
   getSoftTabsHint() {
     return this.softTabsHint;
+  }
+
+  mayIndentEditedText(range, text) {
+    if (range.start.row === 0) return false;
+    if (text.includes("\n")) return true;
+    const source = this.buffer.getTextSnapshot();
+    const first = source.lineStart(range.start.row);
+    const start = source.offsetAt(range.start),
+      end = source.offsetAt(range.end);
+    const last = source.lineStart(range.end.row) + this.buffer.lineLengthForRow(range.end.row);
+    if (start - first + text.length + last - end > 4096) return true;
+    const candidate = source.slice(first, start) + text + source.slice(end, last);
+    if (!/^[\t ]/.test(candidate)) return false;
+    if (this.typingIndentationEpoch !== this.getSyntaxRequestEpoch()) return true;
+    return require("./typing-indentation-rules").mayMatch(this.typingIndentationRules, candidate);
+  }
+
+  mayIndentEditedRow(source, row) {
+    if (row === 0) return false;
+    const start = source.lineStart(row);
+    const end = row + 1 < source.lineCount ? source.lineStart(row + 1) : source.length;
+    if (end - start > 4096 || this.typingIndentationEpoch !== this.getSyntaxRequestEpoch())
+      return true;
+    return require("./typing-indentation-rules").mayMatch(
+      this.typingIndentationRules,
+      source.slice(start, end),
+    );
   }
 
   getUsedGrammars() {

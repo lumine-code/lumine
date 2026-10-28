@@ -582,6 +582,43 @@ class SyntaxWorkerService {
           throw Client.abortError("Prepared paste is obsolete");
       };
       try {
+        const units =
+          changes.length < 128
+            ? changes.reduce((total, change) => total + insertedSource(change).length, 0)
+            : Infinity;
+        if (units <= 64 * 1024) {
+          const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
+          const result = await this.request(
+            session,
+            "prepared-indent",
+            {
+              target: id,
+              ranges,
+              tabLength,
+              options: parameters,
+              changes: changes.map((change) => {
+                const source = insertedSource(change);
+                return {
+                  range: change.oldRange.serialize(),
+                  startIndex: change.startIndex,
+                  oldEndIndex: change.oldEndIndex,
+                  text: source.slice(0, source.length),
+                };
+              }),
+            },
+            {
+              signal,
+              revision,
+              onChunk: async (batch) => {
+                check();
+                await onChunk(batch);
+                check();
+              },
+            },
+          );
+          check();
+          return result;
+        }
         await this.request(session, "fork", { target: id }, { signal, revision });
         client = this.client;
         check();

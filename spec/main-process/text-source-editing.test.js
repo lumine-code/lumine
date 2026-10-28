@@ -3,6 +3,43 @@ const assert = require("node:assert/strict");
 const TextBuffer = require("../../src/text-buffer");
 const { PieceTree } = require("../../src/text-model");
 
+test("a streamed local edit preserves its narrow publication and undo range", async () => {
+  const buffer = new TextBuffer("header\n" + "body\n".repeat(20000));
+  try {
+    buffer.clearUndoStack();
+    const changes = [];
+    buffer.onDidChangeText((event) => changes.push(...event.changes));
+    await buffer.applyTextEdits([
+      {
+        range: [
+          [1, 0],
+          [1, 0],
+        ],
+        text: "    ",
+      },
+    ]);
+    assert.deepEqual(changes[0].oldRange.serialize(), [
+      [1, 0],
+      [1, 0],
+    ]);
+    assert.deepEqual(changes[0].newRange.serialize(), [
+      [1, 0],
+      [1, 4],
+    ]);
+    buffer.undo();
+    assert.deepEqual(changes[1].oldRange.serialize(), [
+      [1, 0],
+      [1, 4],
+    ]);
+    assert.deepEqual(changes[1].newRange.serialize(), [
+      [1, 0],
+      [1, 0],
+    ]);
+  } finally {
+    buffer.destroy();
+  }
+});
+
 test("source insertion shares oversized text, captures ranges and restores exact history", () => {
   let source = new PieceTree("ab\n".repeat(1024));
   while (source.canMaterialize()) source = source.replace(source.length, source.length, source);

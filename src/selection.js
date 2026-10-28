@@ -729,10 +729,22 @@ module.exports = class Selection {
    * @param {Number} [options.indentBasis] - Indentation level of copied text used to preserve the relative indentation of subsequent lines.
    * @param {Boolean} [options.autoscroll] - Scroll by default only for the most recently added selection.
    * @param {String|Number|Array<Number>} [options.mode] - Scroll mode; see {@link TextEditor#scrollToScreenRange}.
-   * @returns {Range|undefined} The inserted range, or undefined when a read-only editor refuses the edit.
+   * @returns {Range|undefined|Promise} The inserted range, or a promise when automatic indentation requires syntax preparation. Await completion before reading the edited text. Returns undefined when a read-only editor refuses the edit.
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
+    if (
+      ((options.autoIndent && text.includes("\n")) ||
+        (options.autoIndentNewline && (text === "\n" || text === "\r\n")) ||
+        (options.autoDecreaseIndent && /\S/.test(text))) &&
+      typeof this.editor.getBuffer().getLanguageMode().scanPreparedIndentation === "function"
+    ) {
+      const index = this.editor.getSelections().indexOf(this);
+      return this.editor.transactWithAutoIndentation(
+        (editor) => editor.getSelections()[index].insertText(text, options),
+        options,
+      );
+    }
 
     let desiredIndentLevel, indentAdjustment;
     const oldBufferRange = this.getBufferRange();

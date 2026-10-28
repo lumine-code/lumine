@@ -3404,9 +3404,10 @@ module.exports = class TextEditorComponent {
 
       // In overtype mode, expand empty selections over the following character
       // so the typed text overwrites it instead of being inserted before it.
-      this.props.model.applyOvertype();
-
-      this.props.model.insertText(event.data, { groupUndo: true });
+      require("./text-editor-input-queue")(this.props.model, () => {
+        this.props.model.applyOvertype();
+        return this.props.model.insertText(event.data, { groupUndo: true });
+      });
     }
   }
 
@@ -3497,7 +3498,9 @@ module.exports = class TextEditorComponent {
   }
 
   didCompositionUpdate(event) {
-    this.props.model.insertText(event.data, { select: true });
+    require("./text-editor-input-queue")(this.props.model, () =>
+      this.props.model.insertText(event.data, { select: true }),
+    );
   }
 
   didCompositionEnd(event) {
@@ -4222,45 +4225,48 @@ module.exports = class TextEditorComponent {
   }
 
   measureHorizontalPositions() {
-    this.horizontalPositionsToMeasure.forEach((columnsToMeasure, row) => {
-      columnsToMeasure.sort((a, b) => a - b);
+    try {
+      this.horizontalPositionsToMeasure.forEach((columnsToMeasure, row) => {
+        columnsToMeasure.sort((a, b) => a - b);
 
-      const screenLine = this.renderedScreenLineForRow(row);
+        const screenLine = this.renderedScreenLineForRow(row);
 
-      // Skip rows whose screen line or line component is not currently
-      // rendered. Measurements can be queued for non-rendered rows by calls
-      // to pixelPositionForScreenPosition or pendingAutoscroll when block
-      // decorations shift lines outside the rendered range. Because clear()
-      // runs after the forEach, throwing here prevents it from ever being
-      // reached, poisoning horizontalPositionsToMeasure permanently and
-      // causing an infinite error loop on every subsequent animation frame.
-      if (!screenLine || !this.lineComponentsByScreenLineId.get(screenLine.id)) {
-        if (lumine.window.isDevMode()) {
-          console.warn("measureHorizontalPositions: skipped non-rendered row", row);
+        // Skip rows whose screen line or line component is not currently
+        // rendered. Measurements can be queued for non-rendered rows by calls
+        // to pixelPositionForScreenPosition or pendingAutoscroll when block
+        // decorations shift lines outside the rendered range. Because clear()
+        // runs after the forEach, throwing here prevents it from ever being
+        // reached, poisoning horizontalPositionsToMeasure permanently and
+        // causing an infinite error loop on every subsequent animation frame.
+        if (!screenLine || !this.lineComponentsByScreenLineId.get(screenLine.id)) {
+          if (lumine.window.isDevMode()) {
+            console.warn("measureHorizontalPositions: skipped non-rendered row", row);
+          }
+          return;
         }
-        return;
-      }
 
-      const lineComponent = this.lineComponentsByScreenLineId.get(screenLine.id);
+        const lineComponent = this.lineComponentsByScreenLineId.get(screenLine.id);
 
-      const lineNode = lineComponent.element;
-      const textNodes = lineComponent.textNodes;
-      let positionsForLine = this.horizontalPixelPositionsByScreenLineId.get(screenLine.id);
-      if (positionsForLine == null) {
-        positionsForLine = new Map();
-        this.horizontalPixelPositionsByScreenLineId.set(screenLine.id, positionsForLine);
-      }
+        const lineNode = lineComponent.element;
+        const textNodes = lineComponent.textNodes;
+        let positionsForLine = this.horizontalPixelPositionsByScreenLineId.get(screenLine.id);
+        if (positionsForLine == null) {
+          positionsForLine = new Map();
+          this.horizontalPixelPositionsByScreenLineId.set(screenLine.id, positionsForLine);
+        }
 
-      this.measureHorizontalPositionsOnLine(
-        lineNode,
-        textNodes,
-        columnsToMeasure,
-        positionsForLine,
-        screenLine,
-        row,
-      );
-    });
-    this.horizontalPositionsToMeasure.clear();
+        this.measureHorizontalPositionsOnLine(
+          lineNode,
+          textNodes,
+          columnsToMeasure,
+          positionsForLine,
+          screenLine,
+          row,
+        );
+      });
+    } finally {
+      this.horizontalPositionsToMeasure.clear();
+    }
   }
 
   measureHorizontalPositionsOnLine(
@@ -4271,6 +4277,9 @@ module.exports = class TextEditorComponent {
     screenLine,
     screenRow,
   ) {
+    // A retired/rebuilt line or an external renderer may temporarily have no
+    // text nodes. There is no glyph geometry to cache until its DOM is ready.
+    if (!lineNode || !textNodes?.length) return;
     let lineNodeClientLeft = -1;
     const startColumn = screenLine?.startScreenColumn || 0;
     let textNodeStartColumn = startColumn;

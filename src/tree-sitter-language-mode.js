@@ -220,10 +220,12 @@ class TreeSitterLanguageMode {
     reportFailure,
     initialSyntaxTree,
     initialSyntaxChanges,
+    indentationOnly = false,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
     for (const batch of initialSyntaxChanges ?? []) this.document.apply(batch);
+    this.indentationOnly = indentationOnly;
     this.highlightCache = new HighlightCache({ maxEvents: 128000 });
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
@@ -1260,6 +1262,20 @@ class TreeSitterLanguageMode {
   grammarForLanguageString(languageString) {
     let result = this.grammarRegistry.treeSitterGrammarForLanguageString(languageString);
     return result;
+  }
+
+  injectionCanAffectIndentation(grammar) {
+    if (!this.indentationOnly) return true;
+    if (!grammar) return false;
+    // An explicitly empty indents query still controls indentation. Keep
+    // intermediate languages too: their descendants may provide the query.
+    return Boolean(
+      grammar.queryPaths?.indentsQuery ||
+      grammar.queryCache?.has("indentsQuery") ||
+      grammar.queryPaths?.injectionsQuery ||
+      grammar.queryCache?.has("injectionsQuery") ||
+      Object.keys(grammar.injectionPointsByType ?? {}).length,
+    );
   }
 
   // Called when any grammar is added or changed, on the off chance that it
@@ -5625,6 +5641,18 @@ class LanguageLayer {
   _collectStaticInjectionCandidates(tree, range, injectionPointVersion) {
     const query = this.queries.injectionsQuery;
     if (!query) return [];
+    if (
+      this.languageMode.indentationOnly &&
+      query.injectionDescriptors &&
+      [...query.injectionDescriptors.values()].every(
+        ({ languageName }) =>
+          languageName &&
+          !this.languageMode.injectionCanAffectIndentation(
+            this.languageMode.grammarForLanguageString(languageName),
+          ),
+      )
+    )
+      return [];
     const treeRange = rangeForNode(tree.rootNode);
     const start = Point.max(range.start, treeRange.start);
     const end = Point.min(range.end, treeRange.end);
@@ -6081,6 +6109,7 @@ class LanguageLayer {
       );
     }
     const grammar = plan.grammarsByLanguageName.get(languageName);
+    if (!this.languageMode.injectionCanAffectIndentation(grammar)) return null;
     if (grammar) plan.recognizedLanguageNames.add(languageName);
     else plan.unrecognizedLanguageNames.add(languageName);
     return grammar;

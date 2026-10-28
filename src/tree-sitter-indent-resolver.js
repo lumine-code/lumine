@@ -960,6 +960,32 @@ class IndentResolver {
     for (const row of rows) {
       options.checkCurrent?.();
       if (this.buffer.getTextRevision() !== revision) return null;
+      const rowOptions = options.rowOptions?.get(row);
+      if (rowOptions) {
+        const settings = {
+          ...options,
+          ...rowOptions,
+          indentationLevels,
+          treeForLayer,
+          isReindenting:
+            rowOptions.isReindenting ??
+            (!rowOptions.preserveLeadingWhitespace && !rowOptions.edited),
+          forceTreeParse: true,
+        };
+        const level = rowOptions.edited
+          ? this.suggestedIndentForEditedBufferRow(row, tabLength, settings)
+          : this.suggestedIndentForBufferRow(row, tabLength, settings);
+        if (level?.then) throw new Error("Prepared indentation requires settled syntax");
+        yield [row, Number.isFinite(level) ? level : null];
+        if (Number.isFinite(level))
+          indentationLevels.set(
+            row,
+            rowOptions.preserveLeadingWhitespace
+              ? this.indentLevelForBufferRow(row, tabLength, 0, Math.floor(level * tabLength))
+              : level,
+          );
+        continue;
+      }
       preservedRows.clear();
       const comparisonRow =
         options.comparisonRow ??

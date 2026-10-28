@@ -1373,9 +1373,9 @@ module.exports = class TextEditor {
    * @status extended
    *
    * Calls your `callback` after text has been inserted.
-   * Called once per published insertion. Worker-backed multiline paste prepares
-   * its final indentation first; cancelled preparation emits no insertion.
-   * Typing-related indentation corrections are later buffer changes, not new insertions.
+   * Called once per published insertion. Worker-backed automatic indentation is
+   * prepared before publication, including Enter, typing and multiline paste.
+   * Cancelled preparation emits no insertion.
    *
    * @param {Function} callback
    * @param {Object} callback.event - event `Object`
@@ -2386,14 +2386,36 @@ module.exports = class TextEditor {
    * @param {String} text - A `String` representing the text to insert.
    * @param {Object} [options] - See {@link Selection#insertText}.
    * @param {Boolean} [options.groupUndo=false] - Group this insertion with recent edits within the editor's undo grouping interval.
-   * @returns {Array<Range>|Boolean|undefined} The inserted range for each selection; false when an insertion observer cancels it, or undefined when a read-only editor refuses the edit.
+   * @returns {Array<Range>|Boolean|undefined|Promise} The inserted range for each selection, or a promise when automatic indentation requires syntax preparation. Await it before reading the result or issuing dependent edits. Returns false on cancellation, or undefined when a read-only editor refuses the edit.
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
+    options = { ...options };
+    const prepared = require("./text-editor-prepared-indent");
+    const pendingInput = prepared.isPending(this);
+    const mode = this.buffer.getLanguageMode();
+    const newline = text === "\n" || text === "\r\n";
+    let editedCanChange =
+      !newline && /\S/.test(text) && (options.autoDecreaseIndent ?? this.shouldAutoIndent());
+    if (editedCanChange && !pendingInput && mode.mayIndentEditedText) {
+      editedCanChange = this.getSelections().some((selection) =>
+        mode.mayIndentEditedText(selection.getBufferRange(), text),
+      );
+      if (!editedCanChange) options = { ...options, autoDecreaseIndent: false };
+    }
+    if (
+      typeof mode.scanPreparedIndentation === "function" &&
+      (pendingInput ||
+        (newline && (options.autoIndentNewline ?? this.shouldAutoIndent())) ||
+        (options.autoIndent && text.includes("\n")) ||
+        editedCanChange)
+    ) {
+      return this.transactWithAutoIndentation(
+        (editor) => editor.insertText(text, options),
+        options,
+      );
+    }
     if (!this.emitWillInsertTextEvent(text)) return false;
-    const pendingNewlineIndent = this.pendingNewlineIndentIntent;
-    const beforeInsertionRevision = this.buffer.getTextRevision();
-
     let groupLastChanges = false;
     if (options.undo === "skip") {
       options = Object.assign({}, options);
@@ -2415,42 +2437,13 @@ module.exports = class TextEditor {
       : options;
     const indentMarkers = [];
     const indentBaselines = new Map();
-    const indentPrefixes = batchNewlineIndent ? new Map() : null;
     let result;
     try {
       result = this.mutateSelectedText((selection) => {
-        let prefix = "";
-        if (batchNewlineIndent && languageMode.asynchronousSyntax) {
-          const { start } = selection.getBufferRange();
-          const source = this.buffer.getTextSnapshot();
-          const offset = source.lineStart(start.row);
-          const length = leadingIndentation(
-            source,
-            offset,
-            offset + start.column,
-            this.getTabLength(),
-          ).length;
-          prefix = source.subtext(offset, offset + length);
-        }
-        // Publish the newline and its inherited indentation as one edit. The
-        // worker may refine the owned prefix, but paint never sees column zero
-        // merely because the previous line's indentation crossed a thread.
-        const range = prefix.length
-          ? require("./text-editor-snapshot-operations").insertPreparedSource(
-              selection,
-              prefix.replace(0, 0, text),
-              insertionOptions,
-            )
-          : selection.insertText(text, insertionOptions);
+        const range = selection.insertText(text, insertionOptions);
         if (batchNewlineIndent) {
-          const marker = languageMode.asynchronousSyntax
-            ? this.markBufferRange([range.end, range.end], {
-                exclusive: false,
-                invalidate: "never",
-              })
-            : this.markBufferPosition(range.end);
+          const marker = this.markBufferPosition(range.end);
           indentMarkers.push(marker);
-          if (prefix.length) indentPrefixes.set(marker, prefix);
           // Insertion observers may remove whitespace from the previous blank
           // row. Preserve the same baseline that a single cursor sees before
           // those callbacks, while still planning against the final syntax.
@@ -2468,43 +2461,18 @@ module.exports = class TextEditor {
     }
     if (groupLastChanges) this.buffer.groupLastChanges();
 
-    if (
-      pendingNewlineIndent &&
-      this.pendingNewlineIndentIntent === pendingNewlineIndent &&
-      pendingNewlineIndent.revision === beforeInsertionRevision &&
-      (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent)
-    )
-      pendingNewlineIndent.revision = this.buffer.getTextRevision();
-
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(
-        indentMarkers,
-        languageMode,
-        indentBaselines,
-        indentPrefixes,
-        options,
-      );
-    } else if (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent) {
+      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, options);
+    } else if (
+      typeof languageMode.scanPreparedIndentation !== "function" &&
+      (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent)
+    ) {
       this.scheduleIndentAdjustment(false, options);
     }
     return result;
   }
 
-  adjustNewlineIndentation(
-    markers,
-    languageMode,
-    baselines = new Map(),
-    prefixes = new Map(),
-    inputOptions = {},
-  ) {
-    if (languageMode.asynchronousSyntax)
-      return this.adjustWorkerNewlineIndentation(
-        markers,
-        languageMode,
-        baselines,
-        prefixes,
-        inputOptions,
-      );
+  adjustNewlineIndentation(markers, languageMode, baselines = new Map(), inputOptions = {}) {
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
     const options = {
@@ -2567,121 +2535,6 @@ module.exports = class TextEditor {
         this.autoIndentAtTransactionEndPromise = null;
     });
     this.autoIndentAtTransactionEndPromise = pending;
-    pending.catch(() => {});
-    return pending;
-  }
-
-  // Keep the intent to indent these new rows across subsequent typing in this
-  // editor. Each actual plan still belongs to one revision. Buffer edits from
-  // other owners, undo and grammar changes invalidate the intent instead.
-  adjustWorkerNewlineIndentation(
-    markers,
-    languageMode,
-    baselines,
-    prefixes,
-    { bypassReadOnly = false } = {},
-  ) {
-    const buffer = this.buffer;
-    const previous = this.pendingNewlineIndentIntent;
-    if (
-      previous?.mode === languageMode &&
-      previous.revision === buffer.getTextRevision() &&
-      previous.bypassReadOnly === bypassReadOnly
-    ) {
-      previous.markers.push(...markers);
-      for (const [marker, indent] of baselines) previous.baselines.set(marker, indent);
-      for (const [marker, prefix] of prefixes) previous.prefixes.set(marker, prefix);
-      return previous.promise;
-    }
-    const intent = {
-      revision: buffer.getTextRevision(),
-      mode: languageMode,
-      markers,
-      baselines,
-      prefixes,
-      bypassReadOnly,
-    };
-    this.pendingNewlineIndentIntent = intent;
-    const isCurrent = () =>
-      this.pendingNewlineIndentIntent === intent &&
-      canAdjustIndentation(this, buffer, languageMode, intent) &&
-      buffer.getTextRevision() === intent.revision;
-    let pending;
-    const adjustment = (async () => {
-      while (isCurrent()) {
-        const revision = intent.revision;
-        const epoch = languageMode.getSyntaxRequestEpoch?.();
-        const generation = languageMode.getSyntaxGeneration?.();
-        const tabLength = this.getTabLength(),
-          softTabs = this.getSoftTabs();
-        const rows = [
-          ...new Set(
-            markers
-              .filter((marker) => marker.isValid())
-              .map((marker) => marker.getStartBufferPosition().row),
-          ),
-        ].sort((a, b) => a - b);
-        if (!rows.length) return;
-        const options = {
-          preserveLeadingWhitespace: true,
-          skipBlankLines: false,
-          comparisonRowIndents: new Map(),
-          insertedIndentLengths: new Map(),
-        };
-        for (const [marker, prefix] of prefixes) {
-          if (!marker.isValid()) continue;
-          const row = marker.getStartBufferPosition().row;
-          const source = buffer.getTextSnapshot();
-          const offset = source.lineStart(row);
-          if (
-            buffer.lineLengthForRow(row) >= prefix.length &&
-            source.subtext(offset, offset + prefix.length).equals(prefix)
-          )
-            options.insertedIndentLengths.set(row, prefix.length);
-        }
-        for (const marker of markers)
-          if (marker.isValid() && baselines.has(marker))
-            options.comparisonRowIndents.set(
-              marker.getStartBufferPosition().row,
-              baselines.get(marker),
-            );
-        let indents;
-        try {
-          indents = await languageMode.suggestedIndentForBufferRowsAtRows(rows, tabLength, options);
-        } catch (error) {
-          if (error.name !== "AbortError") throw error;
-          // Cancellation without a newer revision or syntax owner is final.
-          // Repeating the same cancelled request can starve the event loop,
-          // notably while the worker service is shutting down.
-          if (
-            !isCurrent() ||
-            (buffer.getTextRevision() === revision &&
-              languageMode.getSyntaxRequestEpoch?.() === epoch &&
-              languageMode.getSyntaxGeneration?.() === generation)
-          )
-            return;
-          continue;
-        }
-        if (!isCurrent()) return;
-        if (
-          buffer.getTextRevision() !== revision ||
-          tabLength !== this.getTabLength() ||
-          softTabs !== this.getSoftTabs()
-        )
-          continue;
-        this.applyIndentationLevels(indents, options);
-        if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
-        return;
-      }
-    })();
-    pending = handleIndentationErrors(adjustment, isCurrent).finally(() => {
-      for (const marker of markers) marker.destroy();
-      if (this.pendingNewlineIndentIntent === intent) this.pendingNewlineIndentIntent = null;
-      if (this.autoIndentAtTransactionEndPromise === pending)
-        this.autoIndentAtTransactionEndPromise = null;
-    });
-    this.autoIndentAtTransactionEndPromise = pending;
-    intent.promise = pending;
     pending.catch(() => {});
     return pending;
   }
@@ -3439,6 +3292,15 @@ module.exports = class TextEditor {
    */
   insertNewlineBelow(options = {}) {
     if (!this.ensureWritable("insertNewlineBelow", options)) return;
+    options = { ...options };
+    if (
+      (options.autoIndentNewline ?? this.shouldAutoIndent()) &&
+      typeof this.buffer.getLanguageMode().scanPreparedIndentation === "function"
+    )
+      return this.transactWithAutoIndentation(
+        (editor) => editor.insertNewlineBelow(options),
+        options,
+      );
     this.transact(() => {
       this.moveToEndOfLine();
       this.insertNewline(options);
@@ -3456,23 +3318,39 @@ module.exports = class TextEditor {
    */
   insertNewlineAbove(options = {}) {
     if (!this.ensureWritable("insertNewlineAbove", options)) return;
-    this.transact(() => {
-      const bufferRow = this.getCursorBufferPosition().row;
+    options = {
+      ...options,
+      autoIndentNewline: options.autoIndentNewline ?? this.shouldAutoIndent(),
+    };
+    if (
+      options.autoIndentNewline &&
+      typeof this.buffer.getLanguageMode().scanPreparedIndentation === "function"
+    )
+      return this.transactWithAutoIndentation(
+        (editor) => editor.insertNewlineAbove(options),
+        options,
+      );
+    if (!this.emitWillInsertTextEvent("\n")) return false;
+    return this.mutateSelectedText((selection) => {
+      const cursor = selection.cursor;
+      const bufferRow = cursor.getBufferRow();
       const indentLevel = this.indentationForBufferRow(bufferRow);
       const onFirstLine = bufferRow === 0;
 
-      this.moveToBeginningOfLine();
-      this.moveLeft();
-      this.insertNewline(options);
+      cursor.moveToBeginningOfLine();
+      cursor.moveLeft();
+      const range = selection.insertText("\n", options);
+      this.emitter.emit("did-insert-text", { text: "\n", range });
 
-      if (this.shouldAutoIndent() && this.indentationForBufferRow(bufferRow) < indentLevel) {
+      if (options.autoIndentNewline && this.indentationForBufferRow(bufferRow) < indentLevel) {
         this.setIndentationForBufferRow(bufferRow, indentLevel);
       }
 
       if (onFirstLine) {
-        this.moveUp();
-        this.moveToEndOfLine();
+        cursor.moveUp();
+        cursor.moveToEndOfLine();
       }
+      return range;
     });
   }
 
@@ -3739,6 +3617,7 @@ module.exports = class TextEditor {
    */
   undo(options = {}) {
     if (!this.ensureWritable("undo", options)) return;
+    require("./text-editor-prepared-indent").cancel(this);
     this.avoidMergingSelections(() =>
       this.buffer.undo({ selectionsMarkerLayer: this.selectionsMarkerLayer }),
     );
@@ -3756,6 +3635,7 @@ module.exports = class TextEditor {
    */
   redo(options = {}) {
     if (!this.ensureWritable("redo", options)) return;
+    require("./text-editor-prepared-indent").cancel(this);
     this.avoidMergingSelections(() =>
       this.buffer.redo({ selectionsMarkerLayer: this.selectionsMarkerLayer }),
     );
@@ -3789,6 +3669,35 @@ module.exports = class TextEditor {
       options.groupingInterval = groupingInterval;
     }
     return this.buffer.transact(options, fn);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Prepare an editing operation and its automatic indentation, then publish
+   * text and selections together as one undo step. With worker syntax, the
+   * callback receives a private editor sharing the document's immutable text.
+   * Make all edits through that editor and keep the callback synchronous.
+   * Await completion before reading the live document or performing follow-up
+   * edits. Cancellation or a superseding edit leaves the live document intact.
+   *
+   * @param {Function} callback - Synchronous editing callback receiving an editor.
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels preparation.
+   * @param {Boolean} [options.bypassReadOnly=false] - Allows changing a read-only editor.
+   * @param {Boolean} [options.groupUndo=false] - Groups publication with recent edits.
+   * @returns {*|Promise} The synchronous result, or a promise for prepared publication.
+   */
+  transactWithAutoIndentation(callback, options = {}) {
+    if (!this.ensureWritable("transactWithAutoIndentation", options)) return;
+    const mode = this.buffer.getLanguageMode();
+    if (typeof mode.scanPreparedIndentation !== "function")
+      return this.transact(() => callback(this));
+    return this.trackIndentation(
+      require("./text-editor-prepared-indent").mutate(this, callback, options),
+      mode,
+    );
   }
 
   /**

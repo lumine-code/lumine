@@ -27,12 +27,14 @@ function* synchronousBatches(edits) {
 // Adapt ordered edits to the same bounded builder and marker geometry used by
 // replacement. Large inputs retain compressed geometry, not replacement objects.
 async function prepareTextEdits(buffer, source, edits, options, onReplacement, check) {
-  // Parsing deliberately restarts beyond its bounded edit journal. Keep local
-  // changes below that bound, while the compressed presentation map has no such
-  // cutoff and continues to preserve all cached unchanged text.
+  // Keep a bounded transport journal independently of the parser's smaller
+  // incremental-parse budget. Distant cursors must not retransmit untouched
+  // document spans merely because parsing elects to restart.
   let journal = [],
     store = new TextStore(source, { wordIndex: false }),
-    delta = 0;
+    delta = 0,
+    firstChangedIndex,
+    lastChangedIndex;
   let deadline = performance.now() + 4;
   const session = {
     check,
@@ -74,8 +76,10 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
           previousEnd = end;
           const replacement = typeof text === "string" ? new PieceTree(text) : text;
           if (source.subtext(start, end).equals(replacement)) continue;
+          firstChangedIndex ??= start;
+          lastChangedIndex = end;
           if (journal) {
-            if (journal.length === 128) {
+            if (journal.length === 4096) {
               journal = null;
               store = null;
             } else {
@@ -112,6 +116,14 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
   return {
     ...result,
     syntaxChanges: journal,
+    range:
+      firstChangedIndex === undefined
+        ? null
+        : new Range(source.positionAt(firstChangedIndex), source.positionAt(lastChangedIndex)),
+    inserted:
+      firstChangedIndex === undefined
+        ? null
+        : result.snapshot.subtext(firstChangedIndex, lastChangedIndex + delta),
   };
 }
 

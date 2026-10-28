@@ -2127,6 +2127,37 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollBottom()).toBeNear((10 + 1) * component.measurements.lineHeight);
     });
 
+    it("drains measurements for a line without text nodes and measures its rebuilt DOM", () => {
+      const { component } = buildComponent({ autoHeight: false, height: 80 });
+      const row = component.getRenderedStartRow();
+      const screenLine = component.renderedScreenLineForRow(row);
+      const line = component.lineComponentsByScreenLineId.get(screenLine.id);
+      line.element.replaceChildren();
+      line.cachedTextNodes = null;
+      component.horizontalPixelPositionsByScreenLineId.delete(screenLine.id);
+      component.requestHorizontalMeasurement(row, 2);
+      expect(() => component.measureHorizontalPositions()).not.toThrow();
+      expect(component.horizontalPositionsToMeasure.size).toBe(0);
+      expect(component.horizontalPixelPositionsByScreenLineId.get(screenLine.id)?.has(2)).not.toBe(
+        true,
+      );
+      line.appendContents();
+      component.requestHorizontalMeasurement(row, 2);
+      component.measureHorizontalPositions();
+      expect(
+        Number.isFinite(component.horizontalPixelPositionsByScreenLineId.get(screenLine.id).get(2)),
+      ).toBe(true);
+    });
+
+    it("does not retain a failed horizontal measurement for every later frame", () => {
+      const { component } = buildComponent({ autoHeight: false, height: 80 });
+      component.requestHorizontalMeasurement(component.getRenderedStartRow(), 2);
+      spyOn(component, "measureHorizontalPositionsOnLine").and.throwError("failed measurement");
+      expect(() => component.measureHorizontalPositions()).toThrowError("failed measurement");
+      expect(component.horizontalPositionsToMeasure.size).toBe(0);
+      expect(() => component.measureHorizontalPositions()).not.toThrow();
+    });
+
     it("accounts for the presence of horizontal scrollbars that appear during the same frame as the autoscroll", async () => {
       const { component, element, editor } = buildComponent({
         autoHeight: false,

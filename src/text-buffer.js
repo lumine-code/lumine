@@ -1752,7 +1752,7 @@ class TextBuffer {
           this.emitWillChangeEvent();
           check();
           markerPlan.verify();
-          this.applyChange(this.buffer.prepareEdit(this.getRange(), result.snapshot), {
+          this.applyChange(this.buffer.prepareEdit(result.range, result.inserted), {
             recordHistory: true,
             markerPlan,
             coordinateMap: result.coordinateMap,

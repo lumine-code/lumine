@@ -199,7 +199,7 @@ async function prepare(editor, data, options, queue) {
       softWrapped: false,
       autoIndent: false,
     });
-    if (data.move) {
+    if (data.move || data.mutation) {
       subscriptions.add(editor.displayLayer.foldsMarkerLayer.onDidUpdate(cancel));
       for (const marker of editor.displayLayer.foldsMarkerLayer.getMarkers())
         staged.foldBufferRange(marker.getRange());
@@ -219,8 +219,21 @@ async function prepare(editor, data, options, queue) {
       }),
     );
     const checkpoint = draft.createCheckpoint();
-    const records = [];
-    if (data.move) {
+    const records = [],
+      appliedChanges = [];
+    subscriptions.add(draft.onDidApplyChanges((batch) => appliedChanges.push(...batch.changes)));
+    let mutation;
+    if (data.mutation) {
+      staged.autoIndent = editor.shouldAutoIndent();
+      staged.emitWillInsertTextEvent = (text) => {
+        const accepted = editor.emitWillInsertTextEvent(text);
+        if (!accepted) controller.abort(aborted());
+        return accepted;
+      };
+      mutation = require("./text-editor-prepared-mutation")(staged, data.mutation, records, mode);
+      if (mutation.result === false && !draft.getChangesSinceCheckpoint(checkpoint).length)
+        return false;
+    } else if (data.move) {
       staged[data.move](options);
       const movement = draft.historyProvider.getChangesSinceCheckpoint(checkpoint).coordinateMap;
       if (movement) {
@@ -312,9 +325,13 @@ async function prepare(editor, data, options, queue) {
         });
       }
     }
-    const ranges = data.move
-      ? mergeRanges(staged.getSelectionsOrderedByBufferPosition().map((s) => s.getBufferRowRange()))
-      : rowRanges(records);
+    const ranges = mutation
+      ? mutation.ranges
+      : data.move
+        ? mergeRanges(
+            staged.getSelectionsOrderedByBufferPosition().map((s) => s.getBufferRowRange()),
+          )
+        : rowRanges(records);
     if (
       data.move &&
       !draft.getChangesSinceCheckpoint(checkpoint).length &&
@@ -342,11 +359,17 @@ async function prepare(editor, data, options, queue) {
           signal,
           isCurrent,
           softTabs,
-          isPastedText: !data.move,
+          isPastedText: !data.move && !mutation,
+          rowOptions: mutation?.rowOptions,
           preserveLeadingWhitespace: options.preserveLeadingWhitespace,
           insertedIndentLengths: options.insertedIndentLengths,
         });
-      await autoIndentRanges(staged, ranges, { ...options, signal, isPastedText: !data.move });
+      await autoIndentRanges(staged, ranges, {
+        ...options,
+        signal,
+        isPastedText: !data.move && !mutation,
+        rowOptions: mutation?.rowOptions,
+      });
     }
     check();
     staged.suppressSelectionMerging = false;
@@ -359,8 +382,9 @@ async function prepare(editor, data, options, queue) {
     if (finalSelections.some((selection) => !selection.owner))
       throw new Error("Prepared indentation created an unowned selection");
     const finalSource = draft.getTextSnapshot();
-    const events = records.map(({ marker }) => {
+    const events = records.map(({ marker, text }) => {
       const range = marker.getBufferRange();
+      if (mutation) return { text, range };
       return insertedSourceEvent(
         finalSource.subtext(finalSource.offsetAt(range.start), finalSource.offsetAt(range.end)),
         range,
@@ -370,9 +394,10 @@ async function prepare(editor, data, options, queue) {
     const coordinateMap = changes.coordinateMap ?? TextChangeMap.fromChanges(changes);
     const markerPlan = new CoordinateMarkerPlan(buffer, source);
     await markerPlan.apply(coordinateMap, check);
-    const folds = data.move
-      ? staged.displayLayer.foldsMarkerLayer.getMarkers().map((m) => m.getRange())
-      : null;
+    const folds =
+      data.move || mutation
+        ? staged.displayLayer.foldsMarkerLayer.getMarkers().map((m) => m.getRange())
+        : null;
     let failure,
       finalized = false,
       committedRevision;
@@ -392,7 +417,7 @@ async function prepare(editor, data, options, queue) {
           owner.setBufferRange(range, {
             reversed,
             autoscroll: false,
-            preserveFolds: Boolean(data.move),
+            preserveFolds: Boolean(data.move || mutation),
           });
         for (const { selection } of selections) if (!survivors.has(selection)) selection.destroy();
       });
@@ -403,34 +428,7 @@ async function prepare(editor, data, options, queue) {
     try {
       check();
       if (changes.length) {
-        let delta = 0;
-        const syntaxChanges = changes.map((change) => {
-          const oldRange = new TextBuffer.Range(change.oldStart, change.oldEnd);
-          const start = source.offsetAt(change.oldStart),
-            end = source.offsetAt(change.oldEnd);
-          const oldTextSource = change.oldTextSource ?? source.subtext(start, end);
-          const newTextSource = change.newTextSource;
-          const at = TextBuffer.Point.fromObject(change.newStart);
-          const local = {
-            oldStart: at,
-            oldEnd: at.traverse(oldRange.getExtent()),
-            newStart: at,
-            newEnd: change.newEnd,
-            startIndex: start + delta,
-            oldEndIndex: end + delta,
-            newEndIndex: start + delta + newTextSource.length,
-            oldTextSource,
-            newTextSource,
-            get oldText() {
-              return oldTextSource.toString();
-            },
-            get newText() {
-              return newTextSource.toString();
-            },
-          };
-          delta += newTextSource.length - (end - start);
-          return buffer.changeEventForPreparedEdit(local);
-        });
+        const syntaxChanges = appliedChanges;
         const first = changes[0],
           last = changes.at(-1);
         const range = new TextBuffer.Range(first.oldStart, last.oldEnd);
@@ -453,7 +451,12 @@ async function prepare(editor, data, options, queue) {
         });
         publishing = true;
         try {
-          plan.commit({ signal, isCurrent, didCommit: finalizeSelections });
+          plan.commit({
+            signal,
+            isCurrent,
+            didCommit: finalizeSelections,
+            groupingInterval: options.groupUndo ? editor.getUndoGroupingInterval() : 0,
+          });
         } finally {
           publishing = false;
           plan.dispose();
@@ -493,6 +496,7 @@ async function prepare(editor, data, options, queue) {
     }
     if (options.autoscroll !== false) editor.getLastSelection()?.autoscroll({ mode: options.mode });
     if (failure) throw failure;
+    if (mutation) return events.length ? events.map((event) => event.range) : mutation.result;
   } catch (error) {
     queue.cancelled = true;
     if (error.code === "ERR_SYNTAX_QUERY_BUDGET" && !signal.aborted && isCurrent())
@@ -547,6 +551,8 @@ module.exports = {
   applies,
   paste: (editor, data, options) => enqueue(editor, data, options),
   moveLines: (editor, move, options) => enqueue(editor, { move }, options),
+  mutate: (editor, mutation, options) => enqueue(editor, { mutation }, options),
+  isPending: (editor) => Boolean(queues.get(editor) && !queues.get(editor).cancelled),
   cancel: (editor) => {
     const queue = queues.get(editor);
     if (queue) queue.cancelled = true;

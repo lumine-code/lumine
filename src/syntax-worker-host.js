@@ -235,6 +235,7 @@ class SyntaxWorkerHost {
       },
       initialSyntaxTree: session.initialSyntaxTree,
       initialSyntaxChanges: session.initialSyntaxChanges,
+      indentationOnly: Boolean(session.parent),
     });
     session.initialSyntaxTree = null;
     session.initialSyntaxChanges = null;
@@ -376,6 +377,38 @@ class SyntaxWorkerHost {
     }
     const session = this.sessions.get(data.session);
     if (!session) throw aborted("Syntax document was closed");
+    if (operation === "prepared-indent" && data.target != null) {
+      const target = data.target;
+      if (!Number.isSafeInteger(target) || this.sessions.has(target))
+        throw new Error("Invalid speculative syntax session");
+      try {
+        await this.dispatch(
+          "fork",
+          { session: session.id, revision: data.revision, target },
+          { signal },
+        );
+        await this.dispatch(
+          "edit",
+          { session: target, beforeRevision: 0, revision: 1, changes: data.changes },
+          { signal },
+        );
+        await this.dispatch("initialize", { session: target }, { signal });
+        const result = await this.dispatch(
+          "prepared-indent",
+          {
+            session: target,
+            revision: 1,
+            ranges: data.ranges,
+            tabLength: data.tabLength,
+            options: data.options,
+          },
+          { signal, emit },
+        );
+        return { ...result, revision: data.revision, generation: session.generation };
+      } finally {
+        this.closeSession(target);
+      }
+    }
     const { buffer } = session;
     if (operation === "edit-begin") {
       for (const id of session.forks ?? []) this.closeSession(id);
@@ -672,14 +705,15 @@ class SyntaxWorkerHost {
           })) {
             current();
             for (const [row, level] of batch) {
+              const rowOptions = data.options?.rowOptions?.get(row) ?? data.options;
               if (level !== null)
                 history.set(
                   row,
-                  data.options?.preserveLeadingWhitespace
+                  rowOptions?.preserveLeadingWhitespace
                     ? mode.indentResolver.indentLevelForBufferRow(
                         row,
                         data.tabLength,
-                        data.options.insertedIndentLengths?.get(row) ?? 0,
+                        rowOptions.insertedIndentLengths?.get(row) ?? 0,
                         Math.floor(level * data.tabLength),
                       )
                     : level,
@@ -691,6 +725,7 @@ class SyntaxWorkerHost {
         }
         value = { count };
       } else if (operation === "settle") {
+        mode.ensureQueriesForLayersSync("indentsQuery");
         const error = transaction.parseError ?? mode.lastTransactionParseError;
         value = {
           ...this.metadata(session),
@@ -851,6 +886,7 @@ class SyntaxWorkerHost {
       grammars: session.metadata.grammars,
       softTabs: session.softTabs,
       syntaxReady: !mode.publicationPending,
+      typingIndentationRules: require("./typing-indentation-rules").forMode(mode),
     };
   }
 

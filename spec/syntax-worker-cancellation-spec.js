@@ -85,48 +85,50 @@ describe("Syntax worker cancellation boundaries", () => {
 
   it("does not retry a cancelled indentation request against unchanged syntax", async () => {
     let attempts = 0;
-    spyOn(mode, "suggestedIndentForBufferRowsAtRows").and.callFake(async () => {
-      if (++attempts <= 3) throw abort();
-      return new Map([[2, 0]]);
-    });
-    editor.insertNewline();
-    const afterEnter = editor.getText();
-    const markers = [...editor.pendingNewlineIndentIntent.markers];
-    await editor.autoIndentAtTransactionEndPromise;
+    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
+      (async function* () {
+        attempts++;
+        yield await Promise.reject(abort());
+      })(),
+    );
+    const before = editor.getText();
+    await editor.insertNewline();
     expect(attempts).toBe(1);
-    expect(editor.getText()).toBe(afterEnter);
-    expect(editor.pendingNewlineIndentIntent).toBeNull();
-    expect(markers.every((marker) => marker.isDestroyed())).toBe(true);
+    expect(editor.getText()).toBe(before);
+    expect(editor.hasPendingIndentation()).toBe(false);
   });
 
-  it("replans a cancelled indentation request when typing advances its revision", async () => {
+  it("discards queued edits with their cancelled preparation without retrying stale syntax", async () => {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
-    const suggest = mode.suggestedIndentForBufferRowsAtRows.bind(mode);
     let attempts = 0;
-    spyOn(mode, "suggestedIndentForBufferRowsAtRows").and.callFake(async (...args) => {
-      if (++attempts === 1) {
+    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
+      (async function* () {
+        attempts++;
         await gate;
-        throw abort();
-      }
-      return suggest(...args);
-    });
-    editor.insertNewline();
-    editor.insertText("next = 2");
+        yield await Promise.reject(abort());
+      })(),
+    );
+    const before = editor.getText();
+    const newline = editor.insertNewline();
+    const typing = editor.insertText("next = 2");
     release();
-    await editor.whenGrammarSettled();
-    expect(attempts).toBe(2);
-    expect(editor.getText()).toBe("def work():\n    value = 1\n    next = 2");
+    await Promise.all([newline, typing]);
+    expect(attempts).toBe(1);
+    expect(editor.getText()).toBe(before);
   });
 
   for (const action of ["undo", "undo-redo", "grammar", "destroy", "readOnly"]) {
     it(`discards delayed indentation after ${action} and releases its markers`, async () => {
       let release;
       const gate = new Promise((resolve) => (release = resolve));
-      spyOn(mode, "suggestedIndentForBufferRowsAtRows").and.returnValue(gate);
-      editor.insertNewline();
-      const markers = [...editor.pendingNewlineIndentIntent.markers];
-      const pending = editor.autoIndentAtTransactionEndPromise;
+      spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
+        (async function* () {
+          await gate;
+          yield [[2, 3]];
+        })(),
+      );
+      const pending = editor.insertNewline();
       if (action.startsWith("undo")) editor.undo();
       if (action === "undo-redo") editor.redo();
       if (action === "grammar")
@@ -137,18 +139,21 @@ describe("Syntax worker cancellation boundaries", () => {
       release(new Map([[2, 3]]));
       await pending;
       if (action !== "destroy") expect(editor.getText()).toBe(expected);
-      expect(editor.pendingNewlineIndentIntent).toBeNull();
-      expect(markers.every((marker) => marker.isDestroyed())).toBe(true);
+      expect(editor.hasPendingIndentation()).toBe(false);
     });
   }
 
   it("retains an explicit read-only bypass through delayed newline indentation", async () => {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
-    spyOn(mode, "suggestedIndentForBufferRowsAtRows").and.returnValue(gate);
+    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
+      (async function* () {
+        await gate;
+        yield [[2, 2]];
+      })(),
+    );
     editor.setReadOnly(true);
-    editor.insertNewline({ bypassReadOnly: true });
-    const pending = editor.autoIndentAtTransactionEndPromise;
+    const pending = editor.insertNewline({ bypassReadOnly: true });
     release(new Map([[2, 2]]));
     await pending;
     expect(editor.lineTextForBufferRow(2)).toBe("        ");

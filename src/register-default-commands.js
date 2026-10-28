@@ -1195,7 +1195,10 @@ var stopEventPropagation = function (notificationManager, commandListeners) {
         function (event) {
           event.stopPropagation();
           return require("./settle-editor-command")(
-            () => didDispatch.call(this.getModel(), event),
+            () =>
+              require("./text-editor-input-queue")(this.getModel(), () =>
+                didDispatch.call(this.getModel(), event),
+              ),
             notificationManager,
             commandName,
           );
@@ -1216,7 +1219,11 @@ var stopEventPropagationAndGroupUndo = function (config, notificationManager, co
           const model = this.getModel();
           return require("./settle-editor-command")(
             () =>
-              model.transact(model.getUndoGroupingInterval(), () => didDispatch.call(model, event)),
+              require("./text-editor-input-queue")(model, () =>
+                model.transact(model.getUndoGroupingInterval(), () =>
+                  didDispatch.call(model, event),
+                ),
+              ),
             notificationManager,
             commandName,
           );

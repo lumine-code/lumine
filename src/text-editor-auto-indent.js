@@ -194,8 +194,9 @@ async function autoIndentRanges(editor, ranges, options = {}, selections = null)
         if (level !== null) {
           let info = inspect(row);
           if (info?.then) info = await info;
-          const endColumn = options.preserveLeadingWhitespace
-            ? (options.insertedIndentLengths?.get(row) ?? 0)
+          const rowOptions = options.rowOptions?.get(row) ?? options;
+          const endColumn = rowOptions.preserveLeadingWhitespace
+            ? (rowOptions.insertedIndentLengths?.get(row) ?? 0)
             : info.contentStart - info.start;
           if (
             !Number.isSafeInteger(endColumn) ||
