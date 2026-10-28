@@ -2,6 +2,7 @@ const { CompositeDisposable } = require("@lumine-code/event-kit");
 const Client = require("./syntax-worker-client");
 const { environment, configuration } = require("./syntax-worker-environment");
 const { watchFile } = require("./file-watch");
+const { canInlineIndentation } = require("./syntax-worker-protocol");
 const insertedSource = (change) => change.newTextSource ?? change.inserted ?? change.newText;
 
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
@@ -603,6 +604,7 @@ class SyntaxWorkerService {
               target: id,
               ranges,
               tabLength,
+              inline: canInlineIndentation(ranges),
               options: parameters,
               changes: changes.map((change) => {
                 const source = insertedSource(change);
@@ -625,6 +627,13 @@ class SyntaxWorkerService {
             },
           );
           check();
+          if (result.levels?.length) {
+            // requestCurrent has already checked the response revision and
+            // generation. Keep the iterator's local backpressure/cancellation
+            // contract without holding a worker-side acknowledgement open.
+            await onChunk(result.levels);
+            check();
+          }
           return result;
         }
         await this.request(session, "fork", { target: id }, { signal, revision });

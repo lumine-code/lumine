@@ -171,13 +171,16 @@ async function autoIndentRanges(editor, ranges, options = {}, selections = null)
   async function* edits() {
     let rangeIndex = 0,
       nextRow = ranges[0][0],
-      deadline = performance.now() + 4;
+      deadline;
     for await (const batch of planned) {
       check();
       if (!Array.isArray(batch) || batch.length > 4096)
         throw new TypeError("Invalid streamed indentation batch");
       const changes = [];
       for (const entry of batch) {
+        // Waiting for the first worker reply consumes no renderer CPU budget.
+        // Keep the same deadline across later batches to preserve fairness.
+        deadline ??= performance.now() + 4;
         if (!Array.isArray(entry) || entry.length !== 2)
           throw new TypeError("Invalid streamed indentation entry");
         const [row, level] = entry;

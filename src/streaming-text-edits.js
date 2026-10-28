@@ -35,7 +35,7 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
     delta = 0,
     firstChangedIndex,
     lastChangedIndex;
-  let deadline = performance.now() + 4;
+  let deadline;
   const session = {
     check,
     async *batches() {
@@ -49,6 +49,9 @@ async function prepareTextEdits(buffer, source, edits, options, onReplacement, c
         if (entries.length > 1024)
           throw new RangeError("Text edit batches are limited to 1024 entries");
         for (const edit of entries) {
+          // Begin the budget when the producer supplies real work, not while
+          // its first asynchronous batch (for example indentation) is pending.
+          deadline ??= performance.now() + 4;
           if (performance.now() >= deadline) {
             await new Promise((resolve) => setImmediate(resolve));
             deadline = performance.now() + 4;

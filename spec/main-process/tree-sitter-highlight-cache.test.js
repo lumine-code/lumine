@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const Point = require("../../src/point");
 const HighlightCache = require("../../src/tree-sitter-highlight-cache");
-const { TextChangeMap } = require("../../src/text-model");
+const { PieceTree, TextChangeMap } = require("../../src/text-model");
 
 const point = (row, column = 0) => new Point(row, column);
 
@@ -336,6 +336,302 @@ test("shifts cold fragments without visiting their events and resolves later par
   assert.deepEqual(at(cache, point(107, 3)), [1]);
   assert.deepEqual(at(cache, point(108)), [1, 2]);
 });
+test("prepared scalar maps retain scope boundaries and affinity through chained edits and undo", () => {
+  const changes = [
+    { oldStart: point(0, 3), oldEnd: point(0, 3), newStart: point(0, 3), newEnd: point(1) },
+    { oldStart: point(1), oldEnd: point(1), newStart: point(1), newEnd: point(1, 4) },
+  ];
+  const maps = [
+    TextChangeMap.fromChanges(changes),
+    TextChangeMap.compose(changes.map((change) => TextChangeMap.fromChanges([change]))),
+  ];
+  for (const map of maps) {
+    const cache = new HighlightCache();
+    cache.replace(
+      [
+        {
+          start: point(0),
+          end: point(2),
+          scopes: [1],
+          events: [
+            { position: point(0, 1), open: [2], close: [] },
+            { position: point(0, 3), open: [3], close: [2] },
+            { position: point(0, 4), open: [], close: [3] },
+            { position: point(1), open: [4], close: [] },
+            { position: point(1, 5), open: [], close: [4] },
+          ],
+        },
+      ],
+      { revision: 1 },
+    );
+    const original = structuredClone(cache.snapshots[0].events);
+    cache.edit({ coordinateMap: map });
+    cache.rebase();
+    assert.deepEqual(
+      cache.snapshots[0].events.map(({ position }) => position),
+      [point(0, 1), point(0, 3), point(1, 5), point(2), point(2, 5)],
+    );
+    assert.deepEqual(at(cache, point(0, 2)), [1, 2]);
+    assert.deepEqual(at(cache, point(0, 3)), [1, 3]);
+    assert.deepEqual(at(cache, point(1, 4)), [1, 3]);
+    assert.deepEqual(at(cache, point(1, 5)), [1]);
+    assert.deepEqual(at(cache, point(2, 1)), [1, 4]);
+    assert.equal(cache.covers(point(0), point(3)), true);
+    cache.edit({ coordinateMap: map.invert() });
+    cache.rebase();
+    assert.deepEqual(structuredClone(cache.snapshots[0].events), original);
+    assert.deepEqual(at(cache, point(0, 3)), [1, 3]);
+    assert.deepEqual(at(cache, point(1, 1)), [1, 4]);
+    assert.equal(cache.covers(point(0), point(2)), true);
+    assert.equal(cache.covers(point(0), point(2, 1)), false);
+  }
+});
+
+test("prepared scalar and chained maps do not materialize distant scope events or drop checkpoints", () => {
+  const changes = [
+    { oldStart: point(0, 3), oldEnd: point(0, 3), newStart: point(0, 3), newEnd: point(1) },
+    { oldStart: point(1), oldEnd: point(1), newStart: point(1), newEnd: point(1, 4) },
+  ];
+  const maps = [
+    TextChangeMap.fromChanges(changes),
+    TextChangeMap.compose(changes.map((change) => TextChangeMap.fromChanges([change]))),
+  ];
+  for (const map of maps) {
+    const cache = new HighlightCache({ maxEdits: 2 });
+    let reads = 0;
+    const events = Array.from({ length: 256 }, (_, index) => ({
+      get position() {
+        reads++;
+        return point(100 + Math.floor(index / 2), index % 2);
+      },
+      open: index % 2 ? [] : [2],
+      close: index % 2 ? [2] : [],
+    }));
+    cache.replace([{ start: point(100), end: point(228), scopes: [1], events }], {});
+    assert.deepEqual(at(cache, point(225)), [1, 2]);
+    const snapshot = cache.snapshots[0];
+    const checkpoint = cache.scopeCheckpoints.get(snapshot);
+    assert(checkpoint);
+    reads = 0;
+    cache.edit({ coordinateMap: map });
+    cache.rebase();
+    assert.equal(reads, 0);
+    assert.equal(snapshot.events, events);
+    assert.equal(snapshot.rowOffset, 1);
+    assert.equal(cache.scopeCheckpoints.get(snapshot), checkpoint);
+    assert.deepEqual(at(cache, point(226)), [1, 2]);
+    assert.deepEqual(at(cache, point(226, 1)), [1]);
+    reads = 0;
+    cache.edit({ coordinateMap: map.invert() });
+    cache.rebase();
+    assert.equal(reads, 0);
+    assert.equal(snapshot.rowOffset, 0);
+    assert.equal(snapshot.events, events);
+    assert.equal(cache.scopeCheckpoints.get(snapshot), checkpoint);
+    assert.deepEqual(at(cache, point(225)), [1, 2]);
+  }
+});
+
+test("source transfers retain their paint without materializing unrelated scalar-map fragments", () => {
+  const cache = new HighlightCache();
+  let distantReads = 0;
+  const distantEvents = [
+    {
+      get position() {
+        distantReads++;
+        return point(100, 1);
+      },
+      open: [9],
+      close: [],
+    },
+    {
+      get position() {
+        distantReads++;
+        return point(100, 4);
+      },
+      open: [],
+      close: [9],
+    },
+  ];
+  cache.replace(
+    [
+      { start: point(0), end: point(1), scopes: [1, 2], events: [] },
+      { start: point(1), end: point(2), scopes: [1, 3], events: [] },
+      { start: point(100), end: point(101), scopes: [1], events: distantEvents },
+    ],
+    {},
+  );
+  const map = TextChangeMap.transfer(
+    TextChangeMap.fromChanges([
+      { oldStart: point(1), oldEnd: point(2), newStart: point(1), newEnd: point(1) },
+      { oldStart: point(0), oldEnd: point(0), newStart: point(0), newEnd: point(1) },
+    ]),
+    [{ start: point(1), end: point(2), target: point(0) }],
+  );
+  for (let iteration = 0; iteration < 10; iteration++) {
+    cache.edit({ coordinateMap: map });
+    assert.equal(distantReads, 0);
+    assert.deepEqual(at(cache, point(0, 1)), [1, 3]);
+    assert.deepEqual(at(cache, point(1, 1)), [1, 2]);
+    cache.edit({ coordinateMap: map.invert() });
+    assert.equal(distantReads, 0);
+    assert.deepEqual(at(cache, point(0, 1)), [1, 2]);
+    assert.deepEqual(at(cache, point(1, 1)), [1, 3]);
+  }
+  const distant = cache.snapshots.find((snapshot) => snapshot.start.row === 100);
+  assert.equal(distant.events, distantEvents);
+  assert.deepEqual(at(cache, point(100, 2)), [1, 9]);
+  assert.deepEqual(at(cache, point(100, 4)), [1]);
+});
+
+test("a real prepared newline and bulk indentation chain leaves distant paint lazy", async () => {
+  const TextBuffer = require("../../src/text-buffer");
+  const buffer = new TextBuffer("class Record:\n" + "    value = 1\n".repeat(200));
+  try {
+    const checkpoint = buffer.createCheckpoint();
+    buffer.insert([0, 13], "\n");
+    await buffer.applyTextEdits([
+      {
+        range: [
+          [1, 0],
+          [1, 0],
+        ],
+        text: "    ",
+      },
+    ]);
+    const map = buffer.historyProvider.getChangesSinceCheckpoint(checkpoint).coordinateMap;
+    assert.equal(map.maps[0].edits.length, 1);
+    assert.equal(map.maps[1].runs[0].count, 1);
+    const cache = new HighlightCache();
+    let reads = 0;
+    const events = [
+      {
+        get position() {
+          reads++;
+          return point(100, 4);
+        },
+        open: [2],
+        close: [],
+      },
+      {
+        get position() {
+          reads++;
+          return point(100, 9);
+        },
+        open: [],
+        close: [2],
+      },
+    ];
+    cache.replace([{ start: point(100), end: point(101), scopes: [1], events }], {});
+    cache.edit({ coordinateMap: map });
+    cache.rebase();
+    assert.equal(reads, 0);
+    assert.equal(cache.snapshots[0].events, events);
+    assert.equal(cache.snapshots[0].rowOffset, 1);
+    assert.deepEqual(at(cache, point(101, 5)), [1, 2]);
+    assert.deepEqual(at(cache, point(101, 9)), [1]);
+    reads = 0;
+    cache.edit({ coordinateMap: map.invert() });
+    cache.rebase();
+    assert.equal(reads, 0);
+    assert.equal(cache.snapshots[0].rowOffset, 0);
+    assert.deepEqual(at(cache, point(100, 5)), [1, 2]);
+  } finally {
+    buffer.destroy();
+  }
+});
+
+test("small bulk edits match generic point mapping across CRLF and UTF-16 boundaries", () => {
+  const text = "α\r\n😀 beta\r\nγ delta\r\nomega\r\n";
+  const before = new PieceTree(text);
+  const replacements = [
+    { start: 1, end: 1, text: "✨" },
+    { start: text.indexOf("beta"), end: text.indexOf("beta") + 4, text: "x\r\ny" },
+    { start: text.indexOf("γ"), end: text.indexOf("γ") + 1, text: "🧪" },
+  ];
+  const map = new TextChangeMap(before);
+  let afterText = "";
+  let offset = 0;
+  for (const replacement of replacements) {
+    afterText += text.slice(offset, replacement.start) + replacement.text;
+    offset = replacement.end;
+    map.add(replacement.start, replacement.end, replacement.text.length);
+  }
+  afterText += text.slice(offset);
+  map.finish(new PieceTree(afterText));
+  const caches = [new HighlightCache(), new HighlightCache()];
+  for (const cache of caches)
+    cache.replace(
+      [
+        {
+          start: point(0),
+          end: point(4),
+          scopes: [1],
+          events: Array.from({ length: text.length }, (_, index) => ({
+            position: Point.fromObject(before.positionAt(index)),
+            open: [index + 2],
+            close: index ? [index + 1] : [],
+          })),
+        },
+      ],
+      {},
+    );
+  const [lazy, generic] = caches;
+  for (const current of [map, map.invert()]) {
+    lazy.edit({ coordinateMap: current });
+    // Deliberately expose only mapPoint to compare against the general bulk
+    // algorithm, including event order when deleted boundaries collapse.
+    generic.edit({ coordinateMap: { mapPoint: current.mapPoint.bind(current) } });
+    lazy.rebase();
+    assert.deepEqual(lazy.snapshots[0].start, generic.snapshots[0].start);
+    assert.deepEqual(lazy.snapshots[0].end, generic.snapshots[0].end);
+    assert.deepEqual(lazy.snapshots[0].events, generic.snapshots[0].events);
+    const source = current.after;
+    for (let index = 0; index < source.length; index++) {
+      const position = Point.fromObject(source.positionAt(index));
+      assert.deepEqual(at(lazy, position), at(generic, position));
+    }
+  }
+});
+
+test("large compressed runs keep bounded generic mapping instead of expanding every edit", () => {
+  const before = new PieceTree("x\n".repeat(10000));
+  const map = new TextChangeMap(before);
+  for (let row = 0; row < 10000; row++) map.add(row * 2, row * 2, 2);
+  map.finish(new PieceTree("  x\n".repeat(10000)));
+  assert.equal(map.runs.length, 1);
+  assert.equal(map.runs[0].count, 10000);
+  const cache = new HighlightCache();
+  cache.replace(
+    [
+      {
+        start: point(100),
+        end: point(101),
+        scopes: [1],
+        events: [
+          { position: point(100), open: [2], close: [] },
+          { position: point(100, 1), open: [], close: [2] },
+        ],
+      },
+    ],
+    {},
+  );
+  let mapped = 0;
+  cache.edit({
+    coordinateMap: {
+      ...map,
+      mapPoint(position, right) {
+        mapped++;
+        return map.mapPoint(position, right);
+      },
+    },
+  });
+  assert.equal(mapped, 4);
+  assert.equal(cache.edits.length, 0);
+  assert.deepEqual(at(cache, point(100, 2)), [1, 2]);
+  assert.deepEqual(at(cache, point(100, 3)), [1]);
+});
+
 test("uses the newest overlapping paint and retains neighboring cached scopes", () => {
   const cache = new HighlightCache();
   record(cache, point(0), point(10), [1, 2], []);

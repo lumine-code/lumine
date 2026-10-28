@@ -11,7 +11,11 @@ const { paintTile } = require("./syntax-paint-policy");
 const SyntaxPreview = require("./syntax-preview");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
-const { PAINT_PACKET_EVENTS } = require("./syntax-worker-protocol");
+const {
+  PAINT_PACKET_EVENTS,
+  INLINE_INDENT_ROWS,
+  canInlineIndentation,
+} = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
 
 function aborted(message = "Syntax snapshot is obsolete") {
@@ -401,6 +405,7 @@ class SyntaxWorkerHost {
             ranges: data.ranges,
             tabLength: data.tabLength,
             options: data.options,
+            inline: data.inline,
           },
           { signal, emit },
         );
@@ -692,6 +697,7 @@ class SyntaxWorkerHost {
       } else if (operation === "prepared-indent") {
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
+        const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;
         let previousEnd = -1,
           count = 0;
         for (const [start, end] of data.ranges) {
@@ -720,10 +726,14 @@ class SyntaxWorkerHost {
                 );
               count++;
             }
-            await emit(batch);
+            if (levels) {
+              if (levels.length + batch.length > INLINE_INDENT_ROWS)
+                throw new RangeError("Inline indentation result exceeds its row budget");
+              levels.push(...batch);
+            } else await emit(batch);
           }
         }
-        value = { count };
+        value = levels ? { count, levels } : { count };
       } else if (operation === "settle") {
         mode.ensureQueriesForLayersSync("indentsQuery");
         const error = transaction.parseError ?? mode.lastTransactionParseError;

@@ -1,4 +1,12 @@
 const Point = require("./point");
+const editsForMap = require("./text-change-map-edits");
+
+function isSmallBulkMap(map) {
+  if (!map.runs || map.runs.length > 64) return false;
+  let count = 0;
+  for (const run of map.runs) if ((count += run.count) > 64) return false;
+  return true;
+}
 
 const compare = (a, b) => a.row - b.row || a.column - b.column;
 const copy = (p) => (Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.row, p.column));
@@ -158,6 +166,23 @@ class HighlightCache {
         );
         this.edit({ coordinateMap: coordinateMap.base });
         this.replace(snapshots, null, () => true);
+        return;
+      }
+      if (coordinateMap.edits) {
+        // Prepared local input has the same ordered geometry as ordinary
+        // splices. Keep its lazy edit log and cold-fragment row translations
+        // rather than materializing every cached scope boundary per keystroke.
+        for (const { start, oldEnd, newEnd } of coordinateMap.edits)
+          this.edit({
+            oldRange: { start, end: oldEnd },
+            newRange: { start, end: newEnd },
+          });
+        return;
+      }
+      if (isSmallBulkMap(coordinateMap)) {
+        // Indentation may be encoded as a compressed run even for one row.
+        // Bound expansion by logical edits, not the number of compressed runs.
+        for (const edit of editsForMap(coordinateMap)) this.edit(edit);
         return;
       }
       this.rebase();
